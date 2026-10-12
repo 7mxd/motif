@@ -73,25 +73,25 @@ for (const runner of RUNNERS) {
       const before = hits;
       const first = await run("ok", home, ["--version"]);
       expect(first.stderr.toString()).toContain("one time only");
-      expect(first.exitCode).toBe(0);
+      expect({ exitCode: first.exitCode, stderr: first.stderr }).toMatchObject({ exitCode: 0 });
       expect(first.stdout.toString().trim()).toBe(VERSION);
       expect(existsSync(cached(home))).toBe(true);
       const second = await run("ok", home, ["--version"]);
-      expect(second.exitCode).toBe(0);
+      expect({ exitCode: second.exitCode, stderr: second.stderr }).toMatchObject({ exitCode: 0 });
       expect(second.stderr.toString()).not.toContain("one time only");
       expect(hits - before).toBe(1);
     }, 120_000);
 
     test("passes arguments and exit codes through", async () => {
       const r = await run("ok", freshHome(), ["fly"]);
-      expect(r.exitCode).toBe(2);
+      expect({ exitCode: r.exitCode, stderr: r.stderr }).toMatchObject({ exitCode: 2 });
       expect(r.stderr.toString()).toContain('Unknown command "fly"');
     }, 120_000);
 
     test("a checksum mismatch aborts with a plain message and caches nothing", async () => {
       const home = freshHome();
       const r = await run("bad", home, ["--version"]);
-      expect(r.exitCode).toBe(2);
+      expect({ exitCode: r.exitCode, stderr: r.stderr }).toMatchObject({ exitCode: 2 });
       expect(r.stderr.toString()).toContain("failed its safety check");
       expect(existsSync(cached(home))).toBe(false);
     }, 120_000);
@@ -99,7 +99,7 @@ for (const runner of RUNNERS) {
     test("a failed download aborts with a plain message and caches nothing", async () => {
       const home = freshHome();
       const r = await run("missing", home, ["--version"]);
-      expect(r.exitCode).toBe(2);
+      expect({ exitCode: r.exitCode, stderr: r.stderr }).toMatchObject({ exitCode: 2 });
       expect(r.stderr.toString()).toContain("couldn't download");
       expect(existsSync(join(home, "bin"))).toBe(false);
     }, 120_000);
@@ -110,14 +110,14 @@ for (const runner of RUNNERS) {
       for (const r of results) {
         expect(r.stderr).not.toContain("Move-Item");
         expect(r.stderr).not.toContain("cannot stat");
-        expect(r.exitCode).toBe(0);
+        expect({ exitCode: r.exitCode, stderr: r.stderr }).toMatchObject({ exitCode: 0 });
         expect(r.stdout.trim()).toBe(VERSION);
       }
     }, 180_000);
 
     test("MOTIF_BIN skips the download entirely", async () => {
       const r = await run("missing", freshHome(), ["--version"], { MOTIF_BIN: slash(builtPath) });
-      expect(r.exitCode).toBe(0);
+      expect({ exitCode: r.exitCode, stderr: r.stderr }).toMatchObject({ exitCode: 0 });
       expect(r.stdout.toString().trim()).toBe(VERSION);
     }, 120_000);
   });
