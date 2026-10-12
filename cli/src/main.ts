@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { emit, type CommandResult, type RunContext } from "./cli/output";
 import { runCheck } from "./commands/check";
 import { runDoctor } from "./commands/doctor";
+import { runExtract } from "./commands/extract";
 import { runTokens } from "./commands/tokens";
 import { runValidate } from "./commands/validate";
 import { VERSION } from "./version";
@@ -17,6 +18,7 @@ Commands:
   validate   Check your design guide (DESIGN.md + design/tokens.json)
   tokens     Turn your design guide into theme code for your app
   check      Find colours, sizes and animations that bypass your design guide
+  extract    Draft a design guide from an existing app's code
 
 Options:
   --json     Print one JSON object (for agents and CI)
@@ -32,6 +34,7 @@ const COMMANDS: Record<string, Runner> = {
   validate: (cwd) => runValidate(cwd),
   tokens: runTokens,
   check: runCheck,
+  extract: runExtract,
 };
 
 export async function main(argv: string[]): Promise<number> {
