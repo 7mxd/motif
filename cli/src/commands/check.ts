@@ -102,6 +102,8 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (warnings.length) {
     lines.push("", "Warnings:", ...warnings.map((w) => `  ${w.file}  ${w.message} ${w.fix}`));
   }
+  const skipped = apps.filter((a) => a.stack !== "react-web").map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
+  if (skipped.length) lines.push("", `Skipped (not supported yet): ${skipped.join(", ")}.`);
   if (violations.length) lines.push("", 'Fix these, or ask your agent: "fix the motif check findings".');
 
   return {

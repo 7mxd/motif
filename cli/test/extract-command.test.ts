@@ -87,3 +87,22 @@ describe("runExtract", () => {
     expect(JSON.parse(r.stdout.toString())).toMatchObject({ command: "extract", ok: true, draft: "design/tokens.draft.json" });
   });
 });
+
+describe("runExtract: follow-ups", () => {
+  test("the next step mentions DESIGN.md, which motif validate needs", async () => {
+    expect((await runExtract(project(), ctx)).text).toContain("DESIGN.md");
+  });
+  test("a previous draft is kept, not silently replaced", async () => {
+    const root = project({ "design/tokens.draft.json": '{"edited": true}' });
+    const r = await runExtract(root, ctx);
+    expect(readFileSync(join(root, "design/tokens.draft.previous.json"), "utf8")).toBe('{"edited": true}');
+    expect((r.data.notes as string[]).join("\n")).toContain("tokens.draft.previous.json");
+  });
+  test("apps on other stacks are named as skipped", async () => {
+    const root = makeProject({
+      "apps/web/package.json": PKG, "apps/web/src/App.tsx": APP,
+      "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
+    });
+    expect((await runExtract(root, ctx)).text).toContain("apps/mobile (Flutter)");
+  });
+});

@@ -78,3 +78,11 @@ describe("false positives in ordinary code", () => {
     expect(values("index.html", '<meta name="theme-color" content="#0A1733" />')).toEqual([]);
   });
 });
+
+describe("colour context from CSS variable names", () => {
+  test("names like --background, --foreground and --border say how a colour is used", () => {
+    expect(values("a.css", ":root { --background: #ffffff; --card-foreground: #0a0a0a; --border: #e5e5e5; --brand: #7eebc1; }")).toEqual([
+      ["#ffffff", "background"], ["#0a0a0a", "text"], ["#e5e5e5", "border"], ["#7eebc1", "other"],
+    ]);
+  });
+});

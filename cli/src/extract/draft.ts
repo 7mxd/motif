@@ -158,7 +158,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const borders = by("border");
 
   const chosen: Record<string, ColorCluster | undefined> = {};
-  chosen.background = backgrounds[0];
+  // Page backgrounds are neutral; a much-used saturated background is a brand or action colour.
+  chosen.background = backgrounds.find((c) => c.c < 0.04) ?? backgrounds[0];
   // Text must be readable on the background: white text used on buttons isn't the main text colour.
   const readable = text.filter((c) => !chosen.background || wcagContrast(c.hex, chosen.background.hex) >= 3);
   const textPick = readable.length > 0 ? readable : text;
@@ -252,7 +253,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   let display = larger.length >= 3 ? larger[larger.length - 1]! : Math.round(body * 2.5);
   if (display <= title) display = Math.round(title * 1.4);
   const sizeOf: Record<string, number> = { display, title, heading, body, label, caption };
-  const family = occ.fontFamily[0]?.value ?? "system-ui";
+  // The brand font, not a generic family that happens to be common (font-mono for code, system-ui fallbacks).
+  const GENERIC = new Set(["system-ui", "sans-serif", "serif", "monospace", "cursive", "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded"]);
+  const family = occ.fontFamily.find((f) => !GENERIC.has(f.value.toLowerCase()))?.value ?? occ.fontFamily[0]?.value ?? "system-ui";
   const font: Record<string, unknown> = { $type: "typography" };
   for (const [role, weight, lineHeight] of FONT_ROLES) {
     font[role] = { $value: { fontFamily: "{primitive.font.sans}", fontSize: px(sizeOf[role]!), fontWeight: weight, lineHeight } };

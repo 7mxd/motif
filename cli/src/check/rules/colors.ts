@@ -42,6 +42,13 @@ const KEY_BEFORE = /([A-Za-z-]+)\s*:\s*["'`]?[^"'`:]*$/;
 
 export function colorContext(prop: string): "text" | "background" | "border" | "other" {
   const p = prop.toLowerCase();
+  if (p.startsWith("--")) {
+    // Custom properties: the name says how the colour is used (--card-foreground is text, --card is a background).
+    if (/(^|-)(text|fg|foreground|ink|heading|label|copy)(-|$)/.test(p)) return "text";
+    if (/(^|-)(bg|background|surface|canvas|card|panel|page|backdrop|popover)(-|$)/.test(p)) return "background";
+    if (/(^|-)(border|stroke|outline|ring|divider|separator)(-|$)/.test(p)) return "border";
+    return "other";
+  }
   if (p === "color" || p === "fill" || p === "stroke" || p === "caret-color" || p === "caretcolor") return "text";
   if (p.startsWith("background") || p === "bg") return "background";
   if (p.startsWith("border") || p.startsWith("outline") || p.startsWith("ring") || p.startsWith("divide") || p.startsWith("column-rule")) return "border";

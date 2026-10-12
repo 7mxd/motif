@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listSourceFiles } from "../check/files";
 import type { CommandResult, RunContext } from "../cli/output";
@@ -11,6 +11,7 @@ import { readIgnorePatterns } from "../project/settings";
 
 export const DRAFT_PATH = "design/tokens.draft.json";
 export const REPORT_PATH = "design/extract-report.json";
+export const PREVIOUS_DRAFT_PATH = "design/tokens.draft.previous.json";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -39,11 +40,18 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   const occ = collectOccurrences(files, tw);
   const { tokens, report } = buildDraft(occ);
 
+  const notes = [...report.notes];
   mkdirSync(join(cwd, "design"), { recursive: true });
+  // The draft is meant to be edited; keep the last one rather than silently replacing someone's edits.
+  if (existsSync(join(cwd, DRAFT_PATH))) {
+    renameSync(join(cwd, DRAFT_PATH), join(cwd, PREVIOUS_DRAFT_PATH));
+    notes.push(`Your previous draft was kept as ${PREVIOUS_DRAFT_PATH}.`);
+  }
   writeFileSync(join(cwd, DRAFT_PATH), JSON.stringify(tokens, null, 2) + "\n");
   writeFileSync(join(cwd, REPORT_PATH), JSON.stringify(report, null, 2) + "\n");
 
-  const notes = [...report.notes];
+  const skipped = apps.filter((a) => a.stack !== "react-web").map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
+  if (skipped.length) notes.push(`Skipped (not supported yet): ${skipped.join(", ")}.`);
   if (existsSync(join(cwd, "design", "tokens.json"))) notes.push("You already have design/tokens.json; it wasn't changed. Compare it with the draft.");
 
   const summary = {
@@ -63,7 +71,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
     `  Spacing: ${plural(summary.spacing, "value", "values")}, ${summary.offScale} off a 4px scale`,
     `  Corners: ${plural(summary.radius, "size", "sizes")} · Text sizes: ${summary.textSizes} · Fonts: ${summary.fonts.join(", ") || "none found"} · Animation timings: ${summary.durations}`,
     ...notes.map((n) => `• ${n}`),
-    `Next: review the draft (details in ${REPORT_PATH}). When it looks right, rename it to design/tokens.json and run motif validate.`,
+    `Next: review the draft (details in ${REPORT_PATH}). When it looks right, rename it to design/tokens.json and add a DESIGN.md (your agent can write it with /design), then run motif validate.`,
   ].join("\n");
 
   return { command: "extract", exitCode: 0, text, data: { files: files.length, draft: DRAFT_PATH, report: REPORT_PATH, summary, notes } };

@@ -129,3 +129,14 @@ describe("runCheck: paths", () => {
     expect((r.data.violations as any[]).map((h) => h.rule)).toEqual([]);
   });
 });
+
+describe("runCheck: skipped apps", () => {
+  test("apps on other stacks are named as skipped", async () => {
+    const root = makeProject({
+      "design/tokens.json": TOKENS,
+      "apps/web/package.json": PKG, "apps/web/src/Clean.tsx": CLEAN,
+      "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
+    });
+    expect((await runCheck(root, ctx())).text).toContain("apps/mobile (Flutter)");
+  });
+});

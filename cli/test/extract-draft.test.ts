@@ -103,3 +103,17 @@ describe("buildDraft", () => {
     expect(report.notes.join("\n")).toContain("warning, danger, info");
   });
 });
+
+describe("buildDraft: real-app details", () => {
+  test("the background prefers a neutral colour over a brand colour", () => {
+    const o: Occurrences = { ...occ, colors: [s("#7EEBC1", 9, "background"), s("#FFFFFF", 3, "background"), s("#111827", 5, "text")] };
+    const r = buildDraft(o).report;
+    const hexOf = (role: string) => (r.colors as any[]).find((c) => c.id === r.roles[role])?.hex;
+    expect(hexOf("color.background")).toBe("#FFFFFF");
+    expect(hexOf("color.action-primary")).toBe("#7EEBC1");
+  });
+  test("a named font wins over a generic family like monospace", () => {
+    const t = buildDraft({ ...occ, fontFamily: [s("monospace", 13), s("Thmanyah Sans", 5)] }).tokens as any;
+    expect(t.primitive.font.sans.$value[0]).toBe("Thmanyah Sans");
+  });
+});
