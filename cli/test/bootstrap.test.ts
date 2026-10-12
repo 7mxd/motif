@@ -122,3 +122,26 @@ for (const runner of RUNNERS) {
     }, 120_000);
   });
 }
+
+// An agent whose terminal is PowerShell 7 passes its PSModulePath to the Windows PowerShell 5.1
+// that motif.cmd starts, which then can't find built-in commands such as Get-FileHash.
+// Runs wherever pwsh is installed (GitHub's Windows runners have it).
+const pwsh = Bun.which("pwsh");
+describe.skipIf(!isWin || !pwsh)("bootstrap started from a PowerShell 7 terminal", () => {
+  test("downloads, verifies and runs", async () => {
+    const home = slash(tempDir("motif-home-"));
+    const motifCmd = join(REPO_ROOT, "skill/bin/motif.cmd");
+    const proc = Bun.spawn([pwsh!, "-NoProfile", "-Command", `& '${motifCmd}' --version; exit $LASTEXITCODE`], {
+      env: { ...process.env, MOTIF_HOME: home, MOTIF_DOWNLOAD_BASE: `http://127.0.0.1:${server.port}/ok` },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    expect({ exitCode, stderr }).toMatchObject({ exitCode: 0 });
+    expect(stdout.trim()).toBe(VERSION);
+  }, 120_000);
+});
