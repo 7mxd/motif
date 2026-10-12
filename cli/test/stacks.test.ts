@@ -41,6 +41,10 @@ describe("detectStack", () => {
     expect(detectStack(project({ "package.json": pkg({ react: "^19" }, { vite: "^6" }) }))).toBe("react-web");
   });
 
+  test("a package.json with a byte-order mark is still read", () => {
+    expect(detectStack(project({ "package.json": "\uFEFF" + pkg({ react: "^19", vite: "^6" }) }))).toBe("react-web");
+  });
+
   test("a UIKit-only Xcode project is not SwiftUI", () => {
     expect(detectStack(project({ "Demo.xcodeproj/project.pbxproj": "", "Demo/VC.swift": "import UIKit" }))).toBeNull();
   });
@@ -81,6 +85,11 @@ describe("detectApps", () => {
     const root = project({
       "design/motif.json": JSON.stringify({ motifContract: 1, apps: [{ path: "web", stack: "react-web" }] }),
     });
+    expect(detectApps(root)).toEqual({ apps: [{ path: "web", stack: "react-web", source: "motif.json" }], findings: [] });
+  });
+
+  test("design/motif.json with a byte-order mark is still used", () => {
+    const root = project({ "design/motif.json": "\uFEFF" + JSON.stringify({ apps: [{ path: "web", stack: "react-web" }] }) });
     expect(detectApps(root)).toEqual({ apps: [{ path: "web", stack: "react-web", source: "motif.json" }], findings: [] });
   });
 

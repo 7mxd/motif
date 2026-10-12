@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripBom } from "../text";
 
 export type SourceId = "refero" | "21st" | "60fps" | "motion";
 
@@ -26,7 +27,7 @@ export interface ConfiguredSource {
 
 function readJson(path: string): any {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(stripBom(readFileSync(path, "utf8")));
   } catch {
     return null;
   }

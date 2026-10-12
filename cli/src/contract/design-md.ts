@@ -10,7 +10,7 @@ const norm = (s: string) =>
   s.toLowerCase().replace(/[’‘]/g, "'").replace(/\s*\/\s*/g, " / ").replace(/\s+/g, " ").trim();
 
 export function checkDesignMd(file: string, raw: string): Finding[] {
-  const text = raw.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+  const text = raw.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const lines = text.split("\n");
   const findings: Finding[] = [];
   const add = (code: string, severity: "error" | "warning", message: string, line?: number) =>

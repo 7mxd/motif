@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Finding } from "../findings";
+import { stripBom } from "../text";
 
 export const STACK_IDS = ["react-web", "vue", "svelte", "angular", "react-native", "flutter", "swiftui", "compose"] as const;
 export type StackId = (typeof STACK_IDS)[number];
@@ -41,7 +42,7 @@ function packageDeps(dir: string): Set<string> | null {
   const text = readText(join(dir, "package.json"));
   if (text === null) return null;
   try {
-    const pkg = JSON.parse(text);
+    const pkg = JSON.parse(stripBom(text));
     return new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]);
   } catch {
     return null;
@@ -122,7 +123,7 @@ function readSettings(root: string): { apps: AppInfo[] | null; findings: Finding
   const bad = (message: string): Finding => ({ code: "bad-settings", severity: "error", file, message });
   let parsed: any;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(stripBom(text));
   } catch {
     return { apps: null, findings: [bad("design/motif.json isn't valid JSON, so Motif detected your apps instead.")] };
   }

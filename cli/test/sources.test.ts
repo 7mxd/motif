@@ -28,6 +28,12 @@ describe("findConfiguredSources", () => {
     expect(findConfiguredSources(cwd, home)).toEqual([]);
   });
 
+  test("config files with a byte-order mark are still read", () => {
+    const cwd = tmp();
+    writeFileSync(join(cwd, ".mcp.json"), "\uFEFF" + JSON.stringify({ mcpServers: { refero: { url: "https://x" } } }));
+    expect(findConfiguredSources(cwd, tmp()).map((s) => s.id)).toEqual(["refero"]);
+  });
+
   test("broken config files are ignored", () => {
     const cwd = tmp();
     const home = tmp();

@@ -36,7 +36,7 @@ describe("loadTokenDocument", () => {
   });
 
   test("accepts a UTF-8 byte-order mark (Windows editors add one)", () => {
-    const { doc, findings } = loadTokenDocument("t.json", "﻿" + fixtureText);
+    const { doc, findings } = loadTokenDocument("t.json", "\uFEFF" + fixtureText);
     expect(findings).toEqual([]);
     expect(doc).not.toBeNull();
   });

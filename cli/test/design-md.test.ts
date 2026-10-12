@@ -15,7 +15,7 @@ describe("checkDesignMd", () => {
   });
 
   test("a byte-order mark is fine", () => {
-    expect(checkDesignMd("DESIGN.md", "﻿" + lf())).toEqual([]);
+    expect(checkDesignMd("DESIGN.md", "\uFEFF" + lf())).toEqual([]);
   });
 
   test("reports a missing section with its name", () => {
