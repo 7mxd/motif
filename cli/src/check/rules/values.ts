@@ -1,0 +1,94 @@
+import { locator } from "../../text";
+import type { SourceFile } from "../files";
+import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../types";
+
+export const IMPORTS_MOTION = /from\s+["'](?:motion|motion\/react|motion\/react-client|framer-motion)["']/;
+
+const CSS_DECLARATION = /([a-zA-Z-]+)\s*:\s*([^;{}]+)/g;
+const SPACE_PROP = /^(?:(?:margin|padding)(?:-(?:top|right|bottom|left|inline|block)(?:-(?:start|end))?)?|gap|row-gap|column-gap|inset(?:-(?:inline|block)(?:-(?:start|end))?)?|top|right|bottom|left)$/i;
+const RADIUS_PROP = /^border(?:-(?:top|bottom|start|end)-(?:left|right|start|end))?-radius$/i;
+const MOTION_PROP = /^(?:transition|animation)(?:-(?:duration|delay|timing-function))?$/i;
+const LENGTH = /(?<![\w.-])(-?\d*\.?\d+)(px|rem)\b/g;
+const TIME = /(?<![\w.-])(\d*\.?\d+)(ms|s)\b/g;
+const EASING = /\b(?:ease(?:-in-out|-in|-out)?(?![\w-])|cubic-bezier\([^)]*\))/g;
+const PRIMITIVE = /--motif-primitive-[\w-]+|\bprimitive\.(?:color|font|space|radius|shadow)\b/g;
+
+const STYLE_LENGTH = /\b((?:margin|padding)(?:Top|Right|Bottom|Left|Inline|Block|InlineStart|InlineEnd|BlockStart|BlockEnd)?|gap|rowGap|columnGap|top|right|bottom|left|inset|borderRadius|border(?:Top|Bottom)(?:Left|Right)Radius|fontSize)\s*:\s*(?:(-?\d+(?:\.\d+)?)(?=\s*[,}\n\r])|(["'])(-?\d*\.?\d+)(px|rem)\3)/g;
+const STYLE_FONT = /\bfontFamily\s*:\s*(["'`])([^"'`]+)\1/g;
+const MOTION_TIME = /\b(duration|delay|visualDuration)\s*:\s*(\d*\.?\d+)/g;
+const MOTION_SPRING = /\b(stiffness|damping|mass|bounce)\s*:\s*(\d*\.?\d+)/g;
+const MOTION_EASE = /\bease\s*:\s*(\[[^\]]*\]|["'][\w-]+["'])/g;
+
+const sizeMessages: Record<"space" | "radius" | "font-size", (px: number, steps: number[]) => [string, string]> = {
+  space: (px, steps) => [`Spacing ${px}px isn't on your spacing scale.`, `Use var(--motif-space-<step>); your steps are ${steps.join(", ")}px.`],
+  radius: (px) => [`Corner size ${px}px isn't one of your radius roles.`, "Use var(--motif-radius-<role>) or a rounded-<role> class."],
+  "font-size": (px) => [`Text size ${px}px isn't one of your text roles.`, "Use var(--motif-font-<role>-size) or a text-<role> class."],
+};
+
+export function scanValues(file: SourceFile, scale: Scale | null): Hit[] {
+  const at = locator(file.text);
+  const hits: Hit[] = [];
+  const push = (index: number, text: string, rule: RuleId, kind: ValueKind | undefined, value: string | undefined, violation: boolean, message: string, fix: string) =>
+    hits.push(makeHit(file, at, index, { rule, ...(kind ? { kind } : {}), ...(value !== undefined ? { value } : {}), text, violation, message, fix }));
+
+  const size = (index: number, text: string, kind: "space" | "radius" | "font-size", rawNumber: string, unit: string) => {
+    const px = Math.abs(Number.parseFloat(rawNumber) * (unit === "rem" ? 16 : 1));
+    const set = kind === "space" ? scale?.spacePx : kind === "radius" ? scale?.radiusPx : scale?.fontSizePx;
+    const onScale = px === 0 || (set?.has(px) ?? false);
+    const [message, fix] = sizeMessages[kind](px, [...(scale?.spacePx ?? [])].sort((a, b) => a - b));
+    push(index, text, "off-scale", kind, `${px}px`, scale ? !onScale : false, message, fix);
+  };
+  const motionFix = `Use import { duration, easing, spring } from "${scale?.motionImport ?? "design/motion"}", e.g. transition={spring.smooth}.`;
+
+  if (file.lang === "css") {
+    for (const m of file.text.matchAll(CSS_DECLARATION)) {
+      const prop = m[1]!.toLowerCase();
+      const value = m[2]!;
+      if (prop.startsWith("--")) continue;
+      const start = m.index! + m[0].length - value.length;
+      const kind = SPACE_PROP.test(prop) ? "space" : RADIUS_PROP.test(prop) ? "radius" : prop === "font-size" ? "font-size" : null;
+      if (kind) {
+        for (const l of value.matchAll(LENGTH)) size(start + l.index!, l[0], kind, l[1]!, l[2]!);
+      } else if (prop === "font-family") {
+        const family = value.trim();
+        if (!/^(?:var\(|inherit|initial|unset)/.test(family)) {
+          push(start, family, "raw-font", "font-family", family, true, `Hard-coded font ${family}.`, "Use var(--motif-font-body-family) or a font role class such as font-body.");
+        }
+      } else if (MOTION_PROP.test(prop)) {
+        for (const t of value.matchAll(TIME)) {
+          const ms = Number.parseFloat(t[1]!) * (t[2] === "s" ? 1000 : 1);
+          if (ms > 0) push(start + t.index!, t[0], "raw-motion", "duration", `${ms}ms`, true, `Hard-coded animation timing ${t[0]}.`, "Use var(--motif-duration-fast), var(--motif-duration-base) or var(--motif-duration-slow).");
+        }
+        for (const e of value.matchAll(EASING)) {
+          push(start + e.index!, e[0], "raw-motion", "easing", e[0], true, `Hard-coded easing ${e[0]}.`, "Use var(--motif-easing-standard), var(--motif-easing-enter) or var(--motif-easing-exit).");
+        }
+      }
+    }
+  } else {
+    for (const m of file.text.matchAll(STYLE_LENGTH)) {
+      const key = m[1]!;
+      const kind = key === "fontSize" ? "font-size" : /Radius$/.test(key) ? "radius" : "space";
+      if (m[2] !== undefined) size(m.index!, m[0], kind, m[2], "px");
+      else size(m.index!, m[0], kind, m[4]!, m[5]!);
+    }
+    for (const m of file.text.matchAll(STYLE_FONT)) {
+      push(m.index!, m[0], "raw-font", "font-family", m[2]!, true, `Hard-coded font ${m[2]}.`, "Use var(--motif-font-body-family) or a font role class such as font-body.");
+    }
+    if (IMPORTS_MOTION.test(file.text)) {
+      for (const m of file.text.matchAll(MOTION_TIME)) {
+        push(m.index!, m[0], "raw-motion", "duration", `${Number.parseFloat(m[2]!) * 1000}ms`, true, `Hard-coded Motion timing ${m[0]}.`, motionFix);
+      }
+      for (const m of file.text.matchAll(MOTION_EASE)) {
+        push(m.index!, m[0], "raw-motion", "easing", m[1]!, true, `Hard-coded Motion easing ${m[0]}.`, motionFix);
+      }
+      for (const m of file.text.matchAll(MOTION_SPRING)) {
+        push(m.index!, m[0], "raw-motion", "spring", `${m[1]} ${m[2]}`, true, `Hard-coded spring setting ${m[0]}.`, motionFix);
+      }
+    }
+  }
+
+  for (const m of file.text.matchAll(PRIMITIVE)) {
+    push(m.index!, m[0], "primitive-use", undefined, undefined, true, `Uses a primitive value (${m[0]}) directly.`, "Use a role instead; primitives are building blocks for the design guide, not for code.");
+  }
+  return hits.sort((a, b) => a.line - b.line || a.column - b.column);
+}
