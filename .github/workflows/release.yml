@@ -1,0 +1,67 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: bun-linux-x64, asset: motif-linux-x64, smoke: true }
+          - { os: ubuntu-latest, target: bun-linux-arm64, asset: motif-linux-arm64, smoke: false }
+          - { os: windows-latest, target: bun-windows-x64, asset: motif-windows-x64.exe, smoke: true }
+          - { os: macos-latest, target: bun-darwin-arm64, asset: motif-darwin-arm64, smoke: true }
+          - { os: macos-latest, target: bun-darwin-x64, asset: motif-darwin-x64, smoke: false }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: cli/.bun-version
+      - name: Tag matches skill/VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: test "v$(tr -d ' \r\n' < skill/VERSION)" = "$GITHUB_REF_NAME"
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: Build
+        working-directory: cli
+        shell: bash
+        run: mkdir -p ../dist && bun build --compile --minify --target=${{ matrix.target }} src/main.ts --outfile ../dist/${{ matrix.asset }}
+      - name: Ad-hoc sign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --sign - dist/${{ matrix.asset }}
+      - name: Smoke test
+        if: matrix.smoke
+        shell: bash
+        run: test "$(./dist/${{ matrix.asset }} --version)" = "$(tr -d ' \r\n' < skill/VERSION)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum motif-* > SHA256SUMS && cat SHA256SUMS
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Motif $GITHUB_REF_NAME" --generate-notes
