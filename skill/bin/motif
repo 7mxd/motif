@@ -1,0 +1,68 @@
+#!/bin/sh
+# Motif bootstrap: runs the Motif tool that matches this skill's VERSION,
+# downloading and verifying it once if it isn't cached yet.
+set -eu
+
+SKILL_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+VERSION=$(tr -d ' \r\n' < "$SKILL_DIR/VERSION")
+
+if [ -n "${MOTIF_BIN:-}" ]; then
+  exec "$MOTIF_BIN" "$@"
+fi
+
+REPO="${MOTIF_REPO:-7mxd/motif}"
+case "$(uname -s)" in
+  Darwin) OS=darwin ;;
+  Linux) OS=linux ;;
+  MINGW*|MSYS*|CYGWIN*) OS=windows ;;
+  *) echo "Motif: this operating system ($(uname -s)) isn't supported yet." >&2; exit 2 ;;
+esac
+case "$(uname -m)" in
+  x86_64|amd64) ARCH=x64 ;;
+  arm64|aarch64) ARCH=arm64 ;;
+  *) echo "Motif: this processor type ($(uname -m)) isn't supported yet." >&2; exit 2 ;;
+esac
+EXT=""
+if [ "$OS" = windows ]; then EXT=".exe"; ARCH=x64; fi
+
+ASSET="motif-$OS-$ARCH$EXT"
+CACHE_DIR="${MOTIF_HOME:-$HOME/.motif}/bin/$VERSION"
+BIN="$CACHE_DIR/motif$EXT"
+
+fetch() {
+  if command -v curl >/dev/null 2>&1; then curl -fsSL "$1" -o "$2"
+  elif command -v wget >/dev/null 2>&1; then wget -q "$1" -O "$2"
+  else return 1
+  fi
+}
+
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d ' ' -f 1
+  else shasum -a 256 "$1" | cut -d ' ' -f 1
+  fi
+}
+
+if [ ! -x "$BIN" ]; then
+  BASE="${MOTIF_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download/v$VERSION}"
+  TMP=$(mktemp -d)
+  trap 'rm -rf "$TMP"' EXIT
+  echo "Motif: downloading the Motif tool v$VERSION (one time only)..." >&2
+  if ! fetch "$BASE/$ASSET" "$TMP/$ASSET" || ! fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS"; then
+    echo "Motif: couldn't download the Motif tool. Check your internet connection and try again." >&2
+    exit 2
+  fi
+  EXPECTED=$(grep " $ASSET\$" "$TMP/SHA256SUMS" | cut -d ' ' -f 1 || true)
+  ACTUAL=$(sha256 "$TMP/$ASSET")
+  if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
+    echo "Motif: the downloaded tool failed its safety check, so it wasn't used. Please try again later, or report this at https://github.com/$REPO/issues" >&2
+    exit 2
+  fi
+  mkdir -p "$CACHE_DIR"
+  chmod +x "$TMP/$ASSET"
+  mv "$TMP/$ASSET" "$BIN.partial"
+  mv "$BIN.partial" "$BIN"
+  rm -rf "$TMP"
+  trap - EXIT
+fi
+
+exec "$BIN" "$@"
