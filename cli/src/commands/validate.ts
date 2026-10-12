@@ -40,7 +40,18 @@ export async function runValidate(cwd: string): Promise<CommandResult> {
   }
   findings.push(...checkDesignMd(DESIGN_MD, readFileSync(mdPath, "utf8")));
 
-  const errors = findings.filter((f) => f.severity === "error").length;
+  // Spec §5.4: a newer format is refused outright — other checks would only add noise.
+  const newer = findings.filter((f) => f.code === "newer-format");
+  if (newer.length > 0) {
+    return {
+      command: "validate",
+      exitCode: 2,
+      text: newer.map((f) => f.message).join("\n"),
+      data: { error: "newer-format", findings: newer },
+    };
+  }
+
+  const errors =findings.filter((f) => f.severity === "error").length;
   const warnings = findings.length - errors;
   const tokens = doc?.tokens.size ?? 0;
 

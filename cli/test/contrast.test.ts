@@ -50,6 +50,28 @@ describe("readPairs", () => {
     ];
     const { pairs, findings } = readPairs(docFrom(t));
     expect(pairs).toEqual([]);
-    expect(findings.map((f) => f.code)).toEqual(["bad-pair", "bad-pair"]);
+    expect(findings.filter((f) => f.code === "bad-pair")).toHaveLength(2);
+  });
+});
+
+describe("readPairs: every text colour must be checked", () => {
+  test("an empty pair list is reported for each text colour, not passed", () => {
+    const t = validTokens();
+    t.$extensions["dev.motif"].pairs = [];
+    const findings = readPairs(docFrom(t)).findings;
+    expect(findings.map((f) => f.code)).toEqual(Array(8).fill("missing-pair"));
+    expect(findings[0]!.message).toBe('"text-primary" isn\'t in any readability pair, so Motif can\'t check it. Add a pair for each background it sits on.');
+  });
+
+  test("removing the pairs for one colour is reported", () => {
+    const t = validTokens();
+    t.$extensions["dev.motif"].pairs = t.$extensions["dev.motif"].pairs.filter((p: any) => p.fg !== "color.text-secondary");
+    expect(readPairs(docFrom(t)).findings.map((f) => f.path)).toEqual(["color.text-secondary"]);
+  });
+
+  test("a built-in object name is not a valid pair kind", () => {
+    const t = validTokens();
+    t.$extensions["dev.motif"].pairs[0].kind = "toString";
+    expect(readPairs(docFrom(t)).findings.map((f) => f.code)).toEqual(["bad-pair"]);
   });
 });

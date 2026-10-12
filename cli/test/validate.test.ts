@@ -65,3 +65,27 @@ describe("runValidate", () => {
     expect(JSON.parse(r.stdout.toString())).toMatchObject({ command: "validate", ok: true, exitCode: 0 });
   });
 });
+
+describe("runValidate: newer formats are refused", () => {
+  test("theme values from a newer Motif → exit 2 with only the update message", async () => {
+    const dir = copyFixture();
+    const p = join(dir, "design", "tokens.json");
+    const t = JSON.parse(readFileSync(p, "utf8"));
+    t.$extensions["dev.motif"].motifContract = 2;
+    delete t.color.focus;
+    writeFileSync(p, JSON.stringify(t, null, 2));
+    const r = await runValidate(dir);
+    expect(r.exitCode).toBe(2);
+    expect((r.data.findings as any[]).map((f) => f.code)).toEqual(["newer-format"]);
+    expect(r.text).toContain("Update Motif");
+  });
+
+  test("a design guide from a newer Motif → exit 2", async () => {
+    const dir = copyFixture();
+    const p = join(dir, "DESIGN.md");
+    writeFileSync(p, readFileSync(p, "utf8").replace("motifContract: 1", "motifContract: 2"));
+    const r = await runValidate(dir);
+    expect(r.exitCode).toBe(2);
+    expect(r.data.error).toBe("newer-format");
+  });
+});

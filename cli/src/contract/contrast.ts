@@ -14,6 +14,12 @@ export interface ContrastPair {
   kind: PairKind;
 }
 
+/** Text and on-colour roles that must each appear as the foreground of at least one pair. */
+const REQUIRED_PAIR_FG = [
+  "color.text-primary", "color.text-secondary", "color.on-action-primary", "color.on-action-secondary",
+  "color.on-success", "color.on-warning", "color.on-danger", "color.on-info",
+];
+
 const short = (path: string) => path.replace(/^color\./, "");
 
 export function readPairs(doc: TokenDocument): { pairs: ContrastPair[]; findings: Finding[] } {
@@ -32,7 +38,7 @@ export function readPairs(doc: TokenDocument): { pairs: ContrastPair[]; findings
   raw.forEach((p: any, i: number) => {
     const fgOk = typeof p?.fg === "string" && doc.tokens.has(p.fg);
     const bgOk = typeof p?.bg === "string" && doc.tokens.has(p.bg);
-    const kindOk = p?.kind in MIN_RATIO;
+    const kindOk = typeof p?.kind === "string" && Object.hasOwn(MIN_RATIO, p.kind);
     if (fgOk && bgOk && kindOk) {
       pairs.push({ fg: p.fg, bg: p.bg, kind: p.kind });
       return;
@@ -40,6 +46,15 @@ export function readPairs(doc: TokenDocument): { pairs: ContrastPair[]; findings
     const problem = !fgOk ? `"${String(p?.fg)}" doesn't exist` : !bgOk ? `"${String(p?.bg)}" doesn't exist` : `kind must be "text", "large-text" or "ui"`;
     findings.push({ code: "bad-pair", severity: "error", file: doc.file, message: `Contrast pair #${i + 1}: ${problem}.` });
   });
+  // Every text colour must be checked somewhere, so deleting a failing pair can't make a guide "valid".
+  for (const fg of REQUIRED_PAIR_FG) {
+    if (doc.tokens.has(fg) && !pairs.some((p) => p.fg === fg)) {
+      findings.push({
+        code: "missing-pair", severity: "error", file: doc.file, path: fg, line: doc.tokens.get(fg)?.line,
+        message: `"${short(fg)}" isn't in any readability pair, so Motif can't check it. Add a pair for each background it sits on.`,
+      });
+    }
+  }
   return { pairs, findings };
 }
 
