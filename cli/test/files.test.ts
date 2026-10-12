@@ -1,0 +1,67 @@
+import { afterAll, describe, expect, test } from "bun:test";
+import { listSourceFiles } from "../src/check/files";
+import { makeProject } from "./project";
+import { cleanupTempDirs } from "./tmp";
+
+afterAll(cleanupTempDirs);
+
+const paths = (files: { path: string }[]) => files.map((f) => f.path);
+
+describe("listSourceFiles", () => {
+  test("finds CSS, script and markup files with forward-slash paths", () => {
+    const root = makeProject({
+      "src/App.tsx": "x", "src/index.css": "x", "index.html": "x", "src/util.mjs": "x", "README.md": "x", "logo.svg": "x",
+    });
+    const files = listSourceFiles(root, ".");
+    expect(paths(files)).toEqual(["index.html", "src/App.tsx", "src/index.css", "src/util.mjs"]);
+    expect(files.map((f) => f.lang)).toEqual(["markup", "script", "css", "script"]);
+  });
+
+  test("skips dependencies, build output, tests, stories, configs, minified and type files", () => {
+    const root = makeProject({
+      "src/App.tsx": "x",
+      "node_modules/lib/index.js": "x",
+      "dist/app.js": "x",
+      ".next/page.js": "x",
+      "src/App.test.tsx": "x",
+      "src/__tests__/a.tsx": "x",
+      "src/Button.stories.tsx": "x",
+      "tailwind.config.ts": "x",
+      "public/vendor.min.js": "x",
+      "src/env.d.ts": "x",
+    });
+    expect(paths(listSourceFiles(root, "."))).toEqual(["src/App.tsx"]);
+  });
+
+  test("respects .gitignore at the root and in the app, plus motif.json patterns", () => {
+    const root = makeProject({
+      ".gitignore": "generated/\n",
+      "apps/web/.gitignore": "tmp/\n",
+      "apps/web/src/App.tsx": "x",
+      "apps/web/generated/a.ts": "x",
+      "apps/web/tmp/b.ts": "x",
+      "apps/web/legacy/old.css": "x",
+    });
+    expect(paths(listSourceFiles(root, "apps/web", { ignore: ["legacy/"] }))).toEqual(["apps/web/src/App.tsx"]);
+  });
+
+  test("skips huge files and minified files that aren't named .min", () => {
+    const root = makeProject({
+      "src/App.tsx": "x",
+      "public/vendor.js": "a".repeat(600 * 1024),
+      "src/bundle.js": "var a=1;" + "b".repeat(4000) + "\n",
+    });
+    expect(paths(listSourceFiles(root, "."))).toEqual(["src/App.tsx"]);
+  });
+
+  test("paths narrow the scan to files or folders", () => {
+    const root = makeProject({ "src/a/One.tsx": "x", "src/a/Two.tsx": "x", "src/b/Three.tsx": "x" });
+    expect(paths(listSourceFiles(root, ".", { paths: ["src/a"] }))).toEqual(["src/a/One.tsx", "src/a/Two.tsx"]);
+    expect(paths(listSourceFiles(root, ".", { paths: ["./src/b/Three.tsx"] }))).toEqual(["src/b/Three.tsx"]);
+  });
+
+  test("strips a byte-order mark from file text", () => {
+    const root = makeProject({ "src/a.css": "﻿a{}" });
+    expect(listSourceFiles(root, ".")[0]!.text).toBe("a{}");
+  });
+});
