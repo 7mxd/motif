@@ -19,6 +19,12 @@ export const STACK_LABELS: Record<StackId, string> = {
 export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web"];
 export const NODE_STACKS: readonly StackId[] = ["react-web", "vue", "svelte", "angular", "react-native"];
 
+/** React counts as a web app only alongside web build tooling; a server that renders React (e.g. emails) is not one. */
+const REACT_WEB_TOOLING = [
+  "next", "vite", "@vitejs/plugin-react", "@vitejs/plugin-react-swc", "react-scripts", "@remix-run/react",
+  "@react-router/dev", "gatsby", "astro", "parcel", "webpack", "@rsbuild/core", "@rspack/core", "@tanstack/react-start",
+];
+
 const SKIP_DIRS = new Set(["node_modules", "Pods", ".build", "DerivedData", "build", "dist"]);
 const SWIFT_MAX_DEPTH = 4;
 const SWIFT_MAX_FILES = 2000;
@@ -83,7 +89,7 @@ export function detectStack(dir: string): StackId | null {
     if (deps.has("nuxt") || deps.has("vue")) return "vue";
     if (deps.has("@sveltejs/kit") || deps.has("svelte")) return "svelte";
     if (deps.has("expo") || deps.has("react-native")) return "react-native";
-    if (deps.has("react")) return "react-web";
+    if (deps.has("react") && REACT_WEB_TOOLING.some((d) => deps.has(d))) return "react-web";
   }
 
   const pubspec = readText(join(dir, "pubspec.yaml"));

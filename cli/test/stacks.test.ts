@@ -33,6 +33,14 @@ describe("detectStack", () => {
     expect(detectStack(project(files as Record<string, string>))).toBe(stack as any);
   });
 
+  test("a server that only renders React (e.g. emails) is not a web app", () => {
+    expect(detectStack(project({ "package.json": pkg({ express: "^4", react: "^19", "react-dom": "^19" }) }))).toBeNull();
+  });
+
+  test("React with Vite is a web app", () => {
+    expect(detectStack(project({ "package.json": pkg({ react: "^19" }, { vite: "^6" }) }))).toBe("react-web");
+  });
+
   test("a UIKit-only Xcode project is not SwiftUI", () => {
     expect(detectStack(project({ "Demo.xcodeproj/project.pbxproj": "", "Demo/VC.swift": "import UIKit" }))).toBeNull();
   });
@@ -48,14 +56,14 @@ describe("detectStack", () => {
 
 describe("detectApps", () => {
   test("the root is the app when it has a stack", () => {
-    const root = project({ "package.json": pkg({ react: "^19" }) });
+    const root = project({ "package.json": pkg({ react: "^19", vite: "^6" }) });
     expect(detectApps(root).apps).toEqual([{ path: ".", stack: "react-web", source: "detected" }]);
   });
 
   test("finds apps in a monorepo (apps/web + apps/mobile)", () => {
     const root = project({
       "package.json": pkg({}),
-      "apps/web/package.json": pkg({ react: "^19" }),
+      "apps/web/package.json": pkg({ react: "^19", vite: "^6" }),
       "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
     });
     expect(detectApps(root).apps).toEqual([
@@ -65,7 +73,7 @@ describe("detectApps", () => {
   });
 
   test("never treats node_modules packages as apps", () => {
-    const root = project({ "node_modules/react/package.json": pkg({ react: "^19" }) });
+    const root = project({ "node_modules/react/package.json": pkg({ react: "^19", vite: "^6" }) });
     expect(detectApps(root).apps).toEqual([]);
   });
 
@@ -84,7 +92,7 @@ describe("detectApps", () => {
   });
 
   test("reports broken motif.json and falls back to detection", () => {
-    const root = project({ "design/motif.json": "{ nope", "package.json": pkg({ react: "^19" }) });
+    const root = project({ "design/motif.json": "{ nope", "package.json": pkg({ react: "^19", vite: "^6" }) });
     const { apps, findings } = detectApps(root);
     expect(apps).toEqual([{ path: ".", stack: "react-web", source: "detected" }]);
     expect(findings.map((f) => f.code)).toEqual(["bad-settings"]);

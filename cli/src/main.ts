@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { emit, type CommandResult } from "./cli/output";
+import { runDoctor } from "./commands/doctor";
 import { runValidate } from "./commands/validate";
 import { VERSION } from "./version";
 
@@ -21,6 +22,7 @@ Options:
 type Runner = (cwd: string) => Promise<CommandResult>;
 
 const COMMANDS: Record<string, Runner> = {
+  doctor: (cwd) => runDoctor(cwd),
   validate: runValidate,
 };
 
