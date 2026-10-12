@@ -81,6 +81,16 @@ describe("detectApps", () => {
     expect(detectApps(root).apps).toEqual([]);
   });
 
+  test("a React app with build tooling Motif doesn't recognise is listed with an unknown stack", () => {
+    const root = project({ "package.json": pkg({ react: "^19", "react-dom": "^19" }, { esbuild: "^0.24" }) });
+    expect(detectApps(root).apps).toEqual([{ path: ".", stack: null, source: "detected" }]);
+  });
+
+  test("a server that renders React is not listed as an app", () => {
+    const root = project({ "package.json": pkg({ express: "^4", react: "^19" }) });
+    expect(detectApps(root).apps).toEqual([]);
+  });
+
   test("uses design/motif.json when present", () => {
     const root = project({
       "design/motif.json": JSON.stringify({ motifContract: 1, apps: [{ path: "web", stack: "react-web" }] }),

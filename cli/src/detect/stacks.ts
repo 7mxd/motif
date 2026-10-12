@@ -114,6 +114,24 @@ export function detectStack(dir: string): StackId | null {
   return null;
 }
 
+const SERVER_FRAMEWORKS = ["express", "fastify", "koa", "hono", "@nestjs/core", "@hapi/hapi"];
+
+/**
+ * React UI code Motif can't place: React without known web tooling (detectStack returned null),
+ * not a server that merely renders React, and not a workspace root. Such apps are listed with an
+ * unknown stack so doctor asks for design/motif.json instead of offering to start a new app.
+ */
+function isUnrecognisedReactApp(dir: string): boolean {
+  const deps = packageDeps(dir);
+  if (!deps || !deps.has("react") || SERVER_FRAMEWORKS.some((d) => deps.has(d))) return false;
+  if (existsSync(join(dir, "pnpm-workspace.yaml"))) return false;
+  try {
+    return !JSON.parse(stripBom(readText(join(dir, "package.json")) ?? "{}")).workspaces;
+  } catch {
+    return false;
+  }
+}
+
 const rel = (path: string) => path.replace(/\\/g, "/");
 
 function readSettings(root: string): { apps: AppInfo[] | null; findings: Finding[] } {
@@ -150,7 +168,9 @@ export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[]
   if (settings.apps) return { apps: settings.apps, findings: settings.findings };
 
   const rootStack = detectStack(root);
-  if (rootStack) return { apps: [{ path: ".", stack: rootStack, source: "detected" }], findings: settings.findings };
+  if (rootStack || isUnrecognisedReactApp(root)) {
+    return { apps: [{ path: ".", stack: rootStack, source: "detected" }], findings: settings.findings };
+  }
 
   const apps: AppInfo[] = [];
   const scan = (base: string) => {
@@ -166,7 +186,7 @@ export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[]
       const abs = join(root, relPath);
       if (!isDir(abs)) continue;
       const stack = detectStack(abs);
-      if (stack) apps.push({ path: rel(relPath), stack, source: "detected" });
+      if (stack || isUnrecognisedReactApp(abs)) apps.push({ path: rel(relPath), stack, source: "detected" });
     }
   };
   scan("");

@@ -51,6 +51,15 @@ describe("runDoctor", () => {
     expect(app.detail).toContain("Flutter detected");
   });
 
+  test("a React app Motif can't place asks for design/motif.json instead of offering a new app", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "motif-esbuild-"));
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { react: "^19" }, devDependencies: { esbuild: "^0.24" } }));
+    const items = (await runDoctor(dir, deps())).data.items as DoctorItem[];
+    expect(item(items, "app")).toBeUndefined();
+    expect(item(items, "app:.")).toMatchObject({ status: "needed" });
+    expect(item(items, "app:.")!.detail).toContain("design/motif.json");
+  });
+
   test("a design guide with problems is flagged", async () => {
     const dir = copyFixture();
     const p = join(dir, "design", "tokens.json");
