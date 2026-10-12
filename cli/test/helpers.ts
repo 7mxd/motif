@@ -1,6 +1,6 @@
-import { cpSync, mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { tempDir } from "./tmp";
 import { loadTokenDocument } from "../src/contract/load";
 import type { TokenDocument } from "../src/contract/types";
 
@@ -24,7 +24,7 @@ export function docFrom(obj: unknown): TokenDocument {
 
 /** Copy the valid fixture project into a fresh temp folder. The name has a space on purpose. */
 export function copyFixture(): string {
-  const dir = mkdtempSync(join(tmpdir(), "motif test "));
+  const dir = tempDir("motif test ");
   cpSync(join(FIXTURES, "contract"), dir, { recursive: true });
   return dir;
 }

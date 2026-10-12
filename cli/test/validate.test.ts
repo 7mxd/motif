@@ -1,8 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runValidate } from "../src/commands/validate";
 import { copyFixture } from "./helpers";
+import { cleanupTempDirs, tempDir } from "./tmp";
+
+afterAll(cleanupTempDirs);
 
 describe("runValidate", () => {
   test("a valid design guide passes, even in a folder with a space", async () => {

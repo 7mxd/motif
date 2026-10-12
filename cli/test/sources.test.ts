@@ -1,10 +1,12 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { afterAll, describe, expect, test } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findConfiguredSources } from "../src/detect/sources";
+import { cleanupTempDirs, tempDir } from "./tmp";
 
-const tmp = () => mkdtempSync(join(tmpdir(), "motif-src-"));
+afterAll(cleanupTempDirs);
+
+const tmp = () => tempDir("motif-src-");
 
 describe("findConfiguredSources", () => {
   test("reads project .mcp.json and ~/.claude.json (global + this project)", () => {

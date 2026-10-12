@@ -1,11 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { detectApps, detectStack } from "../src/detect/stacks";
+import { cleanupTempDirs, tempDir } from "./tmp";
+
+afterAll(cleanupTempDirs);
 
 function project(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), "motif-detect-"));
+  const root = tempDir("motif-detect-");
   for (const [rel, content] of Object.entries(files)) {
     const p = join(root, rel);
     mkdirSync(dirname(p), { recursive: true });

@@ -1,14 +1,16 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { afterAll, describe, expect, test } from "bun:test";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runDoctor, type DoctorDeps, type DoctorItem } from "../src/commands/doctor";
 import { copyFixture } from "./helpers";
+import { cleanupTempDirs, tempDir } from "./tmp";
+
+afterAll(cleanupTempDirs);
 
 const deps = (over: Partial<DoctorDeps> = {}): DoctorDeps => ({
   platform: "linux",
   arch: "x64",
-  home: mkdtempSync(join(tmpdir(), "motif-home-")),
+  home: tempDir("motif-home-"),
   findBrowser: () => null,
   which: () => null,
   ...over,
@@ -17,7 +19,7 @@ const item = (items: DoctorItem[], id: string) => items.find((i) => i.id === id)
 
 describe("runDoctor", () => {
   test("an empty folder: friendly, no crash, exit 0", async () => {
-    const r = await runDoctor(mkdtempSync(join(tmpdir(), "motif-empty-")), deps());
+    const r = await runDoctor(tempDir("motif-empty-"), deps());
     const items = r.data.items as DoctorItem[];
     expect(r.exitCode).toBe(0);
     expect(item(items, "app")).toMatchObject({ status: "optional" });
@@ -43,7 +45,7 @@ describe("runDoctor", () => {
   });
 
   test("a Flutter app is detected but marked as coming soon", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "motif-flutter-"));
+    const dir = tempDir("motif-flutter-");
     writeFileSync(join(dir, "pubspec.yaml"), "dependencies:\n  flutter:\n    sdk: flutter\n");
     const r = await runDoctor(dir, deps());
     const app = item(r.data.items as DoctorItem[], "app:.")!;
@@ -52,7 +54,7 @@ describe("runDoctor", () => {
   });
 
   test("a React app Motif can't place asks for design/motif.json instead of offering a new app", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "motif-esbuild-"));
+    const dir = tempDir("motif-esbuild-");
     writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { react: "^19" }, devDependencies: { esbuild: "^0.24" } }));
     const items = (await runDoctor(dir, deps())).data.items as DoctorItem[];
     expect(item(items, "app")).toBeUndefined();
@@ -71,14 +73,14 @@ describe("runDoctor", () => {
   });
 
   test("lists connected design sources", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "motif-src-"));
+    const dir = tempDir("motif-src-");
     writeFileSync(join(dir, ".mcp.json"), JSON.stringify({ mcpServers: { refero: { url: "https://x" } } }));
     const r = await runDoctor(dir, deps());
     expect(item(r.data.items as DoctorItem[], "sources")).toMatchObject({ status: "ok", detail: "Connected: Refero." });
   });
 
   test("motif doctor --json works end to end", () => {
-    const dir = mkdtempSync(join(tmpdir(), "motif-e2e-"));
+    const dir = tempDir("motif-e2e-");
     const r = Bun.spawnSync([process.execPath, join(import.meta.dir, "../src/main.ts"), "doctor", "--json", "--cwd", dir]);
     expect(r.exitCode).toBe(0);
     expect(JSON.parse(r.stdout.toString())).toMatchObject({ command: "doctor", ok: true });

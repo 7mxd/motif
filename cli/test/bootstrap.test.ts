@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { cleanupTempDirs, tempDir } from "./tmp";
+
+afterAll(cleanupTempDirs);
 
 const REPO_ROOT = join(import.meta.dir, "../..");
 const VERSION = readFileSync(join(REPO_ROOT, "skill/VERSION"), "utf8").trim();
@@ -18,7 +20,7 @@ let server: ReturnType<typeof Bun.serve>;
 let hits = 0;
 
 beforeAll(() => {
-  builtPath = join(mkdtempSync(join(tmpdir(), "motif-build-")), isWin ? "motif.exe" : "motif");
+  builtPath = join(tempDir("motif-build-"), isWin ? "motif.exe" : "motif");
   const build = Bun.spawnSync([process.execPath, "build", "--compile", join(REPO_ROOT, "cli/src/main.ts"), "--outfile", builtPath]);
   if (build.exitCode !== 0) throw new Error(build.stderr.toString());
   binary = new Uint8Array(readFileSync(builtPath));
@@ -49,7 +51,7 @@ const RUNNERS = [
 
 for (const runner of RUNNERS) {
   describe.skipIf(!runner.available)(`bootstrap via ${runner.name}`, () => {
-    const freshHome = () => slash(mkdtempSync(join(tmpdir(), "motif-home-")));
+    const freshHome = () => slash(tempDir("motif-home-"));
     const cached = (home: string) => join(home, "bin", VERSION, isWin ? "motif.exe" : "motif");
     // Async spawn: a synchronous spawn would block this process, and with it the local download server.
     const run = async (base: string, home: string, args: string[], extra: Record<string, string> = {}) => {

@@ -1,7 +1,10 @@
-import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { cleanupTempDirs, tempDir } from "./tmp";
+
+afterAll(cleanupTempDirs);
 
 const MAIN = join(import.meta.dir, "../src/main.ts");
 const run = (...args: string[]) => Bun.spawnSync([process.execPath, MAIN, ...args]);
@@ -45,7 +48,7 @@ describe("main: never crashes into a stack trace", () => {
   });
 
   test("an unexpected error exits 2 with a plain message, and JSON under --json", () => {
-    const dir = mkdtempSync(join(tmpdir(), "motif-odd-"));
+    const dir = tempDir("motif-odd-");
     mkdirSync(join(dir, "DESIGN.md"));
     mkdirSync(join(dir, "design", "tokens.json"), { recursive: true });
     const r = run("validate", "--cwd", dir);
