@@ -1,14 +1,14 @@
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { emit, type CommandResult } from "./cli/output";
+import { emit, type CommandResult, type RunContext } from "./cli/output";
 import { runDoctor } from "./commands/doctor";
 import { runValidate } from "./commands/validate";
 import { VERSION } from "./version";
 
 const HELP = `Motif ${VERSION} — design guide tools for coding agents
 
-Usage: motif <command> [--json] [--cwd <folder>]
+Usage: motif <command> [options]
 
 Commands:
   doctor     Explain what works on this computer and what's optional
@@ -17,14 +17,15 @@ Commands:
 Options:
   --json     Print one JSON object (for agents and CI)
   --cwd      Run in another folder (default: the current folder)
+  --app      Only this app (its path in design/motif.json)
   --version  Print the version
 `;
 
-type Runner = (cwd: string) => Promise<CommandResult>;
+type Runner = (cwd: string, ctx: RunContext) => Promise<CommandResult>;
 
 const COMMANDS: Record<string, Runner> = {
   doctor: (cwd) => runDoctor(cwd),
-  validate: runValidate,
+  validate: (cwd) => runValidate(cwd),
 };
 
 export async function main(argv: string[]): Promise<number> {
@@ -37,6 +38,7 @@ export async function main(argv: string[]): Promise<number> {
       options: {
         json: { type: "boolean", default: false },
         cwd: { type: "string" },
+        app: { type: "string" },
         version: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
@@ -72,7 +74,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   let result: CommandResult;
   try {
-    result = await runner(cwd);
+    result = await runner(cwd, { positionals: positionals.slice(1), app: values.app });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     result = {

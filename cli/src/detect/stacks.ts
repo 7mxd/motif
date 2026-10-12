@@ -152,7 +152,12 @@ function readSettings(root: string): { apps: AppInfo[] | null; findings: Finding
   const apps: AppInfo[] = parsed.apps.map((a: any) => {
     const stack = (STACK_IDS as readonly string[]).includes(a?.stack) ? (a.stack as StackId) : null;
     if (!stack) findings.push(bad(`Unknown stack "${String(a?.stack)}" for "${String(a?.path)}". Use one of: ${STACK_IDS.join(", ")}.`));
-    return { path: rel(String(a?.path ?? ".")), stack, source: "motif.json" as const };
+    return {
+      path: rel(String(a?.path ?? ".")),
+      stack,
+      source: "motif.json" as const,
+      ...(typeof a?.srcDir === "string" ? { srcDir: rel(a.srcDir) } : {}),
+    };
   });
   return { apps, findings };
 }
@@ -161,6 +166,7 @@ export interface AppInfo {
   path: string;
   stack: StackId | null;
   source: "motif.json" | "detected";
+  srcDir?: string;
 }
 
 export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[] } {

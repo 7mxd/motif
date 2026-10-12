@@ -58,3 +58,13 @@ describe("main: never crashes into a stack trace", () => {
     expect(JSON.parse(j.stdout.toString())).toMatchObject({ command: "validate", ok: false, exitCode: 2, error: "unexpected" });
   });
 });
+
+describe("main: --app", () => {
+  test("is accepted by every command and listed in help", () => {
+    expect(run("help").stdout.toString()).toContain("--app");
+    const missing = join(tmpdir(), "motif-no-such-folder-" + Date.now());
+    const r = run("doctor", "--app", "web", "--cwd", missing);
+    expect(r.stderr.toString()).not.toContain("Unknown option");
+    expect(r.stdout.toString()).toContain("This folder doesn't exist");
+  });
+});

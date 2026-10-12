@@ -7,6 +7,12 @@ export interface CommandResult {
   data: Record<string, unknown>;
 }
 
+/** What a command receives besides the folder: extra words after the command name, and --app. */
+export interface RunContext {
+  positionals: string[];
+  app?: string;
+}
+
 export function emit(
   result: CommandResult,
   json: boolean,
