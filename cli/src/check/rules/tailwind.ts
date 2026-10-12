@@ -8,7 +8,7 @@ import { NAMED_COLORS } from "./colors";
 export const CLASS_PREFIX = "(?<![\\w-])(?:[\\w-]+:)*!?-?";
 
 const ARBITRARY = new RegExp(`${CLASS_PREFIX}([a-z]+(?:-[a-z]+)*)-\\[([^\\]\\s]+)\\]`, "g");
-const TW_COLORS = "slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose";
+const TW_COLORS = "slate|gray|zinc|neutral|stone|mauve|olive|mist|taupe|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose";
 const PALETTE = new RegExp(
   `${CLASS_PREFIX}(bg|text|border(?:-[xytrblse])?|ring(?:-offset)?|outline|fill|stroke|decoration|caret|accent|from|via|to|divide|placeholder|shadow)-(?:(${TW_COLORS})-(50|[1-9]00|950)|(black|white))(?:\\/\\d{1,3})?(?![\\w-])`,
   "g",
@@ -58,7 +58,9 @@ interface Classified {
 function classifyArbitrary(util: string, value: string, cls: string, motionImport: string): Classified | null {
   if (isMotifVar(value)) return null;
   if (util === "duration" || util === "delay") {
-    return { rule: "raw-motion", kind: "duration", value, message: `Hard-coded animation timing ${cls}.`, fix: `Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "${motionImport}".` };
+    const t = value.match(/^(\d*\.?\d+)(ms|s)$/);
+    const ms = t ? `${Number.parseFloat(t[1]!) * (t[2] === "s" ? 1000 : 1)}ms` : value;
+    return { rule: "raw-motion", kind: "duration", value: ms, message: `Hard-coded animation timing ${cls}.`, fix: `Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "${motionImport}".` };
   }
   if (util === "ease") {
     return { rule: "raw-motion", kind: "easing", value, message: `Hard-coded easing ${cls}.`, fix: "Use ease-standard, ease-enter or ease-exit." };

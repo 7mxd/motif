@@ -50,3 +50,9 @@ describe("buildScale", () => {
     expect(s.motionImport).toBe("src/design/motion");
   });
 });
+
+describe("exceptionFor: the line above must be a comment", () => {
+  test("a motif-ok on a code line doesn't excuse the next line", () => {
+    expect(exceptionFor(["color: #111; // motif-ok: logo", "color: #222;"], 2)).toBeNull();
+  });
+});

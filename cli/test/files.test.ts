@@ -65,3 +65,15 @@ describe("listSourceFiles", () => {
     expect(listSourceFiles(root, ".")[0]!.text).toBe("a{}");
   });
 });
+
+describe("listSourceFiles: what counts as source", () => {
+  test("an icon with one long path line is still scanned; a bundle-like file is not", () => {
+    const icon = 'export const Logo = () => (\n  <svg viewBox="0 0 24 24">\n    <path fill="#7c3aed" d="' + "M0 0L1 1".repeat(600) + '" />\n  </svg>\n);\n';
+    const root = makeProject({ "src/Logo.tsx": icon, "src/vendor.js": "x".repeat(4000) + "\n" + "y".repeat(4000) });
+    expect(paths(listSourceFiles(root, "."))).toEqual(["src/Logo.tsx"]);
+  });
+  test("dot-folders and the project's design/ folder are skipped", () => {
+    const root = makeProject({ "src/App.tsx": "x", ".storybook/preview.tsx": "x", "design/previews/a.html": "x", "src/design/Card.tsx": "x" });
+    expect(paths(listSourceFiles(root, "."))).toEqual(["src/App.tsx", "src/design/Card.tsx"]);
+  });
+});

@@ -22,10 +22,19 @@ const LANGS: Record<string, Lang> = {
 export const DEFAULT_IGNORES = [
   "node_modules/", ".git/", "dist/", "build/", "out/", ".next/", "coverage/", "__tests__/",
   "*.test.*", "*.spec.*", "*.stories.*", "*.config.*", "*.min.*", "*.d.ts",
+  // Dot-folders (.storybook, .vscode, …) and the project's own design/ folder (previews, reports).
+  ".*/", "/design/",
 ];
 
 export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_LENGTH = 3000;
+
+/** Minified or bundled code: long lines and hardly any normal ones. An icon with one long SVG path is still source. */
+function looksBundled(text: string): boolean {
+  const lines = text.split("\n");
+  if (!lines.some((l) => l.length > MAX_LINE_LENGTH)) return false;
+  return lines.filter((l) => l.trim() !== "" && l.length <= 200).length < 2;
+}
 
 function readGitignore(dir: string): string[] {
   try {
@@ -80,7 +89,7 @@ export function listSourceFiles(root: string, appPath: string, opts: { paths?: s
       if (rootIgnore.ignores(relPath) || appIgnore?.ignores(appRelative(relPath))) continue;
       if (!fileWanted(relPath)) continue;
       const text = stripBom(readFileSync(abs, "utf8"));
-      if (text.split("\n").some((line) => line.length > MAX_LINE_LENGTH)) continue;
+      if (looksBundled(text)) continue;
       out.push({ path: relPath, abs, text, lang });
     }
   };

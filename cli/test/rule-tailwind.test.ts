@@ -65,3 +65,12 @@ describe("comments", () => {
     expect(scan("a.tsx", "// TODO: switch bg-blue-500 to p-[13px]\n/* text-white */\nexport const A = 1;")).toEqual([]);
   });
 });
+
+describe("palette and timing details", () => {
+  test("Tailwind 4.2 palettes are default colours too", () => {
+    expect(scan("a.tsx", '<a className="bg-mauve-500 text-olive-700 border-mist-200 ring-taupe-400" />').map((h) => h[2])).toEqual(["mauve-500", "olive-700", "mist-200", "taupe-400"]);
+  });
+  test("arbitrary durations are normalised to milliseconds", () => {
+    expect(scan("a.tsx", '<a className="duration-[0.3s] delay-[150ms]" />').map((h) => h[2])).toEqual(["300ms", "150ms"]);
+  });
+});
