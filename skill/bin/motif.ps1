@@ -3,6 +3,12 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+# Started from a PowerShell 7 terminal? Drop its module folders so Windows PowerShell
+# finds its own built-in commands (otherwise e.g. Get-FileHash goes missing).
+if ($PSVersionTable.PSEdition -ne 'Core' -and $env:PSModulePath) {
+  $env:PSModulePath = (($env:PSModulePath -split ';') | Where-Object { $_ -and $_ -notmatch '\\PowerShell\\(7|Modules)' }) -join ';'
+}
+
 $SkillDir = Split-Path -Parent $PSScriptRoot
 $Version = (Get-Content -Raw -Path (Join-Path $SkillDir 'VERSION')).Trim()
 
@@ -36,7 +42,15 @@ if (-not (Test-Path -LiteralPath $Bin)) {
       $parts = $line.Trim() -split '\s+'
       if ($parts.Count -ge 2 -and $parts[1].TrimStart('*') -eq $Asset) { $Expected = $parts[0].ToLower() }
     }
-    $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Tmp $Asset)).Hash.ToLower()
+    # .NET directly rather than Get-FileHash, which lives in a module that can fail to load.
+    $Sha = [System.Security.Cryptography.SHA256]::Create()
+    $Stream = [System.IO.File]::OpenRead((Join-Path $Tmp $Asset))
+    try {
+      $Actual = ([System.BitConverter]::ToString($Sha.ComputeHash($Stream)) -replace '-', '').ToLower()
+    } finally {
+      $Stream.Dispose()
+      $Sha.Dispose()
+    }
     if (-not $Expected -or $Expected -ne $Actual) {
       [Console]::Error.WriteLine("Motif: the downloaded tool failed its safety check, so it wasn't used. Please try again later, or report this at https://github.com/$Repo/issues")
       exit 2
