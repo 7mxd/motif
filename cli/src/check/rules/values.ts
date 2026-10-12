@@ -50,15 +50,24 @@ export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
     for (const m of file.text.matchAll(CSS_DECLARATION)) {
       const prop = m[1]!.toLowerCase();
       const value = m[2]!;
-      if (prop.startsWith("--")) continue;
       const start = m.index! + m[0].length - value.length;
+      const fontMessage = (family: string): [string, string] => [`Hard-coded font ${family}.`, "Use var(--motif-font-body-family) or a font role class such as font-body."];
+      if (prop.startsWith("--")) {
+        // Not checked, but a font family declared in a variable (Tailwind's --font-sans, say) is seen by extract.
+        const family = value.trim();
+        if (/^--font-(?!weight|size)/.test(prop) && !prop.startsWith("--motif-") && !/^var\(/.test(family)) {
+          push(start, family, "raw-font", "font-family", family, false, ...fontMessage(family));
+        }
+        continue;
+      }
       const kind = SPACE_PROP.test(prop) ? "space" : RADIUS_PROP.test(prop) ? "radius" : prop === "font-size" ? "font-size" : null;
       if (kind) {
         for (const l of value.matchAll(LENGTH)) size(start + l.index!, l[0], kind, l[1]!, l[2]!);
       } else if (prop === "font-family") {
         const family = value.trim();
-        if (!/^(?:var\(|inherit|initial|unset)/.test(family) && !inRanges(start, fontFaces)) {
-          push(start, family, "raw-font", "font-family", family, true, `Hard-coded font ${family}.`, "Use var(--motif-font-body-family) or a font role class such as font-body.");
+        if (!/^(?:var\(|inherit|initial|unset)/.test(family)) {
+          // @font-face declares the family; it can't use a variable, so it's seen but allowed.
+          push(start, family, "raw-font", "font-family", family, !inRanges(start, fontFaces), ...fontMessage(family));
         }
       } else if (MOTION_PROP.test(prop)) {
         for (const t of value.matchAll(TIME)) {

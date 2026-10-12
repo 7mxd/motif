@@ -95,3 +95,12 @@ describe("Motion timing only inside motion settings", () => {
     expect(found("a.ts", text)).toEqual([["raw-motion", "duration", "250ms"]]);
   });
 });
+
+describe("fonts declared in @font-face and --font-* variables", () => {
+  test("are seen (for extract) but are not violations", () => {
+    const css = '@font-face { font-family: "Brand Sans"; src: url(b.woff2); }\n:root { --font-sans: "Brand Sans", system-ui; }';
+    const hits = scanValues(file("a.css", css), null).filter((h) => h.kind === "font-family");
+    expect(hits.map((h) => [h.value, h.violation])).toEqual([['"Brand Sans"', false], ['"Brand Sans", system-ui', false]]);
+    expect(found("a.css", css)).toEqual([]);
+  });
+});
