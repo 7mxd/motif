@@ -37,6 +37,12 @@ function readGitignore(dir: string): string[] {
 
 const toPosix = (p: string) => p.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
 
+/** True when rel (root-relative) is one of the wanted files or inside one of the wanted folders. */
+export function matchesPaths(rel: string, wanted: string[]): boolean {
+  const w = wanted.map(toPosix).filter(Boolean);
+  return w.length === 0 || w.some((p) => rel === p || rel.startsWith(p + "/"));
+}
+
 export function listSourceFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
   const rootIgnore = ignore().add(DEFAULT_IGNORES).add(readGitignore(root)).add(opts.ignore ?? []);
   const app = toPosix(appPath) || ".";

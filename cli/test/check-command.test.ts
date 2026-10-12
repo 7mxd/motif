@@ -99,3 +99,33 @@ describe("runCheck", () => {
     expect(JSON.parse(r.stdout.toString())).toMatchObject({ command: "check", ok: true, summary: { violations: 0 } });
   });
 });
+
+describe("runCheck: paths", () => {
+  test("absolute paths work like relative ones", async () => {
+    const root = project({ "src/App.tsx": APP, "src/Clean.tsx": CLEAN });
+    const r = await runCheck(root, ctx(join(root, "src", "App.tsx")));
+    expect(r.exitCode).toBe(1);
+    expect((r.data.summary as any).files).toBe(1);
+  });
+
+  test("a path that doesn't exist is a usage error, not a pass", async () => {
+    const r = await runCheck(project({ "src/Clean.tsx": CLEAN }), ctx("src/Clena.tsx"));
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("src/Clena.tsx");
+  });
+
+  test("paths with nothing to check are a usage error, not a pass", async () => {
+    const r = await runCheck(project({ "src/Clean.tsx": CLEAN, "docs/notes.md": "# hi" }), ctx("docs"));
+    expect(r.exitCode).toBe(2);
+  });
+
+  test("checking one file still sees the app's MotionConfig and generated stylesheet", async () => {
+    const root = project({
+      "src/main.tsx": 'import { MotionConfig } from "motion/react";\nexport const Root = () => <MotionConfig reducedMotion="user" />;\n',
+      "src/Button.tsx": 'import { motion } from "motion/react";\nexport const B = () => <motion.button className="transition-colors" />;\n',
+    });
+    await runTokens(root, { positionals: [] });
+    const r = await runCheck(root, ctx("src/Button.tsx"));
+    expect((r.data.violations as any[]).map((h) => h.rule)).toEqual([]);
+  });
+});

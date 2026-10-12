@@ -5,7 +5,7 @@ import type { Theme } from "../generate/theme";
 import { prefixPath } from "../project/apps";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
 import { exceptionFor } from "./exceptions";
-import { listSourceFiles, type SourceFile } from "./files";
+import { listSourceFiles, matchesPaths, type SourceFile } from "./files";
 import { generatedEditedHits, reducedMotionHits } from "./rules/app";
 import { scanColors } from "./rules/colors";
 import { scanTailwind } from "./rules/tailwind";
@@ -39,14 +39,19 @@ export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths
   const expected = generateReactWeb(theme, { srcDir, tailwind: detectTailwind(appDir) })
     .map((f) => ({ path: prefixPath(app.path, f.path), content: f.content }));
 
-  const all = listSourceFiles(root, app.path, opts);
+  // App-wide rules need the whole app even when the scan is narrowed to some paths.
+  const all = listSourceFiles(root, app.path, { ignore: opts.ignore });
   const generated = all.filter((f) => isMotifGenerated(f.path, f.text));
-  const files = all.filter((f) => !isMotifGenerated(f.path, f.text));
+  const appFiles = all.filter((f) => !isMotifGenerated(f.path, f.text));
+  const wanted = opts.paths ?? [];
+  const files = appFiles.filter((f) => matchesPaths(f.path, wanted));
+  const inScope = new Set(files.map((f) => f.path));
   const lines = new Map(files.map((f) => [f.path, f.text.split(/\r?\n/)]));
 
   const violations: Hit[] = [];
   const exceptions: ExceptionHit[] = [];
-  for (const hit of [...files.flatMap((f) => scanFile(f, scale)), ...reducedMotionHits(files, generated)]) {
+  const appWide = reducedMotionHits(appFiles, generated).filter((h) => inScope.has(h.file));
+  for (const hit of [...files.flatMap((f) => scanFile(f, scale)), ...appWide]) {
     if (!hit.violation) continue;
     const ex = exceptionFor(lines.get(hit.file) ?? [], hit.line);
     if (ex && "reason" in ex) exceptions.push({ ...hit, reason: ex.reason });

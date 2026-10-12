@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { checkApp, type ExceptionHit } from "../check/run";
 import type { Hit } from "../check/types";
@@ -56,9 +56,35 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
     };
   }
 
+  // Paths may be absolute or relative to the current folder; scan them relative to the project root.
+  const paths: string[] = [];
+  for (const p of ctx.positionals) {
+    const abs = resolve(cwd, p);
+    const rel = relative(cwd, abs).replace(/\\/g, "/");
+    if (!existsSync(abs)) {
+      return { command: "check", exitCode: 2, text: `"${p}" doesn't exist. Give paths relative to this folder, or absolute paths.`, data: { error: "no-such-path", path: p } };
+    }
+    if (rel.startsWith("..") || isAbsolute(rel)) {
+      return { command: "check", exitCode: 2, text: `"${p}" is outside this project (${cwd}).`, data: { error: "path-outside-project", path: p } };
+    }
+    if (rel === "") {
+      paths.length = 0;
+      break;
+    }
+    paths.push(rel);
+  }
+
   const theme = buildTheme(doc);
   const ignore = readIgnorePatterns(cwd);
-  const results = supported.map((a) => checkApp(cwd, a, theme, { paths: ctx.positionals, ignore }));
+  const results = supported.map((a) => checkApp(cwd, a, theme, { paths, ignore }));
+  if (paths.length > 0 && results.every((r) => r.files === 0)) {
+    return {
+      command: "check",
+      exitCode: 2,
+      text: `None of these paths contain files motif check reads (.css, .ts, .tsx, .js, .jsx, .html, …), or they're ignored: ${ctx.positionals.join(", ")}.`,
+      data: { error: "nothing-to-check" },
+    };
+  }
   const violations = results.flatMap((r) => r.violations);
   const exceptions: ExceptionHit[] = results.flatMap((r) => r.exceptions);
   const warnings = results.flatMap((r) => r.warnings);
