@@ -1,5 +1,6 @@
 import { locator } from "../../text";
 import type { SourceFile } from "../files";
+import { maskComments } from "../mask";
 import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../types";
 import { NAMED_COLORS } from "./colors";
 
@@ -88,7 +89,8 @@ function classifyArbitrary(util: string, value: string, cls: string, motionImpor
   return null;
 }
 
-export function scanTailwind(file: SourceFile, scale: Scale | null): Hit[] {
+export function scanTailwind(source: SourceFile, scale: Scale | null): Hit[] {
+  const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
   const motionImport = scale?.motionImport ?? "design/motion";
   const hits: Hit[] = [];

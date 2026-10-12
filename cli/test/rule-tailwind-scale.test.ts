@@ -46,3 +46,10 @@ describe("scanTailwindScale", () => {
     expect(hits.map((h) => [h.value, h.violation])).toEqual([["28px", false], ["200ms", true]]);
   });
 });
+
+describe("comments (scale)", () => {
+  test("class names in comments are not findings", () => {
+    expect(violations("x").length).toBe(0);
+    expect(scanTailwindScale(file("// was p-7 and duration-200\nexport const A = 1;"), scale)).toEqual([]);
+  });
+});

@@ -59,3 +59,9 @@ describe("CSS @apply", () => {
     ]);
   });
 });
+
+describe("comments", () => {
+  test("class names in comments are not findings", () => {
+    expect(scan("a.tsx", "// TODO: switch bg-blue-500 to p-[13px]\n/* text-white */\nexport const A = 1;")).toEqual([]);
+  });
+});

@@ -1,5 +1,6 @@
 import { locator } from "../../text";
 import type { SourceFile } from "../files";
+import { maskComments } from "../mask";
 import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../types";
 import { CLASS_PREFIX, classSegments } from "./tailwind";
 
@@ -16,7 +17,8 @@ const FONT = new RegExp(`${CLASS_PREFIX}font-(sans|serif|mono)(?![\\w-])`, "g");
 
 const list = (prefix: string, keys: Set<string> | undefined) => [...(keys ?? [])].map((k) => `${prefix}${k}`).join(", ");
 
-export function scanTailwindScale(file: SourceFile, scale: Scale | null): Hit[] {
+export function scanTailwindScale(source: SourceFile, scale: Scale | null): Hit[] {
+  const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
   const hits: Hit[] = [];
   const push = (index: number, cls: string, rule: RuleId, kind: ValueKind, value: string, violation: boolean, message: string, fix: string) =>

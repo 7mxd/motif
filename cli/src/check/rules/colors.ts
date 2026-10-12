@@ -1,5 +1,6 @@
 import { locator } from "../../text";
 import type { SourceFile } from "../files";
+import { inRanges, maskComments, rangesOf } from "../mask";
 import { makeHit, type Hit } from "../types";
 
 export const NAMED_COLORS = new Set(
@@ -28,7 +29,10 @@ const CSS_NAMED = new RegExp(`(?<![\\w#.-])(?:${NAMED_ALT})(?![\\w-])`, "gi");
 const CSS_COLOR_PROP =
   /^(color|background(-color)?|border(-(top|right|bottom|left|block|inline)(-(start|end))?)?(-color)?|outline(-color)?|fill|stroke|box-shadow|text-shadow|text-decoration(-color)?|caret-color|accent-color|column-rule(-color)?|--[\w-]+)$/i;
 
-const SCRIPT_HEX = new RegExp(`(?<=["'\`:\\s(,])${HEX}(?!\\s*[(=.])`, "g");
+// A hex colour starts a string, or follows ":", "(" or "," — not a space in prose ("Room #101", "see #456").
+const SCRIPT_HEX = new RegExp(`(?<=["'\`]|:\\s{0,3}|\\(\\s{0,3}|,\\s{0,3})${HEX}(?!\\s*[(=.])`, "g");
+// <meta name="theme-color" content="#…"> and friends can't use CSS variables.
+const META_TAG = /<meta\b[^>]*>/gi;
 const SCRIPT_FN = /(?<![\w[-])(?:rgba?|hsla?|hwb|oklab|oklch|lab|lch)\(\s*[\d.][^()]*\)/g;
 const STYLE_NAMED = new RegExp(
   `\\b(color|background|backgroundColor|border(?:Top|Right|Bottom|Left)?Color|outlineColor|fill|stroke|textDecorationColor|caretColor|accentColor)\\s*:\\s*(["'])(${NAMED_ALT})\\2`,
@@ -44,7 +48,8 @@ export function colorContext(prop: string): "text" | "background" | "border" | "
   return "other";
 }
 
-export function scanColors(file: SourceFile): Hit[] {
+export function scanColors(source: SourceFile): Hit[] {
+  const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
   const hits: Hit[] = [];
   const add = (index: number, literal: string, context: string) =>
@@ -77,8 +82,9 @@ export function scanColors(file: SourceFile): Hit[] {
     const key = file.text.slice(lineStart, index).match(KEY_BEFORE)?.[1];
     return key ? colorContext(key) : "other";
   };
-  for (const m of file.text.matchAll(SCRIPT_HEX)) add(m.index!, m[0], contextBefore(m.index!));
-  for (const m of file.text.matchAll(SCRIPT_FN)) add(m.index!, m[0], contextBefore(m.index!));
+  const metaTags = rangesOf(file.text, META_TAG);
+  for (const m of file.text.matchAll(SCRIPT_HEX)) if (!inRanges(m.index!, metaTags)) add(m.index!, m[0], contextBefore(m.index!));
+  for (const m of file.text.matchAll(SCRIPT_FN)) if (!inRanges(m.index!, metaTags)) add(m.index!, m[0], contextBefore(m.index!));
   for (const m of file.text.matchAll(STYLE_NAMED)) {
     const literal = m[3]!;
     add(m.index! + m[0].lastIndexOf(literal), literal, colorContext(m[1]!));

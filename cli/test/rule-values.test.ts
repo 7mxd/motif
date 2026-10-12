@@ -69,3 +69,29 @@ describe("without a scale (extract)", () => {
     expect(hits.map((h) => [h.kind, h.value, h.violation])).toEqual([["space", "13px", false]]);
   });
 });
+
+describe("false positives in ordinary code (values)", () => {
+  test("@font-face declares a family; it can't use a variable", () => {
+    expect(found("a.css", '@font-face { font-family: "Brand Sans"; src: url(brand.woff2); }')).toEqual([]);
+  });
+  test("numbers in non-style objects are not spacing", () => {
+    expect(found("a.tsx", "window.scrollTo({ top: 120 });\n<Chart margin={{ top: 5, right: 30 }} />")).toEqual([]);
+  });
+  test("style objects are still checked", () => {
+    expect(found("a.tsx", "<div style={{ padding: 13 }} />")).toEqual([["off-scale", "space", "13px"]]);
+  });
+  test("values in comments are ignored", () => {
+    expect(found("a.css", "/* padding: 13px */ .a { padding: 16px; }")).toEqual([]);
+  });
+});
+
+describe("Motion timing only inside motion settings", () => {
+  test("a toast's duration in a file that imports Motion isn't a Motion timing", () => {
+    const text = 'import { motion } from "motion/react";\ntoast("Saved", { duration: 4000 });\n<motion.div transition={{ duration: 0.3 }} />';
+    expect(found("a.tsx", text)).toEqual([["raw-motion", "duration", "300ms"]]);
+  });
+  test("values over 10 are read as milliseconds", () => {
+    const text = 'import { animate } from "motion";\nanimate(el, { opacity: 1 }, { duration: 250 });';
+    expect(found("a.ts", text)).toEqual([["raw-motion", "duration", "250ms"]]);
+  });
+});

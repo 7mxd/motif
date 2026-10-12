@@ -1,5 +1,6 @@
 import { locator } from "../../text";
 import type { SourceFile } from "../files";
+import { inRanges, maskComments, rangesOf } from "../mask";
 import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../types";
 
 export const IMPORTS_MOTION = /from\s+["'](?:motion|motion\/react|motion\/react-client|framer-motion)["']/;
@@ -18,6 +19,9 @@ const STYLE_FONT = /\bfontFamily\s*:\s*(["'`])([^"'`]+)\1/g;
 const MOTION_TIME = /\b(duration|delay|visualDuration)\s*:\s*(\d*\.?\d+)/g;
 const MOTION_SPRING = /\b(stiffness|damping|mass|bounce)\s*:\s*(\d*\.?\d+)/g;
 const MOTION_EASE = /\bease\s*:\s*(\[[^\]]*\]|["'][\w-]+["'])/g;
+const STYLE_BLOCK = /\b(?:style|sx)=\{\{[\s\S]*?\}\}/g;
+const MOTION_BLOCK = /\btransition\s*(?:=\s*\{\{|:\s*\{)[\s\S]*?\}|\banimate\([^)]*\)/g;
+const FONT_FACE = /@font-face\s*\{[^}]*\}/g;
 
 const sizeMessages: Record<"space" | "radius" | "font-size", (px: number, steps: number[]) => [string, string]> = {
   space: (px, steps) => [`Spacing ${px}px isn't on your spacing scale.`, `Use var(--motif-space-<step>); your steps are ${steps.join(", ")}px.`],
@@ -25,7 +29,8 @@ const sizeMessages: Record<"space" | "radius" | "font-size", (px: number, steps:
   "font-size": (px) => [`Text size ${px}px isn't one of your text roles.`, "Use var(--motif-font-<role>-size) or a text-<role> class."],
 };
 
-export function scanValues(file: SourceFile, scale: Scale | null): Hit[] {
+export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
+  const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
   const hits: Hit[] = [];
   const push = (index: number, text: string, rule: RuleId, kind: ValueKind | undefined, value: string | undefined, violation: boolean, message: string, fix: string) =>
@@ -38,9 +43,10 @@ export function scanValues(file: SourceFile, scale: Scale | null): Hit[] {
     const [message, fix] = sizeMessages[kind](px, [...(scale?.spacePx ?? [])].sort((a, b) => a - b));
     push(index, text, "off-scale", kind, `${px}px`, scale ? !onScale : false, message, fix);
   };
-  const motionFix = `Use import { duration, easing, spring } from "${scale?.motionImport ?? "design/motion"}", e.g. transition={spring.smooth}.`;
+  const motionFix = `Use the generated ${scale?.motionImport ?? "design/motion"}.ts: import { duration, easing, spring } from it (path relative to this file), e.g. transition={spring.smooth}.`;
 
   if (file.lang === "css") {
+    const fontFaces = rangesOf(file.text, FONT_FACE);
     for (const m of file.text.matchAll(CSS_DECLARATION)) {
       const prop = m[1]!.toLowerCase();
       const value = m[2]!;
@@ -51,7 +57,7 @@ export function scanValues(file: SourceFile, scale: Scale | null): Hit[] {
         for (const l of value.matchAll(LENGTH)) size(start + l.index!, l[0], kind, l[1]!, l[2]!);
       } else if (prop === "font-family") {
         const family = value.trim();
-        if (!/^(?:var\(|inherit|initial|unset)/.test(family)) {
+        if (!/^(?:var\(|inherit|initial|unset)/.test(family) && !inRanges(start, fontFaces)) {
           push(start, family, "raw-font", "font-family", family, true, `Hard-coded font ${family}.`, "Use var(--motif-font-body-family) or a font role class such as font-body.");
         }
       } else if (MOTION_PROP.test(prop)) {
@@ -65,24 +71,33 @@ export function scanValues(file: SourceFile, scale: Scale | null): Hit[] {
       }
     }
   } else {
-    for (const m of file.text.matchAll(STYLE_LENGTH)) {
-      const key = m[1]!;
-      const kind = key === "fontSize" ? "font-size" : /Radius$/.test(key) ? "radius" : "space";
-      if (m[2] !== undefined) size(m.index!, m[0], kind, m[2], "px");
-      else size(m.index!, m[0], kind, m[4]!, m[5]!);
+    // Sizes and fonts only inside JSX style objects; other objects ({ top: 120 } for scrollTo, chart margins) aren't styles.
+    for (const [start, end] of rangesOf(file.text, STYLE_BLOCK)) {
+      const block = file.text.slice(start, end);
+      for (const m of block.matchAll(STYLE_LENGTH)) {
+        const key = m[1]!;
+        const kind = key === "fontSize" ? "font-size" : /Radius$/.test(key) ? "radius" : "space";
+        if (m[2] !== undefined) size(start + m.index!, m[0], kind, m[2], "px");
+        else size(start + m.index!, m[0], kind, m[4]!, m[5]!);
+      }
+      for (const m of block.matchAll(STYLE_FONT)) {
+        push(start + m.index!, m[0], "raw-font", "font-family", m[2]!, true, `Hard-coded font ${m[2]}.`, "Use var(--motif-font-body-family) or a font role class such as font-body.");
+      }
     }
-    for (const m of file.text.matchAll(STYLE_FONT)) {
-      push(m.index!, m[0], "raw-font", "font-family", m[2]!, true, `Hard-coded font ${m[2]}.`, "Use var(--motif-font-body-family) or a font role class such as font-body.");
-    }
+    // Motion timings only inside transition settings and animate() calls; a toast's { duration: 4000 } isn't motion.
     if (IMPORTS_MOTION.test(file.text)) {
-      for (const m of file.text.matchAll(MOTION_TIME)) {
-        push(m.index!, m[0], "raw-motion", "duration", `${Number.parseFloat(m[2]!) * 1000}ms`, true, `Hard-coded Motion timing ${m[0]}.`, motionFix);
-      }
-      for (const m of file.text.matchAll(MOTION_EASE)) {
-        push(m.index!, m[0], "raw-motion", "easing", m[1]!, true, `Hard-coded Motion easing ${m[0]}.`, motionFix);
-      }
-      for (const m of file.text.matchAll(MOTION_SPRING)) {
-        push(m.index!, m[0], "raw-motion", "spring", `${m[1]} ${m[2]}`, true, `Hard-coded spring setting ${m[0]}.`, motionFix);
+      for (const [start, end] of rangesOf(file.text, MOTION_BLOCK)) {
+        const block = file.text.slice(start, end);
+        for (const m of block.matchAll(MOTION_TIME)) {
+          const n = Number.parseFloat(m[2]!);
+          push(start + m.index!, m[0], "raw-motion", "duration", `${n > 10 ? n : n * 1000}ms`, true, `Hard-coded Motion timing ${m[0]}.`, motionFix);
+        }
+        for (const m of block.matchAll(MOTION_EASE)) {
+          push(start + m.index!, m[0], "raw-motion", "easing", m[1]!, true, `Hard-coded Motion easing ${m[0]}.`, motionFix);
+        }
+        for (const m of block.matchAll(MOTION_SPRING)) {
+          push(start + m.index!, m[0], "raw-motion", "spring", `${m[1]} ${m[2]}`, true, `Hard-coded spring setting ${m[0]}.`, motionFix);
+        }
       }
     }
   }

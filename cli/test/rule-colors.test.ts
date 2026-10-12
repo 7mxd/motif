@@ -62,3 +62,19 @@ describe("colorContext", () => {
     expect(colorContext(prop)).toBe(ctx as any);
   });
 });
+
+describe("false positives in ordinary code", () => {
+  test("issue numbers and UI text are not colours", () => {
+    expect(values("a.tsx", '// after #1234 (see #456)\nconst label = "Room #101";\nconst t = <p>Invoice #1001</p>;')).toEqual([]);
+  });
+  test("colours inside comments are not flagged", () => {
+    expect(values("a.css", "/* brand: #ff0000 */\n.a { color: var(--motif-color-text-primary); }")).toEqual([]);
+    expect(values("a.tsx", '/* color: "#fff" */\nexport const A = 1;')).toEqual([]);
+  });
+  test("a colour after // inside a string is still checked", () => {
+    expect(values("a.ts", 'const u = "https://x.com"; const c = "#3b82f6";')).toEqual([["#3b82f6", "other"]]);
+  });
+  test("the browser theme colour meta tag can't use variables, so it isn't flagged", () => {
+    expect(values("index.html", '<meta name="theme-color" content="#0A1733" />')).toEqual([]);
+  });
+});
