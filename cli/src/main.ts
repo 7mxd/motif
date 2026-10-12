@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { emit, type CommandResult, type RunContext } from "./cli/output";
 import { runDoctor } from "./commands/doctor";
+import { runTokens } from "./commands/tokens";
 import { runValidate } from "./commands/validate";
 import { VERSION } from "./version";
 
@@ -13,6 +14,7 @@ Usage: motif <command> [options]
 Commands:
   doctor     Explain what works on this computer and what's optional
   validate   Check your design guide (DESIGN.md + design/tokens.json)
+  tokens     Turn your design guide into theme code for your app
 
 Options:
   --json     Print one JSON object (for agents and CI)
@@ -26,6 +28,7 @@ type Runner = (cwd: string, ctx: RunContext) => Promise<CommandResult>;
 const COMMANDS: Record<string, Runner> = {
   doctor: (cwd) => runDoctor(cwd),
   validate: (cwd) => runValidate(cwd),
+  tokens: runTokens,
 };
 
 export async function main(argv: string[]): Promise<number> {
