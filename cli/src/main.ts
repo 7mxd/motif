@@ -2,6 +2,7 @@ import { statSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { emit, type CommandResult, type RunContext } from "./cli/output";
+import { runCheck } from "./commands/check";
 import { runDoctor } from "./commands/doctor";
 import { runTokens } from "./commands/tokens";
 import { runValidate } from "./commands/validate";
@@ -15,6 +16,7 @@ Commands:
   doctor     Explain what works on this computer and what's optional
   validate   Check your design guide (DESIGN.md + design/tokens.json)
   tokens     Turn your design guide into theme code for your app
+  check      Find colours, sizes and animations that bypass your design guide
 
 Options:
   --json     Print one JSON object (for agents and CI)
@@ -29,6 +31,7 @@ const COMMANDS: Record<string, Runner> = {
   doctor: (cwd) => runDoctor(cwd),
   validate: (cwd) => runValidate(cwd),
   tokens: runTokens,
+  check: runCheck,
 };
 
 export async function main(argv: string[]): Promise<number> {
