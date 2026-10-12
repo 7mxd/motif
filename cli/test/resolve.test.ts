@@ -66,6 +66,20 @@ describe("modes", () => {
     expect(dark.ok && (dark.value as any).hex).toBe("#030712");
   });
 
+  test("a dark alias to another role uses that role's dark value", () => {
+    const t = validTokens();
+    t.color["text-secondary"].$extensions["dev.motif"].modes.dark = "{color.text-primary}";
+    const r = resolveMode(docFrom(t), "color.text-secondary", "dark");
+    expect(r.ok && (r.value as any).hex).toBe("#F9FAFB");
+  });
+
+  test("a role without its own dark value follows its alias target's dark value", () => {
+    const t = validTokens();
+    t.color.extra = { $value: "{color.text-primary}" };
+    const r = resolveMode(docFrom(t), "color.extra", "dark");
+    expect(r.ok && (r.value as any).hex).toBe("#F9FAFB");
+  });
+
   test("dark falls back to light when no dark value exists", () => {
     const doc = docFrom({ a: num(1) });
     expect(resolveMode(doc, "a", "dark")).toEqual({ ok: true, value: 1, type: "number" });

@@ -19,6 +19,12 @@ describe("checkContrast", () => {
     expect(findings[0]!.path).toBe("color.text-secondary");
   });
 
+  test("a dark value that aliases another role is checked with that role's dark value", () => {
+    const t = validTokens();
+    t.color["text-secondary"].$extensions["dev.motif"].modes.dark = "{color.text-primary}";
+    expect(checkContrast(docFrom(t)).findings).toEqual([]);
+  });
+
   test("uses the 3:1 minimum for UI pairs", () => {
     const t = validTokens();
     t.color.focus.$value = "{primitive.color.gray.300}";

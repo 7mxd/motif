@@ -1,5 +1,5 @@
 import type { Finding } from "../findings";
-import { darkValueOf, resolveToken, resolveValue } from "./resolve";
+import { darkValueOf, resolveMode, resolveToken } from "./resolve";
 import { KNOWN_TYPES, type TokenDocument } from "./types";
 import { validateValue } from "./values";
 
@@ -28,7 +28,7 @@ export function validateTokens(doc: TokenDocument): Finding[] {
 
     const dark = darkValueOf(doc, tok.path);
     if (dark !== undefined) {
-      const d = resolveValue(doc, dark, [tok.path]);
+      const d = resolveMode(doc, tok.path, "dark");
       if (!d.ok) add("broken-alias", tok.path, tok.line, `"${tok.path}" (dark): ${d.error}`);
       else {
         const dp = validateValue(type, d.value);

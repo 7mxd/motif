@@ -10,7 +10,11 @@ export type Resolved =
 
 export type Mode = "light" | "dark";
 
-export function resolveValue(doc: TokenDocument, value: unknown, chain: string[] = []): Resolved {
+/**
+ * Resolve aliases anywhere inside a value. In dark mode, every alias step uses the target's
+ * dark value when it has one, so a dark alias to another role gets that role's dark colour.
+ */
+export function resolveValue(doc: TokenDocument, value: unknown, chain: string[] = [], mode: Mode = "light"): Resolved {
   if (isAlias(value)) {
     const target = value.slice(1, -1);
     if (chain.includes(target)) {
@@ -18,14 +22,15 @@ export function resolveValue(doc: TokenDocument, value: unknown, chain: string[]
     }
     const tok = doc.tokens.get(target);
     if (!tok) return { ok: false, error: `It points to "{${target}}", which doesn't exist.` };
-    const inner = resolveValue(doc, tok.value, [...chain, target]);
+    const raw = mode === "dark" ? (darkValueOf(doc, target) ?? tok.value) : tok.value;
+    const inner = resolveValue(doc, raw, [...chain, target], mode);
     if (!inner.ok) return inner;
     return { ok: true, value: inner.value, type: tok.type ?? inner.type };
   }
   if (Array.isArray(value)) {
     const out: unknown[] = [];
     for (const item of value) {
-      const r = resolveValue(doc, item, chain);
+      const r = resolveValue(doc, item, chain, mode);
       if (!r.ok) return r;
       out.push(r.value);
     }
@@ -34,7 +39,7 @@ export function resolveValue(doc: TokenDocument, value: unknown, chain: string[]
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      const r = resolveValue(doc, v, chain);
+      const r = resolveValue(doc, v, chain, mode);
       if (!r.ok) return r;
       out[k] = r.value;
     }
@@ -59,9 +64,9 @@ export function darkValueOf(doc: TokenDocument, path: string): unknown | undefin
 export function resolveMode(doc: TokenDocument, path: string, mode: Mode): Resolved {
   const light = resolveToken(doc, path);
   if (mode === "light") return light;
-  const dark = darkValueOf(doc, path);
-  if (dark === undefined) return light;
-  const r = resolveValue(doc, dark, [path]);
+  const tok = doc.tokens.get(path);
+  if (!tok) return light;
+  const r = resolveValue(doc, darkValueOf(doc, path) ?? tok.value, [path], "dark");
   if (!r.ok) return r;
   return { ok: true, value: r.value, type: light.ok ? light.type : r.type };
 }
