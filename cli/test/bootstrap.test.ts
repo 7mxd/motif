@@ -102,6 +102,17 @@ for (const runner of RUNNERS) {
       expect(existsSync(join(home, "bin"))).toBe(false);
     }, 120_000);
 
+    test("several first runs at the same time all succeed (agents run tools in parallel)", async () => {
+      const home = freshHome();
+      const results = await Promise.all(Array.from({ length: 6 }, () => run("ok", home, ["--version"])));
+      for (const r of results) {
+        expect(r.stderr).not.toContain("Move-Item");
+        expect(r.stderr).not.toContain("cannot stat");
+        expect(r.exitCode).toBe(0);
+        expect(r.stdout.trim()).toBe(VERSION);
+      }
+    }, 180_000);
+
     test("MOTIF_BIN skips the download entirely", async () => {
       const r = await run("missing", freshHome(), ["--version"], { MOTIF_BIN: slash(builtPath) });
       expect(r.exitCode).toBe(0);

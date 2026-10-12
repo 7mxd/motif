@@ -41,9 +41,21 @@ if (-not (Test-Path -LiteralPath $Bin)) {
       [Console]::Error.WriteLine("Motif: the downloaded tool failed its safety check, so it wasn't used. Please try again later, or report this at https://github.com/$Repo/issues")
       exit 2
     }
-    New-Item -ItemType Directory -Force -Path $CacheDir | Out-Null
-    Move-Item -Force -LiteralPath (Join-Path $Tmp $Asset) -Destination "$Bin.partial"
-    Move-Item -Force -LiteralPath "$Bin.partial" -Destination $Bin
+    # A unique name per process: agents often run several tool calls at once, so first runs can overlap.
+    $Partial = Join-Path $CacheDir ('.motif-' + [System.Guid]::NewGuid().ToString('N') + '.partial')
+    try {
+      New-Item -ItemType Directory -Force -Path $CacheDir | Out-Null
+      Move-Item -LiteralPath (Join-Path $Tmp $Asset) -Destination $Partial
+      # If another run finished first (or its binary is in use), keep that one.
+      if (-not (Test-Path -LiteralPath $Bin)) { Move-Item -LiteralPath $Partial -Destination $Bin }
+    } catch {
+      if (-not (Test-Path -LiteralPath $Bin)) {
+        [Console]::Error.WriteLine("Motif: couldn't set up the Motif tool in $CacheDir. Check that this folder is writable and try again.")
+        exit 2
+      }
+    } finally {
+      Remove-Item -Force -LiteralPath $Partial -ErrorAction SilentlyContinue
+    }
   } finally {
     Remove-Item -Recurse -Force -LiteralPath $Tmp -ErrorAction SilentlyContinue
   }

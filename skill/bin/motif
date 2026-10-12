@@ -57,10 +57,20 @@ if [ ! -x "$BIN" ]; then
     echo "Motif: the downloaded tool failed its safety check, so it wasn't used. Please try again later, or report this at https://github.com/$REPO/issues" >&2
     exit 2
   fi
-  mkdir -p "$CACHE_DIR"
-  chmod +x "$TMP/$ASSET"
-  mv "$TMP/$ASSET" "$BIN.partial"
-  mv "$BIN.partial" "$BIN"
+  install_failed() {
+    echo "Motif: couldn't set up the Motif tool in $CACHE_DIR. Check that this folder is writable and try again." >&2
+    exit 2
+  }
+  mkdir -p "$CACHE_DIR" || install_failed
+  # A unique name per process: agents often run several tool calls at once, so first runs can overlap.
+  PARTIAL=$(mktemp "$CACHE_DIR/.motif.XXXXXX") || install_failed
+  mv -f "$TMP/$ASSET" "$PARTIAL" || install_failed
+  chmod +x "$PARTIAL"
+  # If another run finished first (or its binary is busy on Windows), keep that one.
+  if [ -x "$BIN" ] || ! mv -f "$PARTIAL" "$BIN" 2>/dev/null; then
+    rm -f "$PARTIAL"
+    [ -x "$BIN" ] || install_failed
+  fi
   rm -rf "$TMP"
   trap - EXIT
 fi
