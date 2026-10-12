@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { durationToMs, validateValue } from "../src/contract/values";
 
 const px = (value: number) => ({ value, unit: "px" });
-const black = { colorSpace: "srgb", components: [0, 0, 0] };
+const black = { colorSpace: "srgb", components: [0, 0, 0], hex: "#000000" };
 
 describe("validateValue", () => {
   test.each([
     ["color", { colorSpace: "srgb", components: [1, 0.5, 0], alpha: 1, hex: "#FF8000" }],
-    ["color", { colorSpace: "oklch", components: [0.7, 0.1, "none"] }],
+    ["color", { colorSpace: "oklch", components: [0.7, 0.1, "none"], hex: "#A3A3A3" }],
+    ["color", { colorSpace: "hsl", components: [210, 40, 50], hex: "#4D80B3" }],
     ["dimension", px(16)],
     ["dimension", { value: 1.5, unit: "rem" }],
     ["duration", { value: 200, unit: "ms" }],
@@ -34,6 +35,10 @@ describe("validateValue", () => {
     ["color", { colorSpace: "srgb", components: [0, 0] }, "components must be 3 numbers"],
     ["color", { colorSpace: "srgb", components: [0, 0, 0], alpha: 2 }, "alpha must be between 0 and 1"],
     ["color", { colorSpace: "srgb", components: [0, 0, 0], hex: "red" }, 'hex must look like "#1A2B3C"'],
+    ["color", { colorSpace: "srgb", components: [17, 24, 39], hex: "#111827" }, "srgb components must be between 0 and 1 (these look like 0–255 values; divide them by 255)"],
+    ["color", { colorSpace: "hsl", components: [0, 150, 50], hex: "#FF0000" }, "hsl saturation and lightness must be between 0 and 100"],
+    ["color", { colorSpace: "srgb", components: [0, 0, 0] }, 'add a "hex" value such as "#1A2B3C" (Motif keeps one on every color)'],
+    ["color", { colorSpace: "srgb", components: [1, 1, 1], hex: "#000000" }, `hex "#000000" doesn't match the components (they make "#FFFFFF")`],
     ["dimension", 16, 'a size must look like { "value": 16, "unit": "px" }'],
     ["dimension", { value: 16, unit: "pt" }, 'size unit must be "px" or "rem"'],
     ["duration", { value: -1, unit: "ms" }, "a duration can't be negative"],

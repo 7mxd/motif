@@ -20,6 +20,9 @@ export interface DtcgDuration {
   unit: "ms" | "s";
 }
 
+/** Spaces whose components are 0–1 channel values. */
+const RGB_SPACES = ["srgb", "srgb-linear", "display-p3", "a98-rgb", "prophoto-rgb", "rec2020"];
+
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
@@ -29,8 +32,22 @@ function checkColor(v: unknown): string | null {
   if (!Array.isArray(v.components) || v.components.length !== 3 || !v.components.every((c) => isNum(c) || c === "none")) {
     return "components must be 3 numbers";
   }
+  const space = String(v.colorSpace);
+  const nums = v.components.map((c) => (c === "none" ? 0 : c)) as number[];
+  if (RGB_SPACES.includes(space) && nums.some((c) => c < 0 || c > 1)) {
+    const looks255 = nums.every((c) => c >= 0 && c <= 255);
+    return `${space} components must be between 0 and 1${looks255 ? " (these look like 0–255 values; divide them by 255)" : ""}`;
+  }
+  if ((space === "hsl" || space === "hwb") && [nums[1]!, nums[2]!].some((c) => c < 0 || c > 100)) {
+    return `${space} ${space === "hsl" ? "saturation and lightness" : "whiteness and blackness"} must be between 0 and 100`;
+  }
   if (v.alpha !== undefined && !(isNum(v.alpha) && v.alpha >= 0 && v.alpha <= 1)) return "alpha must be between 0 and 1";
   if (v.hex !== undefined && !(typeof v.hex === "string" && /^#[0-9a-fA-F]{6}$/.test(v.hex))) return 'hex must look like "#1A2B3C"';
+  if (v.hex === undefined) return 'add a "hex" value such as "#1A2B3C" (Motif keeps one on every color)';
+  if (space === "srgb") {
+    const expected = "#" + nums.map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("").toUpperCase();
+    if (expected !== String(v.hex).toUpperCase()) return `hex "${String(v.hex)}" doesn't match the components (they make "${expected}")`;
+  }
   return null;
 }
 
