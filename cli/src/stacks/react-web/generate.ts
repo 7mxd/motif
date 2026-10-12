@@ -93,8 +93,15 @@ export function tailwindCss(theme: Theme): string {
     "",
   ];
   for (const c of theme.colors) lines.push(`--color-${c.name}: var(${cssVar("color", c.name)});`);
+  // The base keeps sizing utilities working; a key per role makes p-5 exactly space.5 even on a non-linear scale.
   if (theme.space.some((s) => s.name === "1")) lines.push(`--spacing: var(${cssVar("space", "1")});`);
+  for (const s of theme.space) lines.push(`--spacing-${s.name}: var(${cssVar("space", s.name)});`);
+  // The resets also remove the bare --radius and --shadow, so plain `rounded` and `shadow` need them back.
+  const baseRadius = theme.radius.find((r) => r.name === "sm") ?? theme.radius[0];
+  if (baseRadius) lines.push(`--radius: var(${cssVar("radius", baseRadius.name)});`);
   for (const r of theme.radius) lines.push(`--radius-${r.name}: var(${cssVar("radius", r.name)});`);
+  const baseShadow = theme.shadows.find((s) => s.name === "sm") ?? theme.shadows[0];
+  if (baseShadow) lines.push(`--shadow: var(${cssVar("shadow", baseShadow.name)});`);
   for (const s of theme.shadows) lines.push(`--shadow-${s.name}: var(${cssVar("shadow", s.name)});`);
   for (const f of theme.fonts) {
     const p = cssVar("font", f.name);
@@ -108,6 +115,9 @@ export function tailwindCss(theme: Theme): string {
   }
   if (theme.fonts.some((f) => f.name === "body")) lines.push(`--default-font-family: var(${cssVar("font", "body")}-family);`);
   for (const e of theme.easings) lines.push(`--ease-${e.name}: var(${cssVar("easing", e.name)});`);
+  // `transition*` classes take their timing from these two variables.
+  if (theme.durations.some((d) => d.name === "base")) lines.push(`--default-transition-duration: var(${cssVar("duration", "base")});`);
+  if (theme.easings.some((e) => e.name === "standard")) lines.push(`--default-transition-timing-function: var(${cssVar("easing", "standard")});`);
   return [CSS_HEADER, "", '@import "./motif.css";', "", "@theme inline {", indent(lines, 2), "}", ""].join("\n");
 }
 
