@@ -10,18 +10,25 @@ import { generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
 import { buildTheme } from "../generate/theme";
 import { appLabel, prefixPath, selectApps } from "../project/apps";
-import { readSettingsJson, writeSettings, type AppSetting } from "../project/settings";
+import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
 import { TOKENS_JSON } from "./validate";
 
-export type FileStatus = "created" | "updated" | "unchanged" | "protected";
+export type FileStatus = "created" | "updated" | "unchanged" | "protected" | "skipped";
 
 export function writeGenerated(root: string, files: GeneratedFile[]): { path: string; status: FileStatus }[] {
+  const blocked = new Set<string>();
   return files.map((f) => {
+    // motif.tailwind.css imports its sibling motif.css; if that file isn't Motif's, don't write the importer.
+    const sibling = f.path.endsWith("/motif.tailwind.css") ? f.path.replace(/motif\.tailwind\.css$/, "motif.css") : null;
+    if (sibling && blocked.has(sibling)) return { path: f.path, status: "skipped" as const };
     const abs = join(root, f.path);
     if (existsSync(abs)) {
       const current = readFileSync(abs, "utf8");
-      if (!isMotifGenerated(f.path, current)) return { path: f.path, status: "protected" as const };
+      if (!isMotifGenerated(f.path, current)) {
+        blocked.add(f.path);
+        return { path: f.path, status: "protected" as const };
+      }
       if (sameContent(current, f.content)) return { path: f.path, status: "unchanged" as const };
       writeFileSync(abs, f.content);
       return { path: f.path, status: "updated" as const };
@@ -41,9 +48,11 @@ function updateSettings(root: string, detected: AppInfo[], srcDirs: Map<string, 
     return null;
   }
   if (!exists) {
+    // Apps whose stack Motif couldn't tell are never recorded: that would switch detection off for good.
     const apps: AppSetting[] = detected
       .filter((a) => a.stack !== null)
       .map((a) => ({ path: a.path, stack: a.stack!, ...(srcDirs.has(a.path) ? { srcDir: srcDirs.get(a.path)! } : {}) }));
+    if (apps.length === 0) return null;
     writeSettings(root, { motifContract: 1, apps, ignore: [] });
     return "created";
   }
@@ -56,8 +65,8 @@ function updateSettings(root: string, detected: AppInfo[], srcDirs: Map<string, 
     return a;
   });
   if (!changed) return "unchanged";
-  const ignore = Array.isArray(raw!.ignore) ? (raw!.ignore as string[]) : [];
-  writeSettings(root, { motifContract: 1, apps, ignore });
+  // Keep every other key as it was.
+  writeSettings(root, { ...(raw as object), apps } as MotifSettings);
   return "updated";
 }
 
@@ -120,6 +129,16 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     };
   }
 
+  const settings = readSettingsJson(cwd) as { motifContract?: unknown } | null;
+  if (typeof settings?.motifContract === "number" && settings.motifContract > 1) {
+    return {
+      command: "tokens",
+      exitCode: 2,
+      text: `design/motif.json was made by a newer version of Motif (format ${settings.motifContract}). Update Motif to use it.`,
+      data: { error: "newer-format" },
+    };
+  }
+
   const detected = detectApps(cwd).apps;
   const apps = selectApps(detected, ctx.app);
   if (apps === null) {
@@ -131,14 +150,19 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     };
   }
   if (apps.length === 0) {
-    return { command: "tokens", exitCode: 2, text: "No app found in this folder. Start one with /design first.", data: { error: "no-app" } };
+    return {
+      command: "tokens",
+      exitCode: 2,
+      text: "No app found in this folder. Run this inside your app's folder, or start a new app with /design.",
+      data: { error: "no-app" },
+    };
   }
 
   const theme = buildTheme(doc);
   const files: GeneratedFile[] = [];
   const notes: string[] = [];
   const srcDirs = new Map<string, string>();
-  const entries: { dir: string; entry: string; label: string }[] = [];
+  const entries: { dir: string; entry: string; path: string; tailwind: boolean; cssPath: string }[] = [];
   let needsFallback = false;
 
   for (const app of apps) {
@@ -151,12 +175,22 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
         notes.push(`${appLabel(app)}: Tailwind v3 found, so Motif wrote CSS variables only. Use them as bg-[var(--motif-color-action-primary)], or upgrade to Tailwind v4 for Motif's Tailwind theme.`);
       }
       for (const f of generateReactWeb(theme, { srcDir, tailwind })) files.push({ path: prefixPath(app.path, f.path), content: f.content });
-      entries.push({ dir: join(appDir, srcDir), entry: tailwind === "v4" ? "motif.tailwind.css" : "motif.css", label: appLabel(app) });
+      const entry = tailwind === "v4" ? "motif.tailwind.css" : "motif.css";
+      entries.push({
+        dir: join(appDir, srcDir),
+        entry,
+        path: prefixPath(app.path, `${srcDir}/styles/${entry}`),
+        tailwind: tailwind === "v4",
+        cssPath: prefixPath(app.path, `${srcDir}/styles/motif.css`),
+      });
     } else if (app.stack) {
       needsFallback = true;
       notes.push(`${appLabel(app)}: ${STACK_LABELS[app.stack]} support is coming soon. Motif wrote plain CSS variables and design/generated/tokens.flat.json to map by hand.`);
     } else {
-      notes.push(`${appLabel(app)}: Motif couldn't tell which framework this app uses, so it was skipped. Add it to design/motif.json.`);
+      needsFallback = true;
+      notes.push(app.source === "motif.json"
+        ? `${appLabel(app)}: design/motif.json lists a stack Motif doesn't know. Motif wrote plain CSS variables and design/generated/tokens.flat.json to map by hand.`
+        : `${appLabel(app)}: Motif couldn't tell which framework this app uses, so it wrote plain CSS variables and design/generated/tokens.flat.json. For full support, add the app and its stack to design/motif.json.`);
     }
   }
   if (needsFallback) files.push(...generateFallback(theme));
@@ -165,16 +199,20 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   const settingsStatus = updateSettings(cwd, detected, srcDirs, notes);
   if (settingsStatus) results.push({ path: "design/motif.json", status: settingsStatus });
 
+  const blockedPaths = new Set(results.filter((r) => r.status === "protected").map((r) => r.path));
   for (const e of entries) {
-    if (!isReferenced(e.dir, e.entry)) notes.push(`Next: import "./styles/${e.entry}" once in ${e.label === "Your app" ? "your app" : e.label}'s main CSS file.`);
+    if (blockedPaths.has(e.cssPath) || isReferenced(e.dir, e.entry)) continue;
+    notes.push(e.tailwind
+      ? `Next: in your main CSS file, add an @import for ${e.path} right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.`
+      : `Next: load ${e.path} once: @import it from your main CSS file, or import it in your app's entry file.`);
   }
 
   const blocked = results.filter((r) => r.status === "protected");
-  const allSame = results.every((r) => r.status === "unchanged");
+  const allSame = results.length > 0 && results.every((r) => r.status === "unchanged");
   const lines = [
     blocked.length > 0 ? "✗ Some theme files couldn't be written:" : allSame ? "✓ Theme code is up to date." : "✓ Theme code is ready:",
     ...results.map((r) => `  ${r.status.padEnd(STATUS_WIDTH)} ${r.path}`),
-    ...blocked.map((b) => `${b.path} already exists and wasn't made by Motif, so it was left alone. Rename or remove it, then run motif tokens again.`),
+    ...blocked.map((b) => `${b.path} already exists and wasn't made by Motif, so it was left alone (and files that depend on it were skipped). Rename or remove it, then run motif tokens again.`),
     ...notes.map((n) => `• ${n}`),
   ];
   return {

@@ -37,7 +37,7 @@ describe("runTokens", () => {
     expect(JSON.parse(readFileSync(join(root, "design/motif.json"), "utf8"))).toEqual({
       motifContract: 1, apps: [{ path: ".", stack: "react-web", srcDir: "src" }], ignore: [],
     });
-    expect((r.data.notes as string[]).join("\n")).toContain('import "./styles/motif.tailwind.css"');
+    expect((r.data.notes as string[]).join("\n")).toContain("src/styles/motif.tailwind.css");
   });
 
   test("running again changes nothing", async () => {
@@ -74,7 +74,7 @@ describe("runTokens", () => {
   test("without Tailwind there is no Tailwind file", async () => {
     const r = await runTokens(app({}, false), ctx());
     expect(Object.keys(statuses(r))).not.toContain("src/styles/motif.tailwind.css");
-    expect((r.data.notes as string[]).join("\n")).toContain('import "./styles/motif.css"');
+    expect((r.data.notes as string[]).join("\n")).toContain("src/styles/motif.css");
   });
 
   test("a stack without an adapter gets plain CSS variables and flat JSON", async () => {
@@ -131,5 +131,56 @@ describe("runTokens", () => {
     const r = Bun.spawnSync([process.execPath, join(import.meta.dir, "../src/main.ts"), "tokens", "--json", "--cwd", root]);
     expect(r.exitCode).toBe(0);
     expect(JSON.parse(r.stdout.toString())).toMatchObject({ command: "tokens", ok: true });
+  });
+});
+
+describe("runTokens: unusual apps and settings", () => {
+  test("a stack Motif doesn't know gets plain CSS variables and flat JSON, not a false ✓", async () => {
+    const root = makeProject({
+      "design/tokens.json": TOKENS,
+      "design/motif.json": JSON.stringify({ motifContract: 1, apps: [{ path: ".", stack: "solid" }], ignore: [] }),
+    });
+    const r = await runTokens(root, ctx());
+    expect(existsSync(join(root, "design/generated/tokens.flat.json"))).toBe(true);
+    expect(r.text).not.toContain("up to date");
+  });
+
+  test("React with unknown build tooling gets the fallback and is never written to motif.json with no stack", async () => {
+    const root = makeProject({
+      "package.json": JSON.stringify({ dependencies: { react: "^19" }, devDependencies: { esbuild: "^0.24" } }),
+      "design/tokens.json": TOKENS,
+    });
+    const r = await runTokens(root, ctx());
+    expect(r.exitCode).toBe(0);
+    expect(existsSync(join(root, "design/generated/motif.css"))).toBe(true);
+    expect(existsSync(join(root, "design/motif.json"))).toBe(false);
+  });
+
+  test("a newer design/motif.json format is refused, not rewritten", async () => {
+    const settings = JSON.stringify({ motifContract: 2, apps: [{ path: ".", stack: "react-web" }], ignore: [] });
+    const root = app({ "design/motif.json": settings });
+    const r = await runTokens(root, ctx());
+    expect(r.exitCode).toBe(2);
+    expect(readFileSync(join(root, "design/motif.json"), "utf8")).toBe(settings);
+  });
+
+  test("unknown keys in design/motif.json survive an update", async () => {
+    const root = app({ "design/motif.json": JSON.stringify({ motifContract: 1, apps: [{ path: ".", stack: "react-web" }], ignore: [], team: "web" }) });
+    await runTokens(root, ctx());
+    expect(JSON.parse(readFileSync(join(root, "design/motif.json"), "utf8")).team).toBe("web");
+  });
+
+  test("when motif.css is someone else's, the Tailwind file and the import hint are skipped", async () => {
+    const root = app({ "src/styles/motif.css": ".mine {}\n" });
+    const r = await runTokens(root, ctx());
+    expect(existsSync(join(root, "src/styles/motif.tailwind.css"))).toBe(false);
+    expect((r.data.notes as string[]).some((n) => n.startsWith("Next:"))).toBe(false);
+  });
+
+  test("the import hint says @import, and after Tailwind", async () => {
+    const r = await runTokens(app(), ctx());
+    const hint = (r.data.notes as string[]).find((n) => n.startsWith("Next:"))!;
+    expect(hint).toContain('@import "tailwindcss"');
+    expect(hint).toContain("src/styles/motif.tailwind.css");
   });
 });
