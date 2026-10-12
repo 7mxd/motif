@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { emit, type CommandResult } from "./cli/output";
@@ -58,14 +59,39 @@ export async function main(argv: string[]): Promise<number> {
     process.stdout.write(HELP);
     return 2;
   }
-  const runner = COMMANDS[command];
-  if (!runner) {
+  if (!Object.hasOwn(COMMANDS, command)) {
     process.stderr.write(`Unknown command "${command}".\n\n${HELP}`);
     return 2;
   }
-  const result = await runner(resolve(values.cwd ?? process.cwd()));
-  emit(result, values.json ?? false);
+  const runner = COMMANDS[command]!;
+  const json = values.json ?? false;
+  const cwd = resolve(values.cwd ?? process.cwd());
+  if (!isFolder(cwd)) {
+    emit({ command, exitCode: 2, text: `This folder doesn't exist: ${cwd}`, data: { error: "no-folder", folder: cwd } }, json);
+    return 2;
+  }
+  let result: CommandResult;
+  try {
+    result = await runner(cwd);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    result = {
+      command,
+      exitCode: 2,
+      text: `Motif hit an unexpected problem and stopped: ${message}\nPlease report this at https://github.com/7mxd/motif/issues`,
+      data: { error: "unexpected", message },
+    };
+  }
+  emit(result, json);
   return result.exitCode;
+}
+
+function isFolder(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 if (import.meta.main) process.exit(await main(process.argv.slice(2)));

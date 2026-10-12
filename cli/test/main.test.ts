@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const MAIN = join(import.meta.dir, "../src/main.ts");
@@ -24,5 +25,33 @@ describe("main", () => {
     const r = run("fly");
     expect(r.exitCode).toBe(2);
     expect(r.stderr.toString()).toContain('Unknown command "fly"');
+  });
+});
+
+describe("main: never crashes into a stack trace", () => {
+  test("built-in object names are unknown commands", () => {
+    const r = run("constructor");
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr.toString()).toContain('Unknown command "constructor"');
+  });
+
+  test("a folder that doesn't exist is a usage error", () => {
+    const missing = join(tmpdir(), "motif-no-such-folder-" + Date.now());
+    const r = run("doctor", "--cwd", missing);
+    expect(r.exitCode).toBe(2);
+    expect(r.stdout.toString()).toContain("This folder doesn't exist");
+    const j = run("doctor", "--json", "--cwd", missing);
+    expect(JSON.parse(j.stdout.toString())).toMatchObject({ command: "doctor", ok: false, exitCode: 2, error: "no-folder" });
+  });
+
+  test("an unexpected error exits 2 with a plain message, and JSON under --json", () => {
+    const dir = mkdtempSync(join(tmpdir(), "motif-odd-"));
+    mkdirSync(join(dir, "DESIGN.md"));
+    mkdirSync(join(dir, "design", "tokens.json"), { recursive: true });
+    const r = run("validate", "--cwd", dir);
+    expect(r.exitCode).toBe(2);
+    expect(r.stdout.toString()).toContain("Motif hit an unexpected problem");
+    const j = run("validate", "--json", "--cwd", dir);
+    expect(JSON.parse(j.stdout.toString())).toMatchObject({ command: "validate", ok: false, exitCode: 2, error: "unexpected" });
   });
 });
