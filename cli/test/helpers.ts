@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadTokenDocument } from "../src/contract/load";
 import type { TokenDocument } from "../src/contract/types";
@@ -19,4 +20,11 @@ export function docFrom(obj: unknown): TokenDocument {
   const { doc, findings } = loadTokenDocument("design/tokens.json", JSON.stringify(obj, null, 2));
   if (!doc || findings.length > 0) throw new Error(`fixture failed to load: ${JSON.stringify(findings)}`);
   return doc;
+}
+
+/** Copy the valid fixture project into a fresh temp folder. The name has a space on purpose. */
+export function copyFixture(): string {
+  const dir = mkdtempSync(join(tmpdir(), "motif test "));
+  cpSync(join(FIXTURES, "contract"), dir, { recursive: true });
+  return dir;
 }

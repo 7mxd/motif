@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { emit, type CommandResult } from "./cli/output";
+import { runValidate } from "./commands/validate";
 import { VERSION } from "./version";
 
 const HELP = `Motif ${VERSION} — design guide tools for coding agents
@@ -19,7 +20,9 @@ Options:
 
 type Runner = (cwd: string) => Promise<CommandResult>;
 
-const COMMANDS: Record<string, Runner> = {};
+const COMMANDS: Record<string, Runner> = {
+  validate: runValidate,
+};
 
 export async function main(argv: string[]): Promise<number> {
   let parsed;
