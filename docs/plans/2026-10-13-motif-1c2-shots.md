@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `motif shot` screenshots the real app (starting its dev server when needed) at phone and desktop widths in light and dark, and `motif shot --audit` reports rendered contrast, tap-target sizes and motion that ignores reduced motion, in the review JSON format.
+**Goal:** `motif shot` screenshots the real app (starting its dev server when needed) at phone and desktop widths in light and dark; `motif shot --audit` reports rendered contrast, tap-target sizes and motion that ignores reduced motion, in the review JSON format; and `--save` / `--against` put screenshots side by side with the approved mockup (while a feature is being built) or with an earlier run (after a rebuild), saying how much changed.
+
+**Developer request (2026-10-13), added as Task 7:** "It shows how the feature will look before or throughout the process of building it. Once a feature or an app is re-built, it compares the feature before and after." Spec support: §7.4 feature step 6 ("compared side by side with the approved mockup") and §7.5 review step 5 ("show before/after screenshots").
 
 **Architecture:** `shot/devserver.ts` starts the app with its own package manager's `dev` script, reads the local address it prints, waits until it answers, and stops the whole process tree afterwards. `shot/capture.ts` drives the CDP client from 1C-1 through every route × viewport × colour scheme, saving full-page PNGs into `design/shots/`; with `--audit` it also runs a vendored copy of axe-core plus Motif's own in-page checks and `shot/audit.ts` turns the results into §7.6 findings. A small exit-hook module (`cleanup.ts`) makes sure no browser or dev server outlives Motif, even after Ctrl+C.
 
@@ -25,6 +27,7 @@
 - Audit (spec §11.5): rendered text contrast via axe-core `color-contrast` (ratio below 3:1 → critical, otherwise major); targets failing axe `target-size` (24×24 CSS px with WCAG's spacing exception) → critical; targets below 44×44 at the mobile width → minor; motion still running after the page settles under emulated `prefers-reduced-motion: reduce` → major. All findings have `source: "exact"`, `status: "open"`.
 - Audit output follows §7.6: `{ motifReview: 1, scope, date, findings: [...] }`, written to `design/shots/audit.json`; finding ids `F-001`…, ordered critical → major → minor.
 - Nothing is uploaded. axe-core is vendored unmodified with its licence files under `cli/vendor/axe-core/` and embedded in the binary.
+- Comparisons (Task 7): `--save <name>` keeps this run's PNGs as a named set in `design/shots/<name>/` (letters, digits, dashes; replaces that set); `--against <name>` pairs this run's PNGs with that set by file name; `--against <mockup.png|mockup.html>` pairs one page's PNGs with the mockup's PNGs from `motif preview` (phone frames ↔ mobile, wider frames ↔ desktop, `.dark` ↔ dark). Side-by-side images go to `design/shots/compare/<name|mockup>/`. Before/after pairs say how much of the page changed: both images scaled to 300 px wide, a pixel counts as changed when its R+G+B differ by more than 48 in total, extra height counts as changed, below 0.1 % is "no visible change". `--against` is checked before anything starts; comparing never changes the exit code.
 
 ## Review Focus
 
@@ -49,9 +52,10 @@ cli/
 │   ├── shot/capture.ts              routes × viewports × schemes → PNGs (+ audit hook)
 │   ├── shot/audit.ts                in-page audit script, findings, review JSON
 │   ├── shot/axe.ts                  embedded axe-core source
+│   ├── shot/compare.ts              side-by-side images: mockup vs app, before vs after (Task 7)
 │   ├── stacks/react-web/routes.ts   route discovery
 │   └── commands/shot.ts             motif shot
-└── test/cleanup.test.ts · devserver.test.ts · routes.test.ts · capture.test.ts · audit.test.ts · shot-command.test.ts · shot-e2e.test.ts
+└── test/cleanup.test.ts · devserver.test.ts · routes.test.ts · capture.test.ts · audit.test.ts · compare.test.ts · shot-command.test.ts · shot-e2e.test.ts
 ```
 
 ---
@@ -2124,10 +2128,641 @@ git commit -m "feat(shot): motif shot screenshots the real app and audits it as 
 
 ---
 
+### Task 7: Side by side — the mockup while building, before and after a rebuild
+
+**Files:**
+- Create: `cli/src/shot/compare.ts`
+- Modify: `cli/src/commands/shot.ts`, `cli/src/main.ts`, `README.md`
+- Test: `cli/test/compare.test.ts`, `cli/test/shot-command.test.ts` (update `fakes`, append), `cli/test/shot-e2e.test.ts` (append)
+
+**Interfaces:**
+- Consumes: `launchBrowser` (1C-1); `pngSize` (1C-1); `MAX_HEIGHT` (Task 4); `runShot`, `ShotDeps` (Task 6); `mockupFrames` naming from `motif preview` (1C-1: `<name>.png`, `<name>-2.png`, `<name>.dark.png`).
+- Produces:
+  - From `src/shot/compare.ts`: `interface ComparePair { before: string; after: string; out: string }`; `interface Comparison extends ComparePair { changed?: number }`; `pairWithSet(shots: string[], setDir: string, compareDir: string): { pairs: ComparePair[]; added: string[] }`; `mockupFrames(mockup: string): string[]`; `pairWithMockup(frames: string[], shots: string[], compareDir: string): ComparePair[]`; `renderComparisons(opts: { browserPath: string; pairs: ComparePair[]; labels: [string, string]; measure: boolean }): Promise<Comparison[]>`
+  - `ShotDeps.compare: typeof renderComparisons`; new options `--save <name>` and `--against <name|mockup>`; `--json` gains `comparisons: [{ before, after, image, changed? }]`, `added`, `saved`
+
+How a developer and their agent use it:
+
+| Moment | Command | Result |
+|---|---|---|
+| Before building | `motif preview design/previews/settings.html --png-only` (1C-1) | the mockup as PNGs |
+| While building | `motif shot --routes /settings --against design/previews/settings.html` | `design/shots/compare/mockup/settings.png` (and `.dark`): **Mockup \| The app now** |
+| Before a rebuild | `motif shot --save before` | this run kept in `design/shots/before/` |
+| After the rebuild | `motif shot --against before` | `design/shots/compare/before/<page>.<viewport>[.dark].png`: **Before \| Now**, with "About 12.5% of the page looks different." under them; the summary lists what changed and what's new |
+
+The side-by-side image is a small page the headless browser renders: both images at the same width (phone screenshots at their CSS size, wide ones at 720 CSS px), labelled, at 2×. Measuring happens in the same page with a canvas (see Global Constraints for the rule).
+
+- [ ] **Step 1: Write the failing test for the comparison module**
+
+`cli/test/compare.test.ts`:
+```ts
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { launchBrowser } from "../src/browser/cdp";
+import { pngSize } from "../src/browser/png";
+import { findBrowser } from "../src/detect/browser";
+import { mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
+import { cleanupTempDirs, tempDir } from "./tmp";
+
+afterAll(cleanupTempDirs);
+
+/** Just enough of a PNG for pngSize: the signature and an IHDR chunk with this width and height. */
+function pngHeader(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(33);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
+}
+
+describe("pairing", () => {
+  test("with a saved set, by file name; screenshots the set doesn't have are new", () => {
+    const dir = tempDir("motif-pairs-");
+    mkdirSync(join(dir, "before"));
+    writeFileSync(join(dir, "before", "index.mobile.png"), "x");
+    const shots = [join(dir, "index.mobile.png"), join(dir, "settings.mobile.png")];
+    const { pairs, added } = pairWithSet(shots, join(dir, "before"), join(dir, "compare", "before"));
+    expect(pairs).toEqual([{ before: join(dir, "before", "index.mobile.png"), after: shots[0]!, out: join(dir, "compare", "before", "index.mobile.png") }]);
+    expect(added).toEqual([shots[1]!]);
+  });
+
+  test("a mockup's PNGs, found from its .html or from any of its PNGs", () => {
+    const dir = tempDir("motif-mockup-");
+    for (const f of ["home.png", "home-2.png", "home.dark.png", "home-2.dark.png", "homepage.png", "other.png"]) writeFileSync(join(dir, f), "x");
+    const expected = ["home-2.dark.png", "home-2.png", "home.dark.png", "home.png"].map((f) => join(dir, f));
+    expect(mockupFrames(join(dir, "home.html"))).toEqual(expected);
+    expect(mockupFrames(join(dir, "home.dark.png"))).toEqual(expected);
+    expect(mockupFrames(join(dir, "missing", "x.html"))).toEqual([]);
+  });
+
+  test("phone frames pair with mobile screenshots, wider frames with desktop, dark with dark", () => {
+    const dir = tempDir("motif-mockup-");
+    writeFileSync(join(dir, "home.png"), pngHeader(820, 1728));
+    writeFileSync(join(dir, "home.dark.png"), pngHeader(820, 1728));
+    writeFileSync(join(dir, "home-2.png"), pngHeader(2880, 1800));
+    const shots = ["index.mobile.png", "index.mobile.dark.png", "index.desktop.png", "index.desktop.dark.png"].map((f) => join(dir, "shots", f));
+    const pairs = pairWithMockup(mockupFrames(join(dir, "home.html")), shots, join(dir, "compare"));
+    expect(pairs.map((p) => [p.before.slice(dir.length + 1), p.after.slice(dir.length + 1), p.out.slice(dir.length + 1)])).toEqual([
+      ["home-2.png", join("shots", "index.desktop.png"), join("compare", "home-2.png")],
+      ["home.dark.png", join("shots", "index.mobile.dark.png"), join("compare", "home.dark.png")],
+      ["home.png", join("shots", "index.mobile.png"), join("compare", "home.png")],
+    ]);
+  });
+});
+
+const browser = findBrowser();
+
+/** A real 2× screenshot (400×600 px) of a 200×300 page. */
+async function screenshotOf(body: string): Promise<Uint8Array> {
+  const b = await launchBrowser(browser!.path);
+  try {
+    const page = await b.newPage();
+    await page.setViewport(200, 300, 2);
+    await page.goto("data:text/html," + encodeURIComponent(`<body style="margin: 0; background: #ffffff">${body}</body>`));
+    return await page.screenshot();
+  } finally {
+    await b.close();
+  }
+}
+
+describe.skipIf(!browser)("renderComparisons (needs Chrome, Edge or Chromium)", () => {
+  test("side by side, with how much of the page changed", async () => {
+    const dir = tempDir("motif-compare-");
+    const box = (top: number) => `<div style="position: absolute; left: 20px; top: ${top}px; width: 100px; height: 100px; background: #e11d48"></div>`;
+    writeFileSync(join(dir, "before.png"), await screenshotOf(box(20)));
+    writeFileSync(join(dir, "after.png"), await screenshotOf(box(160)));
+    writeFileSync(join(dir, "same.png"), await screenshotOf(box(20)));
+    const results = await renderComparisons({
+      browserPath: browser!.path,
+      labels: ["Before", "Now"],
+      measure: true,
+      pairs: [
+        { before: join(dir, "before.png"), after: join(dir, "after.png"), out: join(dir, "out", "moved.png") },
+        { before: join(dir, "before.png"), after: join(dir, "same.png"), out: join(dir, "out", "same.png") },
+      ],
+    });
+    expect(results[0]!.changed).toBeGreaterThan(20); // two 100×100 boxes out of 200×300 ≈ 33 %
+    expect(results[1]!.changed).toBe(0);
+    // 400 px wide 2× screenshots are shown 200 CSS px wide per side, plus margins, captured at 2×.
+    expect(pngSize(new Uint8Array(readFileSync(join(dir, "out", "moved.png")))).width).toBe((200 * 2 + 48) * 2);
+  }, 60_000);
+
+  test("mockup comparisons are side by side without a measure", async () => {
+    const dir = tempDir("motif-compare-");
+    writeFileSync(join(dir, "a.png"), await screenshotOf("<p>Mockup</p>"));
+    writeFileSync(join(dir, "b.png"), await screenshotOf("<p>App</p>"));
+    const [result] = await renderComparisons({
+      browserPath: browser!.path,
+      labels: ["Mockup", "The app now"],
+      measure: false,
+      pairs: [{ before: join(dir, "a.png"), after: join(dir, "b.png"), out: join(dir, "out.png") }],
+    });
+    expect(result!.changed).toBeUndefined();
+    expect(pngSize(new Uint8Array(readFileSync(join(dir, "out.png")))).width).toBe(896);
+  }, 60_000);
+
+  test("nothing to compare is not an error", async () => {
+    expect(await renderComparisons({ browserPath: browser!.path, labels: ["Before", "Now"], measure: true, pairs: [] })).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cd cli && bun test test/compare.test.ts`
+Expected: FAIL — `../src/shot/compare` not found.
+
+- [ ] **Step 3: Implement the comparison module**
+
+`cli/src/shot/compare.ts`:
+```ts
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join } from "node:path";
+import { launchBrowser } from "../browser/cdp";
+import { pngSize } from "../browser/png";
+import { MAX_HEIGHT } from "./capture";
+
+export interface ComparePair {
+  before: string;
+  after: string;
+  /** Where the side-by-side image goes. */
+  out: string;
+}
+
+export interface Comparison extends ComparePair {
+  /** How much of the page looks different, in percent (before/after comparisons only). */
+  changed?: number;
+}
+
+/** Pairs this run's screenshots with a saved set by file name; screenshots the set doesn't have are "added". */
+export function pairWithSet(shots: string[], setDir: string, compareDir: string): { pairs: ComparePair[]; added: string[] } {
+  const pairs: ComparePair[] = [];
+  const added: string[] = [];
+  for (const after of shots) {
+    const before = join(setDir, basename(after));
+    if (existsSync(before)) pairs.push({ before, after, out: join(compareDir, basename(after)) });
+    else added.push(after);
+  }
+  return { pairs, added };
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The PNGs `motif preview` made for a mockup. Given home.html or any of its PNGs: home.png, home-2.png, home.dark.png, … */
+export function mockupFrames(mockup: string): string[] {
+  const dir = dirname(mockup);
+  const name = basename(mockup, extname(mockup)).replace(/(-\d+)?(\.dark)?$/, "");
+  const frame = new RegExp(`^${escapeRegExp(name)}(-\\d+)?(\\.dark)?\\.png$`);
+  try {
+    return readdirSync(dir).filter((f) => frame.test(f)).sort().map((f) => join(dir, f));
+  } catch {
+    return [];
+  }
+}
+
+/** Pairs each mockup frame with this run's screenshot for the same viewport and scheme: phone frames ↔ mobile, wider frames ↔ desktop. */
+export function pairWithMockup(frames: string[], shots: string[], compareDir: string): ComparePair[] {
+  const pairs: ComparePair[] = [];
+  for (const frame of frames) {
+    const dark = frame.endsWith(".dark.png");
+    const viewport = pngSize(new Uint8Array(readFileSync(frame))).width <= 1000 ? "mobile" : "desktop";
+    const after = shots.find((s) => s.endsWith(`.${viewport}${dark ? ".dark" : ""}.png`));
+    if (after) pairs.push({ before: frame, after, out: join(compareDir, basename(frame)) });
+  }
+  return pairs;
+}
+
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+// The tool's own page (not the app), so it uses fixed neutral colours.
+function sideBySide(labels: [string, string], column: number, n: number): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+body { margin: 0; padding: 16px; background: #f4f4f5; color: #18181b; font: 600 14px/1.4 system-ui, sans-serif; }
+.row { display: flex; gap: 16px; align-items: flex-start; }
+figure { margin: 0; width: ${column}px; }
+figcaption { margin: 0 0 8px; }
+img { display: block; width: 100%; border: 1px solid #d4d4d8; background: #ffffff; }
+#note { margin: 12px 0 0; font-weight: 400; }
+</style></head><body><div class="row"><figure><figcaption>${escapeHtml(labels[0])}</figcaption><img id="a" src="/a.png?${n}"></figure><figure><figcaption>${escapeHtml(labels[1])}</figcaption><img id="b" src="/b.png?${n}"></figure></div><p id="note"></p></body></html>`;
+}
+
+/** In the page: the share of the two images that differs (scaled to 300 px wide), written under them and returned. */
+const MEASURE = `(async () => {
+  const a = document.getElementById("a"), b = document.getElementById("b");
+  await Promise.all([a.decode(), b.decode()]);
+  const w = 300;
+  const ha = Math.max(1, Math.round((a.naturalHeight * w) / a.naturalWidth));
+  const hb = Math.max(1, Math.round((b.naturalHeight * w) / b.naturalWidth));
+  const h = Math.max(ha, hb);
+  const pixels = (img, height) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const g = canvas.getContext("2d");
+    g.fillStyle = "#ff00ff";
+    g.fillRect(0, 0, w, h);
+    g.drawImage(img, 0, 0, w, height);
+    return g.getImageData(0, 0, w, h).data;
+  };
+  const pa = pixels(a, ha), pb = pixels(b, hb);
+  let different = 0;
+  for (let i = 0; i < pa.length; i += 4) {
+    if (Math.abs(pa[i] - pb[i]) + Math.abs(pa[i + 1] - pb[i + 1]) + Math.abs(pa[i + 2] - pb[i + 2]) > 48) different++;
+  }
+  const changed = Math.round((different / (w * h)) * 1000) / 10;
+  document.getElementById("note").textContent = changed < 0.1 ? "No visible change." : "About " + changed + "% of the page looks different.";
+  return changed;
+})()`;
+
+/** Renders each pair side by side (labelled) into its out file; with measure, also says how much changed. */
+export async function renderComparisons(opts: {
+  browserPath: string;
+  pairs: ComparePair[];
+  labels: [string, string];
+  measure: boolean;
+}): Promise<Comparison[]> {
+  if (opts.pairs.length === 0) return [];
+  let current = opts.pairs[0]!;
+  let html = "";
+  const png = (file: string) => new Response(Bun.file(file), { headers: { "content-type": "image/png", "cache-control": "no-store" } });
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(req) {
+      const path = new URL(req.url).pathname;
+      if (path === "/") return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+      if (path === "/a.png") return png(current.before);
+      if (path === "/b.png") return png(current.after);
+      return new Response("Not found", { status: 404 });
+    },
+  });
+  const results: Comparison[] = [];
+  try {
+    const browser = await launchBrowser(opts.browserPath);
+    try {
+      const page = await browser.newPage();
+      for (const [n, pair] of opts.pairs.entries()) {
+        current = pair;
+        const width = pngSize(new Uint8Array(readFileSync(pair.after))).width;
+        // Phone screenshots are 2× (780 px → 390 CSS px per side); wide ones are shown 720 CSS px wide.
+        const column = width > 1000 ? 720 : Math.round(width / 2);
+        const pageWidth = column * 2 + 48;
+        html = sideBySide(opts.labels, column, n);
+        await page.setViewport(pageWidth, 900, 2);
+        await page.goto(`http://127.0.0.1:${server.port}/?${n}`);
+        const changed = opts.measure ? await page.evaluate<number>(MEASURE) : undefined;
+        const height = Math.min(await page.evaluate<number>("document.documentElement.scrollHeight"), MAX_HEIGHT);
+        mkdirSync(dirname(pair.out), { recursive: true });
+        writeFileSync(pair.out, await page.screenshot({ x: 0, y: 0, width: pageWidth, height }));
+        results.push(changed === undefined ? { ...pair } : { ...pair, changed });
+      }
+    } finally {
+      await browser.close();
+    }
+  } finally {
+    server.stop(true);
+  }
+  return results;
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `cd cli && bun test test/compare.test.ts && bun run typecheck`
+Expected: PASS.
+
+- [ ] **Step 5: Write the failing command tests**
+
+In `cli/test/shot-command.test.ts`:
+- change the import lines to:
+  ```ts
+  import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+  import { dirname, join } from "node:path";
+  import { parseRoutes, runShot, type ShotDeps } from "../src/commands/shot";
+  import type { AuditIssue } from "../src/shot/audit";
+  import type { CaptureOptions, RouteResult } from "../src/shot/capture";
+  import type { ComparePair } from "../src/shot/compare";
+  import { devCommand } from "../src/shot/devserver";
+  ```
+- replace the whole `fakes` function with this version (it also writes the screenshot files, so `--save` has something to copy, and records comparisons):
+  ```ts
+  /** Stand-ins for the browser, the dev server, the capture and the side-by-side renderer. */
+  function fakes(over: Partial<ShotDeps> & { results?: (o: CaptureOptions) => RouteResult[]; issues?: AuditIssue[] } = {}) {
+    const calls = {
+      started: [] as { cwd: string; command: string[] }[],
+      stopped: 0,
+      captured: [] as CaptureOptions[],
+      compared: [] as { pairs: ComparePair[]; labels: [string, string]; measure: boolean }[],
+    };
+    const { results, issues, ...depOverrides } = over;
+    const deps: ShotDeps = {
+      findBrowser: () => CHROME,
+      devCommand: () => ({ command: ["npm", "run", "dev"], display: "npm run dev", packageManager: "npm" }),
+      startDevServer: async (o) => {
+        calls.started.push({ cwd: o.cwd, command: o.command });
+        return {
+          url: "http://localhost:3000",
+          pid: 1,
+          stop: async () => {
+            calls.stopped++;
+          },
+        };
+      },
+      capture: async (o) => {
+        calls.captured.push(o);
+        const routes =
+          results?.(o) ??
+          o.routes.map((route) => ({ route, url: `${o.baseUrl}${route}`, status: 200, shots: [join(o.outDir, `${route === "/" ? "index" : route.slice(1)}.mobile.png`)] }));
+        for (const shot of routes.flatMap((r) => r.shots)) {
+          mkdirSync(dirname(shot), { recursive: true });
+          writeFileSync(shot, "png");
+        }
+        return { routes, issues: issues ?? [] };
+      },
+      compare: async (o) => {
+        calls.compared.push({ pairs: o.pairs, labels: o.labels, measure: o.measure });
+        return o.pairs.map((p) => (o.measure ? { ...p, changed: 12.5 } : { ...p }));
+      },
+      today: () => "2026-10-13",
+      ...depOverrides,
+    };
+    return { deps, calls };
+  }
+  ```
+- add, after `const ctx = …`:
+  ```ts
+  /** Just enough of a PNG for pngSize. */
+  function pngHeader(width: number, height: number): Uint8Array {
+    const bytes = new Uint8Array(33);
+    bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(16, width);
+    view.setUint32(20, height);
+    return bytes;
+  }
+  ```
+- append:
+  ```ts
+  describe("motif shot: the mockup while building, before and after a rebuild", () => {
+    test("--save keeps this run's screenshots as a named set", async () => {
+      const root = makeProject({});
+      const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/,/settings", save: "before" }), fakes().deps);
+      expect(r.exitCode).toBe(0);
+      expect(readdirSync(join(root, "design/shots/before")).sort()).toEqual(["index.mobile.png", "settings.mobile.png"]);
+      expect(r.data.saved).toBe("design/shots/before");
+      expect(r.text).toContain("--against before");
+      expect((await runShot(root, ctx({ url: "http://localhost:3000", save: "../x" }), fakes().deps)).exitCode).toBe(2);
+    });
+
+    test("--against a saved set compares page by page, then --save can replace the set", async () => {
+      const root = makeProject({ "design/shots/before/index.mobile.png": "old" });
+      const { deps, calls } = fakes();
+      const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/,/settings", against: "before", save: "before" }), deps);
+      expect(r.exitCode).toBe(0);
+      expect(calls.compared[0]).toMatchObject({ labels: ['Before ("before")', "Now"], measure: true });
+      expect(calls.compared[0]!.pairs).toEqual([
+        { before: join(root, "design/shots/before/index.mobile.png"), after: join(root, "design/shots/index.mobile.png"), out: join(root, "design/shots/compare/before/index.mobile.png") },
+      ]);
+      expect(r.data.comparisons).toEqual([
+        { before: "design/shots/before/index.mobile.png", after: "design/shots/index.mobile.png", image: "design/shots/compare/before/index.mobile.png", changed: 12.5 },
+      ]);
+      expect(r.data.added).toEqual(["design/shots/settings.mobile.png"]);
+      expect(r.text).toContain("1 changed");
+      expect(r.text).toContain("12.5% different");
+      expect(readFileSync(join(root, "design/shots/before/index.mobile.png"), "utf8")).toBe("png");
+    });
+
+    test("--against a mockup puts the page next to it", async () => {
+      const root = makeProject({ "design/previews/settings.html": "<p>mockup</p>" });
+      writeFileSync(join(root, "design/previews/settings.png"), pngHeader(820, 1728));
+      const { deps, calls } = fakes();
+      const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/settings", against: "design/previews/settings.html" }), deps);
+      expect(r.exitCode).toBe(0);
+      expect(calls.compared[0]).toMatchObject({ labels: ["Mockup", "The app now"], measure: false });
+      expect(calls.compared[0]!.pairs.map((p) => p.after)).toEqual([join(root, "design/shots/settings.mobile.png")]);
+      expect(r.text).toContain("Side by side with the mockup design/previews/settings.html");
+    });
+
+    test("--against is checked before anything starts", async () => {
+      const root = makeProject({ ...NEXT_APP, "design/previews/home.html": "<p>mockup</p>" });
+      const cases: [string, string, string][] = [
+        ["nothing-here", "/", "Nothing to compare with"],
+        ["design/previews/home.html", "/", "motif preview design/previews/home.html --png-only"],
+      ];
+      for (const [against, routes, message] of cases) {
+        const { deps, calls } = fakes();
+        const r = await runShot(root, ctx({ against, routes }), deps);
+        expect(r.exitCode).toBe(2);
+        expect(r.text).toContain(message);
+        expect(calls.started).toEqual([]);
+      }
+      writeFileSync(join(root, "design/previews/home.png"), pngHeader(820, 1728));
+      const two = await runShot(root, ctx({ against: "design/previews/home.png", routes: "/,/settings" }), fakes().deps);
+      expect(two.exitCode).toBe(2);
+      expect(two.text).toContain("one page");
+    });
+  });
+  ```
+
+Run: `cd cli && bun test test/shot-command.test.ts`
+Expected: FAIL — typecheck-level errors don't stop Bun, but the new tests fail (`saved`, `comparisons` are undefined; `compare` is never called).
+
+- [ ] **Step 6: Wire comparisons into the command**
+
+In `cli/src/commands/shot.ts`:
+- change the `node:fs` and `node:path` imports to:
+  ```ts
+  import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+  import { basename, join, relative, resolve, sep } from "node:path";
+  ```
+  and add `import { mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison } from "../shot/compare";`
+- add `compare: typeof renderComparisons;` to `interface ShotDeps` (after `capture`), and `compare: renderComparisons,` to `defaultDeps`
+- add below `const rendered = …`:
+  ```ts
+  const SET_NAME = /^(?!compare$)[a-z0-9][a-z0-9-]*$/i;
+  const isDir = (path: string) => {
+    try {
+      return statSync(path).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+
+  type Against = { kind: "set"; name: string; dir: string } | { kind: "mockup"; file: string; frames: string[] };
+
+  /** What --against names: a saved set of screenshots, or a mockup (its .html, or one of its PNGs from motif preview). */
+  function resolveAgainst(cwd: string, outDir: string, value: string, pages: number): Against | { error: string } {
+    if (SET_NAME.test(value) && isDir(join(outDir, value))) return { kind: "set", name: value, dir: join(outDir, value) };
+    const file = resolve(cwd, value);
+    if (/\.(png|html)$/i.test(file) && existsSync(file)) {
+      if (pages !== 1) return { error: "Compare one page with a mockup at a time: add --routes with that page, like --routes /settings." };
+      const frames = mockupFrames(file);
+      if (frames.length === 0) return { error: `There are no PNGs of this mockup yet. Make them first: motif preview ${value} --png-only` };
+      return { kind: "mockup", file, frames };
+    }
+    return {
+      error: `Nothing to compare with: "${value}" isn't a saved set of screenshots (keep one with --save ${SET_NAME.test(value) ? value : "before"}) or a mockup (.html or .png).`,
+    };
+  }
+  ```
+- move the line `const outDir = resolve(cwd, typeof flags.out === "string" ? flags.out : join("design", "shots"));` up to just after the `if (discovery.skipped.length > 0) { … }` block, and add right after it:
+  ```ts
+  const save = typeof flags.save === "string" ? flags.save : undefined;
+  if (save !== undefined && !SET_NAME.test(save)) {
+    return usage("--save needs a short name made of letters, digits and dashes, like --save before.", { error: "usage" });
+  }
+  const against = typeof flags.against === "string" ? resolveAgainst(cwd, outDir, flags.against, routes.length) : undefined;
+  if (against && "error" in against) return usage(against.error, { error: "usage" });
+  ```
+- insert just before `lines.push(...notes.map((n) => \`• ${n}\`));`:
+  ```ts
+  const thisRun = captured.routes.flatMap((r) => r.shots);
+  let comparisons: Comparison[] = [];
+  let added: string[] = [];
+  if (against) {
+    const compareDir = join(outDir, "compare", against.kind === "set" ? against.name : "mockup");
+    let pairs: ComparePair[];
+    if (against.kind === "set") {
+      const paired = pairWithSet(thisRun, against.dir, compareDir);
+      pairs = paired.pairs;
+      added = paired.added;
+    } else {
+      pairs = pairWithMockup(against.frames, thisRun, compareDir);
+    }
+    try {
+      comparisons = await deps.compare({
+        browserPath: browser.path,
+        pairs,
+        labels: against.kind === "set" ? [`Before ("${against.name}")`, "Now"] : ["Mockup", "The app now"],
+        measure: against.kind === "set",
+      });
+    } catch (e) {
+      notes.push(`Couldn't make the side-by-side images: ${message(e)}`);
+    }
+    const where = projectPath(cwd, compareDir);
+    if (against.kind === "set") {
+      const changed = comparisons.filter((c) => (c.changed ?? 0) >= 0.1);
+      const newPart = added.length > 0 ? `, ${added.length} new` : "";
+      lines.push(`Compared with "${against.name}": ${changed.length} changed, ${comparisons.length - changed.length} with no visible change${newPart} (side by side in ${where}/)`);
+      for (const c of changed) lines.push(`  ${basename(c.after)}  ${c.changed}% different`);
+    } else if (comparisons.length > 0) {
+      lines.push(`Side by side with the mockup ${projectPath(cwd, against.file)}: ${comparisons.length} ${comparisons.length === 1 ? "image" : "images"} in ${where}/`);
+    } else {
+      notes.push("None of the mockup's frames matched these screenshots (phone frames pair with mobile, wider frames with desktop).");
+    }
+  }
+  let saved: string | undefined;
+  if (save) {
+    const setDir = join(outDir, save);
+    rmSync(setDir, { recursive: true, force: true });
+    mkdirSync(setDir, { recursive: true });
+    for (const shot of thisRun) copyFileSync(shot, join(setDir, basename(shot)));
+    saved = projectPath(cwd, setDir);
+    lines.push(`✓ Kept these screenshots as "${save}" (${saved}/). After changes, compare with --against ${save}.`);
+  }
+  ```
+- in the returned `data`, add after the audit spread:
+  ```ts
+      ...(against
+        ? {
+            comparisons: comparisons.map((c) => ({
+              before: projectPath(cwd, c.before),
+              after: projectPath(cwd, c.after),
+              image: projectPath(cwd, c.out),
+              ...(c.changed !== undefined ? { changed: c.changed } : {}),
+            })),
+            added: added.map((a) => projectPath(cwd, a)),
+          }
+        : {}),
+      ...(saved ? { saved } : {}),
+  ```
+
+In `cli/src/main.ts`:
+- add to the `parseArgs` `options`: `save: { type: "string" }, against: { type: "string" },`
+- add to the `flags` object: `save: values.save, against: values.against,`
+- add to the `Shot options:` block in `HELP`:
+  ```
+    --save <name>     Keep these screenshots as a named set, e.g. --save before
+    --against <what>  Side by side with a saved set (after a rebuild) or a mockup (while building)
+  ```
+
+- [ ] **Step 7: Run the tests to verify they pass**
+
+Run: `cd cli && bun test test/shot-command.test.ts test/compare.test.ts test/main.test.ts && bun run typecheck`
+Expected: PASS.
+
+- [ ] **Step 8: The whole flow, end to end**
+
+In `cli/test/shot-e2e.test.ts`:
+- change the `node:fs` import to `import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";`
+- move the object passed to `makeProject` in the first test into a constant above the `describe` and use it there:
+  ```ts
+  const FIXTURE = {
+    "package.json": JSON.stringify({ name: "fixture", private: true, scripts: { dev: "bun server.ts" }, dependencies: { react: "^19", "react-dom": "^19" }, devDependencies: { vite: "^6" } }),
+    "bun.lock": "",
+    "node_modules/.keep": "",
+    "server.ts": SERVER,
+  };
+  ```
+  (the first test becomes `const root = makeProject(FIXTURE);`)
+- append inside the `describe`:
+  ```ts
+  test("the app next to its mockup while building, and before and after a change", async () => {
+    const root = makeProject(FIXTURE);
+    const run = (...args: string[]) => {
+      const r = Bun.spawnSync([bin, ...args, "--json", "--cwd", root], { env: { ...process.env, MOTIF_HOME: tempDir("motif-home-") } });
+      return { code: r.exitCode, out: JSON.parse(r.stdout.toString()) };
+    };
+
+    // While building: the mockup's PNGs, then the page next to them.
+    mkdirSync(join(root, "design", "previews"), { recursive: true });
+    writeFileSync(join(root, "design/previews/home.html"), readFileSync(join(REPO_ROOT, "skill/preview-kit/template.html"), "utf8"));
+    expect(run("preview", "design/previews/home.html", "--png-only", "--preset", "minimal").code).toBe(0);
+    const side = run("shot", "--routes", "/", "--against", "design/previews/home.html");
+    expect(side.out.comparisons.map((c: { image: string }) => c.image)).toEqual(["design/shots/compare/mockup/home.dark.png", "design/shots/compare/mockup/home.png"]);
+    expect(existsSync(join(root, "design/shots/compare/mockup/home.png"))).toBe(true);
+
+    // Before and after a change.
+    expect(run("shot", "--routes", "/,/settings", "--save", "before").out.saved).toBe("design/shots/before");
+    writeFileSync(join(root, "server.ts"), SERVER.replace("<h1>Home</h1>", "<h1>Welcome home</h1><p>New intro text</p>"));
+    const after = run("shot", "--routes", "/,/settings", "--against", "before");
+    const changed = Object.fromEntries(after.out.comparisons.map((c: { after: string; changed: number }) => [c.after.split("/").pop(), c.changed]));
+    expect(changed["index.mobile.png"]).toBeGreaterThan(0.1);
+    expect(changed["settings.mobile.png"]).toBe(0);
+    expect(existsSync(join(root, "design/shots/compare/before/index.mobile.png"))).toBe(true);
+  }, 240_000);
+  ```
+
+Run: `cd cli && bun test test/shot-e2e.test.ts`
+Expected: PASS (skipped only without a browser or without `bun` on PATH).
+
+- [ ] **Step 9: README**
+
+In `README.md`, replace the `motif shot` row with:
+```markdown
+| `motif shot` | Screenshots your real app's pages at phone and desktop widths in light and dark (starting its dev server if needed); `--audit` checks contrast, tap-target sizes and reduced motion as rendered; `--against` puts them side by side with the mockup while you build, or with an earlier run (`--save before`) after a rebuild |
+```
+
+- [ ] **Step 10: Run everything**
+
+Run: `cd cli && bun test --timeout 120000 && bun run typecheck && bun run build`
+Expected: all tests PASS; the build succeeds.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add cli/src/shot/compare.ts cli/src/commands/shot.ts cli/src/main.ts cli/test/compare.test.ts cli/test/shot-command.test.ts cli/test/shot-e2e.test.ts README.md
+git commit -m "feat(shot): side by side with the mockup while building, and before/after a rebuild"
+```
+
+---
+
 ## After this plan
 
 - **Part 1C is complete**: previews before code (1C-1) and proof after code (1C-2).
-- **1D Skill content** tells agents when to run `motif shot --audit` (init step 7, feature step 6, review step 3), how to show the screenshots, how to merge `design/shots/audit.json` findings into `design/reviews/<date>-<scope>.json`, and to ask before `motif browser install` when `status` is `needs_browser`.
+- **1D Skill content** tells agents when to run `motif shot --audit` (init step 7, feature step 6, review step 3), to show the mockup next to the app while building (`--against design/previews/<screen>.html`), to keep a set before any rebuild (`--save before`) and show before/after afterwards (`--against before`), how to show the screenshots, how to merge `design/shots/audit.json` findings into `design/reviews/<date>-<scope>.json`, and to ask before `motif browser install` when `status` is `needs_browser`.
 - **1E Evals** use `shot` for Test D ("all starter screens exist and render in `shot`") and the audit for Test C's exact findings.
 - Deferred from 1C-1 and still open: the 1C-1 minors (PNG name collisions, quirks mode without `</head>`, skeleton pulse under reduced motion, stale live PNGs, installer polish, `MOTIF_HOME=""`, `MOTIF_BROWSER=none` wording) and the end-to-end check of a browser installed by `motif browser install`, which the developer asked to keep until the end of all plans.
 
