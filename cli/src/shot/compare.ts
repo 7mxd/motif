@@ -30,16 +30,33 @@ export function pairWithSet(shots: string[], setDir: string, compareDir: string)
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** The PNGs `motif preview` made for a mockup. Given home.html or any of its PNGs: home.png, home-2.png, home.dark.png, … */
-export function mockupFrames(mockup: string): string[] {
-  const dir = dirname(mockup);
-  const name = basename(mockup, extname(mockup)).replace(/(-\d+)?(\.dark)?$/, "");
-  const frame = new RegExp(`^${escapeRegExp(name)}(-\\d+)?(\\.dark)?\\.png$`);
+const filesIn = (dir: string) => {
   try {
-    return readdirSync(dir).filter((f) => frame.test(f)).sort().map((f) => join(dir, f));
+    return readdirSync(dir);
   } catch {
     return [];
   }
+};
+
+/**
+ * The PNGs `motif preview` made for a mockup: given home.html, its home.png, home-2.png, home.dark.png, …, next to it
+ * or in the other folders given (preview writes them to design/previews/); given one PNG, that PNG and its light or
+ * dark twin. PNGs of a neighbouring mockup with a numbered name (home-2.html) are that mockup's, not this one's.
+ */
+export function mockupFrames(mockup: string, alsoIn: string[] = []): string[] {
+  if (extname(mockup).toLowerCase() === ".png") {
+    const twin = mockup.endsWith(".dark.png") ? mockup.replace(/\.dark\.png$/, ".png") : mockup.replace(/\.png$/i, ".dark.png");
+    return [mockup, twin].filter((f) => existsSync(f)).sort();
+  }
+  const name = basename(mockup, extname(mockup));
+  const others = new Set(filesIn(dirname(mockup)).filter((f) => f.endsWith(".html")).map((f) => basename(f, ".html")));
+  others.delete(name);
+  const frame = new RegExp(`^${escapeRegExp(name)}(-\\d+)?(\\.dark)?\\.png$`);
+  for (const dir of [dirname(mockup), ...alsoIn]) {
+    const found = filesIn(dir).filter((f) => frame.test(f) && !others.has(f.replace(/(\.dark)?\.png$/, "")));
+    if (found.length > 0) return found.sort().map((f) => join(dir, f));
+  }
+  return [];
 }
 
 /** Pairs each mockup frame with this run's screenshot for the same viewport and scheme: phone frames ↔ mobile, wider frames ↔ desktop. */

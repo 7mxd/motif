@@ -335,3 +335,14 @@ describe("motif shot: the mockup while building, before and after a rebuild", ()
     expect(two.text).toContain("one page");
   });
 });
+
+describe("motif shot --against a mockup in a subfolder", () => {
+  test("finds the PNGs motif preview wrote to design/previews", async () => {
+    const root = makeProject({ "design/previews/onboarding/welcome.html": "<p>mockup</p>" });
+    writeFileSync(join(root, "design/previews/welcome.png"), pngHeader(820, 1728));
+    const { deps, calls } = fakes();
+    const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/welcome", against: "design/previews/onboarding/welcome.html" }), deps);
+    expect(r.exitCode).toBe(0);
+    expect(calls.compared[0]!.pairs.map((p) => p.before)).toEqual([join(root, "design/previews/welcome.png")]);
+  });
+});

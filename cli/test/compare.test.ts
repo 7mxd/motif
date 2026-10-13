@@ -30,13 +30,35 @@ describe("pairing", () => {
     expect(added).toEqual([shots[1]!]);
   });
 
-  test("a mockup's PNGs, found from its .html or from any of its PNGs", () => {
+  test("a mockup's PNGs, found from its .html; a PNG brings its light or dark twin", () => {
     const dir = tempDir("motif-mockup-");
     for (const f of ["home.png", "home-2.png", "home.dark.png", "home-2.dark.png", "homepage.png", "other.png"]) writeFileSync(join(dir, f), "x");
     const expected = ["home-2.dark.png", "home-2.png", "home.dark.png", "home.png"].map((f) => join(dir, f));
     expect(mockupFrames(join(dir, "home.html"))).toEqual(expected);
-    expect(mockupFrames(join(dir, "home.dark.png"))).toEqual(expected);
+    expect(mockupFrames(join(dir, "home.dark.png"))).toEqual([join(dir, "home.dark.png"), join(dir, "home.png")]);
     expect(mockupFrames(join(dir, "missing", "x.html"))).toEqual([]);
+  });
+
+  test("neighbouring mockups with numbered names keep their own PNGs", () => {
+    const dir = tempDir("motif-mockup-");
+    for (const f of ["step-1.html", "step-2.html", "step-3.html", "step-1.png", "step-2.png", "step-2-2.png", "step-2.dark.png", "step-3.png"]) writeFileSync(join(dir, f), "x");
+    expect(mockupFrames(join(dir, "step-2.html"))).toEqual(["step-2-2.png", "step-2.dark.png", "step-2.png"].map((f) => join(dir, f)));
+    expect(mockupFrames(join(dir, "step-1.html"))).toEqual([join(dir, "step-1.png")]);
+    writeFileSync(join(dir, "home.html"), "x");
+    writeFileSync(join(dir, "home-2.html"), "x");
+    writeFileSync(join(dir, "home.png"), "x");
+    writeFileSync(join(dir, "home-2.png"), "x");
+    expect(mockupFrames(join(dir, "home.html"))).toEqual([join(dir, "home.png")]);
+  });
+
+  test("a mockup in a subfolder finds the PNGs motif preview wrote to design/previews", () => {
+    const root = tempDir("motif-mockup-");
+    mkdirSync(join(root, "design", "previews", "onboarding"), { recursive: true });
+    writeFileSync(join(root, "design", "previews", "onboarding", "welcome.html"), "x");
+    writeFileSync(join(root, "design", "previews", "welcome.png"), "x");
+    expect(mockupFrames(join(root, "design", "previews", "onboarding", "welcome.html"), [join(root, "design", "previews")])).toEqual([
+      join(root, "design", "previews", "welcome.png"),
+    ]);
   });
 
   test("phone frames pair with mobile screenshots, wider frames with desktop, dark with dark", () => {
