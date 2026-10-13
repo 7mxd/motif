@@ -44,9 +44,30 @@ class StartError extends Error {
   }
 }
 
+/**
+ * Removes the temporary profile. Chrome's helper processes can hold files in it for a moment after the browser
+ * exits (EBUSY on Windows), so retry; then give up quietly, because a leftover temp folder is harmless.
+ */
+export async function removeProfile(
+  dir: string,
+  rm: (dir: string) => void = (d) => rmSync(d, { recursive: true, force: true }),
+  attempts = 30,
+  delayMs = 100,
+): Promise<boolean> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      rm(dir);
+      return true;
+    } catch {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return false;
+}
+
 function start(executable: string, args: string[], timeoutMs: number): Promise<{ proc: ChildProcess; wsUrl: string; profile: string }> {
   const profile = mkdtempSync(join(tmpdir(), "motif-browser-"));
-  const cleanup = () => rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  const cleanup = () => void removeProfile(profile);
   return new Promise((resolve, reject) => {
     let stderr = "";
     let settled = false;
@@ -180,7 +201,7 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
       ws.close();
       if (proc.exitCode === null) proc.kill();
       await new Promise((r) => (proc.exitCode !== null ? r(null) : proc.once("exit", r)));
-      rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await removeProfile(profile);
     },
   };
 }

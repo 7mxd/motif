@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { launchBrowser } from "../src/browser/cdp";
+import { launchBrowser, removeProfile } from "../src/browser/cdp";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 
@@ -49,5 +49,17 @@ describe("launchBrowser failures", () => {
 describe("pngSize", () => {
   test("rejects anything that isn't a PNG", () => {
     expect(() => pngSize(new Uint8Array([1, 2, 3]))).toThrow();
+  });
+});
+
+describe("removeProfile", () => {
+  test("retries while Chrome's helpers still hold the folder, then gives up quietly", async () => {
+    let calls = 0;
+    const busyTwice = () => {
+      if (++calls < 3) throw Object.assign(new Error("resource busy or locked"), { code: "EBUSY" });
+    };
+    expect(await removeProfile("profile", busyTwice, 5, 1)).toBe(true);
+    expect(calls).toBe(3);
+    expect(await removeProfile("profile", () => { throw new Error("resource busy or locked"); }, 3, 1)).toBe(false);
   });
 });
