@@ -46,3 +46,11 @@ describe("knowledge: motion and accessibility", () => {
     ],
   });
 });
+describe("UX patterns: getting in and getting around", () => {
+  covers("ux-patterns/onboarding.md", { minLines: 40, mustMention: ["skip", "permission", "progress", "first", "resume"] });
+  covers("ux-patterns/sign-in.md", { minLines: 40, mustMention: ["forgot", "show", "autocomplete", "passkey", "loading", "paste"] });
+  covers("ux-patterns/home-dashboard.md", { minLines: 40, mustMention: ["empty", "skeleton", "next action", "retry", "summary"] });
+  covers("ux-patterns/lists-feeds.md", { minLines: 40, mustMention: ["undo", "pagination", "skeleton", "row", "scroll position", "swipe"] });
+  covers("ux-patterns/detail-pages.md", { minLines: 40, mustMention: ["primary action", "sticky", "not found", "back", "breadcrumb"] });
+  covers("ux-patterns/forms.md", { minLines: 40, mustMention: ["label", "inline", "blur", "keyboard", "unsaved", "error summary", "autofill"] });
+});
