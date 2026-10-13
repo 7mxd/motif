@@ -64,6 +64,9 @@ const COMMANDS: Record<string, Runner> = {
   shot: runShot,
 };
 
+/** Every command the tool has (the skill's content test checks that the skill only mentions these). */
+export const COMMAND_NAMES = Object.keys(COMMANDS);
+
 export async function main(argv: string[]): Promise<number> {
   let parsed;
   try {
