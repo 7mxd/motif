@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
+import { installedBrowser } from "../browser/install";
+import { motifHome } from "../home";
 
 export interface BrowserInfo {
-  name: "Chrome" | "Edge" | "Chromium" | "Custom";
+  name: "Chrome" | "Edge" | "Chromium" | "Custom" | "Motif";
   path: string;
 }
 
@@ -13,10 +15,19 @@ export interface BrowserEnv {
   home: string;
   exists: (path: string) => boolean;
   which: (cmd: string) => string | null;
+  /** The browser installed by motif browser install, if any. */
+  installed?: () => string | null;
 }
 
 export function defaultBrowserEnv(): BrowserEnv {
-  return { platform: process.platform, env: process.env, home: homedir(), exists: existsSync, which: (c) => Bun.which(c) };
+  return {
+    platform: process.platform,
+    env: process.env,
+    home: homedir(),
+    exists: existsSync,
+    which: (c) => Bun.which(c),
+    installed: () => installedBrowser(motifHome()),
+  };
 }
 
 export function browserCandidates(e: BrowserEnv): BrowserInfo[] {
@@ -54,6 +65,10 @@ export function browserCandidates(e: BrowserEnv): BrowserInfo[] {
 
 export function findBrowser(e: BrowserEnv = defaultBrowserEnv()): BrowserInfo | null {
   const override = e.env.MOTIF_BROWSER;
+  if (override === "none") return null;
   if (override && e.exists(override)) return { name: "Custom", path: override };
-  return browserCandidates(e).find((b) => e.exists(b.path)) ?? null;
+  const system = browserCandidates(e).find((b) => e.exists(b.path));
+  if (system) return system;
+  const installed = e.installed?.();
+  return installed ? { name: "Motif", path: installed } : null;
 }

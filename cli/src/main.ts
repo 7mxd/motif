@@ -2,6 +2,7 @@ import { statSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { emit, type CommandResult, type RunContext } from "./cli/output";
+import { runBrowser } from "./commands/browser";
 import { runCheck } from "./commands/check";
 import { runDoctor } from "./commands/doctor";
 import { runExtract } from "./commands/extract";
@@ -19,6 +20,7 @@ Commands:
   tokens     Turn your design guide into theme code for your app
   check      Find colours, sizes and animations that bypass your design guide
   extract    Draft a design guide from an existing app's code
+  browser    Show the browser used for previews ("browser install" downloads one)
 
 Options:
   --json     Print one JSON object (for agents and CI)
@@ -35,6 +37,7 @@ const COMMANDS: Record<string, Runner> = {
   tokens: runTokens,
   check: runCheck,
   extract: runExtract,
+  browser: runBrowser,
 };
 
 export async function main(argv: string[]): Promise<number> {
