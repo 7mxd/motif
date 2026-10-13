@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const KNOWLEDGE = join(import.meta.dir, "../../skill/knowledge");
@@ -53,4 +53,19 @@ describe("UX patterns: getting in and getting around", () => {
   covers("ux-patterns/lists-feeds.md", { minLines: 40, mustMention: ["undo", "pagination", "skeleton", "row", "scroll position", "swipe"] });
   covers("ux-patterns/detail-pages.md", { minLines: 40, mustMention: ["primary action", "sticky", "not found", "back", "breadcrumb"] });
   covers("ux-patterns/forms.md", { minLines: 40, mustMention: ["label", "inline", "blur", "keyboard", "unsaved", "error summary", "autofill"] });
+});
+describe("UX patterns: finding, deciding and staying informed", () => {
+  covers("ux-patterns/search-filters.md", { minLines: 40, mustMention: ["no results", "recent", "chips", "debounce", "clear", "URL"] });
+  covers("ux-patterns/settings.md", { minLines: 40, mustMention: ["switch", "destructive", "confirm", "group", "optimistic"] });
+  covers("ux-patterns/checkout.md", { minLines: 40, mustMention: ["total", "guest", "declined", "wallet", "twice", "order summary", "mock"] });
+  covers("ux-patterns/notifications.md", { minLines: 40, mustMention: ["toast", "badge", "unread", "caught up", "push", "preferences"] });
+  covers("ux-patterns/profile.md", { minLines: 40, mustMention: ["initials", "edit", "avatar", "private", "own"] });
+  covers("ux-patterns/empty-loading-error.md", { minLines: 40, mustMention: ["first use", "no results", "retry", "skeleton", "300 ms", "offline", "plain words"] });
+});
+
+test("the knowledge base has every pattern the spec lists, and nothing else", () => {
+  expect(readdirSync(join(KNOWLEDGE, "ux-patterns")).sort()).toEqual([
+    "checkout.md", "detail-pages.md", "empty-loading-error.md", "forms.md", "home-dashboard.md", "lists-feeds.md",
+    "notifications.md", "onboarding.md", "profile.md", "search-filters.md", "settings.md", "sign-in.md",
+  ]);
 });
