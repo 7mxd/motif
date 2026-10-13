@@ -145,10 +145,10 @@ Run this before you show a screen to the developer:
 5. No raw colours, sizes or timings anywhere (`motif check` finds them).
 6. Light and dark mode were both looked at, not just one.
 7. Every state is present: loading, empty, error, disabled and focus.
-8. Tap targets are big enough (44×44 px on touch screens; the accessibility guide has the details).
+8. Tap targets are big enough (44×44 px on touch screens; see [accessibility](accessibility.md)).
 9. Long text was tried: a long name, a long title, a large number, a translated label.
 10. Nothing is centred that should be start-aligned.
 11. Icons come from one set, at one weight, sized with their text.
-12. Any motion uses the motion roles and respects reduced motion (the motion guide has the details).
+12. Any motion uses the motion roles and respects reduced motion (see [motion](motion.md)).
 
 Before you finish, also read [anti-patterns](anti-patterns.md): the checklist above says what good looks like, and that file names the most common ways screens go wrong.

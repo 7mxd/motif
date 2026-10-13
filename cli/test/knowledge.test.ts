@@ -29,3 +29,20 @@ describe("knowledge: visual craft and anti-patterns", () => {
     mustMention: ["gradient", "card grid", "shadow", "centred", "emoji", "icon", "copy", "lorem", "glass", "fade", "dark mode", "instead"],
   });
 });
+describe("knowledge: motion and accessibility", () => {
+  covers("motion.md", {
+    minLines: 120,
+    mustMention: [
+      "duration.fast", "duration.base", "duration.slow", "easing.enter", "easing.exit",
+      "spring.snappy", "spring.smooth", "spring.bouncy", "transform", "opacity", "stagger",
+      "shared element", "prefers-reduced-motion", "press", "skeleton", "60",
+    ],
+  });
+  covers("accessibility.md", {
+    minLines: 120,
+    mustMention: [
+      "WCAG 2.2", "4.5:1", "3:1", "24×24", "44×44", "focus", "keyboard", "200%",
+      "label", "alt", "aria-live", "start", "right-to-left", "colour alone", "motion",
+    ],
+  });
+});
