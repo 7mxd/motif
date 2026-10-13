@@ -8,6 +8,7 @@ import { detectApps, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { formatFindings, type Finding } from "../findings";
 import { generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
+import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
 import { buildTheme } from "../generate/theme";
 import { appLabel, prefixPath, selectApps } from "../project/apps";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
@@ -126,6 +127,23 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       exitCode: 1,
       text: `✗ Your theme values have ${problems.length} ${problems.length === 1 ? "problem" : "problems"}, so no code was generated:\n${formatFindings(problems)}\nFix these first (motif validate shows details).`,
       data: { error: "invalid-contract", findings: problems },
+    };
+  }
+
+  const stack = ctx.flags?.stack;
+  if (typeof stack === "string") {
+    if (stack !== "preview") {
+      return { command: "tokens", exitCode: 2, text: `Unknown --stack "${stack}". The only one is "preview" (CSS for the preview kit).`, data: { error: "usage" } };
+    }
+    const [result] = writeGenerated(cwd, [{ path: PREVIEW_CSS_PATH, content: previewCss(buildTheme(doc)) }]);
+    const blocked = result!.status === "protected";
+    return {
+      command: "tokens",
+      exitCode: blocked ? 1 : 0,
+      text: blocked
+        ? `✗ ${PREVIEW_CSS_PATH} already exists and wasn't made by Motif, so it was left alone.`
+        : `✓ Preview theme ${result!.status}: ${PREVIEW_CSS_PATH}`,
+      data: { files: [result], notes: [] },
     };
   }
 
