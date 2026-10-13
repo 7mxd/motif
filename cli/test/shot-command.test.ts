@@ -116,6 +116,18 @@ describe("motif shot: what it needs", () => {
   });
 });
 
+describe("motif shot: pages that crash, redirect, or couldn't be audited", () => {
+  test("a page that throws an error didn't render, even with HTTP 200", async () => {
+    const { deps } = fakes({
+      results: (o) => [{ route: "/", url: o.baseUrl, status: 200, pageErrors: ["TypeError: items is undefined"], shots: [join(o.outDir, "index.mobile.png")] }],
+    });
+    const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000" }), deps);
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toContain("the page threw an error: TypeError: items is undefined");
+    expect((r.data.routes as { pageErrors?: string[] }[])[0]!.pageErrors).toEqual(["TypeError: items is undefined"]);
+  });
+});
+
 describe("motif shot", () => {
   test("starts the app, captures its pages, stops it, and keeps screenshots out of git", async () => {
     const root = makeProject(NEXT_APP);

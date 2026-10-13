@@ -39,7 +39,7 @@ const defaultDeps: ShotDeps = {
 const usage = (text: string, data: Record<string, unknown>): CommandResult => ({ command: "shot", exitCode: 2, text, data });
 const projectPath = (cwd: string, abs: string) => relative(cwd, abs).split(sep).join("/") || ".";
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const rendered = (r: RouteResult) => !r.error && r.status >= 200 && r.status < 400;
+const rendered = (r: RouteResult) => !r.error && !r.pageErrors?.length && r.status >= 200 && r.status < 400;
 const SET_NAME = /^(?!compare$)[a-z0-9][a-z0-9-]*$/i;
 const isDir = (path: string) => {
   try {
@@ -75,7 +75,7 @@ export function parseRoutes(value: string): string[] {
 function routeLine(r: RouteResult, width: number): string {
   const what = rendered(r)
     ? `${r.shots.length} screenshots${r.finalUrl ? ` (went to ${new URL(r.finalUrl).pathname})` : ""}${r.cropped ? ` (cropped at ${MAX_HEIGHT} px)` : ""}`
-    : `✗ ${r.error ?? `HTTP ${r.status}`}${r.shots.length > 0 ? " (the screenshots show the error page)" : ""}`;
+    : `✗ ${r.error ?? (r.pageErrors?.length ? `the page threw an error: ${r.pageErrors[0]}` : `HTTP ${r.status}`)}${r.shots.length > 0 ? " (the screenshots show what it looked like)" : ""}`;
   return `  ${r.route.padEnd(width)}  ${what}`;
 }
 
@@ -254,6 +254,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         status: r.status,
         ...(r.finalUrl ? { finalUrl: r.finalUrl } : {}),
         ...(r.error ? { error: r.error } : {}),
+        ...(r.pageErrors?.length ? { pageErrors: r.pageErrors } : {}),
         shots: r.shots.map((s) => projectPath(cwd, s)),
       })),
       shots,

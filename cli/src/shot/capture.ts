@@ -28,6 +28,8 @@ export interface RouteResult {
   /** Where a redirect ended up. */
   finalUrl?: string;
   error?: string;
+  /** Uncaught errors the page threw while loading (a crashed page can still answer HTTP 200). */
+  pageErrors?: string[];
   cropped?: boolean;
   shots: string[];
   /** Set when the audit of this page couldn't finish. */
@@ -110,10 +112,17 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
               { name: "prefers-color-scheme", value: scheme },
               { name: "prefers-reduced-motion", value: "reduce" },
             ]);
+            page.takeErrors();
             await page.goto(url, timeoutMs);
             await page.evaluate("document.fonts.ready.then(() => true)");
             await Bun.sleep(settleMs);
-            await page.evaluate(HIDE_DEV_BADGES);
+            const thrown = page.takeErrors();
+            if (thrown.length > 0) {
+              result.pageErrors = [...new Set([...(result.pageErrors ?? []), ...thrown])];
+            } else {
+              // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.
+              await page.evaluate(HIDE_DEV_BADGES);
+            }
             const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
             if (fullHeight > MAX_HEIGHT) result.cropped = true;
             const file = join(opts.outDir, shotName(slug, viewport.name, scheme));

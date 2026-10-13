@@ -17,6 +17,8 @@ export interface Page {
   goto(url: string, timeoutMs?: number): Promise<void>;
   evaluate<T = unknown>(expression: string): Promise<T>;
   screenshot(clip?: Clip): Promise<Uint8Array>;
+  /** Uncaught errors the page threw since the last call (first line of each), then forgets them. */
+  takeErrors(): string[];
   close(): Promise<void>;
 }
 
@@ -32,6 +34,7 @@ interface Message {
   method?: string;
   sessionId?: string;
   result?: any;
+  params?: any;
   error?: { message: string };
 }
 
@@ -219,6 +222,13 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
       const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
       await send("Page.enable", {}, sessionId);
       await send("Runtime.enable", {}, sessionId);
+      const errors: string[] = [];
+      const onError = (m: Message) => {
+        if (m.sessionId !== sessionId || m.method !== "Runtime.exceptionThrown") return;
+        const details = m.params?.exceptionDetails;
+        errors.push(String(details?.exception?.description ?? details?.text ?? "Unknown error").split("\n")[0]!);
+      };
+      listeners.add(onError);
       return {
         async setViewport(width, height, scale = 1, mobile = false) {
           await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: scale, mobile }, sessionId);
@@ -247,7 +257,11 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
           const r = await send("Page.captureScreenshot", params, sessionId);
           return new Uint8Array(Buffer.from(r.data, "base64"));
         },
+        takeErrors() {
+          return errors.splice(0);
+        },
         async close() {
+          listeners.delete(onError);
           await send("Target.closeTarget", { targetId });
         },
       };
