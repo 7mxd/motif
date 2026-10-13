@@ -77,3 +77,17 @@ describe("main: preview options", () => {
     expect(r.exitCode).toBe(2);
   });
 });
+
+describe("main: preview and browser", () => {
+  test("are listed in help with their options", () => {
+    const help = run("help").stdout.toString();
+    for (const word of ["preview", "browser", "--png-only", "--gallery", "--compare", "--preset", "--no-open", "--out", "--stack preview"]) {
+      expect(help).toContain(word);
+    }
+  });
+  test("preview without mockup names is a usage error", () => {
+    const r = run("preview", "--cwd", tempDir("motif-empty-"));
+    expect(r.exitCode).toBe(2);
+    expect(r.stdout.toString()).toContain("motif preview --gallery");
+  });
+});

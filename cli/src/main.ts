@@ -6,6 +6,7 @@ import { runBrowser } from "./commands/browser";
 import { runCheck } from "./commands/check";
 import { runDoctor } from "./commands/doctor";
 import { runExtract } from "./commands/extract";
+import { runPreview } from "./commands/preview";
 import { runTokens } from "./commands/tokens";
 import { runValidate } from "./commands/validate";
 import { VERSION } from "./version";
@@ -21,12 +22,24 @@ Commands:
   check      Find colours, sizes and animations that bypass your design guide
   extract    Draft a design guide from an existing app's code
   browser    Show the browser used for previews ("browser install" downloads one)
+  preview    Show mockups in your browser and save them as PNGs
 
 Options:
   --json     Print one JSON object (for agents and CI)
   --cwd      Run in another folder (default: the current folder)
   --app      Only this app (its path in design/motif.json)
   --version  Print the version
+
+Preview options:
+  --preset <name>   Use a starting style instead of design/tokens.json
+  --compare         Show several mockups side by side
+  --gallery         Show the 8 starting styles
+  --png-only        Save PNGs and stop, without opening a browser
+  --no-open         Serve without opening a browser
+  --out <folder>    Where PNGs go (default: design/previews)
+
+Tokens options:
+  --stack preview   Write only the CSS mockups use (design/previews/motif.css)
 `;
 
 type Runner = (cwd: string, ctx: RunContext) => Promise<CommandResult>;
@@ -38,6 +51,7 @@ const COMMANDS: Record<string, Runner> = {
   check: runCheck,
   extract: runExtract,
   browser: runBrowser,
+  preview: runPreview,
 };
 
 export async function main(argv: string[]): Promise<number> {
