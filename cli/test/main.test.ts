@@ -103,3 +103,9 @@ describe("main: shot", () => {
     expect(r.stdout.toString()).toMatch(/--url|motif browser install/);
   });
 });
+
+describe("main: connect", () => {
+  test("is listed in help", () => {
+    expect(run("help").stdout.toString()).toContain("connect");
+  });
+});

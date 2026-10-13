@@ -1,23 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { SOURCES, type SourceId } from "../sources/catalog";
 import { stripBom } from "../text";
 
-export type SourceId = "refero" | "21st" | "60fps" | "motion";
+export type { SourceId };
 
-export const SOURCE_LABELS: Record<SourceId, string> = {
-  refero: "Refero",
-  "21st": "21st.dev",
-  "60fps": "60fps",
-  motion: "Motion",
-};
-
-/** Provisional patterns matched against "<server name>\n<server config JSON>". Plan 1D pins verified names. */
-const SOURCE_PATTERNS: Record<SourceId, RegExp> = {
-  refero: /refero/i,
-  "21st": /21st/i,
-  "60fps": /60fps/i,
-  motion: /^motion$|motion\.dev|motion-?mcp/im,
-};
+export const SOURCE_LABELS = Object.fromEntries(SOURCES.map((s) => [s.id, s.label])) as Record<SourceId, string>;
 
 export interface ConfiguredSource {
   id: SourceId;
@@ -53,9 +41,9 @@ export function findConfiguredSources(cwd: string, home: string): ConfiguredSour
   const found: ConfiguredSource[] = [];
   for (const s of servers) {
     const text = `${s.name}\n${JSON.stringify(s.def)}`;
-    for (const id of Object.keys(SOURCE_PATTERNS) as SourceId[]) {
-      if (SOURCE_PATTERNS[id].test(text) && !found.some((f) => f.id === id)) {
-        found.push({ id, server: s.name, where: s.where });
+    for (const source of SOURCES) {
+      if (source.configPattern.test(text) && !found.some((f) => f.id === source.id)) {
+        found.push({ id: source.id, server: s.name, where: s.where });
       }
     }
   }

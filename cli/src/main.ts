@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { emit, type CommandResult, type RunContext } from "./cli/output";
 import { runBrowser } from "./commands/browser";
 import { runCheck } from "./commands/check";
+import { runConnect } from "./commands/connect";
 import { runDoctor } from "./commands/doctor";
 import { runExtract } from "./commands/extract";
 import { runPreview } from "./commands/preview";
@@ -18,6 +19,7 @@ Usage: motif <command> [options]
 
 Commands:
   doctor     Explain what works on this computer and what's optional
+  connect    Connect optional design sources (Motion, Refero, 21st.dev, 60fps.design)
   validate   Check your design guide (DESIGN.md + design/tokens.json)
   tokens     Turn your design guide into theme code for your app
   check      Find colours, sizes and animations that bypass your design guide
@@ -62,6 +64,7 @@ const COMMANDS: Record<string, Runner> = {
   browser: runBrowser,
   preview: runPreview,
   shot: runShot,
+  connect: runConnect,
 };
 
 /** Every command the tool has (the skill's content test checks that the skill only mentions these). */
