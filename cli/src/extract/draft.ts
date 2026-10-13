@@ -2,6 +2,7 @@ import { wcagContrast } from "culori";
 import type { SourceFile } from "../check/files";
 import { scanFile } from "../check/run";
 import type { Hit } from "../check/types";
+import { FONT_ROLES, SPACE_SCALE, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { clusterColors, type ColorCluster, type Sample } from "./cluster";
 import type { TailwindDefaults } from "./tailwind-theme";
 
@@ -126,24 +127,8 @@ const DEFAULT_COLORS: Record<string, string> = {
 const WHITE = "#FFFFFF";
 const INK = "#111827";
 const STATUS: Record<string, [number, number]> = { success: [145, 40], warning: [75, 25], danger: [25, 25], info: [245, 30] };
-const SPACE_STEPS: [string, number][] = [["0", 0], ["1", 4], ["2", 8], ["3", 12], ["4", 16], ["5", 20], ["6", 24], ["8", 32], ["10", 40], ["12", 48], ["16", 64]];
-const FONT_ROLES: [string, number, number][] = [["display", 700, 1.1], ["title", 700, 1.2], ["heading", 600, 1.3], ["body", 400, 1.5], ["label", 500, 1.4], ["caption", 400, 1.4]];
-const PAIRS: [string, string, string][] = [
-  ["text-primary", "background", "text"], ["text-primary", "surface", "text"], ["text-primary", "surface-raised", "text"],
-  ["text-secondary", "background", "text"], ["text-secondary", "surface", "text"], ["text-secondary", "surface-raised", "text"],
-  ["on-action-primary", "action-primary", "text"], ["on-action-secondary", "action-secondary", "text"], ["on-success", "success", "text"],
-  ["on-warning", "warning", "text"], ["on-danger", "danger", "text"], ["on-info", "info", "text"], ["focus", "background", "ui"],
-];
-
-const px = (value: number) => ({ value, unit: "px" });
-const ms = (value: number) => ({ value, unit: "ms" });
 const pxOf = (s: Sample) => Number.parseFloat(s.value);
 const hueDistance = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
-
-function srgb(hex: string) {
-  const n = (i: number) => Number((Number.parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(4));
-  return { colorSpace: "srgb", components: [n(1), n(3), n(5)], hex: hex.toUpperCase() };
-}
 
 function onColor(hex: string): string {
   return wcagContrast(WHITE, hex) >= wcagContrast(INK, hex) ? WHITE : INK;
@@ -181,19 +166,19 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const primitiveFor = (role: string): string => {
     const cluster = chosen[role];
     if (cluster) {
-      primitives[cluster.id] = { $value: srgb(cluster.hex) };
+      primitives[cluster.id] = { $value: srgbColor(cluster.hex) };
       roles[`color.${role}`] = cluster.id;
       return cluster.id;
     }
     const name = `default-${role}`;
-    primitives[name] = { $value: srgb(DEFAULT_COLORS[role]!) };
+    primitives[name] = { $value: srgbColor(DEFAULT_COLORS[role]!) };
     roles[`color.${role}`] = "default";
     if (["success", "warning", "danger", "info", "action-primary", "text-primary", "background", "border"].includes(role)) defaulted.push(role);
     return name;
   };
   const hexOf = (name: string) => (primitives[name] as { $value: { hex: string } }).$value.hex;
-  primitives.white = { $value: srgb(WHITE) };
-  primitives.ink = { $value: srgb(INK) };
+  primitives.white = { $value: srgbColor(WHITE) };
+  primitives.ink = { $value: srgbColor(INK) };
 
   const base: Record<string, string> = {};
   for (const role of ["text-primary", "text-secondary", "background", "surface", "border", "action-primary", "success", "warning", "danger", "info"]) {
@@ -223,8 +208,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
 
   // Spacing: the standard 4px scale.
   const space: Record<string, unknown> = { $type: "dimension" };
-  for (const [key, value] of SPACE_STEPS) space[key] = { $value: px(value) };
-  const nearestStep = (value: number) => SPACE_STEPS.reduce((best, step) => (Math.abs(step[1] - value) < Math.abs(best[1] - value) ? step : best));
+  for (const [key, value] of SPACE_SCALE) space[key] = { $value: px(value) };
+  const nearestStep = (value: number) => SPACE_SCALE.reduce((best, step) => (Math.abs(step[1] - value) < Math.abs(best[1] - value) ? step : best));
   const spacing = occ.space.map((s) => {
     const v = pxOf(s);
     const [key, stepPx] = nearestStep(v);
@@ -268,19 +253,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     : [120, 200, 320];
   const standard = occ.easing[0]?.value.match(/\(([^)]*)\)/)?.[1]?.split(",").map((n) => Number(n.trim())) ?? [0.2, 0, 0, 1];
 
-  const shadow = (y: number, blur: number, alpha: number) => ({
-    $value: { color: { colorSpace: "srgb", components: [0, 0, 0], alpha, hex: "#000000" }, offsetX: px(0), offsetY: px(y), blur: px(blur), spread: px(0) },
-  });
-  const spring = (duration: number, bounce: number) => ({
-    duration: { $type: "duration", $value: { value: duration, unit: "s" } },
-    bounce: { $type: "number", $value: bounce },
-  });
-
   const tokens: Record<string, unknown> = {
     $extensions: {
       "dev.motif": {
         motifContract: 1,
-        pairs: PAIRS.map(([fg, bg, kind]) => ({ fg: `color.${fg}`, bg: `color.${bg}`, kind })),
+        pairs: pairsExtension(),
       },
     },
     primitive: {
@@ -291,10 +268,10 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     font,
     space,
     radius: { $type: "dimension", none: { $value: px(0) }, sm: { $value: px(sm) }, md: { $value: px(md) }, lg: { $value: px(lg) }, full: { $value: px(9999) } },
-    shadow: { $type: "shadow", sm: shadow(1, 2, 0.08), md: shadow(4, 12, 0.1), lg: shadow(12, 32, 0.14) },
+    shadow: defaultShadows(),
     duration: { $type: "duration", instant: { $value: ms(0) }, fast: { $value: ms(fast) }, base: { $value: ms(baseMs) }, slow: { $value: ms(slow) } },
     easing: { $type: "cubicBezier", standard: { $value: standard }, enter: { $value: [0, 0, 0, 1] }, exit: { $value: [0.3, 0, 1, 1] } },
-    spring: { snappy: spring(0.25, 0), smooth: spring(0.4, 0.1), bouncy: spring(0.5, 0.3) },
+    spring: { snappy: springGroup(0.25, 0), smooth: springGroup(0.4, 0.1), bouncy: springGroup(0.5, 0.3) },
   };
 
   const notes = ["Dark-mode colours were copied from light mode. Review them before turning on dark mode."];

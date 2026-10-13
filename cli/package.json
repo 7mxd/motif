@@ -5,7 +5,8 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "mkdir -p ../dist && bun build --compile --minify src/main.ts --outfile ../dist/motif"
+    "build": "mkdir -p ../dist && bun build --compile --minify src/main.ts --outfile ../dist/motif",
+    "presets": "bun scripts/build-presets.ts"
   },
   "dependencies": {
     "culori": "^4.0.2",
