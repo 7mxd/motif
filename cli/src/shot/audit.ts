@@ -127,30 +127,50 @@ function installAudit(): boolean {
       for (const el of document.querySelectorAll(selector)) {
         if (el.matches(":disabled, [aria-disabled='true']") || el.closest("[hidden], [inert], [aria-hidden='true']")) continue;
         const style = getComputedStyle(el);
-        if (style.visibility === "hidden" || style.display === "none") continue;
+        if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") continue;
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) continue;
+        // Visually hidden for screen readers (the usual sr-only pattern): not something anyone taps.
+        const clipped = style.clip === "rect(0px, 0px, 0px, 0px)" || /inset\(50%\)/.test(style.clipPath);
+        if (clipped || (rect.width <= 1 && rect.height <= 1)) {
+          // A form control styled through its label is tapped through the label: measure that instead, below.
+          if (!(el as HTMLInputElement).labels?.length) continue;
+        }
         // Links inside a sentence are exempt, as in WCAG 2.5.8.
         const parentText = el.parentElement?.textContent?.trim() ?? "";
         if (style.display === "inline" && parentText.length > (el.textContent?.trim().length ?? 0)) continue;
-        if (rect.width < min || rect.height < min) {
-          out.push({ rule: "target-mobile", ...describe(el), width: Math.round(rect.width), height: Math.round(rect.height) });
+        // A label is part of its control's hit area.
+        let width = rect.width;
+        let height = rect.height;
+        for (const lbl of Array.from((el as HTMLInputElement).labels ?? [])) {
+          const r = lbl.getBoundingClientRect();
+          width = Math.max(width, r.width);
+          height = Math.max(height, r.height);
+        }
+        if (width < min || height < min) {
+          out.push({ rule: "target-mobile", ...describe(el), width: Math.round(width), height: Math.round(height) });
         }
       }
       return out;
     },
     async motion(sampleMs) {
+      // Only movement counts: reduced motion is about things moving, so fades and colour changes are fine
+      // (Motion's reducedMotion="user" keeps opacity animations too).
+      // (Every keyframe also has "offset", its place in the timeline; motion paths are offsetPath, offsetDistance, …)
+      const MOVES = /^(transform|translate|rotate|scale|offset(Path|Distance|Rotate|Anchor|Position)|left|top|right|bottom|inset|width|height|margin|backgroundPosition)/;
       const moving = new Set<Element>();
       for (const animation of document.getAnimations()) {
-        const target = (animation.effect as KeyframeEffect | null)?.target;
-        if (animation.playState === "running" && target instanceof Element) moving.add(target);
+        const effect = animation.effect as KeyframeEffect | null;
+        const target = effect?.target;
+        if (animation.playState !== "running" || !(target instanceof Element)) continue;
+        if (effect!.getKeyframes().some((frame) => Object.keys(frame).some((property) => MOVES.test(property)))) moving.add(target);
       }
       // Script-driven motion (requestAnimationFrame) doesn't show up in getAnimations: compare two samples.
       const elements = [...document.querySelectorAll("body *")];
       const sample = () =>
         elements.map((e) => {
           const s = getComputedStyle(e);
-          return `${s.transform}|${s.translate}|${s.rotate}|${s.scale}|${s.opacity}`;
+          return `${s.transform}|${s.translate}|${s.rotate}|${s.scale}|${s.left}|${s.top}`;
         });
       const before = sample();
       await new Promise((resolve) => setTimeout(resolve, sampleMs));

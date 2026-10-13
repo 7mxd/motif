@@ -72,7 +72,14 @@ body { margin: 0; padding: 24px; font: 16px/1.5 sans-serif; background: #ffffff;
 #hello { animation: fade 100ms ease-out both; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fade { from { opacity: 0; } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+#agree-label { display: inline-flex; align-items: center; gap: 8px; min-width: 120px; height: 48px; }
+#pulse { animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.5; } }
 </style></head><body>
+<a class="sr-only" id="skip" href="#main">Skip to content</a>
+<label id="agree-label"><input class="sr-only" id="agree" type="checkbox">I agree</label>
+<div class="box" id="pulse"></div>
 <p class="faint" id="faint">Faint note</p>
 <p>Read the <a id="terms" href="#terms">terms</a> first.</p>
 <div class="pair"><button id="zoom-in" aria-label="Zoom in"></button><button id="zoom-out" aria-label="Zoom out"></button></div>
