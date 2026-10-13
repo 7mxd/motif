@@ -123,7 +123,9 @@ describe("startPreviewServer", () => {
     const res = await fetch(`${base}/__motif/events`);
     const reader = res.body!.getReader();
     await reader.read(); // the ": connected" comment
-    setTimeout(() => writeFileSync(join(root, "design/previews/a.html"), MOCKUP.replace("Hello", "Hi")), 200);
+    // Write before waiting, so nothing is left running if a stray early event (macOS file watching) ends the wait first.
+    await Bun.sleep(200);
+    writeFileSync(join(root, "design/previews/a.html"), MOCKUP.replace("Hello", "Hi"));
     const decoder = new TextDecoder();
     let received = "";
     const deadline = Date.now() + 5000;

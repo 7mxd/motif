@@ -208,7 +208,9 @@ describe("motif preview (live)", () => {
       const events = await fetch(new URL("/__motif/events", r.data.url as string));
       const reader = events.body!.getReader();
       await reader.read(); // the ": connected" comment
-      setTimeout(() => writeFileSync(join(root, "design/previews/home.html"), MOCKUP.replace("Hi", "Hello")), 200);
+      // Write before waiting, so nothing is left running if a stray early event (macOS file watching) ends the wait first.
+      await Bun.sleep(200);
+      writeFileSync(join(root, "design/previews/home.html"), MOCKUP.replace("Hi", "Hello"));
       const decoder = new TextDecoder();
       let received = "";
       const deadline = Date.now() + 5000;
