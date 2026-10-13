@@ -6,7 +6,7 @@ Refero is a library of real product screens, user flows and style guides from sh
 
 Look in your available tools for names ending with `refero_search_styles`, `refero_get_style`, `refero_search_screens`, `refero_get_screen`, `refero_get_similar_screens`, `refero_get_screen_image`, `refero_search_flows`, `refero_get_flow`, `refero_search_site` or `refero_search_app`. Your agent may show them with a prefix of its own; match the end of the name.
 
-Until the developer signs in, the server may be configured but its tools missing. Treat that as not connected.
+Until the developer signs in, the server may be configured but its tools missing. Treat that as not connected for now, and if the developer already ran `motif connect refero`, ask them to sign in through their agent's MCP sign-in (in Claude Code, `/mcp`) rather than connecting again.
 
 ## When it's connected
 

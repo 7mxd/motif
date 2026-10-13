@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { genericConfig, runCommand, runConnect, spawnArgs, type ConnectDeps } from "../src/commands/connect";
+import { genericConfig, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
 import type { ConfiguredSource } from "../src/detect/sources";
 import { sourceById } from "../src/sources/catalog";
 import { tempDir } from "./tmp";
@@ -23,6 +23,7 @@ function fakes(over: Partial<ConnectDeps> & { connected?: ConfiguredSource[]; cl
     },
     configured: () => connected,
     home: "/home/dev",
+    self: "motif",
     ...rest,
   };
   return { deps, calls };
@@ -153,5 +154,63 @@ describe("running claude", () => {
       mcpServers: { "21st": { type: "http", url: "https://21st.dev/api/mcp", headers: { "x-api-key": "<your 21st.dev key>" } } },
     });
     expect(JSON.parse(genericConfig(sourceById("motion")!))).toEqual({ mcpServers: { motion: { type: "http", url: "https://mcp.motion.dev" } } });
+  });
+});
+
+describe("motif connect: from the final review", () => {
+  test("the refusal gives the developer a command they can run, also in --json", async () => {
+    const r = await runConnect(".", ctx("21st"), fakes({ interactive: false, self: "C:/Users/me/.motif/bin/0.1.0/motif.exe" }).deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("C:/Users/me/.motif/bin/0.1.0/motif.exe connect 21st");
+    expect(r.data.run).toBe("C:/Users/me/.motif/bin/0.1.0/motif.exe connect 21st");
+  });
+
+  test("when Claude Code refuses, --json carries its message and the manual settings", async () => {
+    const r = await runConnect(".", ctx("refero"), fakes({ claudeExit: 1 }).deps);
+    expect(r.data.output).toContain("already exists");
+    expect(r.data.config).toEqual({ mcpServers: { refero: { type: "http", url: "https://api.refero.design/mcp" } } });
+  });
+
+  test("a key echoed back by a failing claude never reaches the output", async () => {
+    const run = async (_exe: string, args: string[]) => ({ code: 1, output: `error: invalid header ${args[3]}` });
+    const r = await runConnect(".", ctx("21st"), fakes({ run, key: "abcd1234efgh" }).deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("<your key>");
+    expect(r.text + JSON.stringify(r.data)).not.toContain("abcd1234efgh");
+  });
+
+  test("something that isn't a key is refused before anything runs", async () => {
+    for (const key of ["ab%PATH%cd1234", "tr\\ail\\key\\", "x-api-key: abcdef123", '"abcdefgh123"', "abc[Adefgh123", "short"]) {
+      const { deps, calls } = fakes({ key });
+      const r = await runConnect(".", ctx("21st"), deps);
+      expect(r.exitCode).toBe(2);
+      expect(r.text).toContain("doesn't look like a 21st.dev key");
+      expect(r.text).toContain("Nothing changed");
+      expect(r.text).not.toContain(key);
+      expect(claudeRuns(calls.runs)).toEqual([]);
+    }
+    const ok = fakes({ key: "an_api-KEY.123+/=" });
+    expect((await runConnect(".", ctx("21st"), ok.deps)).exitCode).toBe(0);
+  });
+
+  test("a source that is set up but not signed in says how to sign in", async () => {
+    const r = await runConnect(".", ctx("refero"), fakes({ connected: [{ id: "refero", server: "refero", where: "~/.claude.json" }] }).deps);
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toContain("/mcp");
+    const motion = await runConnect(".", ctx("motion"), fakes({ connected: [{ id: "motion", server: "motion", where: "~/.claude.json" }] }).deps);
+    expect(motion.text).not.toContain("/mcp");
+  });
+});
+
+describe("selfCommand", () => {
+  test("the compiled tool names itself by a path every shell can run", () => {
+    expect(selfCommand("C:\\Users\\PC\\.motif\\bin\\0.1.0\\motif.exe", "win32")).toBe("C:/Users/PC/.motif/bin/0.1.0/motif.exe");
+    expect(selfCommand("C:\\Users\\Jo Smith\\.motif\\bin\\0.1.0\\motif.exe", "win32")).toBe('"C:/Users/Jo Smith/.motif/bin/0.1.0/motif.exe"');
+    expect(selfCommand("/home/jo/.motif/bin/0.1.0/motif", "linux")).toBe("/home/jo/.motif/bin/0.1.0/motif");
+    expect(selfCommand("/Users/Jo Smith/.motif/bin/0.1.0/motif", "darwin")).toBe("'/Users/Jo Smith/.motif/bin/0.1.0/motif'");
+  });
+  test("when run from source (by bun), it's just motif", () => {
+    expect(selfCommand("C:\\Users\\PC\\.bun\\bin\\bun.exe", "win32")).toBe("motif");
+    expect(selfCommand("/usr/local/bin/bun", "linux")).toBe("motif");
   });
 });

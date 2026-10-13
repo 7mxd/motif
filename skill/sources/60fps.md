@@ -6,6 +6,8 @@
 
 Look in your available tools for names ending with `60fps_search_shots`, `60fps_list_filters`, `60fps_get_shot`, `60fps_get_motion_breakdown`, `60fps_get_motion_code` or `60fps_get_related_shots`. Your agent may show them with a prefix of its own; match the end of the name.
 
+Until the developer signs in, the server may be configured but its tools missing. Treat that as not connected for now, and if the developer already ran `motif connect 60fps`, ask them to sign in through their agent's MCP sign-in (in Claude Code, `/mcp`) rather than connecting again.
+
 ## When it's connected
 
 1. Call `60fps_list_filters` once to see the gesture, pattern and effect filters it offers.

@@ -74,3 +74,17 @@ describe("the source notes agents read", () => {
     for (const s of SOURCES) expect(record).toContain(s.connect.url);
   });
 });
+
+describe("the design source catalog: from the final review", () => {
+  test("the retired 21st.dev Magic server doesn't count as connected", () => {
+    const cwd = tempDir("motif-cat-");
+    const home = tempDir("motif-cat-");
+    writeFileSync(join(home, ".claude.json"), JSON.stringify({
+      mcpServers: {
+        magic: { command: "npx", args: ["-y", "@21st-dev/magic@latest", 'API_KEY="abc"'] },
+        "21st": { command: "npx", args: ["-y", "@21st-dev/magic@latest"] },
+      },
+    }));
+    expect(findConfiguredSources(cwd, home)).toEqual([]);
+  });
+});

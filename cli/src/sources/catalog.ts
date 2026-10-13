@@ -56,7 +56,7 @@ export const SOURCES: SourceInfo[] = [
     label: "21st.dev",
     gives: "React component ideas and code to adapt",
     cost: "Free key; paid plans for more code copies",
-    configPattern: /21st/i,
+    configPattern: /21st\.dev\/api\/mcp/i,
     tools: ["search", "get_component", "get_inspiration", "search_logo"],
     note: "The free key allows unlimited search and 2 code copies a day.",
     connect: { name: "21st", url: "https://21st.dev/api/mcp", auth: "key", keyHeader: "x-api-key" },

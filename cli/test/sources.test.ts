@@ -15,7 +15,7 @@ describe("findConfiguredSources", () => {
     writeFileSync(join(cwd, ".mcp.json"), JSON.stringify({ mcpServers: { refero: { type: "http", url: "https://example.com/mcp" } } }));
     writeFileSync(join(home, ".claude.json"), JSON.stringify({
       mcpServers: { "60fps": { type: "http", url: "https://example.com" } },
-      projects: { [cwd.replace(/\\/g, "/")]: { mcpServers: { magic: { command: "npx", args: ["-y", "@21st-dev/magic@latest"] } } } },
+      projects: { [cwd.replace(/\\/g, "/")]: { mcpServers: { "21st": { type: "http", url: "https://21st.dev/api/mcp" } } } },
     }));
     expect(findConfiguredSources(cwd, home).map((s) => s.id).sort()).toEqual(["21st", "60fps", "refero"]);
   });
