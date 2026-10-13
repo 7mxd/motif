@@ -41,6 +41,8 @@ const projectPath = (cwd: string, abs: string) => relative(cwd, abs).split(sep).
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const rendered = (r: RouteResult) => !r.error && !r.pageErrors?.length && r.status >= 200 && r.status < 400;
 const SET_NAME = /^(?!compare$)[a-z0-9][a-z0-9-]*$/i;
+/** Marks a folder as a set of screenshots saved by --save, which a later --save may replace. */
+const SET_MARKER = ".motif-set";
 const isDir = (path: string) => {
   try {
     return statSync(path).isDirectory();
@@ -66,10 +68,33 @@ function resolveAgainst(cwd: string, outDir: string, value: string, pages: numbe
   };
 }
 
+/**
+ * Git Bash on Windows rewrites arguments that start with "/" into Windows paths under its install folder
+ * ("/settings" → "C:/Program Files/Git/settings") and says where that folder is in EXEPATH. Undo it for page addresses.
+ */
+function undoGitBash(route: string, env: Record<string, string | undefined>): string {
+  if (!/^[A-Za-z]:[\\/]/.test(route)) return route;
+  const root = env.EXEPATH?.replace(/\\/g, "/").replace(/\/+$/, "").replace(/\/(usr\/)?bin$/i, "");
+  const path = route.replace(/\\/g, "/");
+  return root && path.toLowerCase().startsWith(`${root.toLowerCase()}/`) ? path.slice(root.length) : route;
+}
+
 /** "/, settings ,/about" → ["/", "/settings", "/about"] */
-export function parseRoutes(value: string): string[] {
-  const routes = value.split(",").map((r) => r.trim()).filter(Boolean).map((r) => (r.startsWith("/") ? r : `/${r}`));
+export function parseRoutes(value: string, env: Record<string, string | undefined> = process.env): string[] {
+  const routes = value
+    .split(",")
+    .map((r) => undoGitBash(r.trim(), env))
+    .filter(Boolean)
+    .map((r) => (r.startsWith("/") ? r : `/${r}`));
   return [...new Set(routes)];
+}
+
+/** Where a page ended up: its own route, or the path it redirected to (a sign-in page, say). */
+function landedOn(r: RouteResult): string {
+  if (!r.finalUrl) return r.route;
+  const from = new URL(r.url).pathname.replace(/\/+$/, "");
+  const to = new URL(r.finalUrl).pathname.replace(/\/+$/, "");
+  return from === to ? r.route : to || "/";
 }
 
 function routeLine(r: RouteResult, width: number): string {
@@ -124,6 +149,13 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         ? discoverRoutes(appDir)
         : { routes: ["/"], skipped: [] };
   if (discovery.routes.length === 0) return usage("--routes needs at least one page, like --routes /,/settings.", { error: "usage" });
+  const filePath = discovery.routes.find((r) => /^\/[A-Za-z]:[\\/]/.test(r));
+  if (filePath) {
+    return usage(
+      `--routes got a file path (${filePath.slice(1)}), not a page address. Git Bash on Windows rewrites arguments that start with "/": put MSYS_NO_PATHCONV=1 in front of the command.`,
+      { error: "usage" },
+    );
+  }
   const routes = discovery.routes.slice(0, MAX_ROUTES);
   const notes: string[] = [];
   if (discovery.routes.length > routes.length) {
@@ -136,6 +168,13 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const save = typeof flags.save === "string" ? flags.save : undefined;
   if (save !== undefined && !SET_NAME.test(save)) {
     return usage("--save needs a short name made of letters, digits and dashes, like --save before.", { error: "usage" });
+  }
+  // A set is replaced on every --save, so only ever replace a folder that Motif itself saved.
+  if (save !== undefined && existsSync(join(outDir, save)) && !existsSync(join(outDir, save, SET_MARKER))) {
+    return usage(
+      `${projectPath(cwd, join(outDir, save))} isn't a set of screenshots Motif saved, so --save ${save} won't replace it. Choose another name.`,
+      { error: "usage" },
+    );
   }
   const against = typeof flags.against === "string" ? resolveAgainst(cwd, outDir, flags.against, routes.length) : undefined;
   if (against && "error" in against) return usage(against.error, { error: "usage" });
@@ -180,21 +219,27 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   let findings: ReviewFinding[] = [];
   let auditFile: string | undefined;
   if (audit) {
-    findings = toFindings(captured.issues.map((i) => ({ ...i, shot: projectPath(cwd, i.shot) })));
+    // A page that redirected (to a sign-in page, say) was audited as the page it landed on.
+    const landed = new Map(captured.routes.map((r) => [r.route, landedOn(r)]));
+    findings = toFindings(captured.issues.map((i) => ({ ...i, route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
+    const redirected = captured.routes.filter((r) => landedOn(r) !== r.route);
+    if (redirected.length > 0) {
+      notes.push(`Pages that redirected were audited as the page they landed on: ${redirected.map((r) => `${r.route} → ${landedOn(r)}`).join(", ")}.`);
+    }
     const file = join(outDir, "audit.json");
     writeFileSync(file, JSON.stringify(reviewJson(findings, routes, deps.today()), null, 2) + "\n");
     auditFile = projectPath(cwd, file);
-    lines.push(
-      findings.length === 0
-        ? `✓ Audit: no contrast, tap-target or reduced-motion problems found (${auditFile}).`
-        : `✗ Audit: ${countText(findings)} (details in ${auditFile}):`,
-    );
+    const incomplete = captured.routes.filter((r) => r.auditError);
+    if (incomplete.length > 0) {
+      lines.push(`✗ Audit incomplete: it couldn't finish on ${incomplete.map((r) => `${r.route} (${r.auditError})`).join(", ")}.`);
+    }
+    if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
+    else if (incomplete.length === 0) lines.push(`✓ Audit: no contrast, tap-target or reduced-motion problems found (${auditFile}).`);
     for (const f of findings.slice(0, 15)) {
       const where = `${f.location.screen} (${f.location.viewport}${f.location.scheme ? `, ${f.location.scheme}` : ""})`;
       lines.push(`  ${f.severity.padEnd(8)} ${where} ${f.summary}`);
     }
     if (findings.length > 15) lines.push(`  …and ${findings.length - 15} more in ${auditFile}.`);
-    for (const r of captured.routes) if (r.auditError) notes.push(`Couldn't finish the audit of ${r.route}: ${r.auditError}`);
   }
 
   const thisRun = captured.routes.flatMap((r) => r.shots);
@@ -238,6 +283,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     rmSync(setDir, { recursive: true, force: true });
     mkdirSync(setDir, { recursive: true });
     for (const shot of thisRun) copyFileSync(shot, join(setDir, basename(shot)));
+    writeFileSync(join(setDir, SET_MARKER), "Screenshots kept by motif shot --save. Motif replaces this folder on the next --save with this name.\n");
     saved = projectPath(cwd, setDir);
     lines.push(`✓ Kept these screenshots as "${save}" (${saved}/). After changes, compare with --against ${save}.`);
   }
@@ -245,7 +291,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
 
   return {
     command: "shot",
-    exitCode: failed.length > 0 || findings.length > 0 ? 1 : 0,
+    exitCode: failed.length > 0 || findings.length > 0 || (audit && captured.routes.some((r) => r.auditError)) ? 1 : 0,
     text: lines.join("\n"),
     data: {
       url: baseUrl,
@@ -255,6 +301,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         ...(r.finalUrl ? { finalUrl: r.finalUrl } : {}),
         ...(r.error ? { error: r.error } : {}),
         ...(r.pageErrors?.length ? { pageErrors: r.pageErrors } : {}),
+        ...(r.auditError ? { auditError: r.auditError } : {}),
         shots: r.shots.map((s) => projectPath(cwd, s)),
       })),
       shots,

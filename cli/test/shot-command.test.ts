@@ -126,6 +126,54 @@ describe("motif shot: pages that crash, redirect, or couldn't be audited", () =>
     expect(r.text).toContain("the page threw an error: TypeError: items is undefined");
     expect((r.data.routes as { pageErrors?: string[] }[])[0]!.pageErrors).toEqual(["TypeError: items is undefined"]);
   });
+
+  test("pages that redirect are audited as the page they land on, once", async () => {
+    const root = makeProject({});
+    const shot = (name: string) => join(root, "design/shots", name);
+    const forgot = (route: string, file: string): AuditIssue => ({
+      rule: "color-contrast", selector: "#forgot", label: "Forgot your password?", kind: "link", ratio: 2.5, expected: 4.5,
+      route, viewport: "mobile", scheme: "light", shot: shot(file),
+    });
+    const { deps } = fakes({
+      results: (o) => [
+        { route: "/dashboard", url: `${o.baseUrl}/dashboard`, status: 200, finalUrl: "http://localhost:3000/login", shots: [shot("dashboard.mobile.png")] },
+        { route: "/settings", url: `${o.baseUrl}/settings`, status: 200, finalUrl: "http://localhost:3000/login?next=%2Fsettings", shots: [shot("settings.mobile.png")] },
+      ],
+      issues: [forgot("/dashboard", "dashboard.mobile.png"), forgot("/settings", "settings.mobile.png")],
+    });
+    const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/dashboard,/settings", audit: true }), deps);
+    expect((r.data.findings as { location: { screen: string } }[]).map((f) => f.location.screen)).toEqual(["/login"]);
+    expect(r.text).toContain("/dashboard → /login");
+  });
+
+  test("an audit that couldn't finish isn't reported as clean", async () => {
+    const { deps } = fakes({
+      results: (o) => [
+        { route: "/", url: o.baseUrl, status: 200, auditError: "The browser didn't answer (Runtime.evaluate) within 30 s.", shots: [join(o.outDir, "index.mobile.png")] },
+      ],
+    });
+    const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", audit: true }), deps);
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toContain("Audit incomplete");
+    expect(r.text).not.toContain("✓ Audit");
+    expect((r.data.routes as { auditError?: string }[])[0]!.auditError).toContain("didn't answer");
+  });
+});
+
+describe("motif shot: never destroys or misreads what it's given", () => {
+  test("--save never replaces a folder that isn't a saved set", async () => {
+    const root = makeProject({ "src/App.tsx": "export const App = () => null;\n" });
+    const r = await runShot(root, ctx({ url: "http://localhost:3000", out: ".", save: "src" }), fakes().deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("isn't a set of screenshots");
+    expect(readFileSync(join(root, "src/App.tsx"), "utf8")).toContain("App");
+  });
+
+  test("a file path given as a page is explained", async () => {
+    const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", routes: "D:/projects/app/settings" }), fakes().deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("MSYS_NO_PATHCONV=1");
+  });
 });
 
 describe("motif shot", () => {
@@ -221,6 +269,11 @@ describe("parseRoutes", () => {
   test("adds the leading slash and drops repeats and blanks", () => {
     expect(parseRoutes("/, settings ,/about,,/settings")).toEqual(["/", "/settings", "/about"]);
   });
+  test("undoes Git Bash's rewriting of addresses that start with /", () => {
+    const gitBash = { EXEPATH: "C:\\Program Files\\Git\\bin" };
+    expect(parseRoutes("C:/Program Files/Git/,/settings", gitBash)).toEqual(["/", "/settings"]);
+    expect(parseRoutes("C:/Program Files/Git/settings/profile", gitBash)).toEqual(["/settings/profile"]);
+  });
 });
 
 describe("motif shot: the mockup while building, before and after a rebuild", () => {
@@ -228,14 +281,14 @@ describe("motif shot: the mockup while building, before and after a rebuild", ()
     const root = makeProject({});
     const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/,/settings", save: "before" }), fakes().deps);
     expect(r.exitCode).toBe(0);
-    expect(readdirSync(join(root, "design/shots/before")).sort()).toEqual(["index.mobile.png", "settings.mobile.png"]);
+    expect(readdirSync(join(root, "design/shots/before")).sort()).toEqual([".motif-set", "index.mobile.png", "settings.mobile.png"]);
     expect(r.data.saved).toBe("design/shots/before");
     expect(r.text).toContain("--against before");
     expect((await runShot(root, ctx({ url: "http://localhost:3000", save: "../x" }), fakes().deps)).exitCode).toBe(2);
   });
 
   test("--against a saved set compares page by page, then --save can replace the set", async () => {
-    const root = makeProject({ "design/shots/before/index.mobile.png": "old" });
+    const root = makeProject({ "design/shots/before/index.mobile.png": "old", "design/shots/before/.motif-set": "" });
     const { deps, calls } = fakes();
     const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/,/settings", against: "before", save: "before" }), deps);
     expect(r.exitCode).toBe(0);
