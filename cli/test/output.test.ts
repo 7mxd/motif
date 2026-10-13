@@ -26,3 +26,11 @@ describe("formatFindings", () => {
     expect(text).toBe("  ✗ design/tokens.json:4 — Broken.\n  ⚠ DESIGN.md — Odd.");
   });
 });
+
+describe("emit with hold", () => {
+  test("never prints the hold promise", () => {
+    let out = "";
+    emit({ command: "demo", exitCode: 0, text: "x", data: { a: 1 }, hold: Promise.resolve() }, true, (s) => (out += s));
+    expect(JSON.parse(out)).toEqual({ command: "demo", ok: true, exitCode: 0, a: 1 });
+  });
+});

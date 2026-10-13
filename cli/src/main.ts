@@ -50,6 +50,13 @@ export async function main(argv: string[]): Promise<number> {
         app: { type: "string" },
         version: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
+        compare: { type: "boolean", default: false },
+        gallery: { type: "boolean", default: false },
+        "png-only": { type: "boolean", default: false },
+        "no-open": { type: "boolean", default: false },
+        preset: { type: "string" },
+        out: { type: "string" },
+        stack: { type: "string" },
       },
     });
   } catch (e) {
@@ -83,7 +90,19 @@ export async function main(argv: string[]): Promise<number> {
   }
   let result: CommandResult;
   try {
-    result = await runner(cwd, { positionals: positionals.slice(1), app: values.app });
+    result = await runner(cwd, {
+      positionals: positionals.slice(1),
+      app: values.app,
+      flags: {
+        compare: values.compare,
+        gallery: values.gallery,
+        "png-only": values["png-only"],
+        "no-open": values["no-open"],
+        preset: values.preset,
+        out: values.out,
+        stack: values.stack,
+      },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     result = {
@@ -94,6 +113,7 @@ export async function main(argv: string[]): Promise<number> {
     };
   }
   emit(result, json);
+  if (result.hold) await result.hold;
   return result.exitCode;
 }
 

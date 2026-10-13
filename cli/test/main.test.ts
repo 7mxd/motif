@@ -68,3 +68,12 @@ describe("main: --app", () => {
     expect(r.stdout.toString()).toContain("This folder doesn't exist");
   });
 });
+
+describe("main: preview options", () => {
+  test("are accepted by the parser", () => {
+    const missing = join(tmpdir(), "motif-no-such-folder-" + Date.now());
+    const r = run("doctor", "--png-only", "--compare", "--gallery", "--no-open", "--preset", "minimal", "--out", "x", "--stack", "preview", "--cwd", missing);
+    expect(r.stderr.toString()).not.toContain("Unknown option");
+    expect(r.exitCode).toBe(2);
+  });
+});

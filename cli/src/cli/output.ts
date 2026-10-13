@@ -5,12 +5,15 @@ export interface CommandResult {
   text: string;
   /** Structured output merged into the --json object. */
   data: Record<string, unknown>;
+  /** For commands that keep running (a preview server): main waits for this after printing. */
+  hold?: Promise<void>;
 }
 
-/** What a command receives besides the folder: extra words after the command name, and --app. */
+/** What a command receives besides the folder: extra words after the command name, --app, and its own options. */
 export interface RunContext {
   positionals: string[];
   app?: string;
+  flags?: Record<string, string | boolean | undefined>;
 }
 
 export function emit(
