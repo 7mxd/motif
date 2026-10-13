@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { launchBrowser, removeProfile } from "../src/browser/cdp";
+import { launchBrowser, removeProfile, startFailureHint } from "../src/browser/cdp";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 
@@ -61,5 +61,43 @@ describe("removeProfile", () => {
     expect(await removeProfile("profile", busyTwice, 5, 1)).toBe(true);
     expect(calls).toBe(3);
     expect(await removeProfile("profile", () => { throw new Error("resource busy or locked"); }, 3, 1)).toBe(false);
+  });
+});
+
+describe.skipIf(!browser)("launchBrowser never hangs (needs Chrome, Edge or Chromium)", () => {
+  test("a call the page never answers times out", async () => {
+    const b = await launchBrowser(browser!.path, { callTimeoutMs: 3000 });
+    try {
+      const page = await b.newPage();
+      await page.goto("data:text/html," + encodeURIComponent('<script>addEventListener("load", () => setTimeout(() => { for (;;) {} }, 0))</script>'));
+      await expect(page.evaluate("1")).rejects.toThrow("didn't answer");
+    } finally {
+      await b.close();
+    }
+  }, 30_000);
+
+  test("calls still waiting when the browser closes are rejected", async () => {
+    const b = await launchBrowser(browser!.path);
+    const page = await b.newPage();
+    const waiting = page.evaluate("new Promise(() => {})").then(() => "answered", (e: Error) => e.message);
+    await b.close();
+    expect(await waiting).toContain("closed");
+  }, 30_000);
+});
+
+describe("start failures say why", () => {
+  test("the browser's own last message is part of the error", async () => {
+    // Bun stands in for a broken browser: it prints an error and exits.
+    await expect(launchBrowser(process.execPath, { timeoutMs: 10_000 })).rejects.toThrow("Script not found");
+  }, 20_000);
+  test("a missing Linux library is named, with what to do", () => {
+    const stderr = "/home/u/.motif/browsers/1/chrome-headless-shell: error while loading shared libraries: libnss3.so: cannot open shared object file: No such file or directory\n";
+    const hint = startFailureHint(stderr, "linux");
+    expect(hint).toContain("libnss3.so");
+    expect(hint).toContain("package manager");
+  });
+  test("otherwise the last line is repeated, and nothing is added when there was no output", () => {
+    expect(startFailureHint("noise\n[1013/120000:ERROR:foo] something broke\n\n", "win32")).toBe(" The browser said: [1013/120000:ERROR:foo] something broke");
+    expect(startFailureHint("", "win32")).toBe("");
   });
 });

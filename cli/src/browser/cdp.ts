@@ -91,12 +91,33 @@ function start(executable: string, args: string[], timeoutMs: number): Promise<{
       }
     });
     proc.on("error", (e) => fail(new StartError(`Couldn't start the browser at ${executable}: ${e.message}`, stderr)));
-    proc.on("exit", (code) => fail(new StartError(`The browser at ${executable} stopped while starting (exit code ${code}).`, stderr)));
+    proc.on("exit", (code) => {
+      // Let the rest of stderr arrive: it usually says why the browser stopped.
+      const report = () => fail(new StartError(`The browser at ${executable} stopped while starting (exit code ${code}).${startFailureHint(stderr)}`, stderr));
+      if (proc.stderr!.readableEnded) return report();
+      const wait = setTimeout(report, 500);
+      proc.stderr!.once("end", () => {
+        clearTimeout(wait);
+        report();
+      });
+    });
   });
 }
 
-export async function launchBrowser(executable: string, opts: { timeoutMs?: number } = {}): Promise<Browser> {
+/** What the browser said before it gave up, in plain words where Motif can tell. */
+export function startFailureHint(stderr: string, platform: NodeJS.Platform = process.platform): string {
+  const library = stderr.match(/error while loading shared libraries: ([^:\s]+)/)?.[1];
+  if (platform === "linux" && library) {
+    return ` It needs a system library that isn't installed (${library}). Install it with your package manager, or install Chromium the same way, which brings the libraries it needs.`;
+  }
+  const last = stderr.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).pop();
+  return last ? ` The browser said: ${last.slice(0, 300)}` : "";
+}
+
+export async function launchBrowser(executable: string, opts: { timeoutMs?: number; callTimeoutMs?: number } = {}): Promise<Browser> {
   const timeoutMs = opts.timeoutMs ?? 20_000;
+  // Every call to the browser gets an answer or an error: a page stuck in a loop must never hang Motif.
+  const callTimeoutMs = opts.callTimeoutMs ?? 30_000;
   let started;
   try {
     started = await start(executable, ARGS, timeoutMs);
@@ -111,19 +132,29 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
   const { proc, wsUrl, profile } = started;
 
   const ws = new WebSocket(wsUrl);
-  await new Promise<void>((resolve, reject) => {
-    ws.addEventListener("open", () => resolve(), { once: true });
-    ws.addEventListener("error", () => reject(new Error(`Couldn't connect to the browser at ${executable}.`)), { once: true });
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const failed = () => reject(new Error(`Couldn't connect to the browser at ${executable}.`));
+      const timer = setTimeout(failed, timeoutMs);
+      ws.addEventListener("open", () => (clearTimeout(timer), resolve()), { once: true });
+      ws.addEventListener("error", () => (clearTimeout(timer), failed()), { once: true });
+    });
+  } catch (e) {
+    ws.close();
+    if (proc.exitCode === null) proc.kill();
+    await removeProfile(profile);
+    throw e;
+  }
 
   let nextId = 1;
-  const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   const listeners = new Set<(m: Message) => void>();
   ws.addEventListener("message", (event) => {
     const msg = JSON.parse(String(event.data)) as Message;
     if (msg.id !== undefined && pending.has(msg.id)) {
       const p = pending.get(msg.id)!;
       pending.delete(msg.id);
+      clearTimeout(p.timer);
       if (msg.error) p.reject(new Error(msg.error.message));
       else p.resolve(msg.result);
     } else {
@@ -131,10 +162,30 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
     }
   });
 
+  // Once the browser is gone, everything still waiting for it fails instead of waiting forever.
+  let gone: Error | null = null;
+  const failAll = () => {
+    gone ??= new Error(`The browser at ${executable} closed.`);
+    for (const p of pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(gone);
+    }
+    pending.clear();
+  };
+  ws.addEventListener("close", failAll);
+  proc.once("exit", failAll);
+
   const send = (method: string, params: object = {}, sessionId?: string): Promise<any> => {
+    if (gone) return Promise.reject(gone);
     const id = nextId++;
-    ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-    return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`The browser didn't answer (${method}) within ${Math.round(callTimeoutMs / 1000)} s. The page may be stuck in a loop.`));
+      }, callTimeoutMs);
+      pending.set(id, { resolve, reject, timer });
+      ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+    });
   };
 
   const waitFor = (sessionId: string, method: string, timeoutMs: number) =>
@@ -199,8 +250,9 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
         // The browser may already be gone.
       }
       ws.close();
-      if (proc.exitCode === null) proc.kill();
-      await new Promise((r) => (proc.exitCode !== null ? r(null) : proc.once("exit", r)));
+      const exited = () => proc.exitCode !== null || proc.signalCode !== null;
+      if (!exited()) proc.kill();
+      await new Promise((r) => (exited() ? r(null) : proc.once("exit", r)));
       await removeProfile(profile);
     },
   };
