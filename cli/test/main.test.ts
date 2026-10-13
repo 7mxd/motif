@@ -91,3 +91,15 @@ describe("main: preview and browser", () => {
     expect(r.stdout.toString()).toContain("motif preview --gallery");
   });
 });
+
+describe("main: shot", () => {
+  test("is listed in help with its options", () => {
+    const help = run("help").stdout.toString();
+    for (const word of ["shot", "--url", "--routes", "--audit"]) expect(help).toContain(word);
+  });
+  test("with no app and no --url it says what to do", () => {
+    const r = run("shot", "--cwd", tempDir("motif-empty-"));
+    expect(r.exitCode).toBe(2);
+    expect(r.stdout.toString()).toMatch(/--url|motif browser install/);
+  });
+});

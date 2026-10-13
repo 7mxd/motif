@@ -14,10 +14,11 @@ Design guide tools for AI coding agents: build web and mobile apps with polished
 | `motif check` | Finds colours, sizes and animations in your code that bypass your design guide |
 | `motif extract` | Drafts a design guide from an existing app's code |
 | `motif preview` | Shows mockups in your browser with live reload and saves them as PNGs in light and dark; `--compare` puts several side by side, `--gallery` shows the 8 starting styles |
+| `motif shot` | Screenshots your real app's pages at phone and desktop widths in light and dark (starting its dev server if needed); `--audit` checks contrast, tap-target sizes and reduced motion as rendered |
 | `motif browser` | Shows which browser previews use; `motif browser install` downloads a private one if you have none |
 
 Add `--json` for machine-readable output and `--cwd <folder>` to run elsewhere. In a project with several apps, `--app <path>` picks one.
 
-Previews run on your computer only: the preview server listens on `127.0.0.1`, serves nothing outside your project, and nothing is uploaded. Motif uses the Chrome or Edge you already have; it downloads a browser only when you run `motif browser install`.
+Previews and screenshots run on your computer only: the preview server listens on `127.0.0.1`, serves nothing outside your project, and nothing is uploaded. Screenshots of your app go to `design/shots/`, which Motif keeps out of git. Motif uses the Chrome or Edge you already have; it downloads a browser only when you run `motif browser install`.
 
 Design: `docs/specs/2026-10-12-motif-core-design.md` · Plans: `docs/plans/`

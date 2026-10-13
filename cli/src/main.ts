@@ -7,6 +7,7 @@ import { runCheck } from "./commands/check";
 import { runDoctor } from "./commands/doctor";
 import { runExtract } from "./commands/extract";
 import { runPreview } from "./commands/preview";
+import { runShot } from "./commands/shot";
 import { runTokens } from "./commands/tokens";
 import { runValidate } from "./commands/validate";
 import { VERSION } from "./version";
@@ -23,6 +24,7 @@ Commands:
   extract    Draft a design guide from an existing app's code
   browser    Show the browser used for previews ("browser install" downloads one)
   preview    Show mockups in your browser and save them as PNGs
+  shot       Screenshot your app's pages (--audit checks what people actually see)
 
 Options:
   --json     Print one JSON object (for agents and CI)
@@ -36,7 +38,12 @@ Preview options:
   --gallery         Show the 8 starting styles
   --png-only        Save PNGs and stop, without opening a browser
   --no-open         Serve without opening a browser
-  --out <folder>    Where PNGs go (default: design/previews)
+  --out <folder>    Where PNGs go (preview: design/previews, shot: design/shots)
+
+Shot options:
+  --url <address>   Use an app that's already running instead of starting it
+  --routes <list>   Pages to capture, e.g. /,/settings (default: found from your app)
+  --audit           Also check contrast, tap-target sizes and reduced motion as rendered
 
 Tokens options:
   --stack preview   Write only the CSS mockups use (design/previews/motif.css)
@@ -52,6 +59,7 @@ const COMMANDS: Record<string, Runner> = {
   extract: runExtract,
   browser: runBrowser,
   preview: runPreview,
+  shot: runShot,
 };
 
 export async function main(argv: string[]): Promise<number> {
@@ -74,6 +82,9 @@ export async function main(argv: string[]): Promise<number> {
         preset: { type: "string" },
         out: { type: "string" },
         stack: { type: "string" },
+        url: { type: "string" },
+        routes: { type: "string" },
+        audit: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -118,6 +129,9 @@ export async function main(argv: string[]): Promise<number> {
         preset: values.preset,
         out: values.out,
         stack: values.stack,
+        url: values.url,
+        routes: values.routes,
+        audit: values.audit,
       },
     });
   } catch (e) {
