@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findConfiguredSources, SOURCE_LABELS } from "../src/detect/sources";
 import { SOURCES, sourceById } from "../src/sources/catalog";
@@ -40,5 +40,37 @@ describe("the design source catalog", () => {
       },
     }));
     expect(findConfiguredSources(cwd, home).map((s) => s.id).sort()).toEqual(["21st", "60fps", "motion", "refero"]);
+  });
+});
+
+describe("the source notes agents read", () => {
+  const NOTES = join(import.meta.dir, "../../skill/sources");
+  const FILES: Record<string, string> = { motion: "motion-dev.md", refero: "refero.md", "21st": "21st.md", "60fps": "60fps.md" };
+  const note = (file: string) => readFileSync(join(NOTES, file), "utf8");
+
+  for (const s of SOURCES) {
+    test(`${FILES[s.id]} names every ${s.label} tool and how to connect it`, () => {
+      const text = note(FILES[s.id]!);
+      for (const tool of s.tools) expect(text).toContain(`\`${tool}\``);
+      expect(text).toContain(`motif connect ${s.id}`);
+      for (const section of ["## Is it connected?", "## When it's connected", "## When it isn't", "## Connecting", "## Rules"]) {
+        expect(text).toContain(section);
+      }
+    });
+  }
+
+  test("supahero.md is for landing pages only and has nothing to connect", () => {
+    const text = note("supahero.md");
+    expect(text).toContain("landing");
+    expect(text).not.toContain("motif connect");
+  });
+
+  test("the folder holds exactly the five notes", () => {
+    expect(readdirSync(NOTES).sort()).toEqual(["21st.md", "60fps.md", "motion-dev.md", "refero.md", "supahero.md"]);
+  });
+
+  test("the verified facts are on record", () => {
+    const record = readFileSync(join(import.meta.dir, "../../docs/decisions/0002-design-sources.md"), "utf8");
+    for (const s of SOURCES) expect(record).toContain(s.connect.url);
   });
 });

@@ -329,6 +329,8 @@ At the start of a mode the agent checks its own available tools for each source'
 | Motion | web animation implementation | AI Kit / MCP (Motion+ subscribers) | Motion's public documentation; the library itself is MIT and always usable |
 | Supahero | hero sections for landing pages | no API | public pages, only when building a landing/welcome page |
 
+> Verified 2026-10-13: Refero and 60fps.design need paid plans (60fps is iOS only), 21st.dev renamed its tools, and Motion has a free MCP server. Current details are in `docs/decisions/0002-design-sources.md`; where they differ from this table, the decision record applies.
+
 ### 8.3 Rules
 
 1. **Restyle everything imported.** Any code or pattern taken from a source is rewritten to use contract roles before it lands; `check` enforces it.
