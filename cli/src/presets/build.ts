@@ -1,6 +1,6 @@
 import { wcagContrast } from "culori";
 import { FONT_ROLES, SPACE_SCALE, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
-import type { PaletteRole, PresetSpec } from "./spec";
+import { PRESETS, type PaletteRole, type PresetSpec } from "./spec";
 
 const ON_BASES = ["action-primary", "action-secondary", "success", "warning", "danger", "info"] as const;
 const DISPLAY_ROLES = new Set(["display", "title", "heading"]);
@@ -95,4 +95,14 @@ export function presetAbout(spec: PresetSpec): string {
 
 export function presetSample(spec: PresetSpec, template: string): string {
   return template.replace(/\r\n/g, "\n").replace("<title>Motif mockup</title>", `<title>${spec.title} — Motif</title>`);
+}
+
+/** The starting theme values for a new design guide: the Minimal style, untagged, with a note for whoever edits it. */
+export function templateTokens(): Record<string, unknown> {
+  const tokens = presetTokens(PRESETS.find((p) => p.id === "minimal")!) as Record<string, any>;
+  delete tokens.$extensions["dev.motif"].preset;
+  return {
+    $description: "Starting theme values (the Minimal style). Replace them with this app's own, keep every role, and run motif validate after each change.",
+    ...tokens,
+  };
 }
