@@ -9,6 +9,8 @@ import { EMBEDDED_PRESETS, presetTheme } from "./presets";
 export interface PreviewServer {
   url: string;
   port: number;
+  /** Start live reload for these mockups (project paths). Call it after saving PNGs next to them, or saving reloads the page being rendered. */
+  watch(files: string[]): void;
   stop(): void;
 }
 
@@ -58,6 +60,10 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
     hostname: "127.0.0.1",
     port: 0,
     fetch(req, srv) {
+      // Only answer requests addressed to this server: a web page that re-points its own domain at 127.0.0.1
+      // (DNS rebinding) sends its own name as Host.
+      const host = req.headers.get("host");
+      if (host !== `127.0.0.1:${srv.port}` && host !== `localhost:${srv.port}`) return new Response("Forbidden", { status: 403 });
       const url = new URL(req.url);
       const path = url.pathname;
       if (path === "/__motif/theme.css") {
@@ -92,6 +98,8 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       }
       const file = resolveInside(root, path);
       if (!file || !existsSync(file) || !statSync(file).isFile()) return notFound();
+      // Hidden files and folders (.env, .git) are never mockup material.
+      if (relative(root, file).split(sep).some((part) => part.startsWith("."))) return notFound();
       const ext = extname(file).toLowerCase();
       if (ext === ".html") return html(injectKit(readFileSync(file, "utf8"), "/__motif/theme.css"));
       return new Response(Bun.file(file), { headers: { "content-type": TYPES[ext] ?? "application/octet-stream" } });
@@ -113,17 +121,21 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       }
     }, 100);
   };
-  for (const dir of new Set((opts.watch ?? []).map((f) => dirname(resolve(root, f))))) {
-    try {
-      watchers.push(watch(dir, notify));
-    } catch {
-      // Live reload is a convenience; previews still work without it.
+  const watchFiles = (files: string[]) => {
+    for (const dir of new Set(files.map((f) => dirname(resolve(root, f))))) {
+      try {
+        watchers.push(watch(dir, notify));
+      } catch {
+        // Live reload is a convenience; previews still work without it.
+      }
     }
-  }
+  };
+  watchFiles(opts.watch ?? []);
 
   return {
     url: `http://127.0.0.1:${server.port}`,
     port: server.port!,
+    watch: watchFiles,
     stop() {
       clearTimeout(timer);
       for (const w of watchers) w.close();

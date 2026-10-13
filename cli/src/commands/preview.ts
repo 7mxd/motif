@@ -121,7 +121,9 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     return fail(2, `No Chrome or Edge found, so Motif can't make PNGs. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
   }
 
-  const server = startPreviewServer({ root: cwd, theme, watch: pngOnly ? [] : files });
+  // Live reload starts after the PNGs are saved: they usually land next to the mockups, and every save
+  // would otherwise reload the page the renderer is capturing.
+  const server = startPreviewServer({ root: cwd, theme });
   const outDir = resolve(cwd, typeof flags.out === "string" ? flags.out : join("design", "previews"));
   const names = pngNames(files);
   const targets: RenderTarget[] = gallery
@@ -150,6 +152,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     server.stop();
     return { command: "preview", exitCode: 0, text: pngLines.join("\n"), data: { pngs } };
   }
+  server.watch(files);
 
   const pages = gallery
     ? ["/__motif/gallery"]

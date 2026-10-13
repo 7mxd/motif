@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
+import { connect } from "node:net";
 import { join } from "node:path";
 import { buildTheme } from "../src/generate/theme";
 import { injectKit, resolveInside, startPreviewServer } from "../src/preview/server";
@@ -12,9 +13,27 @@ afterAll(cleanupTempDirs);
 const MOCKUP = '<!doctype html><html><head><title>A</title></head><body><div class="mk-stage"><div class="mk-frame mk-phone mk-ios">Hello</div></div></body></html>';
 const theme = buildTheme(docFrom(validTokens()));
 
+/** Status code for a request with any Host header (fetch won't let tests set one). */
+function rawStatus(port: number, path: string, host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    const socket = connect(port, "127.0.0.1", () => socket.write(`GET ${path} HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\n\r\n`));
+    socket.on("data", (d) => (data += d.toString()));
+    socket.on("end", () => resolve(Number(data.split(" ")[1])));
+    socket.on("error", reject);
+  });
+}
+
 function withServer(fn: (base: string, root: string) => Promise<void>) {
   return async () => {
-    const project = makeProject({ "secret.txt": "outside", "app/design/previews/a.html": MOCKUP, "app/design/previews/b.html": MOCKUP, "app/logo.svg": "<svg/>" });
+    const project = makeProject({
+      "secret.txt": "outside",
+      "app/design/previews/a.html": MOCKUP,
+      "app/design/previews/b.html": MOCKUP,
+      "app/logo.svg": "<svg/>",
+      "app/.env": "API_KEY=secret",
+      "app/.git/config": "[core]",
+    });
     const root = join(project, "app");
     const server = startPreviewServer({ root, theme, watch: ["design/previews/a.html"] });
     try {
@@ -74,6 +93,17 @@ describe("startPreviewServer", () => {
       const res = await fetch(`${base}${path}`);
       expect(await res.text()).not.toContain("outside");
     }
+  }));
+
+  test("answers only requests addressed to itself, and never serves hidden files", withServer(async (base) => {
+    const port = Number(new URL(base).port);
+    expect(await rawStatus(port, "/logo.svg", `127.0.0.1:${port}`)).toBe(200);
+    expect(await rawStatus(port, "/logo.svg", `localhost:${port}`)).toBe(200);
+    // A web page that re-points its own domain at 127.0.0.1 (DNS rebinding) sends its own name as Host.
+    expect(await rawStatus(port, "/logo.svg", `attacker.example:${port}`)).toBe(403);
+    expect(await rawStatus(port, "/__motif/theme.css", "attacker.example")).toBe(403);
+    expect((await fetch(`${base}/.env`)).status).toBe(404);
+    expect((await fetch(`${base}/.git/config`)).status).toBe(404);
   }));
 
   test("gallery, preset samples and compare pages", withServer(async (base) => {

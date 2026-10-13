@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runPreview, type PreviewDeps } from "../src/commands/preview";
 import { openCommand } from "../src/preview/open";
@@ -197,6 +198,31 @@ describe("motif preview (live)", () => {
     await q.hold;
     expect(quiet.calls.opened).toEqual([]);
     expect(q.data.url).toBeString();
+  });
+
+  test("open pages reload when a mockup is saved after the PNGs are made", async () => {
+    const root = project();
+    const { deps, stop } = fakes();
+    const r = await runPreview(root, ctx(["design/previews/home.html"], { "no-open": true }), deps);
+    try {
+      const events = await fetch(new URL("/__motif/events", r.data.url as string));
+      const reader = events.body!.getReader();
+      await reader.read(); // the ": connected" comment
+      setTimeout(() => writeFileSync(join(root, "design/previews/home.html"), MOCKUP.replace("Hi", "Hello")), 200);
+      const decoder = new TextDecoder();
+      let received = "";
+      const deadline = Date.now() + 5000;
+      while (!received.includes("event: reload") && Date.now() < deadline) {
+        const next = await Promise.race([reader.read(), new Promise<{ done: true; value: undefined }>((res) => setTimeout(() => res({ done: true, value: undefined }), 5000))]);
+        if (next.done) break;
+        received += decoder.decode(next.value);
+      }
+      await reader.cancel();
+      expect(received).toContain("event: reload");
+    } finally {
+      stop();
+      await r.hold;
+    }
   });
 
   test("without a browser it still serves and opens, and says how to get PNGs", async () => {
