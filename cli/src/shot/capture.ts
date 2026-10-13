@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchBrowser } from "../browser/cdp";
+import { auditPage, type AuditIssue } from "./audit";
 
 export interface Viewport {
   name: "mobile" | "desktop";
@@ -29,6 +30,8 @@ export interface RouteResult {
   error?: string;
   cropped?: boolean;
   shots: string[];
+  /** Set when the audit of this page couldn't finish. */
+  auditError?: string;
 }
 
 export interface CaptureOptions {
@@ -38,6 +41,8 @@ export interface CaptureOptions {
   outDir: string;
   settleMs?: number;
   timeoutMs?: number;
+  audit?: boolean;
+  motionSampleMs?: number;
 }
 
 export function routeSlug(route: string): string {
@@ -72,12 +77,13 @@ async function probe(url: string, timeoutMs: number): Promise<{ status: number; 
   }
 }
 
-export async function captureScreens(opts: CaptureOptions): Promise<{ routes: RouteResult[] }> {
+export async function captureScreens(opts: CaptureOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[] }> {
   const settleMs = opts.settleMs ?? 800;
   const timeoutMs = opts.timeoutMs ?? 60_000;
   mkdirSync(opts.outDir, { recursive: true });
   const browser = await launchBrowser(opts.browserPath);
   const results: RouteResult[] = [];
+  const issues: AuditIssue[] = [];
   const usedSlugs = new Set<string>();
   try {
     for (const route of opts.routes) {
@@ -113,6 +119,14 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
             const file = join(opts.outDir, shotName(slug, viewport.name, scheme));
             writeFileSync(file, await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) }));
             result.shots.push(file);
+            if (opts.audit) {
+              try {
+                const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
+                for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, scheme, shot: file });
+              } catch (e) {
+                result.auditError = e instanceof Error ? e.message : String(e);
+              }
+            }
           }
         }
       } catch (e) {
@@ -124,5 +138,5 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
   } finally {
     await browser.close();
   }
-  return { routes: results };
+  return { routes: results, issues };
 }
