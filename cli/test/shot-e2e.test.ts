@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
@@ -35,6 +35,12 @@ const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(req) {
 } });
 console.log("  ➜  Local:   http://localhost:" + s.port + "/");
 `;
+const FIXTURE = {
+  "package.json": JSON.stringify({ name: "fixture", private: true, scripts: { dev: "bun server.ts" }, dependencies: { react: "^19", "react-dom": "^19" }, devDependencies: { vite: "^6" } }),
+  "bun.lock": "",
+  "node_modules/.keep": "",
+  "server.ts": SERVER,
+};
 
 describe.skipIf(!browser || !bun)("compiled motif shot (needs Chrome, Edge or Chromium, and bun on PATH)", () => {
   beforeAll(() => {
@@ -44,12 +50,7 @@ describe.skipIf(!browser || !bun)("compiled motif shot (needs Chrome, Edge or Ch
   }, 180_000);
 
   test("starts the app, screenshots and audits its pages, then stops it", async () => {
-    const root = makeProject({
-      "package.json": JSON.stringify({ name: "fixture", private: true, scripts: { dev: "bun server.ts" }, dependencies: { react: "^19", "react-dom": "^19" }, devDependencies: { vite: "^6" } }),
-      "bun.lock": "",
-      "node_modules/.keep": "",
-      "server.ts": SERVER,
-    });
+    const root = makeProject(FIXTURE);
     const r = Bun.spawnSync([bin, "shot", "--audit", "--routes", "/,/settings", "--json", "--cwd", root], { env: { ...process.env, MOTIF_HOME: tempDir("motif-home-") } });
     const out = JSON.parse(r.stdout.toString());
     expect(r.exitCode).toBe(1);
@@ -67,4 +68,29 @@ describe.skipIf(!browser || !bun)("compiled motif shot (needs Chrome, Edge or Ch
     while (alive(pid) && Date.now() < deadline) await Bun.sleep(100);
     expect(alive(pid)).toBe(false);
   }, 180_000);
+
+  test("the app next to its mockup while building, and before and after a change", async () => {
+    const root = makeProject(FIXTURE);
+    const run = (...args: string[]) => {
+      const r = Bun.spawnSync([bin, ...args, "--json", "--cwd", root], { env: { ...process.env, MOTIF_HOME: tempDir("motif-home-") } });
+      return { code: r.exitCode, out: JSON.parse(r.stdout.toString()) };
+    };
+
+    // While building: the mockup's PNGs, then the page next to them.
+    mkdirSync(join(root, "design", "previews"), { recursive: true });
+    writeFileSync(join(root, "design/previews/home.html"), readFileSync(join(REPO_ROOT, "skill/preview-kit/template.html"), "utf8"));
+    expect(run("preview", "design/previews/home.html", "--png-only", "--preset", "minimal").code).toBe(0);
+    const side = run("shot", "--routes", "/", "--against", "design/previews/home.html");
+    expect(side.out.comparisons.map((c: { image: string }) => c.image)).toEqual(["design/shots/compare/mockup/home.dark.png", "design/shots/compare/mockup/home.png"]);
+    expect(existsSync(join(root, "design/shots/compare/mockup/home.png"))).toBe(true);
+
+    // Before and after a change.
+    expect(run("shot", "--routes", "/,/settings", "--save", "before").out.saved).toBe("design/shots/before");
+    writeFileSync(join(root, "server.ts"), SERVER.replace("<h1>Home</h1>", "<h1>Welcome home</h1><p>New intro text</p>"));
+    const after = run("shot", "--routes", "/,/settings", "--against", "before");
+    const changed = Object.fromEntries(after.out.comparisons.map((c: { after: string; changed: number }) => [c.after.split("/").pop(), c.changed]));
+    expect(changed["index.mobile.png"]).toBeGreaterThan(0.1);
+    expect(changed["settings.mobile.png"]).toBe(0);
+    expect(existsSync(join(root, "design/shots/compare/before/index.mobile.png"))).toBe(true);
+  }, 240_000);
 });

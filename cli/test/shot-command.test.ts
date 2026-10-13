@@ -1,9 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { parseRoutes, runShot, type ShotDeps } from "../src/commands/shot";
 import type { AuditIssue } from "../src/shot/audit";
 import type { CaptureOptions, RouteResult } from "../src/shot/capture";
+import type { ComparePair } from "../src/shot/compare";
 import { devCommand } from "../src/shot/devserver";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
@@ -21,9 +22,14 @@ const NEXT_APP = {
   "app/posts/[id]/page.tsx": "",
 };
 
-/** Stand-ins for the browser, the dev server and the capture. */
+/** Stand-ins for the browser, the dev server, the capture and the side-by-side renderer. */
 function fakes(over: Partial<ShotDeps> & { results?: (o: CaptureOptions) => RouteResult[]; issues?: AuditIssue[] } = {}) {
-  const calls = { started: [] as { cwd: string; command: string[] }[], stopped: 0, captured: [] as CaptureOptions[] };
+  const calls = {
+    started: [] as { cwd: string; command: string[] }[],
+    stopped: 0,
+    captured: [] as CaptureOptions[],
+    compared: [] as { pairs: ComparePair[]; labels: [string, string]; measure: boolean }[],
+  };
   const { results, issues, ...depOverrides } = over;
   const deps: ShotDeps = {
     findBrowser: () => CHROME,
@@ -43,7 +49,15 @@ function fakes(over: Partial<ShotDeps> & { results?: (o: CaptureOptions) => Rout
       const routes =
         results?.(o) ??
         o.routes.map((route) => ({ route, url: `${o.baseUrl}${route}`, status: 200, shots: [join(o.outDir, `${route === "/" ? "index" : route.slice(1)}.mobile.png`)] }));
+      for (const shot of routes.flatMap((r) => r.shots)) {
+        mkdirSync(dirname(shot), { recursive: true });
+        writeFileSync(shot, "png");
+      }
       return { routes, issues: issues ?? [] };
+    },
+    compare: async (o) => {
+      calls.compared.push({ pairs: o.pairs, labels: o.labels, measure: o.measure });
+      return o.pairs.map((p) => (o.measure ? { ...p, changed: 12.5 } : { ...p }));
     },
     today: () => "2026-10-13",
     ...depOverrides,
@@ -51,6 +65,16 @@ function fakes(over: Partial<ShotDeps> & { results?: (o: CaptureOptions) => Rout
   return { deps, calls };
 }
 const ctx = (flags: Record<string, string | boolean> = {}) => ({ positionals: [], flags });
+
+/** Just enough of a PNG for pngSize. */
+function pngHeader(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(33);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
+}
 
 describe("motif shot: what it needs", () => {
   test("a browser", async () => {
@@ -184,5 +208,65 @@ describe("motif shot", () => {
 describe("parseRoutes", () => {
   test("adds the leading slash and drops repeats and blanks", () => {
     expect(parseRoutes("/, settings ,/about,,/settings")).toEqual(["/", "/settings", "/about"]);
+  });
+});
+
+describe("motif shot: the mockup while building, before and after a rebuild", () => {
+  test("--save keeps this run's screenshots as a named set", async () => {
+    const root = makeProject({});
+    const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/,/settings", save: "before" }), fakes().deps);
+    expect(r.exitCode).toBe(0);
+    expect(readdirSync(join(root, "design/shots/before")).sort()).toEqual(["index.mobile.png", "settings.mobile.png"]);
+    expect(r.data.saved).toBe("design/shots/before");
+    expect(r.text).toContain("--against before");
+    expect((await runShot(root, ctx({ url: "http://localhost:3000", save: "../x" }), fakes().deps)).exitCode).toBe(2);
+  });
+
+  test("--against a saved set compares page by page, then --save can replace the set", async () => {
+    const root = makeProject({ "design/shots/before/index.mobile.png": "old" });
+    const { deps, calls } = fakes();
+    const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/,/settings", against: "before", save: "before" }), deps);
+    expect(r.exitCode).toBe(0);
+    expect(calls.compared[0]).toMatchObject({ labels: ['Before ("before")', "Now"], measure: true });
+    expect(calls.compared[0]!.pairs).toEqual([
+      { before: join(root, "design/shots/before/index.mobile.png"), after: join(root, "design/shots/index.mobile.png"), out: join(root, "design/shots/compare/before/index.mobile.png") },
+    ]);
+    expect(r.data.comparisons).toEqual([
+      { before: "design/shots/before/index.mobile.png", after: "design/shots/index.mobile.png", image: "design/shots/compare/before/index.mobile.png", changed: 12.5 },
+    ]);
+    expect(r.data.added).toEqual(["design/shots/settings.mobile.png"]);
+    expect(r.text).toContain("1 changed");
+    expect(r.text).toContain("12.5% different");
+    expect(readFileSync(join(root, "design/shots/before/index.mobile.png"), "utf8")).toBe("png");
+  });
+
+  test("--against a mockup puts the page next to it", async () => {
+    const root = makeProject({ "design/previews/settings.html": "<p>mockup</p>" });
+    writeFileSync(join(root, "design/previews/settings.png"), pngHeader(820, 1728));
+    const { deps, calls } = fakes();
+    const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/settings", against: "design/previews/settings.html" }), deps);
+    expect(r.exitCode).toBe(0);
+    expect(calls.compared[0]).toMatchObject({ labels: ["Mockup", "The app now"], measure: false });
+    expect(calls.compared[0]!.pairs.map((p) => p.after)).toEqual([join(root, "design/shots/settings.mobile.png")]);
+    expect(r.text).toContain("Side by side with the mockup design/previews/settings.html");
+  });
+
+  test("--against is checked before anything starts", async () => {
+    const root = makeProject({ ...NEXT_APP, "design/previews/home.html": "<p>mockup</p>" });
+    const cases: [string, string, string][] = [
+      ["nothing-here", "/", "Nothing to compare with"],
+      ["design/previews/home.html", "/", "motif preview design/previews/home.html --png-only"],
+    ];
+    for (const [against, routes, message] of cases) {
+      const { deps, calls } = fakes();
+      const r = await runShot(root, ctx({ against, routes }), deps);
+      expect(r.exitCode).toBe(2);
+      expect(r.text).toContain(message);
+      expect(calls.started).toEqual([]);
+    }
+    writeFileSync(join(root, "design/previews/home.png"), pngHeader(820, 1728));
+    const two = await runShot(root, ctx({ against: "design/previews/home.png", routes: "/,/settings" }), fakes().deps);
+    expect(two.exitCode).toBe(2);
+    expect(two.text).toContain("one page");
   });
 });

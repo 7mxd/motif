@@ -44,6 +44,8 @@ Shot options:
   --url <address>   Use an app that's already running instead of starting it
   --routes <list>   Pages to capture, e.g. /,/settings (default: found from your app)
   --audit           Also check contrast, tap-target sizes and reduced motion as rendered
+  --save <name>     Keep these screenshots as a named set, e.g. --save before
+  --against <what>  Side by side with a saved set (after a rebuild) or a mockup (while building)
 
 Tokens options:
   --stack preview   Write only the CSS mockups use (design/previews/motif.css)
@@ -85,6 +87,8 @@ export async function main(argv: string[]): Promise<number> {
         url: { type: "string" },
         routes: { type: "string" },
         audit: { type: "boolean", default: false },
+        save: { type: "string" },
+        against: { type: "string" },
       },
     });
   } catch (e) {
@@ -132,6 +136,8 @@ export async function main(argv: string[]): Promise<number> {
         url: values.url,
         routes: values.routes,
         audit: values.audit,
+        save: values.save,
+        against: values.against,
       },
     });
   } catch (e) {

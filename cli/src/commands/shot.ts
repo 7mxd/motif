@@ -1,11 +1,12 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
 import { captureScreens, MAX_HEIGHT, type RouteResult } from "../shot/capture";
+import { mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison } from "../shot/compare";
 import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes";
 
@@ -14,6 +15,7 @@ export interface ShotDeps {
   devCommand: typeof devCommand;
   startDevServer: typeof startDevServer;
   capture: typeof captureScreens;
+  compare: typeof renderComparisons;
   today: () => string;
 }
 
@@ -25,12 +27,44 @@ function today(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-const defaultDeps: ShotDeps = { findBrowser: () => findBrowser(), devCommand, startDevServer, capture: captureScreens, today };
+const defaultDeps: ShotDeps = {
+  findBrowser: () => findBrowser(),
+  devCommand,
+  startDevServer,
+  capture: captureScreens,
+  compare: renderComparisons,
+  today,
+};
 
 const usage = (text: string, data: Record<string, unknown>): CommandResult => ({ command: "shot", exitCode: 2, text, data });
 const projectPath = (cwd: string, abs: string) => relative(cwd, abs).split(sep).join("/") || ".";
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const rendered = (r: RouteResult) => !r.error && r.status >= 200 && r.status < 400;
+const SET_NAME = /^(?!compare$)[a-z0-9][a-z0-9-]*$/i;
+const isDir = (path: string) => {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+type Against = { kind: "set"; name: string; dir: string } | { kind: "mockup"; file: string; frames: string[] };
+
+/** What --against names: a saved set of screenshots, or a mockup (its .html, or one of its PNGs from motif preview). */
+function resolveAgainst(cwd: string, outDir: string, value: string, pages: number): Against | { error: string } {
+  if (SET_NAME.test(value) && isDir(join(outDir, value))) return { kind: "set", name: value, dir: join(outDir, value) };
+  const file = resolve(cwd, value);
+  if (/\.(png|html)$/i.test(file) && existsSync(file)) {
+    if (pages !== 1) return { error: "Compare one page with a mockup at a time: add --routes with that page, like --routes /settings." };
+    const frames = mockupFrames(file);
+    if (frames.length === 0) return { error: `There are no PNGs of this mockup yet. Make them first: motif preview ${value} --png-only` };
+    return { kind: "mockup", file, frames };
+  }
+  return {
+    error: `Nothing to compare with: "${value}" isn't a saved set of screenshots (keep one with --save ${SET_NAME.test(value) ? value : "before"}) or a mockup (.html or .png).`,
+  };
+}
 
 /** "/, settings ,/about" → ["/", "/settings", "/about"] */
 export function parseRoutes(value: string): string[] {
@@ -98,6 +132,13 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (discovery.skipped.length > 0) {
     notes.push(`Skipped pages that need values in their address: ${discovery.skipped.join(", ")}. Add real ones with --routes.`);
   }
+  const outDir = resolve(cwd, typeof flags.out === "string" ? flags.out : join("design", "shots"));
+  const save = typeof flags.save === "string" ? flags.save : undefined;
+  if (save !== undefined && !SET_NAME.test(save)) {
+    return usage("--save needs a short name made of letters, digits and dashes, like --save before.", { error: "usage" });
+  }
+  const against = typeof flags.against === "string" ? resolveAgainst(cwd, outDir, flags.against, routes.length) : undefined;
+  if (against && "error" in against) return usage(against.error, { error: "usage" });
 
   let server: DevServer | undefined;
   let baseUrl = givenUrl;
@@ -112,7 +153,6 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     baseUrl = server.url;
   }
 
-  const outDir = resolve(cwd, typeof flags.out === "string" ? flags.out : join("design", "shots"));
   let captured: Awaited<ReturnType<typeof captureScreens>>;
   try {
     mkdirSync(outDir, { recursive: true });
@@ -156,6 +196,51 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if (findings.length > 15) lines.push(`  …and ${findings.length - 15} more in ${auditFile}.`);
     for (const r of captured.routes) if (r.auditError) notes.push(`Couldn't finish the audit of ${r.route}: ${r.auditError}`);
   }
+
+  const thisRun = captured.routes.flatMap((r) => r.shots);
+  let comparisons: Comparison[] = [];
+  let added: string[] = [];
+  if (against) {
+    const compareDir = join(outDir, "compare", against.kind === "set" ? against.name : "mockup");
+    let pairs: ComparePair[];
+    if (against.kind === "set") {
+      const paired = pairWithSet(thisRun, against.dir, compareDir);
+      pairs = paired.pairs;
+      added = paired.added;
+    } else {
+      pairs = pairWithMockup(against.frames, thisRun, compareDir);
+    }
+    try {
+      comparisons = await deps.compare({
+        browserPath: browser.path,
+        pairs,
+        labels: against.kind === "set" ? [`Before ("${against.name}")`, "Now"] : ["Mockup", "The app now"],
+        measure: against.kind === "set",
+      });
+    } catch (e) {
+      notes.push(`Couldn't make the side-by-side images: ${message(e)}`);
+    }
+    const where = projectPath(cwd, compareDir);
+    if (against.kind === "set") {
+      const changed = comparisons.filter((c) => (c.changed ?? 0) >= 0.1);
+      const newPart = added.length > 0 ? `, ${added.length} new` : "";
+      lines.push(`Compared with "${against.name}": ${changed.length} changed, ${comparisons.length - changed.length} with no visible change${newPart} (side by side in ${where}/)`);
+      for (const c of changed) lines.push(`  ${basename(c.after)}  ${c.changed}% different`);
+    } else if (comparisons.length > 0) {
+      lines.push(`Side by side with the mockup ${projectPath(cwd, against.file)}: ${comparisons.length} ${comparisons.length === 1 ? "image" : "images"} in ${where}/`);
+    } else {
+      notes.push("None of the mockup's frames matched these screenshots (phone frames pair with mobile, wider frames with desktop).");
+    }
+  }
+  let saved: string | undefined;
+  if (save) {
+    const setDir = join(outDir, save);
+    rmSync(setDir, { recursive: true, force: true });
+    mkdirSync(setDir, { recursive: true });
+    for (const shot of thisRun) copyFileSync(shot, join(setDir, basename(shot)));
+    saved = projectPath(cwd, setDir);
+    lines.push(`✓ Kept these screenshots as "${save}" (${saved}/). After changes, compare with --against ${save}.`);
+  }
   lines.push(...notes.map((n) => `• ${n}`));
 
   return {
@@ -174,6 +259,18 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       shots,
       skipped: discovery.skipped,
       ...(audit ? { findings, audit: auditFile } : {}),
+      ...(against
+        ? {
+            comparisons: comparisons.map((c) => ({
+              before: projectPath(cwd, c.before),
+              after: projectPath(cwd, c.after),
+              image: projectPath(cwd, c.out),
+              ...(c.changed !== undefined ? { changed: c.changed } : {}),
+            })),
+            added: added.map((a) => projectPath(cwd, a)),
+          }
+        : {}),
+      ...(saved ? { saved } : {}),
     },
   };
 }
