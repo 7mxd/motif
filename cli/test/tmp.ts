@@ -12,5 +12,16 @@ export function tempDir(prefix: string): string {
 }
 
 export function cleanupTempDirs(): void {
-  for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of made.splice(0)) {
+    // On Windows, a browser that was just stopped can keep its profile files locked for a moment.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+        break;
+      } catch (e) {
+        if (attempt >= 30) throw e;
+        Bun.sleepSync(100);
+      }
+    }
+  }
 }

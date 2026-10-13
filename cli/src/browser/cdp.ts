@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { onExit } from "../cleanup";
 
 export interface Clip {
   x: number;
@@ -20,6 +21,8 @@ export interface Page {
 }
 
 export interface Browser {
+  /** The browser's process id. */
+  readonly pid: number;
   newPage(): Promise<Page>;
   close(): Promise<void>;
 }
@@ -130,6 +133,10 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
     }
   }
   const { proc, wsUrl, profile } = started;
+  // If Motif exits (or is stopped with Ctrl+C) before close(), the browser goes with it.
+  const cancelExitHook = onExit(() => {
+    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+  });
 
   const ws = new WebSocket(wsUrl);
   try {
@@ -140,6 +147,7 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
       ws.addEventListener("error", () => (clearTimeout(timer), failed()), { once: true });
     });
   } catch (e) {
+    cancelExitHook();
     ws.close();
     if (proc.exitCode === null) proc.kill();
     await removeProfile(profile);
@@ -205,6 +213,7 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
     });
 
   return {
+    pid: proc.pid!,
     async newPage(): Promise<Page> {
       const { targetId } = await send("Target.createTarget", { url: "about:blank" });
       const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
@@ -254,6 +263,7 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
       if (!exited()) proc.kill();
       await new Promise((r) => (exited() ? r(null) : proc.once("exit", r)));
       await removeProfile(profile);
+      cancelExitHook();
     },
   };
 }
