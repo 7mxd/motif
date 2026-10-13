@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { devCommand, findLocalUrl, startDevServer } from "../src/shot/devserver";
+import { devCommand, findLocalUrl, outputSummary, startDevServer } from "../src/shot/devserver";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -149,4 +149,50 @@ process.exit(0);
     expect(Bun.spawnSync([process.execPath, join(dir, "run.ts")]).exitCode).toBe(0);
     expect(await gone(pidIn(dir))).toBe(true);
   }, 30_000);
+});
+
+describe("outputSummary", () => {
+  test("keeps the cause when npm adds its own error lines", () => {
+    const output = [
+      "> web@1.0.0 dev",
+      "> vite",
+      "",
+      "'vite' is not recognized as an internal or external command,",
+      "operable program or batch file.",
+      "npm error Lifecycle script `dev` failed with error:",
+      "npm error code 1",
+      "npm error path C:/x/apps/web",
+      "npm error workspace web@1.0.0",
+      "npm error location C:/x/apps/web",
+      "npm error command failed",
+      "npm error command C:/WINDOWS/system32/cmd.exe /d /s /c vite",
+    ].join("\r\n");
+    const summary = outputSummary(output);
+    expect(summary).toContain("'vite' is not recognized as an internal or external command,");
+    expect(summary.some((l) => l.startsWith("npm error"))).toBe(false);
+  });
+  test("keeps the cause when a stack trace follows it", () => {
+    const output = [
+      "failed to load config from C:/x/vite.config.ts",
+      "error when starting dev server:",
+      "Error: Cannot find module 'some-missing-plugin'",
+      "Require stack:",
+      "- C:/x/vite.config.ts",
+      ...Array.from({ length: 12 }, (_, i) => `    at Module._load (node:internal/modules/cjs/loader:${1000 + i}:12)`),
+      "  code: 'MODULE_NOT_FOUND',",
+      "  requireStack: [ 'C:\\x\\vite.config.ts' ]",
+      "}",
+      "",
+      "Node.js v22.14.0",
+    ].join("\n");
+    const summary = outputSummary(output);
+    expect(summary).toContain("Error: Cannot find module 'some-missing-plugin'");
+    expect(summary.some((l) => l.includes("    at ") || l.startsWith("Node.js v"))).toBe(false);
+  });
+  test("a long log still leads with its first error", () => {
+    const output = ["Error: port 5173 is already in use", ...Array.from({ length: 20 }, (_, i) => `retrying ${i}`)].join("\n");
+    const summary = outputSummary(output);
+    expect(summary[0]).toBe("Error: port 5173 is already in use");
+    expect(summary.length).toBeLessThanOrEqual(8);
+  });
 });

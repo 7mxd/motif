@@ -82,6 +82,19 @@ export function findLocalUrl(output: string): string | null {
   return m[0].replace(/[.,;)]+$/, "").replace("//0.0.0.0", "//127.0.0.1").replace("//[::]", "//[::1]");
 }
 
+// Lines that bury the cause: package-manager wrap-up, stack frames, object dumps, the Node version banner.
+const NOISE = /^(npm (error|ERR!|warn)|\s*ELIFECYCLE|\s+at |\s*(code|errno|syscall|path|requireStack):|\s*[}\]]|Node\.js v\d)/i;
+const CAUSE = /error|not recognized|cannot|not found|failed|EADDRINUSE|in use/i;
+
+/** The few lines of a dev server's output that say why it stopped: its first error, then the last useful lines. */
+export function outputSummary(output: string): string[] {
+  const lines = output.replace(ANSI, "").split(/\r?\n/).map((l) => l.trimEnd()).filter(Boolean);
+  const useful = lines.filter((l) => !NOISE.test(l));
+  const cause = useful.find((l) => CAUSE.test(l));
+  const tail = useful.slice(-8);
+  return cause && !tail.includes(cause) ? [cause, ...tail.slice(-7)] : tail;
+}
+
 /** Stops a process and everything it started. */
 export function killTree(pid: number, force = false): void {
   try {
@@ -131,8 +144,8 @@ export async function startDevServer(opts: { cwd: string; command: string[]; tim
   });
   const running = () => proc.exitCode === null && proc.signalCode === null;
   const tail = () => {
-    const lines = output.replace(ANSI, "").split(/\r?\n/).map((l) => l.trimEnd()).filter(Boolean).slice(-8);
-    return lines.length > 0 ? `\nLast output:\n  ${lines.join("\n  ")}` : "";
+    const lines = outputSummary(output);
+    return lines.length > 0 ? `\nIt said:\n  ${lines.join("\n  ")}` : "";
   };
   const stop = async () => {
     if (proc.pid && running()) {
