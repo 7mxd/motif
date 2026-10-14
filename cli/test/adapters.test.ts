@@ -40,6 +40,12 @@ describe("the React web guide", () => {
     }
   });
 
+  test("tokens.md: a fresh starter's own theme is removed first, so it can't override the design guide", () => {
+    const tokens = read("react-web/tokens.md");
+    expect(tokens).toContain("A fresh starter");
+    for (const s of ["@theme inline", "Geist", "next/font/google", "src/App.css"]) expect(tokens).toContain(s);
+  });
+
   test("components.md: the starter set, with states, focus and an example that uses only theme values", () => {
     const components = read("react-web/components.md");
     for (const c of STARTER_SET) expect(components).toContain(`\`${c}\``);
