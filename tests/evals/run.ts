@@ -1,14 +1,14 @@
 // Runs Motif's agent evals (tests B, C and D, spec §13.2) through your signed-in Claude Code, one case at a time, and grades them.
 // Never an API key; never in CI. See tests/evals/README.md.
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { CASES, selectCases, type EvalCase } from "./cases";
-import { agentArgs, judgeArgs, sessionEnv } from "./claude";
+import { AGENT_TOOLS, agentArgs, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv } from "./claude";
 import { collectAndGrade } from "./collect";
 import type { Grade } from "./grade";
-import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, type JudgeFn } from "./judge";
+import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
 import { paths, preflight, type Ready } from "./preflight";
 import { renderReport, testVerdicts } from "./report";
 import { runSession, type SessionOutcome, type SessionSpec } from "./session";
@@ -43,6 +43,10 @@ export interface RunDeps {
   now(): Date;
   log(line: string): void;
   env: Record<string, string | undefined>;
+  /** Instruction files (CLAUDE.md) Claude Code would read in a session below this folder. */
+  instructionFiles(dir: string): string[];
+  /** The developer's own skills and agents, which no session may load. */
+  personal(): string[];
 }
 
 const summary = (o: SessionOutcome): SessionSummary => ({
@@ -103,7 +107,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       motifEvalRun: 1, id, commit: git.commit, dirty: git.dirty, started: deps.now().toISOString(), claudeVersion: "", resumes: [],
       options: {
         keep: o.keep === true,
-        work: typeof o.work === "string" ? resolve(o.work) : join(tmpdir(), "motif-evals", id),
+        work: join(typeof o.work === "string" ? resolve(o.work) : join(tmpdir(), "motif-evals"), id),
         ...(typeof o.model === "string" ? { model: o.model } : {}),
         ...(typeof o["judge-model"] === "string" ? { judgeModel: o["judge-model"] } : {}),
         ...(maxTurns ? { maxTurns } : {}),
@@ -137,6 +141,14 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     deps.log(ready.error);
     return 2;
   }
+  const instructions = deps.instructionFiles(state.options.work);
+  if (instructions.length > 0) {
+    deps.log(
+      `Claude Code would read these instruction files in every eval session: ${instructions.join(", ")}. Move them aside while the evals run, or choose a --work folder outside their reach, then run this again.`,
+    );
+    return 2;
+  }
+  const personal = deps.personal();
   const { env, dropped } = sessionEnv(deps.env, p.motifBin);
   if (dropped.length) deps.log(`Leaving these out of the eval sessions' environment: ${dropped.join(", ")}.`);
   if (typeof o.resume === "string") {
@@ -185,7 +197,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       deps.log(`${c.id}: Claude Code is working (up to ${c.minutes} minutes). Everything it does goes to ${join(out, "session.jsonl")}.`);
       const outcome = await deps.session({
         command: [ready.claude], args: caseArgs(c), cwd: cs.workspace.app, env, prompt: c.prompt,
-        transcript: join(out, "session.jsonl"), timeoutMs: c.minutes * 60_000, expect: { pluginDir: p.pluginDir, auto: true },
+        transcript: join(out, "session.jsonl"), timeoutMs: c.minutes * 60_000, expect: { pluginDir: p.pluginDir, auto: true, tools: AGENT_TOOLS, personal },
       });
       cs.session = summary(outcome);
       await deps.purge(ready.claude, cs.workspace.app);
@@ -204,8 +216,18 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
         return pause(outcome.resetsAt);
       }
       if (!outcome.init) {
+        // Claude Code never described the session; every other case would go the same way.
         cs.status = "error";
         cs.note = outcome.problems.join(" ") || "Claude Code didn't start.";
+        save();
+        deps.log(`\nStopped: ${cs.note}`);
+        finish();
+        return 2;
+      }
+      if (outcome.end === "failed") {
+        // An API error or a crash part-way says nothing about Motif: not graded, and --resume runs it again.
+        cs.status = "error";
+        cs.note = `${outcome.problems.join(" ")} Not graded; --resume runs it again.`;
         save();
         deps.log(`${c.id}: ${cs.note}`);
         continue;
@@ -219,9 +241,10 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     const judge: JudgeFn = async (input, cwd) => {
       const r = await deps.session({
         command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel }), cwd, env,
-        prompt: judgePrompt(input), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false },
+        prompt: judgePrompt(input), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_TOOLS, personal },
       });
       await deps.purge(ready.claude, cwd);
+      if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "The grader's session didn't start.");
       if (r.end === "usage-limit") return { paused: r.resetsAt ? { resetsAt: r.resetsAt } : {} };
       if (r.end === "finished" && r.result?.structured !== undefined) return { verdict: readVerdict(r.result.structured, input) };
       return { error: r.problems.join(" ") || `the grader's session ended with "${r.end}"` };
@@ -234,6 +257,13 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
         save();
         return pause(e.resetsAt);
       }
+      if (e instanceof Stopped) {
+        cs.note = `Grading stopped: ${e.message} The folder is kept; --resume grades it again.`;
+        save();
+        deps.log(`\nStopped: ${e.message}`);
+        finish();
+        return 2;
+      }
       cs.note = `Grading failed: ${(e as Error).message} The folder is kept; --resume grades it again.`;
       save();
       deps.log(`${c.id}: ${cs.note}`);
@@ -242,7 +272,13 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     cs.status = "graded";
     delete cs.note;
     save();
-    if (!state.options.keep) deps.removeDir(ws.dir);
+    if (!state.options.keep) {
+      try {
+        deps.removeDir(ws.dir);
+      } catch (e) {
+        deps.log(`${c.id}: Couldn't delete ${ws.dir} (${(e as Error).message}); delete it yourself when nothing is using it.`);
+      }
+    }
     const failed = cs.grade.criteria.filter((k) => !k.pass).map((k) => k.label);
     deps.log(`${c.id}: ${cs.grade.pass ? "PASS" : `FAIL (${failed.join("; ")})`}`);
   }
@@ -269,6 +305,8 @@ if (import.meta.main) {
       now: () => new Date(),
       log: (line) => console.log(line),
       env: process.env,
+      instructionFiles: (dir) => memoryFiles(dir, homedir()),
+      personal: () => personalNames(homedir()),
     },
     { repo, results: join(repo, "tests", "evals", "results") },
   );

@@ -1,5 +1,5 @@
 // How the evals start Claude Code: which program, which arguments, which environment, and what its event stream says.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 /**
@@ -48,8 +48,18 @@ export function sessionEnv(base: Record<string, string | undefined>, motifBin: s
   return { env, dropped };
 }
 
-/** Tools an unattended eval never needs: they reach outside the session (triggers, phone notifications, schedules, design sync) or move work out of the folder being graded. */
-export const DISALLOWED_TOOLS = ["RemoteTrigger", "PushNotification", "ScheduleWakeup", "CronCreate", "CronDelete", "Workflow", "DesignSync", "EnterWorktree", "ExitWorktree"];
+/**
+ * The only tools an eval session gets: files, the shell, search, skills, subagents, its task list and the web. Anything else Claude Code
+ * offers (publishing pages, messaging other sessions, triggers, notifications, schedules, worktrees, and whatever a later version adds)
+ * is left out, and the session's first event is checked against this list. Names a platform doesn't have (PowerShell) are ignored.
+ */
+export const AGENT_TOOLS = [
+  "Bash", "PowerShell", "Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit", "Skill", "ToolSearch",
+  "Task", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskStop", "Monitor", "WebFetch", "WebSearch",
+];
+
+/** Test C's grader only reads. */
+export const JUDGE_TOOLS = ["Read", "Grep", "Glob"];
 
 /** Every session: headless, every event streamed, nothing saved, none of the developer's settings, no MCP servers. */
 const isolation = (mcpConfigFile: string) => [
@@ -64,7 +74,7 @@ export function agentArgs(o: { pluginDir: string; mcpConfigFile: string; maxTurn
     "--plugin-dir", o.pluginDir, "--add-dir", o.pluginDir,
     "--max-turns", String(o.maxTurns), "--max-budget-usd", String(o.maxBudgetUsd),
     ...(o.model ? ["--model", o.model] : []),
-    "--disallowedTools", DISALLOWED_TOOLS.join(","),
+    "--tools", AGENT_TOOLS.join(","),
   ];
 }
 
@@ -73,14 +83,19 @@ export function judgeArgs(o: { mcpConfigFile: string; schema: object; maxTurns: 
   return [
     ...isolation(o.mcpConfigFile),
     "--permission-mode", "default", "--permission-prompts", "none",
-    "--tools", "Read,Grep,Glob",
+    "--tools", JUDGE_TOOLS.join(","),
     "--max-turns", String(o.maxTurns),
     ...(o.model ? ["--model", o.model] : []),
     "--json-schema", JSON.stringify(o.schema),
   ];
 }
 
-export interface InitInfo { model: string; permissionMode: string; apiKeySource: string; mcpServers: string[]; plugins: { name: string; path: string }[]; version: string }
+export interface InitInfo {
+  model: string; permissionMode: string; apiKeySource: string; mcpServers: string[]; plugins: { name: string; path: string }[];
+  tools: string[]; skills: string[]; agents: string[]; version: string;
+}
+
+const names = (v: unknown): string[] => (Array.isArray(v) ? v.map((s: any) => String(s?.name ?? s)) : []);
 
 export function initInfo(e: unknown): InitInfo | null {
   const x = e as any;
@@ -89,10 +104,46 @@ export function initInfo(e: unknown): InitInfo | null {
     model: String(x.model ?? ""),
     permissionMode: String(x.permissionMode ?? ""),
     apiKeySource: String(x.apiKeySource ?? ""),
-    mcpServers: (Array.isArray(x.mcp_servers) ? x.mcp_servers : []).map((s: any) => String(s?.name ?? s)),
+    mcpServers: names(x.mcp_servers),
     plugins: (Array.isArray(x.plugins) ? x.plugins : []).map((p: any) => ({ name: String(p?.name ?? ""), path: String(p?.path ?? "") })),
+    tools: names(x.tools),
+    skills: names(x.skills),
+    agents: names(x.agents),
     version: String(x.claude_code_version ?? ""),
   };
+}
+
+/** The developer's own skills (~/.claude/skills/<name>/) and agents (~/.claude/agents/<name>.md), which no eval session may load. */
+export function personalNames(home: string): string[] {
+  const out: string[] = [];
+  const skills = join(home, ".claude", "skills");
+  const agents = join(home, ".claude", "agents");
+  try {
+    for (const n of readdirSync(skills)) if (statSync(join(skills, n)).isDirectory()) out.push(n);
+  } catch {
+    // None.
+  }
+  try {
+    for (const n of readdirSync(agents)) if (n.endsWith(".md")) out.push(n.slice(0, -3));
+  } catch {
+    // None.
+  }
+  return out;
+}
+
+/** Instruction files Claude Code would read in a session started below `dir`: in it and every folder above it, and the developer's own. */
+export function memoryFiles(dir: string, home: string): string[] {
+  const found: string[] = [];
+  let d = resolve(dir);
+  for (;;) {
+    for (const f of ["CLAUDE.md", "CLAUDE.local.md", join(".claude", "CLAUDE.md")]) if (existsSync(join(d, f))) found.push(join(d, f));
+    const up = dirname(d);
+    if (up === d) break;
+    d = up;
+  }
+  const own = join(home, ".claude", "CLAUDE.md");
+  if (existsSync(own) && !found.includes(own)) found.push(own);
+  return found;
 }
 
 const samePath = (a: string, b: string) => {
@@ -101,8 +152,13 @@ const samePath = (a: string, b: string) => {
 };
 
 /** What would make a session's results meaningless. Anything missing counts as a problem. */
-export function isolationProblems(init: InitInfo, expect: { pluginDir?: string; auto: boolean }): string[] {
+export function isolationProblems(init: InitInfo, expect: { pluginDir?: string; auto: boolean; tools: string[]; personal?: string[] }): string[] {
   const problems: string[] = [];
+  if (init.tools.length === 0) problems.push("Claude Code didn't list its tools, so the runner can't check what the session may do.");
+  const extra = init.tools.filter((t) => !expect.tools.includes(t));
+  if (extra.length > 0) problems.push(`Claude Code offered tools the evals don't allow (${extra.join(", ")}).`);
+  const mine = [...init.skills, ...init.agents].filter((n) => expect.personal?.includes(n));
+  if (mine.length > 0) problems.push(`Your own skills or agents were loaded (${mine.join(", ")}); every eval session runs without them.`);
   if (init.apiKeySource !== "none") {
     problems.push(`Claude Code didn't confirm it's using your Claude account (API key source: "${init.apiKeySource || "not reported"}"); the evals run only on your Claude plan.`);
   }

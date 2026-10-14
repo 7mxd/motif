@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EvalCase } from "../../tests/evals/cases";
+import { AGENT_TOOLS, JUDGE_TOOLS } from "../../tests/evals/claude";
 import type { Grade } from "../../tests/evals/grade";
 import { Paused } from "../../tests/evals/judge";
 import { runEvals, type RunDeps } from "../../tests/evals/run";
@@ -15,7 +16,7 @@ const RUN = "20261014-120000";
 const PASS: Grade = { pass: true, criteria: [], metrics: {} };
 const finished = (): SessionOutcome => ({
   end: "finished",
-  init: { model: "m", permissionMode: "auto", apiKeySource: "none", mcpServers: [], plugins: [], version: "x" },
+  init: { model: "m", permissionMode: "auto", apiKeySource: "none", mcpServers: [], plugins: [], tools: ["Read"], skills: [], agents: [], version: "x" },
   result: { subtype: "success", isError: false, turns: 5, costUsd: 1, durationMs: 1, denials: [], text: "", apiErrorStatus: null },
   problems: [], minutes: 1,
 });
@@ -52,6 +53,8 @@ function harness(over: Partial<RunDeps> = {}) {
     now: () => new Date(2026, 9, 14, 12, 0, 0),
     log: (l) => lines.push(l),
     env: { PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x" },
+    instructionFiles: () => [],
+    personal: () => ["apple-design"],
     ...over,
   };
   return { deps, calls, lines, root, where: { repo: root, results: join(root, "results") }, work: join(root, "work") };
@@ -88,14 +91,14 @@ describe("the eval runner", () => {
     expect(h.calls.prepare).toEqual(["b-settings", "c-review"]);
     const s = h.calls.session[0]!;
     expect(s.prompt).toStartWith("/motif:feature");
-    expect(s.cwd).toBe(join(h.work, "b-settings", "app"));
+    expect(s.cwd).toBe(join(h.work, RUN, "b-settings", "app"));
     expect(s.args[s.args.indexOf("--max-turns") + 1]).toBe("200");
     expect(s.env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(s.env.MOTIF_BIN).toBe(join(h.root, "dist", process.platform === "win32" ? "motif.exe" : "motif"));
-    expect(s.expect).toEqual({ pluginDir: join(h.root, "dist", "claude-code"), auto: true });
+    expect(s.expect).toEqual({ pluginDir: join(h.root, "dist", "claude-code"), auto: true, tools: AGENT_TOOLS, personal: ["apple-design"] });
     expect(h.calls.collect).toEqual(["b-settings", "c-review"]);
-    expect(h.calls.purge).toContain(join(h.work, "b-settings", "app"));
-    expect(h.calls.removed).toEqual([join(h.work, "b-settings"), join(h.work, "c-review")]);
+    expect(h.calls.purge).toContain(join(h.work, RUN, "b-settings", "app"));
+    expect(h.calls.removed).toEqual([join(h.work, RUN, "b-settings"), join(h.work, RUN, "c-review")]);
     expect(h.lines.join("\n")).toContain("ANTHROPIC_API_KEY");
     expect(readFileSync(join(h.where.results, RUN, "report.md"), "utf8")).toContain("PASS");
     expect(existsSync(join(h.where.results, RUN, "report.json"))).toBe(true);
@@ -167,6 +170,71 @@ describe("the eval runner", () => {
     expect(await runEvals(["--cases", "b-settings,b-search", "--work", h.work], h.deps, h.where)).toBe(2);
     expect(h.calls.prepare).toEqual(["b-settings"]);
     expect(h.lines.join("\n")).toContain("refero");
+  });
+
+  test("a session that never described itself stops the whole run", async () => {
+    const h = harness({ session: async () => ({ end: "failed", problems: ["Claude Code stopped unexpectedly: not logged in"], minutes: 0 }) });
+    expect(await runEvals(["--cases", "b-settings,b-search", "--work", h.work], h.deps, h.where)).toBe(2);
+    expect(h.calls.prepare).toEqual(["b-settings"]);
+    expect(h.lines.join("\n")).toContain("not logged in");
+  });
+
+  test("a grader's session that isn't isolated stops the run and keeps the case for --resume", async () => {
+    const h = harness({
+      session: async (s) => {
+        h.calls.session.push(s);
+        return s.args.includes("--json-schema") ? { ...finished(), end: "not-isolated", problems: ["Other plugins were loaded (superpowers)."] } : finished();
+      },
+      collect: async (_c, ws, _out, judge) => {
+        await judge({ issues: [], unmatched: [] }, ws.app);
+        return PASS;
+      },
+    });
+    expect(await runEvals(["--cases", "c-review,d-stride", "--work", h.work], h.deps, h.where)).toBe(2);
+    const judgeSpec = h.calls.session.find((s) => s.args.includes("--json-schema"))!;
+    expect(judgeSpec.expect).toEqual({ auto: false, tools: JUDGE_TOOLS, personal: ["apple-design"] });
+    expect(h.calls.prepare).toEqual(["c-review"]);
+    expect((loadRun(h.where.results, RUN) as RunState).cases["c-review"]!.status).toBe("session-done");
+    expect(h.lines.join("\n")).toContain("superpowers");
+  });
+
+  test("a session that failed part-way (an API error) isn't graded, and --resume runs it again", async () => {
+    let n = 0;
+    const h = harness({
+      session: async (s) => {
+        h.calls.session.push(s);
+        return ++n === 1 ? { ...finished(), end: "failed", problems: ["Claude Code stopped unexpectedly: API Error: 500"] } : finished();
+      },
+    });
+    expect(await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where)).toBe(1);
+    expect(h.calls.collect).toEqual([]);
+    expect((loadRun(h.where.results, RUN) as RunState).cases["b-search"]).toMatchObject({ status: "error", note: expect.stringContaining("API Error: 500") });
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(h.calls.collect).toEqual(["b-search"]);
+  });
+
+  test("instruction files Claude Code would read in every session stop the run before it starts", async () => {
+    const h = harness({ instructionFiles: (dir) => [join(dir, "..", "CLAUDE.md")] });
+    expect(await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where)).toBe(2);
+    expect(h.lines.join("\n")).toContain("CLAUDE.md");
+    expect(h.calls.prepare).toEqual([]);
+  });
+
+  test("each run keeps its folders apart under --work, so a new run never deletes another's", async () => {
+    const h = harness();
+    await runEvals(["--cases", "b-search", "--keep", "--work", h.work], h.deps, h.where);
+    expect(h.calls.session[0]!.cwd).toBe(join(h.work, RUN, "b-search", "app"));
+  });
+
+  test("a folder that can't be deleted after grading is reported, and the run goes on", async () => {
+    const h = harness({
+      removeDir: () => {
+        throw new Error("EBUSY: resource busy or locked");
+      },
+    });
+    expect(await runEvals(["--cases", "b-search,b-profile", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(h.calls.collect).toEqual(["b-search", "b-profile"]);
+    expect(h.lines.join("\n")).toContain("Couldn't delete");
   });
 
   test("a folder that can't be prepared is an error for that case only", async () => {

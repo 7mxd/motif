@@ -16,7 +16,7 @@ export interface SessionSpec {
   prompt: string;
   transcript: string;
   timeoutMs: number;
-  expect: { pluginDir?: string; auto: boolean };
+  expect: { pluginDir?: string; auto: boolean; tools: string[]; personal?: string[] };
 }
 
 export type SessionEnd = "finished" | "turn-cap" | "budget-cap" | "time-limit" | "usage-limit" | "not-isolated" | "failed";
@@ -61,6 +61,15 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
       return;
     }
     const i = initInfo(e);
+    if (!init && !i && !notIsolated) {
+      // Fail closed: without the first event, nothing about the session can be checked.
+      problems.push(
+        `Claude Code's first event didn't describe the session (it was ${JSON.stringify((e as any)?.type ?? null)}${(e as any)?.subtype ? `/${JSON.stringify((e as any).subtype)}` : ""}), so the runner can't check the session is isolated. This version of Claude Code may need the runner updated.`,
+      );
+      notIsolated = true;
+      stop();
+      return;
+    }
     if (i && !init) {
       init = i;
       const p = isolationProblems(i, spec.expect);

@@ -1,15 +1,23 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentArgs, DISALLOWED_TOOLS, initInfo, isolationProblems, judgeArgs, resolveClaude, resultInfo, sessionEnv, usageLimit } from "../../tests/evals/claude";
+import {
+  AGENT_TOOLS, agentArgs, initInfo, isolationProblems, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, resolveClaude, resultInfo, sessionEnv, usageLimit,
+} from "../../tests/evals/claude";
+import { cleanupTempDirs, tempDir } from "./tmp";
+
+afterAll(cleanupTempDirs);
 
 const SHIM = '@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n';
 const NPM = join(import.meta.dir, "npm-global");
 const PLUGIN = join(import.meta.dir, "plugin-dir-for-tests");
 const pair = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
+const AGENT = { pluginDir: PLUGIN, auto: true, tools: AGENT_TOOLS };
 
 const init = (over: Record<string, unknown> = {}) => ({
   type: "system", subtype: "init", model: "some-model", permissionMode: "auto", apiKeySource: "none", mcp_servers: [],
   plugins: [{ name: "motif", path: PLUGIN, source: "motif@inline" }, { name: "cc-plugin-telemetry", path: "builtin", source: "cc-plugin-telemetry@builtin" }],
+  tools: ["Bash", "Read", "Write", "Skill"], skills: ["motif:feature", "design"], agents: ["general-purpose"],
   claude_code_version: "2.1.289",
   ...over,
 });
@@ -76,14 +84,19 @@ describe("an eval session's arguments", () => {
     expect(pair(agentArgs({ pluginDir: "/p", mcpConfigFile: "/m", maxTurns: 1, maxBudgetUsd: 1, model: "chosen" }), "--model")).toBe("chosen");
   });
 
-  test("tools that reach outside the session are switched off", () => {
-    expect(pair(a, "--disallowedTools")).toBe(DISALLOWED_TOOLS.join(","));
-    for (const t of ["RemoteTrigger", "PushNotification", "ScheduleWakeup", "Workflow", "DesignSync", "EnterWorktree"]) expect(DISALLOWED_TOOLS).toContain(t);
+  test("only the tools a coding session needs: nothing that publishes, messages other sessions, schedules work or leaves the folder", () => {
+    expect(pair(a, "--tools")).toBe(AGENT_TOOLS.join(","));
+    expect(a).not.toContain("--disallowedTools");
+    for (const t of ["Bash", "Read", "Write", "Edit", "Skill"]) expect(AGENT_TOOLS).toContain(t);
+    for (const t of ["Artifact", "ArtifactComments", "ArtifactData", "SendMessage", "ListAgents", "RemoteTrigger", "PushNotification", "ScheduleWakeup", "CronCreate", "Workflow", "DesignSync", "EnterWorktree"]) {
+      expect(AGENT_TOOLS).not.toContain(t);
+    }
   });
 
   test("the grader's session reads only, loads no plugin and answers in a schema", () => {
     const j = judgeArgs({ mcpConfigFile: "/m", schema: { type: "object" }, maxTurns: 40 });
-    expect(pair(j, "--tools")).toBe("Read,Grep,Glob");
+    expect(pair(j, "--tools")).toBe(JUDGE_TOOLS.join(","));
+    expect(JUDGE_TOOLS).toEqual(["Read", "Grep", "Glob"]);
     expect(pair(j, "--json-schema")).toBe('{"type":"object"}');
     expect(pair(j, "--permission-mode")).toBe("default");
     expect(pair(j, "--permission-prompts")).toBe("none");
@@ -95,13 +108,13 @@ describe("an eval session's arguments", () => {
 
 describe("a session's first event", () => {
   test("an isolated session has no problems", () => {
-    expect(isolationProblems(initInfo(init())!, { pluginDir: PLUGIN, auto: true })).toEqual([]);
+    expect(isolationProblems(initInfo(init())!, AGENT)).toEqual([]);
   });
 
   test("an API key, MCP servers, another plugin, or no Motif plugin are each a problem", () => {
     const p = isolationProblems(
       initInfo(init({ apiKeySource: "ANTHROPIC_API_KEY", mcp_servers: [{ name: "refero", status: "connected" }], plugins: [{ name: "superpowers", path: "/home/me/.claude/plugins/superpowers" }] }))!,
-      { pluginDir: PLUGIN, auto: true },
+      AGENT,
     ).join("\n");
     expect(p).toContain("API key");
     expect(p).toContain("refero");
@@ -109,22 +122,59 @@ describe("a session's first event", () => {
     expect(p).toContain("Motif plugin wasn't loaded");
   });
 
+  test("a tool outside the allowed set, or no tool list at all, is a problem", () => {
+    expect(isolationProblems(initInfo(init({ tools: ["Bash", "Read", "Artifact"] }))!, AGENT)).toEqual([expect.stringContaining("Artifact")]);
+    expect(isolationProblems(initInfo(init({ tools: undefined }))!, AGENT)).toEqual([expect.stringContaining("didn't list its tools")]);
+  });
+
+  test("the developer's own skills or agents are a problem", () => {
+    const p = isolationProblems(initInfo(init({ skills: ["motif:feature", "apple-design"], agents: ["general-purpose", "my-reviewer"] }))!, { ...AGENT, personal: ["apple-design", "my-reviewer", "unused"] });
+    expect(p).toEqual([expect.stringContaining("apple-design, my-reviewer")]);
+  });
+
   test("missing fields count as problems, never as a pass", () => {
-    const p = isolationProblems(initInfo({ type: "system", subtype: "init" })!, { pluginDir: PLUGIN, auto: true });
-    expect(p.length).toBeGreaterThanOrEqual(3); // no apiKeySource "none", no Motif plugin, not auto mode
+    const p = isolationProblems(initInfo({ type: "system", subtype: "init" })!, AGENT);
+    expect(p.length).toBeGreaterThanOrEqual(4); // no apiKeySource "none", no tool list, no Motif plugin, not auto mode
   });
 
   test("a session that didn't start in auto mode can't work unattended", () => {
-    expect(isolationProblems(initInfo(init({ permissionMode: "default" }))!, { pluginDir: PLUGIN, auto: true })).toEqual([expect.stringContaining("--model")]);
+    expect(isolationProblems(initInfo(init({ permissionMode: "default" }))!, AGENT)).toEqual([expect.stringContaining("--model")]);
   });
 
-  test("the grader's session expects no plugin and no auto mode", () => {
-    expect(isolationProblems(initInfo(init({ permissionMode: "default", plugins: [{ name: "cc-plugin-telemetry", path: "builtin" }] }))!, { auto: false })).toEqual([]);
+  test("the grader's session expects no plugin, no auto mode and only its reading tools", () => {
+    const judge = init({ permissionMode: "default", plugins: [{ name: "cc-plugin-telemetry", path: "builtin" }], tools: ["Glob", "Grep", "Read"] });
+    expect(isolationProblems(initInfo(judge)!, { auto: false, tools: JUDGE_TOOLS })).toEqual([]);
+    expect(isolationProblems(initInfo({ ...judge, tools: ["Read", "Bash"] })!, { auto: false, tools: JUDGE_TOOLS })).toEqual([expect.stringContaining("Bash")]);
   });
 
   test("other events aren't the first event", () => {
     expect(initInfo({ type: "assistant" })).toBeNull();
     expect(initInfo(null)).toBeNull();
+  });
+});
+
+describe("what the developer keeps for their own sessions", () => {
+  test("their own skills and agents, by name", () => {
+    const home = tempDir("motif-home-");
+    mkdirSync(join(home, ".claude", "skills", "apple-design"), { recursive: true });
+    writeFileSync(join(home, ".claude", "skills", "skills-lock.json"), "{}");
+    mkdirSync(join(home, ".claude", "agents"), { recursive: true });
+    writeFileSync(join(home, ".claude", "agents", "my-reviewer.md"), "");
+    expect(personalNames(home).sort()).toEqual(["apple-design", "my-reviewer"]);
+    expect(personalNames(join(home, "nobody"))).toEqual([]);
+  });
+
+  test("instruction files Claude Code would read in a session below a folder: in it, above it, and their own", () => {
+    const root = tempDir("motif-memory-");
+    const home = join(root, "home");
+    const work = join(home, "temp", "motif-evals", "run");
+    mkdirSync(work, { recursive: true });
+    expect(memoryFiles(work, home)).toEqual([]);
+    writeFileSync(join(home, "CLAUDE.md"), "Always use tabs.");
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    writeFileSync(join(home, ".claude", "CLAUDE.md"), "Be terse.");
+    writeFileSync(join(home, "temp", "CLAUDE.local.md"), "x");
+    expect(memoryFiles(work, home).sort()).toEqual([join(home, ".claude", "CLAUDE.md"), join(home, "CLAUDE.md"), join(home, "temp", "CLAUDE.local.md")].sort());
   });
 });
 

@@ -41,6 +41,9 @@ export interface JudgeVerdict {
 export type JudgeOutcome = { verdict: JudgeVerdict } | { paused: { resetsAt?: number } } | { error: string };
 export type JudgeFn = (input: JudgeInput, cwd: string) => Promise<JudgeOutcome>;
 
+/** The grader's session wasn't isolated (or never described itself): its verdict can't count, and the run stops. */
+export class Stopped extends Error {}
+
 /** Grading met the developer's usage limit: the run pauses, and --resume grades the case again. */
 export class Paused extends Error {
   resetsAt?: number;

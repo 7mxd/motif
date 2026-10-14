@@ -31,6 +31,7 @@ out({
   type: "system", subtype: "init", cwd: process.cwd(), session_id: "fake", model: "fake-model",
   permissionMode: args.includes("--permission-mode") ? args[args.indexOf("--permission-mode") + 1] : "default", apiKeySource: "none", mcp_servers: [],
   plugins: [...(pluginDir ? [{ name: "motif", path: pluginDir, source: "motif@inline" }] : []), { name: "cc-plugin-telemetry", path: "builtin", source: "cc-plugin-telemetry@builtin" }],
+  tools: args.includes("--tools") ? args[args.indexOf("--tools") + 1]!.split(",").filter((t) => t !== "PowerShell") : ["Bash", "Read"],
   claude_code_version: "0.0.0-fake",
   ...scenario.init,
 });

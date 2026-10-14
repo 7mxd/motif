@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentArgs } from "../../tests/evals/claude";
+import { AGENT_TOOLS, agentArgs } from "../../tests/evals/claude";
 import { runSession, type SessionSpec } from "../../tests/evals/session";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -22,7 +22,7 @@ function spec(scenario: object, over: Partial<SessionSpec> = {}): SessionSpec & 
     prompt: "/motif:feature Add a settings screen.",
     transcript: join(dir, "out", "session.jsonl"),
     timeoutMs: 60_000,
-    expect: { pluginDir, auto: true },
+    expect: { pluginDir, auto: true, tools: AGENT_TOOLS },
     record,
     ...over,
   };
@@ -45,6 +45,14 @@ describe("a session", () => {
     const o = await runSession(spec({ init: { mcp_servers: [{ name: "refero" }] }, hangMs: 30_000 }));
     expect(o.end).toBe("not-isolated");
     expect(o.problems.join(" ")).toContain("refero");
+    expect(Date.now() - started).toBeLessThan(15_000);
+  });
+
+  test("is stopped at once when its first event doesn't describe the session (a renamed or missing init event)", async () => {
+    const started = Date.now();
+    const o = await runSession(spec({ init: { subtype: "started" }, hangMs: 30_000 }));
+    expect(o.end).toBe("not-isolated");
+    expect(o.problems.join(" ")).toContain("first event");
     expect(Date.now() - started).toBeLessThan(15_000);
   });
 
