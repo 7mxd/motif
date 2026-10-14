@@ -72,6 +72,10 @@ describe("modes/init.md", () => {
     expect(outOfOrder(init, ["## 1. Brief", "## 2. Scaffold", "## 3. Research", "## 4. Directions ⏸", "## 5. Design guide", "## 6. Build", "## 7. Verify"])).toBeNull();
   });
 
+  test("a new project gets its own folder, and the brief's design/ folder moves into it", () => {
+    expect(outOfOrder(init, ["## 2. Scaffold", "new folder named after the app", "move the `design/` folder", "run every later command"])).toBeNull();
+  });
+
   test("uses the tool for every exact step, in order", () => {
     expect(outOfOrder(init, [
       "motif preview --gallery --png-only", "design/directions/", "motif validate --tokens", "motif preview --compare",

@@ -17,7 +17,7 @@ Save the answers in the progress file's `notes`, so a later session doesn't ask 
 
 ## 2. Scaffold
 
-- **No project yet:** create one with the starter command in the stack guide ([React web](../adapters/react-web/README.md): Next.js by default, Vite for a single-page app). Ask before installing anything that command doesn't install.
+- **No project yet:** create it in a new folder named after the app, with the starter command in the stack guide ([React web](../adapters/react-web/README.md): Next.js by default, Vite for a single-page app). Starters need an empty folder, so the brief's files can't go first: once the project exists, move the `design/` folder from step 1 into it, and run every later command (`motif` included) from the new folder. Ask before installing anything the starter command doesn't install.
 - **An existing project:** keep it. Add Motif's files beside what's there and change nothing else yet.
 
 ## 3. Research
