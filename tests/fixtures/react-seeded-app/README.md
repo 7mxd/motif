@@ -4,7 +4,7 @@ Larder (the contract app) with 23 planted problems, for test C: Motif's `review`
 
 ## How it's built
 
-`tests/fixtures/assemble.ts` copies the files git keeps in `../react-contract-app/` (so local leftovers such as `node_modules/`, `.next/`, screenshots and caches never come along), then the overlay's on top, then deletes the paths in `seeded-issues.json`'s `remove` list (the products list's loading state and the product page's not-found state).
+`tests/fixtures/assemble.ts` copies the files git keeps in `../react-contract-app/` (so local leftovers such as `node_modules/`, `.next/`, screenshots and caches never come along), then the overlay's files on top, then deletes the paths in `seeded-issues.json`'s `remove` list (the products list's loading state and the product page's not-found state).
 
 ```bash
 bun tests/fixtures/assemble.ts react-seeded-app <empty folder>
