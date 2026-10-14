@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, statSync, watch, type FSWatcher } from "node:fs";
-import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { previewCss } from "../generate/preview-css";
 import type { Theme } from "../generate/theme";
 import { KIT_ASSETS, TEMPLATE_HTML } from "./assets";
 import { EMBEDDED_FONT_FILES, FONTS_CSS } from "./fonts";
 import { comparePage, galleryPage } from "./pages";
 import { EMBEDDED_PRESETS, presetTheme } from "./presets";
+import { loadThemeFile } from "./theme-file";
 
 export interface PreviewServer {
   url: string;
@@ -48,6 +49,23 @@ export function resolveInside(root: string, urlPath: string): string | null {
 
 const notFound = () => new Response("Not found", { status: 404 });
 
+const GUIDE_TOKENS = "design/tokens.json";
+
+/** A mockup's theme: the tokens.json in its own folder (a design direction), or the design guide's. */
+export function themeHrefFor(root: string, file: string): string {
+  const own = join(dirname(file), "tokens.json");
+  const rel = relative(root, own).split(sep).join("/");
+  if (rel === GUIDE_TOKENS || !existsSync(own)) return "/__motif/theme.css";
+  return `/__motif/theme.css?tokens=${encodeURIComponent(rel)}`;
+}
+
+function directionCss(root: string, rel: string): string {
+  const file = resolveInside(root, rel);
+  if (!file || basename(file) !== "tokens.json" || !existsSync(file)) return `/* There's no theme at ${rel}. */\n`;
+  const { theme } = loadThemeFile(rel, readFileSync(file, "utf8"));
+  return theme ? previewCss(theme) : `/* ${rel} has problems. Run: motif validate --tokens ${rel} */\n`;
+}
+
 export function startPreviewServer(opts: { root: string; theme: Theme | null; watch?: string[] }): PreviewServer {
   const root = resolve(opts.root);
   const encoder = new TextEncoder();
@@ -69,7 +87,9 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       const url = new URL(req.url);
       const path = url.pathname;
       if (path === "/__motif/theme.css") {
-        return new Response(themeCss(url.searchParams.get("preset")), { headers: { "content-type": TYPES[".css"]!, "cache-control": "no-store" } });
+        const tokens = url.searchParams.get("tokens");
+        const css = tokens !== null ? directionCss(root, tokens) : themeCss(url.searchParams.get("preset"));
+        return new Response(css, { headers: { "content-type": TYPES[".css"]!, "cache-control": "no-store" } });
       }
       if (path.startsWith("/__motif/kit/fonts/")) {
         const name = path.slice("/__motif/kit/fonts/".length);
@@ -109,7 +129,7 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       // Hidden files and folders (.env, .git) are never mockup material.
       if (relative(root, file).split(sep).some((part) => part.startsWith("."))) return notFound();
       const ext = extname(file).toLowerCase();
-      if (ext === ".html") return html(injectKit(readFileSync(file, "utf8"), "/__motif/theme.css"));
+      if (ext === ".html") return html(injectKit(readFileSync(file, "utf8"), themeHrefFor(root, file)));
       return new Response(Bun.file(file), { headers: { "content-type": TYPES[ext] ?? "application/octet-stream" } });
     },
   });

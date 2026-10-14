@@ -4,7 +4,11 @@ Mockups are plain HTML that use these classes. They never contain colours, sizes
 
 ## With the tool (normal)
 
-Write the screen into `design/previews/<name>.html`, then run `motif preview design/previews/<name>.html`. The tool serves it, adds the theme and this kit, reloads on save, and writes PNGs (light and dark) next to it.
+Write the screen into `design/previews/<name>.html`, then run `motif preview design/previews/<name>.html`. The tool serves it, adds the theme and this kit, reloads on save, and writes PNGs (light and dark) next to the mockup.
+
+## Directions
+
+To compare looks side by side, give each direction its own folder, such as `design/directions/calm/`, holding a `tokens.json` (copy a starting style's from the skill's `presets/` folder and change the values) and its mockups. A mockup uses the `tokens.json` in its own folder; every other mockup uses the design guide. Check each direction with `motif validate --tokens design/directions/calm/tokens.json`, make PNGs with `motif preview design/directions/calm --png-only` (they're saved next to the mockups), and show several at once with `motif preview --compare design/directions/calm/home.html design/directions/bold/home.html`.
 
 ## Without the tool
 

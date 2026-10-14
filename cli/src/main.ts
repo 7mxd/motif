@@ -40,7 +40,10 @@ Preview options:
   --gallery         Show the 8 starting styles
   --png-only        Save PNGs and stop, without opening a browser
   --no-open         Serve without opening a browser
-  --out <folder>    Where PNGs go (preview: design/previews, shot: design/shots)
+  --out <folder>    Where PNGs go (preview: next to each mockup; gallery: design/previews; shot: design/shots)
+
+Validate options:
+  --tokens <file>   Check one theme values file on its own (e.g. a design direction's)
 
 Shot options:
   --url <address>   Use an app that's already running instead of starting it
@@ -57,7 +60,7 @@ type Runner = (cwd: string, ctx: RunContext) => Promise<CommandResult>;
 
 const COMMANDS: Record<string, Runner> = {
   doctor: (cwd) => runDoctor(cwd),
-  validate: (cwd) => runValidate(cwd),
+  validate: (cwd, ctx) => runValidate(cwd, { tokens: typeof ctx.flags?.tokens === "string" ? ctx.flags.tokens : undefined }),
   tokens: runTokens,
   check: runCheck,
   extract: runExtract,
@@ -95,6 +98,7 @@ export async function main(argv: string[]): Promise<number> {
         audit: { type: "boolean", default: false },
         save: { type: "string" },
         against: { type: "string" },
+        tokens: { type: "string" },
       },
     });
   } catch (e) {
@@ -144,6 +148,7 @@ export async function main(argv: string[]): Promise<number> {
         audit: values.audit,
         save: values.save,
         against: values.against,
+        tokens: values.tokens,
       },
     });
   } catch (e) {

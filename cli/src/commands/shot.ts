@@ -59,7 +59,7 @@ function resolveAgainst(cwd: string, outDir: string, value: string, pages: numbe
   const file = resolve(cwd, value);
   if (/\.(png|html)$/i.test(file) && existsSync(file)) {
     if (pages !== 1) return { error: "Compare one page with a mockup at a time: add --routes with that page, like --routes /settings." };
-    // motif preview writes a mockup's PNGs to design/previews/, wherever the mockup itself lives.
+    // motif preview writes a mockup's PNGs next to it (older versions wrote them to design/previews/).
     const frames = mockupFrames(file, [join(cwd, "design", "previews")]);
     if (frames.length === 0) return { error: `There are no PNGs of this mockup yet. Make them first: motif preview ${value} --png-only` };
     return { kind: "mockup", file, frames };

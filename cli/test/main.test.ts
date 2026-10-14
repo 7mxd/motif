@@ -109,3 +109,10 @@ describe("main: connect", () => {
     expect(run("help").stdout.toString()).toContain("connect");
   });
 });
+
+describe("main: validate --tokens", () => {
+  test("is a known option, listed in help", () => {
+    expect(run("help").stdout.toString()).toContain("--tokens");
+    expect(run("validate", "--tokens", "missing.json").exitCode).toBe(2);
+  });
+});

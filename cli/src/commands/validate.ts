@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 import type { CommandResult } from "../cli/output";
 import { checkContrast } from "../contract/contrast";
 import { checkDesignMd } from "../contract/design-md";
@@ -13,7 +13,8 @@ export const TOKENS_JSON = "design/tokens.json";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export async function runValidate(cwd: string): Promise<CommandResult> {
+export async function runValidate(cwd: string, opts: { tokens?: string } = {}): Promise<CommandResult> {
+  if (opts.tokens !== undefined) return validateTokensFile(cwd, opts.tokens);
   const mdPath = join(cwd, DESIGN_MD);
   const tokensPath = join(cwd, "design", "tokens.json");
   const missing = [
@@ -71,4 +72,29 @@ export async function runValidate(cwd: string): Promise<CommandResult> {
     text,
     data: { findings, summary: { errors, warnings, tokens, contrastChecks } },
   };
+}
+
+/** One theme values file on its own (a design direction): format, roles and every readability pair. */
+function validateTokensFile(cwd: string, arg: string): CommandResult {
+  const abs = resolve(cwd, arg);
+  const rel = relative(cwd, abs).split(sep).join("/");
+  if (!existsSync(abs) || !statSync(abs).isFile()) {
+    return { command: "validate", exitCode: 2, text: `Couldn't find ${arg}.`, data: { error: "no-such-file", file: arg } };
+  }
+  const { doc, findings: loadFindings } = loadTokenDocument(rel, readFileSync(abs, "utf8"));
+  const findings: Finding[] = [...loadFindings];
+  let contrastChecks = 0;
+  if (doc) {
+    findings.push(...validateTokens(doc), ...checkRoles(doc));
+    const contrast = checkContrast(doc);
+    findings.push(...contrast.findings);
+    contrastChecks = contrast.checked;
+  }
+  const errors = findings.filter((f) => f.severity === "error").length;
+  const warnings = findings.length - errors;
+  const tokens = doc?.tokens.size ?? 0;
+  const text = errors > 0
+    ? `✗ ${rel} has ${plural(errors, "problem", "problems")}:\n${formatFindings(findings)}`
+    : `✓ ${rel} is valid: ${plural(tokens, "value", "values")}, ${plural(contrastChecks, "readability check", "readability checks")} passed.${warnings ? `\n${formatFindings(findings)}` : ""}`;
+  return { command: "validate", exitCode: errors > 0 ? 1 : 0, text, data: { file: rel, findings, summary: { errors, warnings, tokens, contrastChecks } } };
 }

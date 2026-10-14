@@ -1,17 +1,15 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
-import { loadTokenDocument } from "../contract/load";
-import { checkRoles } from "../contract/roles";
-import { validateTokens } from "../contract/tokens";
 import { findBrowser, type BrowserInfo } from "../detect/browser";
 import { formatFindings, type Finding } from "../findings";
-import { buildTheme, type Theme } from "../generate/theme";
+import type { Theme } from "../generate/theme";
 import { themeFonts } from "../generate/theme-fonts";
 import { openUrl } from "../preview/open";
 import { EMBEDDED_PRESETS, presetTheme } from "../preview/presets";
 import { renderPngs, type RenderTarget } from "../preview/render";
 import { startPreviewServer } from "../preview/server";
+import { loadThemeFile } from "../preview/theme-file";
 import { TOKENS_JSON } from "./validate";
 
 export interface PreviewDeps {
@@ -65,20 +63,24 @@ function collectFiles(cwd: string, args: string[]): { files: string[] } | { erro
   return { files: [...new Set(files)] };
 }
 
-/** PNG base names: the file name, or the whole path when two mockups share a file name. */
-function pngNames(files: string[]): string[] {
+/** The tokens.json beside a mockup that makes it a design direction (the design guide's own file doesn't count). */
+function directionTokens(cwd: string, file: string): string | null {
+  const rel = posix.join(posix.dirname(file), "tokens.json");
+  return rel !== TOKENS_JSON && existsSync(join(cwd, rel)) ? rel : null;
+}
+
+/** PNG base names: the file name, or the whole path when two mockups share a file name and an output folder. */
+function pngNames(files: string[], outDirs: string[]): string[] {
   const base = files.map((f) => basename(f).replace(/\.html$/i, ""));
   return files.map((f, i) =>
-    base.filter((b) => b === base[i]).length > 1 ? f.replace(/\.html$/i, "").replace(/\//g, "-") : base[i]!,
+    base.some((b, j) => j !== i && b === base[i] && outDirs[j] === outDirs[i]) ? f.replace(/\.html$/i, "").replace(/\//g, "-") : base[i]!,
   );
 }
 
 function contractTheme(cwd: string): { theme: Theme | null; problems: Finding[] } {
   const path = join(cwd, "design", "tokens.json");
   if (!existsSync(path)) return { theme: null, problems: [] };
-  const { doc, findings } = loadTokenDocument(TOKENS_JSON, readFileSync(path, "utf8"));
-  const problems = doc ? [...findings, ...validateTokens(doc), ...checkRoles(doc)].filter((f) => f.severity === "error") : findings;
-  return { theme: doc && problems.length === 0 ? buildTheme(doc) : null, problems };
+  return loadThemeFile(TOKENS_JSON, readFileSync(path, "utf8"));
 }
 
 export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps = defaultDeps): Promise<CommandResult> {
@@ -99,11 +101,28 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   const files = collected.files;
   if (compare && files.length < 2) return fail(2, "--compare needs at least two mockups (or a folder with two or more).", { error: "usage" });
 
+  const directions = new Map<string, Theme>();
+  for (const file of gallery ? [] : files) {
+    const rel = directionTokens(cwd, file);
+    if (!rel || directions.has(rel)) continue;
+    const loaded = loadThemeFile(rel, readFileSync(join(cwd, rel), "utf8"));
+    if (!loaded.theme) {
+      const n = loaded.problems.length;
+      return fail(
+        1,
+        `✗ ${rel} has ${n} ${n === 1 ? "problem" : "problems"}, so its mockups would be wrong:\n${formatFindings(loaded.problems)}\nFix these first (motif validate --tokens ${rel} shows details).`,
+        { error: "invalid-direction", tokens: rel, findings: loaded.problems },
+      );
+    }
+    directions.set(rel, loaded.theme);
+  }
+  const needsGuide = !gallery && preset === undefined && files.some((f) => !directionTokens(cwd, f));
+
   let theme: Theme | null = null;
   if (preset !== undefined) {
     theme = presetTheme(preset);
     if (!theme) return fail(2, `There's no starting style called "${preset}". Choose one of: ${PRESET_IDS.join(", ")}.`, { error: "no-such-preset" });
-  } else if (!gallery) {
+  } else if (needsGuide) {
     const loaded = contractTheme(cwd);
     if (loaded.problems.length > 0) {
       const n = loaded.problems.length;
@@ -127,18 +146,24 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   // Live reload starts after the PNGs are saved: they usually land next to the mockups, and every save
   // would otherwise reload the page the renderer is capturing.
   const server = startPreviewServer({ root: cwd, theme });
-  const outDir = resolve(cwd, typeof flags.out === "string" ? flags.out : join("design", "previews"));
-  const names = pngNames(files);
+  const outFlag = typeof flags.out === "string" ? resolve(cwd, flags.out) : null;
+  const defaultOut = outFlag ?? join(cwd, "design", "previews");
+  const outFor = (file: string) => outFlag ?? join(cwd, dirname(file));
+  const themeOf = (file: string) => {
+    const rel = directionTokens(cwd, file);
+    return rel ? directions.get(rel)! : theme;
+  };
+  const names = pngNames(files, files.map(outFor));
   const targets: RenderTarget[] = gallery
-    ? PRESET_IDS.map((id) => ({ name: `preset-${id}`, url: `${server.url}/__motif/preset/${id}/sample.html`, fonts: fontsOf(presetTheme(id)) }))
-    : files.map((f, i) => ({ name: names[i]!, url: server.url + urlPath(f), fonts: fontsOf(theme) }));
+    ? PRESET_IDS.map((id) => ({ name: `preset-${id}`, url: `${server.url}/__motif/preset/${id}/sample.html`, outDir: defaultOut, fonts: fontsOf(presetTheme(id)) }))
+    : files.map((f, i) => ({ name: names[i]!, url: server.url + urlPath(f), outDir: outFor(f), fonts: fontsOf(themeOf(f)) }));
 
   const notes: string[] = [];
   let pngs: string[] = [];
   let missingFonts: string[] = [];
   if (browser) {
     try {
-      const rendered = await deps.render({ browserPath: browser.path, targets, outDir });
+      const rendered = await deps.render({ browserPath: browser.path, targets, outDir: defaultOut });
       pngs = rendered.files.map((p) => projectPath(cwd, p));
       missingFonts = rendered.missingFonts;
     } catch (e) {
