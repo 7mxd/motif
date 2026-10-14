@@ -14,7 +14,7 @@ const MOCKUP = '<!doctype html><html><head><title>A</title></head><body><div cla
 const CHROME = { name: "Chrome" as const, path: "/fake/chrome" };
 
 /** Stand-ins for the browser, the PNG renderer, the default browser and Ctrl+C. */
-function fakes(over: Partial<PreviewDeps> = {}) {
+function fakes(over: Partial<PreviewDeps> = {}, missingFonts: string[] = []) {
   const calls = { render: [] as { targets: RenderTarget[]; outDir: string; browserPath: string }[], opened: [] as string[] };
   let stop!: () => void;
   const stopped = new Promise<void>((r) => (stop = r));
@@ -22,7 +22,8 @@ function fakes(over: Partial<PreviewDeps> = {}) {
     findBrowser: () => CHROME,
     render: async (o) => {
       calls.render.push({ targets: o.targets, outDir: o.outDir, browserPath: o.browserPath });
-      return o.targets.flatMap((t) => [join(o.outDir, `${t.name}.png`), join(o.outDir, `${t.name}.dark.png`)]);
+      const files = o.targets.flatMap((t) => [join(t.outDir ?? o.outDir, `${t.name}.png`), join(t.outDir ?? o.outDir, `${t.name}.dark.png`)]);
+      return { files, missingFonts };
     },
     openUrl: async (url) => {
       calls.opened.push(url);
@@ -121,7 +122,7 @@ describe("motif preview --png-only", () => {
     const { deps } = fakes({
       render: async (o) => {
         css = await (await fetch(new URL("/__motif/theme.css", o.targets[0]!.url))).text();
-        return [];
+        return { files: [], missingFonts: [] };
       },
     });
     const r = await runPreview(makeProject({ "home.html": MOCKUP }), ctx(["home.html"], { "png-only": true, preset: "warm" }), deps);
@@ -258,5 +259,20 @@ describe("openCommand", () => {
     expect(openCommand(url, "win32")).toEqual(["rundll32", ["url.dll,FileProtocolHandler", url]]);
     expect(openCommand(url, "darwin")).toEqual(["open", [url]]);
     expect(openCommand(url, "linux")).toEqual(["xdg-open", [url]]);
+  });
+});
+
+describe("motif preview: fonts", () => {
+  test("each target lists the theme fonts to check", async () => {
+    const { deps, calls } = fakes();
+    await runPreview(project(), ctx(["design/previews/home.html"], { "png-only": true }), deps);
+    expect(calls.render[0]!.targets[0]!.fonts).toEqual(["Inter"]);
+  });
+
+  test("a font that didn't load is named, with why", async () => {
+    const r = await runPreview(project(), ctx(["design/previews/home.html"], { "png-only": true }), fakes({}, ["Plus Jakarta Sans"]).deps);
+    expect(r.exitCode).toBe(0);
+    expect(r.data.missingFonts).toEqual(["Plus Jakarta Sans"]);
+    expect(r.text).toContain("Shown with a fallback font: Plus Jakarta Sans");
   });
 });

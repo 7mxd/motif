@@ -10,6 +10,7 @@ import { generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
 import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
 import { buildTheme } from "../generate/theme";
+import { themeFonts } from "../generate/theme-fonts";
 import { appLabel, prefixPath, selectApps } from "../project/apps";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
@@ -177,6 +178,9 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   }
 
   const theme = buildTheme(doc);
+  const fonts = themeFonts(theme)
+    .filter((f) => f.source !== "system")
+    .map(({ family, weights }) => ({ family, weights }));
   const files: GeneratedFile[] = [];
   const notes: string[] = [];
   const srcDirs = new Map<string, string>();
@@ -230,6 +234,9 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   const lines = [
     blocked.length > 0 ? "✗ Some theme files couldn't be written:" : allSame ? "✓ Theme code is up to date." : "✓ Theme code is ready:",
     ...results.map((r) => `  ${r.status.padEnd(STATUS_WIDTH)} ${r.path}`),
+    ...(fonts.length > 0
+      ? [`Theme fonts: ${fonts.map((f) => `${f.family} ${f.weights.join(" · ")}`).join(", ")}. Your app needs to load them (your stack's Motif guide shows how).`]
+      : []),
     ...blocked.map((b) => `${b.path} already exists and wasn't made by Motif, so it was left alone (and files that depend on it were skipped). Rename or remove it, then run motif tokens again.`),
     ...notes.map((n) => `• ${n}`),
   ];
@@ -237,6 +244,6 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     command: "tokens",
     exitCode: blocked.length > 0 ? 1 : 0,
     text: lines.join("\n"),
-    data: { files: results, notes },
+    data: { files: results, notes, fonts },
   };
 }

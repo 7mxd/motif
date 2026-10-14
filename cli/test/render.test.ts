@@ -26,7 +26,7 @@ describe("pngName", () => {
 describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
   test("one PNG per frame at 2×, light then dark, with reduced motion emulated", async () => {
     const out = tempDir("motif-render-");
-    const files = await renderPngs({
+    const { files } = await renderPngs({
       browserPath: browser!.path,
       outDir: join(out, "previews"),
       targets: [{
@@ -44,7 +44,7 @@ describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
 
   test("several frames give numbered PNGs; hidden frames are skipped; a page without frames is captured whole", async () => {
     const out = tempDir("motif-render-");
-    const files = await renderPngs({
+    const { files } = await renderPngs({
       browserPath: browser!.path,
       outDir: out,
       targets: [
@@ -61,5 +61,38 @@ describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
   test("a page that can't be opened is a plain error, and the browser is closed", async () => {
     const out = tempDir("motif-render-");
     await expect(renderPngs({ browserPath: browser!.path, outDir: out, targets: [{ name: "x", url: "http://127.0.0.1:1/" }], timeoutMs: 10_000 })).rejects.toThrow("Couldn't open");
+  }, 60_000);
+
+  test("names fonts that couldn't load, and still renders", async () => {
+    const font = readFileSync(join(import.meta.dir, "../../skill/preview-kit/fonts/inter.woff2"));
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(req) {
+        const path = new URL(req.url).pathname;
+        if (path === "/good.woff2") return new Response(font, { headers: { "content-type": "font/woff2" } });
+        if (path !== "/") return new Response("Not found", { status: 404 });
+        const html = `<!doctype html><html><head><style>
+          @font-face { font-family: "Good"; src: url("/good.woff2") format("woff2"); }
+          @font-face { font-family: "Gone"; src: url("/gone.woff2") format("woff2"); }
+          body { margin: 0 } .mk-frame { width: 200px; height: 100px; background: #eee }
+        </style></head><body><div class="mk-frame"><p style="font-family: Good">A</p><p style="font-family: Gone">B</p></div></body></html>`;
+        return new Response(html, { headers: { "content-type": "text/html" } });
+      },
+    });
+    try {
+      const out = tempDir("motif-render-");
+      const started = Date.now();
+      const result = await renderPngs({
+        browserPath: browser!.path,
+        outDir: out,
+        targets: [{ name: "fonts", url: `http://127.0.0.1:${server.port}/`, fonts: ["Good", "Gone", "Never Declared"] }],
+      });
+      expect(result.files).toHaveLength(2);
+      expect(result.missingFonts.sort()).toEqual(["Gone", "Never Declared"]);
+      expect(Date.now() - started).toBeLessThan(30_000);
+    } finally {
+      server.stop(true);
+    }
   }, 60_000);
 });

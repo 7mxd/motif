@@ -21,6 +21,20 @@ describe("previewCss", () => {
     expect(css).toContain("--motif-spring-smooth-duration: 0.4;");
     expect(css).toContain("--motif-spring-smooth-bounce: 0.1;");
   });
+
+  test("a theme font outside the bundle loads from Google Fonts, after the generated-file header", () => {
+    const tokens = validTokens();
+    tokens.primitive.font.sans.$value = ["Plus Jakarta Sans", "system-ui", "sans-serif"];
+    const css = previewCss(buildTheme(docFrom(tokens)));
+    const lines = css.split("\n");
+    expect(lines[0]).toBe(CSS_HEADER);
+    expect(lines[1]).toStartWith('@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@');
+    expect(css.indexOf("@import")).toBeLessThan(css.indexOf(":root"));
+  });
+
+  test("bundled and system fonts add no imports", () => {
+    expect(previewCss(buildTheme(docFrom(validTokens())))).not.toContain("@import");
+  });
 });
 
 describe("motif tokens --stack preview", () => {

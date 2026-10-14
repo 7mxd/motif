@@ -7,6 +7,7 @@ import { validateTokens } from "../contract/tokens";
 import { findBrowser, type BrowserInfo } from "../detect/browser";
 import { formatFindings, type Finding } from "../findings";
 import { buildTheme, type Theme } from "../generate/theme";
+import { themeFonts } from "../generate/theme-fonts";
 import { openUrl } from "../preview/open";
 import { EMBEDDED_PRESETS, presetTheme } from "../preview/presets";
 import { renderPngs, type RenderTarget } from "../preview/render";
@@ -38,6 +39,8 @@ const fail = (exitCode: 1 | 2, text: string, data: Record<string, unknown>): Com
 const projectPath = (cwd: string, abs: string) => relative(cwd, abs).split(sep).join("/");
 const urlPath = (rel: string) => "/" + rel.split("/").map(encodeURIComponent).join("/");
 const isHtml = (name: string) => name.toLowerCase().endsWith(".html");
+/** The theme fonts a mockup should show (system fonts are always there). */
+const fontsOf = (t: Theme | null) => (t ? themeFonts(t).filter((f) => f.source !== "system").map((f) => f.family) : []);
 
 /** The mockups named on the command line (files or folders of .html files), as project paths. */
 function collectFiles(cwd: string, args: string[]): { files: string[] } | { error: string } {
@@ -127,14 +130,17 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   const outDir = resolve(cwd, typeof flags.out === "string" ? flags.out : join("design", "previews"));
   const names = pngNames(files);
   const targets: RenderTarget[] = gallery
-    ? PRESET_IDS.map((id) => ({ name: `preset-${id}`, url: `${server.url}/__motif/preset/${id}/sample.html` }))
-    : files.map((f, i) => ({ name: names[i]!, url: server.url + urlPath(f) }));
+    ? PRESET_IDS.map((id) => ({ name: `preset-${id}`, url: `${server.url}/__motif/preset/${id}/sample.html`, fonts: fontsOf(presetTheme(id)) }))
+    : files.map((f, i) => ({ name: names[i]!, url: server.url + urlPath(f), fonts: fontsOf(theme) }));
 
   const notes: string[] = [];
   let pngs: string[] = [];
+  let missingFonts: string[] = [];
   if (browser) {
     try {
-      pngs = (await deps.render({ browserPath: browser.path, targets, outDir })).map((p) => projectPath(cwd, p));
+      const rendered = await deps.render({ browserPath: browser.path, targets, outDir });
+      pngs = rendered.files.map((p) => projectPath(cwd, p));
+      missingFonts = rendered.missingFonts;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (pngOnly) {
@@ -146,11 +152,14 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   } else {
     notes.push(`No Chrome or Edge found, so no PNGs were made. ${INSTALL_HINT}`);
   }
+  if (missingFonts.length > 0) {
+    notes.push(`Shown with a fallback font: ${missingFonts.join(", ")}. Motif includes the starting styles' fonts; other fonts come from Google Fonts, which didn't provide these (no connection, or not a Google font).`);
+  }
   const pngLines = pngs.length > 0 ? [`✓ Saved ${pngs.length} PNGs (light and dark):`, ...pngs.map((p) => `  ${p}`)] : [];
 
   if (pngOnly) {
     server.stop();
-    return { command: "preview", exitCode: 0, text: pngLines.join("\n"), data: { pngs } };
+    return { command: "preview", exitCode: 0, text: [...pngLines, ...notes.map((n) => `• ${n}`)].join("\n"), data: { pngs, missingFonts } };
   }
   server.watch(files);
 
@@ -175,7 +184,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     command: "preview",
     exitCode: 0,
     text: lines.join("\n"),
-    data: { url, files, pngs, ...(browser ? {} : { status: "needs_browser" }) },
+    data: { url, files, pngs, missingFonts, ...(browser ? {} : { status: "needs_browser" }) },
     hold,
   };
 }

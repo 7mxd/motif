@@ -132,6 +132,13 @@ describe("runTokens", () => {
     expect(r.exitCode).toBe(0);
     expect(JSON.parse(r.stdout.toString())).toMatchObject({ command: "tokens", ok: true });
   });
+
+  test("lists the fonts the app must load, with the weights its roles use", async () => {
+    const r = await runTokens(app(), ctx());
+    expect(r.data.fonts).toEqual([{ family: "Inter", weights: expect.any(Array) }]);
+    expect((r.data.fonts as { weights: number[] }[])[0]!.weights.length).toBeGreaterThan(0);
+    expect(r.text).toContain("Theme fonts: Inter");
+  });
 });
 
 describe("runTokens: unusual apps and settings", () => {
