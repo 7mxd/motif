@@ -34,4 +34,14 @@ describe("the design guide templates", () => {
     }
     for (const spring of REQUIRED_SPRINGS) expect(spec).toContain(`\`${spring}\``);
   });
+
+  test("spec.md covers the format version and dark values that validate requires", () => {
+    const spec = read("spec.md");
+    expect(spec).toContain('"motifContract": 1');
+    expect(spec).toContain("Every colour role needs a dark value");
+  });
+
+  test("the template's change-log line follows spec.md's format", () => {
+    expect(read("DESIGN.template.md")).toMatch(/^- \d{4}-\d{2}-\d{2} — .+ — .+ — approved by .+$/m);
+  });
 });

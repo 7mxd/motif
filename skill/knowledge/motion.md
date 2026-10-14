@@ -15,7 +15,7 @@ Pick the duration role by the job, not by feel:
 
 **Bigger distance or bigger surface means longer.** A tooltip travelling 4 px needs less time than a sheet covering half the screen. Never go past `duration.slow` for routine UI; anything longer feels like waiting.
 
-**Exits are quicker than entrances**, about three quarters of the time. People have already decided to dismiss something; make it leave promptly.
+**Exits are quicker than entrances**: use the next shorter duration role for the exit (`duration.fast` for something that entered with `duration.base`). People have already decided to dismiss it; let it leave promptly.
 
 **Easing by direction:**
 
@@ -105,7 +105,7 @@ Never auto-play video or carousels without a visible pause control, whatever the
 | Button press | `spring.snappy` | Scale to 0.97–0.98 on press, back on release |
 | Toggle switch | `spring.snappy` | Thumb slides; track colour changes with `duration.fast` |
 | Menu open / close | `duration.base`, `easing.enter` / `easing.exit` | Grow from the trigger with a fade; close quicker than open |
-| Toast in / out | `duration.base`, `easing.enter` / `easing.exit` | Slide a short way from the nearest edge with a fade; auto-dismiss after 4–6 s unless it has an action |
+| Toast in / out | `duration.base`, `easing.enter` / `easing.exit` | Slide a short way from the nearest edge with a fade; auto-dismiss after at least 5 s (longer for longer text); a toast with an action stays until dismissed |
 | Bottom sheet | `spring.smooth` | Rises from the bottom; follows the finger when dragged; dismisses past a threshold or with a quick flick |
 | Dialog | `duration.base`, `easing.enter` | Fade the backdrop; scale the dialog from 0.96 to 1 with a fade |
 | List item added / removed | `spring.smooth` | New item fades and expands into place; neighbours close the gap with a layout animation |

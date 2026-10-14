@@ -69,3 +69,16 @@ test("the knowledge base has every pattern the spec lists, and nothing else", ()
     "notifications.md", "onboarding.md", "profile.md", "search-filters.md", "settings.md", "sign-in.md",
   ]);
 });
+
+describe("knowledge: fixes from the 1D-1 review", () => {
+  test("toasts stay at least 5 s everywhere, and exits use a shorter duration role", () => {
+    const motion = read("motion.md");
+    expect(motion).not.toContain("4–6 s");
+    expect(motion).not.toContain("three quarters");
+    expect(motion).toContain("at least 5 s");
+    expect(motion).toContain("next shorter duration role");
+  });
+  test("accessibility doesn't promise that text follows the reader's text-size setting", () => {
+    expect(read("accessibility.md")).not.toContain("scale with the viewer's text size");
+  });
+});

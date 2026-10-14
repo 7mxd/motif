@@ -28,6 +28,8 @@ Start a new guide from [DESIGN.template.md](DESIGN.template.md) and [tokens.temp
 
 ## tokens.json
 
+The file's root carries the format version under Motif's extension: `"$extensions": { "dev.motif": { "motifContract": 1, "pairs": [ … ] } }`. `motif validate` refuses a file without it.
+
 ### Two layers
 
 - `primitive.*` holds the raw palette and font families. Product code never uses these.
@@ -49,6 +51,8 @@ A colour role's `$value` is its light value; its dark value sits in `$extensions
   "$extensions": { "dev.motif": { "modes": { "dark": "{primitive.color.dark-action-primary}" } } }
 }
 ```
+
+Every colour role needs a dark value; `motif validate` reports any role without one.
 
 ### Required roles
 

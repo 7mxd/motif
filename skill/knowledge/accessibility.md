@@ -1,6 +1,6 @@
 # Accessibility
 
-Motif aims every app at WCAG 2.2 level AA. Much of that is built in: the design guide's readability pairs fix contrast, the `focus` role gives every control a visible focus ring, and the type roles scale with the viewer's text size. The rest depends on how screens are assembled, which is what this file covers. Accessible screens are also simply better screens: clearer labels, bigger targets and honest states help everyone.
+Motif aims every app at WCAG 2.2 level AA. Much of that is built in: the design guide's readability pairs fix contrast, the `focus` role gives every control a visible focus ring, and the type roles give every screen the same readable text sizes. The rest depends on how screens are assembled, which is what this file covers. Accessible screens are also simply better screens: clearer labels, bigger targets and honest states help everyone.
 
 ## Contrast
 

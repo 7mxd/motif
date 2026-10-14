@@ -89,4 +89,4 @@ None yet.
 
 <!-- One line per change: date — what changed — why — who approved it. -->
 
-- 2026-01-01 — Created with Motif.
+- 2026-01-01 — Created the design guide — the starting point for this app — approved by <name>
