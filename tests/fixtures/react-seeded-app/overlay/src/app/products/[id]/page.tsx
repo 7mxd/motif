@@ -17,7 +17,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         <PriceTag pence={product.pricePence} unit={product.unit} />
         <p className="mt-4">{product.description}</p>
         <div className="mt-6 flex gap-3">
-          <Button>Submit</Button>
+          <Button disabled={product.stock === "out"}>Submit</Button>
           <Button variant="ghost">Click here</Button>
         </div>
       </div>

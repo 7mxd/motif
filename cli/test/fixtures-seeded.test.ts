@@ -35,6 +35,24 @@ describe("the seeded app's list of planted problems", () => {
       expect(i.summary.length).toBeGreaterThan(10);
     }
   });
+
+  test("knock-on findings are declared, so a grader doesn't count them as false", () => {
+    type Consequence = { category: string; screens: string[]; schemes: string[]; note: string };
+    const withConsequences = issues as (Issue & { consequences?: Consequence[] })[];
+    for (const id of ["S-01", "S-02", "S-07", "S-08", "S-11"]) {
+      const issue = withConsequences.find((i) => i.id === id)!;
+      expect(issue.consequences?.length ?? 0).toBeGreaterThan(0);
+      for (const c of issue.consequences!) {
+        expect(CATEGORIES).toContain(c.category);
+        expect(c.screens.length).toBeGreaterThan(0);
+        for (const s of c.screens) expect(s.startsWith("/")).toBe(true);
+        for (const s of c.schemes) expect(["light", "dark"]).toContain(s);
+        expect(c.note.length).toBeGreaterThan(10);
+      }
+    }
+    // S-12 must stand on its own: the faded text is text-primary, which is readable without the fading.
+    expect(issues.find((i) => i.id === "S-12")!.location.file).toBe("src/components/PromoBanner.tsx");
+  });
 });
 
 describe("assemble", () => {
@@ -86,6 +104,28 @@ describe("the assembled seeded app", () => {
       expect(findings.some((f) => f.code === issue.rule && f.file === issue.location.file)).toBe(true);
     }
     expect(findings.filter((f) => !byDetector("validate").some((i) => i.rule === f.code))).toEqual([]);
+  });
+
+  test("every pinned line holds its anchor text, so a planted line can't drift unnoticed", () => {
+    for (const issue of issues.filter((i) => i.location.file && i.location.line)) {
+      expect(typeof (issue as Issue & { anchor?: string }).anchor === "string" ? "anchored" : `${issue.id} has no anchor`).toBe("anchored");
+      const line = readFileSync(join(dest, issue.location.file!), "utf8").replace(/\r\n/g, "\n").split("\n")[issue.location.line! - 1] ?? "";
+      expect(line.includes((issue as Issue & { anchor: string }).anchor) ? issue.id : `${issue.id}: "${line.trim()}"`).toBe(issue.id);
+    }
+  });
+
+  test("nothing else is wrong on purpose: stock shows, controls work, every screen has its top bar", () => {
+    const at = (rel: string) => readFileSync(join(dest, rel), "utf8").replace(/\r\n/g, "\n");
+    const list = at("src/app/products/page.tsx");
+    expect(list.split("\n")[16]).not.toContain("{p.unit}");
+    expect(list).toContain("aria-label={`Add ${p.name}`}");
+    expect(list).toContain('disabled={p.stock === "out"}');
+    const banner = at("src/components/PromoBanner.tsx");
+    expect(banner).toContain("setShown(false)");
+    expect(banner).toContain("focus-visible:outline-focus");
+    expect(banner).not.toContain("text-display");
+    expect(at("src/app/page.tsx")).toContain('<TopBar title="Home"');
+    expect(at("src/app/products/[id]/page.tsx")).toContain('disabled={product.stock === "out"}');
   });
 
   test("the files the list says to remove are gone", () => {
