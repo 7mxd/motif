@@ -1,0 +1,5 @@
+.promo-strip {
+  background: rgb(250 240 230);
+  color: var(--motif-primitive-color-dark-text-primary);
+  border-radius: var(--motif-radius-md);
+}
