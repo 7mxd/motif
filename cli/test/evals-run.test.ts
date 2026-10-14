@@ -1,0 +1,201 @@
+import { afterAll, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { EvalCase } from "../../tests/evals/cases";
+import type { Grade } from "../../tests/evals/grade";
+import { Paused } from "../../tests/evals/judge";
+import { runEvals, type RunDeps } from "../../tests/evals/run";
+import type { SessionOutcome, SessionSpec } from "../../tests/evals/session";
+import { loadRun, type RunState } from "../../tests/evals/state";
+import { cleanupTempDirs, tempDir } from "./tmp";
+
+afterAll(cleanupTempDirs);
+
+const RUN = "20261014-120000";
+const PASS: Grade = { pass: true, criteria: [], metrics: {} };
+const finished = (): SessionOutcome => ({
+  end: "finished",
+  init: { model: "m", permissionMode: "auto", apiKeySource: "none", mcpServers: [], plugins: [], version: "x" },
+  result: { subtype: "success", isError: false, turns: 5, costUsd: 1, durationMs: 1, denials: [], text: "", apiErrorStatus: null },
+  problems: [], minutes: 1,
+});
+
+function harness(over: Partial<RunDeps> = {}) {
+  const root = tempDir("motif-evalrun-");
+  const calls = { prepare: [] as string[], session: [] as SessionSpec[], collect: [] as string[], purge: [] as string[], removed: [] as string[], preflight: 0 };
+  const lines: string[] = [];
+  const deps: RunDeps = {
+    preflight: async () => {
+      calls.preflight++;
+      return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+    },
+    prepare: async (c: EvalCase, dir: string) => {
+      calls.prepare.push(c.id);
+      mkdirSync(join(dir, "app"), { recursive: true });
+      return { dir, app: join(dir, "app"), gitDir: join(dir, "baseline.git") };
+    },
+    session: async (s) => {
+      calls.session.push(s);
+      return finished();
+    },
+    collect: async (c) => {
+      calls.collect.push(c.id);
+      return PASS;
+    },
+    purge: async (_claude, cwd) => {
+      calls.purge.push(cwd);
+    },
+    removeDir: (dir) => {
+      calls.removed.push(dir);
+    },
+    git: () => ({ commit: "abc1234567890", dirty: false }),
+    now: () => new Date(2026, 9, 14, 12, 0, 0),
+    log: (l) => lines.push(l),
+    env: { PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x" },
+    ...over,
+  };
+  return { deps, calls, lines, root, where: { repo: root, results: join(root, "results") }, work: join(root, "work") };
+}
+
+describe("the eval runner", () => {
+  test("--list names every case without starting anything", async () => {
+    const h = harness();
+    expect(await runEvals(["--list"], h.deps, h.where)).toBe(0);
+    expect(h.lines.join("\n")).toContain("c-review");
+    expect(h.calls.preflight).toBe(0);
+  });
+
+  test("--dry-run shows each prompt and the Claude Code command, and writes nothing", async () => {
+    const h = harness();
+    expect(await runEvals(["--dry-run", "--cases", "c-review"], h.deps, h.where)).toBe(0);
+    const text = h.lines.join("\n");
+    expect(text).toContain("/motif:review");
+    expect(text).toContain("--permission-mode auto");
+    expect(h.calls.preflight + h.calls.session.length).toBe(0);
+    expect(existsSync(h.where.results)).toBe(false);
+  });
+
+  test("unknown options and cases can't run", async () => {
+    const h = harness();
+    expect(await runEvals(["--bogus"], h.deps, h.where)).toBe(2);
+    expect(await runEvals(["--cases", "b-nope"], h.deps, h.where)).toBe(2);
+    expect(await runEvals(["--cases", "b-search", "--max-turns", "0"], h.deps, h.where)).toBe(2);
+  });
+
+  test("a run: each case prepared, run in its folder with its prompt and caps, graded, cleaned up, reported", async () => {
+    const h = harness();
+    expect(await runEvals(["--cases", "b-settings,c-review", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(h.calls.prepare).toEqual(["b-settings", "c-review"]);
+    const s = h.calls.session[0]!;
+    expect(s.prompt).toStartWith("/motif:feature");
+    expect(s.cwd).toBe(join(h.work, "b-settings", "app"));
+    expect(s.args[s.args.indexOf("--max-turns") + 1]).toBe("200");
+    expect(s.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(s.env.MOTIF_BIN).toBe(join(h.root, "dist", process.platform === "win32" ? "motif.exe" : "motif"));
+    expect(s.expect).toEqual({ pluginDir: join(h.root, "dist", "claude-code"), auto: true });
+    expect(h.calls.collect).toEqual(["b-settings", "c-review"]);
+    expect(h.calls.purge).toContain(join(h.work, "b-settings", "app"));
+    expect(h.calls.removed).toEqual([join(h.work, "b-settings"), join(h.work, "c-review")]);
+    expect(h.lines.join("\n")).toContain("ANTHROPIC_API_KEY");
+    expect(readFileSync(join(h.where.results, RUN, "report.md"), "utf8")).toContain("PASS");
+    expect(existsSync(join(h.where.results, RUN, "report.json"))).toBe(true);
+    expect(readFileSync(join(h.where.results, RUN, "no-mcp.json"), "utf8")).toBe('{"mcpServers":{}}');
+  });
+
+  test("--keep keeps the folders; --max-turns caps every case", async () => {
+    const h = harness();
+    await runEvals(["--cases", "b-search", "--keep", "--max-turns", "4", "--work", h.work], h.deps, h.where);
+    expect(h.calls.removed).toEqual([]);
+    const a = h.calls.session[0]!.args;
+    expect(a[a.indexOf("--max-turns") + 1]).toBe("4");
+  });
+
+  test("a failing case makes the exit code 1", async () => {
+    const h = harness({ collect: async () => ({ pass: false, criteria: [], metrics: {} }) });
+    expect(await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where)).toBe(1);
+  });
+
+  test("a usage limit pauses the run; --resume continues with what's left", async () => {
+    let n = 0;
+    const h = harness({ session: async () => (++n === 2 ? { ...finished(), end: "usage-limit", resetsAt: 1792000800 } : finished()) });
+    expect(await runEvals(["--cases", "b-settings,b-search,b-profile", "--work", h.work], h.deps, h.where)).toBe(3);
+    expect(h.lines.join("\n")).toContain(`--resume ${RUN}`);
+    const s = loadRun(h.where.results, RUN) as RunState;
+    expect(Object.fromEntries(Object.entries(s.cases).map(([k, v]) => [k, v.status]))).toEqual({ "b-settings": "graded", "b-search": "interrupted", "b-profile": "pending" });
+    h.calls.prepare.length = 0;
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(h.calls.prepare).toEqual(["b-search", "b-profile"]);
+  });
+
+  test("grading paused by the usage limit is picked up again without a new session", async () => {
+    let first = true;
+    const h = harness({
+      collect: async () => {
+        if (first) {
+          first = false;
+          throw new Paused();
+        }
+        return PASS;
+      },
+    });
+    expect(await runEvals(["--cases", "c-review", "--work", h.work], h.deps, h.where)).toBe(3);
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(h.calls.session).toHaveLength(1);
+    expect(h.calls.prepare).toEqual(["c-review"]);
+  });
+
+  test("grading that fails keeps the folder for the next --resume", async () => {
+    let first = true;
+    const h = harness({
+      collect: async () => {
+        if (first) {
+          first = false;
+          throw new Error("the grader's session ended with \"time-limit\"");
+        }
+        return PASS;
+      },
+    });
+    expect(await runEvals(["--cases", "c-review", "--work", h.work], h.deps, h.where)).toBe(1);
+    expect(h.calls.removed).toEqual([]);
+    expect((loadRun(h.where.results, RUN) as RunState).cases["c-review"]!.status).toBe("session-done");
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(h.calls.session).toHaveLength(1);
+  });
+
+  test("a session that isn't isolated stops the whole run", async () => {
+    const h = harness({ session: async () => ({ ...finished(), end: "not-isolated", problems: ["MCP servers were loaded (refero)."] }) });
+    expect(await runEvals(["--cases", "b-settings,b-search", "--work", h.work], h.deps, h.where)).toBe(2);
+    expect(h.calls.prepare).toEqual(["b-settings"]);
+    expect(h.lines.join("\n")).toContain("refero");
+  });
+
+  test("a folder that can't be prepared is an error for that case only", async () => {
+    const h = harness();
+    const prepare = h.deps.prepare;
+    let n = 0;
+    h.deps.prepare = async (c, dir) => {
+      if (++n === 1) throw new Error("npm ci failed: network unreachable");
+      return prepare(c, dir);
+    };
+    expect(await runEvals(["--cases", "b-settings,b-search", "--work", h.work], h.deps, h.where)).toBe(1);
+    const s = loadRun(h.where.results, RUN) as RunState;
+    expect(s.cases["b-settings"]).toMatchObject({ status: "error", note: expect.stringContaining("network unreachable") });
+    expect(s.cases["b-search"]!.status).toBe("graded");
+  });
+
+  test("a run can't start when preflight fails, and leaves nothing behind", async () => {
+    const h = harness({ preflight: async () => ({ error: "Sign in with your Claude account." }) });
+    expect(await runEvals(["--cases", "b-search"], h.deps, h.where)).toBe(2);
+    expect(h.lines.join("\n")).toContain("Sign in");
+    expect(existsSync(h.where.results)).toBe(false);
+  });
+
+  test("resuming on another commit is allowed and noted in the report", async () => {
+    let n = 0;
+    const h = harness({ session: async () => (++n === 1 ? { ...finished(), end: "usage-limit" } : finished()) });
+    await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where);
+    h.deps.git = () => ({ commit: "def4567890abcdef", dirty: true });
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(readFileSync(join(h.where.results, RUN, "report.md"), "utf8")).toContain("def4567890ab");
+  });
+});
