@@ -67,6 +67,18 @@ describe("the contract app's components", () => {
     expect(read("src/components/TabBar.tsx")).toContain('aria-current={');
   });
 
+  test("a toast's action is readable on every tone: its own button in the toast's text colour", () => {
+    const toast = read("src/components/Toast.tsx");
+    expect(toast).not.toContain("<Button");
+    expect(toast).toMatch(/<button[^>]*className="[^"]*text-current[^"]*min-h-12|<button[^>]*className="[^"]*min-h-12[^"]*text-current/);
+    expect(toast).toContain("focus-visible:outline-focus");
+  });
+
+  test("a switch's whole row is its tap target", () => {
+    const sw = read("src/components/Switch.tsx");
+    expect(sw).toMatch(/<label htmlFor=\{id\} className="flex min-h-12/);
+  });
+
   test("motion comes from the design guide's roles", () => {
     expect(read("src/components/Button.tsx")).toContain("spring.snappy");
     expect(read("src/components/Sheet.tsx")).toContain("spring.smooth");

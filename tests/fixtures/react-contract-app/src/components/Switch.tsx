@@ -17,11 +17,11 @@ export function Switch({
 }) {
   const id = useId();
   return (
-    <div className="flex min-h-12 items-center justify-between gap-4 py-2">
-      <label htmlFor={id} className="flex flex-col">
+    <label htmlFor={id} className="flex min-h-12 cursor-pointer items-center justify-between gap-4 py-2 has-[:disabled]:cursor-not-allowed">
+      <span className="flex flex-col">
         <span className="font-body text-body text-text-primary">{label}</span>
         {description && <span className="font-caption text-caption text-text-secondary">{description}</span>}
-      </label>
+      </span>
       <RadixSwitch.Root
         id={id}
         checked={checked}
@@ -31,6 +31,6 @@ export function Switch({
       >
         <RadixSwitch.Thumb className="size-4 rounded-full bg-surface transition data-[state=checked]:translate-x-4 rtl:data-[state=checked]:-translate-x-4" />
       </RadixSwitch.Root>
-    </div>
+    </label>
   );
 }
