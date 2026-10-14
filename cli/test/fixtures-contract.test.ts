@@ -72,3 +72,33 @@ describe("the contract app's components", () => {
     expect(read("src/components/Sheet.tsx")).toContain("spring.smooth");
   });
 });
+
+describe("the contract app's screens", () => {
+  test("Home, Products and a product, with their loading, empty and not-found states", () => {
+    for (const file of ["src/app/page.tsx", "src/app/products/page.tsx", "src/app/products/loading.tsx", "src/app/products/[id]/page.tsx", "src/app/products/[id]/not-found.tsx"]) {
+      expect(existsSync(join(APP, file))).toBe(true);
+    }
+    expect(read("src/app/products/page.tsx")).toContain("<EmptyState");
+    expect(read("src/app/products/loading.tsx")).toContain("<Skeleton");
+    expect(read("src/app/products/[id]/page.tsx")).toContain("notFound()");
+    expect(read("src/app/products/[id]/page.tsx")).toContain('backHref="/products"');
+  });
+
+  test("one primary action per screen", () => {
+    for (const file of ["src/app/page.tsx", "src/app/products/[id]/page.tsx"]) {
+      const buttons = read(file).match(/<Button(?![^>]*variant=)/g) ?? [];
+      expect(buttons).toHaveLength(1);
+    }
+  });
+
+  test("all mock data comes from one file", () => {
+    const data = read("src/mock-data.ts");
+    for (const s of ["export const products", "export const orders", "export const user", "export function formatPrice"]) expect(data).toContain(s);
+  });
+
+  test("the shell has the tab bar on phones and the sidebar on desktop", () => {
+    const layout = read("src/app/layout.tsx");
+    expect(layout).toContain("<TabBar />");
+    expect(layout).toContain("<Sidebar />");
+  });
+});
