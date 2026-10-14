@@ -18,9 +18,18 @@ export function pluginManifest(version: string): Record<string, unknown> {
   };
 }
 
-/** Replaces outDir with a fresh build; refuses a folder that has files and isn't an earlier build. */
+/** True for a folder an earlier build made: its manifest names the plugin "motif". */
+function isMotifBuild(dir: string): boolean {
+  try {
+    return JSON.parse(readFileSync(join(dir, ".claude-plugin", "plugin.json"), "utf8")).name === "motif";
+  } catch {
+    return false;
+  }
+}
+
+/** Replaces outDir with a fresh build; refuses a folder that has files and isn't an earlier Motif build. */
 export function buildPlugin(outDir: string, repo: string = REPO): void {
-  if (existsSync(outDir) && readdirSync(outDir).length > 0 && !existsSync(join(outDir, ".claude-plugin", "plugin.json"))) {
+  if (existsSync(outDir) && readdirSync(outDir).length > 0 && !isMotifBuild(outDir)) {
     throw new Error(`${outDir} isn't a Motif plugin build, so it wasn't replaced.`);
   }
   rmSync(outDir, { recursive: true, force: true });

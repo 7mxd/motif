@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { buildPlugin, pluginManifest } from "../scripts/build-plugin";
 import { runCommand } from "../src/commands/connect";
@@ -63,6 +63,16 @@ describe("the Claude Code development plugin", () => {
     writeFileSync(join(out, "important.txt"), "keep me");
     expect(() => buildPlugin(out)).toThrow("isn't a Motif plugin build");
     expect(readFileSync(join(out, "important.txt"), "utf8")).toBe("keep me");
+  });
+
+  test("never replaces another plugin, even one with a manifest", () => {
+    const out = tempDir("motif-plugin-");
+    mkdirSync(join(out, ".claude-plugin"), { recursive: true });
+    mkdirSync(join(out, "skills/mine"), { recursive: true });
+    writeFileSync(join(out, ".claude-plugin/plugin.json"), JSON.stringify({ name: "someone-elses" }));
+    writeFileSync(join(out, "skills/mine/SKILL.md"), "keep me");
+    expect(() => buildPlugin(out)).toThrow("isn't a Motif plugin build");
+    expect(readFileSync(join(out, "skills/mine/SKILL.md"), "utf8")).toBe("keep me");
   });
 
   test.skipIf(process.platform === "win32")("keeps the tool's launcher executable", () => {
