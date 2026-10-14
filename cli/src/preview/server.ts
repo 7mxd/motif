@@ -3,6 +3,7 @@ import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path"
 import { previewCss } from "../generate/preview-css";
 import type { Theme } from "../generate/theme";
 import { KIT_ASSETS, TEMPLATE_HTML } from "./assets";
+import { EMBEDDED_FONT_FILES, FONTS_CSS } from "./fonts";
 import { comparePage, galleryPage } from "./pages";
 import { EMBEDDED_PRESETS, presetTheme } from "./presets";
 
@@ -23,6 +24,7 @@ const TYPES: Record<string, string> = {
 export function injectKit(html: string, themeHref: string): string {
   const tags = [
     `<link rel="stylesheet" href="${themeHref}">`,
+    '<link rel="stylesheet" href="/__motif/kit/fonts/fonts.css">',
     '<link rel="stylesheet" href="/__motif/kit/kit.css">',
     '<script src="/__motif/kit/vendor/motion.js"></script>',
     '<script src="/__motif/kit/kit.js"></script>',
@@ -68,6 +70,12 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       const path = url.pathname;
       if (path === "/__motif/theme.css") {
         return new Response(themeCss(url.searchParams.get("preset")), { headers: { "content-type": TYPES[".css"]!, "cache-control": "no-store" } });
+      }
+      if (path.startsWith("/__motif/kit/fonts/")) {
+        const name = path.slice("/__motif/kit/fonts/".length);
+        if (name === "fonts.css") return new Response(FONTS_CSS, { headers: { "content-type": TYPES[".css"]! } });
+        if (!Object.hasOwn(EMBEDDED_FONT_FILES, name)) return notFound();
+        return new Response(Bun.file(EMBEDDED_FONT_FILES[name]!), { headers: { "content-type": "font/woff2", "cache-control": "max-age=3600" } });
       }
       if (path.startsWith("/__motif/kit/")) {
         const name = path.slice("/__motif/kit/".length);

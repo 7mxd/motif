@@ -18,3 +18,9 @@ declare module "*.json" {
   const text: string;
   export default text;
 }
+
+declare module "*.woff2" {
+  /** A path Bun.file() can read, in the source tree or inside the compiled tool. */
+  const path: string;
+  export default path;
+}

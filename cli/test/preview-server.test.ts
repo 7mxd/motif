@@ -47,7 +47,7 @@ function withServer(fn: (base: string, root: string) => Promise<void>) {
 describe("injectKit", () => {
   test("adds the theme, kit styles, Motion and kit script before </head>", () => {
     const out = injectKit("<html><head><title>x</title></head><body></body></html>", "/__motif/theme.css");
-    expect(out).toMatch(/theme\.css">\n<link rel="stylesheet" href="\/__motif\/kit\/kit\.css">\n<script src="\/__motif\/kit\/vendor\/motion\.js"><\/script>\n<script src="\/__motif\/kit\/kit\.js"><\/script>\n<\/head>/);
+    expect(out).toMatch(/theme\.css">\n<link rel="stylesheet" href="\/__motif\/kit\/fonts\/fonts\.css">\n<link rel="stylesheet" href="\/__motif\/kit\/kit\.css">\n<script src="\/__motif\/kit\/vendor\/motion\.js"><\/script>\n<script src="\/__motif\/kit\/kit\.js"><\/script>\n<\/head>/);
   });
   test("works without a <head>", () => {
     expect(injectKit("<p>hi</p>", "/t.css")).toStartWith('<link rel="stylesheet" href="/t.css">');
@@ -77,6 +77,17 @@ describe("startPreviewServer", () => {
     const html = await res.text();
     expect(html).toContain("Hello");
     expect(html).toContain('href="/__motif/theme.css"');
+  }));
+
+  test("serves the built-in fonts and their stylesheet", withServer(async (base) => {
+    const css = await fetch(`${base}/__motif/kit/fonts/fonts.css`);
+    expect(css.headers.get("content-type")).toStartWith("text/css");
+    expect(await css.text()).toContain('font-family: "Inter";');
+    const font = await fetch(`${base}/__motif/kit/fonts/inter.woff2`);
+    expect(font.headers.get("content-type")).toBe("font/woff2");
+    expect(new TextDecoder().decode(new Uint8Array(await font.arrayBuffer()).slice(0, 4))).toBe("wOF2");
+    expect((await fetch(`${base}/__motif/kit/fonts/nope.woff2`)).status).toBe(404);
+    expect((await fetch(`${base}/__motif/kit/fonts/constructor`)).status).toBe(404);
   }));
 
   test("serves the theme CSS, a preset's theme, the kit, and other files", withServer(async (base) => {
