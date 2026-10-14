@@ -1,0 +1,11 @@
+{
+  "motifContract": 1,
+  "apps": [
+    {
+      "path": ".",
+      "stack": "react-web",
+      "srcDir": "src"
+    }
+  ],
+  "ignore": []
+}
