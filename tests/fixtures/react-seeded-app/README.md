@@ -29,13 +29,13 @@ bun tests/fixtures/assemble.ts react-seeded-app <empty folder>
 | S-13 | exact (shot) | 20×20 px dismiss button | `/`, `PromoBanner.tsx:17` |
 | S-14 | judgement | Three primary buttons side by side | `/` |
 | S-15 | judgement | A grid of identical emoji feature cards | `/` |
-| S-16 | judgement | Emoji used as UI | `PromoBanner.tsx:11`, feature cards |
-| S-17 | judgement | Gradient text on the promo headline | `PromoBanner.tsx:13` |
+| S-16 | judgement | Emoji used as UI | `/`: `PromoBanner.tsx:11`, the feature cards |
+| S-17 | judgement | Gradient text on the promo headline | `/`, `PromoBanner.tsx:13` |
 | S-18 | judgement | "Submit" and "Click here" buttons | `/products/oats` |
 | S-19 | judgement | No loading or empty state on the product list | `/products` |
 | S-20 | judgement | An unknown product crashes (no not-found state) | `src/app/products/[id]/page.tsx` |
 | S-21 | judgement | No way back from a product | `/products/oats` |
-| S-22 | judgement | Add buttons appear only on hover | `src/app/products/page.tsx:19` |
+| S-22 | judgement | Add buttons appear only on hover | `/products`, `src/app/products/page.tsx:19` |
 | S-23 | judgement | Everything centred; giant headline, tiny body | `/` |
 
 ## How a grader reads the list
