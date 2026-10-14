@@ -27,9 +27,11 @@ describe("SKILL.md", () => {
   const skill = read("SKILL.md");
 
   test("says how to run the tool from every common shell", () => {
-    for (const form of ['"<skill folder>/bin/motif" <command>', '& "<skill folder>\\bin\\motif.ps1" <command>', '"<skill folder>\\bin\\motif.cmd" <command>']) {
+    for (const form of ['"<skill folder>/bin/motif" <command>', '& "<skill folder>\\bin\\motif.cmd" <command>', '"<skill folder>\\bin\\motif.cmd" <command>']) {
       expect(skill).toContain(form);
     }
+    // Windows' default script policy blocks running a .ps1 directly; motif.cmd starts it with the policy bypassed.
+    expect(skill).not.toContain("motif.ps1");
     for (const s of ["--json", "--png-only", "needs_browser", "motif browser install"]) expect(skill).toContain(s);
   });
 
