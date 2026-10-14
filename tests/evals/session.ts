@@ -104,9 +104,11 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
   cancelExitHook();
   if (pending.trim()) onEvent(pending);
 
-  const base = { init, result, problems, minutes: Math.round((Date.now() - started) / 600) / 100, ...(limit?.resetsAt ? { resetsAt: limit.resetsAt } : {}) };
+  // Set inside the event handler, which TypeScript's narrowing can't see.
+  const hit = limit as { resetsAt?: number } | null;
+  const base = { init, result, problems, minutes: Math.round((Date.now() - started) / 600) / 100, ...(hit?.resetsAt ? { resetsAt: hit.resetsAt } : {}) };
   if (notIsolated) return { ...base, end: "not-isolated" };
-  if (limit) return { ...base, end: "usage-limit" };
+  if (hit) return { ...base, end: "usage-limit" };
   if (timedOut) return { ...base, end: "time-limit" };
   if (result?.subtype === "success" && !result.isError) return { ...base, end: "finished" };
   if (result?.subtype === "error_max_turns") return { ...base, end: "turn-cap" };
