@@ -7,7 +7,8 @@
     "typecheck": "tsc --noEmit",
     "build": "mkdir -p ../dist && bun build --compile --minify src/main.ts --outfile ../dist/motif",
     "presets": "bun scripts/build-presets.ts",
-    "fonts": "bun scripts/vendor-fonts.ts"
+    "fonts": "bun scripts/vendor-fonts.ts",
+    "plugin": "bun scripts/build-plugin.ts"
   },
   "dependencies": {
     "culori": "^4.0.2",
