@@ -22,14 +22,13 @@ describe("previewCss", () => {
     expect(css).toContain("--motif-spring-smooth-bounce: 0.1;");
   });
 
-  test("a theme font outside the bundle loads from Google Fonts, after the generated-file header", () => {
+  test("a theme font outside the bundle is listed for opening mockups without Motif, never @imported", () => {
     const tokens = validTokens();
     tokens.primitive.font.sans.$value = ["Plus Jakarta Sans", "system-ui", "sans-serif"];
     const css = previewCss(buildTheme(docFrom(tokens)));
-    const lines = css.split("\n");
-    expect(lines[0]).toBe(CSS_HEADER);
-    expect(lines[1]).toStartWith('@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@');
-    expect(css.indexOf("@import")).toBeLessThan(css.indexOf(":root"));
+    expect(css.split("\n")[0]).toBe(CSS_HEADER);
+    expect(css).not.toContain("@import");
+    expect(css).toContain("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@");
   });
 
   test("bundled and system fonts add no imports", () => {

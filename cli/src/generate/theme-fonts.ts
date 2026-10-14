@@ -43,3 +43,10 @@ export function themeFonts(theme: Theme): ThemeFontUse[] {
 export function googleFontsUrl(family: string, weights: number[]): string {
   return `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}:wght@${weights.join(";")}&display=swap`;
 }
+
+/** The stylesheet addresses for a theme's fonts that come from Google Fonts, one per family. */
+export function fontStylesheets(theme: Theme, url: (family: string, weights: number[]) => string = googleFontsUrl): string[] {
+  return themeFonts(theme)
+    .filter((f) => f.source === "google")
+    .map((f) => url(f.family, f.weights));
+}

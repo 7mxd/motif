@@ -79,6 +79,25 @@ describe("startPreviewServer", () => {
     expect(html).toContain('href="/__motif/theme.css"');
   }));
 
+  test("loads theme fonts from Google only after the page, and only for themes that need them", async () => {
+    const tokens = validTokens();
+    tokens.primitive.font.sans.$value = ["Plus Jakarta Sans", "system-ui", "sans-serif"];
+    const root = makeProject({ "design/previews/a.html": MOCKUP, "design/directions/b/a.html": MOCKUP, "design/directions/b/tokens.json": JSON.stringify(validTokens()) });
+    const server = startPreviewServer({ root, theme: buildTheme(docFrom(tokens)) });
+    try {
+      const page = await (await fetch(`${server.url}/design/previews/a.html`)).text();
+      expect(page).toContain("window.__motifFonts");
+      expect(page).toContain('addEventListener("load"');
+      expect(page).toContain("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@");
+      expect(page).not.toContain("@import");
+      expect(await (await fetch(`${server.url}/__motif/theme.css`)).text()).not.toContain("@import");
+      const direction = await (await fetch(`${server.url}/design/directions/b/a.html`)).text();
+      expect(direction).not.toContain("__motifFonts");
+    } finally {
+      server.stop();
+    }
+  });
+
   test("serves the built-in fonts and their stylesheet", withServer(async (base) => {
     const css = await fetch(`${base}/__motif/kit/fonts/fonts.css`);
     expect(css.headers.get("content-type")).toStartWith("text/css");
