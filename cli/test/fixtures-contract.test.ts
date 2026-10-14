@@ -45,3 +45,30 @@ describe("the contract app (Larder)", () => {
     expect(existsSync(join(APP, "package-lock.json"))).toBe(true);
   });
 });
+
+const STARTER_SET = [
+  "Button", "IconButton", "Input", "Textarea", "Select", "Checkbox", "Switch", "Card", "ListItem", "TopBar",
+  "TabBar", "Sidebar", "Sheet", "Dialog", "Toast", "Skeleton", "EmptyState", "ErrorState", "Avatar", "Badge",
+];
+
+describe("the contract app's components", () => {
+  test("it has the React web guide's starter set, one file each", () => {
+    for (const name of STARTER_SET) expect(read(`src/components/${name}.tsx`)).toMatch(new RegExp(`export function ${name}\\b`));
+  });
+
+  test("everything interactive shows focus, and states are announced", () => {
+    for (const name of ["Button", "IconButton", "Input", "Textarea", "Select", "Checkbox", "Switch", "Card", "ListItem", "TopBar", "TabBar", "Sidebar"]) {
+      expect(read(`src/components/${name}.tsx`)).toContain("focus-visible:outline-focus");
+    }
+    expect(read("src/components/Button.tsx")).toContain("aria-busy");
+    expect(read("src/components/Input.tsx")).toContain("aria-invalid");
+    expect(read("src/components/IconButton.tsx")).toContain("aria-label={label}");
+    expect(read("src/components/Toast.tsx")).toContain('aria-live="polite"');
+    expect(read("src/components/TabBar.tsx")).toContain('aria-current={');
+  });
+
+  test("motion comes from the design guide's roles", () => {
+    expect(read("src/components/Button.tsx")).toContain("spring.snappy");
+    expect(read("src/components/Sheet.tsx")).toContain("spring.smooth");
+  });
+});
