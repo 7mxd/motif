@@ -51,7 +51,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
 2. Write `DESIGN.md` from [the template](../contract/DESIGN.template.md): the summary, the brief, the direction (the style, references as links, the approved mockups), and every other section filled from the decisions so far. [The format](../contract/spec.md) says what each section holds.
 3. Move the approved mockups and their PNGs into `design/previews/`, then delete `design/directions/`.
 4. Run `motif validate` and fix every problem until it passes.
-5. Add the first change-log line: `- <date> — Created the design guide — <name> chosen from <n> directions — approved by <developer>`.
+5. Add the first change-log line, replacing the template's example line: `- <date> — Created the design guide — <name> chosen from <n> directions — approved by <developer>`.
 
 ## 6. Build
 

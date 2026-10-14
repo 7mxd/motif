@@ -106,7 +106,7 @@ Show the developer the summary and ask which findings to fix (suggest all critic
 If the developer wants a new look rather than fixes:
 
 1. Keep screenshots first: `motif shot --routes <routes> --save before`.
-2. Follow [init](init.md) steps 3 to 5 (research, directions ⏸, design guide) to make the new design guide.
+2. Follow [init](init.md) steps 3 and 4 (research, directions ⏸). Then update the existing design guide rather than starting from the template: copy the approved direction's `tokens.json` over `design/tokens.json`, rewrite `DESIGN.md`'s summary, direction, foundations and motion for the new look, but keep its change log and component list (update the components' descriptions where the look changed). Add a change-log line for the new look, run `motif validate`, and put new mockups beside the old ones rather than over them.
 3. Run `motif tokens`. Because the code uses theme roles, much of the new look arrives with this one step.
 4. Then go screen by screen: adjust the layouts the new direction calls for, run `motif check` and `motif shot --routes <route> --against before`, and show each screen before moving to the next.
 5. If the design guide was just extracted, `design/extract-report.json` maps each old value to its role; use it to replace any raw values left in the code.

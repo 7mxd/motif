@@ -123,6 +123,11 @@ describe("modes/review.md", () => {
     }
   });
 
+  test("a new look updates the existing design guide and keeps its history", () => {
+    expect(outOfOrder(review, ["## 6. A new look instead", "keep its change log", "component list"])).toBeNull();
+    expect(read("modes/init.md")).toContain("replacing the template's example line");
+  });
+
   test("proves a rebuild with screenshots from before and after", () => {
     expect(outOfOrder(review, ["--save before", "--against before", '"status": "fixed"'])).toBeNull();
   });
