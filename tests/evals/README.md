@@ -35,7 +35,7 @@ bun tests/evals/run.ts                         # everything
 | `--keep` | Keep each case's folder after grading (to look at the apps) |
 | `--model <name>` · `--judge-model <name>` | The model for the sessions, and for test C's grader (default: your account's) |
 | `--max-turns <n>` | Cap every case at n turns: a quick check that the runner works |
-| `--work <folder>` | Where case folders go (default: your temp folder) |
+| `--work <folder>` | Where case folders go, one subfolder per run (default: your temp folder) |
 | `--claude <path>` | The Claude Code program to use |
 
 At the start of a run, the runner builds the motif tool and the Claude Code plugin from this checkout (`bun run build` and `bun run plugin` in `cli`), so the sessions test the code in front of you.
@@ -44,8 +44,8 @@ At the start of a run, the runner builds the motif tool and the Claude Code plug
 
 - **A fresh folder** in your temp folder: a copy of the fixture app with its packages installed (B, C), or an empty folder holding the brief as `brief.md` (D).
 - **Your Claude account only.** `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the other-provider switches are left out of the session's environment, and a session that reports any API key stops the run.
-- **None of your setup.** `--setting-sources project,local` leaves out your own settings, hooks and plugins; `--strict-mcp-config` with an empty list leaves out every MCP server (that's test D's "zero accounts"); only Motif's plugin is loaded, from `dist/claude-code`. The session's first event is checked for all of this, and the run stops if anything else was loaded.
-- **Unattended, never bypassed.** `--permission-mode auto --permission-prompts none`: Claude Code's auto mode approves ordinary work and refuses risky actions, and nobody is asked. Refusals are listed in the report. If a session doesn't start in auto mode (some models don't support it), the run stops and says to choose another with `--model`. Tools that reach outside the session (remote triggers, phone notifications, schedules, design sync, worktrees) are switched off.
+- **None of your setup.** `--setting-sources project,local` leaves out your own settings, hooks, plugins, skills and agents; `--strict-mcp-config` with an empty list leaves out every MCP server (that's test D's "zero accounts"); only Motif's plugin is loaded, from `dist/claude-code`. The session's first event is checked for all of this (an API key, MCP servers, other plugins, your own skills or agents, tools outside the allowed list), and the run stops if anything is off, or if that first event is missing. A run won't start while a `CLAUDE.md` that every session would read sits in or above the case folders (or in `~/.claude/`): move it aside, or choose another `--work` folder.
+- **Unattended, never bypassed.** `--permission-mode auto --permission-prompts none`: Claude Code's auto mode approves ordinary work and refuses risky actions, and nobody is asked. Refusals are listed in the report. If a session doesn't start in auto mode (some models don't support it), the run stops and says to choose another with `--model`. Sessions get only the tools a coding session needs (files, the shell, search, skills, subagents, their task list and the web); nothing that publishes pages, messages your other sessions, schedules work or leaves the folder.
 - **Gates off by instruction.** Each prompt starts a Motif command (`/motif:feature`, `/motif:review`, `/motif:init`) and adds "don't stop for approval", as a developer would.
 - **No traces.** Sessions keep no transcript in Claude Code (`--no-session-persistence`), and `claude purge` removes Claude Code's state for each case folder afterwards. Case folders are deleted after grading unless you pass `--keep`.
 
@@ -57,7 +57,7 @@ If your plan's usage limit is reached, the run pauses, says when the limit reset
 bun tests/evals/run.ts --resume <run>
 ```
 
-Ctrl+C works the same way. A case cut off mid-session starts again from a fresh folder; cases already graded keep their results. If the limit is reached while test C is being graded, the review isn't repeated: its folder is kept and `--resume` grades it again. Resuming on a different commit is allowed, and the report says so.
+Ctrl+C works the same way. A case cut off mid-session, or one where Claude Code failed part-way (an API error, a crash), isn't graded and starts again from a fresh folder; cases already graded keep their results. If the limit is reached while test C is being graded, the review isn't repeated: its folder is kept and `--resume` grades it again. Resuming on a different commit is allowed, and the report says so.
 
 ## Results
 
@@ -72,7 +72,7 @@ Exit codes: `0` every case passed, `1` some case failed or couldn't be graded, `
 
 ## How cases are graded
 
-**B** (every case): the feature's page exists; `motif check` finds no problems and no warnings, with at most 2 `motif-ok` exceptions; `motif validate` passes; the app builds and type-checks; at most one new component in `src/components/`, unless the others are named in lines the session added to `DESIGN.md` (a recorded design guide change).
+**B** (every case): the feature's page exists; `motif check` finds no problems and no warnings, with at most 2 `motif-ok` exceptions; `motif validate` passes; the app builds and type-checks; at most one new component (a new `.tsx` or `.jsx` file anywhere under `src/` that isn't a route file, test or story), unless the others are named in lines the session added to `DESIGN.md` (a recorded design guide change).
 
 **C**: the review writes a report in the review format (`design/reviews/*.json`) and changes nothing outside `design/`. Findings are matched to `seeded-issues.json` by category and place, following [the seeded app's grading rules](../fixtures/react-seeded-app/README.md#how-a-grader-reads-the-list); knock-on findings the list declares count as correct. Exact problems found at their file (or line) are matched by the runner alone; for judgement problems, and for exact problems a finding names only by screen, a model grader (one read-only Claude Code session, with [this rubric](rubric.md)) confirms which candidate findings describe each problem, and decides whether serious findings that match nothing are real or false. Pass: at least 90% of the 13 exact problems, at least 70% of the 10 judgement problems, at most 10% of critical and major findings false.
 

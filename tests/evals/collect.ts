@@ -41,17 +41,20 @@ async function buildAndTypecheck(dir: string, k: Collectors, out: string): Promi
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** Next's route files, tests and stories aren't components; any other .tsx or .jsx file under src/ is, wherever it sits. */
+const ROUTE_FILES = new Set(["page", "layout", "loading", "error", "global-error", "not-found", "template", "default", "route", "opengraph-image", "twitter-image", "icon", "apple-icon"]);
+const isComponentFile = (path: string) =>
+  /^src\/.+\.(tsx|jsx)$/.test(path) && !/\.(test|spec|stories|d)\.(tsx|jsx)$/.test(path) && !ROUTE_FILES.has(basename(path, extname(path)));
+
 export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: string): Promise<BFacts> {
   mkdirSync(out, { recursive: true });
   const route = c.routes[0]!;
   // What changed is read before the build, which may touch files of its own.
   const changed = await changes(ws, k.run);
   save(out, "diff.patch", await patch(ws, k.run));
-  const newComponents = changed
-    .filter((x) => x.status === "added" && /^src\/components\/.+\.(tsx|jsx)$/.test(x.path))
-    .map((x) => basename(x.path, extname(x.path)));
+  const newComponents = changed.filter((x) => x.status === "added" && isComponentFile(x.path)).map((x) => basename(x.path, extname(x.path)));
   const added = (await patch(ws, k.run, ["DESIGN.md"])).split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).join("\n");
-  const recorded = newComponents.filter((n) => new RegExp(`\\b${escapeRegExp(n)}\\b`).test(added));
+  const recorded = newComponents.filter((n) => new RegExp(`\\b${escapeRegExp(n)}\\b`, "i").test(added));
   const check = await motifJson(k, ["check"], ws.app, out, "check.json");
   const validate = await motifJson(k, ["validate"], ws.app, out, "validate.json");
   const { build, typecheck } = await buildAndTypecheck(ws.app, k, out);

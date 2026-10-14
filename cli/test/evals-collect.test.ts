@@ -68,6 +68,26 @@ describe("test B's measurements", () => {
     for (const file of ["check.json", "validate.json", "diff.patch", "build.log", "typecheck.log"]) expect(existsSync(join(out, file))).toBe(true);
   });
 
+  test("new components count wherever they are under src/, but not route files, tests or stories", async () => {
+    const ws = await prepareWorkspace(byId("b-checkout"), join(tempDir("motif-col-"), "b3"), run);
+    const files: Record<string, string> = {
+      "src/app/checkout/page.tsx": "export default function Checkout() { return null; }\n",
+      "src/app/checkout/layout.tsx": "export default function L({ children }: { children: React.ReactNode }) { return children; }\n",
+      "src/app/checkout/_components/Summary.tsx": "export function Summary() { return null; }\n",
+      "src/app/checkout/SlotPicker.tsx": "export function SlotPicker() { return null; }\n",
+      "src/components/Switch.test.tsx": "export {};\n",
+      "src/components/Card.stories.tsx": "export {};\n",
+    };
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(join(ws.app, path, ".."), { recursive: true });
+      writeFileSync(join(ws.app, path), text);
+    }
+    writeFileSync(join(ws.app, "DESIGN.md"), `${readFileSync(join(ws.app, "DESIGN.md"), "utf8")}\n- 2026-10-14 — Added the order summary component — approved by the eval\n`);
+    const f = await collectB(byId("b-checkout"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"));
+    expect([...f.newComponents].sort()).toEqual(["SlotPicker", "Summary"]);
+    expect(f.recorded).toEqual(["Summary"]);
+  });
+
   test("no page at the feature's route", async () => {
     const ws = await prepareWorkspace(byId("b-search"), join(tempDir("motif-col-"), "b2"), run);
     expect((await collectB(byId("b-search"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"))).pageExists).toBe(false);
