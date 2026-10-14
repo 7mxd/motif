@@ -25,7 +25,7 @@ Until Motif's first release is published, point the skill at a local build of th
 
 | Type | To |
 |---|---|
-| `/design` | Say what you'd like to do; Motif picks the right mode |
+| `/motif:design` | Say what you'd like to do; Motif picks the right mode (plain `/design` can be Claude Code's own design skill) |
 | `/motif:init` | Start a new app (plain `/init` is Claude Code's own command) |
 | `/feature` | Add a screen or flow that matches your app (`/motif:feature` works too) |
 | `/motif:review` | Review and improve your app's look (plain `/review` is Claude Code's own command) |

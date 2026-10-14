@@ -43,9 +43,10 @@ describe("the Claude Code development plugin", () => {
     }
   });
 
-  test("says how to reach the two commands Claude Code's own /init and /review hide", () => {
+  test("says how to reach the commands Claude Code's own /init, /review and design skill hide", () => {
     const readme = readFileSync(join(REPO, "plugin/claude-code/README.md"), "utf8");
-    for (const s of ["/design", "/motif:init", "/feature", "/motif:review", "MOTIF_BIN", "bun run plugin", "/reload-plugins"]) expect(readme).toContain(s);
+    for (const s of ["/motif:design", "/motif:init", "/feature", "/motif:review", "MOTIF_BIN", "bun run plugin", "/reload-plugins"]) expect(readme).toContain(s);
+    expect(readFileSync(join(REPO, "plugin/claude-code/skills/design/SKILL.md"), "utf8")).toContain("/motif:design");
     expect(readFileSync(join(REPO, "plugin/claude-code/skills/init/SKILL.md"), "utf8")).toContain("/motif:init");
     expect(readFileSync(join(REPO, "plugin/claude-code/skills/review/SKILL.md"), "utf8")).toContain("/motif:review");
   });

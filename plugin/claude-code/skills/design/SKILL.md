@@ -1,6 +1,6 @@
 ---
 name: design
-description: Motif's starting point (/design). Asks whether you're starting a new app, adding a feature or improving your app's look, then takes it from there.
+description: Motif's starting point (run it as /motif:design; plain /design can be Claude Code's own). Asks whether you're starting a new app, adding a feature or improving your app's look, then takes it from there.
 argument-hint: "[what you'd like to do]"
 disable-model-invocation: true
 ---

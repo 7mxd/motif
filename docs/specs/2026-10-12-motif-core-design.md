@@ -48,9 +48,9 @@ Motif optionally draws on Refero, 21st.dev, 60fps.design, Motion (motion.dev) an
 | ID | Test | Type | When it runs |
 |---|---|---|---|
 | A | Blind side-by-side: same briefs built with and without Motif across stacks; human judges pick the better result | Human | Before each release (Part 4) |
-| B | Consistency: fresh agent sessions each add a different feature to a contract-governed app; zero unjustified contract violations, existing components reused | Automated agent eval | Nightly, on demand, required before release |
-| C | Review accuracy: `review` finds seeded issues in a deliberately flawed app | Automated agent eval | Nightly, on demand, required before release |
-| D | Zero accounts: B, C and a full `init` with no MCP sources connected | Automated agent eval | Nightly, on demand, required before release |
+| B | Consistency: fresh agent sessions each add a different feature to a contract-governed app; zero unjustified contract violations, existing components reused | Automated agent eval | On demand, required before release |
+| C | Review accuracy: `review` finds seeded issues in a deliberately flawed app | Automated agent eval | On demand, required before release |
+| D | Zero accounts: B, C and a full `init` with no MCP sources connected | Automated agent eval | On demand, required before release |
 | — | Tool tests (unit, snapshot, cross-OS) | Automated | Every change |
 
 Exact pass thresholds are in §13.
@@ -115,7 +115,7 @@ motif/
 │   └── evals/                     ← runners and graders for tests B, C, D
 ├── docs/
 │   └── specs/
-├── .github/workflows/             ← tool tests (every change), evals (nightly/on demand), release
+├── .github/workflows/             ← tool tests (every change), release
 ├── LICENSE                        ← MIT
 └── README.md
 ```
@@ -480,14 +480,14 @@ Welcome/landing, sign-in, home (dashboard or feed, chosen from the brief), wired
 - Integration: compiled binary runs `doctor`, `validate`, `tokens`, `check`, `extract` on fixtures; `preview --png-only` and `shot` on the fixture app with a CI browser.
 - Bootstrap scripts: download, checksum verification (including a tampered-file case), cache reuse, `MOTIF_BIN` override.
 
-### 13.2 Agent evals (nightly, on demand, required before release)
+### 13.2 Agent evals (on demand, required before release)
 
 Run through Claude Code's headless mode with the Part 1 plugin loaded and gates switched off by instruction.
 
 - **Test B — consistency.** Fixture: `tests/fixtures/react-contract-app` (Next.js + Tailwind v4, full contract, starter components, 3 screens). Five feature tasks, each in a fresh session: settings screen; search with empty state; profile edit form with validation; notifications list; checkout summary. **Pass:** for every task, `motif check` reports zero violations (justified `motif-ok` exceptions allowed, max 2 per task), the project builds and type-checks, and at most one new component is created per task unless recorded as a contract change.
 - **Test C — review accuracy.** Fixture: `tests/fixtures/react-seeded-app` with `seeded-issues.json` (≥ 20 issues: ≥ 12 exact-detectable, ≥ 8 judgement). Run `review` in report-only mode. Grader matches findings to seeded issues by category + location (exact issues: deterministic; judgement issues: model grader with a written rubric). **Pass:** recall ≥ 90% for exact issues, ≥ 70% for judgement issues; ≤ 10% of critical/major findings are false.
 - **Test D — zero accounts.** Run B and C with no MCP servers configured, plus `init` from each of 3 brief fixtures (`tests/fixtures/briefs/`). **Pass for init:** `validate` and `check` clean, project builds, all starter screens exist and render in `shot`, `DESIGN.md` has all sections.
-- Eval runs need an API key stored as a CI secret and are capped per run to control cost.
+- Eval runs use the developer's signed-in Claude Code, never an API key, run only when the developer starts them, and are capped per case ([decision 0003](../decisions/0003-evals-on-your-plan.md)). CI runs only the runner's own tests.
 
 ### 13.3 Test A
 Defined and run in Part 4.

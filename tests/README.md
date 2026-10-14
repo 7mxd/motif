@@ -18,4 +18,4 @@ Fixtures and evaluations for Motif. Nothing here ships to users: skill installs 
 
 ## Evals
 
-`evals/` (Plan 1E-2) runs tests B, C and D from the design spec through your signed-in Claude Code, never an API key, one case at a time and only when you start it.
+`evals/` runs tests B, C and D from the design spec through your signed-in Claude Code, never an API key, one case at a time and only when you start it: `bun tests/evals/run.ts --list` to see the cases. [evals/README.md](evals/README.md) explains what each session gets, how to resume after a usage limit, and how cases are graded.
