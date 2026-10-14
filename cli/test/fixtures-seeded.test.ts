@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runCheck } from "../src/commands/check";
 import { runValidate } from "../src/commands/validate";
@@ -38,6 +38,21 @@ describe("the seeded app's list of planted problems", () => {
 });
 
 describe("assemble", () => {
+  test("copies only what git keeps, never local leftovers (build output, screenshots, caches)", () => {
+    const app = join(import.meta.dir, "../../tests/fixtures/react-contract-app");
+    const leftovers = ["stale.tsbuildinfo", ".next/leftover.txt", ".env.local"];
+    mkdirSync(join(app, ".next"), { recursive: true });
+    for (const file of leftovers) writeFileSync(join(app, file), "local only");
+    try {
+      const dest = join(tempDir("motif-seeded-"), "app");
+      assemble("react-contract-app", dest);
+      for (const file of leftovers) expect(existsSync(join(dest, file)) ? `${file} copied` : "skipped").toBe("skipped");
+      expect(existsSync(join(dest, "src/components/Button.tsx"))).toBe(true);
+    } finally {
+      for (const file of leftovers) rmSync(join(app, file), { force: true });
+    }
+  });
+
   test("never writes into a folder that already holds something", () => {
     const dest = tempDir("motif-seeded-");
     writeFileSync(join(dest, "keep.txt"), "mine");
