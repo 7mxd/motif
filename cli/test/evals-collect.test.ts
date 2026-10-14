@@ -120,6 +120,21 @@ describe("test C's measurements", () => {
     expect(f.changedCode).toEqual(["src/app/page.tsx"]);
   });
 
+  test("an exact problem named only by its screen counts when the grader confirms it, and not otherwise", async () => {
+    const ws = await prepareWorkspace(byId("c-review"), join(tempDir("motif-col-"), "c5"), run);
+    const s12 = seeded.findIndex((i) => i.id === "S-12");
+    const byScreen = { id: "F-900", severity: "critical", category: "contrast", source: "exact", location: { screen: "/", scheme: "light", selector: "p.opacity-40" }, summary: "The promo's small print is unreadable.", fix: "Use text-secondary at full opacity." };
+    writeReport(ws.app, [...perfect.filter((_, n) => n !== s12), byScreen]);
+    const out = join(ws.dir, "results");
+    expect((await collectC(byId("c-review"), ws, { run, motif, judge: confirmAll }, out)).exact.missed).toEqual([]);
+    const decline: JudgeFn = async (input, cwd) => {
+      const r = await confirmAll(input, cwd);
+      if ("verdict" in r) r.verdict.issues["S-12"] = { findings: [], why: "That finding is about the caption text." };
+      return r;
+    };
+    expect((await collectC(byId("c-review"), ws, { run, motif, judge: decline }, out)).exact.missed).toEqual(["S-12"]);
+  });
+
   test("no report: everything missed", async () => {
     const ws = await prepareWorkspace(byId("c-review"), join(tempDir("motif-col-"), "c3"), run);
     const f = await collectC(byId("c-review"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"));

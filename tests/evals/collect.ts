@@ -116,12 +116,15 @@ export async function collectC(_c: EvalCase, ws: Workspace, k: Collectors, out: 
     verdict = r.verdict;
   }
   const confirmed = new Set(Object.values(verdict.issues).flatMap((v) => v.findings));
-  const judgementFound = judgementIds.filter((id) => (verdict.issues[id]?.findings.length ?? 0) > 0);
+  const confirmedFor = (id: string) => (verdict.issues[id]?.findings.length ?? 0) > 0;
+  const judgementFound = judgementIds.filter(confirmedFor);
+  // An exact problem counts when found at its place, or when the grader confirms a finding that named only its screen.
+  const exactFound = exactIds.filter((id) => g.exact.find((e) => e.id === id)!.findings.length > 0 || confirmedFor(id));
   const falseFindings = g.unmatchedSerious.filter((id) => !confirmed.has(id) && verdict.unmatched[id]?.verdict !== "real");
   save(out, "grading.json", { ...g, judge: verdict });
   return {
     report: { findings: findings.length, problems },
-    exact: { found: g.exact.filter((e) => e.findings.length > 0).map((e) => e.id), missed: g.exact.filter((e) => e.findings.length === 0).map((e) => e.id) },
+    exact: { found: exactFound, missed: exactIds.filter((id) => !exactFound.includes(id)) },
     judgement: { found: judgementFound, missed: judgementIds.filter((id) => !judgementFound.includes(id)) },
     serious: findings.filter((f) => f.severity === "critical" || f.severity === "major").length,
     falseFindings,

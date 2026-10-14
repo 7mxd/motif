@@ -78,9 +78,26 @@ describe("the exact problems (README: how a grader reads the list)", () => {
     expect(exactFor([finding("contrast", { file: "design/tokens.json", line: 40 })], "S-11")).toHaveLength(1);
   });
 
-  test("file and screen: either one", () => {
-    expect(exactFor([finding("contrast", { screen: "/", scheme: "light" })], "S-12")).toHaveLength(1);
+  test("file and screen: either one; a finding that names only the screen goes to the model grader to confirm", () => {
     expect(exactFor([finding("contrast", { file: "src/components/PromoBanner.tsx", line: 16 })], "S-12")).toHaveLength(1);
+    const byScreen = finding("contrast", { screen: "/", scheme: "light", selector: "p.opacity-40" });
+    const g = gradeExact([byScreen], issues, noLines);
+    expect(g.exact.find((e) => e.id === "S-12")!.findings).toEqual([]);
+    expect(g.candidates.find((c) => c.id === "S-12")!.findings).toEqual([byScreen.id]);
+  });
+
+  test("another problem's knock-on on the same screen doesn't count as S-12 by itself", () => {
+    // S-11 makes every text-secondary text in light mode fail contrast, on / too.
+    const knockOn = finding("contrast", { screen: "/", scheme: "light", selector: "p.text-secondary" });
+    const g = gradeExact([knockOn], issues, noLines);
+    expect(g.exact.find((e) => e.id === "S-12")!.findings).toEqual([]);
+    expect(g.consequences).toEqual([knockOn.id]);
+  });
+
+  test("an exact problem already found directly isn't sent to the model grader", () => {
+    const direct = finding("target-size", { file: "src/components/PromoBanner.tsx", line: 17 });
+    const byScreen = finding("target-size", { screen: "/" }, "minor");
+    expect(gradeExact([direct, byScreen], issues, noLines).candidates.find((c) => c.id === "S-13")).toBeUndefined();
   });
 
   test("the whole app: the category alone", () => {

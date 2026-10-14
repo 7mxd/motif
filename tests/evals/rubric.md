@@ -4,7 +4,7 @@ You grade a design review of the web app in this folder. Some problems were plan
 
 ## Part A — does a finding describe a planted problem?
 
-For each planted problem you get the findings that are in one of its categories and point at its place. Say which of them describe **this** problem.
+For each planted problem you get the findings that are in one of its categories and point at its place (its file, or its screen). Say which of them describe **this** problem.
 
 - A finding describes the problem when a developer reading it would fix this problem: it names the same thing (the element, the copy, the state, the layout) and the same fault, in any words.
 - One finding may cover several problems ("emoji and gradient text on the promo") and counts for each one it clearly names.

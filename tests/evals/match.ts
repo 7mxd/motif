@@ -92,19 +92,26 @@ export type LineText = (file: string, line: number) => string | undefined;
 
 /** Whether a place points at a planted problem: file and line (or a line holding the anchor), file alone, screen, either, or the whole app. */
 export function pointsAt(issue: SeededIssue, place: Location, lineText: LineText): boolean {
-  const L = issue.location;
-  if (L.app) return true;
-  let fileOk = false;
-  if (L.file && place.file === L.file) {
-    if (L.line === undefined || place.line === L.line) fileOk = true;
-    else if (place.line !== undefined && issue.anchor) fileOk = (lineText(place.file, place.line) ?? "").includes(issue.anchor);
-  }
-  const screenOk = Boolean(L.screen && place.screen && sameScreen(place.screen, L.screen));
-  return fileOk || screenOk;
+  return how(issue, place, lineText) !== null;
 }
 
-const matches = (issue: SeededIssue, f: Finding, lineText: LineText, appRoot?: string) =>
-  issue.categories.includes(f.category) && places(f, appRoot).some((p) => pointsAt(issue, p, lineText));
+/** "place": the whole app, or the problem's file (and line, or a line holding its anchor). "screen": only its screen. */
+function how(issue: SeededIssue, place: Location, lineText: LineText): "place" | "screen" | null {
+  const L = issue.location;
+  if (L.app) return "place";
+  if (L.file && place.file === L.file) {
+    if (L.line === undefined || place.line === L.line) return "place";
+    if (place.line !== undefined && issue.anchor && (lineText(place.file, place.line) ?? "").includes(issue.anchor)) return "place";
+  }
+  return L.screen && place.screen && sameScreen(place.screen, L.screen) ? "screen" : null;
+}
+
+/** How a finding matches a problem: in one of its categories, at its place, or only on its screen. */
+function match(issue: SeededIssue, f: Finding, lineText: LineText, appRoot?: string): "place" | "screen" | null {
+  if (!issue.categories.includes(f.category)) return null;
+  const ways = places(f, appRoot).map((p) => how(issue, p, lineText));
+  return ways.includes("place") ? "place" : ways.includes("screen") ? "screen" : null;
+}
 
 /** A knock-on finding the list declares: its category, on one of its screens (and schemes), or at the problem's own place. */
 function isConsequence(f: Finding, issues: SeededIssue[], lineText: LineText, appRoot?: string): boolean {
@@ -120,7 +127,10 @@ function isConsequence(f: Finding, issues: SeededIssue[], lineText: LineText, ap
 export interface ExactGrade {
   /** Per exact problem, the findings that found it. */
   exact: { id: string; findings: string[] }[];
-  /** Per judgement problem, the findings in one of its categories that point at its place. */
+  /**
+   * For the model grader to confirm: per judgement problem, the findings in one of its categories that point at its place or screen;
+   * and per exact problem not found at its place, the findings that name only its screen (another problem's knock-on can share a screen).
+   */
   candidates: { id: string; findings: string[] }[];
   /** Findings that are declared knock-ons: correct, though they find nothing new. */
   consequences: string[];
@@ -129,10 +139,16 @@ export interface ExactGrade {
 }
 
 export function gradeExact(findings: Finding[], issues: SeededIssue[], lineText: LineText, appRoot?: string): ExactGrade {
-  const per = (kind: SeededIssue["kind"]) =>
-    issues.filter((i) => i.kind === kind).map((i) => ({ id: i.id, findings: findings.filter((f) => matches(i, f, lineText, appRoot)).map((f) => f.id) }));
-  const exact = per("exact");
-  const candidates = per("judgement");
+  const ids = (i: SeededIssue, ways: ("place" | "screen")[]) => findings.filter((f) => ways.includes(match(i, f, lineText, appRoot)!)).map((f) => f.id);
+  const exactIssues = issues.filter((i) => i.kind === "exact");
+  const exact = exactIssues.map((i) => ({ id: i.id, findings: ids(i, ["place"]) }));
+  const candidates = [
+    ...issues.filter((i) => i.kind === "judgement").map((i) => ({ id: i.id, findings: ids(i, ["place", "screen"]) })),
+    ...exactIssues
+      .filter((i) => exact.find((e) => e.id === i.id)!.findings.length === 0)
+      .map((i) => ({ id: i.id, findings: ids(i, ["screen"]) }))
+      .filter((c) => c.findings.length > 0),
+  ];
   const found = new Set(exact.flatMap((e) => e.findings));
   const consequences = findings.filter((f) => !found.has(f.id) && isConsequence(f, issues, lineText, appRoot)).map((f) => f.id);
   const settled = new Set([...found, ...consequences]);
