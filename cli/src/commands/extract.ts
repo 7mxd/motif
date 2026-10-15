@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { listSourceFiles } from "../check/files";
+import { listSourceFiles, type SourceFile } from "../check/files";
+import { expandHtml } from "../check/html";
 import type { CommandResult, RunContext } from "../cli/output";
-import { detectApps, STACK_LABELS } from "../detect/stacks";
+import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
 import { buildDraft, collectOccurrences } from "../extract/draft";
 import { readTailwindDefaults } from "../extract/tailwind-theme";
 import { isMotifGenerated } from "../generate/header";
@@ -21,23 +22,27 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   if (apps === null) {
     return { command: "extract", exitCode: 2, text: `There's no app at "${ctx.app}". Apps here: ${detected.map((a) => a.path).join(", ") || "none"}.`, data: { error: "no-such-app" } };
   }
-  const react = apps.filter((a) => a.stack === "react-web");
-  if (react.length === 0) {
+  const supported = apps.filter((a) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack));
+  if (supported.length === 0) {
     const others = apps.filter((a) => a.stack).map((a) => `${appLabel(a)} (${STACK_LABELS[a.stack!]})`);
     return {
       command: "extract",
       exitCode: 2,
-      text: `motif extract works on React web apps in this version.${others.length ? ` Found: ${others.join(", ")}.` : " No React web app was found here."} Support for more stacks is coming soon.`,
+      text: `motif extract works on React web apps and plain web sites in this version.${others.length ? ` Found: ${others.join(", ")}.` : " Neither was found here."} Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.`,
       data: { error: "unsupported-stack" },
     };
   }
 
   const ignore = readIgnorePatterns(cwd);
-  const files = react
-    .flatMap((a) => listSourceFiles(cwd, a.path, { ignore }))
-    .filter((f) => !isMotifGenerated(f.path, f.text));
+  const noTailwind = new Set<SourceFile>();
+  const files = supported.flatMap((a) => {
+    const own = expandHtml(listSourceFiles(cwd, a.path, { ignore }).filter((f) => !isMotifGenerated(f.path, f.text)));
+    if (a.stack === "plain-web") for (const f of own) noTailwind.add(f);
+    return own;
+  });
+  const react = supported.filter((a) => a.stack === "react-web");
   const tw = readTailwindDefaults([...react.map((a) => join(cwd, a.path)), cwd]);
-  const occ = collectOccurrences(files, tw);
+  const occ = collectOccurrences(files, tw, (f) => !noTailwind.has(f));
   const { tokens, report } = buildDraft(occ);
 
   const notes = [...report.notes];
@@ -50,7 +55,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   writeFileSync(join(cwd, DRAFT_PATH), JSON.stringify(tokens, null, 2) + "\n");
   writeFileSync(join(cwd, REPORT_PATH), JSON.stringify(report, null, 2) + "\n");
 
-  const skipped = apps.filter((a) => a.stack !== "react-web").map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
+  const skipped = apps.filter((a) => !supported.includes(a)).map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
   if (skipped.length) notes.push(`Skipped (not supported yet): ${skipped.join(", ")}.`);
   if (existsSync(join(cwd, "design", "tokens.json"))) notes.push("You already have design/tokens.json; it wasn't changed. Compare it with the draft.");
 

@@ -1,10 +1,12 @@
-import { wcagContrast } from "culori";
+import { formatHex, wcagContrast } from "culori";
 import type { SourceFile } from "../check/files";
 import { scanFile } from "../check/run";
 import type { Hit } from "../check/types";
 import { FONT_ROLES, SPACE_SCALE, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
-import { clusterColors, type ColorCluster, type Sample } from "./cluster";
+import { clusterColors, parseColor, type ColorCluster, type Sample } from "./cluster";
 import type { TailwindDefaults } from "./tailwind-theme";
+
+export interface Variable { name: string; light?: string; dark?: string }
 
 export interface Occurrences {
   colors: Sample[];
@@ -15,6 +17,8 @@ export interface Occurrences {
   duration: Sample[];
   easing: Sample[];
   unresolved: Sample[];
+  /** Custom properties set to colours: their light value, and their dark-mode value when one is set. */
+  variables?: Variable[];
 }
 
 export interface ExtractReport {
@@ -28,10 +32,13 @@ export interface ExtractReport {
   durations: Sample[];
   easings: Sample[];
   unresolved: Sample[];
+  variables: { name: string; light?: string; dark?: string; role?: string }[];
   notes: string[];
 }
 
 const MAX_EXAMPLES = 5;
+/** The lists of samples collected; variables are kept apart. */
+type Bucket = Exclude<keyof Occurrences, "variables">;
 
 // ---------- collecting ----------
 
@@ -58,12 +65,12 @@ function cleanFamily(raw: string): string {
   return raw.split(",")[0]!.trim().replace(/^['"]|['"]$/g, "").replace(/_/g, " ");
 }
 
-export function collectOccurrences(files: SourceFile[], tw: TailwindDefaults | null): Occurrences {
-  const buckets: Record<keyof Occurrences, Map<string, Sample>> = {
+export function collectOccurrences(files: SourceFile[], tw: TailwindDefaults | null, tailwindFor: (f: SourceFile) => boolean = () => true): Occurrences {
+  const buckets: Record<Bucket, Map<string, Sample>> = {
     colors: new Map(), space: new Map(), radius: new Map(), fontSize: new Map(), fontFamily: new Map(),
     duration: new Map(), easing: new Map(), unresolved: new Map(),
   };
-  const add = (bucket: keyof Occurrences, value: string, hit: Hit, context?: string) => {
+  const add = (bucket: Bucket, value: string, hit: Hit, context?: string) => {
     const s = buckets[bucket].get(value) ?? { value, count: 0, contexts: {}, examples: [] };
     s.count++;
     if (context) s.contexts[context] = (s.contexts[context] ?? 0) + 1;
@@ -77,9 +84,18 @@ export function collectOccurrences(files: SourceFile[], tw: TailwindDefaults | n
     if (px !== undefined) add(bucket, `${px}px`, hit);
     else add("unresolved", hit.text, hit);
   };
+  const variables = new Map<string, Variable>();
 
   for (const file of files) {
-    for (const hit of scanFile(file, null)) {
+    for (const hit of scanFile(file, null, { tailwind: tailwindFor(file) })) {
+      if (hit.kind === "color" && hit.prop) {
+        const v = variables.get(hit.prop) ?? { name: hit.prop };
+        if (hit.scheme === "dark") v.dark ??= hit.value;
+        else v.light ??= hit.value;
+        variables.set(hit.prop, v);
+      }
+      // Dark-mode colours give roles their dark values (buildDraft); they don't compete with the light ones.
+      if (hit.kind === "color" && hit.scheme === "dark") continue;
       switch (hit.kind) {
         case "color":
           if (hit.rule === "tailwind-palette") {
@@ -115,6 +131,7 @@ export function collectOccurrences(files: SourceFile[], tw: TailwindDefaults | n
   return {
     colors: sorted(buckets.colors), space: sorted(buckets.space), radius: sorted(buckets.radius), fontSize: sorted(buckets.fontSize),
     fontFamily: sorted(buckets.fontFamily), duration: sorted(buckets.duration), easing: sorted(buckets.easing), unresolved: sorted(buckets.unresolved),
+    variables: [...variables.values()],
   };
 }
 
@@ -132,6 +149,14 @@ const hueDistance = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Ma
 
 function onColor(hex: string): string {
   return wcagContrast(WHITE, hex) >= wcagContrast(INK, hex) ? WHITE : INK;
+}
+
+const BASE_ROLES = ["text-primary", "text-secondary", "background", "surface", "border", "action-primary", "success", "warning", "danger", "info"];
+
+/** A colour as #RRGGBB, or undefined when it can't be read. */
+function hexIfColor(value: string | undefined): string | undefined {
+  const c = value ? parseColor(value) : undefined;
+  return c ? formatHex(c)?.toUpperCase() : undefined;
 }
 
 export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>; report: ExtractReport } {
@@ -181,7 +206,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   primitives.ink = { $value: srgbColor(INK) };
 
   const base: Record<string, string> = {};
-  for (const role of ["text-primary", "text-secondary", "background", "surface", "border", "action-primary", "success", "warning", "danger", "info"]) {
+  for (const role of BASE_ROLES) {
     base[role] = primitiveFor(role);
   }
   base["surface-raised"] = base.surface!;
@@ -194,6 +219,24 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   }
   roles["color.surface-raised"] = roles["color.surface"]!;
   roles["color.focus"] = roles["color.action-primary"]!;
+  // Dark values from the CSS: a colour variable set in a light block and in a dark block gives its role a real dark value.
+  const inCluster = (cluster: ColorCluster | undefined, value: string | undefined) =>
+    Boolean(cluster && value && cluster.members.some((m) => hexIfColor(m.value) === hexIfColor(value)));
+  const darkBase: Record<string, string> = {};
+  for (const role of BASE_ROLES) {
+    const v = (occ.variables ?? []).find((x) => hexIfColor(x.dark) && inCluster(chosen[role], x.light));
+    if (!v) continue;
+    const name = `${chosen[role]!.id}-dark`;
+    primitives[name] = { $value: srgbColor(hexIfColor(v.dark)!) };
+    darkBase[role] = name;
+  }
+  if (darkBase.surface) darkBase["surface-raised"] = darkBase["action-secondary"] = darkBase.surface;
+  if (darkBase["action-primary"]) darkBase.focus = darkBase["action-primary"];
+  if (darkBase.background) darkBase["text-inverse"] = darkBase.background;
+  if (darkBase["text-primary"]) darkBase["on-action-secondary"] = darkBase["text-primary"];
+  for (const role of ["action-primary", "success", "warning", "danger", "info"]) {
+    if (darkBase[role]) darkBase[`on-${role}`] = onColor(hexOf(darkBase[role]!)) === WHITE ? "white" : "ink";
+  }
 
   const color: Record<string, unknown> = { $type: "color" };
   const order = [
@@ -203,7 +246,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   ];
   for (const role of order) {
     const alias = `{primitive.color.${base[role]}}`;
-    color[role] = { $value: alias, $extensions: { "dev.motif": { modes: { dark: alias } } } };
+    const dark = darkBase[role] ? `{primitive.color.${darkBase[role]}}` : alias;
+    color[role] = { $value: alias, $extensions: { "dev.motif": { modes: { dark } } } };
   }
 
   // Spacing: the standard 4px scale.
@@ -274,7 +318,19 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     spring: { snappy: springGroup(0.25, 0), smooth: springGroup(0.4, 0.1), bouncy: springGroup(0.5, 0.3) },
   };
 
-  const notes = ["Dark-mode colours were copied from light mode. Review them before turning on dark mode."];
+  const darkRoles = Object.keys(darkBase).filter((r) => BASE_ROLES.includes(r));
+  const notes = [
+    darkRoles.length
+      ? `Dark-mode colours came from your CSS for ${darkRoles.join(", ")}; the others were copied from light mode. Review them before turning on dark mode.`
+      : "Dark-mode colours were copied from light mode. Review them before turning on dark mode.",
+  ];
+  const variables = (occ.variables ?? []).filter((v) => v.light).map((v) => {
+    const role = BASE_ROLES.find((r) => inCluster(chosen[r], v.light));
+    return { name: v.name, light: v.light, ...(v.dark ? { dark: v.dark } : {}), ...(role ? { role: `color.${role}` } : {}) };
+  });
+  if (variables.length) {
+    notes.push(`Your CSS sets ${variables.length} colour ${variables.length === 1 ? "variable" : "variables"}; design/extract-report.json shows the role each matches, so you can define them from Motif's (--bg: var(--motif-color-background)).`);
+  }
   if (defaulted.length) notes.push(`No colour was found for ${defaulted.join(", ")}, so Motif used defaults.`);
   const offScale = spacing.filter((s) => !s.onScale).length;
   if (offScale) notes.push(`${offScale} spacing ${offScale === 1 ? "value wasn't" : "values weren't"} on a 4px scale; the report shows the nearest step for each.`);
@@ -292,6 +348,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     durations: occ.duration,
     easings: occ.easing,
     unresolved,
+    variables,
     notes,
   };
   return { tokens, report };

@@ -28,10 +28,15 @@ function byFile(hits: Hit[], line: (h: Hit) => string): string[] {
 export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandResult> {
   const tokensPath = join(cwd, "design", "tokens.json");
   if (!existsSync(tokensPath)) {
+    const found = detectApps(cwd).apps;
+    // extract can't read every stack yet; then the review mode is the way to a first guide.
+    const unreadable = found.length > 0 && !found.some((a) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack));
     return {
       command: "check",
       exitCode: 2,
-      text: "No design guide found in this folder (missing design/tokens.json).\nDraft one from your code with motif extract, or start one with /design.",
+      text: unreadable
+        ? "No design guide found in this folder (missing design/tokens.json).\nStart one with /design: Motif's review drafts a design guide from your app's code."
+        : "No design guide found in this folder (missing design/tokens.json).\nDraft one from your code with motif extract, or start one with /design.",
       data: { error: "no-contract" },
     };
   }
