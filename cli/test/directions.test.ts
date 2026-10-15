@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { runPreview, type PreviewDeps } from "../src/commands/preview";
 import { runValidate } from "../src/commands/validate";
@@ -6,7 +7,7 @@ import type { RenderTarget } from "../src/preview/render";
 import { startPreviewServer, themeHrefFor } from "../src/preview/server";
 import { validTokens } from "./helpers";
 import { makeProject } from "./project";
-import { cleanupTempDirs } from "./tmp";
+import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
 
@@ -64,6 +65,23 @@ describe("the preview server and directions", () => {
       expect(await css("design/directions/calm/tokens.json")).toContain("--motif-color-background: #F9FAFB;");
       expect(await css("design/directions/calm/notes.json")).toStartWith("/*");
       expect(await css("../outside/tokens.json")).toStartWith("/*");
+    } finally {
+      server.stop();
+    }
+  });
+});
+
+describe("the preview server reached through a link", () => {
+  // macOS temp folders are under /var, really /private/var; Windows may name a folder by its short name. The theme link
+  // must still be the path inside the project.
+  test("links a direction's own theme by its path inside the project", async () => {
+    const root = twoDirections();
+    const linked = join(tempDir("motif-link-"), "project");
+    symlinkSync(root, linked, "junction");
+    const server = startPreviewServer({ root: linked, theme: null });
+    try {
+      const page = await (await fetch(`${server.url}/design/directions/bold/home.html`)).text();
+      expect(page).toContain("theme.css?tokens=design%2Fdirections%2Fbold%2Ftokens.json");
     } finally {
       server.stop();
     }

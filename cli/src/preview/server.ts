@@ -163,12 +163,12 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       if (sample) {
         return presetTheme(sample[1]!) ? html(injectKit(TEMPLATE_HTML, `/__motif/theme.css?preset=${sample[1]}`)) : notFound();
       }
-      const asked = resolveInside(root, path);
-      if (!asked || !existsSync(asked) || !statSync(asked).isFile()) return notFound();
-      // Hidden files and folders (.env, .git) are never mockup material, under any name or through any link.
-      if (relative(root, asked).split(sep).some((part) => part.startsWith("."))) return notFound();
-      const file = realInside(root, asked);
-      if (!file) return notFound();
+      const file = resolveInside(root, path);
+      if (!file || !existsSync(file) || !statSync(file).isFile()) return notFound();
+      // Hidden files and folders (.env, .git) are never mockup material, under any name or through any link. The real
+      // path is only checked: links and paths below are the project's own (macOS /var is really /private/var).
+      if (relative(root, file).split(sep).some((part) => part.startsWith("."))) return notFound();
+      if (!realInside(root, file)) return notFound();
       const ext = extname(file).toLowerCase();
       if (ext === ".html") {
         const theme = mockupTheme(file);
