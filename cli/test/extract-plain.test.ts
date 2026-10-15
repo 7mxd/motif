@@ -95,3 +95,13 @@ describe("variables that aren't one solid colour (final review)", () => {
     expect(variables.find((v) => v.name === "--text")?.role).toBe("color.text-primary");
   });
 });
+
+describe("what motif extract reads on a plain web site (xBloom re-check)", () => {
+  test("only the site folder, not server code beside it", async () => {
+    const root = makeProject({ "public/index.html": XBLOOM_LIKE, "lib/xbloom.js": 'export const DEFAULT_CARD = "#C9D5B8";' });
+    const r = await runExtract(root, { positionals: [] });
+    expect((r.data as { files: number }).files).toBe(1);
+    const examples = read(root, "design/extract-report.json").colors.flatMap((c: any) => c.members.flatMap((m: any) => m.examples));
+    expect(examples.filter((e: string) => e.startsWith("lib/"))).toEqual([]);
+  });
+});

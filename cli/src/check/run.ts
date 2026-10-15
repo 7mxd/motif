@@ -47,6 +47,12 @@ function plainFix(hit: Hit): string {
   return hit.fix;
 }
 
+/** The files Motif reads for an app. On a plain web site, only its site folder: server code beside it isn't the site. */
+export function appSourceFiles(root: string, app: AppInfo, opts: { ignore?: string[] } = {}): SourceFile[] {
+  const site = app.stack === "plain-web" ? siteDir(root, app) : ".";
+  return listSourceFiles(root, app.path, { ignore: opts.ignore, ...(site === "." ? {} : { paths: [prefixPath(app.path, site)] }) });
+}
+
 export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths?: string[]; ignore?: string[] } = {}): AppCheck {
   const appDir = join(root, app.path);
   const plain = app.stack === "plain-web";
@@ -58,7 +64,7 @@ export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths
   const expected = generatedHere.map((f) => ({ path: prefixPath(app.path, f.path), content: f.content }));
 
   // App-wide rules need the whole app even when the scan is narrowed to some paths.
-  const all = listSourceFiles(root, app.path, { ignore: opts.ignore });
+  const all = appSourceFiles(root, app, { ignore: opts.ignore });
   const generated = all.filter((f) => isMotifGenerated(f.path, f.text));
   const appFiles = all.filter((f) => !isMotifGenerated(f.path, f.text));
   const wanted = opts.paths ?? [];

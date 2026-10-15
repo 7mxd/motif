@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { listSourceFiles, type SourceFile } from "../check/files";
+import type { SourceFile } from "../check/files";
 import { expandHtml } from "../check/html";
+import { appSourceFiles } from "../check/run";
 import type { CommandResult, RunContext } from "../cli/output";
 import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
 import { buildDraft, collectOccurrences } from "../extract/draft";
@@ -36,7 +37,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   const ignore = readIgnorePatterns(cwd);
   const noTailwind = new Set<SourceFile>();
   const files = supported.flatMap((a) => {
-    const own = expandHtml(listSourceFiles(cwd, a.path, { ignore }).filter((f) => !isMotifGenerated(f.path, f.text)));
+    const own = expandHtml(appSourceFiles(cwd, a, { ignore }).filter((f) => !isMotifGenerated(f.path, f.text)));
     if (a.stack === "plain-web") for (const f of own) noTailwind.add(f);
     return own;
   });
@@ -59,6 +60,8 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   if (skipped.length) notes.push(`Skipped (not supported yet): ${skipped.join(", ")}.`);
   if (existsSync(join(cwd, "design", "tokens.json"))) notes.push("You already have design/tokens.json; it wasn't changed. Compare it with the draft.");
 
+  // An HTML page is read as two views (its CSS and the rest); count it once.
+  const fileCount = new Set(files.map((f) => f.path)).size;
   const summary = {
     colors: occ.colors.length,
     colorGroups: (report.colors as unknown[]).length,
@@ -71,7 +74,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
     unresolved: report.unresolved.length,
   };
   const text = [
-    `✓ Draft theme values written to ${DRAFT_PATH} (from ${plural(files.length, "file", "files")}).`,
+    `✓ Draft theme values written to ${DRAFT_PATH} (from ${plural(fileCount, "file", "files")}).`,
     `  Colours: ${summary.colors} found, grouped into ${summary.colorGroups}`,
     `  Spacing: ${plural(summary.spacing, "value", "values")}, ${summary.offScale} off a 4px scale`,
     `  Corners: ${plural(summary.radius, "size", "sizes")} · Text sizes: ${summary.textSizes} · Fonts: ${summary.fonts.join(", ") || "none found"} · Animation timings: ${summary.durations}`,
@@ -79,5 +82,5 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
     `Next: review the draft (details in ${REPORT_PATH}). When it looks right, rename it to design/tokens.json and add a DESIGN.md (your agent can write it with /design), then run motif validate.`,
   ].join("\n");
 
-  return { command: "extract", exitCode: 0, text, data: { files: files.length, draft: DRAFT_PATH, report: REPORT_PATH, summary, notes } };
+  return { command: "extract", exitCode: 0, text, data: { files: fileCount, draft: DRAFT_PATH, report: REPORT_PATH, summary, notes } };
 }

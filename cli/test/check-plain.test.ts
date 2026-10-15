@@ -95,3 +95,15 @@ describe("variables with digits in their names (final review)", () => {
     expect(r.violations).toEqual([]);
   });
 });
+
+describe("what motif check reads on a plain web site (xBloom re-check)", () => {
+  test("only the site folder: server code beside it isn't the site", async () => {
+    const r = await check(site({
+      "public/index.html": "<!doctype html><p>Hi</p>",
+      "lib/xbloom.js": 'export const DEFAULT_CARD = "#C9D5B8";',
+      "server.js": 'const ERROR = "#ff0000";',
+    }));
+    expect(r.violations).toEqual([]);
+    expect(r.summary.files).toBe(1);
+  });
+});
