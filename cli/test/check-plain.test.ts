@@ -83,3 +83,15 @@ describe("motif check on a plain web site", () => {
     expect(r.text).toContain("React web apps and plain web sites");
   });
 });
+
+describe("variables with digits in their names (final review)", () => {
+  test("a literal colour in --surface-2 or --gray-100 is found, and named", async () => {
+    const r = await check(site({ "public/index.html": "<style>\n:root { --surface-2: #e5e5ea; --gray-100: #f5f5f5; }\n</style>\n" }));
+    expect(r.violations.map((v) => [v.rule, v.text, v.prop])).toEqual([["raw-color", "#e5e5ea", "--surface-2"], ["raw-color", "#f5f5f5", "--gray-100"]]);
+  });
+
+  test("spacing variables with digits don't become spacing hits", async () => {
+    const r = await check(site({ "public/index.html": "<style>\n:root { --space-2: 7px; }\n</style>\n" }));
+    expect(r.violations).toEqual([]);
+  });
+});

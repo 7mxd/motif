@@ -24,7 +24,8 @@ const NAMED_ALT = [...NAMED_COLORS].join("|");
 const HEX = "#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\\w-])";
 const COLOR_FN = "(?:rgba?|hsla?|hwb|oklab|oklch|lab|lch|color)\\([^()]*\\)";
 
-const CSS_DECLARATION = /([a-zA-Z-]+)\s*:\s*([^;{}]+)/g;
+// A property, or a custom property whose name may hold digits (--surface-2).
+const CSS_DECLARATION = /(--[\w-]+|[a-zA-Z-]+)\s*:\s*([^;{}]+)/g;
 const CSS_COLOR_LITERAL = new RegExp(`${HEX}|${COLOR_FN}`, "g");
 const CSS_NAMED = new RegExp(`(?<![\\w#.-])(?:${NAMED_ALT})(?![\\w-])`, "gi");
 const CSS_COLOR_PROP =
