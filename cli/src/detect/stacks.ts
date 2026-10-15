@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Finding } from "../findings";
 import { stripBom } from "../text";
 
-export const STACK_IDS = ["react-web", "vue", "svelte", "angular", "react-native", "flutter", "swiftui", "compose"] as const;
+export const STACK_IDS = ["react-web", "vue", "svelte", "angular", "react-native", "flutter", "swiftui", "compose", "plain-web"] as const;
 export type StackId = (typeof STACK_IDS)[number];
 
 export const STACK_LABELS: Record<StackId, string> = {
@@ -15,10 +15,21 @@ export const STACK_LABELS: Record<StackId, string> = {
   flutter: "Flutter",
   swiftui: "SwiftUI",
   compose: "Jetpack Compose",
+  "plain-web": "Plain web (HTML and CSS)",
 };
 
-export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web"];
+export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web"];
 export const NODE_STACKS: readonly StackId[] = ["react-web", "vue", "svelte", "angular", "react-native"];
+
+/** Where a plain web app's pages live: the first of these folders (inside the app) with an index.html. */
+export const SITE_FOLDERS = [".", "public", "src", "site", "www"] as const;
+
+/** Folders that hold apps, documentation, Motif's own files, templates or reports: never a plain web app themselves. */
+const NOT_SITES = new Set(["apps", "packages", "docs", "design", "templates", "coverage", "out", "storybook-static"]);
+
+export function siteFolder(dir: string): string | null {
+  return SITE_FOLDERS.find((f) => existsSync(join(dir, f, "index.html"))) ?? null;
+}
 
 /** React counts as a web app only alongside web build tooling; a server that renders React (e.g. emails) is not one. */
 const REACT_WEB_TOOLING = [
@@ -111,6 +122,8 @@ export function detectStack(dir: string): StackId | null {
   const looksLikeSwift = entries.includes("Package.swift") || entries.some((e) => e.endsWith(".xcodeproj"));
   if (looksLikeSwift && hasSwiftUIImport(dir)) return "swiftui";
 
+  // Pages without a framework. React without known tooling isn't plain web: it's an app Motif can't place yet.
+  if (!deps?.has("react") && siteFolder(dir) !== null) return "plain-web";
   return null;
 }
 
@@ -169,13 +182,20 @@ export interface AppInfo {
   srcDir?: string;
 }
 
+const detected = (root: string, path: string, stack: StackId | null): AppInfo => ({
+  path,
+  stack,
+  source: "detected",
+  ...(stack === "plain-web" ? { srcDir: siteFolder(join(root, path)) ?? "." } : {}),
+});
+
 export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[] } {
   const settings = readSettings(root);
   if (settings.apps) return { apps: settings.apps, findings: settings.findings };
 
   const rootStack = detectStack(root);
   if (rootStack || isUnrecognisedReactApp(root)) {
-    return { apps: [{ path: ".", stack: rootStack, source: "detected" }], findings: settings.findings };
+    return { apps: [detected(root, ".", rootStack)], findings: settings.findings };
   }
 
   const apps: AppInfo[] = [];
@@ -192,7 +212,8 @@ export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[]
       const abs = join(root, relPath);
       if (!isDir(abs)) continue;
       const stack = detectStack(abs);
-      if (stack || isUnrecognisedReactApp(abs)) apps.push({ path: rel(relPath), stack, source: "detected" });
+      if (stack === "plain-web" && NOT_SITES.has(name)) continue;
+      if (stack || isUnrecognisedReactApp(abs)) apps.push(detected(root, rel(relPath), stack));
     }
   };
   scan("");
@@ -200,4 +221,9 @@ export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[]
   if (existsSync(join(root, "packages"))) scan("packages");
   apps.sort((a, b) => a.path.localeCompare(b.path));
   return { apps, findings: settings.findings };
+}
+
+/** A plain web app's site folder, relative to the app: from design/motif.json, or found again. */
+export function siteDir(root: string, app: AppInfo): string {
+  return app.srcDir ?? siteFolder(join(root, app.path)) ?? ".";
 }

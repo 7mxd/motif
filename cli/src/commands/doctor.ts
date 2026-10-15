@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { CommandResult } from "../cli/output";
 import { findBrowser, type BrowserInfo } from "../detect/browser";
 import { findConfiguredSources, SOURCE_LABELS } from "../detect/sources";
-import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, STACK_LABELS } from "../detect/stacks";
+import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, siteDir, STACK_LABELS } from "../detect/stacks";
 import { VERSION } from "../version";
 import { runValidate } from "./validate";
 
@@ -52,7 +52,9 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
     if (!app.stack) {
       push(`app:${app.path}`, "needed", label, "Motif couldn't tell which framework this app uses. Add it to design/motif.json.");
     } else if (ADAPTERS_AVAILABLE.includes(app.stack)) {
-      push(`app:${app.path}`, "ok", label, `Full support for ${STACK_LABELS[app.stack]}.`);
+      const site = app.stack === "plain-web" ? siteDir(cwd, app) : null;
+      const where = site === null ? "" : `; its pages are in ${site === "." ? "this folder" : `${site}/`}`;
+      push(`app:${app.path}`, "ok", label, `Full support for ${STACK_LABELS[app.stack]}${where}.`);
     } else {
       push(`app:${app.path}`, "optional", label, `${STACK_LABELS[app.stack]} detected. Full support is coming soon; Motif will still help using general guidance.`);
     }
