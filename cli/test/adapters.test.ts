@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RULE_IDS } from "../src/check/types";
+import { expandHtml } from "../src/check/html";
+import type { Lang } from "../src/check/files";
+import { scanFile } from "../src/check/run";
+import { buildScale } from "../src/check/scale";
+import { buildTheme } from "../src/generate/theme";
+import { docFrom, validTokens } from "./helpers";
 
 const ADAPTERS = join(import.meta.dir, "../../skill/adapters");
 const read = (rel: string) => readFileSync(join(ADAPTERS, rel), "utf8").replace(/\r\n/g, "\n");
@@ -69,5 +75,75 @@ describe("the React web guide", () => {
     const checks = read("react-web/checks.md");
     for (const id of RULE_IDS) expect(checks).toContain(`## \`${id}\``);
     for (const s of ["## Contrast", "## Target size", "## Reduced motion", "motif-ok"]) expect(checks).toContain(s);
+  });
+});
+
+const PLAIN_STARTER_SET = [
+  "Button", "IconButton", "Field", "Checkbox", "Choice", "Switch", "Card", "ListItem", "TopBar", "TabBar",
+  "Sidebar", "Dialog", "Sheet", "Toast", "Skeleton", "EmptyState", "ErrorState", "Avatar", "Badge",
+];
+
+describe("the plain web guide", () => {
+  test("has exactly the template's files", () => {
+    expect(readdirSync(join(ADAPTERS, "plain-web")).sort()).toEqual(GUIDE_FILES);
+  });
+
+  test("README: how a site and its site folder are recognised, starting one, and nothing to build", () => {
+    const readme = read("plain-web/README.md");
+    for (const s of ["index.html", "`public/`", "`src/`", "`site/`", "`www/`", "plain-web", "srcDir", "components.css", "styles.css", "mock-data.js", "npm create vite@latest", "--template vanilla", "nothing to build", "--url"]) {
+      expect(readme).toContain(s);
+    }
+  });
+
+  test("tokens.md: motif.css in the site folder linked first, the site's own names, dark mode and fonts", () => {
+    const tokens = read("plain-web/tokens.md");
+    for (const s of ['<link rel="stylesheet" href="motif.css">', "var(--motif-color-background)", "--bg: var(--motif-color-background);", "data-theme", "@font-face", "fonts.googleapis.com", "tokens.flat.json", "motif extract", "motif-ok"]) {
+      expect(tokens).toContain(s);
+    }
+  });
+
+  test("components.md: the Component: lines, states through CSS, and the starter set", () => {
+    const components = read("plain-web/components.md");
+    for (const c of PLAIN_STARTER_SET) expect(components).toContain(`\`${c}\``);
+    for (const s of ["/* Component:", "components.css", ":focus-visible", ":disabled", '[aria-busy="true"]', '[aria-invalid="true"]', "showModal()", "aria-label"]) {
+      expect(components).toContain(s);
+    }
+  });
+
+  test("motion.md: the roles in CSS, View Transitions, and reduced motion in scripts", () => {
+    const motion = read("plain-web/motion.md");
+    for (const s of ["var(--motif-duration-base)", "var(--motif-easing-enter)", "var(--motif-easing-exit)", "@keyframes", "startViewTransition", "prefers-reduced-motion", "getPropertyValue"]) {
+      expect(motion).toContain(s);
+    }
+  });
+
+  test("platform.md: native elements, labels, logical properties, phones, and things used together", () => {
+    const platform = read("plain-web/platform.md");
+    for (const s of ["Native elements", "A placeholder isn't a label", "padding-inline-start", "@media (hover: hover)", "safe-area-inset", "lang", "DESIGN.md", "on one screen", "360, 390 and 430 px wide"]) {
+      expect(platform).toContain(s);
+    }
+  });
+
+  test("checks.md: every rule on plain web, the audit's findings, and state scripts", () => {
+    const checks = read("plain-web/checks.md");
+    for (const id of RULE_IDS) expect(checks).toContain(id.startsWith("tailwind") ? `\`${id}\`` : `## \`${id}\``);
+    for (const s of ["## Contrast", "## Target size", "## Reduced motion", "<!-- motif-ok", "## Screens behind a form or a click", "design/states/", "--state", "index@sent.mobile.png", "15 seconds"]) {
+      expect(checks).toContain(s);
+    }
+  });
+
+  test("every CSS, HTML and script example passes motif check as it is", () => {
+    const scale = buildScale(buildTheme(docFrom(validTokens())), ".");
+    const LANGS: Record<string, Lang> = { css: "css", html: "markup", js: "script" };
+    for (const file of GUIDE_FILES) {
+      const text = read(`plain-web/${file}`);
+      for (const [i, m] of [...text.matchAll(/```(css|html|js)\n([\s\S]*?)```/g)].entries()) {
+        const path = `${file}-example-${i + 1}.${m[1]}`;
+        const hits = expandHtml([{ path, abs: path, text: m[2]!, lang: LANGS[m[1]!]! }])
+          .flatMap((f) => scanFile(f, scale, { tailwind: false }))
+          .filter((h) => h.violation);
+        expect(hits.map((h) => `${path}: ${h.rule} ${h.text}`)).toEqual([]);
+      }
+    }
   });
 });
