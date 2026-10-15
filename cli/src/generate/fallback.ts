@@ -27,9 +27,10 @@ export function flatTokens(theme: Theme): Record<string, unknown> {
   return out;
 }
 
+export function flatTokensFile(theme: Theme): GeneratedFile {
+  return { path: `${FALLBACK_DIR}/tokens.flat.json`, content: JSON.stringify(flatTokens(theme), null, 2) + "\n" };
+}
+
 export function generateFallback(theme: Theme): GeneratedFile[] {
-  return [
-    { path: `${FALLBACK_DIR}/motif.css`, content: motifCss(theme) },
-    { path: `${FALLBACK_DIR}/tokens.flat.json`, content: JSON.stringify(flatTokens(theme), null, 2) + "\n" },
-  ];
+  return [{ path: `${FALLBACK_DIR}/motif.css`, content: motifCss(theme) }, flatTokensFile(theme)];
 }

@@ -4,16 +4,16 @@ import type { CommandResult, RunContext } from "../cli/output";
 import { loadTokenDocument } from "../contract/load";
 import { checkRoles } from "../contract/roles";
 import { validateTokens } from "../contract/tokens";
-import { detectApps, STACK_LABELS, type AppInfo } from "../detect/stacks";
+import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { formatFindings, type Finding } from "../findings";
-import { generateFallback } from "../generate/fallback";
+import { flatTokensFile, generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
 import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
 import { buildTheme } from "../generate/theme";
 import { themeFonts } from "../generate/theme-fonts";
 import { appLabel, prefixPath, selectApps } from "../project/apps";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
-import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
+import { chooseSrcDir, detectTailwind, generateReactWeb, motifCss } from "../stacks/react-web/generate";
 import { TOKENS_JSON } from "./validate";
 
 export type FileStatus = "created" | "updated" | "unchanged" | "protected" | "skipped";
@@ -60,7 +60,7 @@ function updateSettings(root: string, detected: AppInfo[], srcDirs: Map<string, 
   }
   let changed = false;
   const apps = (raw!.apps as AppSetting[]).map((a) => {
-    if (a?.stack === "react-web" && typeof a.srcDir !== "string" && srcDirs.has(a.path)) {
+    if ((a?.stack === "react-web" || a?.stack === "plain-web") && typeof a.srcDir !== "string" && srcDirs.has(a.path)) {
       changed = true;
       return { ...a, srcDir: srcDirs.get(a.path)! };
     }
@@ -72,7 +72,7 @@ function updateSettings(root: string, detected: AppInfo[], srcDirs: Map<string, 
   return "updated";
 }
 
-const CODE_FILE = /\.(css|scss|ts|tsx|js|jsx|mjs)$/;
+const CODE_FILE = /\.(css|scss|ts|tsx|js|jsx|mjs|html?)$/;
 
 /** True when any file under dir (other than Motif's own) mentions name. Bounded to 2000 files. */
 function isReferenced(dir: string, name: string): boolean {
@@ -186,6 +186,8 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   const srcDirs = new Map<string, string>();
   const entries: { dir: string; entry: string; path: string; tailwind: boolean; cssPath: string }[] = [];
   let needsFallback = false;
+  let needsFlat = false;
+  const links: { dir: string; path: string }[] = [];
 
   for (const app of apps) {
     const appDir = join(cwd, app.path);
@@ -205,6 +207,13 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
         tailwind: tailwind === "v4",
         cssPath: prefixPath(app.path, `${srcDir}/styles/motif.css`),
       });
+    } else if (app.stack === "plain-web") {
+      const site = siteDir(cwd, app);
+      srcDirs.set(app.path, site);
+      const cssPath = prefixPath(app.path, site === "." ? "motif.css" : `${site}/motif.css`);
+      files.push({ path: cssPath, content: motifCss(theme) });
+      links.push({ dir: join(appDir, site), path: cssPath });
+      needsFlat = true;
     } else if (app.stack) {
       needsFallback = true;
       notes.push(`${appLabel(app)}: ${STACK_LABELS[app.stack]} support is coming soon. Motif wrote plain CSS variables and design/generated/tokens.flat.json to map by hand.`);
@@ -216,6 +225,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     }
   }
   if (needsFallback) files.push(...generateFallback(theme));
+  else if (needsFlat) files.push(flatTokensFile(theme));
 
   const results = writeGenerated(cwd, files);
   const settingsStatus = updateSettings(cwd, detected, srcDirs, notes);
@@ -227,6 +237,10 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     notes.push(e.tailwind
       ? `Next: in your main CSS file, add an @import for ${e.path} right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.`
       : `Next: load ${e.path} once: @import it from your main CSS file, or import it in your app's entry file.`);
+  }
+  for (const l of links) {
+    if (blockedPaths.has(l.path) || isReferenced(l.dir, "motif.css")) continue;
+    notes.push(`Next: link ${l.path} in each page's <head>, before your own styles: <link rel="stylesheet" href="motif.css"> (write the path relative to the page).`);
   }
 
   const blocked = results.filter((r) => r.status === "protected");
