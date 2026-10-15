@@ -15,13 +15,13 @@ function updatePreview() {
   $("message-count").textContent = String(form.elements.message.value.length);
 }
 
-/** Marks each empty field and shows its message; true when nothing is missing. */
+/** Marks each empty field and fills in its message (empty until then, so nothing is announced early); true when nothing is missing. */
 function check() {
   let first = null;
   for (const name of REQUIRED) {
     const missing = value(name) === "";
     form.elements[name].setAttribute("aria-invalid", String(missing));
-    $(`${name}-error`).hidden = !missing;
+    $(`${name}-error`).textContent = missing ? $(`${name}-error`).dataset.message : "";
     if (missing && !first) first = form.elements[name];
   }
   first?.focus();
@@ -40,7 +40,7 @@ function writeAnother() {
   form.reset();
   for (const name of REQUIRED) {
     form.elements[name].removeAttribute("aria-invalid");
-    $(`${name}-error`).hidden = true;
+    $(`${name}-error`).textContent = "";
   }
   updatePreview();
   $("sent").hidden = true;

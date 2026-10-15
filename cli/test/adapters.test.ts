@@ -108,6 +108,9 @@ describe("the plain web guide", () => {
     for (const s of ["/* Component:", "components.css", ":focus-visible", ":disabled", '[aria-busy="true"]', '[aria-invalid="true"]', "showModal()", "aria-label"]) {
       expect(components).toContain(s);
     }
+    // A field's description includes hidden text, so error text starts empty rather than hidden.
+    expect(components).not.toMatch(/id="[\w-]+-error"[^>]*hidden/);
+    expect(components).toContain(".field-error:empty");
   });
 
   test("motion.md: the roles in CSS, View Transitions, and reduced motion in scripts", () => {

@@ -30,18 +30,18 @@
         <div class="field">
           <label class="field-label" for="to">To</label>
           <input class="field-input" id="to" name="to" autocomplete="off" aria-describedby="to-error">
-          <p class="field-error" id="to-error" hidden>Add who the postcard is for.</p>
+          <p class="field-error" id="to-error" data-message="Add who the postcard is for."></p>
         </div>
         <div class="field">
           <label class="field-label" for="message">Message</label>
           <textarea class="field-input" id="message" name="message" rows="3" maxlength="140" aria-describedby="message-hint message-error"></textarea>
           <p class="field-hint" id="message-hint"><span id="message-count">0</span> of 140 characters</p>
-          <p class="field-error" id="message-error" hidden>Write a message first.</p>
+          <p class="field-error" id="message-error" data-message="Write a message first."></p>
         </div>
         <div class="field">
           <label class="field-label" for="from">From</label>
           <input class="field-input" id="from" name="from" autocomplete="name" aria-describedby="from-error">
-          <p class="field-error" id="from-error" hidden>Add your name, so they know who it's from.</p>
+          <p class="field-error" id="from-error" data-message="Add your name, so they know who it's from."></p>
         </div>
         <fieldset class="choice-group">
           <legend class="field-label">Stamp</legend>

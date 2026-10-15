@@ -56,6 +56,16 @@ describe("the plain contract site (Kitepost)", () => {
     expect(inGuide).toEqual(inCss);
   });
 
+  test("fields are described only by text that's there: an error starts empty, never hidden", () => {
+    const page = read("index.html");
+    const ids = [...page.matchAll(/aria-describedby="([^"]+)"/g)].flatMap((m) => m[1]!.split(/\s+/));
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      const tag = page.match(new RegExp(String.raw`<[^>]*\sid="${id}"[^>]*>`))![0];
+      expect(/\shidden\b/.test(tag) ? `${id} is hidden` : "there").toBe("there");
+    }
+  });
+
   test("every state has a script, all mock data is in one file, and drafts stay out of git", () => {
     for (const s of ["sent", "errors", "empty"]) expect(existsSync(join(SITE, `design/states/${s}.js`))).toBe(true);
     expect(read("mock-data.js")).toContain("window.MOCK = {");

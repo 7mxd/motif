@@ -116,3 +116,6 @@
 /* Component: TopBar — the site's name at the top of every page */
 .top-bar { display: flex; align-items: center; min-height: 3.5rem; padding-inline: var(--motif-space-4); border-block-end: 1px solid var(--motif-color-border); background: var(--motif-color-surface); }
 .top-bar-title { margin: 0; color: var(--motif-color-text-primary); font-family: var(--motif-font-heading-family); font-size: var(--motif-font-heading-size); font-weight: var(--motif-font-heading-weight); line-height: var(--motif-font-heading-line-height); }
+
+/* An error says nothing until there is one; empty, it takes no space. */
+.field-error:empty { display: none; }

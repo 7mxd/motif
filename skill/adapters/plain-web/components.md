@@ -22,7 +22,7 @@ A component is an HTML pattern with classes: a base class named after the compon
 - **Focus.** Every interactive element shows a focus ring from the `focus` role: `outline: 2px solid var(--motif-color-focus); outline-offset: 2px;` under `:focus-visible`.
 - **Disabled.** The `disabled` attribute (or `aria-disabled="true"` when the element must stay focusable), styled with `:disabled` and `[aria-disabled="true"]`.
 - **Loading.** `aria-busy="true"` on the element, styled with `[aria-busy="true"]`; keep its width.
-- **Errors.** `aria-invalid="true"` on the field and `aria-describedby` pointing at the error text, styled with `[aria-invalid="true"]` and shown in `danger`.
+- **Errors.** `aria-invalid="true"` on the field and `aria-describedby` pointing at the error text, styled with `[aria-invalid="true"]` and shown in `danger`. Keep the error element empty until there's an error, rather than `hidden`: a field's description includes hidden text, so screen readers would read the error before there is one.
 - **Touch targets.** At least 44 px: `min-height: 3rem` on buttons and fields, `3rem` square icon buttons.
 
 ## Example: Button
@@ -66,7 +66,7 @@ A component is an HTML pattern with classes: a base class named after the compon
 <div class="field">
   <label class="field-label" for="email">Email</label>
   <input class="field-input" id="email" name="email" type="email" autocomplete="email" aria-describedby="email-error">
-  <p class="field-error" id="email-error" hidden>Enter an email address like name@example.com.</p>
+  <p class="field-error" id="email-error"></p>
 </div>
 ```
 
@@ -87,9 +87,10 @@ A component is an HTML pattern with classes: a base class named after the compon
 .field-input:focus-visible { outline: 2px solid var(--motif-color-focus); outline-offset: 2px; }
 .field-input[aria-invalid="true"] { border-color: var(--motif-color-danger); }
 .field-error { margin: 0; color: var(--motif-color-danger); font-family: var(--motif-font-caption-family); font-size: var(--motif-font-caption-size); }
+.field-error:empty { display: none; }
 ```
 
-Show the error with a few lines of script: set `aria-invalid="true"` on the field and remove `hidden` from its error, when the field is left empty and when the form is sent.
+Show the error with a few lines of script: when the field is left empty and when the form is sent, set `aria-invalid="true"` on the field and put the message in its error (`error.textContent = "Enter an email address like name@example.com."`); empty it again once the field is fixed.
 
 ## The starter set
 
