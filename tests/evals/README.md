@@ -13,14 +13,14 @@ Tests B, C and D from the design spec (§13.2), run through **your own signed-in
 - Claude Code, signed in with your Claude account: `claude auth status` shows `"authMethod": "claude.ai"`. The evals never use an API key.
 - Bun (this repository's tool), git, and Node.js 20.9 or later with npm.
 - Chrome or Edge for tests C and D. If you have neither, `motif browser install` downloads a private browser of about 100 MB; the runner never runs it for you.
-- Time and usage. Each case is a full Claude Code session: up to 90 minutes for B and C cases, 3 hours for D cases, plus installing and building the app. A full run is nine sessions and uses a large share of your plan's usage, so you may prefer one test at a time.
+- Time and usage. Each case is a full Claude Code session: up to 90 minutes for B and C cases, 3 hours for D cases, plus installing and building the app. A full run is 11 sessions and uses a large share of your plan's usage, so you may prefer one test at a time.
 
 ## Running
 
 From the repository root:
 
 ```bash
-bun tests/evals/run.ts --list                  # the nine cases
+bun tests/evals/run.ts --list                  # the 11 cases
 bun tests/evals/run.ts --dry-run --tests B     # each prompt and the exact Claude Code command, without running anything
 bun tests/evals/run.ts --tests B               # one test
 bun tests/evals/run.ts --cases b-search,c-review
