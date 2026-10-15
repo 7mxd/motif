@@ -4,7 +4,7 @@
 
 **Goal:** Agents using Motif can start, extend and review a plain web site (HTML, CSS and JavaScript with no framework) as well as a React app: a plain web stack guide, modes that know plain sites and screens behind forms, a clean and a seeded practice site with self-tests, two eval cases, and the spec and decision records updated.
 
-**Architecture:** The skill gains `skill/adapters/plain-web/` (the template's six files), and SKILL.md and the modes point at it. Kitepost, a made-up one-page postcard tool, is the clean fixture (`tests/fixtures/plain-contract-site/`); the seeded site is Kitepost plus an overlay with 17 planted problems. The eval runner learns that a plain site has nothing to install or build: its new page is checked in a browser, and a new component is a new `Component:` line in its CSS. One small tool change, `motif shot --phones`, comes from the xBloom review's lesson.
+**Architecture:** The skill gains `skill/adapters/plain-web/` (the template's six files), and SKILL.md and the modes point at it. Kitepost, a made-up one-page postcard tool, is the clean fixture (`tests/fixtures/plain-contract-site/`); the seeded site is Kitepost plus an overlay with 17 planted problems. The eval runner learns that a plain site has nothing to install or build: its new page is checked in a browser, and a new component is a new `Component:` line in its CSS. One tool change comes from the xBloom review's lesson: screenshots at five sizes by default.
 
 **Tech Stack:** Bun 1.4 + TypeScript (no new dependencies); Motif's own tool for every check; the eval runner in `tests/evals/`.
 
@@ -12,13 +12,13 @@
 
 **Split:** Plan 2A (merged and pushed at `5fb9f72`) built the tool half. This plan, 2B, is the rest of the spec. The xBloom re-check with the new tool happens after this plan (the developer's decision, 2026-10-15).
 
-**Not in the spec — needs the developer's approval:** Task 1, `motif shot --phones`. The xBloom review's one regression (fix F-005 made the pour rows taller only on 430 px phones, pushing the live card preview away from its sliders) didn't show at Motif's only phone width, 390 px. The review mode's new rule "check every fix at every phone width" (Task 3) uses it. Without Task 1, drop it and the `--phones` lines in Tasks 2, 3 and 7.
+**Not in the spec — the developer's request (2026-10-15):** Task 1 makes every `motif shot` run capture five sizes by default: phones 360, 390 and 430 px wide, a tablet (768 px) and a desktop (1440 px), each in light and dark. The xBloom review's one regression (fix F-005 made the pour rows taller only on 430 px phones, pushing the live card preview away from its sliders) didn't show at 390 px, Motif's only phone size until now. The tablet is the plan's addition to the developer's "different sizes by default"; drop its line from `VIEWPORTS` to leave it out.
 
 **Builds on:** `main` at `5fb9f72`. Read before starting: `skill/SKILL.md`, `skill/modes/{init,feature,review,design}.md`, `skill/adapters/_template/README.md`, `skill/adapters/react-web/*.md`, `cli/test/{adapters,skill-modes,skill-content}.test.ts` and `cli/test/skill-lint.ts`, `tests/fixtures/assemble.ts`, `tests/fixtures/react-seeded-app/{README.md,seeded-issues.json}`, `cli/test/fixtures-{contract,seeded}.test.ts`, `tests/evals/{cases,workspace,collect,grade,match,run,preflight}.ts`, `tests/evals/README.md`, `cli/test/evals-{cases,workspace,collect,grade,match,run}.test.ts`, `cli/src/shot/capture.ts`, `cli/src/commands/shot.ts`, `cli/src/main.ts`.
 
 **Facts the plan relies on (checked on 2026-10-15 with a prototype of both fixtures, built with Plan 2A's tool):**
-- Kitepost as written below: `motif validate` passes with no warnings (100 theme values, 26 readability checks), `motif check` finds nothing (5 files read), and `motif shot --audit --state` with its three state scripts finds nothing on `/` in any state, light or dark, phone or desktop, with no page errors.
-- The seeded overlay below: `motif check` reports exactly 7 violations on 6 lines plus one `generated-edited` warning, `motif validate` reports 3 `low-contrast` errors (text-secondary on background, surface and surface-raised, light mode), and `motif shot --audit` with the sent state reports the faded small print (contrast), the 20×20 dismiss button (target-size, minor) and the drifting plane (reduced-motion), plus contrast knock-ons only on `/`: light mode from the faint text-secondary and the typed grey hint, dark mode from the postcard's typed paper colour.
+- Kitepost as written below: `motif validate` passes with no warnings (100 theme values, 26 readability checks), `motif check` finds nothing (5 files read), and `motif shot --audit --state` with its three state scripts finds nothing on `/` in any state, light or dark, at all five sizes (360, 390, 430, 768 and 1440 px), with no page errors: 40 screenshots in about 20 seconds.
+- The seeded overlay below (checked at the same five sizes): `motif check` reports exactly 7 violations on 6 lines plus one `generated-edited` warning, `motif validate` reports 3 `low-contrast` errors (text-secondary on background, surface and surface-raised, light mode), and `motif shot --audit` with the sent state reports the faded small print (contrast), the 20×20 dismiss button (target-size, minor) and the drifting plane (reduced-motion), plus contrast knock-ons only on `/`: light mode from the faint text-secondary and the typed grey hint, dark mode from the postcard's typed paper colour.
 - Every CSS, HTML and script example in the plain web guide below passes `motif check`'s rules, and every guide file passes the skill lint (links, length, shell examples, command names).
 - `motif tokens` on a plain site writes `<site>/motif.css`, `design/generated/tokens.flat.json` and `design/motif.json` (`{ "path": ".", "stack": "plain-web", "srcDir": "." }` for Kitepost).
 - `listSourceFiles` leaves `design/` out, so state scripts in `design/states/` are never checked.
@@ -42,7 +42,7 @@
 2. **A review that names Kitepost's page as `/index.html`, `index.html` or `http://127.0.0.1:5555/index.html`** → the same screen as `/`. Pinned: Task 6.
 3. **An agent that copies a guide example as it is** → it passes `motif check`. Pinned: Task 2.
 4. **The seeded site ships with no state scripts** → a review has to write its own for the sent state; an assembled copy has no `design/states/`. Pinned: Task 5.
-5. **`--phones` beside `--against <mockup>`** → the 390 px phone still pairs with a phone mockup, and the extra phones never take its place. Pinned: Task 1.
+5. **Five sizes beside `--against <mockup>`** → a phone mockup still pairs with the 390 px phone, never the 360 or 430 px phone or the tablet. Pinned: Task 1.
 
 ---
 
@@ -50,11 +50,11 @@
 
 ```
 cli/src/
-├── shot/capture.ts                  MODIFY: PHONES, viewportsFor(), Viewport.file, CaptureOptions.phones
-├── commands/shot.ts                 MODIFY: --phones passed to the capture and reported
-└── main.ts                          MODIFY: --phones option and help line
+├── shot/capture.ts                  MODIFY: VIEWPORTS: three phones, a tablet and a desktop; Viewport.file
+└── commands/shot.ts                 MODIFY: the summary line names the sizes
 skill/
 ├── SKILL.md                         MODIFY: plain web stack guide link; toolchain row
+├── adapters/react-web/checks.md     MODIFY: target size on phones and tablets
 ├── adapters/plain-web/              CREATE: README.md, tokens.md, components.md, motion.md, platform.md, checks.md
 └── modes/{init,feature,review,design}.md  MODIFY: plain web, state scripts, phones, things used together
 tests/fixtures/
@@ -79,37 +79,36 @@ docs/
 ├── specs/2026-10-15-motif-plain-web-design.md  MODIFY: status
 └── decisions/0004-plain-web.md      CREATE
 cli/test/
-├── shot-phones.test.ts · fixtures-plain-contract.test.ts · fixtures-plain-seeded.test.ts · plain-web-docs.test.ts
-└── adapters.test.ts · skill-modes.test.ts · plain-web-e2e.test.ts · evals-{cases,workspace,collect,grade,match,run}.test.ts   MODIFY
+├── shot-sizes.test.ts · fixtures-plain-contract.test.ts · fixtures-plain-seeded.test.ts · plain-web-docs.test.ts
+└── adapters.test.ts · skill-modes.test.ts · capture.test.ts · shot-e2e.test.ts · shot-state.test.ts · plain-web-e2e.test.ts ·
+    evals-{cases,workspace,collect,grade,match,run}.test.ts   MODIFY
 ```
 
 ---
 
-### Task 1: `motif shot --phones` (not in the spec; needs the developer's approval)
+### Task 1: Screenshots at five sizes by default (the developer's request; not in the spec)
 
 **Files:**
-- Modify: `cli/src/shot/capture.ts`, `cli/src/commands/shot.ts`, `cli/src/main.ts`
-- Test: `cli/test/shot-phones.test.ts`
+- Modify: `cli/src/shot/capture.ts`, `cli/src/commands/shot.ts`, `README.md`, `skill/adapters/react-web/checks.md`
+- Test: `cli/test/shot-sizes.test.ts`; update the screenshot counts in `cli/test/capture.test.ts`, `cli/test/shot-e2e.test.ts` and `cli/test/shot-state.test.ts`, and give `cli/test/plain-web-e2e.test.ts`'s browser test more time
 
 **Interfaces:**
-- Consumes: `captureScreens`, `CaptureOptions`, `VIEWPORTS`, `shotName` (`cli/src/shot/capture.ts`); `runShot`, `ShotDeps` (`cli/src/commands/shot.ts`); `startStaticServer` (`cli/src/shot/static-server.ts`); `pairWithMockup` (`cli/src/shot/compare.ts`).
+- Consumes: `captureScreens`, `VIEWPORTS`, `shotName` (`cli/src/shot/capture.ts`); `startStaticServer` (`cli/src/shot/static-server.ts`); `pairWithMockup` (`cli/src/shot/compare.ts`).
 - Produces:
   - `Viewport.file?: string` (the name in screenshot file names; the viewport's `name` when not set).
-  - `PHONES: Viewport[]` (`mobile-360` 360×780 and `mobile-430` 430×932, both `name: "mobile"`, scale 2); `viewportsFor(phones: boolean): Viewport[]` (`VIEWPORTS`, or 360, 390, 430 and desktop in that order).
+  - `VIEWPORTS`, in this order: `mobile-360` (360×780), the usual phone `mobile` (390×844), `mobile-430` (430×932), `tablet` (768×1024), all at scale 2 and with `name: "mobile"` (touch screens), then `desktop` (1440×900, scale 1). Screenshot names: `<page>.mobile-360.png`, `.mobile.png`, `.mobile-430.png`, `.tablet.png`, `.desktop.png`, each with a `.dark` twin. The 390 px phone and the desktop keep their names, so saved sets and mockups still pair with them.
   - `shotName(slug: string, viewport: string, scheme: Scheme): string` (its `viewport` parameter widened to `string`).
-  - `CaptureOptions.phones?: boolean`; `motif shot --phones`; `data.phones: boolean`.
 
 - [ ] **Step 1: Write the failing test**
 
-`cli/test/shot-phones.test.ts`:
+`cli/test/shot-sizes.test.ts`:
 ```ts
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
-import { runShot, type ShotDeps } from "../src/commands/shot";
 import { findBrowser } from "../src/detect/browser";
-import { captureScreens, shotName, viewportsFor, VIEWPORTS, type CaptureOptions } from "../src/shot/capture";
+import { captureScreens, shotName, VIEWPORTS } from "../src/shot/capture";
 import { pairWithMockup } from "../src/shot/compare";
 import { startStaticServer } from "../src/shot/static-server";
 import { makeProject } from "./project";
@@ -117,74 +116,38 @@ import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
 
-const MAIN = join(import.meta.dir, "../src/main.ts");
-
-describe("motif shot --phones", () => {
-  test("adds a narrow and a wide phone around the usual one, named apart in the screenshots", () => {
-    expect(viewportsFor(false)).toEqual(VIEWPORTS);
-    const all = viewportsFor(true);
-    expect(all.map((v) => [v.file ?? v.name, v.width])).toEqual([["mobile-360", 360], ["mobile", 390], ["mobile-430", 430], ["desktop", 1440]]);
-    // Every phone is audited as a phone (the 44 px tap-target check).
-    expect(all.filter((v) => v.mobile).map((v) => v.name)).toEqual(["mobile", "mobile", "mobile"]);
+describe("screenshot sizes", () => {
+  test("three phones, a tablet and a desktop, each named apart in the screenshots", () => {
+    expect(VIEWPORTS.map((v) => [v.file ?? v.name, v.width])).toEqual([["mobile-360", 360], ["mobile", 390], ["mobile-430", 430], ["tablet", 768], ["desktop", 1440]]);
+    // Phones and the tablet are touch screens: the audit's 44 px tap-target check applies to them.
+    expect(VIEWPORTS.filter((v) => v.mobile).map((v) => v.name)).toEqual(["mobile", "mobile", "mobile", "mobile"]);
     expect(shotName("index", "mobile-360", "dark")).toBe("index.mobile-360.dark.png");
   });
 
-  test("a phone mockup still pairs with the 390 px phone, never the extra ones", () => {
-    const frame = join(tempDir("motif-phones-"), "home.png");
+  test("a phone mockup still pairs with the 390 px phone, never another size", () => {
+    const frame = join(tempDir("motif-sizes-"), "home.png");
     const header = new Uint8Array(24);
     header.set([137, 80, 78, 71, 13, 10, 26, 10]);
     new DataView(header.buffer).setUint32(16, 780);
     new DataView(header.buffer).setUint32(20, 1688);
     writeFileSync(frame, header);
-    const shots = ["s/index.mobile-360.png", "s/index.mobile.png", "s/index.mobile-430.png", "s/index.desktop.png"];
+    const shots = ["s/index.mobile-360.png", "s/index.mobile.png", "s/index.mobile-430.png", "s/index.tablet.png", "s/index.desktop.png"];
     expect(pairWithMockup([frame], shots, "cmp").map((p) => p.after)).toEqual(["s/index.mobile.png"]);
   });
 
-  test("motif shot passes it to the capture and says so", async () => {
-    const root = makeProject({ "index.html": "" });
-    const captured: CaptureOptions[] = [];
-    const deps: ShotDeps = {
-      findBrowser: () => ({ name: "Chrome", path: "/fake/chrome" }),
-      devCommand: () => ({ error: "unused" }),
-      startDevServer: async () => {
-        throw new Error("unused");
-      },
-      serveStatic: () => ({ url: "http://127.0.0.1:5555", stop: () => {} }),
-      capture: async (o) => {
-        captured.push(o);
-        const shot = join(o.outDir, "index.mobile-360.png");
-        mkdirSync(dirname(shot), { recursive: true });
-        writeFileSync(shot, "png");
-        return { routes: [{ route: "/", url: o.baseUrl, status: 200, shots: [shot] }], issues: [] };
-      },
-      compare: async () => [],
-      today: () => "2026-10-15",
-    };
-    const r = await runShot(root, { positionals: [], flags: { phones: true } }, deps);
-    expect(r.exitCode).toBe(0);
-    expect(captured[0]!.phones).toBe(true);
-    expect(r.data.phones).toBe(true);
-    await runShot(root, { positionals: [], flags: {} }, deps);
-    expect(captured[1]!.phones).toBe(false);
-  });
-
-  test("is listed in help", () => {
-    expect(Bun.spawnSync([process.execPath, MAIN, "help"]).stdout.toString()).toContain("--phones");
-  });
-
   const browser = findBrowser();
-  test.skipIf(!browser)("captures each phone at its own width (needs Chrome, Edge or Chromium)", async () => {
+  test.skipIf(!browser)("captures each size at its own width (needs Chrome, Edge or Chromium)", async () => {
     const root = makeProject({ "index.html": '<!doctype html><meta name="viewport" content="width=device-width"><p>Hi</p>' });
     const site = startStaticServer(root);
     try {
       const outDir = join(root, "shots");
-      const r = await captureScreens({ browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir, settleMs: 50, phones: true });
+      const r = await captureScreens({ browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir, settleMs: 50 });
       expect(r.routes[0]!.shots.map((s) => s.split(/[\\/]/).pop())).toEqual([
-        "index.mobile-360.png", "index.mobile-360.dark.png", "index.mobile.png", "index.mobile.dark.png",
-        "index.mobile-430.png", "index.mobile-430.dark.png", "index.desktop.png", "index.desktop.dark.png",
+        "index.mobile-360.png", "index.mobile-360.dark.png", "index.mobile.png", "index.mobile.dark.png", "index.mobile-430.png",
+        "index.mobile-430.dark.png", "index.tablet.png", "index.tablet.dark.png", "index.desktop.png", "index.desktop.dark.png",
       ]);
       const width = (name: string) => pngSize(new Uint8Array(readFileSync(join(outDir, name)))).width;
-      expect([width("index.mobile-360.png"), width("index.mobile.png"), width("index.mobile-430.png")]).toEqual([720, 780, 860]);
+      expect(["index.mobile-360.png", "index.mobile.png", "index.mobile-430.png", "index.tablet.png", "index.desktop.png"].map(width)).toEqual([720, 780, 860, 1536, 1440]);
     } finally {
       site.stop();
     }
@@ -194,14 +157,15 @@ describe("motif shot --phones", () => {
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run (from `cli/`): `bun test test/shot-phones.test.ts`
-Expected: FAIL — `viewportsFor` isn't exported (SyntaxError: export not found).
+Run (from `cli/`): `bun test test/shot-sizes.test.ts`
+Expected: FAIL — the first test sees two sizes, `[["mobile", 390], ["desktop", 1440]]`.
 
-- [ ] **Step 3: Phones in `cli/src/shot/capture.ts`**
+- [ ] **Step 3: Five sizes in `cli/src/shot/capture.ts`**
 
-Replace the `Viewport` interface and add `PHONES` and `viewportsFor` after `VIEWPORTS`:
+Replace the `Viewport` interface and `VIEWPORTS` with:
 ```ts
 export interface Viewport {
+  /** How the audit treats it: "mobile" for touch screens (phones and tablets), "desktop" otherwise. */
   name: "mobile" | "desktop";
   /** The name in screenshot file names ("mobile-360"); the viewport's name when not set. */
   file?: string;
@@ -210,24 +174,20 @@ export interface Viewport {
   scale: number;
   mobile: boolean;
 }
-```
-```ts
-/** --phones: a narrow and a wide phone beside the usual one, for checking that a layout change holds on every phone. */
-export const PHONES: Viewport[] = [
-  { name: "mobile", file: "mobile-360", width: 360, height: 780, scale: 2, mobile: true },
-  { name: "mobile", file: "mobile-430", width: 430, height: 932, scale: 2, mobile: true },
-];
 
-export function viewportsFor(phones: boolean): Viewport[] {
-  return phones ? [PHONES[0]!, VIEWPORTS[0]!, PHONES[1]!, VIEWPORTS[1]!] : VIEWPORTS;
-}
+/**
+ * Every page is captured at each size: a narrow, a usual and a wide phone, a tablet and a desktop. A layout that holds
+ * on one phone can break on another (the xBloom review's regression showed at 430 px, not 390), so all are checked.
+ */
+export const VIEWPORTS: Viewport[] = [
+  { name: "mobile", file: "mobile-360", width: 360, height: 780, scale: 2, mobile: true },
+  { name: "mobile", width: 390, height: 844, scale: 2, mobile: true },
+  { name: "mobile", file: "mobile-430", width: 430, height: 932, scale: 2, mobile: true },
+  { name: "mobile", file: "tablet", width: 768, height: 1024, scale: 2, mobile: true },
+  { name: "desktop", width: 1440, height: 900, scale: 1, mobile: false },
+];
 ```
-Change `shotName`'s signature to `export function shotName(slug: string, viewport: string, scheme: Scheme): string {` (the body is unchanged). In `CaptureOptions`, after `stateTimeoutMs?: number;`, add:
-```ts
-  /** Also capture phones 360 and 430 px wide. */
-  phones?: boolean;
-```
-In `captureScreens`, replace `for (const viewport of VIEWPORTS) {` with `for (const viewport of viewportsFor(opts.phones ?? false)) {`, and replace the screenshot's file name line
+Change `shotName`'s signature to `export function shotName(slug: string, viewport: string, scheme: Scheme): string {` (the body is unchanged), and in `captureScreens` replace the screenshot's file name line
 ```ts
                 const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.name, scheme));
 ```
@@ -236,33 +196,35 @@ with
                 const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.file ?? viewport.name, scheme));
 ```
 
-- [ ] **Step 4: The option in `cli/src/commands/shot.ts` and `cli/src/main.ts`**
+- [ ] **Step 4: Say so in the output and the docs**
 
-In `runShot`, after `const audit = flags.audit === true;`, add `const phones = flags.phones === true;`. Replace
-```ts
-    captured = await deps.capture({ browserPath: browser.path, baseUrl, routes, outDir, audit, states });
-```
-with
-```ts
-    captured = await deps.capture({ browserPath: browser.path, baseUrl, routes, outDir, audit, states, phones });
-```
-and in the returned `data`, after `states: states.map((s) => s.name),` add `phones,`.
+In `cli/src/commands/shot.ts`, replace `(phone and desktop, light and dark)` with `(three phone sizes, a tablet and a desktop, light and dark)`.
 
-In `cli/src/main.ts`: in `parseArgs`' options add `phones: { type: "boolean", default: false },` after `state: { type: "string", multiple: true },`; in the flags passed to the runner add `phones: values.phones,` after `state: values.state,`; in `HELP`'s "Shot options", after the `--state` line, add:
-```
-  --phones          Also capture phones 360 and 430 px wide, to check a layout change on every phone
-```
+In `README.md`'s tool table, in the `motif shot` row, replace `Screenshots your real app's pages at phone and desktop widths in light and dark` with `Screenshots your real app's pages at three phone sizes (360, 390 and 430 px wide), a tablet and a desktop, in light and dark`.
 
-- [ ] **Step 5: Run the tests to see them pass**
+In `skill/adapters/react-web/checks.md`, replace `or smaller than 44×44 px at phone widths (minor).` with `or smaller than 44×44 px on touch screens: the phone and tablet sizes (minor).`
 
-Run (from `cli/`): `bun test test/shot-phones.test.ts test/capture.test.ts test/shot-command.test.ts test/shot-state.test.ts test/main.test.ts && bun run typecheck`
-Expected: PASS; typecheck clean.
+- [ ] **Step 5: Count five sizes in the existing tests**
 
-- [ ] **Step 6: Commit**
+- `cli/test/capture.test.ts`: rename the test `"every page at phone and desktop widths, light and dark; long pages are cropped"` to `"every page at each size, light and dark; long pages are cropped"`; replace its expected names `["index.mobile.png", "index.mobile.dark.png", "index.desktop.png", "index.desktop.dark.png"]` with
+  ```ts
+  ["index.mobile-360.png", "index.mobile-360.dark.png", "index.mobile.png", "index.mobile.dark.png", "index.mobile-430.png", "index.mobile-430.dark.png", "index.tablet.png", "index.tablet.dark.png", "index.desktop.png", "index.desktop.dark.png"]
+  ```
+  and replace each of its three `.shots).toHaveLength(4)` with `.shots).toHaveLength(10)`.
+- `cli/test/shot-e2e.test.ts`: replace `expect(out.shots).toHaveLength(8);` with `expect(out.shots).toHaveLength(20);` (2 pages × 5 sizes × 2 schemes).
+- `cli/test/shot-state.test.ts`: in the real-browser test, replace `expect(home.shots).toHaveLength(12);` with `expect(home.shots).toHaveLength(30);` (3 states × 5 sizes × 2 schemes).
+- `cli/test/plain-web-e2e.test.ts`: the shot test captures 60 screenshots now; give it `300_000` ms as its third argument: `test.skipIf(!browser)("shot serves the site, …", () => { … }, 300_000);`.
+
+- [ ] **Step 6: Run the tests to see them pass**
+
+Run (from `cli/`): `bun test test/shot-sizes.test.ts test/capture.test.ts test/compare.test.ts test/shot-command.test.ts test/shot-state.test.ts test/audit.test.ts test/adapters.test.ts && bun test test/shot-e2e.test.ts test/plain-web-e2e.test.ts --timeout 300000 && bun run typecheck`
+Expected: PASS; typecheck clean (the browser tests run where Chrome, Edge or Chromium is found).
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add cli/src/shot/capture.ts cli/src/commands/shot.ts cli/src/main.ts cli/test/shot-phones.test.ts
-git commit -m "feat(shot): --phones also captures phones 360 and 430 px wide" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+git add cli/src/shot/capture.ts cli/src/commands/shot.ts README.md skill/adapters/react-web/checks.md cli/test/shot-sizes.test.ts cli/test/capture.test.ts cli/test/shot-e2e.test.ts cli/test/shot-state.test.ts cli/test/plain-web-e2e.test.ts
+git commit -m "feat(shot): screenshots at three phone sizes, a tablet and a desktop by default" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -331,7 +293,7 @@ describe("the plain web guide", () => {
 
   test("platform.md: native elements, labels, logical properties, phones, and things used together", () => {
     const platform = read("plain-web/platform.md");
-    for (const s of ["Native elements", "A placeholder isn't a label", "padding-inline-start", "@media (hover: hover)", "safe-area-inset", "lang", "DESIGN.md", "on one screen", "--phones"]) {
+    for (const s of ["Native elements", "A placeholder isn't a label", "padding-inline-start", "@media (hover: hover)", "safe-area-inset", "lang", "DESIGN.md", "on one screen", "360, 390 and 430 px wide"]) {
       expect(platform).toContain(s);
     }
   });
@@ -831,7 +793,7 @@ The design guide has no breakpoint roles, and CSS variables can't be used in med
 - The viewport meta tag on every page: `<meta name="viewport" content="width=device-width, initial-scale=1">`.
 - For bars pinned to the bottom, `viewport-fit=cover` in that tag and `padding-block-end: env(safe-area-inset-bottom)`, so they clear the home indicator. A safe-area inset isn't a design value: mark it `motif-ok: safe area` if `motif check` reports it.
 - Inputs at least 16 px, so iOS doesn't zoom in when one is focused (the `body` role is 16 px in every starting style).
-- Things people use together stay on one screen: a live preview and the controls that change it, a field and its error, a total and the button that pays it. Check at narrow and wide phone widths (`motif shot --phones`).
+- Things people use together stay on one screen: a live preview and the controls that change it, a field and its error, a total and the button that pays it. `motif shot` captures phones 360, 390 and 430 px wide, a tablet and a desktop: check each.
 ````
 
 `skill/adapters/plain-web/checks.md`:
@@ -903,7 +865,7 @@ From `motif shot --audit`: text measured on screen below 4.5:1 (3:1 for large te
 
 ## Target size
 
-From `motif shot --audit`: a control smaller than 24×24 px (critical), or smaller than 44×44 px at phone widths (minor).
+From `motif shot --audit`: a control smaller than 24×24 px (critical), or smaller than 44×44 px on touch screens: the phone and tablet sizes (minor).
 
 - Fix: `min-height: 3rem` on buttons and fields, `3rem` square icon buttons, more padding around small links, or more space between neighbouring controls.
 
@@ -925,7 +887,7 @@ form.elements.message.value = "Wish you were here.";
 form.requestSubmit();
 ```
 
-Then capture each page in its plain state and in every state, at phone and desktop widths, in light and dark:
+Then capture each page in its plain state and in every state, at every size (three phones, a tablet and a desktop), in light and dark:
 
 ```bash
 motif shot --audit --state design/states/sent.js --state design/states/errors.js
@@ -963,14 +925,14 @@ git commit -m "feat(skill): the plain web stack guide" -m "Co-Authored-By: Claud
 - Test: `cli/test/skill-modes.test.ts` (new `describe` block)
 
 **Interfaces:**
-- Consumes: the guide's files and anchors (Task 2); `motif shot --phones` (Task 1) and `--state` (Plan 2A).
+- Consumes: the guide's files and anchors (Task 2); the five screenshot sizes (Task 1) and `--state` (Plan 2A).
 - Produces: nothing code consumes; the eval cases (Task 6) run these modes.
 
 - [ ] **Step 1: Write the failing test**
 
 Add at the end of `cli/test/skill-modes.test.ts`:
 ```ts
-describe("plain web, screens behind forms, and every phone width", () => {
+describe("plain web, screens behind forms, and every size", () => {
   test("SKILL.md sends plain web sites to their guide; they need no Node.js", () => {
     const skill = read("SKILL.md");
     expect(skill).toContain("(adapters/plain-web/README.md)");
@@ -989,11 +951,11 @@ describe("plain web, screens behind forms, and every phone width", () => {
     for (const s of ["(../adapters/plain-web/components.md)", "`Component:` lines", "--state"]) expect(feature).toContain(s);
   });
 
-  test("review captures screens behind forms, checks every fix at every phone width, and keeps things used together on one screen", () => {
+  test("review captures screens behind forms, checks every fix at every size, and keeps things used together on one screen", () => {
     const review = read("modes/review.md");
     expect(outOfOrder(review, [
       "## 3. Audit", "design/states/", "(../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)", "fit on one screen",
-      "## 5. Rebuild", "--phones --state design/states/<state>.js --save before", "--against before", "360, 390 and 430 px", "on one screen", '"status": "fixed"',
+      "## 5. Rebuild", "--state design/states/<state>.js --save before", "--against before", "360, 390 and 430 px", "on one screen", '"status": "fixed"',
     ])).toBeNull();
     expect(review).toContain("(../adapters/plain-web/checks.md)");
   });
@@ -1059,7 +1021,7 @@ Replace the first sentence of step 7's item 3,
 ```
 with
 ```
-3. Run `motif shot --audit` for the starter screens, in light and dark at phone and desktop widths, adding `--state` for each screen behind a form or a click (the stack guide's checks show how).
+3. Run `motif shot --audit` for the starter screens, in light and dark at every size it takes (three phones, a tablet and a desktop), adding `--state` for each screen behind a form or a click (the stack guide's checks show how).
 ```
 
 - [ ] **Step 5: `skill/modes/feature.md`**
@@ -1085,7 +1047,7 @@ Replace
 ```
 with
 ```
-3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, phone and desktop). Screens that only appear after a form or a click (a result, an editor, an error) need a state script: write one per state in `design/states/`, as the stack guide's checks show ([plain web](../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)), and add `--state design/states/<state>.js` for each. It also writes its findings to `design/shots/audit.json` in the report format below.
+3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, at three phone sizes, a tablet and a desktop). Screens that only appear after a form or a click (a result, an editor, an error) need a state script: write one per state in `design/states/`, as the stack guide's checks show ([plain web](../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)), and add `--state design/states/<state>.js` for each. It also writes its findings to `design/shots/audit.json` in the report format below.
 ```
 Replace
 ```
@@ -1105,11 +1067,11 @@ Replace section 5's list
 ```
 with
 ```
-1. Before changing anything, keep screenshots of the screens you'll touch, in the states the audit used and at every phone width: `motif shot --routes <routes> --phones --state design/states/<state>.js --save before` (one `--state` per state script).
+1. Before changing anything, keep screenshots of the screens you'll touch, in the states the audit used: `motif shot --routes <routes> --state design/states/<state>.js --save before` (one `--state` per state script).
 2. Fix the chosen findings with theme values only; a needed new value goes through a design guide change ⏸.
 3. Run the exact checks again: `motif validate`, `motif check` and `motif shot --audit` (with the same `--state` options).
-4. Run `motif shot --routes <routes> --phones --state design/states/<state>.js --against before`, with the same options as when you saved, and show the before-and-after images; the output says how much each screen changed.
-5. Look at every fix at each phone width: 360, 390 and 430 px. A fix that looks right on one phone can push things apart on another. Where people use things together (a live preview and the controls that change it, a form and its result), make sure they still fit on one screen wherever they did before; if a fix breaks that, find another way.
+4. Run `motif shot --routes <routes> --state design/states/<state>.js --against before`, with the same options as when you saved, and show the before-and-after images; the output says how much each screen changed.
+5. Look at every fix at each size: the phones 360, 390 and 430 px wide, the tablet and the desktop. A fix that looks right on one phone can push things apart on another. Where people use things together (a live preview and the controls that change it, a form and its result), make sure they still fit on one screen wherever they did before; if a fix breaks that, find another way.
 6. Mark each fixed finding `"status": "fixed"` in the JSON report and update the Markdown version; leave the rest `"open"`.
 ```
 In section 6, replace
@@ -1118,7 +1080,7 @@ In section 6, replace
 ```
 with
 ```
-1. Keep screenshots first: `motif shot --routes <routes> --phones --save before`, with `--state` for each screen behind a form or a click.
+1. Keep screenshots first: `motif shot --routes <routes> --save before`, with `--state` for each screen behind a form or a click.
 ```
 and in its item 4 replace
 ```
@@ -1142,7 +1104,7 @@ Expected: PASS (every existing order test still holds: the new text adds to the 
 
 ```bash
 git add skill/SKILL.md skill/modes cli/test/skill-modes.test.ts
-git commit -m "feat(skill): plain web in SKILL.md and the modes; reviews cover screens behind forms and every phone width" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(skill): plain web in SKILL.md and the modes; reviews cover screens behind forms and every size" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
@@ -1239,7 +1201,7 @@ describe("the plain contract site in a browser", () => {
     expect(r.data.routes.map((x: any) => [x.route, x.status, x.pageErrors ?? []])).toEqual([["/", 200, []]]);
     expect(r.data.findings).toEqual([]);
     expect(r.exitCode).toBe(0);
-  }, 180_000);
+  }, 300_000);
 });
 ```
 
@@ -1777,7 +1739,7 @@ Expected: `motif tokens` reports `created motif.css`, `created design/generated/
 - [ ] **Step 6: Run the tests to see them pass**
 
 Run (from `cli/`): `bun test test/fixtures-plain-contract.test.ts test/fixtures-seeded.test.ts && bun run typecheck`
-Expected: PASS; typecheck clean (the React seeded fixture still assembles the same way). Where a browser is found, the audit test runs: 1 page × 4 states × 4 captures, no findings.
+Expected: PASS; typecheck clean (the React seeded fixture still assembles the same way). Where a browser is found, the audit test runs: 1 page × 4 states × 10 captures, no findings.
 
 - [ ] **Step 7: Commit**
 
@@ -1935,7 +1897,7 @@ describe("the plain seeded site in a browser", () => {
       const knockOn = issues.some((i) => (i.consequences ?? []).some((c) => c.category === f.category && c.screens.includes(f.location.screen) && (!f.location.scheme || c.schemes.includes(f.location.scheme))));
       expect(planted || knockOn ? "expected" : `unplanned ${f.category}: ${f.location.selector} ${f.summary}`).toBe("expected");
     }
-  }, 180_000);
+  }, 300_000);
 });
 ```
 
@@ -2829,14 +2791,14 @@ const read = (path: string) => readFileSync(join(REPO, path), "utf8").replace(/\
 describe("plain web in the design docs", () => {
   test("decision 0004 records why plain web came first and what it decided", () => {
     const decision = read("docs/decisions/0004-plain-web.md");
-    for (const s of ["# 0004 — Plain web is the first Part 2 adapter", "Status: Accepted", "xBloom Recolor", "site folder", "two views", "--bg: var(--motif-color-background)", "--state", "--phones", "b-plain", "c-plain"]) {
+    for (const s of ["# 0004 — Plain web is the first Part 2 adapter", "Status: Accepted", "xBloom Recolor", "site folder", "two views", "--bg: var(--motif-color-background)", "--state", "360, 390 and 430", "b-plain", "c-plain"]) {
       expect(decision).toContain(s);
     }
   });
 
-  test("the core spec names plain web, its rules, --state, --phones and the plain eval cases, and points at the decision", () => {
+  test("the core spec names plain web, its rules, --state, the five screenshot sizes and the plain eval cases, and points at the decision", () => {
     const spec = read("docs/specs/2026-10-12-motif-core-design.md");
-    for (const s of ["Plain web (HTML and CSS) first", "0004-plain-web.md", "plain web, the ninth", "`--state <file.js>`", "`--phones`", "the two `tailwind-*` rules don't apply", "`b-plain`", "`c-plain`"]) {
+    for (const s of ["Plain web (HTML and CSS) first", "0004-plain-web.md", "plain web, the ninth", "`--state <file.js>`", "a tablet (768 px)", "at every screenshot size", "the two `tailwind-*` rules don't apply", "`b-plain`", "`c-plain`"]) {
       expect(spec).toContain(s);
     }
   });
@@ -2869,7 +2831,7 @@ Expected: FAIL — `docs/decisions/0004-plain-web.md` doesn't exist (ENOENT).
 3. **A site keeps its own variable names**, each defined from a role in its `:root` (`--bg: var(--motif-color-background)`), rather than a mapping table in `design/motif.json`: one place to change a colour, and no extra settings for `check`.
 4. **`extract` pairs dark values on every stack**: a solid, single-colour variable set in a light block and in a dark-mode block gives its role a real dark value instead of a copy.
 5. **`motif shot` serves a plain site's folder itself** (on 127.0.0.1, to its own Host only, checking real paths, never hidden files) and takes `--state <script>` for screens behind a form or a click.
-6. **`--phones` adds phones 360 and 430 px wide.** The xBloom review's one regression, a fix that made table rows taller only on wider phones and pushed the live card preview away from its sliders, showed on a 430 px phone and not at 390 px. The review mode now checks every fix at every phone width and keeps things people use together on one screen.
+6. **Screenshots at five sizes by default**: phones 360, 390 and 430 px wide, a tablet (768 px) and a desktop (1440 px), each in light and dark. The xBloom review's one regression, a fix that made table rows taller only on wider phones and pushed the live card preview away from its sliders, showed on a 430 px phone and not at 390 px, Motif's only phone size until then. The review mode now checks every fix at every size and keeps things people use together on one screen.
 
 ## Consequences
 
@@ -2887,15 +2849,16 @@ In `docs/specs/2026-10-12-motif-core-design.md`:
 | 2. Stack adapters | Plain web (HTML and CSS) first ([its spec](2026-10-15-motif-plain-web-design.md), [decision 0004](../decisions/0004-plain-web.md)), then Vue/Nuxt, Svelte/SvelteKit, Angular, React Native (Expo), Flutter, SwiftUI, Jetpack Compose — each built from the adapter template defined here | Part 1 |
 ```
 2. §10.2's `motif doctor` row: replace `(all 8 stacks detectable from Part 1)` with `(all 8 stacks detectable from Part 1; plain web, the ninth, from Part 2)`.
-3. §10.2's `motif shot` row: replace `Stops the dev server it started. |` with:
+3. §10.2's `motif shot` row: replace `at mobile and desktop widths` with `at three phone widths (360, 390 and 430 px), a tablet (768 px) and a desktop (1440 px)`, and replace `Stops the dev server it started. |` with:
 ```
-Stops the dev server it started. A plain web site is served from its own folder instead. `--state <file.js>` (repeatable) also captures each page after a script brings it to a state behind a form or a click (`index@<state>.png`); `--phones` adds phones 360 and 430 px wide, to check a layout change on every phone. |
+Stops the dev server it started. A plain web site is served from its own folder instead. `--state <file.js>` (repeatable) also captures each page after a script brings it to a state behind a form or a click (`index@<state>.png`). |
 ```
-4. §11.5: after the paragraph that starts `` `shot --audit` adds, at runtime``, add the paragraph:
+4. §7.3's **Verify** step: replace `(light and dark, mobile and desktop widths for web)` with `(light and dark, at every screenshot size for web)`.
+5. §11.5: after the paragraph that starts `` `shot --audit` adds, at runtime``, add the paragraph:
 ```
 On plain web sites (Part 2), the same rules read CSS where it is (`.css` files, `<style>` blocks and `style=""` attributes) and scripts as scripts; the two `tailwind-*` rules don't apply ([plain web spec §6](2026-10-15-motif-plain-web-design.md)).
 ```
-5. §13.2: at the end of the **Test B** bullet (after `unless recorded as a contract change.`), add (after a space):
+6. §13.2: at the end of the **Test B** bullet (after `unless recorded as a contract change.`), add (after a space):
 ```markdown
 Plain web (Part 2): `b-plain` adds a page to `tests/fixtures/plain-contract-site` with the same pass rules, except that the page must load without errors instead of building.
 ```
@@ -2903,7 +2866,7 @@ At the end of the **Test C** bullet (after `≤ 10% of critical/major findings a
 ```markdown
 Plain web: `c-plain` reviews `tests/fixtures/plain-seeded-site` (17 problems: 11 exact, 6 judgement) with the same thresholds.
 ```
-6. §16: replace
+7. §16: replace
 ```markdown
 - Adapters other than React web (Part 2). `doctor` still detects all 8 stacks.
 ```
