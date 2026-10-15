@@ -127,7 +127,7 @@ describe("the plain web guide", () => {
   test("checks.md: every rule on plain web, the audit's findings, and state scripts", () => {
     const checks = read("plain-web/checks.md");
     for (const id of RULE_IDS) expect(checks).toContain(id.startsWith("tailwind") ? `\`${id}\`` : `## \`${id}\``);
-    for (const s of ["## Contrast", "## Target size", "## Reduced motion", "<!-- motif-ok", "## Screens behind a form or a click", "design/states/", "--state", "index@sent.mobile.png", "15 seconds"]) {
+    for (const s of ["## Contrast", "## Target size", "## Reduced motion", "<!-- motif-ok", "## Screens behind a form or a click", "design/states/", "--state", "index@sent.mobile.png", "15 seconds", "runs in every page", 'dispatchEvent(new Event("input"']) {
       expect(checks).toContain(s);
     }
   });

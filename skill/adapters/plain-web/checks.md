@@ -80,8 +80,9 @@ From `motif shot --audit`: something still moves when reduced motion is on.
 `motif shot` captures each page as it loads. A screen that only appears after someone fills in a form, opens a panel or sends something needs a **state script**: a few lines of JavaScript that get the page there. Keep one per state in `design/states/`, named after the state (letters, digits and dashes):
 
 ```js
-// design/states/sent.js: the page after a postcard is sent.
+// design/states/sent.js: the page after a postcard is sent. Only the main page has the form.
 const form = document.getElementById("form");
+if (!form) return;
 form.elements.to.value = "Amara Okafor";
 form.elements.message.value = "Wish you were here.";
 form.requestSubmit();
@@ -95,6 +96,8 @@ motif shot --audit --state design/states/sent.js --state design/states/errors.js
 
 - The screenshots are named after the page and the state: `index@sent.mobile.png`, `index@sent.desktop.dark.png`.
 - A state script runs in the page, after it loads. It can click (`element.click()`), fill fields, send a form (`form.requestSubmit()`), call the page's own functions, or wait for something (`await new Promise((r) => setTimeout(r, 500))`).
+- It runs in every page `motif shot` captures, not only the one it was written for. Start it with a guard that returns on other pages, as above (`if (!form) return;`), or capture only its page with `--routes`.
+- Setting a field's `value` doesn't tell the page. When the page reacts to typing (a live preview, a character count), send the event a person's typing would: `field.dispatchEvent(new Event("input", { bubbles: true }))`.
 - It's stopped after 15 seconds. A script that fails, or a dialog the page opens, is reported with the state's name, and the other screenshots go on.
 - `--save` and `--against` include states, so before-and-after pictures cover them too. Use the same `--state` options for both runs.
 - Use mock data in state scripts, never anything real.

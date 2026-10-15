@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assemble } from "../../tests/fixtures/assemble";
 import { runCheck } from "../src/commands/check";
@@ -66,6 +66,14 @@ describe("the plain contract site (Kitepost)", () => {
 
 describe("the plain contract site in a browser", () => {
   const browser = findBrowser();
+  test.skipIf(!browser)("its state scripts leave other pages alone: a second page is captured with no errors (needs Chrome, Edge or Chromium)", async () => {
+    const dest = join(tempDir("motif-plain-"), "site");
+    assemble("plain-contract-site", dest);
+    writeFileSync(join(dest, "history.html"), '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>History</title><link rel="stylesheet" href="motif.css"></head><body><main><h1>History</h1></main></body></html>');
+    const r = await runShot(dest, { positionals: [], flags: { routes: "/history.html", state: ["design/states/sent.js", "design/states/errors.js", "design/states/empty.js"] } });
+    expect((r.data.routes as any[]).map((x) => [x.route, x.pageErrors ?? []])).toEqual([["/history.html", []]]);
+  }, 300_000);
+
   test.skipIf(!browser)("motif shot --audit finds nothing in any state, light or dark, phone or desktop (needs Chrome, Edge or Chromium)", async () => {
     const dest = join(tempDir("motif-plain-"), "site");
     assemble("plain-contract-site", dest);
