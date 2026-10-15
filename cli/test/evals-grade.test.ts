@@ -92,3 +92,20 @@ describe("test D", () => {
     expect(g.criteria.find((c) => c.id === "screens")!.detail).toContain("/home (not captured)");
   });
 });
+
+describe("test B on a plain site", () => {
+  const okPlain: BFacts = {
+    route: "/history.html", pageExists: true, check: { violations: 0, exceptions: 0, warnings: 0 }, validate: { errors: 0, warnings: 0, missingSections: [] },
+    render: { route: "/history.html", status: 200, pageErrors: 0 }, newComponents: [], recorded: [],
+  };
+  test("passes when the page loads with no page errors; there's nothing to build", () => {
+    const g = gradeB(okPlain);
+    expect(g.pass).toBe(true);
+    expect(g.criteria.map((c) => c.id)).toEqual(["feature", "check", "exceptions", "validate", "renders", "components"]);
+  });
+  test("fails when the page has errors, isn't served, or couldn't be captured", () => {
+    expect(failing(gradeB({ ...okPlain, render: { route: "/history.html", status: 200, pageErrors: 1 } }))).toEqual(["renders"]);
+    expect(failing(gradeB({ ...okPlain, render: { route: "/history.html", status: 404, pageErrors: 0 } }))).toEqual(["renders"]);
+    expect(failing(gradeB({ ...okPlain, render: { error: "No Chrome or Edge found." } }))).toEqual(["renders"]);
+  });
+});

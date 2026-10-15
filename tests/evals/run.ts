@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { CASES, selectCases, type EvalCase } from "./cases";
+import { CASES, needsBrowser, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv } from "./claude";
 import { collectAndGrade } from "./collect";
 import type { Grade } from "./grade";
@@ -136,7 +136,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 0;
   }
 
-  const ready = await deps.preflight(todo.some((c) => c.test !== "B"), typeof o.claude === "string" ? o.claude : undefined);
+  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined);
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;

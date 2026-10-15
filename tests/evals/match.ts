@@ -56,10 +56,12 @@ export function normFile(file: string, appRoot?: string): string {
   return f.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-/** "/products/oats/", "http://localhost:3000/products/oats?x=1" and "products/oats" are the same screen. */
+/** "/products/oats/", "http://localhost:3000/products/oats?x=1", "products/oats" are the same screen; so are "/index.html" and "/". */
 export function normScreen(screen: string): string {
   let s = screen.trim().replace(/^https?:\/\/[^/]+/i, "").replace(/[?#].*$/, "");
   if (!s.startsWith("/")) s = `/${s}`;
+  // A folder's index page is the folder: a plain site's "/index.html" is "/".
+  s = s.replace(/\/index\.html?$/i, "/");
   if (s.length > 1) s = s.replace(/\/+$/, "");
   return s.toLowerCase() || "/";
 }

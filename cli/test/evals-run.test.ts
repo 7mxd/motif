@@ -61,6 +61,20 @@ function harness(over: Partial<RunDeps> = {}) {
 }
 
 describe("the eval runner", () => {
+  test("a browser is required only when a chosen case needs one", async () => {
+    for (const [id, needs] of [["b-search", false], ["b-plain", true], ["c-plain", true]] as const) {
+      const seen: boolean[] = [];
+      const h = harness({
+        preflight: async (n) => {
+          seen.push(n);
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+        },
+      });
+      await runEvals(["--cases", id], h.deps, h.where);
+      expect(seen).toEqual([needs]);
+    }
+  });
+
   test("--list names every case without starting anything", async () => {
     const h = harness();
     expect(await runEvals(["--list"], h.deps, h.where)).toBe(0);

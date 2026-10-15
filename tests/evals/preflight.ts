@@ -63,7 +63,7 @@ export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDep
   }
   if (needsBrowser && !browser) {
     return {
-      error: "No Chrome or Edge was found. Test C's review checks what the browser shows, and test D's apps are checked in a browser. Install Chrome or Edge, or run motif browser install yourself (it downloads about 100 MB), then run this again. Test B alone (--tests B) doesn't need one.",
+      error: "No Chrome or Edge was found. Test C's reviews check what the browser shows, and test D's apps and b-plain's page are checked in a browser. Install Chrome or Edge, or run motif browser install yourself (it downloads about 100 MB), then run this again. Test B on Larder alone (--cases b-settings,b-search,b-profile,b-notifications,b-checkout) doesn't need one.",
     };
   }
   return { claude: found.exe, claudeVersion: version.stdout.trim(), browser };

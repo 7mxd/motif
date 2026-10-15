@@ -56,6 +56,17 @@ describe("a case's folder", () => {
     expect(await changes(ws, run)).toEqual([{ status: "added", path: "src/app/new.ts" }]);
   });
 
+  test("a plain site: a fresh copy with its state scripts, nothing installed, its starting state recorded", async () => {
+    const before = npmCalls.length;
+    const ws = await prepareWorkspace(byId("b-plain"), join(tempDir("motif-ws-"), "b-plain"), run);
+    expect(existsSync(join(ws.app, "index.html"))).toBe(true);
+    expect(existsSync(join(ws.app, "design/states/sent.js"))).toBe(true);
+    expect(npmCalls.length).toBe(before);
+    expect(ws.baseline).toMatch(/^[0-9a-f]{40}$/);
+    const seeded = await prepareWorkspace(byId("c-plain"), join(tempDir("motif-ws-"), "c-plain"), run);
+    expect(existsSync(join(seeded.app, "design/states"))).toBe(false);
+  });
+
   test("D: an empty folder holding the brief, nothing recorded", async () => {
     const ws = await prepareWorkspace(byId("d-stride"), join(tempDir("motif-ws-"), "d"), run);
     expect(readdirSync(ws.app)).toEqual(["brief.md"]);

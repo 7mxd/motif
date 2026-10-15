@@ -1,11 +1,13 @@
-// Measures what a finished case left behind: the motif tool's checks, the build and the type check, what the session changed,
+// Measures what a finished case left behind: the motif tool's checks, the build and the type check (or, on a plain site, the page in a browser), what the session changed,
 // and for test C the review report, graded against the seeded list (match.ts) and by the model grader (judge.ts).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { REQUIRED_SECTIONS } from "../../cli/src/contract/design-md";
 import { discoverRoutes } from "../../cli/src/stacks/react-web/routes";
-import type { EvalCase } from "./cases";
-import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ValidateFacts } from "./grade";
+import { detectApps, siteDir } from "../../cli/src/detect/stacks";
+import { discoverPlainRoutes } from "../../cli/src/stacks/plain-web/routes";
+import { isPlain, type EvalCase } from "./cases";
+import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
 import { Paused, type JudgeFn, type JudgeInput, type JudgeVerdict } from "./judge";
 import { gradeExact, parseReport, type SeededIssue } from "./match";
 import { packageManager, type Motif, type MotifResult, type Run } from "./tools";
@@ -13,7 +15,7 @@ import { changes, findApp, patch, type Workspace } from "./workspace";
 
 export interface Collectors { run: Run; motif: Motif; judge: JudgeFn }
 
-const SEEDED = join(import.meta.dir, "..", "fixtures", "react-seeded-app", "seeded-issues.json");
+const FIXTURES = join(import.meta.dir, "..", "fixtures");
 
 const save = (out: string, name: string, data: unknown) => writeFileSync(join(out, name), typeof data === "string" ? data : JSON.stringify(data, null, 2));
 
@@ -46,17 +48,49 @@ const ROUTE_FILES = new Set(["page", "layout", "loading", "error", "global-error
 const isComponentFile = (path: string) =>
   /^src\/.+\.(tsx|jsx)$/.test(path) && !/\.(test|spec|stories|d)\.(tsx|jsx)$/.test(path) && !ROUTE_FILES.has(basename(path, extname(path)));
 
+/** A plain site's new components: names on "Component:" lines the diff adds, minus those it only rewrote (a new variant). */
+export function addedComponents(diff: string): string[] {
+  const named = (sign: "+" | "-") =>
+    new Set(diff.split("\n").filter((l) => l.startsWith(sign) && !l.startsWith(sign.repeat(3))).flatMap((l) => [...l.matchAll(/Component:\s*([A-Za-z][\w-]*)/g)].map((m) => m[1]!)));
+  const before = named("-");
+  return [...named("+")].filter((n) => !before.has(n));
+}
+
+/** A plain site's folder of pages, as Motif finds it. */
+function plainSite(app: string): string {
+  const site = detectApps(app).apps.find((a) => a.stack === "plain-web");
+  return site ? join(app, siteDir(app, site)) : app;
+}
+
+/** The feature's page in a browser: its status and how many errors it threw. */
+async function renderFacts(k: Collectors, app: string, route: string, out: string): Promise<ScreenFacts | { error: string }> {
+  const shot = await motifJson(k, ["shot", "--routes", route], app, out, "shot.json", 900_000);
+  const r = Array.isArray(shot.json?.routes) ? shot.json.routes.find((x: any) => x.route === route) : undefined;
+  if (!r) return { error: String(shot.json?.error ?? `${route} wasn't captured`) };
+  return { route, status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 };
+}
+
 export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: string): Promise<BFacts> {
   mkdirSync(out, { recursive: true });
   const route = c.routes[0]!;
   // What changed is read before the build, which may touch files of its own.
   const changed = await changes(ws, k.run);
   save(out, "diff.patch", await patch(ws, k.run));
-  const newComponents = changed.filter((x) => x.status === "added" && isComponentFile(x.path)).map((x) => basename(x.path, extname(x.path)));
+  const plain = isPlain(c);
+  const styled = changed.filter((x) => x.status !== "deleted" && /\.(css|html?)$/i.test(x.path)).map((x) => x.path);
+  const newComponents = plain
+    ? styled.length > 0 ? addedComponents(await patch(ws, k.run, styled)) : []
+    : changed.filter((x) => x.status === "added" && isComponentFile(x.path)).map((x) => basename(x.path, extname(x.path)));
   const added = (await patch(ws, k.run, ["DESIGN.md"])).split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).join("\n");
   const recorded = newComponents.filter((n) => new RegExp(`\\b${escapeRegExp(n)}\\b`, "i").test(added));
   const check = await motifJson(k, ["check"], ws.app, out, "check.json");
   const validate = await motifJson(k, ["validate"], ws.app, out, "validate.json");
+  if (plain) {
+    return {
+      route, pageExists: discoverPlainRoutes(plainSite(ws.app)).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
+      render: await renderFacts(k, ws.app, route, out), newComponents, recorded,
+    };
+  }
   const { build, typecheck } = await buildAndTypecheck(ws.app, k, out);
   return {
     route, pageExists: discoverRoutes(ws.app).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
@@ -74,9 +108,9 @@ function newestReport(app: string): string | null {
 /** What a report-only review may change: its report, screenshots and notes in design/, and files agents keep for themselves. */
 const reviewMayChange = (path: string) => path.startsWith("design/") || path.startsWith(".claude/") || path === "AGENTS.md" || path === "CLAUDE.md";
 
-export async function collectC(_c: EvalCase, ws: Workspace, k: Collectors, out: string): Promise<CFacts> {
+export async function collectC(c: EvalCase, ws: Workspace, k: Collectors, out: string): Promise<CFacts> {
   mkdirSync(out, { recursive: true });
-  const issues: SeededIssue[] = JSON.parse(readFileSync(SEEDED, "utf8")).issues;
+  const issues: SeededIssue[] = JSON.parse(readFileSync(join(FIXTURES, c.fixture!, "seeded-issues.json"), "utf8")).issues;
   const exactIds = issues.filter((i) => i.kind === "exact").map((i) => i.id);
   const judgementIds = issues.filter((i) => i.kind === "judgement").map((i) => i.id);
   const changed = await changes(ws, k.run);

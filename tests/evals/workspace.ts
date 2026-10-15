@@ -1,5 +1,5 @@
 // A case's folder: a fresh copy of the fixture app with its packages installed (B, C), or an empty folder holding the brief (D),
-// plus git's record of how it started. The record lives beside the app, not in it, so nothing the session does can change it.
+// plus git's record of how it started (a plain site installs nothing). The record lives beside the app, not in it, so nothing the session does can change it.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { assemble } from "../fixtures/assemble";
@@ -71,8 +71,11 @@ export async function prepareWorkspace(c: EvalCase, dir: string, run: Run): Prom
     return ws;
   }
   assemble(c.fixture!, ws.app);
-  const install = await run(["npm", "ci", "--no-audit", "--no-fund"], ws.app, 900_000);
-  if (install.code !== 0) throw new Error(`Installing the app's packages failed (npm ci):\n${tail(install)}`);
+  // A plain web site has no packages to install.
+  if (existsSync(join(ws.app, "package.json"))) {
+    const install = await run(["npm", "ci", "--no-audit", "--no-fund"], ws.app, 900_000);
+    if (install.code !== 0) throw new Error(`Installing the app's packages failed (npm ci):\n${tail(install)}`);
+  }
   ws.baseline = await snapshot(ws, run);
   return ws;
 }

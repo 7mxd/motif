@@ -143,3 +143,12 @@ describe("the seeded list itself", () => {
     for (const i of issues.filter((x) => x.kind === "judgement" && x.id !== "S-20")) expect(i.location.screen).toBeDefined();
   });
 });
+
+describe("a plain site's screens", () => {
+  test("a folder's index page is the folder", () => {
+    for (const s of ["/index.html", "index.html", "/INDEX.HTM", "http://127.0.0.1:5555/index.html?x=1", "/"]) expect(normScreen(s)).toBe("/");
+    expect(normScreen("/blog/index.html")).toBe("/blog");
+    expect(normScreen("/about.html")).toBe("/about.html");
+    expect(sameScreen("/index.html", "/")).toBe(true);
+  });
+});

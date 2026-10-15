@@ -34,11 +34,22 @@ const buildCriteria = (build: CmdFacts, typecheck: CmdFacts): Criterion[] => [
 ];
 
 export interface BFacts {
-  route: string; pageExists: boolean; check: CheckFacts; validate: ValidateFacts; build: CmdFacts; typecheck: CmdFacts;
-  /** Component files the session added under src/components/. */
+  route: string; pageExists: boolean; check: CheckFacts; validate: ValidateFacts;
+  /** React web: the build and the type check. */
+  build?: CmdFacts; typecheck?: CmdFacts;
+  /** A plain site has nothing to build: its new page, as a browser loads it. */
+  render?: ScreenFacts | { error: string };
+  /** New components: React files under src/; a plain site's new "Component:" lines. */
   newComponents: string[];
   /** Those named in lines the session added to DESIGN.md (a recorded design guide change). */
   recorded: string[];
+}
+
+function renderCriterion(route: string, r: ScreenFacts | { error: string } | undefined): Criterion {
+  const label = `The feature's page loads without errors (${route})`;
+  if (!r || "error" in r) return { id: "renders", label, pass: false, detail: `motif shot couldn't capture it: ${r?.error ?? "it didn't run"}` };
+  const pass = r.status === 200 && r.pageErrors === 0;
+  return { id: "renders", label, pass, detail: pass ? "It loads with no page errors." : `Status ${r.status}${r.pageErrors ? `, ${r.pageErrors} page errors` : ""}.` };
 }
 
 export function gradeB(f: BFacts): Grade {
@@ -48,7 +59,7 @@ export function gradeB(f: BFacts): Grade {
     { id: "feature", label: `The feature's page exists (${f.route})`, pass: f.pageExists, detail: f.pageExists ? `${f.route} is a page of the app.` : `There's no page at ${f.route}.` },
     ...checkCriteria(f.check),
     validateCriterion(f.validate),
-    ...buildCriteria(f.build, f.typecheck),
+    ...(f.build && f.typecheck ? buildCriteria(f.build, f.typecheck) : [renderCriterion(f.route, f.render)]),
     {
       id: "components", label: "At most one new component, unless recorded in the design guide", pass: unrecorded.length <= 1,
       detail: f.newComponents.length === 0 ? "No new components." : `New: ${f.newComponents.join(", ")}${recorded.length ? ` (recorded in DESIGN.md: ${recorded.join(", ")})` : ""}.`,

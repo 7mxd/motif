@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
-import { collectB, collectC, collectD, designSections } from "../../tests/evals/collect";
+import { addedComponents, collectB, collectC, collectD, designSections } from "../../tests/evals/collect";
 import { Paused, type JudgeFn } from "../../tests/evals/judge";
 import type { SeededIssue } from "../../tests/evals/match";
 import { runCmd, type MotifResult, type Run } from "../../tests/evals/tools";
@@ -201,5 +201,56 @@ describe("test D's measurements", () => {
   test("no app found", async () => {
     const ws = await prepareWorkspace(byId("d-bloom"), join(tempDir("motif-col-"), "d2"), run);
     expect((await collectD(byId("d-bloom"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"))).app).toBeNull();
+  });
+});
+
+describe("test B on a plain site", () => {
+  test("new components are new Component: lines; an edited one isn't new", () => {
+    const diff = [
+      "diff --git a/components.css b/components.css",
+      "--- a/components.css",
+      "+++ b/components.css",
+      "-/* Component: Button — actions: primary (default), secondary */",
+      "+/* Component: Button — actions: primary (default), secondary, ghost */",
+      "+/* Component: MonthGroup — a month's heading and its rows */",
+      "+/* Component: Stat — a number with a label */",
+    ].join("\n");
+    expect(addedComponents(diff)).toEqual(["MonthGroup", "Stat"]);
+  });
+
+  test("the page, the page loading in a browser, new components (and which the guide records), check and validate; nothing built", async () => {
+    const ws = await prepareWorkspace(byId("b-plain"), join(tempDir("motif-col-"), "bp"), run);
+    const before = commands.length;
+    writeFileSync(join(ws.app, "history.html"), "<!doctype html><title>History</title>\n");
+    writeFileSync(join(ws.app, "components.css"), `${readFileSync(join(ws.app, "components.css"), "utf8")}\n/* Component: MonthGroup — a month's heading and its rows */\n.month-group { display: grid; }\n`);
+    writeFileSync(join(ws.app, "DESIGN.md"), `${readFileSync(join(ws.app, "DESIGN.md"), "utf8")}\n- 2026-10-15 — Added MonthGroup for the history page — approved by the eval\n`);
+    const saved = outputs.shot;
+    outputs.shot = { command: "shot", ok: true, exitCode: 0, shots: [], routes: [{ route: "/history.html", status: 200, shots: [] }] };
+    try {
+      const out = join(ws.dir, "results");
+      const f = await collectB(byId("b-plain"), ws, { run, motif, judge: noJudge }, out);
+      expect(f).toMatchObject({ route: "/history.html", pageExists: true, render: { route: "/history.html", status: 200, pageErrors: 0 }, newComponents: ["MonthGroup"], recorded: ["MonthGroup"] });
+      expect(f.build).toBeUndefined();
+      expect(commands.slice(before).some((c) => c.includes("build") || c.includes("tsc") || c[0] === "npm")).toBe(false);
+      expect(existsSync(join(out, "shot.json"))).toBe(true);
+    } finally {
+      outputs.shot = saved;
+    }
+  });
+});
+
+describe("test C on the plain seeded site", () => {
+  test("is graded against the site's own list", async () => {
+    const seededSite: SeededIssue[] = JSON.parse(readFileSync(join(REPO, "tests/fixtures/plain-seeded-site/seeded-issues.json"), "utf8")).issues;
+    const ws = await prepareWorkspace(byId("c-plain"), join(tempDir("motif-col-"), "cp"), run);
+    const p01 = seededSite.find((i) => i.id === "P-01")!;
+    mkdirSync(join(ws.app, "design/reviews"), { recursive: true });
+    writeFileSync(join(ws.app, "design/reviews/2026-10-15-whole-site.json"), JSON.stringify({ motifReview: 1, scope: "whole site", date: "2026-10-15", findings: [
+      { id: "F-001", severity: "major", category: "raw-value", source: "exact", location: p01.location, summary: p01.summary, fix: "Use the border role." },
+    ] }));
+    const f = await collectC(byId("c-plain"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"));
+    expect(f.exact.found).toEqual(["P-01"]);
+    expect(f.exact.missed).toHaveLength(seededSite.filter((i) => i.kind === "exact").length - 1);
+    expect(f.judgement.missed).toHaveLength(seededSite.filter((i) => i.kind === "judgement").length);
   });
 });
