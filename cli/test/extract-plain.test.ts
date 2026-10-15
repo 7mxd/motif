@@ -72,3 +72,26 @@ describe("motif extract on a plain web site", () => {
     expect(plain.text).toContain("motif extract");
   });
 });
+
+describe("variables that aren't one solid colour (final review)", () => {
+  test("translucent and mixed values don't take a role or give it a dark value", async () => {
+    const root = makeProject({
+      "public/index.html": [
+        "<style>",
+        "  :root { --shadow: rgba(0,0,0,.15); --hairline: rgba(0,0,0,.1); --ink: color-mix(in srgb, var(--card), #000 24%); --text: #000000; --bg: #ffffff; }",
+        "  @media (prefers-color-scheme: dark) { :root { --shadow: rgba(0,0,0,.6); --text: #ffffff; --bg: #000000; } }",
+        "  body { background: var(--bg); color: var(--text); }",
+        "</style>",
+      ].join("\n"),
+    });
+    expect((await runExtract(root, { positionals: [] })).exitCode).toBe(0);
+    const tokens = read(root, "design/tokens.draft.json");
+    expect([hex(tokens, "text-primary", "light"), hex(tokens, "text-primary", "dark")]).toEqual(["#000000", "#FFFFFF"]);
+    expect(hex(tokens, "background", "dark")).toBe("#000000");
+    const variables = read(root, "design/extract-report.json").variables as { name: string; role?: string }[];
+    expect(variables.find((v) => v.name === "--shadow")?.role).toBeUndefined();
+    expect(variables.find((v) => v.name === "--hairline")?.role).toBeUndefined();
+    expect(variables.map((v) => v.name)).not.toContain("--ink");
+    expect(variables.find((v) => v.name === "--text")?.role).toBe("color.text-primary");
+  });
+});

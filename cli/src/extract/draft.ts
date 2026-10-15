@@ -1,6 +1,7 @@
 import { formatHex, wcagContrast } from "culori";
 import type { SourceFile } from "../check/files";
 import { scanFile } from "../check/run";
+import { colorContext } from "../check/rules/colors";
 import type { Hit } from "../check/types";
 import { FONT_ROLES, SPACE_SCALE, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { clusterColors, parseColor, type ColorCluster, type Sample } from "./cluster";
@@ -153,10 +154,14 @@ function onColor(hex: string): string {
 
 const BASE_ROLES = ["text-primary", "text-secondary", "background", "surface", "border", "action-primary", "success", "warning", "danger", "info"];
 
-/** A colour as #RRGGBB, or undefined when it can't be read. */
-function hexIfColor(value: string | undefined): string | undefined {
+/** The kind of variable name each base role prefers when several variables share its colour (--text over --shadow). */
+const ROLE_CONTEXT: Record<string, string> = { "text-primary": "text", "text-secondary": "text", background: "background", surface: "background", border: "border" };
+
+/** A solid colour as #RRGGBB; undefined when it can't be read or is see-through (shadows and hairlines aren't roles). */
+function solidHex(value: string | undefined): string | undefined {
   const c = value ? parseColor(value) : undefined;
-  return c ? formatHex(c)?.toUpperCase() : undefined;
+  if (!c || (c.alpha ?? 1) < 1) return undefined;
+  return formatHex(c)?.toUpperCase();
 }
 
 export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>; report: ExtractReport } {
@@ -221,13 +226,14 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   roles["color.focus"] = roles["color.action-primary"]!;
   // Dark values from the CSS: a colour variable set in a light block and in a dark block gives its role a real dark value.
   const inCluster = (cluster: ColorCluster | undefined, value: string | undefined) =>
-    Boolean(cluster && value && cluster.members.some((m) => hexIfColor(m.value) === hexIfColor(value)));
+    Boolean(cluster && solidHex(value) && cluster.members.some((m) => solidHex(m.value) === solidHex(value)));
   const darkBase: Record<string, string> = {};
   for (const role of BASE_ROLES) {
-    const v = (occ.variables ?? []).find((x) => hexIfColor(x.dark) && inCluster(chosen[role], x.light));
+    const candidates = (occ.variables ?? []).filter((x) => solidHex(x.dark) && inCluster(chosen[role], x.light));
+    const v = candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ?? candidates[0];
     if (!v) continue;
     const name = `${chosen[role]!.id}-dark`;
-    primitives[name] = { $value: srgbColor(hexIfColor(v.dark)!) };
+    primitives[name] = { $value: srgbColor(solidHex(v.dark)!) };
     darkBase[role] = name;
   }
   if (darkBase.surface) darkBase["surface-raised"] = darkBase["action-secondary"] = darkBase.surface;
@@ -325,7 +331,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
       : "Dark-mode colours were copied from light mode. Review them before turning on dark mode.",
   ];
   const variables = (occ.variables ?? []).filter((v) => v.light).map((v) => {
-    const role = BASE_ROLES.find((r) => inCluster(chosen[r], v.light));
+    const fits = BASE_ROLES.filter((r) => inCluster(chosen[r], v.light));
+    const role = fits.find((r) => ROLE_CONTEXT[r] === colorContext(v.name)) ?? fits[0];
     return { name: v.name, light: v.light, ...(v.dark ? { dark: v.dark } : {}), ...(role ? { role: `color.${role}` } : {}) };
   });
   if (variables.length) {

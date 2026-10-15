@@ -82,12 +82,14 @@ export function scanColors(source: SourceFile): Hit[] {
       if (prop.startsWith("--motif-")) continue;
       const start = m.index! + m[0].length - value.length;
       const context = colorContext(prop);
-      const extra: Pick<Hit, "prop" | "scheme"> = {
-        ...(prop.startsWith("--") ? { prop } : {}),
+      // A variable's colour is its value only when the value is that one colour (not a shadow or a color-mix()).
+      const whole = value.trim().replace(/\s*!important$/i, "");
+      const extra = (literal: string): Pick<Hit, "prop" | "scheme"> => ({
+        ...(prop.startsWith("--") && literal === whole ? { prop } : {}),
         ...(inRanges(start, dark) ? { scheme: "dark" as const } : {}),
-      };
-      for (const c of value.matchAll(CSS_COLOR_LITERAL)) add(start + c.index!, c[0], context, extra);
-      if (CSS_COLOR_PROP.test(prop)) for (const n of value.matchAll(CSS_NAMED)) add(start + n.index!, n[0], context, extra);
+      });
+      for (const c of value.matchAll(CSS_COLOR_LITERAL)) add(start + c.index!, c[0], context, extra(c[0]));
+      if (CSS_COLOR_PROP.test(prop)) for (const n of value.matchAll(CSS_NAMED)) add(start + n.index!, n[0], context, extra(n[0]));
     }
     return hits.sort((a, b) => a.line - b.line || a.column - b.column);
   }
