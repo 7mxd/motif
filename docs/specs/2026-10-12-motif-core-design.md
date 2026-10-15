@@ -62,7 +62,7 @@ v1 is delivered as four sub-projects. Each has its own spec → plan → build c
 | Part | Contents | Depends on |
 |---|---|---|
 | **1. Core** *(this spec)* | Contract format, `/design` + three modes, knowledge base, source integrations with free fallbacks, preview kit and style gallery, the `motif` tool, React web reference adapter, tests B/C/D harness, minimal Claude Code plugin for development | — |
-| 2. Stack adapters | Vue/Nuxt, Svelte/SvelteKit, Angular, React Native (Expo), Flutter, SwiftUI, Jetpack Compose — each built from the adapter template defined here | Part 1 |
+| 2. Stack adapters | Plain web (HTML and CSS) first ([its spec](2026-10-15-motif-plain-web-design.md), [decision 0004](../decisions/0004-plain-web.md)), then Vue/Nuxt, Svelte/SvelteKit, Angular, React Native (Expo), Flutter, SwiftUI, Jetpack Compose — each built from the adapter template defined here | Part 1 |
 | 3. Agent packaging | Build step generating native packages for Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode; installer; per-agent install smoke tests; Agent Skills baseline for all other agents | Part 1 (can overlap with Part 2) |
 | 4. Release evaluation | Test A (human blind comparison) across stacks; release checklist | Parts 1–3 |
 
@@ -265,7 +265,7 @@ Gates are on by default. At a gate the agent shows what it proposes (mockup, dif
    a. `motif tokens` → theme code.
    b. Starter component set (§11.2 lists it for React web), every state, with motion from motion roles.
    c. App shell (navigation model from the contract) and first screens. Mobile stacks: onboarding, sign-in, home. Web stacks: welcome/landing, sign-in, home. Mock data only, clearly labelled.
-7. **Verify.** `motif check` (fix all violations), project build/type-check, `motif shot --audit` of every starter screen (light and dark, mobile and desktop widths for web). Show the screenshots and a short summary.
+7. **Verify.** `motif check` (fix all violations), project build/type-check, `motif shot --audit` of every starter screen (light and dark, at every screenshot size for web). Show the screenshots and a short summary.
 
 Progress after each step is written to `design/.progress.json`. Running `/init` again in a project with unfinished progress offers to resume from the next step.
 
@@ -379,14 +379,14 @@ All commands: plain-language output by default; `--json` prints a single JSON ob
 
 | Command | Purpose | Key behaviour |
 |---|---|---|
-| `motif doctor` | Environment report | Tool version; OS; detected apps and stacks (all 8 stacks detectable from Part 1); browser found; stack toolchain present (e.g. Node for web stacks); contract present/valid; configured MCP sources found in known agent config files. Each item: ✓ works / ○ optional / ✗ needed for X, with one plain sentence. |
+| `motif doctor` | Environment report | Tool version; OS; detected apps and stacks (all 8 stacks detectable from Part 1; plain web, the ninth, from Part 2); browser found; stack toolchain present (e.g. Node for web stacks); contract present/valid; configured MCP sources found in known agent config files. Each item: ✓ works / ○ optional / ✗ needed for X, with one plain sentence. |
 | `motif connect [source]` | Optional source setup | Run by the developer in their own terminal (the agent prints the exact command). Detects installed agents; asks which to configure; writes that agent's MCP configuration (Part 1: Claude Code via `claude mcp add`; others in Part 3); prompts for any key with hidden input; stores keys only in user-level agent config or environment, never in the project; warns if a target file is tracked by git. |
 | `motif validate` | Check the contract | Schema and DTCG validity; required roles (§6.3); alias resolution; every contrast pair in light and dark (4.5:1 text, 3:1 large text and UI components); `DESIGN.md` header and required sections present; motion values in sane ranges. Reports file + line for every problem. |
 | `motif tokens [--app <path>]` | Generate theme code | Per app in `motif.json`, runs the stack's generator (§11.3). Idempotent; generated files carry the header from §6.5 rule 4. `--stack preview` produces the CSS used by the preview kit. Unsupported stack → plain CSS variables + `tokens.flat.json`. |
 | `motif check [paths…]` | Find contract violations | Runs the stack's rule set (§11.5) over source files, respecting `.gitignore`, `motif.json` `ignore`, and generated headers. Reports violations, justified exceptions (`motif-ok`) separately, and hand-edited generated files. |
 | `motif extract [--app <path>]` | Draft a contract from existing code | Collects literal values with the same scanners as `check`; groups colours by perceptual distance (OKLab ΔE ≤ 0.03), snaps spacing/radius to the nearest scale step (4px base), groups font sizes into a type scale, collects durations/easings; infers roles from usage context (text, background, border, button); writes `design/tokens.draft.json` and `design/extract-report.json` (old value → proposed role map, with counts and file locations). |
 | `motif preview` | Render mockups | `motif preview <file.html|dir>` serves on `127.0.0.1` (random free port) with live reload, injects the contract CSS (or a preset's), opens the system browser, and writes PNGs at 2× to `design/previews/` (phone 390×844, desktop 1440×900, per frame used). `--compare a b c` shows several side by side. `--gallery` shows the presets. `--png-only` renders without opening a browser. |
-| `motif shot` | Screenshot the real app | Starts the app's dev server (or uses `--url`), waits until ready, captures the given routes (`--routes`) or adapter-discovered routes, at mobile and desktop widths, light and dark, into `design/shots/`. `--audit` also measures rendered contrast and target sizes and checks reduced-motion handling, reporting findings in review JSON format (§7.6). Stops the dev server it started. |
+| `motif shot` | Screenshot the real app | Starts the app's dev server (or uses `--url`), waits until ready, captures the given routes (`--routes`) or adapter-discovered routes, at three phone widths (360, 390 and 430 px), a tablet (768 px) and a desktop (1440 px), light and dark, into `design/shots/`. `--audit` also measures rendered contrast and target sizes and checks reduced-motion handling, reporting findings in review JSON format (§7.6). Stops the dev server it started. A plain web site is served from its own folder instead. `--state <file.js>` (repeatable) also captures each page after a script brings it to a state behind a form or a click (`index@<state>.png`). |
 
 ### 10.3 Browser use
 
@@ -456,6 +456,8 @@ Welcome/landing, sign-in, home (dashboard or feed, chosen from the brief), wired
 
 `shot --audit` adds, at runtime: rendered text contrast (axe-core), target size (critical below 24×24 CSS px — fails WCAG 2.2 AA; minor below 44×44 at mobile widths), and motion still running under emulated `prefers-reduced-motion: reduce`.
 
+On plain web sites (Part 2), the same rules read CSS where it is (`.css` files, `<style>` blocks and `style=""` attributes) and scripts as scripts; the two `tailwind-*` rules don't apply ([plain web spec §6](2026-10-15-motif-plain-web-design.md)).
+
 ## 12. When things go wrong
 
 | Situation | Behaviour |
@@ -484,8 +486,8 @@ Welcome/landing, sign-in, home (dashboard or feed, chosen from the brief), wired
 
 Run through Claude Code's headless mode with the Part 1 plugin loaded and gates switched off by instruction.
 
-- **Test B — consistency.** Fixture: `tests/fixtures/react-contract-app` (Next.js + Tailwind v4, full contract, starter components, 3 screens). Five feature tasks, each in a fresh session: settings screen; search with empty state; profile edit form with validation; notifications list; checkout summary. **Pass:** for every task, `motif check` reports zero violations (justified `motif-ok` exceptions allowed, max 2 per task), the project builds and type-checks, and at most one new component is created per task unless recorded as a contract change.
-- **Test C — review accuracy.** Fixture: `tests/fixtures/react-seeded-app` with `seeded-issues.json` (≥ 20 issues: ≥ 12 exact-detectable, ≥ 8 judgement). Run `review` in report-only mode. Grader matches findings to seeded issues by category + location (exact issues: deterministic; judgement issues: model grader with a written rubric). **Pass:** recall ≥ 90% for exact issues, ≥ 70% for judgement issues; ≤ 10% of critical/major findings are false.
+- **Test B — consistency.** Fixture: `tests/fixtures/react-contract-app` (Next.js + Tailwind v4, full contract, starter components, 3 screens). Five feature tasks, each in a fresh session: settings screen; search with empty state; profile edit form with validation; notifications list; checkout summary. **Pass:** for every task, `motif check` reports zero violations (justified `motif-ok` exceptions allowed, max 2 per task), the project builds and type-checks, and at most one new component is created per task unless recorded as a contract change. Plain web (Part 2): `b-plain` adds a page to `tests/fixtures/plain-contract-site` with the same pass rules, except that the page must load without errors instead of building.
+- **Test C — review accuracy.** Fixture: `tests/fixtures/react-seeded-app` with `seeded-issues.json` (≥ 20 issues: ≥ 12 exact-detectable, ≥ 8 judgement). Run `review` in report-only mode. Grader matches findings to seeded issues by category + location (exact issues: deterministic; judgement issues: model grader with a written rubric). **Pass:** recall ≥ 90% for exact issues, ≥ 70% for judgement issues; ≤ 10% of critical/major findings are false. Plain web: `c-plain` reviews `tests/fixtures/plain-seeded-site` (17 problems: 11 exact, 6 judgement) with the same thresholds.
 - **Test D — zero accounts.** Run B and C with no MCP servers configured, plus `init` from each of 3 brief fixtures (`tests/fixtures/briefs/`). **Pass for init:** `validate` and `check` clean, project builds, all starter screens exist and render in `shot`, `DESIGN.md` has all sections.
 - Eval runs use the developer's signed-in Claude Code, never an API key, run only when the developer starts them, and are capped per case ([decision 0003](../decisions/0003-evals-on-your-plan.md)). CI runs only the runner's own tests.
 
@@ -509,7 +511,7 @@ Defined and run in Part 4.
 
 ## 16. Out of scope for Part 1
 
-- Adapters other than React web (Part 2). `doctor` still detects all 8 stacks.
+- Adapters other than React web (Part 2; plain web came first, [decision 0004](../decisions/0004-plain-web.md)). `doctor` still detects all 8 stacks.
 - Native packages for agents other than Claude Code, the build step and installer (Part 3).
 - Test A (Part 4).
 - Tailwind v3 theme generation (v3 projects get CSS variables and guidance).

@@ -1,7 +1,7 @@
 # Motif — Plain web support (Part 2, first adapter)
 
 - Date: 2026-10-15
-- Status: Draft for review
+- Status: Approved 2026-10-15; built by Plans 2A and 2B
 - Builds on: `docs/specs/2026-10-12-motif-core-design.md` (the core spec: contract §6, modes §7, tool §10, adapter model §5.3 and §11)
 - Evidence: Motif's review of xBloom Recolor on 2026-10-15, kept in `C:\Users\PC\motif-proof\xbloom-recolor-2026-10-15\` (README, screenshots, report)
 
