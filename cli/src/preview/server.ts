@@ -17,7 +17,7 @@ export interface PreviewServer {
   stop(): void;
 }
 
-const TYPES: Record<string, string> = {
+export const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".webp": "image/webp", ".gif": "image/gif", ".woff2": "font/woff2", ".woff": "font/woff",
@@ -83,7 +83,7 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
   const root = resolve(opts.root);
   const encoder = new TextEncoder();
   const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
-  const html = (body: string) => new Response(body, { headers: { "content-type": TYPES[".html"]!, "cache-control": "no-store" } });
+  const html = (body: string) => new Response(body, { headers: { "content-type": CONTENT_TYPES[".html"]!, "cache-control": "no-store" } });
   const mockupTheme = (file: string): Theme | null => {
     const own = join(dirname(file), "tokens.json");
     if (relative(root, own).split(sep).join("/") === GUIDE_TOKENS || !existsSync(own)) return opts.theme;
@@ -107,11 +107,11 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       if (path === "/__motif/theme.css") {
         const tokens = url.searchParams.get("tokens");
         const css = tokens !== null ? directionCss(root, tokens, opts.fontCssUrl) : themeCss(url.searchParams.get("preset"));
-        return new Response(css, { headers: { "content-type": TYPES[".css"]!, "cache-control": "no-store" } });
+        return new Response(css, { headers: { "content-type": CONTENT_TYPES[".css"]!, "cache-control": "no-store" } });
       }
       if (path.startsWith("/__motif/kit/fonts/")) {
         const name = path.slice("/__motif/kit/fonts/".length);
-        if (name === "fonts.css") return new Response(FONTS_CSS, { headers: { "content-type": TYPES[".css"]! } });
+        if (name === "fonts.css") return new Response(FONTS_CSS, { headers: { "content-type": CONTENT_TYPES[".css"]! } });
         if (!Object.hasOwn(EMBEDDED_FONT_FILES, name)) return notFound();
         return new Response(Bun.file(EMBEDDED_FONT_FILES[name]!), { headers: { "content-type": "font/woff2", "cache-control": "max-age=3600" } });
       }
@@ -152,7 +152,7 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
         const links = theme ? fontStylesheets(theme, opts.fontCssUrl) : [];
         return html(injectKit(readFileSync(file, "utf8"), themeHrefFor(root, file), links));
       }
-      return new Response(Bun.file(file), { headers: { "content-type": TYPES[ext] ?? "application/octet-stream" } });
+      return new Response(Bun.file(file), { headers: { "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream" } });
     },
   });
 

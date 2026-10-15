@@ -2,18 +2,21 @@ import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } 
 import { basename, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { findBrowser, type BrowserInfo } from "../detect/browser";
-import { detectApps, STACK_LABELS, type AppInfo } from "../detect/stacks";
+import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
 import { captureScreens, MAX_HEIGHT, type RouteResult } from "../shot/capture";
 import { mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison } from "../shot/compare";
 import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
+import { startStaticServer, type StaticServer } from "../shot/static-server";
+import { discoverPlainRoutes } from "../stacks/plain-web/routes";
 import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes";
 
 export interface ShotDeps {
   findBrowser: () => BrowserInfo | null;
   devCommand: typeof devCommand;
   startDevServer: typeof startDevServer;
+  serveStatic: (root: string) => StaticServer;
   capture: typeof captureScreens;
   compare: typeof renderComparisons;
   today: () => string;
@@ -31,6 +34,7 @@ const defaultDeps: ShotDeps = {
   findBrowser: () => findBrowser(),
   devCommand,
   startDevServer,
+  serveStatic: startStaticServer,
   capture: captureScreens,
   compare: renderComparisons,
   today,
@@ -136,19 +140,22 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       return usage("No app found in this folder. Run this inside your app's folder, or pass a running app's address with --url.", { error: "no-app" });
     }
     if (!app) return usage(`There are several apps here (${selected.map((a) => a.path).join(", ")}). Choose one with --app <path>.`, { error: "several-apps" });
-    if (app.stack !== "react-web") {
+    if (app.stack !== "react-web" && app.stack !== "plain-web") {
       const what = app.stack ? `${STACK_LABELS[app.stack]} apps` : "this app";
       return usage(`Motif can't start ${what} for screenshots yet. Start it yourself and pass its address with --url.`, { error: "unsupported-stack" });
     }
   }
   const appDir = app ? join(cwd, app.path) : cwd;
+  const siteFolderPath = app?.stack === "plain-web" ? join(appDir, siteDir(cwd, app)) : undefined;
 
   const discovery: RouteDiscovery =
     typeof flags.routes === "string"
       ? { routes: parseRoutes(flags.routes), skipped: [] }
       : app?.stack === "react-web"
         ? discoverRoutes(appDir)
-        : { routes: ["/"], skipped: [] };
+        : siteFolderPath
+          ? discoverPlainRoutes(siteFolderPath)
+          : { routes: ["/"], skipped: [] };
   if (discovery.routes.length === 0) return usage("--routes needs at least one page, like --routes /,/settings.", { error: "usage" });
   const filePath = discovery.routes.find((r) => /^\/[A-Za-z]:[\\/]/.test(r));
   if (filePath) {
@@ -181,8 +188,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (against && "error" in against) return usage(against.error, { error: "usage" });
 
   let server: DevServer | undefined;
+  let site: StaticServer | undefined;
   let baseUrl = givenUrl;
-  if (!baseUrl) {
+  if (!baseUrl && siteFolderPath) {
+    site = deps.serveStatic(siteFolderPath);
+    baseUrl = site.url;
+  } else if (!baseUrl) {
     const how = deps.devCommand(appDir);
     if ("error" in how) return usage(how.error, { error: "cant-start" });
     try {
@@ -205,6 +216,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     return usage(`Couldn't take screenshots: ${message(e)}`, { error: "capture-failed" });
   } finally {
     await server?.stop();
+    site?.stop();
   }
 
   const failed = captured.routes.filter((r) => !rendered(r));

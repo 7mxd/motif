@@ -44,6 +44,7 @@ function fakes(over: Partial<ShotDeps> & { results?: (o: CaptureOptions) => Rout
         },
       };
     },
+    serveStatic: () => ({ url: "http://127.0.0.1:1", stop: () => {} }),
     capture: async (o) => {
       calls.captured.push(o);
       const routes =
