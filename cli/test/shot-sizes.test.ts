@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { launchBrowser } from "../src/browser/cdp";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 import { captureScreens, shotName, VIEWPORTS } from "../src/shot/capture";
@@ -31,6 +32,21 @@ describe("screenshot sizes", () => {
   });
 
   const browser = findBrowser();
+  test.skipIf(!browser)("phones and the tablet are touch screens, as on the real devices; the desktop has a mouse (needs Chrome, Edge or Chromium)", async () => {
+    const b = await launchBrowser(browser!.path);
+    try {
+      const page = await b.newPage();
+      const touch: boolean[] = [];
+      for (const v of VIEWPORTS) {
+        await page.setViewport(v.width, v.height, v.scale, v.mobile);
+        touch.push(await page.evaluate<boolean>('matchMedia("(pointer: coarse)").matches && matchMedia("(hover: none)").matches'));
+      }
+      expect(touch).toEqual([true, true, true, true, false]);
+    } finally {
+      await b.close();
+    }
+  }, 120_000);
+
   test.skipIf(!browser)("captures each size at its own width (needs Chrome, Edge or Chromium)", async () => {
     const root = makeProject({ "index.html": '<!doctype html><meta name="viewport" content="width=device-width"><p>Hi</p>' });
     const site = startStaticServer(root);

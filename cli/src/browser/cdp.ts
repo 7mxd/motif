@@ -239,6 +239,8 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
       return {
         async setViewport(width, height, scale = 1, mobile = false) {
           await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: scale, mobile }, sessionId);
+          // Phones and tablets are touch screens: (pointer: coarse) and (hover: none) match, as on the real devices.
+          await send("Emulation.setTouchEmulationEnabled", { enabled: mobile, ...(mobile ? { maxTouchPoints: 5 } : {}) }, sessionId);
         },
         async emulateMedia(features) {
           await send("Emulation.setEmulatedMedia", { features }, sessionId);
