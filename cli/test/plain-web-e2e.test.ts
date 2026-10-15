@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { assemble } from "../../tests/fixtures/assemble";
 import { findBrowser } from "../src/detect/browser";
 import { validDesignMd, validTokens } from "./helpers";
 import { makeProject } from "./project";
@@ -84,4 +85,29 @@ describe("the compiled tool on a plain web site", () => {
     expect(home.pageErrors.join("\n")).toContain('State "broken"');
     expect(home.pageErrors.join("\n")).toContain("no such button");
   }, 300_000);
+
+  test("on the plain fixtures: doctor, tokens and check on Kitepost; check and extract on the seeded site", () => {
+    const site = join(tempDir("motif-fixture-"), "site");
+    assemble("plain-contract-site", site);
+    expect(run(site, ["doctor"]).json.items.find((i: any) => i.id === "app:.")).toMatchObject({ status: "ok", detail: expect.stringContaining("this folder") });
+    const tokens = run(site, ["tokens"]);
+    expect(tokens.code).toBe(0);
+    expect(tokens.json.files.filter((f: any) => f.status !== "unchanged")).toEqual([]);
+    expect(run(site, ["check"]).code).toBe(0);
+    const seeded = join(tempDir("motif-fixture-"), "site");
+    assemble("plain-seeded-site", seeded);
+    expect(run(seeded, ["check"]).json.summary).toMatchObject({ violations: 7, warnings: 1 });
+    expect(run(seeded, ["extract"]).code).toBe(0);
+    const report = JSON.parse(readFileSync(join(seeded, "design/extract-report.json"), "utf8"));
+    expect(report.variables).toContainEqual({ name: "--paper", light: "#FFF8EC" });
+  });
+
+  test.skipIf(!browser)("shot --audit with Kitepost's state scripts finds nothing (needs Chrome, Edge or Chromium)", () => {
+    const site = join(tempDir("motif-fixture-"), "site");
+    assemble("plain-contract-site", site);
+    const shot = run(site, ["shot", "--audit", "--state", "design/states/sent.js", "--state", "design/states/errors.js", "--state", "design/states/empty.js"]);
+    expect(shot.json.states).toEqual(["sent", "errors", "empty"]);
+    expect(shot.json.findings).toEqual([]);
+    expect(shot.code).toBe(0);
+  });
 });

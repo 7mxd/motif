@@ -1,0 +1,72 @@
+/* Kitepost's page: the theme's font, its own names for a few roles, and the layout. */
+
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 1000;
+  src: url("fonts/nunito.woff2") format("woff2");
+}
+
+/* The postcard's own names, each defined from a role, so dark mode and the design guide apply. */
+:root {
+  --paper: #FFF8EC;
+  --ink: var(--motif-color-text-primary);
+  --ink-soft: var(--motif-color-text-secondary);
+}
+[data-stamp="kite"] { --stamp: var(--motif-color-action-primary); }
+[data-stamp="cloud"] { --stamp: var(--motif-color-action-secondary); }
+[data-stamp="ink"] { --stamp: var(--motif-color-text-primary); }
+
+body {
+  margin: 0;
+  background: var(--motif-color-background);
+  color: var(--motif-color-text-primary);
+  font-family: var(--motif-font-body-family);
+  font-size: var(--motif-font-body-size);
+  line-height: var(--motif-font-body-line-height);
+}
+
+.page { display: grid; gap: var(--motif-space-10); max-width: 40rem; margin-inline: auto; padding: var(--motif-space-6) var(--motif-space-4) var(--motif-space-12); }
+.page-title { margin: 0; font-family: var(--motif-font-title-family); font-size: var(--motif-font-title-size); font-weight: var(--motif-font-title-weight); line-height: var(--motif-font-title-line-height); }
+.section-title { margin: 0 0 var(--motif-space-4); font-family: var(--motif-font-heading-family); font-size: var(--motif-font-heading-size); font-weight: var(--motif-font-heading-weight); line-height: var(--motif-font-heading-line-height); }
+
+/* The preview sits right above the fields that change it, so both stay in view while writing. */
+.composer { display: grid; gap: var(--motif-space-5); }
+.composer-form { display: grid; gap: 18px; }
+
+.postcard {
+  position: relative;
+  display: grid;
+  gap: var(--motif-space-2);
+  margin: 0;
+  padding: var(--motif-space-5);
+  padding-inline-end: var(--motif-space-16);
+  border-radius: var(--motif-radius-lg);
+  background: var(--paper);
+  border: 2px dashed #D9C7B8;
+  box-shadow: var(--motif-shadow-md);
+  color: var(--ink);
+}
+.postcard-stamp { position: absolute; inset-block-start: var(--motif-space-4); inset-inline-end: var(--motif-space-4); width: 2.5rem; height: 3rem; border-radius: var(--motif-radius-sm); background: var(--stamp); }
+.postcard-message { margin: 0; min-height: 3rem; font-family: var(--motif-font-heading-family); font-size: var(--motif-font-heading-size); line-height: var(--motif-font-heading-line-height); overflow-wrap: anywhere; }
+.postcard-line { margin: 0; color: var(--ink-soft); font-family: var(--motif-font-caption-family); font-size: var(--motif-font-caption-size); line-height: var(--motif-font-caption-line-height); }
+
+.postcard-small { margin: 0; opacity: 0.4; font-family: var(--motif-font-caption-family); font-size: var(--motif-font-caption-size); line-height: var(--motif-font-caption-line-height); }
+
+.tip { display: flex; align-items: center; justify-content: space-between; gap: var(--motif-space-3); padding: var(--motif-space-3) var(--motif-space-4); border-radius: var(--motif-radius-md); background: var(--motif-color-surface); }
+.tip-text { margin: 0; font-family: var(--motif-font-caption-family); font-size: var(--motif-font-caption-size); line-height: var(--motif-font-caption-line-height); }
+.tip-close { display: grid; place-items: center; width: 1.25rem; height: 1.25rem; padding: 0; border: 0; border-radius: var(--motif-radius-full); background: var(--motif-color-action-secondary); color: var(--motif-color-on-action-secondary); cursor: pointer; }
+.tip-close:focus-visible { outline: 2px solid var(--motif-color-focus); outline-offset: 2px; }
+.plane { display: inline-block; }
+
+.sent { display: grid; gap: var(--motif-space-5); justify-items: start; animation: rise var(--motif-duration-slow) var(--motif-easing-enter); }
+.sent:focus { outline: none; }
+.sent-text { margin: 0; color: var(--motif-color-text-secondary); }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: none; }
+}
+
+[hidden] { display: none !important; }

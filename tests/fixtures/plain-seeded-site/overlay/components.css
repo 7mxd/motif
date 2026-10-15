@@ -1,0 +1,118 @@
+/* Kitepost's components. Each starts with a "Component:" line; DESIGN.md section 5 lists the same set. */
+
+/* Component: Button — actions: primary (default), secondary */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--motif-space-2);
+  min-height: 3rem;
+  padding-inline: var(--motif-space-5);
+  border: 0;
+  border-radius: var(--motif-radius-md);
+  background: var(--motif-color-action-primary);
+  color: var(--motif-color-on-action-primary);
+  font-family: var(--motif-font-label-family);
+  font-size: var(--motif-font-label-size);
+  font-weight: var(--motif-font-label-weight);
+  line-height: var(--motif-font-label-line-height);
+  cursor: pointer;
+  transition: transform 250ms ease-in-out;
+}
+.button:active:not(:disabled) { transform: scale(0.97); }
+.button:focus-visible { outline: 2px solid var(--motif-color-focus); outline-offset: 2px; }
+.button:disabled { cursor: not-allowed; opacity: 0.5; }
+.button[aria-busy="true"] { cursor: progress; }
+.button-secondary { background: var(--motif-color-action-secondary); color: var(--motif-color-on-action-secondary); }
+
+/* Component: Field — a labelled input or textarea, with a hint and an error */
+.field { display: grid; gap: var(--motif-space-2); }
+.field-label {
+  font-family: var(--motif-font-label-family);
+  font-size: var(--motif-font-label-size);
+  font-weight: var(--motif-font-label-weight);
+  line-height: var(--motif-font-label-line-height);
+  color: var(--motif-color-text-primary);
+}
+.field-input {
+  min-height: 3rem;
+  padding: var(--motif-space-3) var(--motif-space-4);
+  border: 1px solid var(--motif-color-border);
+  border-radius: var(--motif-radius-md);
+  background: var(--motif-color-surface);
+  color: var(--motif-color-text-primary);
+  font-family: var(--motif-font-body-family);
+  font-size: var(--motif-font-body-size);
+  line-height: var(--motif-font-body-line-height);
+}
+.field-input:focus-visible { outline: 2px solid var(--motif-color-focus); outline-offset: 2px; }
+.field-input[aria-invalid="true"] { border-color: var(--motif-color-danger); }
+.field-input:disabled { opacity: 0.5; }
+.field-hint, .field-error {
+  margin: 0;
+  font-family: var(--motif-font-caption-family);
+  font-size: var(--motif-font-caption-size);
+  line-height: var(--motif-font-caption-line-height);
+}
+.field-hint { color: var(--motif-color-text-secondary); }
+.field-error { color: var(--motif-color-danger); }
+
+/* Component: Choice — one option in a group of radio buttons, with a swatch */
+.choice-group { display: flex; flex-wrap: wrap; gap: var(--motif-space-3); margin: 0; padding: 0; border: 0; }
+.choice-group > legend { margin-block-end: var(--motif-space-2); padding: 0; }
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--motif-space-2);
+  min-height: 3rem;
+  padding-inline: var(--motif-space-4);
+  border: 1px solid var(--motif-color-border);
+  border-radius: var(--motif-radius-full);
+  background: var(--motif-color-surface);
+  color: var(--motif-color-text-primary);
+  font-family: var(--motif-font-label-family);
+  font-size: var(--motif-font-label-size);
+  cursor: pointer;
+}
+.choice:has(.choice-input:checked) { border-color: var(--motif-color-action-primary); background: var(--motif-color-surface-raised); }
+.choice:has(.choice-input:focus-visible) { outline: 2px solid var(--motif-color-focus); outline-offset: 2px; }
+.choice-input { position: absolute; opacity: 0; pointer-events: none; }
+.choice-swatch { width: 1.25rem; height: 1.25rem; border-radius: var(--motif-radius-full); background: var(--stamp); }
+
+/* Component: Card — a group of related content */
+.card {
+  padding: var(--motif-space-5);
+  border: 1px solid var(--motif-color-border);
+  border-radius: var(--motif-radius-lg);
+  background: var(--motif-color-surface);
+}
+
+/* Component: ListItem — a row in a list */
+.list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--motif-color-border); border-radius: var(--motif-radius-lg); background: var(--motif-color-surface); }
+.list-item { display: flex; align-items: center; justify-content: space-between; gap: var(--motif-space-4); padding: var(--motif-space-4) var(--motif-space-5); }
+.list-item + .list-item { border-block-start: 1px solid var(--motif-color-border); }
+.list-item-title { margin: 0; color: var(--motif-color-text-primary); font-family: var(--motif-font-body-family); font-size: var(--motif-font-body-size); line-height: var(--motif-font-body-line-height); }
+.list-item-meta { margin: 0; color: var(--motif-color-text-secondary); font-family: var(--motif-font-caption-family); font-size: var(--motif-font-caption-size); line-height: var(--motif-font-caption-line-height); }
+
+/* Component: Badge — a status in words, on its status colour */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--motif-space-1) var(--motif-space-3);
+  border-radius: var(--motif-radius-full);
+  font-family: var(--motif-font-caption-family);
+  font-size: var(--motif-font-caption-size);
+  font-weight: var(--motif-font-label-weight);
+  line-height: var(--motif-font-caption-line-height);
+}
+.badge-success { background: var(--motif-color-success); color: var(--motif-color-on-success); }
+.badge-info { background: var(--motif-color-info); color: var(--motif-color-on-info); }
+
+/* Component: EmptyState — nothing here yet: a title and one line */
+.empty-state { padding: var(--motif-space-8) var(--motif-space-5); border: 1px dashed var(--motif-color-border); border-radius: var(--motif-radius-lg); text-align: center; }
+.empty-state-title { margin: 0 0 var(--motif-space-2); color: var(--motif-color-text-primary); font-family: var(--motif-font-heading-family); font-size: var(--motif-font-heading-size); font-weight: var(--motif-font-heading-weight); line-height: var(--motif-font-heading-line-height); }
+.empty-state-text { margin: 0; color: var(--motif-color-text-secondary); font-family: var(--motif-font-body-family); font-size: var(--motif-font-body-size); line-height: var(--motif-font-body-line-height); }
+
+/* Component: TopBar — the site's name at the top of every page */
+.top-bar { display: flex; align-items: center; min-height: 3.5rem; padding-inline: var(--motif-space-4); border-block-end: 1px solid var(--motif-color-border); background: var(--motif-color-surface); }
+.top-bar-title { margin: 0; color: var(--motif-color-text-primary); font-family: "Trebuchet MS", sans-serif; font-size: var(--motif-font-heading-size); font-weight: var(--motif-font-heading-weight); line-height: var(--motif-font-heading-line-height); }

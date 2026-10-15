@@ -35,7 +35,11 @@ export function assemble(fixture: FixtureName, dest: string): void {
   if (base) {
     copyKept(join(FIXTURES, fixture, "overlay"), dest);
     const list = JSON.parse(readFileSync(join(FIXTURES, fixture, "seeded-issues.json"), "utf8"));
-    for (const path of list.remove as string[]) rmSync(join(dest, path), { force: true });
+    for (const path of list.remove as string[]) {
+      rmSync(join(dest, path), { force: true });
+      // A folder the removal leaves empty goes too, so nothing hints at what was there.
+      for (let dir = dirname(join(dest, path)); dir !== dest && existsSync(dir) && readdirSync(dir).length === 0; dir = dirname(dir)) rmSync(dir, { recursive: true });
+    }
   }
 }
 

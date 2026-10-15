@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kitepost: send a postcard</title>
+  <link rel="stylesheet" href="motif.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="mock-data.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="top-bar">
+    <p class="top-bar-title">Kitepost</p>
+  </header>
+
+  <main class="page">
+    <section class="composer" id="composer" aria-labelledby="composer-title">
+      <h1 class="page-title" id="composer-title">Send a postcard <span class="plane" id="plane" aria-hidden="true">✈️</span></h1>
+
+      <div class="tip" id="tip">
+        <p class="tip-text">Tip: short messages feel friendlier.</p>
+        <button class="tip-close" id="tip-close" type="button" aria-label="Dismiss tip">×</button>
+      </div>
+
+      <form class="composer-form" id="form" novalidate>
+        <div class="field">
+          <input class="field-input" id="to" name="to" autocomplete="off" placeholder="To">
+        </div>
+        <div class="field">
+          <textarea class="field-input" id="message" name="message" rows="3" maxlength="140" placeholder="Message" aria-describedby="message-hint"></textarea>
+          <p class="field-hint" id="message-hint" style="color: #9A9A9A"><span id="message-count">0</span> of 140 characters</p>
+        </div>
+        <div class="field">
+          <input class="field-input" id="from" name="from" autocomplete="name" placeholder="From">
+        </div>
+        <fieldset class="choice-group">
+          <legend class="field-label">Stamp</legend>
+          <label class="choice"><input class="choice-input" type="radio" name="stamp" value="kite" checked><span class="choice-swatch" data-stamp="kite"></span>Kite</label>
+          <label class="choice"><input class="choice-input" type="radio" name="stamp" value="cloud"><span class="choice-swatch" data-stamp="cloud"></span>Cloud</label>
+          <label class="choice"><input class="choice-input" type="radio" name="stamp" value="ink"><span class="choice-swatch" data-stamp="ink"></span>Ink</label>
+        </fieldset>
+        <button class="button" type="submit">Submit</button>
+      </form>
+    </section>
+
+    <section class="sent" id="sent" tabindex="-1" aria-labelledby="sent-title" hidden>
+      <h1 class="page-title" id="sent-title">Your postcard is on its way</h1>
+      <p class="sent-text">We'll post it to <span id="sent-to"></span> tomorrow morning. Your tracking code is <strong id="sent-code"></strong>.</p>
+    </section>
+
+    <section class="recent" aria-labelledby="recent-title">
+      <h2 class="section-title" id="recent-title">Recently sent</h2>
+      <ul class="list" id="recent"></ul>
+      <div class="empty-state" id="recent-empty" hidden>
+        <p class="empty-state-title">No postcards yet</p>
+        <p class="empty-state-text">The postcards you send will be listed here.</p>
+      </div>
+    </section>
+
+    <figure class="postcard" id="preview" data-stamp="kite" aria-label="Postcard preview">
+      <span class="postcard-stamp" aria-hidden="true"></span>
+      <p class="postcard-message" id="preview-message">Your message appears here as you write it.</p>
+      <p class="postcard-line">To <span id="preview-to">someone special</span></p>
+      <p class="postcard-line">From <span id="preview-from">you</span></p>
+      <p class="postcard-small">Postage paid by Kitepost</p>
+    </figure>
+  </main>
+</body>
+</html>
