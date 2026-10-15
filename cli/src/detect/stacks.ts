@@ -24,8 +24,12 @@ export const NODE_STACKS: readonly StackId[] = ["react-web", "vue", "svelte", "a
 /** Where a plain web app's pages live: the first of these folders (inside the app) with an index.html. */
 export const SITE_FOLDERS = [".", "public", "src", "site", "www"] as const;
 
-/** Folders that hold apps, documentation, Motif's own files, templates or reports: never a plain web app themselves. */
-const NOT_SITES = new Set(["apps", "packages", "docs", "design", "templates", "coverage", "out", "storybook-static"]);
+/** Folders that hold apps, documentation, Motif's own files, templates, tests or reports: never a plain web app themselves. */
+const NOT_SITES = new Set(["apps", "packages", "docs", "design", "templates", "test", "tests", "coverage", "out", "storybook-static"]);
+
+/** Pages built by another UI library or a static-site generator: their sources aren't plain HTML and CSS. */
+const NOT_PLAIN_DEPS = ["preact", "solid-js", "lit", "@builder.io/qwik", "@stencil/core", "ember-source", "astro", "@11ty/eleventy"];
+const SSG_FILES = ["mkdocs.yml", "_config.yml", "hugo.toml", "hugo.yaml", "hugo.json", ".eleventy.js", "eleventy.config.js", "eleventy.config.mjs", "eleventy.config.cjs"];
 
 export function siteFolder(dir: string): string | null {
   return SITE_FOLDERS.find((f) => existsSync(join(dir, f, "index.html"))) ?? null;
@@ -123,8 +127,9 @@ export function detectStack(dir: string): StackId | null {
   if (looksLikeSwift && hasSwiftUIImport(dir)) return "swiftui";
 
   // Pages without a framework. React without known tooling isn't plain web: it's an app Motif can't place yet.
-  if (!deps?.has("react") && siteFolder(dir) !== null) return "plain-web";
-  return null;
+  if (deps?.has("react") || NOT_PLAIN_DEPS.some((d) => deps?.has(d))) return null;
+  if (SSG_FILES.some((f) => entries.includes(f))) return null;
+  return siteFolder(dir) !== null ? "plain-web" : null;
 }
 
 const SERVER_FRAMEWORKS = ["express", "fastify", "koa", "hono", "@nestjs/core", "@hapi/hapi"];
@@ -194,7 +199,8 @@ export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[]
   if (settings.apps) return { apps: settings.apps, findings: settings.findings };
 
   const rootStack = detectStack(root);
-  if (rootStack || isUnrecognisedReactApp(root)) {
+  // Pages at the root may sit beside an app in a subfolder (a server's public/ and a React client/): look further first.
+  if ((rootStack && rootStack !== "plain-web") || isUnrecognisedReactApp(root)) {
     return { apps: [detected(root, ".", rootStack)], findings: settings.findings };
   }
 
@@ -220,6 +226,10 @@ export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[]
   if (existsSync(join(root, "apps"))) scan("apps");
   if (existsSync(join(root, "packages"))) scan("packages");
   apps.sort((a, b) => a.path.localeCompare(b.path));
+  if (rootStack === "plain-web") {
+    const others = apps.filter((a) => a.stack !== "plain-web");
+    return { apps: others.length > 0 ? others : [detected(root, ".", rootStack)], findings: settings.findings };
+  }
   return { apps, findings: settings.findings };
 }
 

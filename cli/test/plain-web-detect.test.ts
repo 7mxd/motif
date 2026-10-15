@@ -66,3 +66,28 @@ describe("doctor", () => {
     expect(atRoot.find((i) => i.id === "app:.")!.detail).toContain("its pages are in this folder");
   });
 });
+
+describe("plain web next to other apps, and look-alikes (final review)", () => {
+  test("a React app in a subfolder is still found when the root also has pages", () => {
+    const express = makeProject({
+      "package.json": pkg({ express: "^5" }), "server.js": "", "public/index.html": "",
+      "client/package.json": pkg({ react: "^19", "react-dom": "^19", vite: "^6" }),
+    });
+    expect(detectApps(express).apps).toEqual([{ path: "client", stack: "react-web", source: "detected" }]);
+    const mono = makeProject({ "index.html": "", "apps/web/package.json": pkg({ next: "15", react: "19" }) });
+    expect(detectApps(mono).apps).toEqual([{ path: "apps/web", stack: "react-web", source: "detected" }]);
+    // Pages alone, or with only more pages below them, are still one plain web app at the root.
+    expect(detectApps(makeProject({ "public/index.html": "", "public/blog/index.html": "", "www/index.html": "" })).apps)
+      .toEqual([{ path: ".", stack: "plain-web", source: "detected", srcDir: "public" }]);
+  });
+
+  test("other UI libraries, static-site generators and test pages aren't plain web", () => {
+    for (const dep of ["preact", "solid-js", "lit", "@builder.io/qwik", "@stencil/core", "ember-source", "astro", "@11ty/eleventy"]) {
+      expect(detectStack(makeProject({ "package.json": pkg({ [dep]: "1", vite: "6" }), "index.html": "" }))).toBeNull();
+    }
+    for (const marker of ["mkdocs.yml", "_config.yml", "hugo.toml", "hugo.yaml", "eleventy.config.js", ".eleventy.js"]) {
+      expect(detectStack(makeProject({ [marker]: "", "public/index.html": "", "site/index.html": "", "index.html": "" }))).toBeNull();
+    }
+    expect(detectApps(makeProject({ "test/index.html": "", "tests/index.html": "" })).apps).toEqual([]);
+  });
+});
