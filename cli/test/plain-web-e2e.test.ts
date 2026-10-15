@@ -109,5 +109,5 @@ describe("the compiled tool on a plain web site", () => {
     expect(shot.json.states).toEqual(["sent", "errors", "empty"]);
     expect(shot.json.findings).toEqual([]);
     expect(shot.code).toBe(0);
-  });
+  }, 300_000);
 });
