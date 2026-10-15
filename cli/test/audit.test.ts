@@ -87,6 +87,7 @@ body { margin: 0; padding: 24px; font: 16px/1.5 sans-serif; background: #ffffff;
 <button id="off" disabled style="width: 16px; height: 16px; padding: 0" aria-label="Off"></button>
 <button id="hidden" style="display: none" aria-label="Hidden"></button>
 <details><summary style="display: flex; align-items: center; min-height: 48px">More options</summary><button id="tucked" style="width: 16px; height: 16px; padding: 0" aria-label="Tucked away"></button></details>
+<details open><summary style="display: flex; align-items: center; min-height: 48px">Open options</summary><button id="shown" style="width: 30px; height: 30px; padding: 0" aria-label="Shown"></button></details>
 <div class="box" id="spinner"></div>
 <div class="box" id="guarded"></div>
 <div class="box" id="mover"></div>
@@ -96,13 +97,22 @@ body { margin: 0; padding: 24px; font: 16px/1.5 sans-serif; background: #ffffff;
 const CLEAN = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111"><h1>Clean</h1><button style="width: 48px; height: 48px">OK</button><p>All good.</p></body></html>`;
 
+// A browser from before 2022 has no checkVisibility(): the audit still runs there.
+const OLD_BROWSER = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<script>delete Element.prototype.checkVisibility;</script></head>
+<body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111">
+<button id="small" style="width: 30px; height: 30px; padding: 0" aria-label="Small"></button></body></html>`;
+
 const browser = findBrowser();
 let server: ReturnType<typeof Bun.serve>;
 beforeAll(() => {
   server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch: (req) => new Response(new URL(req.url).pathname === "/clean" ? CLEAN : BAD, { headers: { "content-type": "text/html" } }),
+    fetch: (req) => {
+      const path = new URL(req.url).pathname;
+      return new Response(path === "/clean" ? CLEAN : path === "/old" ? OLD_BROWSER : BAD, { headers: { "content-type": "text/html" } });
+    },
   });
 });
 afterAll(() => server?.stop(true));
@@ -127,9 +137,23 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
       "major reduced-motion / #spinner",
       "major reduced-motion / #mover",
       "minor target-size / #go",
+      "minor target-size / #shown",
     ]);
     expect(findings[0]!.summary).toContain("Faint note");
     // Found at every phone size; the finding keeps the first screenshot, the narrowest phone.
     expect(findings[0]!.shot).toEndWith("index.mobile-360.png");
+  }, 120_000);
+
+  test("a browser without checkVisibility() still gets its audit", async () => {
+    const { routes, issues } = await captureScreens({
+      browserPath: browser!.path,
+      baseUrl: `http://127.0.0.1:${server.port}`,
+      routes: ["/old"],
+      outDir: tempDir("motif-audit-"),
+      audit: true,
+      settleMs: 100,
+    });
+    expect(routes[0]!.auditError).toBeUndefined();
+    expect(toFindings(issues).map((f) => `${f.severity} ${f.category} ${f.location.selector}`)).toEqual(["minor target-size #small"]);
   }, 120_000);
 });

@@ -131,7 +131,8 @@ function installAudit(): boolean {
         const style = getComputedStyle(el);
         if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") continue;
         // Inside something that isn't shown, such as a closed <details>: its size is measured, but nobody can tap it.
-        if (!el.checkVisibility()) continue;
+        // (Browsers from before 2022 have no checkVisibility.)
+        if (typeof el.checkVisibility === "function" && !el.checkVisibility()) continue;
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) continue;
         // Visually hidden for screen readers (the usual sr-only pattern): not something anyone taps.

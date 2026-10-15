@@ -50,8 +50,8 @@ describe("other values", () => {
     expect(cssFontFamily(["-apple-system", "BlinkMacSystemFont", "SF Pro Rounded", "Segoe UI", "Roboto", "sans-serif"])).toBe(
       '-apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", Roboto, sans-serif',
     );
-    // Names that aren't identifiers are still quoted: a leading digit, or a hyphen before a digit.
-    expect(cssFontFamily(["1Password Sans", "-9 Font"])).toBe('"1Password Sans", "-9 Font"');
+    // Names that aren't identifiers are still quoted: a leading digit, a hyphen before a digit, two hyphens.
+    expect(cssFontFamily(["1Password", "-9Font", "--x"])).toBe('"1Password", "-9Font", "--x"');
   });
   test("font weights", () => {
     expect(fontWeightNumber(600)).toBe(600);

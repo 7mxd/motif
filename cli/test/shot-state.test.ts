@@ -114,7 +114,7 @@ describe("each screenshot starts as a first visit (xBloom re-check)", () => {
     // The xBloom page remembers the theme button's choice: a state that pressed it turned the next "light" screenshot dark.
     const root = makeProject({
       "index.html": `<!doctype html><p>Hello</p><script>
-        if (localStorage.getItem("seen") || sessionStorage.getItem("seen") || document.cookie.includes("seen="))
+        if (localStorage.getItem("visits") || localStorage.getItem("seen") || sessionStorage.getItem("seen") || document.cookie.includes("seen="))
           throw new Error("Remembered from an earlier screenshot");
         localStorage.setItem("visits", "1");
       </script>`,
