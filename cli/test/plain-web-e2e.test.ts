@@ -99,7 +99,8 @@ describe("the compiled tool on a plain web site", () => {
     expect(run(seeded, ["check"]).json.summary).toMatchObject({ violations: 7, warnings: 1 });
     expect(run(seeded, ["extract"]).code).toBe(0);
     const report = JSON.parse(readFileSync(join(seeded, "design/extract-report.json"), "utf8"));
-    expect(report.variables).toContainEqual({ name: "--paper", light: "#FFF8EC" });
+    // The site's one typed colour is listed with its value (as a background, the only one the draft found).
+    expect(report.variables.find((v: { name: string }) => v.name === "--paper")).toMatchObject({ light: "#FFF8EC" });
   });
 
   test.skipIf(!browser)("shot --audit with Kitepost's state scripts finds nothing (needs Chrome, Edge or Chromium)", () => {

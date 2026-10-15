@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { basename, dirname, extname, join } from "node:path";
 import { launchBrowser } from "../browser/cdp";
 import { pngSize } from "../browser/png";
-import { MAX_HEIGHT } from "./capture";
+import { MAX_HEIGHT, screenOf, type Screen } from "./capture";
 
 export interface ComparePair {
   before: string;
@@ -73,16 +73,27 @@ export function pairWithMockup(frames: string[], shots: string[], compareDir: st
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-// The tool's own page (not the app), so it uses fixed neutral colours.
-function sideBySide(labels: [string, string], column: number, n: number): string {
+/**
+ * The side-by-side page. It's the tool's own page (not the app), so it uses fixed neutral colours. A screenshot that
+ * recorded what was on screen gets a dashed frame there, so "do these still fit on one screen?" can be seen at a glance.
+ */
+export function comparePage(labels: [string, string], column: number, n: number, screens: [Screen | null, Screen | null] = [null, null]): string {
+  const frame = (s: Screen | null) => {
+    if (!s) return "";
+    const k = column / s.width;
+    return `<div class="screen" style="top: ${Math.round(s.top * k)}px; height: ${Math.round(s.height * k)}px"><span>On screen</span></div>`;
+  };
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 body { margin: 0; padding: 16px; background: #f4f4f5; color: #18181b; font: 600 14px/1.4 system-ui, sans-serif; }
 .row { display: flex; gap: 16px; align-items: flex-start; }
 figure { margin: 0; width: ${column}px; }
 figcaption { margin: 0 0 8px; }
+.shot { position: relative; overflow: hidden; }
 img { display: block; width: 100%; border: 1px solid #d4d4d8; background: #ffffff; }
+.screen { position: absolute; left: 0; right: 0; box-sizing: border-box; border: 2px dashed #7c3aed; pointer-events: none; }
+.screen span { position: absolute; top: 0; right: 0; padding: 3px 6px; background: #7c3aed; color: #ffffff; font: 600 11px/1 system-ui, sans-serif; }
 #note { margin: 12px 0 0; font-weight: 400; }
-</style></head><body><div class="row"><figure><figcaption>${escapeHtml(labels[0])}</figcaption><img id="a" src="/a.png?${n}"></figure><figure><figcaption>${escapeHtml(labels[1])}</figcaption><img id="b" src="/b.png?${n}"></figure></div><p id="note"></p></body></html>`;
+</style></head><body><div class="row"><figure><figcaption>${escapeHtml(labels[0])}</figcaption><div class="shot"><img id="a" src="/a.png?${n}">${frame(screens[0])}</div></figure><figure><figcaption>${escapeHtml(labels[1])}</figcaption><div class="shot"><img id="b" src="/b.png?${n}">${frame(screens[1])}</div></figure></div><p id="note"></p></body></html>`;
 }
 
 /** In the page: the share of the two images that differs (scaled to 300 px wide), written under them and returned. */
@@ -142,11 +153,13 @@ export async function renderComparisons(opts: {
       const page = await browser.newPage();
       for (const [n, pair] of opts.pairs.entries()) {
         current = pair;
-        const width = pngSize(new Uint8Array(readFileSync(pair.after))).width;
+        const before = new Uint8Array(readFileSync(pair.before));
+        const after = new Uint8Array(readFileSync(pair.after));
+        const width = pngSize(after).width;
         // Phone screenshots are 2× (780 px → 390 CSS px per side); wide ones are shown 720 CSS px wide.
         const column = width > 1000 ? 720 : Math.round(width / 2);
         const pageWidth = column * 2 + 48;
-        html = sideBySide(opts.labels, column, n);
+        html = comparePage(opts.labels, column, n, [screenOf(before) ?? null, screenOf(after) ?? null]);
         await page.setViewport(pageWidth, 900, 2);
         await page.goto(`http://127.0.0.1:${server.port}/?${n}`);
         const changed = opts.measure ? await page.evaluate<number>(MEASURE) : undefined;

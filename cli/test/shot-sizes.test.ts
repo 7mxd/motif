@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { launchBrowser } from "../src/browser/cdp";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
-import { captureScreens, shotName, VIEWPORTS } from "../src/shot/capture";
+import { captureScreens, screenOf, shotName, VIEWPORTS } from "../src/shot/capture";
 import { pairWithMockup } from "../src/shot/compare";
 import { startStaticServer } from "../src/shot/static-server";
 import { makeProject } from "./project";
@@ -14,7 +14,10 @@ afterAll(cleanupTempDirs);
 
 describe("screenshot sizes", () => {
   test("three phones, a tablet and a desktop, each named apart in the screenshots", () => {
-    expect(VIEWPORTS.map((v) => [v.file ?? v.name, v.width])).toEqual([["mobile-360", 360], ["mobile", 390], ["mobile-430", 430], ["tablet", 768], ["desktop", 1440]]);
+    // Phones are as tall as a phone browser shows once its toolbar shrinks while scrolling (855 px on a 430 px iPhone).
+    expect(VIEWPORTS.map((v) => [v.file ?? v.name, v.width, v.height])).toEqual([
+      ["mobile-360", 360, 740], ["mobile", 390, 767], ["mobile-430", 430, 855], ["tablet", 768, 1024], ["desktop", 1440, 900],
+    ]);
     // Phones and the tablet are touch screens: the audit's 44 px tap-target check applies to them.
     expect(VIEWPORTS.filter((v) => v.mobile).map((v) => v.name)).toEqual(["mobile", "mobile", "mobile", "mobile"]);
     expect(shotName("index", "mobile-360", "dark")).toBe("index.mobile-360.dark.png");
@@ -59,6 +62,27 @@ describe("screenshot sizes", () => {
       ]);
       const width = (name: string) => pngSize(new Uint8Array(readFileSync(join(outDir, name)))).width;
       expect(["index.mobile-360.png", "index.mobile.png", "index.mobile-430.png", "index.tablet.png", "index.desktop.png"].map(width)).toEqual([720, 780, 860, 1536, 1440]);
+    } finally {
+      site.stop();
+    }
+  }, 120_000);
+});
+
+describe("each screenshot records what was on screen (Plan 2C)", () => {
+  const browser = findBrowser();
+  test.skipIf(!browser)("the part of the page in view, also after a state scrolled it (needs Chrome, Edge or Chromium)", async () => {
+    const root = makeProject({ "index.html": '<!doctype html><meta name="viewport" content="width=device-width"><body style="margin: 0"><div style="height: 3000px">Tall</div></body>' });
+    const site = startStaticServer(root);
+    try {
+      const outDir = join(root, "shots");
+      await captureScreens({
+        browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir, settleMs: 50,
+        states: [{ name: "scrolled", script: "window.scrollTo(0, 600);" }],
+      });
+      const screen = (name: string) => screenOf(new Uint8Array(readFileSync(join(outDir, name))));
+      expect(screen("index.mobile-430.png")).toEqual({ width: 430, top: 0, height: 855 });
+      expect(screen("index@scrolled.mobile-430.png")).toEqual({ width: 430, top: 600, height: 855 });
+      expect(screen("index.desktop.dark.png")).toEqual({ width: 1440, top: 0, height: 900 });
     } finally {
       site.stop();
     }

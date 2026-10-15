@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchBrowser } from "../browser/cdp";
+import { addPngText, readPngText } from "../browser/png";
 import { auditPage, type AuditIssue } from "./audit";
 
 export interface Viewport {
@@ -17,11 +18,13 @@ export interface Viewport {
 /**
  * Every page is captured at each size: a narrow, a usual and a wide phone, a tablet and a desktop. A layout that holds
  * on one phone can break on another (the xBloom review's regression showed at 430 px, not 390), so all are checked.
+ * Phones are as tall as a phone browser shows once its toolbar shrinks while scrolling, not the whole screen: about
+ * 855 px on a 430 px iPhone, where the xBloom card and its sliders stopped fitting at 863 px.
  */
 export const VIEWPORTS: Viewport[] = [
-  { name: "mobile", file: "mobile-360", width: 360, height: 780, scale: 2, mobile: true },
-  { name: "mobile", width: 390, height: 844, scale: 2, mobile: true },
-  { name: "mobile", file: "mobile-430", width: 430, height: 932, scale: 2, mobile: true },
+  { name: "mobile", file: "mobile-360", width: 360, height: 740, scale: 2, mobile: true },
+  { name: "mobile", width: 390, height: 767, scale: 2, mobile: true },
+  { name: "mobile", file: "mobile-430", width: 430, height: 855, scale: 2, mobile: true },
   { name: "mobile", file: "tablet", width: 768, height: 1024, scale: 2, mobile: true },
   { name: "desktop", width: 1440, height: 900, scale: 1, mobile: false },
 ];
@@ -29,6 +32,24 @@ export const SCHEMES = ["light", "dark"] as const;
 export type Scheme = (typeof SCHEMES)[number];
 /** Taller pages are cropped: 8000 CSS px at 2× stays under Chrome's 16384 px screenshot limit. */
 export const MAX_HEIGHT = 8000;
+
+/** The part of the page that was on screen when a screenshot was taken, in CSS px: kept inside the PNG. */
+export interface Screen {
+  width: number;
+  top: number;
+  height: number;
+}
+const SCREEN_KEY = "motif:screen";
+
+/** What was on screen in a screenshot Motif took; nothing for older screenshots, mockups or other images. */
+export function screenOf(png: Uint8Array): Screen | undefined {
+  try {
+    const s = JSON.parse(readPngText(png, SCREEN_KEY) ?? "null");
+    return s && [s.width, s.top, s.height].every((n) => typeof n === "number" && Number.isFinite(n)) ? { width: s.width, top: s.top, height: s.height } : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** A script run in each page before it's captured again: its file name names the state ("editor" → index@editor.png). */
 export interface StateScript {
@@ -166,8 +187,12 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 }
                 const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
                 if (fullHeight > MAX_HEIGHT) result.cropped = true;
+                // Where the page was scrolled to (a state can scroll something into view): comparisons frame that screen.
+                const top = Math.round(await page.evaluate<number>("scrollY"));
                 const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.file ?? viewport.name, scheme));
-                writeFileSync(file, await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) }));
+                const png = await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) });
+                const screen: Screen = { width: viewport.width, top, height: viewport.height };
+                writeFileSync(file, addPngText(png, SCREEN_KEY, JSON.stringify(screen)));
                 result.shots.push(file);
                 if (opts.audit) {
                   try {

@@ -2,9 +2,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchBrowser } from "../src/browser/cdp";
-import { pngSize } from "../src/browser/png";
+import { addPngText, pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
-import { mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
+import { comparePage, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -76,6 +76,19 @@ describe("pairing", () => {
   });
 });
 
+describe("the frame around what was on screen (Plan 2C)", () => {
+  test("is drawn where the screenshot recorded it, scaled to the column", () => {
+    const html = comparePage(["Before", "Now"], 430, 0, [{ width: 430, top: 600, height: 855 }, null]);
+    expect(html.match(/class="screen"/g)).toHaveLength(1);
+    expect(html).toContain("top: 600px; height: 855px");
+    expect(html).toContain("On screen");
+    // A desktop screenshot (1440 CSS px) is shown 720 px wide: half the size.
+    expect(comparePage(["Before", "Now"], 720, 0, [{ width: 1440, top: 0, height: 900 }, { width: 1440, top: 0, height: 900 }])).toContain("top: 0px; height: 450px");
+    // Mockups and sets saved before this change have no record, and no frame.
+    expect(comparePage(["Mockup", "The app now"], 390, 0, [null, null])).not.toContain('class="screen"');
+  });
+});
+
 const browser = findBrowser();
 
 /** A real 2× screenshot (400×600 px) of a 200×300 page. */
@@ -125,6 +138,20 @@ describe.skipIf(!browser)("renderComparisons (needs Chrome, Edge or Chromium)", 
     });
     expect(result!.changed).toBeUndefined();
     expect(pngSize(new Uint8Array(readFileSync(join(dir, "out.png")))).width).toBe(896);
+  }, 60_000);
+
+  test("screenshots carrying what was on screen still open and measure as before", async () => {
+    const dir = tempDir("motif-compare-");
+    const shot = addPngText(await screenshotOf("<p>Same</p>"), "motif:screen", JSON.stringify({ width: 200, top: 0, height: 150 }));
+    writeFileSync(join(dir, "a.png"), shot);
+    writeFileSync(join(dir, "b.png"), shot);
+    const [result] = await renderComparisons({
+      browserPath: browser!.path,
+      labels: ["Before", "Now"],
+      measure: true,
+      pairs: [{ before: join(dir, "a.png"), after: join(dir, "b.png"), out: join(dir, "out.png") }],
+    });
+    expect(result!.changed).toBe(0);
   }, 60_000);
 
   test("nothing to compare is not an error", async () => {
