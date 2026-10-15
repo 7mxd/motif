@@ -31,6 +31,10 @@ describe("the plain seeded site's list of planted problems", () => {
     expect(issues.filter((i) => i.kind === "judgement").length).toBeGreaterThanOrEqual(5);
   });
 
+  test("at least 7 judgement problems, so the 70% bar allows two misses (5 of 7), close to the React app's three in 10", () => {
+    expect(issues.filter((i) => i.kind === "judgement").length).toBeGreaterThanOrEqual(7);
+  });
+
   test("every entry is well formed", () => {
     expect(new Set(issues.map((i) => i.id)).size).toBe(issues.length);
     for (const i of issues) {

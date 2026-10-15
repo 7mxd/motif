@@ -1,6 +1,6 @@
 # The plain seeded site
 
-Kitepost (the plain contract site) with 17 planted problems, for test C's `c-plain`: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
+Kitepost (the plain contract site) with 18 planted problems, for test C's `c-plain`: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
 
 ## How it's built
 
@@ -24,15 +24,16 @@ Nothing needs installing: `motif shot` serves the site itself.
 | P-06 | exact (check) | Typed `250ms ease-in-out` press transition | `components.css:20` |
 | P-07 | exact (check) | Generated theme CSS edited by hand | `motif.css` |
 | P-08 | exact (validate) | text-secondary too faint on light surfaces | `design/tokens.json` |
-| P-09 | exact (shot) | The postcard's small print (primary text) faded to unreadable | `/`, `index.html:67` |
+| P-09 | exact (shot) | The postcard's small print (primary text) faded to unreadable | `/`, `index.html:63` |
 | P-10 | exact (shot) | 20×20 px dismiss button on the tip | `/`, `index.html:24` |
-| P-11 | exact (shot) | A scripted plane keeps drifting under reduced motion | `/`, `app.js:52` |
+| P-11 | exact (shot) | A scripted plane keeps drifting under reduced motion | `/`, `app.js:51` |
 | P-12 | judgement | The preview sits below the recent list, off screen while you write | `/` |
 | P-13 | judgement | The send button says "Submit" | `/`, `index.html:44` |
 | P-14 | judgement | Nothing checks the form: an empty postcard can be sent | `/`, `app.js` |
 | P-15 | judgement | Placeholders instead of labels | `/`, `index.html` |
 | P-16 | judgement | An emoji as decoration in the title | `/`, `index.html:20` |
 | P-17 | judgement | No way to write another postcard after sending | `/` (after sending) |
+| P-18 | judgement | The recently sent list has no empty state | `/`, `index.html` |
 
 ## How a grader reads the list
 

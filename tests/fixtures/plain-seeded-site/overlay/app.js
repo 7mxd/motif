@@ -37,7 +37,6 @@ function renderRecent(items) {
     return row;
   }));
   list.hidden = items.length === 0;
-  $("recent-empty").hidden = items.length > 0;
 }
 
 form.addEventListener("input", updatePreview);
