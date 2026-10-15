@@ -15,7 +15,8 @@ export interface Page {
   setViewport(width: number, height: number, scale?: number, mobile?: boolean): Promise<void>;
   emulateMedia(features: { name: string; value: string }[]): Promise<void>;
   goto(url: string, timeoutMs?: number): Promise<void>;
-  evaluate<T = unknown>(expression: string): Promise<T>;
+  /** With timeoutMs, a script still running after that long is stopped and the call fails. */
+  evaluate<T = unknown>(expression: string, opts?: { timeoutMs?: number }): Promise<T>;
   screenshot(clip?: Clip): Promise<Uint8Array>;
   /** Uncaught errors the page threw since the last call (first line of each), then forgets them. */
   takeErrors(): string[];
@@ -224,9 +225,15 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
       await send("Runtime.enable", {}, sessionId);
       const errors: string[] = [];
       const onError = (m: Message) => {
-        if (m.sessionId !== sessionId || m.method !== "Runtime.exceptionThrown") return;
-        const details = m.params?.exceptionDetails;
-        errors.push(String(details?.exception?.description ?? details?.text ?? "Unknown error").split("\n")[0]!);
+        if (m.sessionId !== sessionId) return;
+        if (m.method === "Runtime.exceptionThrown") {
+          const details = m.params?.exceptionDetails;
+          errors.push(String(details?.exception?.description ?? details?.text ?? "Unknown error").split("\n")[0]!);
+        } else if (m.method === "Page.javascriptDialogOpening") {
+          // A dialog (alert, confirm, prompt) stops the page until it's answered: close it, and say so.
+          errors.push(`The page opened a dialog ("${String(m.params?.message ?? "")}"); Motif closed it.`);
+          send("Page.handleJavaScriptDialog", { accept: m.params?.type === "beforeunload" }, sessionId).catch(() => undefined);
+        }
       };
       listeners.add(onError);
       return {
@@ -245,10 +252,20 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
           }
           await loaded;
         },
-        async evaluate<T>(expression: string): Promise<T> {
-          const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, sessionId);
+        async evaluate<T>(expression: string, opts: { timeoutMs?: number } = {}): Promise<T> {
+          const limit = opts.timeoutMs;
+          const stopped = () => new Error(`it was still running after ${Math.round(limit! / 1000)} seconds`);
+          let r: any;
+          try {
+            r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, ...(limit ? { timeout: limit } : {}) }, sessionId);
+          } catch (e) {
+            if (limit && /terminat/i.test(e instanceof Error ? e.message : String(e))) throw stopped();
+            throw e;
+          }
           if (r.exceptionDetails) {
-            throw new Error(`Script error in the page: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
+            const text = String(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
+            if (limit && /terminat/i.test(text)) throw stopped();
+            throw new Error(`Script error in the page: ${text}`);
           }
           return r.result.value as T;
         },

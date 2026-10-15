@@ -3,7 +3,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { readStates, runShot, type ShotDeps } from "../src/commands/shot";
 import { toFindings, type AuditIssue } from "../src/shot/audit";
-import { stateExpression, type CaptureOptions } from "../src/shot/capture";
+import { findBrowser } from "../src/detect/browser";
+import { captureScreens, stateExpression, type CaptureOptions } from "../src/shot/capture";
+import { startStaticServer } from "../src/shot/static-server";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -75,4 +77,33 @@ describe("audit findings in a state", () => {
     expect(findings).toHaveLength(2);
     expect(findings.map((f) => f.location.state)).toEqual([undefined, "editor"]);
   });
+});
+
+describe("state scripts in a real browser (final review)", () => {
+  const browser = findBrowser();
+  test.skipIf(!browser)("a dialog is closed and reported, and a script that never stops doesn't lose the page's other screenshots", async () => {
+    const root = makeProject({
+      "index.html": '<!doctype html><button id="del" onclick="if (confirm(\'Delete this card?\')) document.body.dataset.deleted = 1">Delete</button>',
+    });
+    const site = startStaticServer(root);
+    try {
+      const outDir = join(root, "shots");
+      const r = await captureScreens({
+        browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir, settleMs: 50, stateTimeoutMs: 1000,
+        states: [
+          { name: "dialog", script: 'document.getElementById("del").click();' },
+          { name: "loop", script: "while (true) {}" },
+        ],
+      });
+      const home = r.routes[0]!;
+      expect(home.error).toBeUndefined();
+      expect(home.shots).toHaveLength(12);
+      const errors = (home.pageErrors ?? []).join("\n");
+      expect(errors).toContain('State "dialog": The page opened a dialog ("Delete this card?")');
+      expect(errors).toContain('State "loop"');
+      expect(errors).not.toContain("stuck in a loop");
+    } finally {
+      site.stop();
+    }
+  }, 120_000);
 });

@@ -58,6 +58,8 @@ export interface CaptureOptions {
   motionSampleMs?: number;
   /** Also capture each page after each of these scripts runs in it. */
   states?: StateScript[];
+  /** How long a state script may run (15 s). */
+  stateTimeoutMs?: number;
 }
 
 export function routeSlug(route: string): string {
@@ -95,6 +97,7 @@ async function probe(url: string, timeoutMs: number): Promise<{ status: number; 
 export async function captureScreens(opts: CaptureOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[] }> {
   const settleMs = opts.settleMs ?? 800;
   const timeoutMs = opts.timeoutMs ?? 60_000;
+  const stateTimeoutMs = opts.stateTimeoutMs ?? 15_000;
   mkdirSync(opts.outDir, { recursive: true });
   const browser = await launchBrowser(opts.browserPath);
   const results: RouteResult[] = [];
@@ -116,47 +119,62 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
         continue;
       }
 
-      const page = await browser.newPage();
+      let page = await browser.newPage();
+      const addErrors = (messages: string[]) => {
+        if (messages.length > 0) result.pageErrors = [...new Set([...(result.pageErrors ?? []), ...messages])];
+      };
       try {
         for (const viewport of VIEWPORTS) {
           await page.setViewport(viewport.width, viewport.height, viewport.scale, viewport.mobile);
           for (const scheme of SCHEMES) {
-            await page.emulateMedia([
+            const media = [
               { name: "prefers-color-scheme", value: scheme },
               { name: "prefers-reduced-motion", value: "reduce" },
-            ]);
+            ];
+            await page.emulateMedia(media);
             for (const state of [undefined, ...(opts.states ?? [])]) {
               const tag = (message: string) => (state ? `State "${state.name}": ${message}` : message);
-              page.takeErrors();
-              await page.goto(url, timeoutMs);
-              await page.evaluate("document.fonts.ready.then(() => true)");
-              if (state) {
-                try {
-                  await page.evaluate(stateExpression(state.script));
-                } catch (e) {
-                  result.pageErrors = [...new Set([...(result.pageErrors ?? []), tag(e instanceof Error ? e.message : String(e))])];
+              try {
+                page.takeErrors();
+                await page.goto(url, timeoutMs);
+                await page.evaluate("document.fonts.ready.then(() => true)");
+                if (state) {
+                  try {
+                    await page.evaluate(stateExpression(state.script, stateTimeoutMs), { timeoutMs: stateTimeoutMs });
+                  } catch (e) {
+                    addErrors([tag(e instanceof Error ? e.message : String(e))]);
+                  }
                 }
-              }
-              await Bun.sleep(settleMs);
-              const thrown = page.takeErrors();
-              if (thrown.length > 0) {
-                result.pageErrors = [...new Set([...(result.pageErrors ?? []), ...thrown.map(tag)])];
-              } else {
-                // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.
-                await page.evaluate(HIDE_DEV_BADGES);
-              }
-              const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
-              if (fullHeight > MAX_HEIGHT) result.cropped = true;
-              const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.name, scheme));
-              writeFileSync(file, await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) }));
-              result.shots.push(file);
-              if (opts.audit) {
-                try {
-                  const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
-                  for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}) });
-                } catch (e) {
-                  result.auditError = e instanceof Error ? e.message : String(e);
+                await Bun.sleep(settleMs);
+                const thrown = page.takeErrors();
+                if (thrown.length > 0) {
+                  addErrors(thrown.map(tag));
+                } else {
+                  // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.
+                  await page.evaluate(HIDE_DEV_BADGES);
                 }
+                const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
+                if (fullHeight > MAX_HEIGHT) result.cropped = true;
+                const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.name, scheme));
+                writeFileSync(file, await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) }));
+                result.shots.push(file);
+                if (opts.audit) {
+                  try {
+                    const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
+                    for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}) });
+                  } catch (e) {
+                    result.auditError = e instanceof Error ? e.message : String(e);
+                  }
+                }
+              } catch (e) {
+                // A plain page that fails stops its route, as before. A state that leaves the page unusable costs only
+                // its own screenshot: the rest go on in a fresh tab.
+                if (!state) throw e;
+                addErrors([...page.takeErrors().map(tag), tag(`Motif couldn't capture this state: ${e instanceof Error ? e.message : String(e)}`)]);
+                await page.close().catch(() => undefined);
+                page = await browser.newPage();
+                await page.setViewport(viewport.width, viewport.height, viewport.scale, viewport.mobile);
+                await page.emulateMedia(media);
               }
             }
           }
