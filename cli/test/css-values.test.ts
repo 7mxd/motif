@@ -46,6 +46,13 @@ describe("other values", () => {
     expect(cssFontFamily(["Inter", "Helvetica Neue", "system-ui", "sans-serif"])).toBe('Inter, "Helvetica Neue", system-ui, sans-serif');
     expect(cssFontFamily("Inter")).toBe("Inter");
   });
+  test("system font keywords stay unquoted (quoted, -apple-system is just a font nobody has)", () => {
+    expect(cssFontFamily(["-apple-system", "BlinkMacSystemFont", "SF Pro Rounded", "Segoe UI", "Roboto", "sans-serif"])).toBe(
+      '-apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", Roboto, sans-serif',
+    );
+    // Names that aren't identifiers are still quoted: a leading digit, or a hyphen before a digit.
+    expect(cssFontFamily(["1Password Sans", "-9 Font"])).toBe('"1Password Sans", "-9 Font"');
+  });
   test("font weights", () => {
     expect(fontWeightNumber(600)).toBe(600);
     expect(fontWeightNumber("semi-bold")).toBe(600);

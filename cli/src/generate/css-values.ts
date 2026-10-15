@@ -73,7 +73,8 @@ const GENERIC_FAMILIES = new Set([
 
 export function cssFontFamily(v: string | string[]): string {
   return (Array.isArray(v) ? v : [v])
-    .map((name) => (GENERIC_FAMILIES.has(name.toLowerCase()) || /^[A-Za-z][\w-]*$/.test(name) ? name : `"${name.replace(/"/g, '\\"')}"`))
+    // A single identifier stays as it is: system keywords like -apple-system only work unquoted.
+    .map((name) => (GENERIC_FAMILIES.has(name.toLowerCase()) || /^-?[A-Za-z_][\w-]*$/.test(name) ? name : `"${name.replace(/"/g, '\\"')}"`))
     .join(", ");
 }
 
