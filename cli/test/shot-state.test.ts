@@ -107,3 +107,30 @@ describe("state scripts in a real browser (final review)", () => {
     }
   }, 120_000);
 });
+
+describe("each screenshot starts as a first visit (xBloom re-check)", () => {
+  const browser = findBrowser();
+  test.skipIf(!browser)("nothing a page or a state stores reaches the next screenshot", async () => {
+    // The xBloom page remembers the theme button's choice: a state that pressed it turned the next "light" screenshot dark.
+    const root = makeProject({
+      "index.html": `<!doctype html><p>Hello</p><script>
+        if (localStorage.getItem("seen") || sessionStorage.getItem("seen") || document.cookie.includes("seen="))
+          throw new Error("Remembered from an earlier screenshot");
+        localStorage.setItem("visits", "1");
+      </script>`,
+    });
+    const site = startStaticServer(root);
+    try {
+      const r = await captureScreens({
+        browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir: join(root, "shots"), settleMs: 50,
+        states: [{ name: "remember", script: 'localStorage.setItem("seen", "1"); sessionStorage.setItem("seen", "1"); document.cookie = "seen=1; path=/";' }],
+      });
+      const home = r.routes[0]!;
+      expect(home.error).toBeUndefined();
+      expect(home.shots).toHaveLength(20);
+      expect(home.pageErrors ?? []).toEqual([]);
+    } finally {
+      site.stop();
+    }
+  }, 120_000);
+});

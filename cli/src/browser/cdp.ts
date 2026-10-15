@@ -26,7 +26,11 @@ export interface Page {
 export interface Browser {
   /** The browser's process id. */
   readonly pid: number;
-  newPage(): Promise<Page>;
+  /**
+   * With isolated, the tab gets a context of its own, like a private window: nothing other tabs stored
+   * (cookies, local and session storage, caches) reaches it, and what it stores goes when it closes.
+   */
+  newPage(opts?: { isolated?: boolean }): Promise<Page>;
   close(): Promise<void>;
 }
 
@@ -218,8 +222,9 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
 
   return {
     pid: proc.pid!,
-    async newPage(): Promise<Page> {
-      const { targetId } = await send("Target.createTarget", { url: "about:blank" });
+    async newPage(opts: { isolated?: boolean } = {}): Promise<Page> {
+      const browserContextId: string | undefined = opts.isolated ? (await send("Target.createBrowserContext", {})).browserContextId : undefined;
+      const { targetId } = await send("Target.createTarget", { url: "about:blank", ...(browserContextId ? { browserContextId } : {}) });
       const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
       await send("Page.enable", {}, sessionId);
       await send("Runtime.enable", {}, sessionId);
@@ -282,6 +287,7 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
         async close() {
           listeners.delete(onError);
           await send("Target.closeTarget", { targetId });
+          if (browserContextId) await send("Target.disposeBrowserContext", { browserContextId });
         },
       };
     },

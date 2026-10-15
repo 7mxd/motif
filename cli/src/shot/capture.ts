@@ -129,23 +129,24 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
         continue;
       }
 
-      let page = await browser.newPage();
       const addErrors = (messages: string[]) => {
         if (messages.length > 0) result.pageErrors = [...new Set([...(result.pageErrors ?? []), ...messages])];
       };
       try {
         for (const viewport of VIEWPORTS) {
-          await page.setViewport(viewport.width, viewport.height, viewport.scale, viewport.mobile);
           for (const scheme of SCHEMES) {
             const media = [
               { name: "prefers-color-scheme", value: scheme },
               { name: "prefers-reduced-motion", value: "reduce" },
             ];
-            await page.emulateMedia(media);
             for (const state of [undefined, ...(opts.states ?? [])]) {
               const tag = (message: string) => (state ? `State "${state.name}": ${message}` : message);
+              // Each screenshot starts as a first visit, in a tab of its own: nothing an earlier page or state stored
+              // (a theme choice, a dismissed banner, a cookie) changes it.
+              const page = await browser.newPage({ isolated: true });
               try {
-                page.takeErrors();
+                await page.setViewport(viewport.width, viewport.height, viewport.scale, viewport.mobile);
+                await page.emulateMedia(media);
                 await page.goto(url, timeoutMs);
                 await page.evaluate("document.fonts.ready.then(() => true)");
                 if (state) {
@@ -178,21 +179,17 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 }
               } catch (e) {
                 // A plain page that fails stops its route, as before. A state that leaves the page unusable costs only
-                // its own screenshot: the rest go on in a fresh tab.
+                // its own screenshot: the rest go on, each in its own tab anyway.
                 if (!state) throw e;
                 addErrors([...page.takeErrors().map(tag), tag(`Motif couldn't capture this state: ${e instanceof Error ? e.message : String(e)}`)]);
+              } finally {
                 await page.close().catch(() => undefined);
-                page = await browser.newPage();
-                await page.setViewport(viewport.width, viewport.height, viewport.scale, viewport.mobile);
-                await page.emulateMedia(media);
               }
             }
           }
         }
       } catch (e) {
         result.error = e instanceof Error ? e.message : String(e);
-      } finally {
-        await page.close().catch(() => undefined);
       }
     }
   } finally {
