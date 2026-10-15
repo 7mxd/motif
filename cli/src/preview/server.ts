@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync, watch, type FSWatcher } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync, watch, type FSWatcher } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { previewCss } from "../generate/preview-css";
 import { fontStylesheets } from "../generate/theme-fonts";
@@ -21,6 +21,9 @@ export const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".webp": "image/webp", ".gif": "image/gif", ".woff2": "font/woff2", ".woff": "font/woff",
+  ".htm": "text/html; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".avif": "image/avif", ".ico": "image/x-icon",
+  ".ttf": "font/ttf", ".otf": "font/otf", ".mp4": "video/mp4", ".webm": "video/webm", ".wasm": "application/wasm",
+  ".txt": "text/plain; charset=utf-8", ".xml": "application/xml",
 };
 
 /**
@@ -44,6 +47,24 @@ export function injectKit(html: string, themeHref: string, fontLinks: string[] =
 }
 
 /** The file a request path names, or null if it would leave the project folder. */
+/**
+ * The real path of an existing file or folder (links followed, Windows short names like ENV~1 expanded) when it is
+ * inside root's real path and nothing on the way is hidden (.env, .git); otherwise null.
+ */
+export function realInside(root: string, path: string): string | null {
+  let real: string;
+  let realRoot: string;
+  try {
+    real = realpathSync.native(path);
+    realRoot = realpathSync.native(root);
+  } catch {
+    return null;
+  }
+  const rel = relative(realRoot, real);
+  if (rel.split(sep)[0] === ".." || isAbsolute(rel)) return null;
+  return rel.split(sep).some((part) => part.startsWith(".")) ? null : real;
+}
+
 export function resolveInside(root: string, urlPath: string): string | null {
   let decoded: string;
   try {
@@ -142,10 +163,12 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       if (sample) {
         return presetTheme(sample[1]!) ? html(injectKit(TEMPLATE_HTML, `/__motif/theme.css?preset=${sample[1]}`)) : notFound();
       }
-      const file = resolveInside(root, path);
-      if (!file || !existsSync(file) || !statSync(file).isFile()) return notFound();
-      // Hidden files and folders (.env, .git) are never mockup material.
-      if (relative(root, file).split(sep).some((part) => part.startsWith("."))) return notFound();
+      const asked = resolveInside(root, path);
+      if (!asked || !existsSync(asked) || !statSync(asked).isFile()) return notFound();
+      // Hidden files and folders (.env, .git) are never mockup material, under any name or through any link.
+      if (relative(root, asked).split(sep).some((part) => part.startsWith("."))) return notFound();
+      const file = realInside(root, asked);
+      if (!file) return notFound();
       const ext = extname(file).toLowerCase();
       if (ext === ".html") {
         const theme = mockupTheme(file);

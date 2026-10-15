@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { dirname, join } from "node:path";
 import { runShot, type ShotDeps } from "../src/commands/shot";
@@ -61,6 +61,36 @@ describe("the static server for plain sites", () => {
       expect((await raw(port, "/", "evil.example:80")).status).toBe(403);
       expect((await raw(port, "/", `localhost:${port}`)).status).toBe(200);
       expect(s.url).toStartWith("http://127.0.0.1:");
+    } finally {
+      s.stop();
+    }
+  });
+});
+
+describe("the static server, after the final review", () => {
+  test("never serves a hidden file by its Windows short name, or a file outside the site through a link", async () => {
+    const root = makeProject({ ...SITE, "outside/secret.txt": "outside the site" });
+    symlinkSync(join(root, "outside"), join(root, "public/linked"), "junction");
+    const s = startStaticServer(join(root, "public"));
+    try {
+      const port = Number(new URL(s.url).port);
+      expect((await raw(port, "/linked/secret.txt")).status).toBe(404);
+      expect((await raw(port, "/linked/")).status).toBe(404);
+      if (existsSync(join(root, "public/ENV~1"))) expect((await raw(port, "/ENV~1")).status).toBe(404);
+      if (existsSync(join(root, "public/GIT~1"))) expect((await raw(port, "/GIT~1/config")).status).toBe(404);
+      expect((await raw(port, "/about.html")).status).toBe(200);
+    } finally {
+      s.stop();
+    }
+  });
+
+  test("serves .htm pages and .mjs modules with their types", async () => {
+    const root = makeProject({ "public/index.html": "", "public/old.htm": "<h1>Old</h1>", "public/app.mjs": "export {};", "public/icon.ico": "x" });
+    const s = startStaticServer(join(root, "public"));
+    try {
+      expect((await fetch(`${s.url}/old.htm`)).headers.get("content-type")).toContain("text/html");
+      expect((await fetch(`${s.url}/app.mjs`)).headers.get("content-type")).toContain("text/javascript");
+      expect((await fetch(`${s.url}/icon.ico`)).headers.get("content-type")).toBe("image/x-icon");
     } finally {
       s.stop();
     }

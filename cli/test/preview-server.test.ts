@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { buildTheme } from "../src/generate/theme";
@@ -135,6 +135,22 @@ describe("startPreviewServer", () => {
     expect((await fetch(`${base}/.env`)).status).toBe(404);
     expect((await fetch(`${base}/.git/config`)).status).toBe(404);
   }));
+
+  test("never serves a hidden file by its Windows short name, or a file outside through a link (final review)", async () => {
+    const project = makeProject({ "outside/secret.txt": "outside", "app/logo.svg": "<svg/>", "app/.env": "API_KEY=secret" });
+    const root = join(project, "app");
+    symlinkSync(join(project, "outside"), join(root, "linked"), "junction");
+    const server = startPreviewServer({ root, theme });
+    try {
+      const port = Number(new URL(server.url).port);
+      expect(await rawStatus(port, "/linked/secret.txt", `127.0.0.1:${port}`)).toBe(404);
+      // Windows answers to the 8.3 short name of .env where short names are on.
+      if (existsSync(join(root, "ENV~1"))) expect(await rawStatus(port, "/ENV~1", `127.0.0.1:${port}`)).toBe(404);
+      expect(await rawStatus(port, "/logo.svg", `127.0.0.1:${port}`)).toBe(200);
+    } finally {
+      server.stop();
+    }
+  });
 
   test("gallery, preset samples and compare pages", withServer(async (base) => {
     const gallery = await (await fetch(`${base}/__motif/gallery`)).text();
