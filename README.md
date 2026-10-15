@@ -15,7 +15,7 @@ Design guide tools for AI coding agents: build web and mobile apps with polished
 | `motif check` | Finds colours, sizes and animations in your code that bypass your design guide |
 | `motif extract` | Drafts a design guide from an existing app's code |
 | `motif preview` | Shows mockups in your browser with live reload and saves them as PNGs in light and dark; `--compare` puts several side by side, `--gallery` shows the 8 starting styles; mockups show your theme's real fonts |
-| `motif shot` | Screenshots your real app's pages at phone and desktop widths in light and dark (starting its dev server if needed, or serving a plain web site's folder itself); `--state <script>` also captures states behind a form or a click; `--audit` checks contrast, tap-target sizes and reduced motion as rendered; `--against` puts them side by side with the mockup while you build, or with an earlier run (`--save before`) after a rebuild |
+| `motif shot` | Screenshots your real app's pages at three phone sizes (360, 390 and 430 px wide), a tablet and a desktop, in light and dark (starting its dev server if needed, or serving a plain web site's folder itself); `--state <script>` also captures states behind a form or a click; `--audit` checks contrast, tap-target sizes and reduced motion as rendered; `--against` puts them side by side with the mockup while you build, or with an earlier run (`--save before`) after a rebuild |
 | `motif browser` | Shows which browser previews use; `motif browser install` downloads a private one if you have none |
 
 Add `--json` for machine-readable output and `--cwd <folder>` to run elsewhere. In a project with several apps, `--app <path>` picks one.

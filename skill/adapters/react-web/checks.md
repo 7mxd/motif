@@ -73,7 +73,7 @@ From `motif shot --audit`: text measured on screen below 4.5:1 (3:1 for large te
 
 ## Target size
 
-From `motif shot --audit`: a control smaller than 24×24 px (critical), or smaller than 44×44 px at phone widths (minor).
+From `motif shot --audit`: a control smaller than 24×24 px (critical), or smaller than 44×44 px on touch screens: the phone and tablet sizes (minor).
 
 - Fix: `min-h-12` on buttons, `size-12` on icon buttons, more padding around small links, or more space between neighbouring controls.
 

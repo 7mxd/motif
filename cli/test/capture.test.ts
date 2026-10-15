@@ -53,11 +53,11 @@ afterAll(() => server?.stop(true));
 const size = (file: string) => pngSize(new Uint8Array(readFileSync(file)));
 
 describe.skipIf(!browser)("captureScreens (needs Chrome, Edge or Chromium)", () => {
-  test("every page at phone and desktop widths, light and dark; long pages are cropped", async () => {
+  test("every page at each size, light and dark; long pages are cropped", async () => {
     const out = tempDir("motif-shots-");
     const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/", "/long"], outDir: out, settleMs: 50 });
     expect(routes.map((r) => [r.route, r.status, r.error])).toEqual([["/", 200, undefined], ["/long", 200, undefined]]);
-    expect(routes[0]!.shots.map((f) => f.slice(out.length + 1))).toEqual(["index.mobile.png", "index.mobile.dark.png", "index.desktop.png", "index.desktop.dark.png"]);
+    expect(routes[0]!.shots.map((f) => f.slice(out.length + 1))).toEqual(["index.mobile-360.png", "index.mobile-360.dark.png", "index.mobile.png", "index.mobile.dark.png", "index.mobile-430.png", "index.mobile-430.dark.png", "index.tablet.png", "index.tablet.dark.png", "index.desktop.png", "index.desktop.dark.png"]);
     expect(size(join(out, "index.mobile.png"))).toEqual({ width: 780, height: 2000 });
     expect(size(join(out, "index.desktop.png"))).toEqual({ width: 1440, height: 1000 });
     expect(routes[1]!.cropped).toBe(true);
@@ -70,7 +70,7 @@ describe.skipIf(!browser)("captureScreens (needs Chrome, Edge or Chromium)", () 
     const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/throws", "/"], outDir: out, settleMs: 50 });
     expect(routes[0]!.status).toBe(200);
     expect(routes[0]!.pageErrors).toEqual(["Error: boom: data is undefined"]);
-    expect(routes[0]!.shots).toHaveLength(4);
+    expect(routes[0]!.shots).toHaveLength(10);
     expect(routes[1]!.pageErrors).toBeUndefined();
   }, 120_000);
 
@@ -86,12 +86,12 @@ describe.skipIf(!browser)("captureScreens (needs Chrome, Edge or Chromium)", () 
     });
     const byRoute = Object.fromEntries(routes.map((r) => [r.route, r]));
     expect(byRoute["/broken"]!.status).toBe(500);
-    expect(byRoute["/broken"]!.shots).toHaveLength(4);
+    expect(byRoute["/broken"]!.shots).toHaveLength(10);
     expect(byRoute["/missing"]!.status).toBe(404);
     expect(byRoute["/old"]!.status).toBe(200);
     expect(byRoute["/old"]!.finalUrl).toBe(`http://localhost:${server.port}/`);
     expect(byRoute["/slow"]!.error).toBeString();
-    expect(byRoute["/"]!.shots).toHaveLength(4);
+    expect(byRoute["/"]!.shots).toHaveLength(10);
     const unreachable = await captureScreens({ browserPath: browser!.path, baseUrl: "http://127.0.0.1:1", routes: ["/"], outDir: out, settleMs: 50, timeoutMs: 3000 });
     expect(unreachable.routes[0]).toMatchObject({ status: 0, shots: [] });
     expect(unreachable.routes[0]!.error).toContain("Couldn't reach");

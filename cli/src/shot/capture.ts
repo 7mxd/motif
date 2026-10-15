@@ -4,15 +4,25 @@ import { launchBrowser } from "../browser/cdp";
 import { auditPage, type AuditIssue } from "./audit";
 
 export interface Viewport {
+  /** How the audit treats it: "mobile" for touch screens (phones and tablets), "desktop" otherwise. */
   name: "mobile" | "desktop";
+  /** The name in screenshot file names ("mobile-360"); the viewport's name when not set. */
+  file?: string;
   width: number;
   height: number;
   scale: number;
   mobile: boolean;
 }
 
+/**
+ * Every page is captured at each size: a narrow, a usual and a wide phone, a tablet and a desktop. A layout that holds
+ * on one phone can break on another (the xBloom review's regression showed at 430 px, not 390), so all are checked.
+ */
 export const VIEWPORTS: Viewport[] = [
+  { name: "mobile", file: "mobile-360", width: 360, height: 780, scale: 2, mobile: true },
   { name: "mobile", width: 390, height: 844, scale: 2, mobile: true },
+  { name: "mobile", file: "mobile-430", width: 430, height: 932, scale: 2, mobile: true },
+  { name: "mobile", file: "tablet", width: 768, height: 1024, scale: 2, mobile: true },
   { name: "desktop", width: 1440, height: 900, scale: 1, mobile: false },
 ];
 export const SCHEMES = ["light", "dark"] as const;
@@ -76,7 +86,7 @@ export function routeUrl(base: string, route: string): string {
   return url.toString();
 }
 
-export function shotName(slug: string, viewport: Viewport["name"], scheme: Scheme): string {
+export function shotName(slug: string, viewport: string, scheme: Scheme): string {
   return `${slug}.${viewport}${scheme === "dark" ? ".dark" : ""}.png`;
 }
 
@@ -155,7 +165,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 }
                 const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
                 if (fullHeight > MAX_HEIGHT) result.cropped = true;
-                const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.name, scheme));
+                const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.file ?? viewport.name, scheme));
                 writeFileSync(file, await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) }));
                 result.shots.push(file);
                 if (opts.audit) {

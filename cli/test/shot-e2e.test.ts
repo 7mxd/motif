@@ -55,7 +55,7 @@ describe.skipIf(!browser || !bun)("compiled motif shot (needs Chrome, Edge or Ch
     const out = JSON.parse(r.stdout.toString());
     expect(r.exitCode).toBe(1);
     expect(out.routes.map((x: { route: string; status: number }) => [x.route, x.status])).toEqual([["/", 200], ["/settings", 200]]);
-    expect(out.shots).toHaveLength(8);
+    expect(out.shots).toHaveLength(20);
     expect(pngSize(new Uint8Array(readFileSync(join(root, "design/shots/index.mobile.png")))).width).toBe(780);
     const found = new Set(out.findings.map((f: { severity: string; category: string; location: { screen: string } }) => `${f.severity} ${f.category} ${f.location.screen}`));
     expect(found.has("critical contrast /settings")).toBe(true);

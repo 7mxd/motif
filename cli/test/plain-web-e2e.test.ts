@@ -83,5 +83,5 @@ describe("the compiled tool on a plain web site", () => {
     const home = shot.json.routes.find((r: any) => r.route === "/");
     expect(home.pageErrors.join("\n")).toContain('State "broken"');
     expect(home.pageErrors.join("\n")).toContain("no such button");
-  });
+  }, 300_000);
 });

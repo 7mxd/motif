@@ -128,6 +128,7 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
       "minor target-size / #go",
     ]);
     expect(findings[0]!.summary).toContain("Faint note");
-    expect(findings[0]!.shot).toEndWith("index.mobile.png");
+    // Found at every phone size; the finding keeps the first screenshot, the narrowest phone.
+    expect(findings[0]!.shot).toEndWith("index.mobile-360.png");
   }, 120_000);
 });

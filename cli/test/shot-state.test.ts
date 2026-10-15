@@ -97,7 +97,7 @@ describe("state scripts in a real browser (final review)", () => {
       });
       const home = r.routes[0]!;
       expect(home.error).toBeUndefined();
-      expect(home.shots).toHaveLength(12);
+      expect(home.shots).toHaveLength(30);
       const errors = (home.pageErrors ?? []).join("\n");
       expect(errors).toContain('State "dialog": The page opened a dialog ("Delete this card?")');
       expect(errors).toContain('State "loop"');
