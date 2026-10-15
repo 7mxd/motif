@@ -1,4 +1,5 @@
 import { locator } from "../../text";
+import { darkRanges } from "../dark";
 import type { SourceFile } from "../files";
 import { inRanges, maskComments, rangesOf } from "../mask";
 import { makeHit, type Hit } from "../types";
@@ -59,27 +60,33 @@ export function scanColors(source: SourceFile): Hit[] {
   const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
   const hits: Hit[] = [];
-  const add = (index: number, literal: string, context: string) =>
+  const add = (index: number, literal: string, context: string, extra: Pick<Hit, "prop" | "scheme"> = {}) =>
     hits.push(makeHit(file, at, index, {
       rule: "raw-color",
       text: literal,
       value: literal,
       kind: "color",
       context,
+      ...extra,
       violation: true,
       message: `Raw colour ${literal}.`,
       fix: "Use a theme colour instead: a class like bg-action-primary or text-text-primary, or var(--motif-color-<role>).",
     }));
 
   if (file.lang === "css") {
+    const dark = darkRanges(file.text);
     for (const m of file.text.matchAll(CSS_DECLARATION)) {
       const prop = m[1]!;
       const value = m[2]!;
       if (prop.startsWith("--motif-")) continue;
       const start = m.index! + m[0].length - value.length;
       const context = colorContext(prop);
-      for (const c of value.matchAll(CSS_COLOR_LITERAL)) add(start + c.index!, c[0], context);
-      if (CSS_COLOR_PROP.test(prop)) for (const n of value.matchAll(CSS_NAMED)) add(start + n.index!, n[0], context);
+      const extra: Pick<Hit, "prop" | "scheme"> = {
+        ...(prop.startsWith("--") ? { prop } : {}),
+        ...(inRanges(start, dark) ? { scheme: "dark" as const } : {}),
+      };
+      for (const c of value.matchAll(CSS_COLOR_LITERAL)) add(start + c.index!, c[0], context, extra);
+      if (CSS_COLOR_PROP.test(prop)) for (const n of value.matchAll(CSS_NAMED)) add(start + n.index!, n[0], context, extra);
     }
     return hits.sort((a, b) => a.line - b.line || a.column - b.column);
   }

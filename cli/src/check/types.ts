@@ -24,6 +24,10 @@ export interface Hit {
   value?: string;
   /** For colours: "text" | "background" | "border" | "other". */
   context?: string;
+  /** For colours set on a CSS custom property: its name (--bg). */
+  prop?: string;
+  /** "dark" for colours set inside a dark-mode block. */
+  scheme?: "dark";
 }
 
 export interface Scale {
