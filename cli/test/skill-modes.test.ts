@@ -132,3 +132,36 @@ describe("modes/review.md", () => {
     expect(outOfOrder(review, ["--save before", "--against before", '"status": "fixed"'])).toBeNull();
   });
 });
+
+describe("plain web, screens behind forms, and every size", () => {
+  test("SKILL.md sends plain web sites to their guide; they need no Node.js", () => {
+    const skill = read("SKILL.md");
+    expect(skill).toContain("(adapters/plain-web/README.md)");
+    expect(skill).toContain("plain web sites need none");
+  });
+
+  test("init offers a simple web page and starts it from the plain web guide", () => {
+    const init = read("modes/init.md");
+    for (const s of ["a simple web page or site with no framework", "(../adapters/plain-web/README.md)", "linking `motif.css` in each page", "a plain web site has none", "--state"]) {
+      expect(init).toContain(s);
+    }
+  });
+
+  test("feature lists a plain site's components from components.css, and captures new states", () => {
+    const feature = read("modes/feature.md");
+    for (const s of ["(../adapters/plain-web/components.md)", "`Component:` lines", "--state"]) expect(feature).toContain(s);
+  });
+
+  test("review captures screens behind forms, checks every fix at every size, and keeps things used together on one screen", () => {
+    const review = read("modes/review.md");
+    expect(outOfOrder(review, [
+      "## 3. Audit", "design/states/", "(../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)", "fit on one screen",
+      "## 5. Rebuild", "--state design/states/<state>.js --save before", "--against before", "360, 390 and 430 px", "on one screen", '"status": "fixed"',
+    ])).toBeNull();
+    expect(review).toContain("(../adapters/plain-web/checks.md)");
+  });
+
+  test("the design mode asks for Node.js only for React apps", () => {
+    expect(read("modes/design.md")).toContain("No Node.js for a React app");
+  });
+});

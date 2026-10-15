@@ -19,9 +19,9 @@ Ask whether to review the whole app or named screens or features (default: the w
 
 1. `motif validate`: problems in the design guide itself.
 2. `motif check`: places in the code that bypass the design guide.
-3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, phone and desktop). It also writes its findings to `design/shots/audit.json` in the report format below.
+3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, at three phone sizes, a tablet and a desktop). Screens that only appear after a form or a click (a result, an editor, an error) need a state script: write one per state in `design/states/`, as the stack guide's checks show ([plain web](../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)), and add `--state design/states/<state>.js` for each. It also writes its findings to `design/shots/audit.json` in the report format below.
 
-**Judgement**, screen by screen, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's [checks](../adapters/react-web/checks.md).
+**Judgement**, screen by screen and state by state, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, whether things people use together (a live preview and the controls that change it, a form and its result) fit on one screen, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's checks ([React web](../adapters/react-web/checks.md), [plain web](../adapters/plain-web/checks.md)).
 
 ## 4. Report ⏸
 
@@ -95,18 +95,19 @@ Show the developer the summary and ask which findings to fix (suggest all critic
 
 ## 5. Rebuild
 
-1. Before changing anything, keep screenshots of the screens you'll touch: `motif shot --routes <routes> --save before`.
+1. Before changing anything, keep screenshots of the screens you'll touch, in the states the audit used: `motif shot --routes <routes> --state design/states/<state>.js --save before` (one `--state` per state script).
 2. Fix the chosen findings with theme values only; a needed new value goes through a design guide change ⏸.
-3. Run the exact checks again: `motif validate`, `motif check` and `motif shot --audit`.
-4. Run `motif shot --routes <routes> --against before` and show the before-and-after images; the output says how much each screen changed.
-5. Mark each fixed finding `"status": "fixed"` in the JSON report and update the Markdown version; leave the rest `"open"`.
+3. Run the exact checks again: `motif validate`, `motif check` and `motif shot --audit` (with the same `--state` options).
+4. Run `motif shot --routes <routes> --state design/states/<state>.js --against before`, with the same options as when you saved, and show the before-and-after images; the output says how much each screen changed.
+5. Look at every fix at each size: the phones 360, 390 and 430 px wide, the tablet and the desktop. A fix that looks right on one phone can push things apart on another. Where people use things together (a live preview and the controls that change it, a form and its result), make sure they still fit on one screen wherever they did before; if a fix breaks that, find another way.
+6. Mark each fixed finding `"status": "fixed"` in the JSON report and update the Markdown version; leave the rest `"open"`.
 
 ## 6. A new look instead
 
 If the developer wants a new look rather than fixes:
 
-1. Keep screenshots first: `motif shot --routes <routes> --save before`.
+1. Keep screenshots first: `motif shot --routes <routes> --save before`, with `--state` for each screen behind a form or a click.
 2. Follow [init](init.md) steps 3 and 4 (research, directions ⏸). Then update the existing design guide rather than starting from the template: copy the approved direction's `tokens.json` over `design/tokens.json`, rewrite `DESIGN.md`'s summary, direction, foundations and motion for the new look, but keep its change log and component list (update the components' descriptions where the look changed). Add a change-log line for the new look, run `motif validate`, and put new mockups beside the old ones rather than over them.
 3. Run `motif tokens`. Because the code uses theme roles, much of the new look arrives with this one step.
-4. Then go screen by screen: adjust the layouts the new direction calls for, run `motif check` and `motif shot --routes <route> --against before`, and show each screen before moving to the next.
+4. Then go screen by screen: adjust the layouts the new direction calls for, run `motif check` and `motif shot --routes <route> --against before` (with the same options as when you saved), and show each screen before moving to the next.
 5. If the design guide was just extracted, `design/extract-report.json` maps each old value to its role; use it to replace any raw values left in the code.

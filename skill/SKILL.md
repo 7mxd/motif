@@ -47,7 +47,7 @@ Wherever Motif's files say `motif <command>`, run it this way.
 
 ## Your stack
 
-For each app in `apps`, read its stack guide, `adapters/<stack>/README.md`: for example [React web](adapters/react-web/README.md). It says how to start a project, use the theme code, build components, animate, and fix what `motif check` and `motif shot` report.
+For each app in `apps`, read its stack guide, `adapters/<stack>/README.md`: [React web](adapters/react-web/README.md), or [plain web](adapters/plain-web/README.md) for a site of HTML, CSS and JavaScript without a framework. It says how to start a project, use the theme code, build components, animate, and fix what `motif check` and `motif shot` report.
 
 Motif's guides for other stacks aren't ready yet. For an app on one of them, or on a stack Motif doesn't know, the design guide, the modes and the knowledge files still apply: `motif tokens` writes plain CSS variables and `design/generated/tokens.flat.json`, you map those values into the app by hand, and you tell the developer once that full support for their stack is on its way. [The stack guide template](adapters/_template/README.md) lists what each guide covers.
 
@@ -69,7 +69,7 @@ Motif's guides for other stacks aren't ready yet. For an app on one of them, or 
 |---|---|
 | The motif tool can't download | Work without the exact checks, as above |
 | No browser, and the developer declines the download | Keep HTML mockups; skip PNGs and screenshots |
-| The app's toolchain is missing (Node.js for web apps) | Say what to install; skip running the app until it's there |
+| The app's toolchain is missing (Node.js for React apps; plain web sites need none) | Say what to install; skip running the app until it's there |
 | A design source fails or runs out of calls | Use the free guidance instead and say so once |
 | `DESIGN.md` or `tokens.json` is broken | `motif validate` names the line; offer to fix it |
 | The code drifted from the design guide | `motif check` lists where; fix it, or offer a review |

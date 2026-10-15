@@ -5,7 +5,7 @@ A new feature that looks as if it was always part of the app: built from the des
 ## 1. Read what exists
 
 1. Read `DESIGN.md`, `design/tokens.json` and `design/motif.json`.
-2. List the existing components. The stack guide says where they live (React web: [components](../adapters/react-web/components.md)). Note each one's name, variants and states, so you reuse them rather than rebuild them.
+2. List the existing components. The stack guide says where they live (React web: [components](../adapters/react-web/components.md); plain web: the `Component:` lines in `components.css`, [components](../adapters/plain-web/components.md)). Note each one's name, variants and states, so you reuse them rather than rebuild them.
 3. No design guide yet? Run [review's extract step](review.md#2-extract-only-when-there-is-no-design-guide) first, then come back here.
 
 ## 2. Understand the feature
@@ -32,7 +32,7 @@ Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show 
 ## 6. Verify
 
 1. Run `motif check` (no findings apart from justified `motif-ok` exceptions) and the project's build and type check.
-2. Run `motif shot --audit --routes <the new routes>`. Fix the critical and major findings and run it again.
+2. Run `motif shot --audit --routes <the new routes>`, adding `--state` for each new screen behind a form or a click. Fix the critical and major findings and run it again.
 3. For each screen, run `motif shot --routes <route> --against design/previews/<feature>-<screen>.html`. Fix differences that change the design.
 4. Confirm every state from the mockup exists in the app: loading, empty, error, disabled.
 5. Show the developer the side-by-side images and a short summary of what was built and checked.
