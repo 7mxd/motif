@@ -115,6 +115,7 @@ What changes, in order:
 | danger, success, warning, info | danger/error/destructive/negative, success/positive, warning/warn/caution, info/notice |
 
 5. **Choosing**, for each role: the named variable's cluster, then the usage rules as today. Action-primary takes the most-used `action` cluster before the most-used saturated one. The report's variable list prefers the named role.
+6. **Plain web sites only, for now** (ruling while building): on HiSalon's two React apps the same rules gave worse drafts, because those apps colour text through Tailwind classes that extract can't see. So `collectOccurrences` follows variables only for plain web files (`followFor`), and the React drafts stay exactly as they were. A role's own name set through another variable (`--text-primary: var(--gray-900)`) counts with no other evidence.
 
 - [ ] **Step 1: Failing test** (`extract-plain.test.ts`). An xBloom-shaped page:
   - variables in light and dark: `--bg`, `--surface`, `--surface-2`, `--text`, `--muted`, `--danger`, a translucent `--hairline`, `--accent` and `--card`;

@@ -1,8 +1,11 @@
 import { formatHex, wcagContrast } from "culori";
 import type { SourceFile } from "../check/files";
+import { darkRanges } from "../check/dark";
+import { inRanges, maskComments } from "../check/mask";
 import { scanFile } from "../check/run";
-import { colorContext } from "../check/rules/colors";
+import { colorContext, CSS_DECLARATION } from "../check/rules/colors";
 import type { Hit } from "../check/types";
+import { locator } from "../text";
 import { FONT_ROLES, SPACE_SCALE, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { clusterColors, parseColor, type ColorCluster, type Sample } from "./cluster";
 import type { TailwindDefaults } from "./tailwind-theme";
@@ -20,6 +23,13 @@ export interface Occurrences {
   unresolved: Sample[];
   /** Custom properties set to colours: their light value, and their dark-mode value when one is set. */
   variables?: Variable[];
+  /** Custom properties defined from another one (--text-primary: var(--gray-900)), name → the name it uses. */
+  aliases?: Record<string, string>;
+  /**
+   * Read the site's own variables as a person would: uses through var(), names that say a role, buttons' fills, colour
+   * lists in scripts as data. Plain web sites only for now; React apps keep the drafts they had.
+   */
+  followVariables?: boolean;
 }
 
 export interface ExtractReport {
@@ -38,8 +48,8 @@ export interface ExtractReport {
 }
 
 const MAX_EXAMPLES = 5;
-/** The lists of samples collected; variables are kept apart. */
-type Bucket = Exclude<keyof Occurrences, "variables">;
+/** The lists of samples collected; variables and the settings are kept apart. */
+type Bucket = Exclude<keyof Occurrences, "variables" | "aliases" | "followVariables">;
 
 // ---------- collecting ----------
 
@@ -66,7 +76,107 @@ function cleanFamily(raw: string): string {
   return raw.split(",")[0]!.trim().replace(/^['"]|['"]$/g, "").replace(/_/g, " ");
 }
 
-export function collectOccurrences(files: SourceFile[], tw: TailwindDefaults | null, tailwindFor: (f: SourceFile) => boolean = () => true): Occurrences {
+/** A rule fills a button: its background is an action colour (a secondary one when the selector says so). */
+const BUTTON_SELECTOR = /(^|[\s,>+~(])(button|\.btn|\.button)(?![\w-])|\[type=["']?submit|\[role=["']?button/i;
+const SECONDARY_SELECTOR = /secondary|ghost|outline|tertiary|subtle/i;
+const VAR_USE = /var\(\s*(--[\w-]+)/g;
+
+/** Each rule's selector, found by where its block sits ("" outside any rule). */
+function selectorLookup(css: string): (index: number) => string {
+  const blocks: { start: number; end: number; selector: string }[] = [];
+  const open: { start: number; selector: string }[] = [];
+  let segment = 0;
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i];
+    if (ch === "{") {
+      open.push({ start: i, selector: css.slice(segment, i).trim() });
+      segment = i + 1;
+    } else if (ch === "}") {
+      const block = open.pop();
+      if (block) blocks.push({ ...block, end: i });
+      segment = i + 1;
+    } else if (ch === ";") segment = i + 1;
+  }
+  return (index) => {
+    let inner: (typeof blocks)[number] | undefined;
+    for (const b of blocks) if (b.start < index && index < b.end && (!inner || b.start > inner.start)) inner = b;
+    return inner?.selector ?? "";
+  };
+}
+
+interface CssUse {
+  /** A variable used through var(), or a colour written out (only for button fills). */
+  name?: string;
+  value?: string;
+  context: string;
+  button?: "action" | "action-secondary";
+  example: string;
+}
+
+/**
+ * How a stylesheet uses colours that `scanColors` can't see on its own: variables used through var() (each use counts
+ * as a use of the variable's colour), variables defined from other variables, and the fills of buttons. Dark-mode
+ * blocks are left out: they set dark values, they don't add uses.
+ */
+function cssUses(file: SourceFile, aliases: Map<string, string>): CssUse[] {
+  const css = maskComments(file.text, "css");
+  const dark = darkRanges(css);
+  const at = locator(css);
+  const selectorAt = selectorLookup(css);
+  const uses: CssUse[] = [];
+  for (const m of css.matchAll(CSS_DECLARATION)) {
+    if (inRanges(m.index!, dark)) continue;
+    const prop = m[1]!.toLowerCase();
+    const value = m[2]!.trim().replace(/\s*!important$/i, "");
+    if (prop.startsWith("--motif-")) continue;
+    const example = `${file.path}:${at(m.index!).line}`;
+    // --a: var(--b) makes --a another name for --b's colour.
+    const alias = prop.startsWith("--") ? value.match(/^var\(\s*(--[\w-]+)\s*\)$/)?.[1] : undefined;
+    if (alias) {
+      aliases.set(prop, alias);
+      continue;
+    }
+    const fill = prop === "background" || prop === "background-color";
+    const selector = fill ? selectorAt(m.index!) : "";
+    const button = fill && BUTTON_SELECTOR.test(selector) ? (SECONDARY_SELECTOR.test(selector) ? "action-secondary" : "action") : undefined;
+    const context = colorContext(prop);
+    for (const v of value.matchAll(VAR_USE)) uses.push({ name: v[1]!, context, ...(button ? { button } : {}), example });
+    if (button && !value.includes("var(")) uses.push({ value, context, button, example });
+  }
+  return uses;
+}
+
+/** Names a variable has for a role, in order of preference; a name only counts when its colour is used that way. */
+const ROLE_NAMES: { role: string; words: string[]; exact: boolean; usedAs?: string[] }[] = [
+  { role: "text-secondary", words: ["muted", "subtle", "subdued", "secondary", "dim", "faint", "meta", "hint"], exact: false, usedAs: ["text"] },
+  { role: "text-primary", words: ["text", "fg", "foreground", "ink", "body-text", "copy"], exact: true, usedAs: ["text"] },
+  { role: "background", words: ["bg", "background", "page", "canvas", "backdrop"], exact: true, usedAs: ["background"] },
+  { role: "surface", words: ["surface", "panel", "sheet", "raised"], exact: true, usedAs: ["background"] },
+  { role: "border", words: ["border", "hairline", "divider", "separator", "line", "rule"], exact: true, usedAs: ["border"] },
+  { role: "action-primary", words: ["primary", "brand", "cta", "action"], exact: true, usedAs: ["action", "background"] },
+  { role: "danger", words: ["danger", "error", "destructive", "negative"], exact: true },
+  { role: "success", words: ["success", "positive"], exact: true },
+  { role: "warning", words: ["warning", "warn", "caution"], exact: true },
+  { role: "info", words: ["info", "notice"], exact: true },
+];
+
+/**
+ * How well a variable's name says a role, lower is better, or -1. 0 is the role's own name (--text-primary,
+ * --color-background), which needs no other evidence; then the index of the role's word, plus one.
+ */
+function nameScore(name: string, entry: (typeof ROLE_NAMES)[number]): number {
+  const bare = name.replace(/^--/, "").toLowerCase().replace(/^colou?r-/, "").replace(/-colou?r$/, "");
+  if (bare === entry.role) return 0;
+  const found = entry.exact ? entry.words.indexOf(bare) : entry.words.findIndex((w) => bare.split("-").includes(w));
+  return found < 0 ? -1 : found + 1;
+}
+
+export function collectOccurrences(
+  files: SourceFile[],
+  tw: TailwindDefaults | null,
+  tailwindFor: (f: SourceFile) => boolean = () => true,
+  followFor: (f: SourceFile) => boolean = () => false,
+): Occurrences {
   const buckets: Record<Bucket, Map<string, Sample>> = {
     colors: new Map(), space: new Map(), radius: new Map(), fontSize: new Map(), fontFamily: new Map(),
     duration: new Map(), easing: new Map(), unresolved: new Map(),
@@ -85,9 +195,18 @@ export function collectOccurrences(files: SourceFile[], tw: TailwindDefaults | n
     if (px !== undefined) add(bucket, `${px}px`, hit);
     else add("unresolved", hit.text, hit);
   };
+  /** Marks how a colour is used without counting another use (a button's fill is also a background). */
+  const mark = (value: string, key: string) => {
+    const s = buckets.colors.get(value);
+    if (s) s.contexts[key] = (s.contexts[key] ?? 0) + 1;
+  };
   const variables = new Map<string, Variable>();
+  const aliases = new Map<string, string>();
+  const uses: CssUse[] = [];
 
   for (const file of files) {
+    const follow = followFor(file);
+    if (follow && file.lang === "css") uses.push(...cssUses(file, aliases));
     for (const hit of scanFile(file, null, { tailwind: tailwindFor(file) })) {
       if (hit.kind === "color" && hit.prop) {
         const v = variables.get(hit.prop) ?? { name: hit.prop };
@@ -103,7 +222,11 @@ export function collectOccurrences(files: SourceFile[], tw: TailwindDefaults | n
             const resolved = tw?.colors.get(hit.value!);
             if (resolved) add("colors", resolved, hit, hit.context);
             else add("unresolved", hit.text, hit);
-          } else add("colors", hit.value!, hit, hit.context);
+          } else {
+            add("colors", hit.value!, hit, hit.context);
+            // A colour in a script that isn't set as a style (a list to pick from, a default) is data, not the theme.
+            if (follow && file.lang !== "css" && hit.rule === "raw-color" && hit.context === "other") mark(hit.value!, "data");
+          }
           break;
         case "space":
           add("space", hit.value!, hit);
@@ -128,11 +251,30 @@ export function collectOccurrences(files: SourceFile[], tw: TailwindDefaults | n
       }
     }
   }
+  // Uses through var() count as uses of the variable's colour (following --a: var(--b) to --b); buttons' fills are actions.
+  const colorOf = (name: string) => {
+    let n = name;
+    for (let depth = 0; depth < 8 && !variables.get(n)?.light && aliases.has(n); depth++) n = aliases.get(n)!;
+    return variables.get(n)?.light;
+  };
+  for (const use of uses) {
+    const value = use.name ? colorOf(use.name) : use.value;
+    if (!value || (!use.name && !buckets.colors.has(value))) continue;
+    if (use.name) {
+      const s = buckets.colors.get(value) ?? { value, count: 0, contexts: {}, examples: [] };
+      s.count++;
+      s.contexts[use.context] = (s.contexts[use.context] ?? 0) + 1;
+      if (s.examples.length < MAX_EXAMPLES) s.examples.push(use.example);
+      buckets.colors.set(value, s);
+    }
+    if (use.button) mark(value, use.button);
+  }
   const sorted = (m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
   return {
     colors: sorted(buckets.colors), space: sorted(buckets.space), radius: sorted(buckets.radius), fontSize: sorted(buckets.fontSize),
     fontFamily: sorted(buckets.fontFamily), duration: sorted(buckets.duration), easing: sorted(buckets.easing), unresolved: sorted(buckets.unresolved),
     variables: [...variables.values()],
+    ...(files.some(followFor) ? { aliases: Object.fromEntries(aliases), followVariables: true } : {}),
   };
 }
 
@@ -172,21 +314,48 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const backgrounds = by("background");
   const borders = by("border");
 
+  // A variable named for a role, whose colour is used that way, takes the role first (--bg, --muted, --danger).
+  const clusterOf = (value: string | undefined) => {
+    const hex = solidHex(value);
+    return hex ? clusters.find((c) => c.members.some((m) => solidHex(m.value) === hex)) : undefined;
+  };
+  const follow = occ.followVariables === true;
+  const aliases = occ.aliases ?? {};
+  const lightOf = (name: string): string | undefined => {
+    let n = name;
+    for (let depth = 0; depth < 8 && aliases[n] && !(occ.variables ?? []).some((v) => v.name === n && v.light); depth++) n = aliases[n]!;
+    return (occ.variables ?? []).find((v) => v.name === n)?.light;
+  };
+  const names = [...(occ.variables ?? []).map((v) => v.name), ...Object.keys(aliases)];
+  const named: Record<string, ColorCluster> = {};
+  for (const entry of follow ? ROLE_NAMES : []) {
+    const best = names
+      .map((name) => ({ score: nameScore(name, entry), cluster: clusterOf(lightOf(name)) }))
+      // The role's own name is enough; a word like "muted" also needs its colour used that way.
+      .filter((x) => x.score >= 0 && x.cluster && (x.score === 0 || !entry.usedAs || entry.usedAs.some((k) => used(x.cluster!, k) > 0)))
+      .sort((a, b) => a.score - b.score)[0];
+    if (best) named[entry.role] = best.cluster!;
+  }
+  // Colours only ever listed in scripts (the card colours people pick from) aren't the theme's actions or statuses.
+  const isData = (c: ColorCluster) => used(c, "data") >= c.count;
+
   const chosen: Record<string, ColorCluster | undefined> = {};
   // Page backgrounds are neutral; a much-used saturated background is a brand or action colour.
-  chosen.background = backgrounds.find((c) => c.c < 0.04) ?? backgrounds[0];
+  chosen.background = named.background ?? backgrounds.find((c) => c.c < 0.04) ?? backgrounds[0];
   // Text must be readable on the background: white text used on buttons isn't the main text colour.
   const readable = text.filter((c) => !chosen.background || wcagContrast(c.hex, chosen.background.hex) >= 3);
-  const textPick = readable.length > 0 ? readable : text;
-  chosen["text-primary"] = textPick[0];
-  chosen["text-secondary"] = textPick[1] ?? textPick[0];
-  chosen.surface = backgrounds.find((c) => c !== chosen.background && c.c < 0.04) ?? chosen.background;
-  chosen.border = borders[0];
-  const saturated = clusters.filter((c) => c.c >= 0.08);
-  chosen["action-primary"] = saturated[0];
+  const textPick = (readable.length > 0 ? readable : text).filter((c) => c !== named["text-secondary"]);
+  chosen["text-primary"] = named["text-primary"] ?? textPick[0] ?? named["text-secondary"];
+  chosen["text-secondary"] = named["text-secondary"] ?? textPick.find((c) => c !== chosen["text-primary"]) ?? chosen["text-primary"];
+  chosen.surface = named.surface ?? backgrounds.find((c) => c !== chosen.background && c.c < 0.04) ?? chosen.background;
+  chosen.border = named.border ?? borders[0];
+  const saturated = clusters.filter((c) => c.c >= 0.08 && !isData(c));
+  // Buttons' fills say which colour is the main action, saturated or not (black pill buttons).
+  chosen["action-primary"] = named["action-primary"] ?? by("action").find((c) => !isData(c)) ?? saturated[0];
+  const secondaryFill = by("action-secondary").find((c) => !isData(c) && c !== chosen["action-primary"]);
   const remaining = saturated.filter((c) => c !== chosen["action-primary"]);
   for (const [role, [hue, width]] of Object.entries(STATUS)) {
-    chosen[role] = remaining.find((c) => hueDistance(c.h, hue) <= width && !Object.values(chosen).includes(c));
+    chosen[role] = named[role] ?? remaining.find((c) => hueDistance(c.h, hue) <= width && !Object.values(chosen).includes(c));
   }
 
   // Primitive colours: one per cluster used, plus defaults, white and ink.
@@ -215,7 +384,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     base[role] = primitiveFor(role);
   }
   base["surface-raised"] = base.surface!;
-  base["action-secondary"] = base.surface!;
+  // Secondary buttons' fill when the CSS has one (button.secondary), otherwise the surface.
+  if (secondaryFill) chosen["action-secondary"] = secondaryFill;
+  base["action-secondary"] = secondaryFill ? primitiveFor("action-secondary") : base.surface!;
   base.focus = base["action-primary"]!;
   base["text-inverse"] = base.background!;
   base["on-action-secondary"] = base["text-primary"]!;
@@ -228,15 +399,20 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const inCluster = (cluster: ColorCluster | undefined, value: string | undefined) =>
     Boolean(cluster && solidHex(value) && cluster.members.some((m) => solidHex(m.value) === solidHex(value)));
   const darkBase: Record<string, string> = {};
-  for (const role of BASE_ROLES) {
+  for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
     const candidates = (occ.variables ?? []).filter((x) => solidHex(x.dark) && inCluster(chosen[role], x.light));
-    const v = candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ?? candidates[0];
+    const entry = follow ? ROLE_NAMES.find((e) => e.role === role) : undefined;
+    const v =
+      (entry && candidates.find((x) => nameScore(x.name, entry) >= 0)) ??
+      candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ??
+      candidates[0];
     if (!v) continue;
     const name = `${chosen[role]!.id}-dark`;
     primitives[name] = { $value: srgbColor(solidHex(v.dark)!) };
     darkBase[role] = name;
   }
-  if (darkBase.surface) darkBase["surface-raised"] = darkBase["action-secondary"] = darkBase.surface;
+  if (darkBase.surface) darkBase["surface-raised"] = darkBase.surface;
+  if (darkBase.surface && !secondaryFill) darkBase["action-secondary"] = darkBase.surface;
   if (darkBase["action-primary"]) darkBase.focus = darkBase["action-primary"];
   if (darkBase.background) darkBase["text-inverse"] = darkBase.background;
   if (darkBase["text-primary"]) darkBase["on-action-secondary"] = darkBase["text-primary"];
@@ -332,7 +508,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   ];
   const variables = (occ.variables ?? []).filter((v) => v.light).map((v) => {
     const fits = BASE_ROLES.filter((r) => inCluster(chosen[r], v.light));
-    const role = fits.find((r) => ROLE_CONTEXT[r] === colorContext(v.name)) ?? fits[0];
+    const byName = follow ? fits.find((r) => ROLE_NAMES.some((e) => e.role === r && nameScore(v.name, e) >= 0)) : undefined;
+    const role = byName ?? fits.find((r) => ROLE_CONTEXT[r] === colorContext(v.name)) ?? fits[0];
     return { name: v.name, light: v.light, ...(v.dark ? { dark: v.dark } : {}), ...(role ? { role: `color.${role}` } : {}) };
   });
   if (variables.length) {

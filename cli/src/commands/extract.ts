@@ -43,7 +43,8 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   });
   const react = supported.filter((a) => a.stack === "react-web");
   const tw = readTailwindDefaults([...react.map((a) => join(cwd, a.path)), cwd]);
-  const occ = collectOccurrences(files, tw, (f) => !noTailwind.has(f));
+  // Plain web sites have no utility classes, and their own variables are read the way a person would.
+  const occ = collectOccurrences(files, tw, (f) => !noTailwind.has(f), (f) => noTailwind.has(f));
   const { tokens, report } = buildDraft(occ);
 
   const notes = [...report.notes];
