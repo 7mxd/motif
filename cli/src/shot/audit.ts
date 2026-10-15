@@ -130,6 +130,8 @@ function installAudit(): boolean {
         if (el.matches(":disabled, [aria-disabled='true']") || el.closest("[hidden], [inert], [aria-hidden='true']")) continue;
         const style = getComputedStyle(el);
         if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") continue;
+        // Inside something that isn't shown, such as a closed <details>: its size is measured, but nobody can tap it.
+        if (!el.checkVisibility()) continue;
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) continue;
         // Visually hidden for screen readers (the usual sr-only pattern): not something anyone taps.

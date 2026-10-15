@@ -86,6 +86,7 @@ body { margin: 0; padding: 24px; font: 16px/1.5 sans-serif; background: #ffffff;
 <p><button id="go">Go</button></p>
 <button id="off" disabled style="width: 16px; height: 16px; padding: 0" aria-label="Off"></button>
 <button id="hidden" style="display: none" aria-label="Hidden"></button>
+<details><summary style="display: flex; align-items: center; min-height: 48px">More options</summary><button id="tucked" style="width: 16px; height: 16px; padding: 0" aria-label="Tucked away"></button></details>
 <div class="box" id="spinner"></div>
 <div class="box" id="guarded"></div>
 <div class="box" id="mover"></div>
