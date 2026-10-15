@@ -4,7 +4,7 @@ import type { CommandResult, RunContext } from "../cli/output";
 import { checkApp, type ExceptionHit } from "../check/run";
 import type { Hit } from "../check/types";
 import { loadTokenDocument } from "../contract/load";
-import { detectApps, STACK_LABELS } from "../detect/stacks";
+import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
 import { buildTheme } from "../generate/theme";
 import { appLabel, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
@@ -45,13 +45,13 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (apps === null) {
     return { command: "check", exitCode: 2, text: `There's no app at "${ctx.app}". Apps here: ${detected.map((a) => a.path).join(", ") || "none"}.`, data: { error: "no-such-app" } };
   }
-  const supported = apps.filter((a) => a.stack === "react-web");
+  const supported = apps.filter((a) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack));
   if (supported.length === 0) {
     const others = apps.filter((a) => a.stack).map((a) => `${appLabel(a)} (${STACK_LABELS[a.stack!]})`);
     return {
       command: "check",
       exitCode: 2,
-      text: `motif check works on React web apps in this version.${others.length ? ` Found: ${others.join(", ")}.` : " No React web app was found here."} Support for more stacks is coming soon.`,
+      text: `motif check works on React web apps and plain web sites in this version.${others.length ? ` Found: ${others.join(", ")}.` : " Neither was found here."} Support for more stacks is coming soon.`,
       data: { error: "unsupported-stack" },
     };
   }
@@ -102,7 +102,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (warnings.length) {
     lines.push("", "Warnings:", ...warnings.map((w) => `  ${w.file}  ${w.message} ${w.fix}`));
   }
-  const skipped = apps.filter((a) => a.stack !== "react-web").map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
+  const skipped = apps.filter((a) => !supported.includes(a)).map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
   if (skipped.length) lines.push("", `Skipped (not supported yet): ${skipped.join(", ")}.`);
   if (violations.length) lines.push("", 'Fix these, or ask your agent: "fix the motif check findings".');
 
