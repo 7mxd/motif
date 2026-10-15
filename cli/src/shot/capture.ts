@@ -20,6 +20,17 @@ export type Scheme = (typeof SCHEMES)[number];
 /** Taller pages are cropped: 8000 CSS px at 2× stays under Chrome's 16384 px screenshot limit. */
 export const MAX_HEIGHT = 8000;
 
+/** A script run in each page before it's captured again: its file name names the state ("editor" → index@editor.png). */
+export interface StateScript {
+  name: string;
+  script: string;
+}
+
+/** The script as an async function in the page; one still running after timeoutMs is stopped and reported. */
+export function stateExpression(script: string, timeoutMs = 15_000): string {
+  return `Promise.race([(async () => {\n${script}\n})(), new Promise((_, reject) => setTimeout(() => reject(new Error("it was still running after ${timeoutMs / 1000} seconds")), ${timeoutMs}))]).then(() => true)`;
+}
+
 export interface RouteResult {
   route: string;
   url: string;
@@ -45,6 +56,8 @@ export interface CaptureOptions {
   timeoutMs?: number;
   audit?: boolean;
   motionSampleMs?: number;
+  /** Also capture each page after each of these scripts runs in it. */
+  states?: StateScript[];
 }
 
 export function routeSlug(route: string): string {
@@ -112,28 +125,38 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
               { name: "prefers-color-scheme", value: scheme },
               { name: "prefers-reduced-motion", value: "reduce" },
             ]);
-            page.takeErrors();
-            await page.goto(url, timeoutMs);
-            await page.evaluate("document.fonts.ready.then(() => true)");
-            await Bun.sleep(settleMs);
-            const thrown = page.takeErrors();
-            if (thrown.length > 0) {
-              result.pageErrors = [...new Set([...(result.pageErrors ?? []), ...thrown])];
-            } else {
-              // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.
-              await page.evaluate(HIDE_DEV_BADGES);
-            }
-            const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
-            if (fullHeight > MAX_HEIGHT) result.cropped = true;
-            const file = join(opts.outDir, shotName(slug, viewport.name, scheme));
-            writeFileSync(file, await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) }));
-            result.shots.push(file);
-            if (opts.audit) {
-              try {
-                const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
-                for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, scheme, shot: file });
-              } catch (e) {
-                result.auditError = e instanceof Error ? e.message : String(e);
+            for (const state of [undefined, ...(opts.states ?? [])]) {
+              const tag = (message: string) => (state ? `State "${state.name}": ${message}` : message);
+              page.takeErrors();
+              await page.goto(url, timeoutMs);
+              await page.evaluate("document.fonts.ready.then(() => true)");
+              if (state) {
+                try {
+                  await page.evaluate(stateExpression(state.script));
+                } catch (e) {
+                  result.pageErrors = [...new Set([...(result.pageErrors ?? []), tag(e instanceof Error ? e.message : String(e))])];
+                }
+              }
+              await Bun.sleep(settleMs);
+              const thrown = page.takeErrors();
+              if (thrown.length > 0) {
+                result.pageErrors = [...new Set([...(result.pageErrors ?? []), ...thrown.map(tag)])];
+              } else {
+                // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.
+                await page.evaluate(HIDE_DEV_BADGES);
+              }
+              const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
+              if (fullHeight > MAX_HEIGHT) result.cropped = true;
+              const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.name, scheme));
+              writeFileSync(file, await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) }));
+              result.shots.push(file);
+              if (opts.audit) {
+                try {
+                  const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
+                  for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}) });
+                } catch (e) {
+                  result.auditError = e instanceof Error ? e.message : String(e);
+                }
               }
             }
           }

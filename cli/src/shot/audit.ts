@@ -26,6 +26,8 @@ export interface AuditIssue extends RawIssue {
   scheme: Scheme;
   /** The screenshot of that page, viewport and scheme. */
   shot: string;
+  /** The state script the page was in, if any. */
+  state?: string;
 }
 
 export type Severity = "critical" | "major" | "minor";
@@ -35,7 +37,7 @@ export interface ReviewFinding {
   severity: Severity;
   category: "contrast" | "target-size" | "reduced-motion";
   source: "exact";
-  location: { screen: string; selector: string; viewport: "mobile" | "desktop"; scheme?: Scheme };
+  location: { screen: string; selector: string; viewport: "mobile" | "desktop"; scheme?: Scheme; state?: string };
   summary: string;
   fix: string;
   shot: string;
@@ -247,7 +249,7 @@ function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" |
 }
 
 const mergeKey = (i: AuditIssue) =>
-  i.rule === "color-contrast" ? `${i.rule}|${i.route}|${i.selector}|${i.scheme}` : `${i.rule}|${i.route}|${i.selector}`;
+  i.rule === "color-contrast" ? `${i.rule}|${i.route}|${i.state ?? ""}|${i.selector}|${i.scheme}` : `${i.rule}|${i.route}|${i.state ?? ""}|${i.selector}`;
 
 /** Findings in the review format: repeats merged, worst first, numbered F-001, F-002… */
 export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
@@ -256,14 +258,14 @@ export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
   for (const issue of issues) {
     const key = mergeKey(issue);
     // A target already reported as too small for everyone isn't reported again as small on phones.
-    if (seen.has(key) || (issue.rule === "target-mobile" && seen.has(`target-size|${issue.route}|${issue.selector}`))) continue;
+    if (seen.has(key) || (issue.rule === "target-mobile" && seen.has(`target-size|${issue.route}|${issue.state ?? ""}|${issue.selector}`))) continue;
     seen.add(key);
     const { withScheme, ...verdict } = judge(issue);
     kept.push({
       severity: verdict.severity,
       category: verdict.category,
       source: "exact",
-      location: { screen: issue.route, selector: issue.selector, viewport: issue.viewport, ...(withScheme ? { scheme: issue.scheme } : {}) },
+      location: { screen: issue.route, selector: issue.selector, viewport: issue.viewport, ...(withScheme ? { scheme: issue.scheme } : {}), ...(issue.state ? { state: issue.state } : {}) },
       summary: verdict.summary,
       fix: verdict.fix,
       shot: issue.shot,

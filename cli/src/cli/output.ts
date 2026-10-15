@@ -13,7 +13,7 @@ export interface CommandResult {
 export interface RunContext {
   positionals: string[];
   app?: string;
-  flags?: Record<string, string | boolean | undefined>;
+  flags?: Record<string, string | string[] | boolean | undefined>;
 }
 
 export function emit(

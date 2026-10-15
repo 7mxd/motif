@@ -1,11 +1,11 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
-import { captureScreens, MAX_HEIGHT, type RouteResult } from "../shot/capture";
+import { captureScreens, MAX_HEIGHT, type RouteResult, type StateScript } from "../shot/capture";
 import { mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison } from "../shot/compare";
 import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { startStaticServer, type StaticServer } from "../shot/static-server";
@@ -117,6 +117,25 @@ function countText(findings: ReviewFinding[]): string {
     .join(", ");
 }
 
+/** --state values: repeated, or a comma list; each a script file whose name names the state. */
+export function readStates(cwd: string, value: unknown): StateScript[] | { error: string } {
+  const given = (Array.isArray(value) ? value : typeof value === "string" ? [value] : []).flatMap((v) => String(v).split(","));
+  const states: StateScript[] = [];
+  for (const file of given.map((f) => f.trim()).filter(Boolean)) {
+    const abs = resolve(cwd, file);
+    if (!existsSync(abs) || !statSync(abs).isFile()) {
+      return { error: `--state: "${file}" doesn't exist. Give the path to a script, like design/states/editor.js.` };
+    }
+    const name = basename(abs).replace(/\.[^.]+$/, "").toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
+      return { error: `--state: "${basename(abs)}" names the screenshots, so use letters, digits and dashes (like editor.js).` };
+    }
+    if (states.some((s) => s.name === name)) return { error: `--state: two scripts are named "${name}"; rename one.` };
+    states.push({ name, script: readFileSync(abs, "utf8") });
+  }
+  return states;
+}
+
 export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = defaultDeps): Promise<CommandResult> {
   const flags = ctx.flags ?? {};
   const givenUrl = typeof flags.url === "string" ? flags.url : undefined;
@@ -124,6 +143,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (givenUrl !== undefined && !/^https?:\/\/\S+$/.test(givenUrl)) {
     return usage("--url needs the address of a running app, like http://localhost:3000.", { error: "usage" });
   }
+  const states = readStates(cwd, flags.state);
+  if ("error" in states) return usage(states.error, { error: "usage" });
   const browser = deps.findBrowser();
   if (!browser) {
     return usage(`No Chrome or Edge found, so Motif can't take screenshots. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
@@ -211,7 +232,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if (typeof flags.out !== "string" && !existsSync(ignore)) {
       writeFileSync(ignore, "# Screenshots of the running app (motif shot). Not committed.\n*\n");
     }
-    captured = await deps.capture({ browserPath: browser.path, baseUrl, routes, outDir, audit });
+    captured = await deps.capture({ browserPath: browser.path, baseUrl, routes, outDir, audit, states });
   } catch (e) {
     return usage(`Couldn't take screenshots: ${message(e)}`, { error: "capture-failed" });
   } finally {
@@ -249,7 +270,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
     else if (incomplete.length === 0) lines.push(`✓ Audit: no contrast, tap-target or reduced-motion problems found (${auditFile}).`);
     for (const f of findings.slice(0, 15)) {
-      const where = `${f.location.screen} (${f.location.viewport}${f.location.scheme ? `, ${f.location.scheme}` : ""})`;
+      const where = `${f.location.screen}${f.location.state ? ` in "${f.location.state}"` : ""} (${f.location.viewport}${f.location.scheme ? `, ${f.location.scheme}` : ""})`;
       lines.push(`  ${f.severity.padEnd(8)} ${where} ${f.summary}`);
     }
     if (findings.length > 15) lines.push(`  …and ${findings.length - 15} more in ${auditFile}.`);
@@ -319,6 +340,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       })),
       shots,
       skipped: discovery.skipped,
+      states: states.map((s) => s.name),
       ...(audit ? { findings, audit: auditFile } : {}),
       ...(against
         ? {

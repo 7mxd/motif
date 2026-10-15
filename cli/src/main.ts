@@ -51,6 +51,7 @@ Shot options:
   --audit           Also check contrast, tap-target sizes and reduced motion as rendered
   --save <name>     Keep these screenshots as a named set, e.g. --save before
   --against <what>  Side by side with a saved set (after a rebuild) or a mockup (while building)
+  --state <file.js> Also capture each page after this script runs in it (a state behind a form or a click); repeat for more
 
 Tokens options:
   --stack preview   Write only the CSS mockups use (design/previews/motif.css)
@@ -98,6 +99,7 @@ export async function main(argv: string[]): Promise<number> {
         audit: { type: "boolean", default: false },
         save: { type: "string" },
         against: { type: "string" },
+        state: { type: "string", multiple: true },
         tokens: { type: "string" },
       },
     });
@@ -148,6 +150,7 @@ export async function main(argv: string[]): Promise<number> {
         audit: values.audit,
         save: values.save,
         against: values.against,
+        state: values.state,
         tokens: values.tokens,
       },
     });
