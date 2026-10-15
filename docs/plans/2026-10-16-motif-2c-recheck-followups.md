@@ -190,7 +190,7 @@ Neither success nor warning comes from the card list. The report maps `--muted` 
     - `renderComparisons` reads both PNGs' screens.
 - [ ] **Step 4: Run** `bun test test/png.test.ts test/shot-sizes.test.ts test/compare.test.ts test/shot-*.test.ts test/capture.test.ts`; they pass.
 - [ ] **Step 5: Docs.**
-  - `review.md` step 5: side-by-side images frame what was on screen. To check that things people use together still fit, end the state script by scrolling them into view (`document.querySelector("#card").scrollIntoView()`), then see that they sit inside the frame wherever they did before.
+  - `review.md` step 5: side-by-side images frame what was on screen. To check that things people use together still fit, end the state script by scrolling them into view (`document.querySelector("#card").scrollIntoView({ behavior: "instant" })`), then see that they sit inside the frame wherever they did before.
   - `checks.md`: the state-script list gets the same scroll tip, and one line saying the phone sizes are what a phone browser shows while scrolling.
   - README, the core spec's `motif shot` row and decision 0004 item 6: give the phone heights and mention the frame.
 - [ ] **Step 6: Commit** `fix(shot): phone screenshots are as tall as a phone browser shows, and comparisons frame the screen`.

@@ -189,3 +189,62 @@ describe("role names set through another variable, and React apps (Plan 2C)", ()
     expect(occ.colors.map((c) => [c.value, c.count, c.contexts])).toEqual([["#6c6c70", 1, { other: 1 }]]);
   });
 });
+
+describe("final review of Plan 2C: plain-site drafts never get worse than before", () => {
+  const draftOf = async (css: string) => {
+    const root = makeProject({ "index.html": `<style>${css}</style>` });
+    await runExtract(root, { positionals: [] });
+    return { tokens: read(root, "design/tokens.draft.json"), report: read(root, "design/extract-report.json") };
+  };
+  const base = ":root { --bg: #ffffff; --text: #111111; --accent: #2563eb; --surface: #f4f4f5; --gray: #e4e4e7; } body { background: var(--bg); color: var(--text); }";
+
+  test("a reset that styles buttons with fields, a disabled state or a :not() isn't the main action; .btn-primary and a.btn are", async () => {
+    const a = await draftOf(`${base} button, input, select, textarea { background: var(--surface); } .btn-primary { background: var(--accent); color: #ffffff; }`);
+    expect(hex(a.tokens, "action-primary", "light")).toBe("#2563EB");
+    const b = await draftOf(`${base} button:disabled { background: var(--gray); } .chip { background: var(--gray); } .tag { background: var(--gray); } .cta { color: var(--accent); }`);
+    expect(hex(b.tokens, "action-primary", "light")).toBe("#2563EB");
+    const c = await draftOf(`${base} input:not([type="submit"]) { background: var(--surface); } a.btn { background: var(--accent); }`);
+    expect(hex(c.tokens, "action-primary", "light")).toBe("#2563EB");
+    // Inside a media query, and a .btn--primary modifier, still count; a .btn-link doesn't.
+    const d = await draftOf(`${base} @media (min-width: 600px) { .btn--primary { background: var(--accent); } } .btn-link { background: var(--surface); }`);
+    expect(hex(d.tokens, "action-primary", "light")).toBe("#2563EB");
+  });
+
+  test("a near-white button fill never becomes the main action over a real colour", async () => {
+    const r = await draftOf(`${base} button { background: var(--surface); } .badge { background: var(--accent); }`);
+    expect(hex(r.tokens, "action-primary", "light")).toBe("#2563EB");
+  });
+
+  test("text roles only take a name used as text by that variable, never a background's name, and stay readable", async () => {
+    const r = await draftOf(`${base} :root { --bg-muted: #f4f4f5; --secondary: #0d9488; --grey: #6b7280; } .hero { color: #f5f5f5; background: var(--bg-muted); }
+      .a { color: var(--grey); } .b { color: var(--grey); } .c { color: var(--grey); } .d { color: var(--grey); } .e { color: var(--grey); } .f { color: var(--secondary); }`);
+    expect(hex(r.tokens, "text-secondary", "light")).toBe("#6B7280");
+  });
+
+  test("var() with a fallback counts once", async () => {
+    const r = await draftOf(":root { --muted: #6c6c70; --a: #222222; --b: #333333; } .x { color: var(--muted, #6c6c70); } .y { color: var(--a, var(--b)); }");
+    const count = (h: string) => r.report.colors.find((c: any) => c.hex === h)?.count;
+    // The declaration and one use each; the fallbacks don't add uses while the variable has a colour.
+    expect([count("#6C6C70"), count("#222222"), count("#333333")]).toEqual([2, 2, 1]);
+  });
+
+  test("a dark secondary button gets light text", async () => {
+    const r = await draftOf(`${base} button.secondary { background: #1e293b; } .x { background: #1e293b; }`);
+    expect(hex(r.tokens, "action-secondary", "light")).toBe("#1E293B");
+    expect(hex(r.tokens, "on-action-secondary", "light")).toBe("#FFFFFF");
+  });
+
+  test("names keep their case (custom properties are case-sensitive), and dark-mode blocks add no uses", async () => {
+    const r = await draftOf(`:root { --page: #ffffff; --gray900: #101828; --textPrimary: var(--gray900); --c1: #6c6c70; --c2: #999999; }
+      body { background: var(--page); color: var(--textPrimary); } .x { color: var(--textPrimary); } .y { color: var(--c1); }
+      @media (prefers-color-scheme: dark) { .a { color: var(--c2); } .b { color: var(--c2); } .c { color: var(--c2); } }`);
+    expect([hex(r.tokens, "text-primary", "light"), hex(r.tokens, "text-secondary", "light")]).toEqual(["#101828", "#6C6C70"]);
+  });
+
+  test("in a project with a plain site and another app, only the site's own names are read as hints", () => {
+    const site: SourceFile = { path: "site/styles.css", abs: "", lang: "css", text: ":root { --ink: #111111; } body { color: var(--ink); }" };
+    const app: SourceFile = { path: "app/src/globals.css", abs: "", lang: "css", text: ":root { --muted: #f5f5f5; } .x { color: #f5f5f5; }" };
+    const occ = collectOccurrences([site, app], null, () => true, (f) => f === site);
+    expect(occ.roleNames).toEqual(["--ink"]);
+  });
+});

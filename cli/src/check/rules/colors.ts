@@ -26,7 +26,7 @@ const COLOR_FN = "(?:rgba?|hsla?|hwb|oklab|oklch|lab|lch|color)\\([^()]*\\)";
 
 // A property, or a custom property whose name may hold digits (--surface-2).
 export const CSS_DECLARATION = /(--[\w-]+|[a-zA-Z-]+)\s*:\s*([^;{}]+)/g;
-const CSS_COLOR_LITERAL = new RegExp(`${HEX}|${COLOR_FN}`, "g");
+export const CSS_COLOR_LITERAL = new RegExp(`${HEX}|${COLOR_FN}`, "g");
 const CSS_NAMED = new RegExp(`(?<![\\w#.-])(?:${NAMED_ALT})(?![\\w-])`, "gi");
 const CSS_COLOR_PROP =
   /^(color|background(-color)?|border(-(top|right|bottom|left|block|inline)(-(start|end))?)?(-color)?|outline(-color)?|fill|stroke|box-shadow|text-shadow|text-decoration(-color)?|caret-color|accent-color|column-rule(-color)?|--[\w-]+)$/i;

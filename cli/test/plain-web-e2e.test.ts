@@ -100,7 +100,7 @@ describe("the compiled tool on a plain web site", () => {
     expect(run(seeded, ["extract"]).code).toBe(0);
     const report = JSON.parse(readFileSync(join(seeded, "design/extract-report.json"), "utf8"));
     // The site's one typed colour is listed with its value (as a background, the only one the draft found).
-    expect(report.variables.find((v: { name: string }) => v.name === "--paper")).toMatchObject({ light: "#FFF8EC" });
+    expect(report.variables.find((v: { name: string }) => v.name === "--paper")).toEqual({ name: "--paper", light: "#FFF8EC", role: "color.background" });
   });
 
   test.skipIf(!browser)("shot --audit with Kitepost's state scripts finds nothing (needs Chrome, Edge or Chromium)", () => {
