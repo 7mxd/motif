@@ -1,8 +1,12 @@
-// Builds a working copy of an eval fixture: the contract app, plus the seeded overlay for the seeded app.
+// Builds a working copy of an eval fixture: a contract app or site, plus the seeded overlay for a seeded one.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-export type FixtureName = "react-contract-app" | "react-seeded-app";
+export const FIXTURE_NAMES = ["react-contract-app", "react-seeded-app", "plain-contract-site", "plain-seeded-site"] as const;
+export type FixtureName = (typeof FIXTURE_NAMES)[number];
+
+/** Each seeded fixture is its base fixture plus an overlay. */
+const BASES: Partial<Record<FixtureName, FixtureName>> = { "react-seeded-app": "react-contract-app", "plain-seeded-site": "plain-contract-site" };
 
 const FIXTURES = import.meta.dir;
 
@@ -26,20 +30,21 @@ function copyKept(from: string, dest: string): void {
 export function assemble(fixture: FixtureName, dest: string): void {
   if (existsSync(dest) && readdirSync(dest).length > 0) throw new Error(`${dest} isn't empty; a fixture is only assembled into an empty folder.`);
   mkdirSync(dest, { recursive: true });
-  copyKept(join(FIXTURES, "react-contract-app"), dest);
-  if (fixture === "react-seeded-app") {
-    copyKept(join(FIXTURES, "react-seeded-app", "overlay"), dest);
-    const list = JSON.parse(readFileSync(join(FIXTURES, "react-seeded-app", "seeded-issues.json"), "utf8"));
+  const base = BASES[fixture];
+  copyKept(join(FIXTURES, base ?? fixture), dest);
+  if (base) {
+    copyKept(join(FIXTURES, fixture, "overlay"), dest);
+    const list = JSON.parse(readFileSync(join(FIXTURES, fixture, "seeded-issues.json"), "utf8"));
     for (const path of list.remove as string[]) rmSync(join(dest, path), { force: true });
   }
 }
 
 if (import.meta.main) {
   const [fixture, dest] = process.argv.slice(2);
-  if ((fixture !== "react-contract-app" && fixture !== "react-seeded-app") || !dest) {
-    console.error("Usage: bun tests/fixtures/assemble.ts <react-contract-app|react-seeded-app> <empty folder>");
+  if (!(FIXTURE_NAMES as readonly string[]).includes(fixture ?? "") || !dest) {
+    console.error(`Usage: bun tests/fixtures/assemble.ts <${FIXTURE_NAMES.join("|")}> <empty folder>`);
     process.exit(2);
   }
-  assemble(fixture, resolve(dest));
+  assemble(fixture as FixtureName, resolve(dest));
   console.log(`Assembled ${fixture} in ${resolve(dest)}`);
 }
