@@ -16,7 +16,7 @@ export interface SourceFile {
 const LANGS: Record<string, Lang> = {
   ".css": "css", ".scss": "css", ".sass": "css", ".less": "css",
   ".ts": "script", ".tsx": "script", ".js": "script", ".jsx": "script", ".mjs": "script", ".cjs": "script",
-  ".html": "markup", ".mdx": "markup",
+  ".html": "markup", ".htm": "markup", ".mdx": "markup",
 };
 
 export const DEFAULT_IGNORES = [

@@ -26,8 +26,13 @@ export interface AppCheck {
   warnings: Hit[];
 }
 
-export function scanFile(file: SourceFile, scale: Scale | null): Hit[] {
-  return [...scanColors(file), ...scanTailwind(file, scale), ...scanTailwindScale(file, scale), ...scanValues(file, scale)];
+export function scanFile(file: SourceFile, scale: Scale | null, opts: { tailwind?: boolean } = {}): Hit[] {
+  const tailwind = opts.tailwind ?? true;
+  return [
+    ...scanColors(file),
+    ...(tailwind ? [...scanTailwind(file, scale), ...scanTailwindScale(file, scale)] : []),
+    ...scanValues(file, scale),
+  ];
 }
 
 const byPosition = (a: Hit, b: Hit) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column;
