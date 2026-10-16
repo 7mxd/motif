@@ -202,6 +202,10 @@ describe("plain web, screens behind forms, and every size", () => {
     expect(outOfOrder(review, ["**Merging the exact checks.**", "A cause and its effect stay two findings", "`raw-value`", "Merge only the same problem"])).toBeNull();
   });
 
+  test("review puts a screen's state in its own field, as audit.json does (second eval run)", () => {
+    expect(outOfOrder(read("modes/review.md"), ["**Judgement findings**", '`{ "screen": "/", "state": "sent" }`'])).toBeNull();
+  });
+
   test("the design mode asks for Node.js only for React apps", () => {
     expect(read("modes/design.md")).toContain("No Node.js for a React app");
   });

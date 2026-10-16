@@ -56,9 +56,12 @@ export function normFile(file: string, appRoot?: string): string {
   return f.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-/** "/products/oats/", "http://localhost:3000/products/oats?x=1", "products/oats" are the same screen; so are "/index.html" and "/". */
+/**
+ * "/products/oats/", "http://localhost:3000/products/oats?x=1", "products/oats" are the same screen; so are "/index.html"
+ * and "/". A state written into the screen ("/ (sent)", "/settings@editor") is still that screen.
+ */
 export function normScreen(screen: string): string {
-  let s = screen.trim().replace(/^https?:\/\/[^/]+/i, "").replace(/[?#].*$/, "");
+  let s = screen.trim().replace(/\s*\([^()]*\)$/, "").replace(/@[\w-]+$/, "").replace(/^https?:\/\/[^/]+/i, "").replace(/[?#].*$/, "");
   if (!s.startsWith("/")) s = `/${s}`;
   // A folder's index page is the folder: a plain site's "/index.html" is "/".
   s = s.replace(/\/index\.html?$/i, "/");
@@ -108,9 +111,12 @@ function how(issue: SeededIssue, place: Location, lineText: LineText): "place" |
   return L.screen && place.screen && sameScreen(place.screen, L.screen) ? "screen" : null;
 }
 
-/** How a finding matches a problem: in one of its categories, at its place, or only on its screen. */
-function match(issue: SeededIssue, f: Finding, lineText: LineText, appRoot?: string): "place" | "screen" | null {
-  if (!issue.categories.includes(f.category)) return null;
+/**
+ * How a finding matches a problem: in one of its categories, at its place, or only on its screen. With other, a finding
+ * the reviewer filed under "other" counts as in any category (the model grader still confirms it).
+ */
+function match(issue: SeededIssue, f: Finding, lineText: LineText, appRoot?: string, other = false): "place" | "screen" | null {
+  if (!issue.categories.includes(f.category) && !(other && f.category === "other")) return null;
   const ways = places(f, appRoot).map((p) => how(issue, p, lineText));
   return ways.includes("place") ? "place" : ways.includes("screen") ? "screen" : null;
 }
@@ -141,11 +147,14 @@ export interface ExactGrade {
 }
 
 export function gradeExact(findings: Finding[], issues: SeededIssue[], lineText: LineText, appRoot?: string): ExactGrade {
-  const ids = (i: SeededIssue, ways: ("place" | "screen")[]) => findings.filter((f) => ways.includes(match(i, f, lineText, appRoot)!)).map((f) => f.id);
+  const ids = (i: SeededIssue, ways: ("place" | "screen")[], other = false) =>
+    findings.filter((f) => ways.includes(match(i, f, lineText, appRoot, other)!)).map((f) => f.id);
   const exactIssues = issues.filter((i) => i.kind === "exact");
   const exact = exactIssues.map((i) => ({ id: i.id, findings: ids(i, ["place"]) }));
   const candidates = [
-    ...issues.filter((i) => i.kind === "judgement").map((i) => ({ id: i.id, findings: ids(i, ["place", "screen"]) })),
+    // A judgement problem has no one right category, and Motif has none for some problems (accessibility): findings filed
+    // under "other" go to the model grader too.
+    ...issues.filter((i) => i.kind === "judgement").map((i) => ({ id: i.id, findings: ids(i, ["place", "screen"], true) })),
     ...exactIssues
       .filter((i) => exact.find((e) => e.id === i.id)!.findings.length === 0)
       .map((i) => ({ id: i.id, findings: ids(i, ["screen"]) }))

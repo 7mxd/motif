@@ -105,6 +105,31 @@ describe("the exact problems (README: how a grader reads the list)", () => {
   });
 });
 
+describe("findings written the ways real reviews write them (second eval run)", () => {
+  const plain: SeededIssue[] = JSON.parse(readFileSync(join(import.meta.dir, "../../tests/fixtures/plain-seeded-site/seeded-issues.json"), "utf8")).issues;
+  const candidatesFor = (fs: Finding[], id: string) => gradeExact(fs, plain, noLines).candidates.find((c) => c.id === id)?.findings ?? [];
+
+  test("a screen with its state written into it is still that screen", () => {
+    expect(normScreen("/ (sent)")).toBe("/");
+    expect(normScreen("/index.html (no recent)")).toBe("/");
+    expect(normScreen("/settings@editor")).toBe("/settings");
+    expect(normScreen("/products/[id]")).toBe("/products/[id]");
+    // The review's "no way to write another postcard" finding, which the grader didn't offer for P-17.
+    const another = finding("missing-state", { file: "app.js", line: 17, screen: "/ (sent)" });
+    expect(candidatesFor([another], "P-17")).toEqual([another.id]);
+  });
+
+  test("a judgement problem also gets the findings filed under other, for the model grader to confirm; exact problems stay strict", () => {
+    // Motif has no accessibility category, so the review filed "placeholders instead of labels" (P-15) under other.
+    const labels = finding("other", { file: "index.html", line: 29, screen: "/" });
+    expect(candidatesFor([labels], "P-15")).toEqual([labels.id]);
+    const typed = finding("other", { file: "styles.css", line: 47 });
+    const g = gradeExact([typed], plain, noLines);
+    expect(g.exact.find((e) => e.id === "P-01")!.findings).toEqual([]);
+    expect(g.candidates.find((c) => c.id === "P-01")).toBeUndefined();
+  });
+});
+
 describe("knock-on findings and the rest", () => {
   test("a declared consequence is correct, not false", () => {
     const f = finding("contrast", { screen: "/products", scheme: "light", selector: "p.caption" });

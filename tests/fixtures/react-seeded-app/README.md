@@ -41,7 +41,7 @@ bun tests/fixtures/assemble.ts react-seeded-app <empty folder>
 ## How a grader reads the list
 
 - `location` with `file` and `line`: a finding must point there (each such issue has an `anchor`, text that is on that line). `file` alone: anywhere in that file. `screen`: that route. `file` and `screen` together: either one, except that for an exact problem a finding naming only the screen counts once the model grader confirms it describes this problem (another problem's knock-on can share the screen). `app: true`: the category alone.
-- `categories`: the review categories that count as finding the problem; the first is the expected one.
+- `categories`: the review categories that count as finding the problem; the first is the expected one. For a judgement problem, a finding the review filed under `other` is also offered to the model grader, which decides whether it describes the problem (Motif's categories have no home for some problems, such as missing labels); exact problems take only their own categories.
 - `consequences`: findings a correct review will also report because of this problem (for example every text-secondary text failing contrast once S-11 makes the colour too faint). A grader counts a finding that matches a consequence's category, screen and scheme as correct, not as a false finding.
 
 ## Changing it
