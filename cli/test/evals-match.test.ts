@@ -11,6 +11,12 @@ const finding = (category: string, location: Finding["location"], severity = "ma
 const exactFor = (fs: Finding[], id: string, lineText: LineText = noLines) => gradeExact(fs, issues, lineText).exact.find((e) => e.id === id)!.findings;
 
 describe("reading a review report", () => {
+  test("accessibility is a review category", () => {
+    const { findings, problems } = parseReport(JSON.stringify({ motifReview: 1, findings: [{ id: "F-001", severity: "major", category: "accessibility", location: { screen: "/" }, summary: "No labels." }] }));
+    expect(problems).toEqual([]);
+    expect(findings.map((f) => f.category)).toEqual(["accessibility"]);
+  });
+
   test("keeps findings in the review format", () => {
     const r = parseReport(JSON.stringify({ motifReview: 1, scope: "whole app", findings: [finding("contrast", { screen: "/" })] }));
     expect(r.findings).toHaveLength(1);

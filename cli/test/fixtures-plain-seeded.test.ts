@@ -13,7 +13,7 @@ afterAll(cleanupTempDirs);
 const FIXTURES = join(import.meta.dir, "../../tests/fixtures");
 const list = JSON.parse(readFileSync(join(FIXTURES, "plain-seeded-site/seeded-issues.json"), "utf8"));
 const CATEGORIES = [
-  "raw-value", "contrast", "target-size", "reduced-motion", "missing-state", "hierarchy", "spacing", "typography",
+  "raw-value", "contrast", "target-size", "reduced-motion", "accessibility", "missing-state", "hierarchy", "spacing", "typography",
   "motion", "navigation", "copy", "platform-convention", "consistency", "anti-pattern", "other",
 ];
 type Consequence = { category: string; screens: string[]; schemes: string[]; note: string };
@@ -33,6 +33,10 @@ describe("the plain seeded site's list of planted problems", () => {
 
   test("at least 7 judgement problems, so the 70% bar allows two misses (5 of 7), close to the React app's three in 10", () => {
     expect(issues.filter((i) => i.kind === "judgement").length).toBeGreaterThanOrEqual(7);
+  });
+
+  test("placeholders instead of labels is an accessibility problem first", () => {
+    expect(issues.find((i) => i.id === "P-15")!.categories[0]).toBe("accessibility");
   });
 
   test("every entry is well formed", () => {

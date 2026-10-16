@@ -70,7 +70,7 @@ Write the report as `design/reviews/<YYYY-MM-DD>-<scope>.json`, plus a Markdown 
 
 **Severity:** `critical` blocks or shuts people out (unreadable text, a control they can't reach, a broken flow); `major` clearly hurts the experience or the design's consistency; `minor` is polish.
 
-**Categories:** `raw-value`, `contrast`, `target-size`, `reduced-motion`, `missing-state`, `hierarchy`, `spacing`, `typography`, `motion`, `navigation`, `copy`, `platform-convention`, `consistency`, `anti-pattern`, `other`.
+**Categories:** `raw-value`, `contrast`, `target-size`, `reduced-motion`, `accessibility`, `missing-state`, `hierarchy`, `spacing`, `typography`, `motion`, `navigation`, `copy`, `platform-convention`, `consistency`, `anti-pattern`, `other`. Use `accessibility` for what keeps people who use a screen reader, a keyboard or zoom from using something: a field or button with no label or name, focus you can't see or that gets lost, a control that only appears on hover, content that breaks when zoomed. Contrast, tap sizes and reduced motion keep their own categories.
 
 **Merging the exact checks.** Copy every finding from `design/shots/audit.json` as it is; it already uses this format. Turn each `motif validate` problem and `motif check` violation into a finding with `"source": "exact"` and its file and line:
 

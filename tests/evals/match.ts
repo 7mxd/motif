@@ -3,7 +3,7 @@
 import { isAbsolute, relative } from "node:path";
 
 export const CATEGORIES = [
-  "raw-value", "contrast", "target-size", "reduced-motion", "missing-state", "hierarchy", "spacing", "typography",
+  "raw-value", "contrast", "target-size", "reduced-motion", "accessibility", "missing-state", "hierarchy", "spacing", "typography",
   "motion", "navigation", "copy", "platform-convention", "consistency", "anti-pattern", "other",
 ] as const;
 const SEVERITIES = ["critical", "major", "minor"];

@@ -11,7 +11,7 @@ afterAll(cleanupTempDirs);
 const SEEDED = join(import.meta.dir, "../../tests/fixtures/react-seeded-app");
 const list = JSON.parse(readFileSync(join(SEEDED, "seeded-issues.json"), "utf8"));
 const CATEGORIES = [
-  "raw-value", "contrast", "target-size", "reduced-motion", "missing-state", "hierarchy", "spacing", "typography",
+  "raw-value", "contrast", "target-size", "reduced-motion", "accessibility", "missing-state", "hierarchy", "spacing", "typography",
   "motion", "navigation", "copy", "platform-convention", "consistency", "anti-pattern", "other",
 ];
 type Issue = { id: string; kind: string; detectedBy: string; rule?: string; categories: string[]; severity: string; location: { file?: string; line?: number; screen?: string; app?: boolean }; summary: string };
@@ -23,6 +23,10 @@ describe("the seeded app's list of planted problems", () => {
     expect(issues.length).toBeGreaterThanOrEqual(20);
     expect(issues.filter((i) => i.kind === "exact").length).toBeGreaterThanOrEqual(12);
     expect(issues.filter((i) => i.kind === "judgement").length).toBeGreaterThanOrEqual(8);
+  });
+
+  test("buttons that only appear on hover count as an accessibility finding too", () => {
+    expect(issues.find((i) => i.id === "S-22")!.categories).toContain("accessibility");
   });
 
   test("every entry is well formed", () => {
