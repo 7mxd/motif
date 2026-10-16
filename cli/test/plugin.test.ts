@@ -40,6 +40,8 @@ describe("the Claude Code development plugin", () => {
       expect(text).toContain(`\${CLAUDE_PLUGIN_ROOT}/skills/motif/modes/${mode}.md`);
       expect(text).toContain("${CLAUDE_PLUGIN_ROOT}/skills/motif/SKILL.md");
       expect(text).toContain("$ARGUMENTS");
+      // Claude Code's question prompt is the "own question prompt" the skill's rules ask for (hands-on test).
+      expect(text).toContain("AskUserQuestion");
     }
   });
 

@@ -64,6 +64,11 @@ describe("SKILL.md", () => {
     ]) expect(skill).toContain(s);
   });
 
+  test("asks with the agent's own question prompt when it has one, the numbered list otherwise (hands-on test)", () => {
+    // In the hands-on test the feature session typed its four questions into the chat; Claude Code can prompt for them instead.
+    expect(outOfOrder(skill, ["Ask with choices", "own question prompt", "(Recommended)", "up to four per prompt", "Without one", "numbered list at the end of your message"])).toBeNull();
+  });
+
   test("stays short, since it loads every time", () => {
     expect(lineCount(skill)).toBeLessThanOrEqual(200);
   });
