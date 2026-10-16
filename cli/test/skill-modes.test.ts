@@ -196,6 +196,12 @@ describe("plain web, screens behind forms, and every size", () => {
     for (const s of ['data-state="<state>"', "<mockup>@<state>.png", "--against"]) expect(kit).toContain(s);
   });
 
+  test("review keeps a cause and its effect as two findings (first eval run)", () => {
+    // In c-plain the typed colours behind two contrast failures were reported only as contrast, so the raw-value cause was lost.
+    const review = read("modes/review.md");
+    expect(outOfOrder(review, ["**Merging the exact checks.**", "A cause and its effect stay two findings", "`raw-value`", "Merge only the same problem"])).toBeNull();
+  });
+
   test("the design mode asks for Node.js only for React apps", () => {
     expect(read("modes/design.md")).toContain("No Node.js for a React app");
   });

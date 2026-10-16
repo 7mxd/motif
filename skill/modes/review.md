@@ -85,7 +85,7 @@ Write the report as `design/reviews/<YYYY-MM-DD>-<scope>.json`, plus a Markdown 
 | `motif check` `reduced-motion` | `reduced-motion` | major |
 | `motif check` `generated-edited` | `consistency` | minor |
 
-Merge the same problem found in many places into one finding that lists the places. Number the findings `F-001`, `F-002`… across the whole report, renumbering those copied from `audit.json`.
+A cause and its effect stay two findings: a typed colour that `motif check` reports is a `raw-value` finding even when the audit reports the contrast it causes, and that contrast finding's fix points to it ("fixed by F-014"), so fixing the contrast another way can't leave the typed colour behind. Merge only the same problem found in many places into one finding that lists the places. Number the findings `F-001`, `F-002`… across the whole report, renumbering those copied from `audit.json`.
 
 **Judgement findings** use `"source": "judgement"`, a category from the list, the file or screen, a one-line summary of why it matters, and a concrete fix.
 
