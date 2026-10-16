@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { CASES, needsBrowser, selectCases, type EvalCase } from "./cases";
-import { AGENT_TOOLS, agentArgs, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv } from "./claude";
+import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv } from "./claude";
 import { collectAndGrade } from "./collect";
 import type { Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
@@ -241,7 +241,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     const judge: JudgeFn = async (input, cwd) => {
       const r = await deps.session({
         command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel }), cwd, env,
-        prompt: judgePrompt(input), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_TOOLS, personal },
+        prompt: judgePrompt(input), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
       });
       await deps.purge(ready.claude, cwd);
       if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "The grader's session didn't start.");

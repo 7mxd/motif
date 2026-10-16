@@ -61,6 +61,12 @@ export const AGENT_TOOLS = [
 /** Test C's grader only reads. */
 export const JUDGE_TOOLS = ["Read", "Grep", "Glob"];
 
+/**
+ * The tools the grader's first event may list: its reading tools, and StructuredOutput, the tool Claude Code itself adds
+ * to a session started with --json-schema so it can give its answer in that schema (Claude Code 2.1.301 and later).
+ */
+export const JUDGE_EXPECTED_TOOLS = [...JUDGE_TOOLS, "StructuredOutput"];
+
 /** Every session: headless, every event streamed, nothing saved, none of the developer's settings, no MCP servers. */
 const isolation = (mcpConfigFile: string) => [
   "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EvalCase } from "../../tests/evals/cases";
-import { AGENT_TOOLS, JUDGE_TOOLS } from "../../tests/evals/claude";
+import { AGENT_TOOLS, JUDGE_EXPECTED_TOOLS } from "../../tests/evals/claude";
 import type { Grade } from "../../tests/evals/grade";
 import { Paused } from "../../tests/evals/judge";
 import { runEvals, type RunDeps } from "../../tests/evals/run";
@@ -206,7 +206,7 @@ describe("the eval runner", () => {
     });
     expect(await runEvals(["--cases", "c-review,d-stride", "--work", h.work], h.deps, h.where)).toBe(2);
     const judgeSpec = h.calls.session.find((s) => s.args.includes("--json-schema"))!;
-    expect(judgeSpec.expect).toEqual({ auto: false, tools: JUDGE_TOOLS, personal: ["apple-design"] });
+    expect(judgeSpec.expect).toEqual({ auto: false, tools: JUDGE_EXPECTED_TOOLS, personal: ["apple-design"] });
     expect(h.calls.prepare).toEqual(["c-review"]);
     expect((loadRun(h.where.results, RUN) as RunState).cases["c-review"]!.status).toBe("session-done");
     expect(h.lines.join("\n")).toContain("superpowers");

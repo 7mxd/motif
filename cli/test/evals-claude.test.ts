@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  AGENT_TOOLS, agentArgs, initInfo, isolationProblems, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, resolveClaude, resultInfo, sessionEnv, usageLimit,
+  AGENT_TOOLS, agentArgs, initInfo, isolationProblems, JUDGE_EXPECTED_TOOLS, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, resolveClaude, resultInfo, sessionEnv, usageLimit,
 } from "../../tests/evals/claude";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -145,6 +145,14 @@ describe("a session's first event", () => {
     const judge = init({ permissionMode: "default", plugins: [{ name: "cc-plugin-telemetry", path: "builtin" }], tools: ["Glob", "Grep", "Read"] });
     expect(isolationProblems(initInfo(judge)!, { auto: false, tools: JUDGE_TOOLS })).toEqual([]);
     expect(isolationProblems(initInfo({ ...judge, tools: ["Read", "Bash"] })!, { auto: false, tools: JUDGE_TOOLS })).toEqual([expect.stringContaining("Bash")]);
+  });
+
+  test("the grader may have StructuredOutput, Claude Code's own way to answer in its schema; a session building a feature may not", () => {
+    // Claude Code 2.1.301 adds the tool to a session started with --json-schema, which stopped the first real run's grading.
+    const judge = init({ permissionMode: "default", plugins: [{ name: "cc-plugin-telemetry", path: "builtin" }], tools: ["Glob", "Grep", "Read", "StructuredOutput"] });
+    expect(JUDGE_EXPECTED_TOOLS).toEqual([...JUDGE_TOOLS, "StructuredOutput"]);
+    expect(isolationProblems(initInfo(judge)!, { auto: false, tools: JUDGE_EXPECTED_TOOLS })).toEqual([]);
+    expect(isolationProblems(initInfo(init({ tools: ["Bash", "Read", "StructuredOutput"] }))!, AGENT)).toEqual([expect.stringContaining("StructuredOutput")]);
   });
 
   test("other events aren't the first event", () => {
