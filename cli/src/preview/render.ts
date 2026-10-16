@@ -21,10 +21,13 @@ const VIEWPORT = { width: 1600, height: 1200, scale: 2 };
 const SCHEMES = ["light", "dark"] as const;
 const FONT_WAIT_MS = 5000;
 
-// Page-relative boxes of the visible frames (scroll offsets added, so frames below the fold are found too).
+// Page-relative boxes of the visible frames (scroll offsets added, so frames below the fold are found too), and the
+// state each one shows when it says so (data-state="recent", the name of the state's script).
 const FRAMES = `[...document.querySelectorAll(".mk-frame")]
-  .map((e) => { const r = e.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height }; })
+  .map((e) => { const r = e.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, state: e.dataset.state || "" }; })
   .filter((r) => r.width > 0 && r.height > 0)`;
+/** A state's name, as in a state script's file name: letters, digits and dashes. */
+const STATE_NAME = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 const WHOLE_PAGE = `({ x: 0, y: 0, width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight })`;
 /**
  * Waits for the page's fonts within one shared budget, then lists the families with no face that loaded.
@@ -45,8 +48,10 @@ export function fontsScript(families: string[], budgetMs: number = FONT_WAIT_MS)
   })()`;
 }
 
-export function pngName(name: string, index: number, scheme: "light" | "dark"): string {
-  return `${name}${index > 0 ? `-${index + 1}` : ""}${scheme === "dark" ? ".dark" : ""}.png`;
+/** A frame's PNG: numbered after the first (home-2.png), or named after the state it shows (home@recent.png). */
+export function pngName(name: string, index: number, scheme: "light" | "dark", state?: string): string {
+  const which = state ? `@${state}` : index > 0 ? `-${index + 1}` : "";
+  return `${name}${which}${scheme === "dark" ? ".dark" : ""}.png`;
 }
 
 /** Renders each target in light and dark, one PNG per frame. Starts the browser once. */
@@ -68,10 +73,14 @@ export async function renderPngs(opts: { browserPath: string; targets: RenderTar
         await page.goto(target.url, opts.timeoutMs);
         const notLoaded = await page.evaluate<string[]>(fontsScript(target.fonts ?? []));
         if (scheme === "light") for (const family of notLoaded) missing.add(family);
-        const frames = await page.evaluate<Clip[]>(FRAMES);
-        const clips = frames.length > 0 ? frames : [await page.evaluate<Clip>(WHOLE_PAGE)];
-        for (const [i, clip] of clips.entries()) {
-          const file = join(outDir, pngName(target.name, i, scheme));
+        const frames = await page.evaluate<(Clip & { state: string })[]>(FRAMES);
+        const clips = frames.length > 0 ? frames : [{ ...(await page.evaluate<Clip>(WHOLE_PAGE)), state: "" }];
+        // A state named twice, or not usable in a file name, keeps the frame's number instead.
+        const named = new Set<string>();
+        for (const [i, { state, ...clip }] of clips.entries()) {
+          const usable = STATE_NAME.test(state) && !named.has(state);
+          if (usable) named.add(state);
+          const file = join(outDir, pngName(target.name, i, scheme, usable ? state : undefined));
           writeFileSync(file, await page.screenshot(clip));
           written.push(file);
         }

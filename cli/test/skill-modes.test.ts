@@ -188,6 +188,14 @@ describe("plain web, screens behind forms, and every size", () => {
     ])).toBeNull();
   });
 
+  test("a feature's mockup marks each state's frame, and the comparison captures those states (hands-on test)", () => {
+    // In the hands-on test the "five recent recipes" frame was compared with the empty first screen.
+    const feature = read("modes/feature.md");
+    expect(outOfOrder(feature, ["## 4. Mockup", 'data-state="<state>"', "## 6. Verify", "--state design/states/<state>.js --against design/previews/"])).toBeNull();
+    const kit = read("preview-kit/README.md");
+    for (const s of ['data-state="<state>"', "<mockup>@<state>.png", "--against"]) expect(kit).toContain(s);
+  });
+
   test("the design mode asks for Node.js only for React apps", () => {
     expect(read("modes/design.md")).toContain("No Node.js for a React app");
   });

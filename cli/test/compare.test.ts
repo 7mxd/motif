@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { launchBrowser } from "../src/browser/cdp";
 import { addPngText, pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
-import { comparePage, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
+import { comparePage, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -73,6 +73,25 @@ describe("pairing", () => {
       ["home.dark.png", join("shots", "index.mobile.dark.png"), join("compare", "home.dark.png")],
       ["home.png", join("shots", "index.mobile.png"), join("compare", "home.png")],
     ]);
+  });
+
+  test("a frame of a state pairs with that state's screenshot, and a plain frame with the plain page (hands-on test)", () => {
+    // In the hands-on test the "five recent recipes" frame was put next to the empty first screen.
+    const dir = tempDir("motif-mockup-");
+    for (const f of ["recent.png", "recent.dark.png", "recent@list.png", "recent@list.dark.png", "recent@folded.png"]) writeFileSync(join(dir, f), pngHeader(820, 1728));
+    const frames = mockupFrames(join(dir, "recent.html"));
+    expect(frames.map((f) => f.slice(dir.length + 1))).toEqual(["recent.dark.png", "recent.png", "recent@folded.png", "recent@list.dark.png", "recent@list.png"]);
+    // A state's screenshot can come before the plain one; each frame still finds its own.
+    const shots = ["index@list.mobile.png", "index@list.mobile.dark.png", "index.mobile.png", "index.mobile.dark.png", "index@list.mobile-430.png"].map((f) => join(dir, "shots", f));
+    const pairs = pairWithMockup(frames, shots, join(dir, "compare"));
+    expect(pairs.map((p) => [p.before.slice(dir.length + 1), p.after.slice(dir.length + 1)])).toEqual([
+      ["recent.dark.png", join("shots", "index.mobile.dark.png")],
+      ["recent.png", join("shots", "index.mobile.png")],
+      ["recent@list.dark.png", join("shots", "index@list.mobile.dark.png")],
+      ["recent@list.png", join("shots", "index@list.mobile.png")],
+    ]);
+    // The folded state wasn't captured this run: it's named, not skipped silently.
+    expect(missingStateFrames(frames, shots)).toEqual(["folded"]);
   });
 });
 

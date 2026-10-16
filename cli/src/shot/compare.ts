@@ -39,9 +39,10 @@ const filesIn = (dir: string) => {
 };
 
 /**
- * The PNGs `motif preview` made for a mockup: given home.html, its home.png, home-2.png, home.dark.png, …, next to it
- * or in the other folders given (preview writes them to design/previews/); given one PNG, that PNG and its light or
- * dark twin. PNGs of a neighbouring mockup with a numbered name (home-2.html) are that mockup's, not this one's.
+ * The PNGs `motif preview` made for a mockup: given home.html, its home.png, home-2.png, home@saved.png (a frame of the
+ * "saved" state), home.dark.png, …, next to it or in the other folders given (preview writes them to design/previews/);
+ * given one PNG, that PNG and its light or dark twin. PNGs of a neighbouring mockup with a numbered name (home-2.html)
+ * are that mockup's, not this one's.
  */
 export function mockupFrames(mockup: string, alsoIn: string[] = []): string[] {
   if (extname(mockup).toLowerCase() === ".png") {
@@ -51,7 +52,7 @@ export function mockupFrames(mockup: string, alsoIn: string[] = []): string[] {
   const name = basename(mockup, extname(mockup));
   const others = new Set(filesIn(dirname(mockup)).filter((f) => f.endsWith(".html")).map((f) => basename(f, ".html")));
   others.delete(name);
-  const frame = new RegExp(`^${escapeRegExp(name)}(-\\d+)?(\\.dark)?\\.png$`);
+  const frame = new RegExp(`^${escapeRegExp(name)}(-\\d+|@[A-Za-z0-9][A-Za-z0-9-]*)?(\\.dark)?\\.png$`);
   for (const dir of [dirname(mockup), ...alsoIn]) {
     const found = filesIn(dir).filter((f) => frame.test(f) && !others.has(f.replace(/(\.dark)?\.png$/, "")));
     if (found.length > 0) return found.sort().map((f) => join(dir, f));
@@ -59,16 +60,42 @@ export function mockupFrames(mockup: string, alsoIn: string[] = []): string[] {
   return [];
 }
 
-/** Pairs each mockup frame with this run's screenshot for the same viewport and scheme: phone frames ↔ mobile, wider frames ↔ desktop. */
+/** The state a mockup frame shows (home@saved.png → "saved"), or "" for the page as it opens. */
+function frameState(frame: string): string {
+  return basename(frame).match(/@([A-Za-z0-9][A-Za-z0-9-]*)(\.dark)?\.png$/)?.[1] ?? "";
+}
+
+/** The screenshot that matches a frame: the same state (none for a plain frame), viewport and scheme. */
+function shotFor(frame: string, shots: string[]): string | undefined {
+  const dark = frame.endsWith(".dark.png");
+  const viewport = pngSize(new Uint8Array(readFileSync(frame))).width <= 1000 ? "mobile" : "desktop";
+  const state = frameState(frame);
+  const ending = `.${viewport}${dark ? ".dark" : ""}.png`;
+  return shots.find((s) => {
+    const file = basename(s);
+    if (!file.endsWith(ending)) return false;
+    const slug = file.slice(0, -ending.length);
+    return state ? slug.endsWith(`@${state}`) : !slug.includes("@");
+  });
+}
+
+/**
+ * Pairs each mockup frame with this run's screenshot for the same viewport and scheme (phone frames ↔ mobile, wider
+ * frames ↔ desktop) and the same state: a frame of a state (home@saved.png) with that state's screenshot, a plain
+ * frame with the page as it opens.
+ */
 export function pairWithMockup(frames: string[], shots: string[], compareDir: string): ComparePair[] {
   const pairs: ComparePair[] = [];
   for (const frame of frames) {
-    const dark = frame.endsWith(".dark.png");
-    const viewport = pngSize(new Uint8Array(readFileSync(frame))).width <= 1000 ? "mobile" : "desktop";
-    const after = shots.find((s) => s.endsWith(`.${viewport}${dark ? ".dark" : ""}.png`));
+    const after = shotFor(frame, shots);
     if (after) pairs.push({ before: frame, after, out: join(compareDir, basename(frame)) });
   }
   return pairs;
+}
+
+/** The states the mockup has frames of that this run didn't capture (no --state for them), each named once. */
+export function missingStateFrames(frames: string[], shots: string[]): string[] {
+  return [...new Set(frames.filter((f) => frameState(f) && !shotFor(f, shots)).map(frameState))];
 }
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);

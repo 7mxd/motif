@@ -20,6 +20,9 @@ describe("pngName", () => {
     expect(pngName("home", 1, "light")).toBe("home-2.png");
     expect(pngName("home", 0, "dark")).toBe("home.dark.png");
     expect(pngName("home", 2, "dark")).toBe("home-3.dark.png");
+    // A frame of a state is named after it, like the state's screenshots (index@recent.mobile.png).
+    expect(pngName("home", 1, "light", "recent")).toBe("home@recent.png");
+    expect(pngName("home", 1, "dark", "recent")).toBe("home@recent.dark.png");
   });
 });
 
@@ -56,6 +59,15 @@ describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
     expect(size(join(out, "two.png"))).toEqual({ width: 400, height: 200 });
     expect(size(join(out, "two-2.png"))).toEqual({ width: 400, height: 3000 });
     expect(size(join(out, "plain.png"))).toEqual({ width: 3200, height: 4000 });
+  }, 60_000);
+
+  test("a frame marked with data-state is named after its state; a repeated or unusable name falls back to a number", async () => {
+    const out = tempDir("motif-render-");
+    const frames = ['<div class="mk-frame"></div>', '<div class="mk-frame" data-state="recent"></div>', '<div class="mk-frame" data-state="recent"></div>', '<div class="mk-frame" data-state="not ok!"></div>'];
+    const { files } = await renderPngs({ browserPath: browser!.path, outDir: out, targets: [{ name: "home", url: page(frames.join("")) }] });
+    expect(files.map((f) => f.slice(out.length + 1))).toEqual([
+      "home.png", "home@recent.png", "home-3.png", "home-4.png", "home.dark.png", "home@recent.dark.png", "home-3.dark.png", "home-4.dark.png",
+    ]);
   }, 60_000);
 
   test("a page that can't be opened is a plain error, and the browser is closed", async () => {

@@ -6,7 +6,7 @@ import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stack
 import { selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
 import { captureScreens, MAX_HEIGHT, type RouteResult, type StateScript } from "../shot/capture";
-import { mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison } from "../shot/compare";
+import { missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison } from "../shot/compare";
 import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { startStaticServer, type StaticServer } from "../shot/static-server";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
@@ -288,6 +288,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       added = paired.added;
     } else {
       pairs = pairWithMockup(against.frames, thisRun, compareDir);
+      for (const state of missingStateFrames(against.frames, thisRun)) {
+        notes.push(`The mockup also shows "${state}", which this run didn't capture: add --state with its script (design/states/${state}.js).`);
+      }
     }
     try {
       comparisons = await deps.compare({

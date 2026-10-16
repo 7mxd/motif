@@ -317,6 +317,15 @@ describe("motif shot: the mockup while building, before and after a rebuild", ()
     expect(r.text).toContain("Side by side with the mockup design/previews/settings.html");
   });
 
+  test("a mockup frame of a state this run didn't capture is named, with how to capture it", async () => {
+    const root = makeProject({ "design/previews/settings.html": "<p>mockup</p>" });
+    writeFileSync(join(root, "design/previews/settings.png"), pngHeader(820, 1728));
+    writeFileSync(join(root, "design/previews/settings@saved.png"), pngHeader(820, 1728));
+    const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/settings", against: "design/previews/settings.html" }), fakes().deps);
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toContain(`The mockup also shows "saved", which this run didn't capture: add --state with its script (design/states/saved.js).`);
+  });
+
   test("--against is checked before anything starts", async () => {
     const root = makeProject({ ...NEXT_APP, "design/previews/home.html": "<p>mockup</p>" });
     const cases: [string, string, string][] = [

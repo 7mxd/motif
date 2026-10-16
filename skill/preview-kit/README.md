@@ -18,6 +18,7 @@ Copy `kit.css`, `kit.js`, `vendor/motion.js` and the `fonts` folder next to the 
 
 - `.mk-stage` — page layout for one or more frames
 - `.mk-frame` — every device; add one of `.mk-phone` (with `.mk-ios` or `.mk-android`), `.mk-tablet`, `.mk-browser`
+- `data-state="<state>"` on a frame that shows a state behind a form or a click, named like its state script (`design/states/<state>.js`). `motif preview` saves that frame as `<mockup>@<state>.png`, and `motif shot --against` puts it next to that state's screenshot instead of the page as it opens.
 - Phone parts, top to bottom: `.mk-status`, your screen, `.mk-home` (iOS)
 - Browser parts: `.mk-toolbar` containing `.mk-address`, then `.mk-body-row` with `.mk-sidebar` and `.mk-main`
 
