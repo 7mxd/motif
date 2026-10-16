@@ -68,14 +68,16 @@ describe("state scripts", () => {
 });
 
 describe("audit findings in a state", () => {
-  test("are kept apart from the same element on the plain page, and say which state", () => {
+  test("are one finding with the same element on the plain page, and still say which state (third eval run)", () => {
     const issue = (state?: string): AuditIssue => ({
       rule: "color-contrast", selector: ".cup", label: "Tea", kind: "element", ratio: 1.7, expected: 4.5, fg: "#999", bg: "#aaa",
       route: "/", viewport: "mobile", scheme: "light", shot: "design/shots/index.mobile.png", ...(state ? { state } : {}),
     });
+    // One text failing on the page and in a state is one problem: the report lists the state as another place.
     const findings = toFindings([issue(), issue("editor")]);
-    expect(findings).toHaveLength(2);
-    expect(findings.map((f) => f.location.state)).toEqual([undefined, "editor"]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.location.state).toBeUndefined();
+    expect(findings[0]!.locations!.map((l) => l.state)).toEqual(["editor"]);
   });
 });
 

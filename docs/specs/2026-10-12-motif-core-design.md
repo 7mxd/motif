@@ -311,7 +311,7 @@ Progress after each step is written to `design/.progress.json`. Running `/init` 
 }
 ```
 
-`category` ∈ `raw-value`, `contrast`, `target-size`, `reduced-motion`, `accessibility`, `missing-state`, `hierarchy`, `spacing`, `typography`, `motion`, `navigation`, `copy`, `platform-convention`, `consistency`, `anti-pattern`, `other`. `source` ∈ `exact`, `judgement`. Test C grades against this format.
+`category` ∈ `raw-value`, `contrast`, `target-size`, `reduced-motion`, `accessibility`, `missing-state`, `hierarchy`, `spacing`, `typography`, `motion`, `navigation`, `copy`, `platform-convention`, `consistency`, `anti-pattern`, `other`. `source` ∈ `exact`, `judgement`. A finding found in several places keeps one in `location` and lists the others in `locations` (objects like `location`). Test C grades against this format.
 
 ## 8. Design sources and the free baseline
 

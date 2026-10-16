@@ -202,6 +202,11 @@ describe("plain web, screens behind forms, and every size", () => {
     expect(outOfOrder(review, ["**Merging the exact checks.**", "A cause and its effect stay two findings", "`raw-value`", "Merge only the same problem"])).toBeNull();
   });
 
+  test("review lists a finding's other places, and names the cause of each group of audit findings (third eval run)", () => {
+    expect(outOfOrder(read("modes/review.md"), ["**Merging the exact checks.**", "already groups", "name its cause", '"locations"'])).toBeNull();
+    expect(readFileSync(join(import.meta.dir, "../../docs/specs/2026-10-12-motif-core-design.md"), "utf8")).toContain("`locations`");
+  });
+
   test("review puts a screen's state in its own field, as audit.json does (second eval run)", () => {
     expect(outOfOrder(read("modes/review.md"), ["**Judgement findings**", '`{ "screen": "/", "state": "sent" }`'])).toBeNull();
   });

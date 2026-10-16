@@ -32,12 +32,23 @@ export interface AuditIssue extends RawIssue {
 
 export type Severity = "critical" | "major" | "minor";
 
+/** Where a finding is: the page, the element, the size and scheme it was seen at, and the state the page was in. */
+export interface Place {
+  screen: string;
+  selector: string;
+  viewport: "mobile" | "desktop";
+  scheme?: Scheme;
+  state?: string;
+}
+
 export interface ReviewFinding {
   id: string;
   severity: Severity;
   category: "contrast" | "target-size" | "reduced-motion";
   source: "exact";
-  location: { screen: string; selector: string; viewport: "mobile" | "desktop"; scheme?: Scheme; state?: string };
+  location: Place;
+  /** The other places the same problem was found, when there are any. */
+  locations?: Place[];
   summary: string;
   fix: string;
   shot: string;
@@ -251,30 +262,56 @@ function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" |
   }
 }
 
-const mergeKey = (i: AuditIssue) =>
-  i.rule === "color-contrast" ? `${i.rule}|${i.route}|${i.state ?? ""}|${i.selector}|${i.scheme}` : `${i.rule}|${i.route}|${i.state ?? ""}|${i.selector}`;
+/**
+ * Which finding an issue belongs to. Texts that fail with the same colours in one scheme are one problem wherever they
+ * are (one colour role or one typed colour, usually); anything else is one element, at every size and in every state.
+ */
+const groupKey = (i: AuditIssue) =>
+  i.rule === "color-contrast" && i.fg && i.bg
+    ? `${i.rule}|${i.scheme}|${i.fg.toLowerCase()}|${i.bg.toLowerCase()}|${i.expected ?? 4.5}`
+    : i.rule === "color-contrast"
+      ? `${i.rule}|${i.route}|${i.selector}|${i.scheme}`
+      : `${i.rule}|${i.route}|${i.selector}`;
+const placeKey = (i: AuditIssue) => `${i.route}|${i.state ?? ""}|${i.selector}`;
 
-/** Findings in the review format: repeats merged, worst first, numbered F-001, F-002… */
+const placeOf = (i: AuditIssue, withScheme: boolean): Place => ({
+  screen: i.route, selector: i.selector, viewport: i.viewport, ...(withScheme ? { scheme: i.scheme } : {}), ...(i.state ? { state: i.state } : {}),
+});
+
+/** Findings in the review format: repeats grouped (each with its places), worst first, numbered F-001, F-002… */
 export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
-  const seen = new Set<string>();
-  const kept: Omit<ReviewFinding, "id">[] = [];
+  // A target already reported as too small for everyone isn't reported again as small on phones.
+  const tooSmall = new Set(issues.filter((i) => i.rule === "target-size").map(placeKey));
+  const groups = new Map<string, AuditIssue[]>();
   for (const issue of issues) {
-    const key = mergeKey(issue);
-    // A target already reported as too small for everyone isn't reported again as small on phones.
-    if (seen.has(key) || (issue.rule === "target-mobile" && seen.has(`target-size|${issue.route}|${issue.state ?? ""}|${issue.selector}`))) continue;
-    seen.add(key);
-    const { withScheme, ...verdict } = judge(issue);
-    kept.push({
+    if (issue.rule === "target-mobile" && tooSmall.has(placeKey(issue))) continue;
+    const key = groupKey(issue);
+    groups.set(key, [...(groups.get(key) ?? []), issue]);
+  }
+  const kept: Omit<ReviewFinding, "id">[] = [...groups.values()].map((group) => {
+    // The worst place leads (the lowest contrast; otherwise the first found), then every other place once.
+    const lead = group.reduce((worst, i) => ((i.ratio ?? Infinity) < (worst.ratio ?? Infinity) ? i : worst), group[0]!);
+    const seen = new Set<string>();
+    const places = [lead, ...group.filter((i) => i !== lead)].filter((i) => !seen.has(placeKey(i)) && Boolean(seen.add(placeKey(i))));
+    const { withScheme, ...verdict } = judge(lead);
+    const texts = new Set(places.map((i) => `${i.route}|${i.selector}`));
+    const labels = [...new Set(places.map((i) => i.label).filter(Boolean))].slice(0, 2).map((l) => `"${l}"`);
+    const summary =
+      lead.rule === "color-contrast" && texts.size > 1 && lead.fg && lead.bg
+        ? `${texts.size} texts are hard to read in ${lead.scheme} mode: ${lead.fg} on ${lead.bg} (${lead.ratio}:1, needs ${lead.expected ?? 4.5}:1)${labels.length ? `, such as ${labels.join(" and ")}` : ""}.`
+        : verdict.summary;
+    return {
       severity: verdict.severity,
       category: verdict.category,
       source: "exact",
-      location: { screen: issue.route, selector: issue.selector, viewport: issue.viewport, ...(withScheme ? { scheme: issue.scheme } : {}), ...(issue.state ? { state: issue.state } : {}) },
-      summary: verdict.summary,
+      location: placeOf(lead, withScheme),
+      ...(places.length > 1 ? { locations: places.slice(1).map((i) => placeOf(i, withScheme)) } : {}),
+      summary,
       fix: verdict.fix,
-      shot: issue.shot,
+      shot: lead.shot,
       status: "open",
-    });
-  }
+    };
+  });
   kept.sort((a, b) => ORDER[a.severity] - ORDER[b.severity]);
   return kept.map((f, n) => ({ id: `F-${String(n + 1).padStart(3, "0")}`, ...f }));
 }
