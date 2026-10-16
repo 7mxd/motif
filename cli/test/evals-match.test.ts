@@ -125,6 +125,14 @@ describe("findings written the ways real reviews write them (second eval run)", 
     expect(candidatesFor([another], "P-17")).toEqual([another.id]);
   });
 
+  test("a hand edit to a generated file counts on any line of it (third eval run)", () => {
+    // motif check reports P-07 on motif.css's header; the review pointed at the edited line, 39.
+    const edited = finding("consistency", { file: "motif.css", line: 39 });
+    expect(gradeExact([edited], plain, noLines).exact.find((e) => e.id === "P-07")!.findings).toEqual([edited.id]);
+    // Other pinned problems still need their line.
+    expect(gradeExact([finding("raw-value", { file: "styles.css", line: 40 })], plain, noLines).exact.find((e) => e.id === "P-01")!.findings).toEqual([]);
+  });
+
   test("a judgement problem also gets the findings filed under other, for the model grader to confirm; exact problems stay strict", () => {
     // Motif has no accessibility category, so the review filed "placeholders instead of labels" (P-15) under other.
     const labels = finding("other", { file: "index.html", line: 29, screen: "/" });

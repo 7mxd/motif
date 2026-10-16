@@ -13,6 +13,8 @@ export interface Consequence { category: string; screens: string[]; schemes: str
 export interface SeededIssue {
   id: string; kind: "exact" | "judgement"; detectedBy: string; rule?: string; categories: string[]; severity: string;
   location: Location; anchor?: string; summary: string; consequences?: Consequence[];
+  /** A finding anywhere in the problem's file counts (a hand edit to a generated file, which motif check reports at its header). */
+  wholeFile?: boolean;
 }
 export interface Finding { id: string; severity: string; category: string; source?: string; location: Location; locations?: Location[]; summary: string; fix?: string }
 
@@ -105,7 +107,7 @@ function how(issue: SeededIssue, place: Location, lineText: LineText): "place" |
   const L = issue.location;
   if (L.app) return "place";
   if (L.file && place.file === L.file) {
-    if (L.line === undefined || place.line === L.line) return "place";
+    if (L.line === undefined || place.line === L.line || issue.wholeFile) return "place";
     if (place.line !== undefined && issue.anchor && (lineText(place.file, place.line) ?? "").includes(issue.anchor)) return "place";
   }
   return L.screen && place.screen && sameScreen(place.screen, L.screen) ? "screen" : null;

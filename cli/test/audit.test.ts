@@ -55,6 +55,44 @@ describe("toFindings", () => {
     expect(findings[4]!.summary).toBe('The "Go" button is 32×32 px on a phone; 44×44 px is easier to tap.');
   });
 
+  test("texts that fail with the same colours are one finding that lists every place (third eval run)", () => {
+    // The third eval run's report copied 53 contrast findings, one per text and state, from a few causes.
+    const faint = { fg: "#b2a79f", bg: "#ffffff", ratio: 2.2, expected: 4.5 };
+    const findings = toFindings([
+      issue({ ...faint, selector: "#date-1", label: "Sent 12 October" }),
+      issue({ ...faint, selector: "#date-1", label: "Sent 12 October", state: "sent" }),
+      issue({ ...faint, selector: "#to", label: "Amara Okafor", state: "sent", ratio: 2.1 }),
+      issue({ ...faint, selector: "#from", label: "Sam", state: "sent", viewport: "desktop" }),
+      issue({ fg: "#d9c7b8", bg: "#fff8ec", ratio: 1.4, expected: 3, selector: "#border-label", label: "Border" }),
+      issue({ ...faint, selector: "#date-1", label: "Sent 12 October", scheme: "dark", fg: "#5c544f", bg: "#2b2522" }),
+    ]);
+    expect(findings).toHaveLength(3);
+    const group = findings.find((f) => f.summary.startsWith("3 texts"))!;
+    expect(group.summary).toBe('3 texts are hard to read in light mode: #b2a79f on #ffffff (2.1:1, needs 4.5:1), such as "Amara Okafor" and "Sent 12 October".');
+    // The worst place leads; every other place is listed once (a viewport repeat isn't another place).
+    expect(group.location).toEqual({ screen: "/", selector: "#to", viewport: "mobile", scheme: "light", state: "sent" });
+    expect(group.locations).toEqual([
+      { screen: "/", selector: "#date-1", viewport: "mobile", scheme: "light" },
+      { screen: "/", selector: "#date-1", viewport: "mobile", scheme: "light", state: "sent" },
+      { screen: "/", selector: "#from", viewport: "desktop", scheme: "light", state: "sent" },
+    ]);
+    // One text in one place keeps its own wording, and has no list.
+    const single = findings.find((f) => f.location.selector === "#border-label")!;
+    expect(single.summary).toBe('Text "Border" is hard to read in light mode (1.4:1, needs 3:1).');
+    expect(single.locations).toBeUndefined();
+  });
+
+  test("one element that's too small in several states is one finding, with each state listed", () => {
+    const findings = toFindings([
+      issue({ rule: "target-mobile", selector: "#close", kind: "button", label: "Dismiss tip", width: 20, height: 20 }),
+      issue({ rule: "target-mobile", selector: "#close", kind: "button", label: "Dismiss tip", width: 20, height: 20, state: "sent" }),
+      issue({ rule: "target-mobile", selector: "#close", kind: "button", label: "Dismiss tip", width: 20, height: 20, state: "error" }),
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.summary).toBe('The "Dismiss tip" button is 20×20 px on a phone; 44×44 px is easier to tap.');
+    expect(findings[0]!.locations!.map((l) => l.state)).toEqual(["sent", "error"]);
+  });
+
   test("reviewJson follows the review format", () => {
     expect(reviewJson([], ["/", "/settings"], "2026-10-13")).toEqual({ motifReview: 1, scope: "screens: /, /settings", date: "2026-10-13", findings: [] });
   });
