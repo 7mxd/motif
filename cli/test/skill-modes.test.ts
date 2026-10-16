@@ -51,6 +51,19 @@ describe("SKILL.md", () => {
     }
   });
 
+  test("asks every open decision so none is missed, and writes nothing to the design guide before it's approved (hands-on test)", () => {
+    // The hands-on review wrote two rules into DESIGN.md under the developer's name before showing them, and a question
+    // about the card's look sat in the middle of a long message, where the developer's answer missed it.
+    for (const s of [
+      "numbered list at the end of your message",
+      "ask again any that wasn't answered",
+      "only after the developer approves that exact change",
+      "Never put a name on an approval that didn't happen",
+      "differs from what you showed",
+      "ask before keeping it",
+    ]) expect(skill).toContain(s);
+  });
+
   test("stays short, since it loads every time", () => {
     expect(lineCount(skill)).toBeLessThanOrEqual(200);
   });
@@ -159,6 +172,15 @@ describe("plain web, screens behind forms, and every size", () => {
       "## 5. Rebuild", "--state design/states/<state>.js --save before", "--against before", "360, 390 and 430 px", "on one screen", '"status": "fixed"',
     ])).toBeNull();
     expect(review).toContain("(../adapters/plain-web/checks.md)");
+  });
+
+  test("review shows a guide change before writing it, and asks before keeping a fix that turned out differently (hands-on test)", () => {
+    const review = read("modes/review.md");
+    expect(outOfOrder(review, [
+      "## 1. Scope", "A site with one page",
+      "## 5. Rebuild", "goes through a design guide change ⏸ before you write it", "differently from the report's fix", "ask before keeping it ⏸",
+      '"status": "fixed"',
+    ])).toBeNull();
   });
 
   test("the design mode asks for Node.js only for React apps", () => {
