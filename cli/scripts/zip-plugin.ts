@@ -6,7 +6,6 @@ import { zipSync, type Zippable } from "fflate";
 
 const REPO = resolve(import.meta.dir, "../..");
 export const ZIP_NAME = "motif-claude-code.zip";
-const FIXED_DATE = new Date("2000-01-01T00:00:00Z");
 const EXECUTABLE = new Set(["skills/motif/bin/motif"]);
 
 /** Every file under dir, as forward-slash paths, sorted. */
@@ -29,10 +28,16 @@ export function zipPlugin(pluginDir: string, expectedVersion: string): Uint8Arra
   if (manifest.version !== expectedVersion) {
     throw new Error(`The plugin's version is ${manifest.version}, not ${expectedVersion}: rebuild it with "bun run plugin".`);
   }
+  // Zips store local time, so the date is built from local parts when zipping: 2000-01-01 00:00 in every time zone.
+  const date = new Date(2000, 0, 1);
   const entries: Zippable = {};
   for (const path of files(pluginDir)) {
+    const data = readFileSync(join(pluginDir, path));
+    if (EXECUTABLE.has(path) && data.includes(13)) {
+      throw new Error(`${path} has Windows line endings, which sh can't run: check it out with LF endings (see .gitattributes) and rebuild with "bun run plugin".`);
+    }
     const mode = EXECUTABLE.has(path) ? 0o100755 : 0o100644;
-    entries[path] = [readFileSync(join(pluginDir, path)), { os: 3, attrs: (mode << 16) >>> 0, mtime: FIXED_DATE }];
+    entries[path] = [data, { os: 3, attrs: (mode << 16) >>> 0, mtime: date }];
   }
   return zipSync(entries, { level: 9 });
 }
