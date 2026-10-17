@@ -122,3 +122,23 @@ describe("the marketplaces that reach the package", () => {
     expect(() => buildAgentsLocal(agents, local)).toThrow("isn't a Motif local marketplace build");
   });
 });
+
+describe("the docs for the package", () => {
+  const read = (rel: string) => readFileSync(join(REPO, rel), "utf8").replace(/\r\n/g, "\n");
+
+  test("the Develop guide says how to build the package and try it in every agent", () => {
+    const guide = read("plugin/agents/README.md");
+    for (const s of [
+      "bun run packages", "bun run skill:archives", "dist/agents-local", "codex plugin marketplace add", "copilot plugin marketplace add",
+      "gemini extensions link", "cursor-agent", "install.sh", "install.ps1", "MOTIF_BIN", "bun scripts/agent-checks.ts --source local", "plugins branch",
+    ]) expect(guide).toContain(s);
+  });
+
+  test("decision 0005 records the plugins branch, /motif and the install script, and the core spec links Part 3's spec", () => {
+    const decision = read("docs/decisions/0005-agent-packages.md");
+    for (const s of ["plugins", "/motif", "install.sh", "2026-10-17-motif-part3-agents-design.md"]) expect(decision).toContain(s);
+    const core = read("docs/specs/2026-10-12-motif-core-design.md");
+    expect(core).toContain("2026-10-17-motif-part3-agents-design.md");
+    expect(core).toContain("skill/agents.md");
+  });
+});

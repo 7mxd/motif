@@ -63,7 +63,7 @@ v1 is delivered as four sub-projects. Each has its own spec → plan → build c
 |---|---|---|
 | **1. Core** *(this spec)* | Contract format, `/design` + three modes, knowledge base, source integrations with free fallbacks, preview kit and style gallery, the `motif` tool, React web reference adapter, tests B/C/D harness, minimal Claude Code plugin for development | — |
 | 2. Stack adapters | Plain web (HTML and CSS) first ([its spec](2026-10-15-motif-plain-web-design.md), [decision 0004](../decisions/0004-plain-web.md)), then Vue/Nuxt, Svelte/SvelteKit, Angular, React Native (Expo), Flutter, SwiftUI, Jetpack Compose — each built from the adapter template defined here | Part 1 |
-| 3. Agent packaging | Build step generating native packages for Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode; installer; per-agent install smoke tests; Agent Skills baseline for all other agents | Part 1 (can overlap with Part 2) |
+| 3. Agent packaging | Build step generating native packages for Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode ([its spec](2026-10-17-motif-part3-agents-design.md), [decision 0005](../decisions/0005-agent-packages.md)); installer; per-agent install smoke tests; Agent Skills baseline for all other agents | Part 1 (can overlap with Part 2) |
 | 4. Release evaluation | Test A (human blind comparison) across stacks; release checklist | Parts 1–3 |
 
 Part 1 develops and tests in Claude Code only. Everything in `skill/` must stay agent-neutral (§5.5) so Part 3 can package it unchanged.
@@ -150,7 +150,7 @@ Adding a stack = filling both halves against the template and adding its fixture
 
 ### 5.5 Agent-neutrality rules for `skill/`
 
-To stay portable (Part 3), files in `skill/` must not use agent-specific features: no hooks, no `allowed-tools`, no `context: fork`, no tool names of a specific agent. Where the skill needs an agent capability (run a shell command, show an image, ask the user a question), it describes the action in plain words ("run this command", "show this image to the developer if you can display images; otherwise give the file path and open it in the browser"). Part 3 adds per-agent tool-name notes alongside the generated packages.
+To stay portable (Part 3), files in `skill/` must not use agent-specific features: no hooks, no `allowed-tools`, no `context: fork`, no tool names of a specific agent. Where the skill needs an agent capability (run a shell command, show an image, ask the user a question), it describes the action in plain words ("run this command", "show this image to the developer if you can display images; otherwise give the file path and open it in the browser"). Part 3 adds per-agent tool-name notes alongside the generated packages. Per-agent notes live in one file, `skill/agents.md` (where each agent installs the skill, its question prompt, its shell); it is the only file in `skill/` that names an agent's tools.
 
 ## 6. The design contract
 
