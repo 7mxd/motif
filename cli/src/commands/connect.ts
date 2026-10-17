@@ -44,29 +44,32 @@ export async function runCommand(exe: string, args: string[], cwd?: string): Pro
 }
 
 /** Reads a line from the terminal without showing it. */
-function readSecret(prompt: string): Promise<string> {
-  process.stdout.write(prompt);
-  const stdin = process.stdin;
-  stdin.setRawMode?.(true);
+export function readSecret(prompt: string, stdin: NodeJS.ReadableStream = process.stdin, stdout: NodeJS.WritableStream = process.stdout): Promise<string> {
+  stdout.write(prompt);
+  const raw = (on: boolean) => (stdin as { setRawMode?: (on: boolean) => void }).setRawMode?.(on);
+  raw(true);
   stdin.resume();
   let value = "";
   return new Promise((resolve) => {
     const finish = (cancelled: boolean) => {
       stdin.off("data", onData);
-      stdin.setRawMode?.(false);
+      stdin.off("end", onEnd);
+      raw(false);
       stdin.pause();
-      process.stdout.write("\n");
+      stdout.write("\n");
       resolve(cancelled ? "" : value.trim());
     };
-    const onData = (chunk: Buffer) => {
-      for (const ch of chunk.toString("utf8")) {
+    const onData = (chunk: Buffer | string) => {
+      for (const ch of String(chunk)) {
         if (ch === "\r" || ch === "\n") return finish(false);
-        if (ch === "\u0003") return finish(true); // Ctrl+C
+        if (ch === "\u0003" || ch === "\u0004" || ch === "\u001a") return finish(true); // Ctrl+C, Ctrl+D, Ctrl+Z
         if (ch === "\u007f" || ch === "\b") value = value.slice(0, -1);
         else if (ch >= " ") value += ch;
       }
     };
+    const onEnd = () => finish(true);
     stdin.on("data", onData);
+    stdin.on("end", onEnd);
   });
 }
 
@@ -84,6 +87,8 @@ export function readLine(prompt: string, stdin: NodeJS.ReadableStream = process.
     };
     const onData = (chunk: Buffer | string) => {
       value += String(chunk);
+      // Windows' console sends Ctrl+Z then Enter as characters; a raw terminal sends Ctrl+D as one.
+      if (/^[\u0004\u001a]/.test(value)) return done(null);
       const end = value.search(/\r?\n/);
       if (end !== -1) done(value.slice(0, end));
     };

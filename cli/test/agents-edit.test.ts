@@ -1,15 +1,26 @@
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
-import { lstatSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "jsonc-parser";
-import { addJsonServer, addTomlServer } from "../src/agents/edit";
+import { addJsonServer, addTomlServer, linkTarget } from "../src/agents/edit";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
 
 const dir = () => tempDir("motif-edit-");
 const isWin = process.platform === "win32";
+/** Whether this machine lets a test make a file link (Windows needs Developer Mode or an admin). */
+const canSymlink = (() => {
+  try {
+    const d = dir();
+    writeFileSync(join(d, "a"), "");
+    symlinkSync(join(d, "a"), join(d, "b"), "file");
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 describe("adding a server to a JSON settings file", () => {
   test("creates the file and its folder when there's none", () => {
@@ -116,16 +127,6 @@ describe("adding a server to Codex's config.toml", () => {
 });
 
 describe("connect follow-ups (v0.2.0 review minors)", () => {
-  const canSymlink = (() => {
-    try {
-      const d = dir();
-      writeFileSync(join(d, "a"), "");
-      symlinkSync(join(d, "a"), join(d, "b"), "file");
-      return true;
-    } catch {
-      return false;
-    }
-  })();
 
   test("a file whose servers aren't an object is left as it was, with the reason, and nothing throws", () => {
     for (const value of ["null", "[]", '"x"', "3"]) {
@@ -191,5 +192,82 @@ describe("connect follow-ups (v0.2.0 review minors)", () => {
     const after = readFileSync(q, "utf8");
     expect(after).toContain('    "a": { "url": "https://a.example" }, /* mine */\r\n    "motion": {');
     expect(parse(after)).toEqual({ mcpServers: { a: { url: "https://a.example" }, motion: { url: "https://mcp.motion.dev" } } });
+  });
+});
+
+describe("links, read-only targets and repeated keys (review of the follow-ups)", () => {
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const motion = { url: "https://mcp.motion.dev" };
+
+  test.skipIf(!canSymlink)("a relative link and a chain of links are followed to the real file; every link stays a link", () => {
+    const home = dir();
+    mkdirSync(join(home, "dotfiles"));
+    mkdirSync(join(home, ".cursor"));
+    const real = join(home, "dotfiles", "mcp.json");
+    writeFileSync(real, '{\n  "mcpServers": {}\n}\n');
+    const middle = join(home, "dotfiles", "current.json");
+    symlinkSync("mcp.json", middle, "file");
+    const link = join(home, ".cursor", "mcp.json");
+    symlinkSync(join("..", "dotfiles", "current.json"), link, "file");
+    expect(addJsonServer(link, "mcpServers", "motion", motion)).toEqual({ ok: true });
+    expect([lstatSync(link).isSymbolicLink(), lstatSync(middle).isSymbolicLink()]).toEqual([true, true]);
+    expect(JSON.parse(readFileSync(real, "utf8"))).toEqual({ mcpServers: { motion } });
+    expect(linkTarget(link)).toBe(realpathSync(real));
+    expect(linkTarget(real)).toBeNull();
+  });
+
+  test.skipIf(!canSymlink)("a link to a file not made yet, in a folder that exists, makes that file; the link stays", () => {
+    const home = dir();
+    mkdirSync(join(home, "dotfiles"));
+    const link = join(home, "mcp.json");
+    symlinkSync(join(home, "dotfiles", "mcp.json"), link, "file");
+    expect(addJsonServer(link, "mcpServers", "motion", motion)).toEqual({ ok: true });
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(readFileSync(join(home, "dotfiles", "mcp.json"), "utf8"))).toEqual({ mcpServers: { motion } });
+  });
+
+  test.skipIf(!canSymlink)("a link into a folder that doesn't exist, or links in a loop, leave everything as it was", () => {
+    const home = dir();
+    const link = join(home, "mcp.json");
+    symlinkSync(join(home, "moved", "dotfiles", "mcp.json"), link, "file");
+    const r = addJsonServer(link, "mcpServers", "motion", motion);
+    expect(r.ok).toBe(false);
+    expect((r as { reason: string }).reason).toMatch(/^.*mcp\.json is a link to .*moved[\\/]dotfiles[\\/]mcp\.json, which doesn't exist, so it wasn't changed$/);
+    expect(existsSync(join(home, "moved"))).toBe(false);
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    const a = join(home, "a.toml");
+    const b = join(home, "b.toml");
+    symlinkSync(b, a, "file");
+    symlinkSync(a, b, "file");
+    expect(addTomlServer(a, "motion", motion)).toEqual({ ok: false, reason: `${a} is a link that leads back to itself, so it wasn't changed` });
+    expect([lstatSync(a).isSymbolicLink(), lstatSync(b).isSymbolicLink()]).toEqual([true, true]);
+  });
+
+  test.skipIf(!canSymlink || isWin || isRoot)("a link to a file that can't be changed (such as home-manager's read-only store) says so", () => {
+    const home = dir();
+    const store = join(home, "store");
+    mkdirSync(store);
+    writeFileSync(join(store, "mcp.json"), '{ "mcpServers": {} }');
+    chmodSync(store, 0o555);
+    const link = join(home, "mcp.json");
+    symlinkSync(join(store, "mcp.json"), link, "file");
+    try {
+      const r = addJsonServer(link, "mcpServers", "motion", motion);
+      expect(r.ok).toBe(false);
+      expect((r as { reason: string }).reason).toMatch(
+        /is a link to .*store[\\/]mcp\.json, which can't be changed here \(a read-only file managed elsewhere, such as by home-manager\), so it wasn't changed$/,
+      );
+      expect(readFileSync(join(store, "mcp.json"), "utf8")).toBe('{ "mcpServers": {} }');
+    } finally {
+      chmodSync(store, 0o755);
+    }
+  });
+
+  test("a file that lists its servers twice is left as it was, with the reason", () => {
+    const p = join(dir(), "mcp.json");
+    const before = '{\n  "mcpServers": {},\n  "mcpServers": {\n    "a": { "url": "https://a.example" }\n  }\n}\n';
+    writeFileSync(p, before);
+    expect(addJsonServer(p, "mcpServers", "motion", motion)).toEqual({ ok: false, reason: `${p} has "mcpServers" more than once, so it wasn't changed` });
+    expect(readFileSync(p, "utf8")).toBe(before);
   });
 });

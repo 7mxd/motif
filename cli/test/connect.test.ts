@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import { genericConfig, readLine, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
+import { genericConfig, readLine, readSecret, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
 import type { ConfiguredSource } from "../src/detect/sources";
 import { sourceById } from "../src/sources/catalog";
 import { tempDir } from "./tmp";
@@ -479,7 +479,7 @@ describe("motif connect: every agent (Part 3)", () => {
   });
 });
 
-describe("readLine (v0.2.0 review minor)", () => {
+describe("reading from the terminal (v0.2.0 review minors)", () => {
   const ended = (text: string) => {
     const input = new PassThrough();
     input.end(text);
@@ -495,5 +495,22 @@ describe("readLine (v0.2.0 review minor)", () => {
   test("returns null when the input ends before a line does", async () => {
     expect(await readLine("Which? ", ended(""), quiet())).toBeNull();
     expect(await readLine("Which? ", ended("1, 2"), quiet())).toBeNull();
+  });
+  /** A stream that stays open after the text, as a terminal does. */
+  const open = (text: string) => {
+    const input = new PassThrough();
+    input.write(text);
+    return input;
+  };
+
+  test("Ctrl+Z then Enter (Windows) or Ctrl+D, arriving as characters, end the input too (review of the follow-ups)", async () => {
+    expect(await readLine("Which? ", open("\x1a\r\n"), quiet())).toBeNull();
+    expect(await readLine("Which? ", open("\x04"), quiet())).toBeNull();
+  });
+
+  test("the hidden key prompt returns the key, and nothing on Ctrl+C, Ctrl+D, Ctrl+Z or the end of input (review of the follow-ups)", async () => {
+    expect(await readSecret("Key: ", open("abcd1234\r"), quiet())).toBe("abcd1234");
+    for (const ch of ["\x03", "\x04", "\x1a"]) expect([ch, await readSecret("Key: ", open(`abc${ch}`), quiet())]).toEqual([ch, ""]);
+    expect(await readSecret("Key: ", ended("abc"), quiet())).toBe("");
   });
 });

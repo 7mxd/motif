@@ -147,7 +147,7 @@ Settings folders follow each agent's own variable where it has one (`CODEX_HOME`
    - **In the developer's terminal:** a numbered question, "Set up Motion for which agents? 1 Claude Code, 2 Cursor, 3 Gemini CLI. Press Enter for all, or type numbers (1,3)." Numbers work in every terminal, including Git Bash's.
    - **One agent found:** no question.
    - **`--agent claude,cursor`:** no question. An agent named there that isn't on this computer gets nothing written (a settings folder would make it look installed) and is reported ✗. A command Motif prints repeats the ids as it read them, once each and in this table's order (`--agent "Cursor, Claude"` → `--agent claude,cursor`).
-   - **The input ends at the question** (Ctrl+D, or Ctrl+Z on Windows): nothing changes, and it says so (exit 2).
+   - **The input ends at the question** (Ctrl+D, or Ctrl+Z on Windows): nothing changes, and it says so (exit 2). At the hidden key prompt, Ctrl+C, Ctrl+D and Ctrl+Z all mean no key.
    - **Not in a terminal, without `--agent`:** a source with no key is set up in every agent found (the output says which); a source with a key stops and prints the command to run in the developer's own terminal, as today.
 3. For a key source, ask for the key once with hidden input, as today, and check it the same way.
 4. Add the source to each chosen agent's **user-level** settings, never a project file:
@@ -162,11 +162,11 @@ Settings folders follow each agent's own variable where it has one (`CODEX_HOME`
    | Gemini CLI | `gemini mcp add --scope user --transport http [--header] <name> <url>` |
    | OpenCode | `opencode mcp add <name> --url <url> [--header]` |
 
-   Files are edited so every other entry, comment and the formatting stay as they were; a comment after the last server stays on its line, and a settings file that is a link (dotfiles kept elsewhere) stays a link, with the file it points to changed. A new file holding a key is created readable by its owner only.
+   Files are edited so every other entry, comment and the formatting stay as they were; a comment after the last server stays on its line, and a settings file that is a link (dotfiles kept elsewhere) stays a link, followed link by link to the file it points to, which is the one changed (and checked against git when it now holds a key). A link into a folder that doesn't exist, links that lead back to themselves, or a link to a file that can't be changed (such as home-manager's read-only store) leave everything as it was, with the reason. A new file holding a key is created readable by its owner only.
 
-   A server that matches the source, under any name, is left alone and reported as already connected. A different server already using Motif's name, or servers that aren't a list (`"servers": null`), leave the file as it was, and that agent is reported ✗ with the reason.
+   A server that matches the source, under any name, is left alone and reported as already connected. A different server already using Motif's name, servers that aren't a list (`"servers": null`), or the servers key written twice, leave the file as it was, and that agent is reported ✗ with the reason. Anything else that goes wrong for one agent is that agent's ✗; the others are still set up.
 5. **Report one line per agent:** ✓ added, ✓ already connected, or ✗ with the reason and the settings to paste. One agent failing doesn't stop the others. Exit 0 when every chosen agent has the source, 1 when some failed, 2 when none could be set up.
-6. **Sign-in:** for Refero and 60fps.design, one line per agent on how to sign in (Claude Code `/mcp`; Codex `codex mcp login <name>`; Gemini `/mcp auth <name>`; OpenCode `opencode mcp auth <name>`; Cursor's MCP settings; Copilot `/mcp`; VS Code's sign-in prompt on first use).
+6. **Sign-in:** for Refero and 60fps.design, one line per agent on how to sign in (Claude Code `/mcp`; Codex `codex mcp login <name>`, or Authenticate under MCP servers in its app or editor extension; Gemini `/mcp auth <name>`; OpenCode `opencode mcp auth <name>`; Cursor's MCP settings; Copilot `/mcp`; VS Code's sign-in prompt on first use).
 7. **Keys:** typed only in the developer's own terminal, never in the chat; any output that echoes a key shows `<your key>` instead; a warning when a settings file now holding a key is tracked by git.
 
 The exact command-line flags are confirmed against each agent's installed version during the plan (§12), and pinned by tests that check the arguments Motif passes.

@@ -8,29 +8,44 @@ export type Edited = { ok: true } | { ok: false; reason: string };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** The file a settings path names: where a link points (dotfiles kept elsewhere), so the link itself stays. */
-function realTarget(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {}
-  try {
-    if (lstatSync(path).isSymbolicLink()) return resolve(dirname(path), readlinkSync(path));
-  } catch {}
-  return path;
+/**
+ * The file a settings path names: where a link points (dotfiles kept elsewhere), followed link by link, so every link
+ * stays a link. A link into a folder that doesn't exist, or links that lead back to themselves, are refused.
+ */
+function followLinks(path: string): { target: string } | { ok: false; reason: string } {
+  let current = path;
+  for (let hops = 0; hops < 40; hops++) {
+    let to: string;
+    try {
+      if (!lstatSync(current).isSymbolicLink()) return { target: current };
+      to = readlinkSync(current);
+    } catch {
+      // Nothing there: the file to make, when its folder is there (a path that isn't a link gets its folder made).
+      if (current === path || existsSync(dirname(current))) return { target: current };
+      return { ok: false, reason: `${path} is a link to ${current}, which doesn't exist, so it wasn't changed` };
+    }
+    // Read from the folder the link really is in, as the system reads it.
+    current = resolve(realpathSync(dirname(current)), to);
+  }
+  return { ok: false, reason: `${path} is a link that leads back to itself, so it wasn't changed` };
 }
 
 /** Where a settings path that is a link points, so a warning can name the file that really holds a key; null when it isn't a link. */
 export function linkTarget(path: string): string | null {
   try {
-    return lstatSync(path).isSymbolicLink() ? realTarget(path) : null;
+    if (!lstatSync(path).isSymbolicLink()) return null;
   } catch {
     return null;
   }
+  const followed = followLinks(path);
+  return "target" in followed ? followed.target : null;
 }
 
 /** Writes beside the file, then moves it into place, so a failed write never leaves half a settings file. */
 function writeSafely(path: string, text: string, holdsKey: boolean): Edited {
-  const target = realTarget(path);
+  const followed = followLinks(path);
+  if (!("target" in followed)) return followed;
+  const target = followed.target;
   const tmp = `${target}.motif-${process.pid}.tmp`;
   try {
     mkdirSync(dirname(target), { recursive: true });
@@ -42,7 +57,13 @@ function writeSafely(path: string, text: string, holdsKey: boolean): Edited {
     renameSync(tmp, target);
     return { ok: true };
   } catch (e) {
-    rmSync(tmp, { force: true });
+    try {
+      rmSync(tmp, { force: true });
+    } catch {}
+    const code = (e as NodeJS.ErrnoException).code;
+    if (target !== path && (code === "EROFS" || code === "EACCES" || code === "EPERM")) {
+      return { ok: false, reason: `${path} is a link to ${target}, which can't be changed here (a read-only file managed elsewhere, such as by home-manager), so it wasn't changed` };
+    }
     return { ok: false, reason: `couldn't write ${path}: ${message(e)}` };
   }
 }
@@ -100,9 +121,14 @@ function insertAfterLast(text: string, key: string, name: string, value: unknown
       next = `${text.slice(0, afterComma)}${eol}${indent}${entry},${text.slice(afterComma)}`;
     } else next = `${text.slice(0, lastEnd)},${eol}${indent}${entry}${text.slice(lastEnd)}`;
   }
+  return holds(next, key, name, value) ? next : null;
+}
+
+/** Whether the text, read as an agent reads it, has value as name under key. */
+function holds(text: string, key: string, name: string, value: unknown): boolean {
   const errors: ParseError[] = [];
-  const doc = parse(next, errors, { allowTrailingComma: true });
-  return errors.length === 0 && JSON.stringify(doc?.[key]?.[name]) === JSON.stringify(value) ? next : null;
+  const doc = parse(text, errors, { allowTrailingComma: true });
+  return errors.length === 0 && JSON.stringify(doc?.[key]?.[name]) === JSON.stringify(value);
 }
 
 /** Adds name under key (mcpServers for Cursor, servers for VS Code) in a JSON or JSONC file. */
@@ -117,6 +143,9 @@ export function addJsonServer(path: string, key: string, name: string, server: R
     if (errors.length > 0 || !isTable(doc)) {
       return { ok: false, reason: `${path} isn't valid JSON, so it wasn't changed` };
     }
+    // Twice: an edit could land in the first while the agent reads the last.
+    const uses = parseTree(body, [], { allowTrailingComma: true })?.children?.filter((p) => p.children?.[0]?.value === key).length ?? 0;
+    if (uses > 1) return { ok: false, reason: `${path} has "${key}" more than once, so it wasn't changed` };
     const servers = (doc as Record<string, unknown>)[key];
     if (servers !== undefined && !isTable(servers)) return notServers(path, key);
     if (servers && name in (servers as object)) {
@@ -133,6 +162,7 @@ export function addJsonServer(path: string, key: string, name: string, server: R
   } catch (e) {
     return { ok: false, reason: `couldn't add "${name}" to ${path} (${message(e)}), so it wasn't changed` };
   }
+  if (!holds(next, key, name, server)) return { ok: false, reason: `couldn't add "${name}" to ${path} cleanly, so it wasn't changed` };
   return writeSafely(path, `${bom}${next.endsWith(eol) ? next : next + eol}`, holdsKey);
 }
 

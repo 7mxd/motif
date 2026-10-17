@@ -80,7 +80,7 @@ export const AGENTS: AgentInfo[] = [
     found: (e) => Boolean(e.which("codex")) || existsSync(codexHome(e)),
     notFound: (e) => `no "codex" command on PATH, and no ${shown(e, codexHome(e))} folder`,
     settings: (e, cwd) => [user(e, join(codexHome(e), "config.toml"), "toml", "mcp_servers"), project(cwd, ".codex/config.toml", "toml", "mcp_servers")],
-    signIn: (s) => `run "codex mcp login ${s}" in a terminal`,
+    signIn: (s) => `run "codex mcp login ${s}" in a terminal, or in Codex's app or editor extension open MCP servers in its settings and choose Authenticate`,
   },
   {
     id: "cursor",

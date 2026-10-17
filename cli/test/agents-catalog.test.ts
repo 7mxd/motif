@@ -15,13 +15,14 @@ describe("the agents Motif sets design sources up for", () => {
     expect(AGENTS.map((a) => a.label)).toEqual(["Claude Code", "Codex", "Cursor", "GitHub Copilot CLI", "VS Code", "Gemini CLI", "OpenCode"]);
   });
 
-  test("are found by their command, or Cursor and VS Code by their settings folder", () => {
+  test("are found by their command, or Codex, Cursor and VS Code by their settings folder", () => {
     const which = (c: string) => (["claude", "gemini"].includes(c) ? `/bin/${c}` : null);
     expect(AGENTS.filter((a) => a.found(env({ which }))).map((a) => a.id)).toEqual(["claude", "gemini"]);
     const home = tempDir("motif-agents-home-");
+    mkdirSync(join(home, ".codex"));
     mkdirSync(join(home, ".cursor"));
     mkdirSync(join(home, ".config", "Code", "User"), { recursive: true });
-    expect(AGENTS.filter((a) => a.found(env({ home }))).map((a) => a.id)).toEqual(["cursor", "vscode"]);
+    expect(AGENTS.filter((a) => a.found(env({ home }))).map((a) => a.id)).toEqual(["codex", "cursor", "vscode"]);
     const appData = tempDir("motif-agents-appdata-");
     mkdirSync(join(appData, "Code", "User"), { recursive: true });
     expect(agentById("vscode")!.found(env({ home: tempDir("motif-agents-empty-"), platform: "win32", vars: { APPDATA: appData } }))).toBe(true);
@@ -57,7 +58,7 @@ describe("the agents Motif sets design sources up for", () => {
   test("say how to sign in to a server, each in its own way", () => {
     expect(Object.fromEntries(AGENTS.map((a) => [a.id, a.signIn("refero")]))).toEqual({
       claude: 'in Claude Code, type /mcp, choose "refero" and sign in',
-      codex: 'run "codex mcp login refero" in a terminal',
+      codex: 'run "codex mcp login refero" in a terminal, or in Codex\'s app or editor extension open MCP servers in its settings and choose Authenticate',
       cursor: 'in Cursor\'s settings, under MCP, sign in to "refero" (or run "cursor-agent mcp login refero")',
       copilot: 'in Copilot CLI, type /mcp and sign in to "refero"',
       vscode: 'VS Code asks you to sign in to "refero" the first time Copilot uses it',
