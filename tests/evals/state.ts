@@ -22,6 +22,8 @@ export interface RunState {
   claudeVersion: string;
   /** Resumes on another commit, or with uncommitted changes, so the report says the cases ran on different code. */
   resumes: { at: string; commit: string; dirty: boolean }[];
+  /** Times its B cases' new-component rule was graded again from their saved diffs (--regrade), and on which code. */
+  regrades?: { at: string; commit: string; dirty: boolean }[];
   options: RunOptions;
   cases: Record<string, CaseState>;
 }

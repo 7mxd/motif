@@ -38,6 +38,7 @@ export function renderReport(state: RunState, cases: EvalCase[], verdicts: TestV
     "",
     `- Commit ${commit(state.commit, state.dirty)}, started ${state.started}`,
     ...state.resumes.map((r) => `- Resumed ${r.at} on commit ${commit(r.commit, r.dirty)}`),
+    ...(state.regrades ?? []).map((r) => `- Re-graded ${r.at} on commit ${commit(r.commit, r.dirty)}: the new-component rule, from each B case's saved diff`),
     `- Claude Code ${state.claudeVersion || "(version unknown)"}; model: ${models || "your account's default"}`,
     "- Every session: your Claude account (no API key), none of your settings, plugins or MCP servers, and Motif's plugin only.",
     "",

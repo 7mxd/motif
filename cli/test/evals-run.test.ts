@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EvalCase } from "../../tests/evals/cases";
 import { AGENT_TOOLS, JUDGE_EXPECTED_TOOLS } from "../../tests/evals/claude";
@@ -59,6 +59,13 @@ function harness(over: Partial<RunDeps> = {}) {
   };
   return { deps, calls, lines, root, where: { repo: root, results: join(root, "results") }, work: join(root, "work") };
 }
+
+const newFile = (path: string, text: string) => {
+  const lines = text.split("\n");
+  return [`diff --git a/${path} b/${path}`, "new file mode 100644", "index 0000000..1111111", "--- /dev/null", `+++ b/${path}`, `@@ -0,0 +1,${lines.length} @@`, ...lines.map((l) => `+${l}`)].join("\n");
+};
+const edit = (path: string, added: string[]) =>
+  [`diff --git a/${path} b/${path}`, "index 1111111..2222222 100644", `--- a/${path}`, `+++ b/${path}`, "@@ -1 +1 @@", ...added.map((l) => `+${l}`)].join("\n");
 
 describe("the eval runner", () => {
   test("a browser is required only when a chosen case needs one", async () => {
@@ -270,6 +277,68 @@ describe("the eval runner", () => {
     expect(await runEvals(["--cases", "b-search"], h.deps, h.where)).toBe(2);
     expect(h.lines.join("\n")).toContain("Sign in");
     expect(existsSync(h.where.results)).toBe(false);
+  });
+
+  test("--regrade recomputes only the new-component rule from each B case's saved diff, and the report says so (fourth eval run)", async () => {
+    const h = harness();
+    const dir = join(h.where.results, RUN);
+    const crit = (id: string, pass: boolean, detail: string) => ({ id, label: id, pass, detail });
+    const state: RunState = {
+      motifEvalRun: 1, id: RUN, commit: "old0000000000", dirty: false, started: "2026-10-14T08:00:00.000Z", claudeVersion: "2.1.301 (Claude Code)", resumes: [],
+      options: { keep: false, work: h.work },
+      cases: {
+        "b-settings": { status: "graded", attempts: 1, grade: { pass: false, metrics: { newComponents: 3 }, criteria: [
+          crit("check", true, "0 problems, 0 warnings."), crit("components", false, "New: AddressSheet, SettingsScreen, RadioGroup (recorded in DESIGN.md: RadioGroup)."),
+        ] } },
+        "b-search": { status: "graded", attempts: 1, grade: { pass: false, metrics: { newComponents: 1 }, criteria: [
+          crit("build", false, "The build failed (exit code 1)."), crit("components", true, "New: ProductSearch."),
+        ] } },
+        "b-notifications": { status: "graded", attempts: 1, grade: { pass: false, metrics: {}, criteria: [crit("components", false, "New: A, B, C.")] } },
+        "b-plain": { status: "graded", attempts: 1, grade: { pass: true, metrics: { newComponents: 1 }, criteria: [crit("components", true, "New: MonthGroup.")] } },
+        "c-review": { status: "graded", attempts: 1, grade: { pass: true, metrics: {}, criteria: [crit("exact", true, "13 of 13 (100%).")] } },
+        "b-profile": { status: "pending", attempts: 0 },
+      },
+    };
+    for (const c of ["b-settings", "b-search", "b-plain"]) mkdirSync(join(dir, c), { recursive: true });
+    writeFileSync(join(dir, "run.json"), JSON.stringify(state));
+    writeFileSync(join(dir, "b-settings", "diff.patch"), [
+      newFile("src/app/settings/SettingsScreen.tsx", 'import { RadioGroup } from "@/components/RadioGroup";\nimport { Switch } from "@/components/Switch";\nexport function SettingsScreen() {\n  return <div><Switch /><RadioGroup /></div>;\n}'),
+      newFile("src/app/settings/AddressSheet.tsx", 'import { Sheet } from "@/components/Sheet";\nexport function AddressSheet() {\n  return <Sheet />;\n}'),
+      newFile("src/components/RadioGroup.tsx", "export function RadioGroup() {\n  return <div role=\"radiogroup\" />;\n}"),
+      edit("DESIGN.md", ["| RadioGroup | One choice from a few options | — | default, selected |"]),
+    ].join("\n"));
+    writeFileSync(join(dir, "b-search", "diff.patch"), newFile("src/app/search/ProductSearch.tsx", 'import { Input } from "@/components/Input";\nexport function ProductSearch() {\n  return <Input />;\n}'));
+    writeFileSync(join(dir, "b-plain", "diff.patch"), [
+      edit("components.css", ["/* Component: MonthGroup — a month's heading and its rows */"]),
+      edit("DESIGN.md", ["| MonthGroup | A month's heading and its rows | — | — |"]),
+    ].join("\n"));
+
+    expect(await runEvals(["--regrade", RUN], h.deps, h.where)).toBe(1);
+    const after = loadRun(h.where.results, RUN) as RunState;
+    const settings = after.cases["b-settings"]!.grade!;
+    expect(settings.pass).toBe(true);
+    expect(settings.criteria.find((k) => k.id === "components")).toMatchObject({
+      pass: true, detail: "New: RadioGroup (recorded in DESIGN.md: RadioGroup). Part of a screen, not counted: SettingsScreen, AddressSheet.",
+    });
+    expect(settings.metrics.newComponents).toBe(1);
+    // Every other criterion stands as graded: b-search still fails on its build.
+    expect(settings.criteria.find((k) => k.id === "check")!.detail).toBe("0 problems, 0 warnings.");
+    expect(after.cases["b-search"]!.grade!.pass).toBe(false);
+    expect(after.cases["b-search"]!.grade!.criteria.find((k) => k.id === "components")!.detail).toBe("No new components. Part of a screen, not counted: ProductSearch.");
+    expect(after.cases["b-plain"]!.grade!.criteria.find((k) => k.id === "components")!.detail).toBe("New: MonthGroup (recorded in DESIGN.md: MonthGroup).");
+    // No saved diff: left as graded, and said so. Other tests and unfinished cases are untouched.
+    expect(after.cases["b-notifications"]).toEqual(state.cases["b-notifications"]!);
+    expect(h.lines.join("\n")).toContain("b-notifications: no saved diff");
+    expect(after.cases["c-review"]).toEqual(state.cases["c-review"]!);
+    expect(after.cases["b-profile"]).toEqual(state.cases["b-profile"]!);
+    expect(after.regrades).toEqual([{ at: h.deps.now().toISOString(), commit: "abc1234567890", dirty: false }]);
+    const report = readFileSync(join(dir, "report.md"), "utf8");
+    expect(report).toContain(`- Re-graded ${h.deps.now().toISOString()} on commit abc123456789: the new-component rule, from each B case's saved diff`);
+    expect(report).toContain("Part of a screen, not counted: SettingsScreen, AddressSheet.");
+    // Nothing was run: no Claude Code, no browser, no sessions.
+    expect(h.calls.preflight).toBe(0);
+    expect(h.calls.session).toEqual([]);
+    expect(await runEvals(["--regrade", "20990101-000000"], h.deps, h.where)).toBe(2);
   });
 
   test("resuming on another commit is allowed and noted in the report", async () => {

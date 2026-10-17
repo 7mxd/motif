@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
-import { addedComponents, collectB, collectC, collectD, designSections } from "../../tests/evals/collect";
+import { addedComponents, collectB, collectC, collectD, designSections, reactComponents, recordedIn } from "../../tests/evals/collect";
 import { Paused, type JudgeFn } from "../../tests/evals/judge";
 import type { SeededIssue } from "../../tests/evals/match";
 import { runCmd, type MotifResult, type Run } from "../../tests/evals/tools";
@@ -55,8 +55,8 @@ describe("test B's measurements", () => {
     const ws = await prepareWorkspace(byId("b-settings"), join(tempDir("motif-col-"), "b"), run);
     mkdirSync(join(ws.app, "src/app/settings"), { recursive: true });
     writeFileSync(join(ws.app, "src/app/settings/page.tsx"), "export default function Settings() { return null; }\n");
-    writeFileSync(join(ws.app, "src/components/SettingsRow.tsx"), "export function SettingsRow() { return null; }\n");
-    writeFileSync(join(ws.app, "src/components/AddressCard.tsx"), "export function AddressCard() { return null; }\n");
+    writeFileSync(join(ws.app, "src/components/SettingsRow.tsx"), "export function SettingsRow() { return <div className=\"row\" />; }\n");
+    writeFileSync(join(ws.app, "src/components/AddressCard.tsx"), "export function AddressCard() { return <address />; }\n");
     writeFileSync(join(ws.app, "DESIGN.md"), `${readFileSync(join(ws.app, "DESIGN.md"), "utf8")}\n- 2026-10-14 — Added AddressCard for saved addresses — approved by the eval\n`);
     const out = join(ws.dir, "results");
     const f = await collectB(byId("b-settings"), ws, { run, motif, judge: noJudge }, out);
@@ -68,13 +68,14 @@ describe("test B's measurements", () => {
     for (const file of ["check.json", "validate.json", "diff.patch", "build.log", "typecheck.log"]) expect(existsSync(join(out, file))).toBe(true);
   });
 
-  test("new components count wherever they are under src/, but not route files, tests or stories", async () => {
+  test("new components count wherever they are under src/, but not route files, tests, stories or a screen's own parts", async () => {
     const ws = await prepareWorkspace(byId("b-checkout"), join(tempDir("motif-col-"), "b3"), run);
     const files: Record<string, string> = {
       "src/app/checkout/page.tsx": "export default function Checkout() { return null; }\n",
       "src/app/checkout/layout.tsx": "export default function L({ children }: { children: React.ReactNode }) { return children; }\n",
-      "src/app/checkout/_components/Summary.tsx": "export function Summary() { return null; }\n",
-      "src/app/checkout/SlotPicker.tsx": "export function SlotPicker() { return null; }\n",
+      "src/app/checkout/_components/Summary.tsx": "export function Summary() { return <section>Total</section>; }\n",
+      "src/app/checkout/SlotPicker.tsx": "export function SlotPicker() { return <ul><li>9 to 10</li></ul>; }\n",
+      "src/app/checkout/CheckoutScreen.tsx": "import { Button } from \"@/components/Button\";\nexport function CheckoutScreen() { return <Button>Pay</Button>; }\n",
       "src/components/Switch.test.tsx": "export {};\n",
       "src/components/Card.stories.tsx": "export {};\n",
     };
@@ -82,10 +83,12 @@ describe("test B's measurements", () => {
       mkdirSync(join(ws.app, path, ".."), { recursive: true });
       writeFileSync(join(ws.app, path), text);
     }
-    writeFileSync(join(ws.app, "DESIGN.md"), `${readFileSync(join(ws.app, "DESIGN.md"), "utf8")}\n- 2026-10-14 — Added the order summary component — approved by the eval\n`);
+    writeFileSync(join(ws.app, "DESIGN.md"), `${readFileSync(join(ws.app, "DESIGN.md"), "utf8")}\n- 2026-10-14 — Added Summary for the order total — approved by the eval\n`);
     const f = await collectB(byId("b-checkout"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"));
     expect([...f.newComponents].sort()).toEqual(["SlotPicker", "Summary"]);
     expect(f.recorded).toEqual(["Summary"]);
+    // Built from the app's own Button, in the checkout's folder: part of that screen.
+    expect(f.screenParts).toEqual(["CheckoutScreen"]);
   });
 
   test("no page at the feature's route", async () => {
@@ -201,6 +204,60 @@ describe("test D's measurements", () => {
   test("no app found", async () => {
     const ws = await prepareWorkspace(byId("d-bloom"), join(tempDir("motif-col-"), "d2"), run);
     expect((await collectD(byId("d-bloom"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"))).app).toBeNull();
+  });
+});
+
+// Diffs as git writes them: a new file, and an edit of an existing one.
+const newFile = (path: string, text: string) => {
+  const lines = text.split("\n");
+  return [`diff --git a/${path} b/${path}`, "new file mode 100644", "index 0000000..1111111", "--- /dev/null", `+++ b/${path}`, `@@ -0,0 +1,${lines.length} @@`, ...lines.map((l) => `+${l}`)].join("\n");
+};
+const edit = (path: string, removed: string[], added: string[]) =>
+  [`diff --git a/${path} b/${path}`, "index 1111111..2222222 100644", `--- a/${path}`, `+++ b/${path}`, "@@ -1 +1 @@", ...removed.map((l) => `-${l}`), ...added.map((l) => `+${l}`)].join("\n");
+
+describe("new components on React web, from the session's diff (fourth eval run)", () => {
+  test("a file in a route folder built from the app's own components is part of that screen, not a new component", () => {
+    // b-settings split its page into SettingsScreen and AddressSheet, both made of the app's components.
+    const diff = [
+      newFile("src/app/settings/SettingsScreen.tsx", 'import { Button } from "@/components/Button";\nimport { Switch } from "@/components/Switch";\nexport function SettingsScreen() {\n  return <div><Switch /><Button>Save</Button></div>;\n}'),
+      newFile("src/app/settings/AddressSheet.tsx", 'import { Sheet } from "../../components/Sheet";\nexport function AddressSheet() {\n  return <Sheet><form /></Sheet>;\n}'),
+    ].join("\n");
+    expect(reactComponents(diff)).toEqual({ newComponents: [], screenParts: ["SettingsScreen", "AddressSheet"], notUi: [] });
+  });
+
+  test("a route file that reuses nothing, only icons, or only components this change adds still counts", () => {
+    const diff = [
+      newFile("src/app/checkout/SlotPicker.tsx", 'import { ClockIcon } from "@/components/icons";\nexport function SlotPicker() {\n  return <button className="slot"><ClockIcon /></button>;\n}'),
+      newFile("src/app/checkout/Summary.tsx", 'import { PriceTag } from "@/components/PriceTag";\nexport function Summary() {\n  return <PriceTag />;\n}'),
+      newFile("src/components/PriceTag.tsx", "export function PriceTag() {\n  return <span className=\"price\" />;\n}"),
+    ].join("\n");
+    expect(reactComponents(diff).newComponents).toEqual(["SlotPicker", "Summary", "PriceTag"]);
+  });
+
+  test("a new file among the shared components counts, even when it's built from others", () => {
+    const diff = newFile("src/components/NotificationBell.tsx", 'import { IconLink } from "./IconButton";\nexport function NotificationBell() {\n  return <IconLink href="/notifications" />;\n}');
+    expect(reactComponents(diff).newComponents).toEqual(["NotificationBell"]);
+  });
+
+  test("a file that draws no UI isn't a component: state shared through a context; type arguments aren't tags", () => {
+    // b-notifications kept which notifications are read in a context, rendered the React 19 way.
+    const diff = [
+      newFile("src/app/notifications-state.tsx", 'import { createContext, useState, type ReactNode } from "react";\nconst NotificationsContext = createContext<NotificationsState | null>(null);\nexport function NotificationsProvider({ children }: { children: ReactNode }) {\n  const [read] = useState<Set<string>>(new Set());\n  return <NotificationsContext value={{ read }}>{children}</NotificationsContext>;\n}'),
+      newFile("src/basket-state.tsx", 'import { createContext } from "react";\nconst Basket = createContext(0);\nexport const BasketProvider = ({ children }: { children: React.ReactNode }) => <Basket.Provider value={1}>{children}</Basket.Provider>;'),
+    ].join("\n");
+    expect(reactComponents(diff)).toEqual({ newComponents: [], screenParts: [], notUi: ["notifications-state", "basket-state"] });
+  });
+
+  test("names in the design guide count only as written, in lines the session really added", () => {
+    // b-checkout's change log said "the checkout's delivery slots", which recorded Checkout; and a guide saved with other
+    // line endings looked fully rewritten, so every name already in it looked recorded.
+    const diff = edit("DESIGN.md", ["| Button | Actions | primary |\r", "| Sheet | A task from the bottom | — |\r"], [
+      "| Button | Actions | primary |",
+      "| Sheet | A task from the bottom | — |",
+      "| RadioList | One choice from a few options | — |",
+      "- 2026-10-17 — Added RadioList for the checkout's delivery slots — not yet approved",
+    ]);
+    expect(recordedIn(diff, ["RadioList", "Checkout", "Sheet"])).toEqual(["RadioList"]);
   });
 });
 

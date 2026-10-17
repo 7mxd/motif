@@ -1,7 +1,7 @@
 // Measures what a finished case left behind: the motif tool's checks, the build and the type check (or, on a plain site, the page in a browser), what the session changed,
 // and for test C the review report, graded against the seeded list (match.ts) and by the model grader (judge.ts).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, posix } from "node:path";
 import { REQUIRED_SECTIONS } from "../../cli/src/contract/design-md";
 import { discoverRoutes } from "../../cli/src/stacks/react-web/routes";
 import { detectApps, siteDir } from "../../cli/src/detect/stacks";
@@ -43,10 +43,108 @@ async function buildAndTypecheck(dir: string, k: Collectors, out: string): Promi
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Next's route files, tests and stories aren't components; any other .tsx or .jsx file under src/ is, wherever it sits. */
+/** Next's route files, tests and stories aren't components; any other .tsx or .jsx file under src/ may be, wherever it sits. */
 const ROUTE_FILES = new Set(["page", "layout", "loading", "error", "global-error", "not-found", "template", "default", "route", "opengraph-image", "twitter-image", "icon", "apple-icon"]);
 const isComponentFile = (path: string) =>
   /^src\/.+\.(tsx|jsx)$/.test(path) && !/\.(test|spec|stories|d)\.(tsx|jsx)$/.test(path) && !ROUTE_FILES.has(basename(path, extname(path)));
+
+interface DiffFile { path: string; isNew: boolean; deleted: boolean; added: string[]; removed: string[]; text: string }
+
+/** A diff's files: whether each is new, and the lines it adds and removes, line endings dropped. */
+function diffFiles(diff: string): DiffFile[] {
+  const files: DiffFile[] = [];
+  let file: DiffFile | null = null;
+  let inHunk = false;
+  for (const raw of diff.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    const head = /^diff --git a\/.+? b\/(.+)$/.exec(line);
+    if (head) {
+      file = { path: head[1]!, isNew: false, deleted: false, added: [], removed: [], text: line };
+      files.push(file);
+      inHunk = false;
+      continue;
+    }
+    if (!file) continue;
+    file.text += `\n${line}`;
+    if (!inHunk) {
+      if (line.startsWith("new file mode")) file.isNew = true;
+      if (line.startsWith("deleted file mode")) file.deleted = true;
+      if (line.startsWith("@@")) inHunk = true;
+    } else if (line.startsWith("+")) file.added.push(line.slice(1));
+    else if (line.startsWith("-")) file.removed.push(line.slice(1));
+  }
+  return files;
+}
+
+/** The lines a diff really adds to a file: one it also removes (the same text, saved with other line endings) isn't added. */
+function reallyAdded(f: DiffFile): string[] {
+  const gone = new Set(f.removed);
+  return f.added.filter((l) => !gone.has(l));
+}
+
+/**
+ * Which of these names the lines a session added to DESIGN.md mention, written as they are (a recorded design guide
+ * change). "the checkout's delivery slots" doesn't record Checkout.
+ */
+export function recordedIn(diff: string, names: string[]): string[] {
+  const guide = diffFiles(diff).filter((f) => f.path === "DESIGN.md").flatMap(reallyAdded).join("\n");
+  return names.filter((n) => new RegExp(`(?<![\\w-])${escapeRegExp(n)}(?![\\w-])`).test(guide));
+}
+
+/** The tags a file renders: not a context it creates (<Ctx value>, <Ctx.Provider>), and not a type argument (useState<T>). */
+function renderedTags(text: string): string[] {
+  const contexts = new Set([...text.matchAll(/(\w+)\s*=\s*createContext\b/g)].map((m) => m[1]!));
+  return [...text.matchAll(/(?<![\w)\].])<([A-Za-z][\w.]*)/g)].map((m) => m[1]!).filter((t) => !contexts.has(t.split(".")[0]!));
+}
+
+/** The app's own components a file imports: from a components folder, not its icons, and not one this change adds. */
+function sharedImports(path: string, text: string, added: Set<string>): string[] {
+  const names: string[] = [];
+  for (const m of text.matchAll(/^\s*import\s+(?!type\s)[^;]*?\sfrom\s+["']([^"']+)["']/gm)) {
+    const spec = m[1]!;
+    const target = /^[@~]\//.test(spec) ? `src/${spec.slice(2)}` : spec.startsWith(".") ? posix.join(posix.dirname(path), spec) : null;
+    const name = target ? /(?:^|\/)components\/([^/]+)$/.exec(target)?.[1] : undefined;
+    if (!target || !name || /^icons?$/i.test(name)) continue;
+    if (added.has(target) || [".tsx", ".jsx", ".ts", ".js"].some((x) => added.has(`${target}${x}`))) continue;
+    names.push(name);
+  }
+  return names;
+}
+
+export interface ReactComponents {
+  /** New components: they count against the limit unless the design guide records them. */
+  newComponents: string[];
+  /** Files in a route folder built from the app's own components: part of that screen. */
+  screenParts: string[];
+  /** Files that draw nothing, such as state shared through a context. */
+  notUi: string[];
+}
+
+/** React web's new components, from the session's diff: new .tsx and .jsx files under src/, minus a screen's own parts and files that draw no UI. */
+export function reactComponents(diff: string): ReactComponents {
+  const files = diffFiles(diff).filter((f) => f.isNew);
+  const added = new Set(files.map((f) => f.path));
+  const found: ReactComponents = { newComponents: [], screenParts: [], notUi: [] };
+  for (const f of files) {
+    if (!isComponentFile(f.path)) continue;
+    const name = basename(f.path, extname(f.path));
+    const text = f.added.join("\n");
+    if (renderedTags(text).length === 0) found.notUi.push(name);
+    else if (f.path.startsWith("src/app/") && sharedImports(f.path, text, added).length > 0) found.screenParts.push(name);
+    else found.newComponents.push(name);
+  }
+  return found;
+}
+
+/** A plain site's new components, from the session's diff of its pages and stylesheets. */
+const plainComponents = (diff: string) =>
+  addedComponents(diffFiles(diff).filter((f) => !f.deleted && /\.(css|html?)$/i.test(f.path)).map((f) => f.text).join("\n"));
+
+/** A B case's new components, and which the design guide records, from the session's diff (also used by --regrade). */
+export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi"> {
+  const found = isPlain(c) ? { newComponents: plainComponents(diff) } : reactComponents(diff);
+  return { ...found, recorded: recordedIn(diff, found.newComponents) };
+}
 
 /** A plain site's new components: names on "Component:" lines the diff adds, minus those it only rewrote (a new variant). */
 export function addedComponents(diff: string): string[] {
@@ -74,27 +172,22 @@ export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: s
   mkdirSync(out, { recursive: true });
   const route = c.routes[0]!;
   // What changed is read before the build, which may touch files of its own.
-  const changed = await changes(ws, k.run);
-  save(out, "diff.patch", await patch(ws, k.run));
+  const diff = await patch(ws, k.run);
+  save(out, "diff.patch", diff);
   const plain = isPlain(c);
-  const styled = changed.filter((x) => x.status !== "deleted" && /\.(css|html?)$/i.test(x.path)).map((x) => x.path);
-  const newComponents = plain
-    ? styled.length > 0 ? addedComponents(await patch(ws, k.run, styled)) : []
-    : changed.filter((x) => x.status === "added" && isComponentFile(x.path)).map((x) => basename(x.path, extname(x.path)));
-  const added = (await patch(ws, k.run, ["DESIGN.md"])).split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).join("\n");
-  const recorded = newComponents.filter((n) => new RegExp(`\\b${escapeRegExp(n)}\\b`, "i").test(added));
+  const components = componentFacts(c, diff);
   const check = await motifJson(k, ["check"], ws.app, out, "check.json");
   const validate = await motifJson(k, ["validate"], ws.app, out, "validate.json");
   if (plain) {
     return {
       route, pageExists: discoverPlainRoutes(plainSite(ws.app)).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
-      render: await renderFacts(k, ws.app, route, out), newComponents, recorded,
+      render: await renderFacts(k, ws.app, route, out), ...components,
     };
   }
   const { build, typecheck } = await buildAndTypecheck(ws.app, k, out);
   return {
     route, pageExists: discoverRoutes(ws.app).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
-    build, typecheck, newComponents, recorded,
+    build, typecheck, ...components,
   };
 }
 

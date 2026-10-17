@@ -43,6 +43,21 @@ export interface BFacts {
   newComponents: string[];
   /** Those named in lines the session added to DESIGN.md (a recorded design guide change). */
   recorded: string[];
+  /** React web, not counted: files in a route folder built from the app's own components, and files that draw no UI. */
+  screenParts?: string[];
+  notUi?: string[];
+}
+
+/** At most one new component the design guide doesn't record; the details say which files didn't count, and why. */
+export function componentsCriterion(f: Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi">): Criterion {
+  const unrecorded = f.newComponents.filter((c) => !f.recorded.includes(c));
+  const recorded = f.newComponents.filter((c) => f.recorded.includes(c));
+  const counted = f.newComponents.length === 0 ? "No new components." : `New: ${f.newComponents.join(", ")}${recorded.length ? ` (recorded in DESIGN.md: ${recorded.join(", ")})` : ""}.`;
+  const skipped = [
+    f.screenParts?.length ? ` Part of a screen, not counted: ${f.screenParts.join(", ")}.` : "",
+    f.notUi?.length ? ` Not UI, not counted: ${f.notUi.join(", ")}.` : "",
+  ].join("");
+  return { id: "components", label: "At most one new component, unless recorded in the design guide", pass: unrecorded.length <= 1, detail: `${counted}${skipped}` };
 }
 
 function renderCriterion(route: string, r: ScreenFacts | { error: string } | undefined): Criterion {
@@ -53,17 +68,12 @@ function renderCriterion(route: string, r: ScreenFacts | { error: string } | und
 }
 
 export function gradeB(f: BFacts): Grade {
-  const unrecorded = f.newComponents.filter((c) => !f.recorded.includes(c));
-  const recorded = f.newComponents.filter((c) => f.recorded.includes(c));
   return grade([
     { id: "feature", label: `The feature's page exists (${f.route})`, pass: f.pageExists, detail: f.pageExists ? `${f.route} is a page of the app.` : `There's no page at ${f.route}.` },
     ...checkCriteria(f.check),
     validateCriterion(f.validate),
     ...(f.build && f.typecheck ? buildCriteria(f.build, f.typecheck) : [renderCriterion(f.route, f.render)]),
-    {
-      id: "components", label: "At most one new component, unless recorded in the design guide", pass: unrecorded.length <= 1,
-      detail: f.newComponents.length === 0 ? "No new components." : `New: ${f.newComponents.join(", ")}${recorded.length ? ` (recorded in DESIGN.md: ${recorded.join(", ")})` : ""}.`,
-    },
+    componentsCriterion(f),
   ], { newComponents: f.newComponents.length });
 }
 

@@ -1,13 +1,13 @@
 // Runs Motif's agent evals (tests B, C and D, spec §13.2) through your signed-in Claude Code, one case at a time, and grades them.
 // Never an API key; never in CI. See tests/evals/README.md.
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { CASES, needsBrowser, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv } from "./claude";
-import { collectAndGrade } from "./collect";
-import type { Grade } from "./grade";
+import { collectAndGrade, componentFacts } from "./collect";
+import { componentsCriterion, type Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
 import { paths, preflight, type Ready } from "./preflight";
 import { renderReport, testVerdicts } from "./report";
@@ -25,6 +25,8 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
   --cases <id,...>       Run only these cases
   --dry-run              Show each case's prompt and the Claude Code command, without running anything
   --resume <run>         Continue a run that stopped (a usage limit, Ctrl+C)
+  --regrade <run>        Grade a run's B cases again with this checkout's new-component rule, from their saved
+                         diffs; nothing else is run or changed (use it once the run has finished)
   --keep                 Keep each case's folder after grading
   --model <name>         The model for the eval sessions (default: your account's)
   --judge-model <name>   The model for test C's grader (default: your account's)
@@ -63,7 +65,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       strict: true,
       allowPositionals: false,
       options: {
-        list: { type: "boolean" }, tests: { type: "string" }, cases: { type: "string" }, "dry-run": { type: "boolean" }, resume: { type: "string" },
+        list: { type: "boolean" }, tests: { type: "string" }, cases: { type: "string" }, "dry-run": { type: "boolean" }, resume: { type: "string" }, regrade: { type: "string" },
         keep: { type: "boolean" }, model: { type: "string" }, "judge-model": { type: "string" }, "max-turns": { type: "string" },
         work: { type: "string" }, claude: { type: "string" }, help: { type: "boolean" },
       },
@@ -80,6 +82,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     for (const c of CASES) deps.log(`${c.id.padEnd(16)} ${c.test}  ${c.title}`);
     return 0;
   }
+  if (typeof o.regrade === "string") return regrade(o.regrade, deps, where);
   const p = paths(where.repo);
 
   let state: RunState;
@@ -161,13 +164,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   const save = () => saveRun(where.results, state);
   save();
 
-  const finish = (): number => {
-    const verdicts = testVerdicts(state, CASES);
-    writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts));
-    writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts }, null, 2));
-    deps.log(`\n${verdicts.map((v) => `${v.test}: ${v.status} — ${v.detail}`).join("\n")}\nReport: ${join(dir, "report.md")}`);
-    return Object.values(state.cases).every((c) => c.status === "graded" && c.grade?.pass) ? 0 : 1;
-  };
+  const finish = (): number => writeReport(state, dir, deps);
   const pause = (at?: number): number => {
     finish();
     deps.log(`\nPaused: your Claude plan's usage limit was reached${resets(at)}. Continue with: bun tests/evals/run.ts --resume ${state.id}`);
@@ -283,6 +280,43 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     deps.log(`${c.id}: ${cs.grade.pass ? "PASS" : `FAIL (${failed.join("; ")})`}`);
   }
   return finish();
+}
+
+/** report.md and report.json for the run as it stands; the exit code is 0 only when every case passed. */
+function writeReport(state: RunState, dir: string, deps: RunDeps): number {
+  const verdicts = testVerdicts(state, CASES);
+  writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts));
+  writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts }, null, 2));
+  deps.log(`\n${verdicts.map((v) => `${v.test}: ${v.status} — ${v.detail}`).join("\n")}\nReport: ${join(dir, "report.md")}`);
+  return Object.values(state.cases).every((c) => c.status === "graded" && c.grade?.pass) ? 0 : 1;
+}
+
+/** --regrade: each graded B case's new-component criterion again, from its saved diff; every other criterion stands. */
+function regrade(id: string, deps: RunDeps, where: { repo: string; results: string }): number {
+  const state = loadRun(where.results, id);
+  if ("error" in state) {
+    deps.log(state.error);
+    return 2;
+  }
+  const dir = runDir(where.results, id);
+  for (const c of CASES.filter((x) => x.test === "B")) {
+    const cs = state.cases[c.id];
+    if (cs?.status !== "graded" || !cs.grade) continue;
+    const file = join(dir, c.id, "diff.patch");
+    if (!existsSync(file)) {
+      deps.log(`${c.id}: no saved diff, so it keeps its grade.`);
+      continue;
+    }
+    const facts = componentFacts(c, readFileSync(file, "utf8"));
+    const k = componentsCriterion(facts);
+    const criteria = cs.grade.criteria.some((x) => x.id === k.id) ? cs.grade.criteria.map((x) => (x.id === k.id ? k : x)) : [...cs.grade.criteria, k];
+    cs.grade = { pass: criteria.every((x) => x.pass), criteria, metrics: { ...cs.grade.metrics, newComponents: facts.newComponents.length } };
+    deps.log(`${c.id}: ${cs.grade.pass ? "PASS" : "FAIL"} — ${k.detail}`);
+  }
+  const git = deps.git();
+  state.regrades = [...(state.regrades ?? []), { at: deps.now().toISOString(), commit: git.commit, dirty: git.dirty }];
+  saveRun(where.results, state);
+  return writeReport(state, dir, deps);
 }
 
 if (import.meta.main) {
