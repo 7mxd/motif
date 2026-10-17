@@ -464,6 +464,18 @@ describe("motif connect: every agent (Part 3)", () => {
     expect(r.text).toMatch(/dotfiles[\\/]cursor[\\/]mcp\.json, which now holds your key, is tracked by git/);
   });
 
+  test.skipIf(!canSymlink)("a key file reached through a link is checked against git once, as the file it leads to (review of the gap fixes)", async () => {
+    const s = setup(["cursor"], { tracked: () => true });
+    const dotfiles = join(s.home, "dotfiles", "cursor");
+    mkdirSync(dotfiles, { recursive: true });
+    writeFileSync(join(dotfiles, "mcp.json"), '{\n  "mcpServers": {}\n}\n');
+    symlinkSync(join(dotfiles, "mcp.json"), join(s.home, ".cursor", "mcp.json"), "file");
+    const r = await runConnect(".", { positionals: ["21st"], flags: { agent: "cursor" } }, s.deps);
+    const warnings = r.text.split("\n").filter((l) => l.includes("which now holds your key"));
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toMatch(/dotfiles[\\/]cursor[\\/]mcp\.json, which now holds your key/);
+  });
+
   test("an agent whose command can't be started is reported, and the others are still set up (final review)", async () => {
     const s = setup(["claude", "cursor", "gemini"]);
     const run = s.deps.run;

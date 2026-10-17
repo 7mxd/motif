@@ -212,7 +212,7 @@ describe("links, read-only targets and repeated keys (review of the follow-ups)"
     expect(addJsonServer(link, "mcpServers", "motion", motion)).toEqual({ ok: true });
     expect([lstatSync(link).isSymbolicLink(), lstatSync(middle).isSymbolicLink()]).toEqual([true, true]);
     expect(JSON.parse(readFileSync(real, "utf8"))).toEqual({ mcpServers: { motion } });
-    expect(linkTarget(link)).toBe(realpathSync(real));
+    expect(linkTarget(link)).toBe(realpathSync.native(real));
     expect(linkTarget(real)).toBeNull();
   });
 
@@ -255,7 +255,7 @@ describe("links, read-only targets and repeated keys (review of the follow-ups)"
       const r = addJsonServer(link, "mcpServers", "motion", motion);
       expect(r.ok).toBe(false);
       expect((r as { reason: string }).reason).toMatch(
-        /is a link to .*store[\\/]mcp\.json, which can't be changed here \(a read-only file managed elsewhere, such as by home-manager\), so it wasn't changed$/,
+        /is a link to .*store[\\/]mcp\.json, which can't be changed here \(EACCES: read-only, as files home-manager manages are\), so it wasn't changed$/,
       );
       expect(readFileSync(join(store, "mcp.json"), "utf8")).toBe('{ "mcpServers": {} }');
     } finally {
@@ -269,5 +269,37 @@ describe("links, read-only targets and repeated keys (review of the follow-ups)"
     writeFileSync(p, before);
     expect(addJsonServer(p, "mcpServers", "motion", motion)).toEqual({ ok: false, reason: `${p} has "mcpServers" more than once, so it wasn't changed` });
     expect(readFileSync(p, "utf8")).toBe(before);
+  });
+});
+
+describe("the file the system opens is the file changed (review of the gap fixes)", () => {
+  test.skipIf(!canSymlink)("a relative link reached through a folder link (a junction on Windows): the file the agent reads gets the server, no other", () => {
+    const home = dir();
+    mkdirSync(join(home, "dotfiles", "cursor"), { recursive: true });
+    mkdirSync(join(home, "dotfiles", "shared"));
+    mkdirSync(join(home, "shared"));
+    const servers = (name: string) => `{\n  "mcpServers": {\n    "${name}": { "url": "https://${name}.example" }\n  }\n}\n`;
+    writeFileSync(join(home, "shared", "mcp.json"), servers("github"));
+    writeFileSync(join(home, "dotfiles", "shared", "mcp.json"), servers("linear"));
+    symlinkSync(join(home, "dotfiles", "cursor"), join(home, ".cursor"), "junction");
+    symlinkSync(join("..", "shared", "mcp.json"), join(home, "dotfiles", "cursor", "mcp.json"), "file");
+    const link = join(home, ".cursor", "mcp.json");
+    const before = JSON.parse(readFileSync(link, "utf8"));
+    const candidates = [join(home, "shared", "mcp.json"), join(home, "dotfiles", "shared", "mcp.json")];
+    const untouched = candidates.map((p) => readFileSync(p, "utf8"));
+    expect(addJsonServer(link, "mcpServers", "motion", { url: "https://mcp.motion.dev" })).toEqual({ ok: true });
+    expect(JSON.parse(readFileSync(link, "utf8"))).toEqual({ mcpServers: { ...before.mcpServers, motion: { url: "https://mcp.motion.dev" } } });
+    expect(candidates.filter((p, i) => readFileSync(p, "utf8") !== untouched[i]).length).toBe(1);
+    expect(linkTarget(link)).toBe(realpathSync.native(link));
+  });
+
+  test.skipIf(!canSymlink)("a settings folder that is a link to a folder that doesn't exist leaves everything as it was, with the reason", () => {
+    const home = dir();
+    symlinkSync(join(home, "dotfiles", "cursor"), join(home, ".cursor"), "dir");
+    const p = join(home, ".cursor", "mcp.json");
+    const r = addJsonServer(p, "mcpServers", "motion", { url: "https://mcp.motion.dev" });
+    expect(r.ok).toBe(false);
+    expect((r as { reason: string }).reason).toMatch(/mcp\.json is in .*\.cursor, a link to .*dotfiles[\\/]cursor, which doesn't exist, so it wasn't changed$/);
+    expect(existsSync(join(home, "dotfiles"))).toBe(false);
   });
 });

@@ -1,51 +1,80 @@
 // Adds an MCP server to an agent's settings file, for the agents whose own command can't (Part 3 spec §7.2): every
 // other entry, comment and the formatting stay as they were, and a file Motif can't read is left alone.
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { applyEdits, findNodeAtLocation, modify, parse, parseTree, type ParseError } from "jsonc-parser";
 
 export type Edited = { ok: true } | { ok: false; reason: string };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/**
- * The file a settings path names: where a link points (dotfiles kept elsewhere), followed link by link, so every link
- * stays a link. A link into a folder that doesn't exist, or links that lead back to themselves, are refused.
- */
-function followLinks(path: string): { target: string } | { ok: false; reason: string } {
-  let current = path;
-  for (let hops = 0; hops < 40; hops++) {
-    let to: string;
-    try {
-      if (!lstatSync(current).isSymbolicLink()) return { target: current };
-      to = readlinkSync(current);
-    } catch {
-      // Nothing there: the file to make, when its folder is there (a path that isn't a link gets its folder made).
-      if (current === path || existsSync(dirname(current))) return { target: current };
-      return { ok: false, reason: `${path} is a link to ${current}, which doesn't exist, so it wasn't changed` };
-    }
-    // Read from the folder the link really is in, as the system reads it.
-    current = resolve(realpathSync(dirname(current)), to);
+const isLink = (path: string) => {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
   }
-  return { ok: false, reason: `${path} is a link that leads back to itself, so it wasn't changed` };
-}
+};
+const linkText = (path: string) => {
+  try {
+    return readlinkSync(path);
+  } catch {
+    return "somewhere";
+  }
+};
 
-/** Where a settings path that is a link points, so a warning can name the file that really holds a key; null when it isn't a link. */
+/**
+ * The file the system opens for a settings path that is a link (dotfiles kept elsewhere), resolved by the system itself
+ * (a relative link reached through a Windows junction resolves differently from a walk by hand). Null when the path
+ * isn't a link or leads nowhere yet.
+ */
 export function linkTarget(path: string): string | null {
   try {
-    if (!lstatSync(path).isSymbolicLink()) return null;
+    return isLink(path) && existsSync(path) ? realpathSync.native(path) : null;
   } catch {
     return null;
   }
-  const followed = followLinks(path);
-  return "target" in followed ? followed.target : null;
 }
 
-/** Writes beside the file, then moves it into place, so a failed write never leaves half a settings file. */
+/** A write that failed: a read-only file (such as one home-manager manages) is named as such, with the system's code. */
+function writeFailed(path: string, linkedTo: string | null, e: unknown): Edited {
+  const code = (e as NodeJS.ErrnoException).code;
+  // On Windows, EPERM and EACCES usually mean another program has the file open, not that it's read-only.
+  if (code === "EROFS" || (linkedTo !== null && process.platform !== "win32" && (code === "EACCES" || code === "EPERM"))) {
+    const what = linkedTo === null ? path : `${path} is a link to ${linkedTo}, which`;
+    return { ok: false, reason: `${what} can't be changed here (${code}: read-only, as files home-manager manages are), so it wasn't changed` };
+  }
+  return { ok: false, reason: `couldn't write ${path}: ${message(e)}` };
+}
+
+/** A link to a settings file not made yet: written through the link, so the system makes the file where it reads it. */
+function writeThroughLink(path: string, text: string, holdsKey: boolean): Edited {
+  try {
+    writeFileSync(path, text, holdsKey ? { mode: 0o600 } : undefined);
+    return { ok: true };
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return { ok: false, reason: `${path} is a link to ${linkText(path)}, which doesn't exist, so it wasn't changed` };
+    if (code === "ELOOP") return { ok: false, reason: `${path} is a link that leads back to itself, so it wasn't changed` };
+    return writeFailed(path, linkText(path), e);
+  }
+}
+
+/**
+ * Writes the file the system opens for this path (through any links, so each link stays a link): beside it first, then
+ * moved into place, so a failed write never leaves half a settings file.
+ */
 function writeSafely(path: string, text: string, holdsKey: boolean): Edited {
-  const followed = followLinks(path);
-  if (!("target" in followed)) return followed;
-  const target = followed.target;
+  const link = isLink(path);
+  if (link && !existsSync(path)) return writeThroughLink(path, text, holdsKey);
+  const folder = dirname(path);
+  if (!link && !existsSync(folder) && isLink(folder)) {
+    return { ok: false, reason: `${path} is in ${folder}, a link to ${linkText(folder)}, which doesn't exist, so it wasn't changed` };
+  }
+  let target = path;
+  try {
+    if (existsSync(path)) target = realpathSync.native(path);
+  } catch {}
   const tmp = `${target}.motif-${process.pid}.tmp`;
   try {
     mkdirSync(dirname(target), { recursive: true });
@@ -60,11 +89,7 @@ function writeSafely(path: string, text: string, holdsKey: boolean): Edited {
     try {
       rmSync(tmp, { force: true });
     } catch {}
-    const code = (e as NodeJS.ErrnoException).code;
-    if (target !== path && (code === "EROFS" || code === "EACCES" || code === "EPERM")) {
-      return { ok: false, reason: `${path} is a link to ${target}, which can't be changed here (a read-only file managed elsewhere, such as by home-manager), so it wasn't changed` };
-    }
-    return { ok: false, reason: `couldn't write ${path}: ${message(e)}` };
+    return writeFailed(path, link ? target : null, e);
   }
 }
 

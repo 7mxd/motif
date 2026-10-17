@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
@@ -326,12 +327,18 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   }
   if (secret) {
     const git = deps.which("git");
-    // A settings file that is a link (dotfiles) put the key in the file it points to: that's the one git may track.
-    const keyFiles = ok.flatMap((r) => r.keyFiles ?? []).flatMap((f) => {
-      const target = linkTarget(f);
-      return target ? [f, target] : [f];
-    });
-    for (const file of keyFiles) {
+    // A settings file that is a link (dotfiles) put the key in the file it leads to, the one git may track; the link's
+    // own text holds no key. Each file is checked once, however many agents share it.
+    const keyFiles = new Map<string, string>();
+    for (const f of ok.flatMap((r) => r.keyFiles ?? [])) {
+      const file = linkTarget(f) ?? f;
+      let same = file;
+      try {
+        same = realpathSync.native(file);
+      } catch {}
+      if (!keyFiles.has(same)) keyFiles.set(same, file);
+    }
+    for (const file of keyFiles.values()) {
       if (git && (await deps.run(git, ["-C", dirname(file), "ls-files", "--error-unmatch", basename(file)])).code === 0) {
         lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by git. Remove it from that repository before you push.`);
       }
