@@ -260,4 +260,7 @@ jobs:
           [Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ } | Add-Content $env:GITHUB_PATH
       - name: Each agent installs Motif from GitHub, lists its skill and runs its tool
         working-directory: cli
+        env:
+          # Cursor's CLI needs a sign-in even to add a marketplace; the check gives this key to Cursor alone.
+          MOTIF_CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: bun scripts/agent-checks.ts --source github --doctor

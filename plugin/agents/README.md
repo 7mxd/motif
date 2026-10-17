@@ -27,6 +27,6 @@ Remove a marketplace or extension when you're done (`codex plugin marketplace re
 
 ## Check every agent
 
-`bun scripts/agent-checks.ts --source local` installs the build in each agent whose CLI is on your PATH, in a throwaway home, and checks that it lists the motif skill (`--agents codex,gemini` picks some). Nobody signs in. CI runs it on every push (`.github/workflows/agents.yml`), and after each release from GitHub on Windows, macOS and Linux.
+`bun scripts/agent-checks.ts --source local` installs the build in each agent whose CLI is on your PATH, in a throwaway home, and checks that it lists the motif skill (`--agents codex,gemini` picks some). Nobody signs in, except to Cursor: its CLI needs a sign-in even to add a marketplace, so its check runs only with a Cursor API key in `MOTIF_CURSOR_API_KEY` (CI passes the repository secret `CURSOR_API_KEY`), which the script gives to Cursor's command alone. CI runs it on every push (`.github/workflows/agents.yml`), and after each release from GitHub on Windows, macOS and Linux.
 
 Some agents keep a cache outside their home folder (Copilot CLI in `%LOCALAPPDATA%\copilot` on Windows), so a local run can leave files there.

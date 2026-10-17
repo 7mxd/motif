@@ -142,6 +142,8 @@ describe("the release workflow", () => {
       "bun scripts/agent-checks.ts --source github --doctor", "persist-credentials: false",
     ]) expect(agents).toContain(s);
     expect(agents).not.toContain("GH_TOKEN");
+    expect(agents.match(/secrets\.\w+/g)).toEqual(["secrets.CURSOR_API_KEY"]);
+    expect(agents.slice(agents.indexOf("- name: Each agent installs Motif from GitHub"))).toContain("MOTIF_CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}");
   });
 
   test("on Windows, passes the folders Cursor's installer adds to the user PATH on to the later steps (final review)", () => {
@@ -170,7 +172,9 @@ describe("the agents workflow", () => {
       "@openai/codex@$CODEX", "@github/copilot@$COPILOT", "@google/gemini-cli@$GEMINI", "opencode-ai@$OPENCODE", "https://cursor.com/install",
       "bun run packages", "bun run skill:archives", "bun scripts/agent-checks.ts --source local",
     ]) expect(wf).toContain(s);
-    expect(wf).not.toContain("secrets.");
+    // Its one secret is a Cursor key, given only to the check step, which hands it to Cursor's CLI alone.
+    expect(wf.match(/secrets\.\w+/g)).toEqual(["secrets.CURSOR_API_KEY"]);
+    expect(wf.slice(wf.indexOf("- name: Each agent installs Motif from the build"))).toContain("MOTIF_CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}");
     expect(wf).toContain("permissions:\n  contents: read");
   });
 

@@ -166,3 +166,37 @@ describe("running a check (final review)", () => {
     expect(homes.every((h) => !/motif/i.test(h.split(/[\\/]/).pop()!))).toBe(true);
   });
 });
+
+describe("Cursor's check and its key (Cursor's CLI needs a sign-in even to add a marketplace)", () => {
+  test("Cursor signs in with the key it's given, and no other agent gets it", () => {
+    const checks = byId(agentChecks(github, { platform: "linux", repo: "/r", cursorKey: "cursor-key-1" }));
+    expect(checks.cursor!.env("/h").CURSOR_API_KEY).toBe("cursor-key-1");
+    expect(checks.cursor!.unavailable).toBeUndefined();
+    for (const id of ["codex", "copilot", "gemini", "opencode"]) expect([id, "CURSOR_API_KEY" in checks[id]!.env("/h")]).toEqual([id, false]);
+  });
+
+  test("without a key, Cursor's check is skipped in a local run and fails a release check", async () => {
+    const cursor = byId(agentChecks(local, { platform: "linux", repo: "/r" })).cursor!;
+    expect(cursor.unavailable).toContain("CURSOR_API_KEY");
+    const skipped = await checkAgent(cursor, { doctor: false, missingIsSkip: true });
+    expect(skipped.status).toBe("skipped");
+    expect(skipped.detail).toContain("CURSOR_API_KEY");
+    expect((await checkAgent(cursor, { doctor: false, missingIsSkip: false })).status).toBe("failed");
+  });
+
+  test("the key never reaches another agent's processes, nor the tool the skill downloads", async () => {
+    const before = { motif: process.env.MOTIF_CURSOR_API_KEY, cursor: process.env.CURSOR_API_KEY };
+    process.env.MOTIF_CURSOR_API_KEY = "secret-cursor-key";
+    process.env.CURSOR_API_KEY = "secret-cursor-key";
+    try {
+      const script = "console.log([process.env.MOTIF_CURSOR_API_KEY, process.env.CURSOR_API_KEY].join('|'))";
+      expect((await run([process.execPath, "-e", script], {})).output).toBe("|");
+      expect((await run([process.execPath, "-e", script], { CURSOR_API_KEY: "given" })).output).toBe("|given");
+    } finally {
+      for (const [k, v] of [["MOTIF_CURSOR_API_KEY", before.motif], ["CURSOR_API_KEY", before.cursor]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+});

@@ -47,4 +47,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Each agent installs Motif from the build and lists its skill
         working-directory: cli
+        env:
+          # Cursor's CLI needs a sign-in even to add a marketplace; the check gives this key to Cursor alone.
+          MOTIF_CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: bun scripts/agent-checks.ts --source local

@@ -131,7 +131,7 @@ describe("the docs for the package", () => {
     for (const s of [
       "bun run packages", "bun run skill:archives", "dist/agents-local", "codex plugin marketplace add", "copilot plugin marketplace add",
       "gemini extensions link", "cursor-agent", "install.sh", "install.ps1", "MOTIF_BIN", "bun scripts/agent-checks.ts --source local", "plugins branch",
-      "`bun run build`, which writes `dist/motif`",
+      "`bun run build`, which writes `dist/motif`", "MOTIF_CURSOR_API_KEY",
     ]) expect(guide).toContain(s);
   });
 

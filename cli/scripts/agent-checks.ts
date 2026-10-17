@@ -27,7 +27,12 @@ export interface AgentCheck {
   setup(home: string): void;
   /** Whether the install puts the skill's files under the home (so --doctor can run its tool). Cursor's CLI only adds the marketplace. */
   installsSkill: boolean;
+  /** Why the check can't run here, when it can't (Cursor without a key). */
+  unavailable?: string;
 }
+
+/** The variable CI passes the CURSOR_API_KEY secret in; only Cursor's command gets it, as CURSOR_API_KEY. */
+export const CURSOR_KEY_VAR = "MOTIF_CURSOR_API_KEY";
 
 /** The first JSON array or object in an agent's output, which may start with log lines; null when there's none. */
 function jsonIn(output: string): unknown {
@@ -50,7 +55,7 @@ const named = (value: unknown, name: string): boolean => {
 
 export function agentChecks(
   source: CheckSource,
-  opts: { platform?: NodeJS.Platform; repo?: string; release?: { base: string; raw: string } } = {},
+  opts: { platform?: NodeJS.Platform; repo?: string; release?: { base: string; raw: string }; cursorKey?: string } = {},
 ): AgentCheck[] {
   const platform = opts.platform ?? process.platform;
   const repo = opts.repo ?? REPO;
@@ -96,7 +101,9 @@ export function agentChecks(
       steps: [["cursor-agent", "plugin", "marketplace", "add", gitUrl]],
       list: ["cursor-agent", "plugin", "marketplace", "list", "--format", "json"],
       listed: (out) => named(jsonIn(out), "motif"),
-      env: (h) => home(h),
+      // Cursor's CLI needs a sign-in even to add a marketplace.
+      env: (h) => ({ ...home(h), ...(opts.cursorKey ? { CURSOR_API_KEY: opts.cursorKey } : {}) }),
+      unavailable: opts.cursorKey ? undefined : `needs a Cursor sign-in: give it a key in ${CURSOR_KEY_VAR} (CI: the CURSOR_API_KEY secret)`,
       setup: nothing,
     },
     {
@@ -164,9 +171,14 @@ export async function run(cmd: string[], env: Record<string, string>, timeoutMs 
   const exe = Bun.which(cmd[0]!);
   if (!exe) return { code: 127, output: `${cmd[0]} isn't on PATH` };
   const { cmd: argv, verbatim } = spawnArgs(exe, cmd.slice(1));
+  // A Cursor key reaches only the command it's given to, never another agent or the tool the skill downloads.
+  const childEnv: Record<string, string | undefined> = { ...process.env };
+  delete childEnv[CURSOR_KEY_VAR];
+  delete childEnv.CURSOR_API_KEY;
+  Object.assign(childEnv, env);
   let proc: ReturnType<typeof Bun.spawn>;
   try {
-    proc = Bun.spawn(argv, { env: { ...process.env, ...env }, stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsVerbatimArguments: verbatim });
+    proc = Bun.spawn(argv, { env: childEnv, stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsVerbatimArguments: verbatim });
   } catch (error) {
     return { code: 127, output: `${cmd[0]} couldn't start: ${error instanceof Error ? error.message : String(error)}` };
   }
@@ -186,6 +198,7 @@ export type CheckResult = { status: "ok" | "failed" | "skipped"; detail: string 
 
 /** One agent's check, in a throwaway home that's removed afterwards whatever happens. */
 export async function checkAgent(check: AgentCheck, opts: { doctor: boolean; missingIsSkip: boolean }): Promise<CheckResult> {
+  if (check.unavailable) return opts.missingIsSkip ? { status: "skipped", detail: check.unavailable } : { status: "failed", detail: check.unavailable };
   if (!Bun.which(check.list[0]!)) {
     const detail = `${check.list[0]} isn't on PATH`;
     return opts.missingIsSkip ? { status: "skipped", detail } : { status: "failed", detail };
@@ -231,7 +244,7 @@ if (import.meta.main) {
     ? { kind, marketplace: join(REPO, "dist", "agents-local"), agents: join(REPO, "dist", "agents") }
     : { kind, repo: "7mxd/motif", branch: "plugins" };
   let failed = 0;
-  for (const check of agentChecks(source, { release: release ?? undefined })) {
+  for (const check of agentChecks(source, { release: release ?? undefined, cursorKey: process.env[CURSOR_KEY_VAR] || undefined })) {
     if (only && !only.includes(check.id)) continue;
     const result = await checkAgent(check, { doctor: args.includes("--doctor"), missingIsSkip: kind === "local" });
     const mark = result.status === "ok" ? "✓" : result.status === "skipped" ? "○" : "✗";
