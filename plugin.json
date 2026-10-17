@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "motif",
+  "version": "0.2.0",
+  "description": "Design and build polished, consistent app UI from a design guide your agent follows: mockups before code, screenshots after, and reviews in plain words.",
+  "author": {
+    "name": "7mxd"
+  },
+  "homepage": "https://github.com/7mxd/motif",
+  "repository": "https://github.com/7mxd/motif",
+  "license": "MIT",
+  "keywords": [
+    "design",
+    "ui",
+    "ux",
+    "motion",
+    "design-system",
+    "accessibility"
+  ]
+}

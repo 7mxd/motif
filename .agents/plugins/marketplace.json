@@ -1,0 +1,20 @@
+{
+  "name": "motif",
+  "interface": {
+    "displayName": "Motif"
+  },
+  "plugins": [
+    {
+      "name": "motif",
+      "description": "Design and build polished, consistent app UI from a design guide your agent follows: mockups before code, screenshots after, and reviews in plain words.",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      }
+    }
+  ]
+}
