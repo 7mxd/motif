@@ -37,3 +37,17 @@ Rule 3 in [SKILL.md](SKILL.md) asks with your agent's question prompt when it ha
 ## Which shell runs commands
 
 On Windows, Codex, Cursor, GitHub Copilot and Gemini CLI run commands in PowerShell, so use the PowerShell row of SKILL.md's table (`motif.cmd`). OpenCode uses PowerShell when it's installed, and Git Bash or Command Prompt otherwise: match the row to the shell you're in. On macOS and Linux, every agent uses `sh`.
+
+## Signing in to a design source
+
+Refero and 60fps.design need the developer to sign in once, after `motif connect` adds them. The server is `refero` or `60fps`:
+
+| Agent | How the developer signs in |
+|---|---|
+| Claude Code | type /mcp, choose the server and sign in |
+| Codex | run `codex mcp login <server>` in a terminal |
+| Cursor | in Cursor's settings, under MCP, sign in to the server (or run `cursor-agent mcp login <server>`) |
+| GitHub Copilot CLI | type /mcp and sign in to the server |
+| VS Code (Copilot) | VS Code asks them to sign in the first time Copilot uses the server |
+| Gemini CLI | type `/mcp auth <server>` |
+| OpenCode | run `opencode mcp auth <server>` in a terminal |

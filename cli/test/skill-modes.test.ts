@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { AGENTS } from "../src/agents/catalog";
 import { RULE_IDS } from "../src/check/types";
 import { lineCount } from "./skill-lint";
 
@@ -235,5 +236,27 @@ describe("Motif in every agent (Part 3)", () => {
     for (const s of ["skills/motif", "~/.agents/skills/motif", "request_user_input", "Plan mode", "ask_user", "numbered list", "PowerShell", "motif.cmd"]) {
       expect(agents).toContain(s);
     }
+  });
+});
+
+describe("design sources in every agent (Part 3)", () => {
+  test("agents.md says how to sign in to a design source in each agent, as motif connect does", () => {
+    const agents = read("agents.md");
+    expect(agents).toContain("## Signing in to a design source");
+    const fragment: Record<string, string> = {
+      claude: "type /mcp", codex: "codex mcp login", cursor: "cursor-agent mcp login", copilot: "/mcp and sign in",
+      vscode: "VS Code asks", gemini: "/mcp auth", opencode: "opencode mcp auth",
+    };
+    for (const a of AGENTS) {
+      expect([a.id, a.signIn("refero").includes(fragment[a.id]!), agents.includes(fragment[a.id]!)]).toEqual([a.id, true, true]);
+    }
+  });
+
+  test("the source notes say motif connect sets a source up in the agents the developer picks", () => {
+    for (const f of ["sources/motion-dev.md", "sources/refero.md", "sources/21st.md", "sources/60fps.md"]) {
+      const note = read(f);
+      expect([f, note.includes("Claude Code"), note.includes("the agents the developer picks")]).toEqual([f, false, true]);
+    }
+    for (const f of ["sources/refero.md", "sources/60fps.md"]) expect([f, read(f).includes("(../agents.md)")]).toEqual([f, true]);
   });
 });
