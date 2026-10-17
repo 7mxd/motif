@@ -4,7 +4,20 @@
 
 Design guide tools for AI coding agents: build web and mobile apps with polished UI, UX and motion — and keep them consistent as your app and team grow.
 
-> Work in progress. The agent skill is ready to try in Claude Code ([how](plugin/claude-code/README.md)); packages for other agents and the first release come next.
+> **Preview (v0.1.0).** Motif works in Claude Code today, for React web apps and plain web sites. Packages for other agents, more stacks, and the first full release come next.
+
+## Install
+
+In Claude Code:
+
+```
+/plugin marketplace add 7mxd/motif
+/plugin install motif@motif
+```
+
+Then ask for design work ("make this screen look better"), or type `/motif:design`.
+
+You need Claude Code 2.1.224 or later and git. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v0.1.0) and checks it against the release's checksums. See the [release notes](docs/releases/v0.1.0.md).
 
 ## The `motif` tool
 

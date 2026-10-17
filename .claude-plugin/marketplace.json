@@ -1,0 +1,19 @@
+{
+  "name": "motif",
+  "description": "Motif: design guide tools for AI coding agents.",
+  "owner": {
+    "name": "7mxd",
+    "url": "https://github.com/7mxd"
+  },
+  "plugins": [
+    {
+      "name": "motif",
+      "description": "Design and build polished, consistent app UI from a design guide your agent follows: mockups before code, screenshots after, and reviews in plain words.",
+      "source": {
+        "source": "archive",
+        "url": "https://github.com/7mxd/motif/releases/download/v0.1.0/motif-claude-code.zip",
+        "sha256": "5041f0b056e719dd07ef14519ca2ee09a1d05ce30402c85b45096198d1c7dda2"
+      }
+    }
+  ]
+}

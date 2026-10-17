@@ -20,6 +20,19 @@ describe("the release notes", () => {
   });
 });
 
+describe("the READMEs", () => {
+  test("tell people how to install Motif from its marketplace, now that a release exists", () => {
+    for (const file of ["README.md", "plugin/claude-code/README.md"]) {
+      const text = readFileSync(join(REPO, file), "utf8");
+      for (const s of ["/plugin marketplace add 7mxd/motif", "/plugin install motif@motif", "Claude Code 2.1.224"]) {
+        expect(text.includes(s) ? file : `${file} lacks ${s}`).toBe(file);
+      }
+    }
+    expect(readFileSync(join(REPO, "README.md"), "utf8")).toContain(`**Preview (v${VERSION}).**`);
+    expect(readFileSync(join(REPO, "plugin/claude-code/README.md"), "utf8")).not.toContain("Until Motif's first release is published");
+  });
+});
+
 describe("the release workflow", () => {
   const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
   /** One job's text: from its "  name:" line to the next job's. */

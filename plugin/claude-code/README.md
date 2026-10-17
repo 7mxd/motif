@@ -1,20 +1,21 @@
-# Motif for Claude Code (development plugin)
+# Motif for Claude Code
 
-Four short commands that start the Motif skill in Claude Code. The build copies them and the whole `skill/` folder into `dist/claude-code/`, a plugin Claude Code can load. (Motif's packages for every agent, in Part 3, will replace this.)
+Four short commands that start the Motif skill in Claude Code. The build copies them and the whole `skill/` folder into a plugin; each release attaches it as `motif-claude-code.zip`. (Motif's packages for other agents, in Part 3, come later.)
 
-## Build it
+## Install
 
-From the repository's `cli` folder:
-
-```bash
-bun run plugin
+```
+/plugin marketplace add 7mxd/motif
+/plugin install motif@motif
 ```
 
-This replaces `dist/claude-code/` with a fresh copy. Run it again after changing anything in `skill/` or here, then type `/reload-plugins` in Claude Code.
+You need Claude Code 2.1.224 or later and git.
 
-## Try it
+## Develop
 
-Until Motif's first release is published, point the skill at a local build of the tool:
+From the repository's `cli` folder, `bun run plugin` replaces `dist/claude-code/` with a fresh build. Run it again after changing anything in `skill/` or here, then type `/reload-plugins` in Claude Code. `bun run plugin:zip` zips it as a release does.
+
+To try your build, point the skill at a local build of the tool:
 
 1. In `cli`, run `bun run build`. It writes `dist/motif` (`dist/motif.exe` on Windows).
 2. Start Claude Code in your app's folder with `MOTIF_BIN` set to that file and the plugin loaded:
