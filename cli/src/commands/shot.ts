@@ -23,7 +23,7 @@ export interface ShotDeps {
 }
 
 const MAX_ROUTES = 12;
-const INSTALL_HINT = '"motif browser install" downloads a private headless copy (about 100 MB) that only Motif uses.';
+const INSTALL_HINT = '"motif browser install" downloads a private headless copy (about 120 MB to download, about 300 MB on disk) that only Motif uses.';
 
 function today(): string {
   const d = new Date();

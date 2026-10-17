@@ -62,7 +62,7 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
 
   const browser = deps.findBrowser();
   if (browser) push("browser", "ok", "Screenshots and previews", `Using ${browser.name}.`);
-  else push("browser", "needed", "Screenshots and previews", 'No Chrome or Edge found. Previews and screenshots need one: "motif browser install" downloads a private copy (about 100 MB).');
+  else push("browser", "needed", "Screenshots and previews", 'No Chrome or Edge found. Previews and screenshots need one: "motif browser install" downloads a private copy (about 120 MB to download, about 300 MB on disk).');
 
   if (apps.some((a) => a.stack && NODE_STACKS.includes(a.stack))) {
     if (deps.which("node")) push("node", "ok", "Node.js", "Found. Your app needs it to run (Motif itself doesn't).");

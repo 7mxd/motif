@@ -25,7 +25,7 @@ In one or two sentences, tell the developer what the mode does and where it will
 
 If `motif doctor --json` reported something `needed` that the mode uses, say it now in one sentence with its fix, then carry on:
 
-- No browser: "Mockups and screenshots need a browser. When we get there, I can download a private one (about 100 MB) if you'd like."
+- No browser: "Mockups and screenshots need a browser. When we get there, I can download a private one (about 120 MB, about 300 MB on disk) if you'd like."
 - No Node.js for a React app: "Your app needs Node.js to run; install it from nodejs.org and I'll take it from there."
 - A design guide with problems: "Your design guide has a few problems; I'll fix them first."
 

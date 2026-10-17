@@ -12,7 +12,7 @@ Tests B, C and D from the design spec (§13.2), run through **your own signed-in
 
 - Claude Code, signed in with your Claude account: `claude auth status` shows `"authMethod": "claude.ai"`. The evals never use an API key.
 - Bun (this repository's tool), git, and Node.js 20.9 or later with npm.
-- Chrome or Edge for tests C and D. If you have neither, `motif browser install` downloads a private browser of about 100 MB; the runner never runs it for you.
+- Chrome or Edge for tests C and D. If you have neither, `motif browser install` downloads a private browser of about 120 MB (about 300 MB on disk); the runner never runs it for you.
 - Time and usage. Each case is a full Claude Code session: up to 90 minutes for B and C cases, 3 hours for D cases, plus installing and building the app. A full run is 11 sessions and uses a large share of your plan's usage, so you may prefer one test at a time.
 
 ## Running

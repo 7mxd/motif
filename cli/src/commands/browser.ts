@@ -19,7 +19,7 @@ export async function runBrowser(_cwd: string, ctx: RunContext, deps: BrowserDep
       : {
           command: "browser",
           exitCode: 0,
-          text: 'No Chrome or Edge found. "motif browser install" downloads a private headless copy (about 100 MB) that only Motif uses.',
+          text: 'No Chrome or Edge found. "motif browser install" downloads a private headless copy (about 120 MB to download, about 300 MB on disk) that only Motif uses.',
           data: { browser: null },
         };
   }

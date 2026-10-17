@@ -31,7 +31,7 @@ const defaultDeps: PreviewDeps = {
 };
 
 const PRESET_IDS = EMBEDDED_PRESETS.map((p) => p.id);
-const INSTALL_HINT = '"motif browser install" downloads a private headless copy (about 100 MB) that only Motif uses.';
+const INSTALL_HINT = '"motif browser install" downloads a private headless copy (about 120 MB to download, about 300 MB on disk) that only Motif uses.';
 
 const fail = (exitCode: 1 | 2, text: string, data: Record<string, unknown>): CommandResult => ({ command: "preview", exitCode, text, data });
 const projectPath = (cwd: string, abs: string) => relative(cwd, abs).split(sep).join("/");
