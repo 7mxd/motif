@@ -245,7 +245,10 @@ jobs:
       - name: Install the Cursor CLI (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: irm 'https://cursor.com/install?win32=true' | iex
+        run: |
+          irm 'https://cursor.com/install?win32=true' | iex
+          # The installer adds its folder to the user PATH, which later steps don't see: pass it on.
+          [Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ } | Add-Content $env:GITHUB_PATH
       - name: Each agent installs Motif from GitHub, lists its skill and runs its tool
         working-directory: cli
         run: bun scripts/agent-checks.ts --source github --doctor

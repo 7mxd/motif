@@ -1,7 +1,8 @@
 // Installs Motif in each agent the way its README says, in a throwaway home, and checks that the agent lists the motif
 // skill; with --doctor, it also runs the installed skill's tool through its bootstrap. Nobody signs in.
-//   bun scripts/agent-checks.ts --source local     from dist/agents-local and dist/ (bun run packages, skill:archives first)
-//   bun scripts/agent-checks.ts --source github    from GitHub, as people install it (after a release)
+//   bun scripts/agent-checks.ts --source local     from dist/agents-local and dist/ (bun run packages, skill:archives first);
+//                                                  agents whose CLI isn't on PATH are skipped
+//   bun scripts/agent-checks.ts --source github    from GitHub, as people install it (after a release); every agent must run
 // Options: --agents codex,gemini (some agents only), --doctor (also run the tool).
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -19,12 +20,33 @@ export interface AgentCheck {
   label: string;
   steps: string[][];
   list: string[];
+  /** Whether the listing shows Motif installed: its own entry, not just the word somewhere in a path or a URL. */
+  listed(output: string): boolean;
   env(home: string): Record<string, string>;
   /** Prepares the throwaway home before the first step. */
   setup(home: string): void;
-  /** Whether the install puts the skill's files under the home (so --doctor can run its tool). */
+  /** Whether the install puts the skill's files under the home (so --doctor can run its tool). Cursor's CLI only adds the marketplace. */
   installsSkill: boolean;
 }
+
+/** The first JSON array or object in an agent's output, which may start with log lines; null when there's none. */
+function jsonIn(output: string): unknown {
+  for (const open of ["[", "{"]) {
+    const at = output.indexOf(open);
+    if (at === -1) continue;
+    try {
+      return JSON.parse(output.slice(at));
+    } catch {
+      // try the other bracket
+    }
+  }
+  return null;
+}
+
+const named = (value: unknown, name: string): boolean => {
+  const list = Array.isArray(value) ? value : Array.isArray((value as any)?.marketplaces) ? (value as any).marketplaces : [];
+  return list.some((item: any) => item?.name === name);
+};
 
 export function agentChecks(
   source: CheckSource,
@@ -46,6 +68,7 @@ export function agentChecks(
       id: "codex", label: "Codex", installsSkill: true,
       steps: [["codex", "plugin", "marketplace", "add", marketplace], ["codex", "plugin", "add", "motif@motif"]],
       list: ["codex", "plugin", "list"],
+      listed: (out) => /^motif@motif\s+installed/m.test(out),
       env: (h) => ({ ...home(h), CODEX_HOME: join(h, ".codex") }),
       setup: (h) => mkdirSync(join(h, ".codex"), { recursive: true }),
     },
@@ -53,6 +76,7 @@ export function agentChecks(
       id: "copilot", label: "GitHub Copilot CLI", installsSkill: true,
       steps: [["copilot", "plugin", "marketplace", "add", marketplace], ["copilot", "plugin", "install", "motif@motif"]],
       list: ["copilot", "skill", "list"],
+      listed: (out) => /^Plugin skills:\s*\n(?:[ \t]+.*\n)*?[ \t]+motif - /m.test(out),
       env: (h) => ({ ...home(h), COPILOT_HOME: join(h, ".copilot") }),
       setup: nothing,
     },
@@ -60,6 +84,7 @@ export function agentChecks(
       id: "gemini", label: "Gemini CLI", installsSkill: true,
       steps: [["gemini", "extensions", "install", ...gemini, "--consent", "--skip-settings"]],
       list: ["gemini", "skills", "list"],
+      listed: (out) => /^motif \[Enabled\]/m.test(out),
       env: (h) => ({ ...home(h), GEMINI_CLI_HOME: h }),
       setup: (h) => {
         mkdirSync(join(h, ".gemini"), { recursive: true });
@@ -70,6 +95,7 @@ export function agentChecks(
       id: "cursor", label: "Cursor CLI", installsSkill: false,
       steps: [["cursor-agent", "plugin", "marketplace", "add", gitUrl]],
       list: ["cursor-agent", "plugin", "marketplace", "list", "--format", "json"],
+      listed: (out) => named(jsonIn(out), "motif"),
       env: (h) => home(h),
       setup: nothing,
     },
@@ -77,6 +103,7 @@ export function agentChecks(
       id: "opencode", label: "OpenCode", installsSkill: true,
       steps: [installer],
       list: ["opencode", "debug", "skill"],
+      listed: (out) => named(jsonIn(out), "motif"),
       env: (h) => ({
         ...home(h), ...release,
         XDG_CONFIG_HOME: join(h, ".config"), XDG_DATA_HOME: join(h, ".local", "share"), XDG_CACHE_HOME: join(h, ".cache"),
@@ -132,17 +159,63 @@ export function localRelease(dist: string, agentsDir: string): { base: string; r
   return { base: `${root}/release`, raw: `${root}/raw`, stop: () => server.stop(true) };
 }
 
-async function run(cmd: string[], env: Record<string, string>, timeoutMs = 300_000): Promise<{ code: number; output: string }> {
-  const exe = Bun.which(cmd[0]!) ?? cmd[0]!;
+/** Runs a command with extra environment; a program that isn't on PATH gives code 127 and says so, instead of throwing. */
+export async function run(cmd: string[], env: Record<string, string>, timeoutMs = 300_000): Promise<{ code: number; output: string }> {
+  const exe = Bun.which(cmd[0]!);
+  if (!exe) return { code: 127, output: `${cmd[0]} isn't on PATH` };
   const { cmd: argv, verbatim } = spawnArgs(exe, cmd.slice(1));
-  const proc = Bun.spawn(argv, { env: { ...process.env, ...env }, stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsVerbatimArguments: verbatim });
+  let proc: ReturnType<typeof Bun.spawn>;
+  try {
+    proc = Bun.spawn(argv, { env: { ...process.env, ...env }, stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsVerbatimArguments: verbatim });
+  } catch (error) {
+    return { code: 127, output: `${cmd[0]} couldn't start: ${error instanceof Error ? error.message : String(error)}` };
+  }
   const timer = setTimeout(() => proc.kill(), timeoutMs);
-  const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout as ReadableStream).text(),
+    new Response(proc.stderr as ReadableStream).text(),
+    proc.exited,
+  ]);
   clearTimeout(timer);
   return { code, output: `${out}${err}`.trim() };
 }
 
 const tail = (text: string) => text.split("\n").slice(-6).join("\n    ");
+
+export type CheckResult = { status: "ok" | "failed" | "skipped"; detail: string };
+
+/** One agent's check, in a throwaway home that's removed afterwards whatever happens. */
+export async function checkAgent(check: AgentCheck, opts: { doctor: boolean; missingIsSkip: boolean }): Promise<CheckResult> {
+  if (!Bun.which(check.list[0]!)) {
+    const detail = `${check.list[0]} isn't on PATH`;
+    return opts.missingIsSkip ? { status: "skipped", detail } : { status: "failed", detail };
+  }
+  // The home's name mustn't contain "motif", so a listing can't pass by echoing the path.
+  const home = mkdtempSync(join(tmpdir(), `agentcheck-${check.id}-`));
+  try {
+    const env = check.env(home);
+    check.setup(home);
+    for (const step of check.steps) {
+      const r = await run(step, env);
+      if (r.code !== 0) return { status: "failed", detail: `"${step.join(" ")}" failed:\n    ${tail(r.output)}` };
+    }
+    const listed = await run(check.list, env);
+    if (listed.code !== 0 || !check.listed(listed.output)) {
+      return { status: "failed", detail: `"${check.list.join(" ")}" doesn't list Motif:\n    ${tail(listed.output)}` };
+    }
+    if (opts.doctor && check.installsSkill) {
+      const skill = findSkills(home)[0];
+      if (!skill) return { status: "failed", detail: "no skills/motif folder was installed under the agent's home" };
+      const tool = process.platform === "win32" ? [join(skill, "bin", "motif.cmd")] : ["sh", join(skill, "bin", "motif")];
+      const d = await run([...tool, "doctor", "--json"], { ...env, MOTIF_HOME: join(home, ".motif") });
+      if (d.code !== 0 && d.code !== 1) return { status: "failed", detail: `the installed skill's tool didn't run:\n    ${tail(d.output)}` };
+    }
+    const what = check.installsSkill ? "installs Motif and lists its skill" : "adds Motif's marketplace (installing the plugin is checked by hand)";
+    return { status: "ok", detail: `${what}${opts.doctor && check.installsSkill ? "; its tool runs" : ""}` };
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
@@ -153,7 +226,6 @@ if (import.meta.main) {
     process.exit(2);
   }
   const only = value("--agents")?.split(",");
-  const doctor = args.includes("--doctor");
   const release = kind === "local" ? localRelease(join(REPO, "dist"), join(REPO, "dist", "agents")) : null;
   const source: CheckSource = kind === "local"
     ? { kind, marketplace: join(REPO, "dist", "agents-local"), agents: join(REPO, "dist", "agents") }
@@ -161,28 +233,10 @@ if (import.meta.main) {
   let failed = 0;
   for (const check of agentChecks(source, { release: release ?? undefined })) {
     if (only && !only.includes(check.id)) continue;
-    const home = mkdtempSync(join(tmpdir(), `motif-${check.id}-`));
-    const env = check.env(home);
-    check.setup(home);
-    const problem = await (async () => {
-      for (const step of check.steps) {
-        const r = await run(step, env);
-        if (r.code !== 0) return `"${step.join(" ")}" failed:\n    ${tail(r.output)}`;
-      }
-      const listed = await run(check.list, env);
-      if (listed.code !== 0 || !listed.output.includes("motif")) return `"${check.list.join(" ")}" doesn't list motif:\n    ${tail(listed.output)}`;
-      if (doctor && check.installsSkill) {
-        const skill = findSkills(home)[0];
-        if (!skill) return "no skills/motif folder was installed under the agent's home";
-        const tool = process.platform === "win32" ? [join(skill, "bin", "motif.cmd")] : ["sh", join(skill, "bin", "motif")];
-        const d = await run([...tool, "doctor", "--json"], { ...env, MOTIF_HOME: join(home, ".motif") });
-        if (d.code !== 0 && d.code !== 1) return `the installed skill's tool didn't run:\n    ${tail(d.output)}`;
-      }
-      return null;
-    })();
-    console.log(problem ? `✗ ${check.label}: ${problem}` : `✓ ${check.label}: installs Motif and lists its skill${doctor && check.installsSkill ? "; its tool runs" : ""}`);
-    if (problem) failed++;
-    rmSync(home, { recursive: true, force: true });
+    const result = await checkAgent(check, { doctor: args.includes("--doctor"), missingIsSkip: kind === "local" });
+    const mark = result.status === "ok" ? "✓" : result.status === "skipped" ? "○" : "✗";
+    console.log(`${mark} ${check.label}: ${result.status === "skipped" ? `skipped (${result.detail})` : result.detail}`);
+    if (result.status === "failed") failed++;
   }
   release?.stop();
   process.exit(failed ? 1 : 0);

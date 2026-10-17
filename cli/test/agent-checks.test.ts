@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentChecks, findSkills, localRelease } from "../scripts/agent-checks";
+import { type AgentCheck, agentChecks, checkAgent, findSkills, localRelease, run } from "../scripts/agent-checks";
 import { SKILL_TGZ } from "../scripts/skill-archive";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -90,5 +90,79 @@ describe("the install checks", () => {
     } finally {
       release.stop();
     }
+  });
+});
+
+describe("what counts as installed (final review)", () => {
+  const checks = byId(agentChecks(github, { platform: "linux", repo: "/r" }));
+  // Outputs as the agents printed them in Task 1, and failures that still mention "motif" in a path or a URL.
+  const seen: Record<string, [string, string]> = {
+    codex: [
+      "Marketplace `motif`\nC:\\x\\.agents\\plugins\\marketplace.json\n\nPLUGIN       STATUS              VERSION  SOURCE\nmotif@motif  installed, enabled  0.1.0    C:\\x\\motif\n",
+      "Marketplace `motif`\nC:\\Temp\\motif-codex-1\\.agents\\plugins\\marketplace.json\n\nPLUGIN  STATUS  VERSION  SOURCE\n",
+    ],
+    copilot: [
+      "Plugin skills:\n  motif - Designs and builds polished, consistent app UI.\n\nBuiltin skills:\n  github-pr-media - Upload an image.\n",
+      "Builtin skills:\n  github-pr-media - Upload an image. Logs: C:\\Temp\\motif-copilot-1\\.copilot\\logs\n",
+    ],
+    gemini: [
+      "motif [Enabled]\n  Description: Designs and builds polished UI.\n  Location:    C:\\h\\.gemini\\extensions\\motif\\skills\\motif\\SKILL.md\n",
+      "Loaded extension from C:\\Temp\\motif-gemini-1\\.gemini\\extensions\\motif\nNo skills discovered.\n",
+    ],
+    opencode: [
+      'INFO starting\n[{"name":"customize-opencode","location":"<built-in>"},{"name":"motif","location":"C:\\\\h\\\\.config\\\\opencode\\\\skills\\\\motif\\\\SKILL.md"}]',
+      '[{"name":"customize-opencode","location":"<built-in>","content":"see C:\\\\Temp\\\\motif-opencode-1"}]',
+    ],
+    cursor: ['[{"name":"motif","scope":"user","url":"https://github.com/7mxd/motif"}]', '[{"name":"other","scope":"user","url":"https://github.com/7mxd/motif"}]'],
+  };
+
+  test("each agent's listing must name the motif skill (or Cursor's marketplace) itself, not just mention the word", () => {
+    for (const [id, [yes, no]] of Object.entries(seen)) {
+      expect([id, checks[id]!.listed(yes)]).toEqual([id, true]);
+      expect([id, checks[id]!.listed(no)]).toEqual([id, false]);
+    }
+  });
+});
+
+describe("running a check (final review)", () => {
+  const bun = process.execPath;
+  const homes: string[] = [];
+  const fake = (steps: string[][], listOutput: string, cli = bun): AgentCheck => ({
+    id: "codex",
+    label: "Fake agent",
+    installsSkill: false,
+    steps,
+    list: [cli, "-e", `console.log(${JSON.stringify(listOutput)})`],
+    listed: (out) => /^motif@motif\s+installed/m.test(out),
+    env: (h) => {
+      homes.push(h);
+      return { HOME: h, USERPROFILE: h };
+    },
+    setup: () => {},
+  });
+
+  test("a command that isn't on PATH is reported, not thrown", async () => {
+    const r = await run(["no-such-agent-cli-for-motif-checks", "--version"], {});
+    expect(r.code).toBe(127);
+    expect(r.output).toContain("isn't on PATH");
+  });
+
+  test("an agent whose CLI isn't installed is skipped in a local run and fails a release check", async () => {
+    const missing = fake([["no-such-agent-cli-for-motif-checks"]], "", "no-such-agent-cli-for-motif-checks");
+    expect((await checkAgent(missing, { doctor: false, missingIsSkip: true })).status).toBe("skipped");
+    const failed = await checkAgent(missing, { doctor: false, missingIsSkip: false });
+    expect(failed.status).toBe("failed");
+    expect(failed.detail).toContain("isn't on PATH");
+  });
+
+  test("passes when the listing names the plugin, fails when a step fails, and removes its home either way", async () => {
+    const ok = await checkAgent(fake([[bun, "-e", "process.exit(0)"]], "motif@motif  installed, enabled  0.2.0"), { doctor: false, missingIsSkip: false });
+    expect(ok).toMatchObject({ status: "ok" });
+    const bad = await checkAgent(fake([[bun, "-e", "console.log('no luck'); process.exit(3)"]], ""), { doctor: false, missingIsSkip: false });
+    expect(bad.status).toBe("failed");
+    expect(bad.detail).toContain("no luck");
+    expect(homes.length).toBeGreaterThanOrEqual(2);
+    for (const h of homes) expect([h, existsSync(h)]).toEqual([h, false]);
+    expect(homes.every((h) => !/motif/i.test(h.split(/[\\/]/).pop()!))).toBe(true);
   });
 });

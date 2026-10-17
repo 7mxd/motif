@@ -126,6 +126,13 @@ describe("the release workflow", () => {
     ]) expect(agents).toContain(s);
     expect(agents).not.toContain("GH_TOKEN");
   });
+
+  test("on Windows, passes the folders Cursor's installer adds to the user PATH on to the later steps (final review)", () => {
+    const agents = section("agents");
+    const step = agents.slice(agents.indexOf("- name: Install the Cursor CLI (Windows)"), agents.indexOf("- name: Each agent installs Motif from GitHub"));
+    expect(step).toContain("[Environment]::GetEnvironmentVariable('Path', 'User')");
+    expect(step).toContain("$env:GITHUB_PATH");
+  });
 });
 
 describe("the agents workflow", () => {
