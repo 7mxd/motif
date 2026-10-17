@@ -17,7 +17,7 @@ In Claude Code:
 
 Then ask for design work ("make this screen look better"), or type `/motif:design`.
 
-You need Claude Code 2.1.224 or later and git. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v0.1.0) and checks it against the release's checksums. See the [release notes](docs/releases/v0.1.0.md).
+You need Claude Code 2.1.224 or later and git. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v0.1.0) and checks it against the release's checksums. See the [release notes](docs/releases/v0.1.0.md), or [build and try the plugin from source](plugin/claude-code/README.md).
 
 ## The `motif` tool
 
