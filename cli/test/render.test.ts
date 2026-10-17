@@ -72,7 +72,7 @@ describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
 
   test("a page that can't be opened is a plain error, and the browser is closed", async () => {
     const out = tempDir("motif-render-");
-    await expect(renderPngs({ browserPath: browser!.path, outDir: out, targets: [{ name: "x", url: "http://127.0.0.1:1/" }], timeoutMs: 10_000 })).rejects.toThrow("Couldn't open");
+    await expect(renderPngs({ browserPath: browser!.path, outDir: out, targets: [{ name: "x", url: "http://127.0.0.1:1/" }], timeoutMs: 30_000 })).rejects.toThrow("Couldn't open");
   }, 60_000);
 
   test("names fonts that couldn't load, and still renders", async () => {

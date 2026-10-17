@@ -34,7 +34,9 @@ describe.skipIf(!browser)("theme fonts on a network that doesn't answer (needs C
       });
       expect(result.files).toHaveLength(2);
       expect(result.missingFonts).toEqual(["Plus Jakarta Sans"]);
-      expect(Date.now() - started).toBeLessThan(20_000);
+      // Light and dark each wait 5 s for fonts. A font load holding the page up would take its 30 s page timeout per theme;
+      // 45 s leaves room for a slow machine (a Windows CI runner took 29 s) and still tells the two apart.
+      expect(Date.now() - started).toBeLessThan(45_000);
     } finally {
       server.stop();
       hang.stop(true);
