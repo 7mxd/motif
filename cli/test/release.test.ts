@@ -48,6 +48,16 @@ describe("the release workflow", () => {
     expect(publish.indexOf('test -f "docs/releases/$GITHUB_REF_NAME.md"')).toBeLessThan(publish.indexOf("gh release create"));
   });
 
+  test("gives each job only the access it needs: write only to publish, the token only to the download step (final review)", () => {
+    expect(wf.slice(0, wf.indexOf("\njobs:"))).toContain("permissions:\n  contents: read");
+    expect(section("publish")).toContain("permissions:\n      contents: write");
+    const check = section("check");
+    const download = check.slice(check.indexOf("- name: Download the plugin"), check.indexOf("- name: The zip matches"));
+    expect(download).toContain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
+    expect(check.split("GH_TOKEN").length - 1).toBe(1);
+    expect(section("plugin")).toContain("persist-credentials: false");
+  });
+
   test("checks the published release on Windows, macOS and Linux through the plugin's own bootstrap", () => {
     const check = section("check");
     expect(check).toContain("needs: publish");
