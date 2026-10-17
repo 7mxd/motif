@@ -27,9 +27,11 @@ describe("SKILL.md", () => {
   const skill = read("SKILL.md");
 
   test("says how to run the tool from every common shell", () => {
-    for (const form of ['"<skill folder>/bin/motif" <command>', '& "<skill folder>\\bin\\motif.cmd" <command>', '"<skill folder>\\bin\\motif.cmd" <command>']) {
+    for (const form of ['sh "<skill folder>/bin/motif" <command>', '& "<skill folder>\\bin\\motif.cmd" <command>', '"<skill folder>\\bin\\motif.cmd" <command>']) {
       expect(skill).toContain(form);
     }
+    // Claude Code unpacks the plugin from a zip, which may drop the executable flag: POSIX shells run the bootstrap with sh.
+    expect(skill).not.toMatch(/\| `"<skill folder>\/bin\/motif"/);
     // Windows' default script policy blocks running a .ps1 directly; motif.cmd starts it with the policy bypassed.
     expect(skill).not.toContain("motif.ps1");
     for (const s of ["--json", "--png-only", "needs_browser", "motif browser install"]) expect(skill).toContain(s);

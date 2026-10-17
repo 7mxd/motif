@@ -17,7 +17,7 @@ The tool is in the skill folder's `bin` folder. Run it by its full path, from th
 
 | Shell | Command |
 |---|---|
-| macOS, Linux, Git Bash, WSL | `"<skill folder>/bin/motif" <command>` |
+| macOS, Linux, Git Bash, WSL | `sh "<skill folder>/bin/motif" <command>` |
 | Windows PowerShell | `& "<skill folder>\bin\motif.cmd" <command>` |
 | Windows Command Prompt | `"<skill folder>\bin\motif.cmd" <command>` |
 
