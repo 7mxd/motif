@@ -101,7 +101,7 @@ jobs:
         shell: bash
         run: |
           pre=""
-          case "$GITHUB_REF_NAME" in v0.*) pre="--prerelease" ;; esac
+          case "$GITHUB_REF_NAME" in v0.*|*-*) pre="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Motif $GITHUB_REF_NAME" --notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre
 
   check:

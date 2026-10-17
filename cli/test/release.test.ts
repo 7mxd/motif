@@ -50,15 +50,24 @@ describe("the release workflow", () => {
     }
   });
 
-  test("publishes a pre-release below 1.0, with written notes and the notices, only after checking the notes exist", () => {
+  test("publishes with written notes and the notices, only after checking the notes exist", () => {
     const publish = section("publish");
     expect(publish).toContain("needs: [build, plugin]");
-    expect(publish).toContain('case "$GITHUB_REF_NAME" in v0.*) pre="--prerelease" ;; esac');
-    expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md"');
+    expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre');
     expect(publish).not.toContain("--generate-notes");
     expect(publish).toContain("cp THIRD-PARTY-NOTICES.txt dist/");
     expect(publish.indexOf('test -f "docs/releases/$GITHUB_REF_NAME.md"')).toBeGreaterThan(-1);
     expect(publish.indexOf('test -f "docs/releases/$GITHUB_REF_NAME.md"')).toBeLessThan(publish.indexOf("gh release create"));
+  });
+
+  const sh = Bun.which("sh");
+  test.skipIf(!sh)("marks every tag below 1.0, and any tag with a suffix such as -rc.1, as a pre-release (final review)", () => {
+    const line = section("publish").split("\n").find((l) => l.trim().startsWith('case "$GITHUB_REF_NAME"'));
+    expect(line).toBeDefined();
+    const pre = (tag: string) =>
+      Bun.spawnSync([sh!, "-c", `pre=""\n${line!.trim()}\nprintf %s "$pre"`], { env: { ...process.env, GITHUB_REF_NAME: tag } }).stdout.toString();
+    for (const tag of ["v0.1.0", "v0.2.0-rc.1", "v1.0.0-rc.1", "v1.2.3-beta.2"]) expect(`${tag}: ${pre(tag)}`).toBe(`${tag}: --prerelease`);
+    for (const tag of ["v1.0.0", "v10.2.0"]) expect(`${tag}: ${pre(tag)}`).toBe(`${tag}: `);
   });
 
   test("gives each job only the access it needs: write only to publish, the token only to the download step (final review)", () => {
