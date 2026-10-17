@@ -10,7 +10,7 @@ function Invoke-MotifInstall([string]$Agent, [string]$Version, [bool]$Uninstall)
   $ErrorActionPreference = 'Stop'
   $ProgressPreference = 'SilentlyContinue'
   if ($Version) { $Version = $Version -replace '^v', '' }
-  $Repo =if ($env:MOTIF_REPO) { $env:MOTIF_REPO } else { '7mxd/motif' }
+  $Repo = if ($env:MOTIF_REPO) { $env:MOTIF_REPO } else { '7mxd/motif' }
   $Raw = if ($env:MOTIF_RAW_BASE) { $env:MOTIF_RAW_BASE } else { "https://raw.githubusercontent.com/$Repo/plugins" }
   $Mark = "Installed by Motif's install script"
   function Say([string]$Text) { Write-Host "Motif: $Text" }

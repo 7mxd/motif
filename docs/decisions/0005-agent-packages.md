@@ -11,6 +11,7 @@
 3. **`/motif` is the entry everywhere but Claude Code** (`$motif` in Codex): one name, which clashes with no agent's own `/init` or `/review`. Gemini CLI also gets `/motif:design`, `/motif:init`, `/motif:feature` and `/motif:review`, as Claude Code has; Gemini makes the skill itself `/motif`.
 4. **OpenCode and other agents without plugins use Motif's install script** (`install.sh`, `install.ps1`), which downloads the skill from the release, checks it against `SHA256SUMS`, and installs it where OpenCode reads skills or in `~/.agents/skills`.
 5. **`skill/agents.md` is the one place in `skill/` that names agents' tools**: where each agent installs the skill, its question prompt, and its shell.
+6. **`motif connect` sets a design source up in every agent the developer picks**, in each agent's user settings: with the agent's own `mcp add` command where it takes a URL and a header without starting a sign-in (Claude Code, Copilot CLI, Gemini CLI, OpenCode), and by editing the settings file where it doesn't (Codex's `config.toml`, Cursor's and VS Code's `mcp.json`). A key is still typed only in the developer's own terminal. `motif doctor` reads every agent's settings to show which agents have each source.
 
 ## Consequences
 

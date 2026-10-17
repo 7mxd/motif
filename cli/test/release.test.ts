@@ -96,7 +96,7 @@ describe("the release workflow", () => {
     for (const tag of ["v1.0.0", "v10.2.0"]) expect(`${tag}: ${pre(tag)}`).toBe(`${tag}: `);
   });
 
-  test("gives each job only the access it needs: write only to publish, the token only to the download step (final review)", () => {
+  test("gives each job only the access it needs: write only to publish and the plugins branch, the token only to the download step (final review)", () => {
     expect(wf.slice(0, wf.indexOf("\njobs:"))).toContain("permissions:\n  contents: read");
     expect(section("publish")).toContain("permissions:\n      contents: write");
     expect(section("plugins-branch")).toContain("permissions:\n      contents: write");

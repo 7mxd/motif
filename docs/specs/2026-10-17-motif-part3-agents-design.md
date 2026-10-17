@@ -131,7 +131,7 @@ For OpenCode, which has no plugin system, and for any other agent that reads Age
 | Id | Agent | Found by |
 |---|---|---|
 | `claude` | Claude Code | `claude` on PATH |
-| `codex` | Codex | `codex` on PATH |
+| `codex` | Codex | `codex` on PATH, or its settings folder (`$CODEX_HOME`, `~/.codex`) exists: Codex's app and editor extension use it without the command |
 | `cursor` | Cursor | `~/.cursor` exists, or `cursor` or `cursor-agent` on PATH |
 | `copilot` | GitHub Copilot CLI | `copilot` on PATH |
 | `vscode` | VS Code (Copilot) | `code` on PATH, or VS Code's user settings folder exists |
@@ -146,7 +146,8 @@ Settings folders follow each agent's own variable where it has one (`CODEX_HOME`
 2. Choose:
    - **In the developer's terminal:** a numbered question, "Set up Motion for which agents? 1 Claude Code, 2 Cursor, 3 Gemini CLI. Press Enter for all, or type numbers (1,3)." Numbers work in every terminal, including Git Bash's.
    - **One agent found:** no question.
-   - **`--agent claude,cursor`:** no question.
+   - **`--agent claude,cursor`:** no question. An agent named there that isn't on this computer gets nothing written (a settings folder would make it look installed) and is reported ✗. A command Motif prints repeats the ids as it read them (`--agent "Claude, Cursor"` → `--agent claude,cursor`).
+   - **The input ends at the question** (Ctrl+D, or Ctrl+Z on Windows): nothing changes, and it says so (exit 2).
    - **Not in a terminal, without `--agent`:** a source with no key is set up in every agent found (the output says which); a source with a key stops and prints the command to run in the developer's own terminal, as today.
 3. For a key source, ask for the key once with hidden input, as today, and check it the same way.
 4. Add the source to each chosen agent's **user-level** settings, never a project file:
@@ -161,7 +162,9 @@ Settings folders follow each agent's own variable where it has one (`CODEX_HOME`
    | Gemini CLI | `gemini mcp add --scope user --transport http [--header] <name> <url>` |
    | OpenCode | `opencode mcp add <name> --url <url> [--header]` |
 
-   Files are edited so every other entry, comment and the formatting stay as they were. A server already there under Motif's name, or matching the source, is left alone and reported as already connected.
+   Files are edited so every other entry, comment and the formatting stay as they were; a comment after the last server stays on its line, and a settings file that is a link (dotfiles kept elsewhere) stays a link, with the file it points to changed. A new file holding a key is created readable by its owner only.
+
+   A server that matches the source, under any name, is left alone and reported as already connected. A different server already using Motif's name, or servers that aren't a list (`"servers": null`), leave the file as it was, and that agent is reported ✗ with the reason.
 5. **Report one line per agent:** ✓ added, ✓ already connected, or ✗ with the reason and the settings to paste. One agent failing doesn't stop the others. Exit 0 when every chosen agent has the source, 1 when some failed, 2 when none could be set up.
 6. **Sign-in:** for Refero and 60fps.design, one line per agent on how to sign in (Claude Code `/mcp`; Codex `codex mcp login <name>`; Gemini `/mcp auth <name>`; OpenCode `opencode mcp auth <name>`; Cursor's MCP settings; Copilot `/mcp`; VS Code's sign-in prompt on first use).
 7. **Keys:** typed only in the developer's own terminal, never in the chat; any output that echoes a key shows `<your key>` instead; a warning when a settings file now holding a key is tracked by git.
@@ -184,13 +187,15 @@ Both list each source with the agents that have it, for example "✓ Motion: Cla
 
 - JSON files are read leniently (comments and trailing commas allowed) with the existing `jsonc-parser`; Codex's TOML with Bun's built-in parser. No new dependency.
 - Each server is matched against the source catalog as today (its name and settings).
-- A file that can't be read is skipped and named in `--json` output; it never makes `doctor` fail.
+- A file that can't be read is skipped and named, in `doctor`'s text ("Agent settings") and in `--json` output; it never makes `doctor` fail.
 
 ## 8. Release workflow
 
 - **`plugin` job:** builds the Claude Code zip (as today), `dist/agents/`, and `motif-skill.zip` / `motif-skill.tar.gz`; checks every manifest's version against the tag.
-- **`publish` job:** creates the release (as today, with the new assets in `SHA256SUMS`); then, for a tag without a suffix, commits `dist/agents/` to the `plugins` branch and tags it `plugins-v<version>`. It already has `contents: write`; no other job gets it.
-- **`check` job:** after publishing, on Windows, macOS and Linux, installs Motif from GitHub in every agent as §4 says (§9.2).
+- **`publish` job:** creates the release (as today, with the new assets in `SHA256SUMS`).
+- **`plugins-branch` job:** after `publish`, for a tag without a suffix, commits `dist/agents/` to the `plugins` branch and tags it `plugins-v<version>`. It and `publish` are the only jobs with `contents: write`.
+- **`check` job:** after publishing, on Windows, macOS and Linux, installs the Claude Code plugin from the release and runs its bootstrap.
+- **`agents` job:** after the `plugins` branch is updated, on Windows, macOS and Linux, installs Motif from GitHub in every agent as §4 says (§9.2). Cursor is checked on Windows and Linux: its CLI can't keep its sign-in on CI's macOS machine.
 - **Dry run** (`workflow_dispatch`): builds everything, publishes nothing, pushes nothing.
 
 ## 9. Checks
