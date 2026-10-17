@@ -11,6 +11,7 @@
     "plugin": "bun scripts/build-plugin.ts",
     "plugin:zip": "bun scripts/zip-plugin.ts",
     "packages": "bun scripts/build-agents.ts",
+    "skill:archives": "bun scripts/skill-archive.ts",
     "notices": "bun scripts/notices.ts"
   },
   "dependencies": {

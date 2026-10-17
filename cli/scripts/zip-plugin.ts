@@ -9,7 +9,7 @@ export const ZIP_NAME = "motif-claude-code.zip";
 const EXECUTABLE = new Set(["skills/motif/bin/motif"]);
 
 /** Every file under dir, as forward-slash paths, sorted. */
-function files(dir: string): string[] {
+export function listFiles(dir: string): string[] {
   const out: string[] = [];
   const walk = (folder: string) => {
     for (const name of readdirSync(folder)) {
@@ -22,6 +22,13 @@ function files(dir: string): string[] {
   return out.sort();
 }
 
+/** sh can't run a script with Windows line endings: refuse the build instead of shipping a broken bootstrap. */
+export function refuseWindowsLineEndings(path: string, data: Uint8Array): void {
+  if (data.includes(13)) {
+    throw new Error(`${path} has Windows line endings, which sh can't run: check it out with LF endings (see .gitattributes) and rebuild with "bun run plugin".`);
+  }
+}
+
 /** The plugin folder as a zip. Refuses a build whose plugin.json version isn't the expected one. */
 export function zipPlugin(pluginDir: string, expectedVersion: string): Uint8Array {
   const manifest = JSON.parse(readFileSync(join(pluginDir, ".claude-plugin", "plugin.json"), "utf8"));
@@ -31,11 +38,9 @@ export function zipPlugin(pluginDir: string, expectedVersion: string): Uint8Arra
   // Zips store local time, so the date is built from local parts when zipping: 2000-01-01 00:00 in every time zone.
   const date = new Date(2000, 0, 1);
   const entries: Zippable = {};
-  for (const path of files(pluginDir)) {
+  for (const path of listFiles(pluginDir)) {
     const data = readFileSync(join(pluginDir, path));
-    if (EXECUTABLE.has(path) && data.includes(13)) {
-      throw new Error(`${path} has Windows line endings, which sh can't run: check it out with LF endings (see .gitattributes) and rebuild with "bun run plugin".`);
-    }
+    if (EXECUTABLE.has(path)) refuseWindowsLineEndings(path, data);
     const mode = EXECUTABLE.has(path) ? 0o100755 : 0o100644;
     entries[path] = [data, { os: 3, attrs: (mode << 16) >>> 0, mtime: date }];
   }
