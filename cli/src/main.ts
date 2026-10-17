@@ -19,7 +19,7 @@ Usage: motif <command> [options]
 
 Commands:
   doctor     Explain what works on this computer and what's optional
-  connect    Connect optional design sources (Motion, Refero, 21st.dev, 60fps.design)
+  connect    Connect optional design sources (Motion, Refero, 21st.dev, 60fps.design) to your coding agents (--agent claude,cursor picks them)
   validate   Check your design guide (DESIGN.md + design/tokens.json)
   tokens     Turn your design guide into theme code for your app
   check      Find colours, sizes and animations that bypass your design guide
@@ -101,6 +101,7 @@ export async function main(argv: string[]): Promise<number> {
         against: { type: "string" },
         state: { type: "string", multiple: true },
         tokens: { type: "string" },
+        agent: { type: "string" },
       },
     });
   } catch (e) {
@@ -152,6 +153,7 @@ export async function main(argv: string[]): Promise<number> {
         against: values.against,
         state: values.state,
         tokens: values.tokens,
+        agent: values.agent,
       },
     });
   } catch (e) {

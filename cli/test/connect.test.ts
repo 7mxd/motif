@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { genericConfig, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
 import type { ConfiguredSource } from "../src/detect/sources";
@@ -21,8 +21,11 @@ function fakes(over: Partial<ConnectDeps> & { connected?: ConfiguredSource[]; cl
       calls.prompts++;
       return key;
     },
+    ask: async () => "",
     configured: () => connected,
     home: "/home/dev",
+    platform: "linux",
+    vars: {},
     self: "motif",
     ...rest,
   };
@@ -214,5 +217,156 @@ describe("selfCommand", () => {
   test("when run from source (by bun), it's just motif", () => {
     expect(selfCommand("C:\\Users\\PC\\.bun\\bin\\bun.exe", "win32")).toBe("motif");
     expect(selfCommand("/usr/local/bin/bun", "linux")).toBe("motif");
+  });
+});
+
+describe("motif connect: every agent (Part 3)", () => {
+  /** A temp home where the given agents are installed: by command, or Cursor and VS Code by their settings folder. */
+  function setup(agents: string[], over: Partial<ConnectDeps> & { answer?: string; key?: string; tracked?: (args: string[]) => boolean } = {}) {
+    const home = tempDir("motif-connect-home-");
+    if (agents.includes("cursor")) mkdirSync(join(home, ".cursor"));
+    if (agents.includes("vscode")) mkdirSync(join(home, ".config", "Code", "User"), { recursive: true });
+    const clis = agents.filter((a) => a !== "cursor" && a !== "vscode");
+    const calls = { runs: [] as { cli: string; args: string[] }[], asked: [] as string[], prompts: 0 };
+    const { answer = "", key = "secret-key-1", tracked = () => false, ...rest } = over;
+    const deps: ConnectDeps = {
+      which: (c) => (clis.includes(c) || c === "git" ? `/bin/${c}` : null),
+      run: async (exe, args) => {
+        const cli = exe.split("/").pop()!;
+        calls.runs.push({ cli, args });
+        if (cli === "git") return { code: tracked(args) ? 0 : 1, output: "" };
+        return { code: 0, output: "added" };
+      },
+      interactive: true,
+      readSecret: async () => {
+        calls.prompts++;
+        return key;
+      },
+      ask: async (q) => {
+        calls.asked.push(q);
+        return answer;
+      },
+      configured: () => [],
+      home,
+      platform: "linux",
+      vars: {},
+      self: "motif",
+      ...rest,
+    };
+    return { home, deps, calls, agentRuns: () => calls.runs.filter((r) => r.cli !== "git") };
+  }
+  const json = (p: string) => JSON.parse(readFileSync(p, "utf8"));
+
+  test("asks which agents, all by default, and adds the source to each its own way", async () => {
+    const { home, deps, calls, agentRuns } = setup(["claude", "cursor", "gemini"]);
+    const r = await runConnect(".", ctx("motion"), deps);
+    expect(r.exitCode).toBe(0);
+    expect(calls.asked[0]).toContain("1 Claude Code, 2 Cursor, 3 Gemini CLI");
+    expect(agentRuns()).toEqual([
+      { cli: "claude", args: ["mcp", "add", "--transport", "http", "--scope", "user", "motion", "https://mcp.motion.dev"] },
+      { cli: "gemini", args: ["mcp", "add", "--scope", "user", "--transport", "http", "motion", "https://mcp.motion.dev"] },
+    ]);
+    expect(json(join(home, ".cursor", "mcp.json"))).toEqual({ mcpServers: { motion: { url: "https://mcp.motion.dev" } } });
+    for (const a of ["Claude Code", "Cursor", "Gemini CLI"]) expect(r.text).toContain(`✓ ${a}: added Motion`);
+  });
+
+  test("numbers pick some agents; anything else changes nothing", async () => {
+    const some = setup(["claude", "cursor", "gemini"], { answer: "1, 3" });
+    expect((await runConnect(".", ctx("motion"), some.deps)).exitCode).toBe(0);
+    expect(some.agentRuns().map((x) => x.cli)).toEqual(["claude", "gemini"]);
+    expect(existsSync(join(some.home, ".cursor", "mcp.json"))).toBe(false);
+    const bad = setup(["claude", "cursor"], { answer: "7" });
+    const r = await runConnect(".", ctx("motion"), bad.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("Nothing changed");
+    expect(bad.agentRuns()).toEqual([]);
+  });
+
+  test("--agent picks without asking, and an agent Motif doesn't know is refused", async () => {
+    const s = setup(["claude", "cursor", "gemini"]);
+    const r = await runConnect(".", { positionals: ["motion"], flags: { agent: "cursor" } }, s.deps);
+    expect(r.exitCode).toBe(0);
+    expect(s.calls.asked).toEqual([]);
+    expect(s.agentRuns()).toEqual([]);
+    expect(existsSync(join(s.home, ".cursor", "mcp.json"))).toBe(true);
+    const bad = await runConnect(".", { positionals: ["motion"], flags: { agent: "windsurf" } }, setup(["claude"]).deps);
+    expect(bad.exitCode).toBe(2);
+    expect(bad.text).toContain("claude, codex, cursor, copilot, vscode, gemini, opencode");
+  });
+
+  test("run by an agent, not in a terminal: no key goes to every agent found; a key waits for the developer (review focus)", async () => {
+    const s = setup(["claude", "gemini"], { interactive: false });
+    const r = await runConnect(".", ctx("motion"), s.deps);
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toContain("every agent found");
+    expect(s.agentRuns().map((x) => x.cli)).toEqual(["claude", "gemini"]);
+    const k = setup(["claude", "gemini"], { interactive: false });
+    const kr = await runConnect(".", ctx("21st"), k.deps);
+    expect(kr.exitCode).toBe(2);
+    expect(kr.text).toContain("your own terminal");
+    expect(k.agentRuns()).toEqual([]);
+    expect(k.calls.prompts).toBe(0);
+  });
+
+  test("a key is asked once and reaches every agent its own way, and never the output", async () => {
+    const s = setup(["claude", "codex", "cursor", "copilot", "vscode", "gemini", "opencode"], { key: "abcd1234efgh" });
+    const r = await runConnect(".", ctx("21st"), s.deps);
+    expect(r.exitCode).toBe(0);
+    expect(s.calls.prompts).toBe(1);
+    const header = "x-api-key: abcd1234efgh";
+    const url = "https://21st.dev/api/mcp";
+    expect(s.agentRuns()).toEqual([
+      { cli: "claude", args: ["mcp", "add", "--header", header, "--transport", "http", "--scope", "user", "21st", url] },
+      { cli: "copilot", args: ["mcp", "add", "--transport", "http", "--header", header, "21st", url] },
+      { cli: "gemini", args: ["mcp", "add", "--scope", "user", "--transport", "http", "--header", header, "21st", url] },
+      { cli: "opencode", args: ["mcp", "add", "21st", "--url", url, "--header", "x-api-key=abcd1234efgh"] },
+    ]);
+    expect(Bun.TOML.parse(readFileSync(join(s.home, ".codex", "config.toml"), "utf8"))).toEqual({ mcp_servers: { "21st": { url, http_headers: { "x-api-key": "abcd1234efgh" } } } });
+    expect(json(join(s.home, ".cursor", "mcp.json"))).toEqual({ mcpServers: { "21st": { url, headers: { "x-api-key": "abcd1234efgh" } } } });
+    expect(json(join(s.home, ".config", "Code", "User", "mcp.json"))).toEqual({ servers: { "21st": { type: "http", url, headers: { "x-api-key": "abcd1234efgh" } } } });
+    expect(r.text + JSON.stringify(r.data)).not.toContain("abcd1234efgh");
+  });
+
+  test("Codex's settings go into config.toml, never through codex mcp add, which starts a sign-in and waits", async () => {
+    const s = setup(["codex"]);
+    expect((await runConnect(".", ctx("refero"), s.deps)).exitCode).toBe(0);
+    expect(s.agentRuns()).toEqual([]);
+    expect(readFileSync(join(s.home, ".codex", "config.toml"), "utf8")).toContain('[mcp_servers.refero]\nurl = "https://api.refero.design/mcp"');
+  });
+
+  test("one agent failing doesn't stop the others; the result says which, with the settings to add by hand", async () => {
+    const s = setup(["claude", "cursor", "gemini"], {
+      run: async (exe) => (exe.endsWith("gemini") ? { code: 1, output: "settings are locked" } : { code: 0, output: "" }),
+    });
+    const r = await runConnect(".", ctx("motion"), s.deps);
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toContain("✓ Claude Code: added Motion");
+    expect(r.text).toContain("✓ Cursor: added Motion");
+    expect(r.text).toContain("✗ Gemini CLI: couldn't add it: settings are locked");
+    expect(r.text).toContain("https://mcp.motion.dev");
+    expect((r.data.agents as { agent: string; status: string }[]).map((a) => `${a.agent}:${a.status}`)).toEqual(["claude:added", "cursor:added", "gemini:failed"]);
+  });
+
+  test("an agent that already has the source, even under another name, is left alone; the others get it (review focus)", async () => {
+    const s = setup(["claude", "cursor"], { configured: () => [{ id: "refero", agent: "cursor", server: "refero-design", where: "~/.cursor/mcp.json" }] });
+    const r = await runConnect(".", ctx("refero"), s.deps);
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toContain('✓ Cursor: already connected (server "refero-design" in ~/.cursor/mcp.json)');
+    expect(existsSync(join(s.home, ".cursor", "mcp.json"))).toBe(false);
+    expect(s.agentRuns().map((x) => x.cli)).toEqual(["claude"]);
+  });
+
+  test("Refero says how to sign in, in each agent", async () => {
+    const r = await runConnect(".", ctx("refero"), setup(["claude", "codex", "gemini", "opencode"]).deps);
+    for (const s of ['type /mcp, choose "refero"', 'run "codex mcp login refero"', "type /mcp auth refero", 'run "opencode mcp auth refero"']) {
+      expect(r.text).toContain(s);
+    }
+  });
+
+  test("warns about each settings file that now holds the key and is tracked by git", async () => {
+    const s = setup(["cursor", "gemini"], { tracked: (args) => args.includes("mcp.json") });
+    const r = await runConnect(".", ctx("21st"), s.deps);
+    expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by git");
+    expect(r.text).not.toContain("settings.json, which now holds your key");
   });
 });
