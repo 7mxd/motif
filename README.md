@@ -4,7 +4,7 @@
 
 Design guide tools for AI coding agents: build web and mobile apps with polished UI, UX and motion — and keep them consistent as your app and team grow.
 
-> **Preview (v0.1.0).** Motif works in Claude Code today, for React web apps and plain web sites. Packages for other agents, more stacks, and the first full release come next.
+> **Preview (v0.2.0).** Motif works in Claude Code today, for React web apps and plain web sites. Packages for Codex, Cursor, GitHub Copilot, Gemini CLI and OpenCode come with this release; more stacks and the first full release come next.
 
 ## Install
 
@@ -24,7 +24,7 @@ You need Claude Code 2.1.224 or later and git. The first time Motif runs, it dow
 | Command | What it does |
 |---|---|
 | `motif doctor` | Explains what works on this computer and what's optional |
-| `motif connect` | Connects optional design sources (Motion, Refero, 21st.dev, 60fps.design) to Claude Code for all your projects; keys are typed only in your own terminal |
+| `motif connect` | Connects optional design sources (Motion, Refero, 21st.dev, 60fps.design) to the coding agents you choose, for all your projects; keys are typed only in your own terminal |
 | `motif validate` | Checks your design guide (`DESIGN.md` + `design/tokens.json`); `--tokens <file>` checks one theme values file, such as a design direction's |
 | `motif tokens` | Turns your design guide into theme code (React web: CSS variables, a Tailwind v4 theme, Motion timings; plain web sites: `motif.css` in the site folder); `--stack preview` writes the CSS mockups use |
 | `motif check` | Finds colours, sizes and animations in your code that bypass your design guide |

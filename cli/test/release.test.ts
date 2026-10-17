@@ -18,6 +18,15 @@ describe("the release notes", () => {
       "preview", "React web", "plain web", "## Known limits", "aren't code-signed", "motif-claude-code.zip", "THIRD-PARTY-NOTICES.txt",
     ]) expect(notes).toContain(s);
   });
+
+  test("say how to install Motif in every agent, and name the skill archives (Part 3)", () => {
+    const notes = readFileSync(NOTES, "utf8");
+    for (const s of [
+      "codex plugin marketplace add 7mxd/motif", "codex plugin add motif@motif", "copilot plugin marketplace add 7mxd/motif", "copilot plugin install motif@motif",
+      "gemini extensions install https://github.com/7mxd/motif --ref plugins --auto-update", "cursor-agent plugin marketplace add https://github.com/7mxd/motif",
+      "install.sh", "install.ps1", "motif-skill.zip", "motif-skill.tar.gz", "motif connect",
+    ]) expect(notes).toContain(s);
+  });
 });
 
 describe("the READMEs", () => {
@@ -30,6 +39,10 @@ describe("the READMEs", () => {
     }
     expect(readFileSync(join(REPO, "README.md"), "utf8")).toContain(`**Preview (v${VERSION}).**`);
     expect(readFileSync(join(REPO, "plugin/claude-code/README.md"), "utf8")).not.toContain("Until Motif's first release is published");
+  });
+
+  test("the README's motif connect row says it sets sources up in the agents you choose (Part 3)", () => {
+    expect(readFileSync(join(REPO, "README.md"), "utf8")).toContain("to the coding agents you choose");
   });
 });
 
