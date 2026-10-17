@@ -16,7 +16,7 @@ Today only Claude Code can install Motif ([v0.1.0 spec](2026-10-17-motif-v0.1.0-
 **Done means:**
 
 1. The GitHub release `v0.2.0`, marked **Pre-release**, holds everything v0.1.0 had plus `motif-skill.zip` and `motif-skill.tar.gz`, and the `plugins` branch holds the v0.2.0 package (§3).
-2. A post-release check passes on Windows, macOS and Linux for every agent: Motif installs from GitHub exactly as the README says, the agent lists the `motif` skill, and the installed skill's bootstrap runs `doctor` (§9).
+2. A post-release check passes on Windows, macOS and Linux for every agent: Motif installs from GitHub exactly as the README says, the agent lists the `motif` skill, and the installed skill's bootstrap runs `doctor` (§9). Cursor's CLI only adds the marketplace (installing the plugin happens in Cursor), and on Windows and Linux only: it can't keep its sign-in on CI's macOS machine.
 3. `motif connect <source>` sets a source up in each agent found on the computer that the developer picks, and `doctor` reports which agents have each source (§7).
 4. The README tells people how to install Motif in each agent (§10).
 5. Nothing is tagged, published or pushed without the developer's approval at each step (§9.3).
@@ -30,7 +30,7 @@ Today only Claude Code can install Motif ([v0.1.0 spec](2026-10-17-motif-v0.1.0-
 | How people start Motif | `/motif` in Cursor, Copilot, Gemini CLI and OpenCode, `$motif` in Codex: on its own it asks what they'd like to do, with words it goes straight there. Gemini also gets `/motif:design`, `/motif:init`, `/motif:feature` and `/motif:review`, like Claude Code. No command clashes with an agent's own `/init` or `/review`. |
 | OpenCode and agents without plugins | Motif's own install script (`install.sh`, `install.ps1`): it downloads the skill from the release, checks it against `SHA256SUMS`, and installs it where OpenCode reads skills, or in the shared `~/.agents/skills`. |
 | Design sources | `motif connect` and `doctor` cover every agent (§7). |
-| Checks | Install checks without signing in: on Linux on every push, on Windows, macOS and Linux after each release. Hands-on use in Cursor, Gemini CLI and Copilot at the end, with the evals. |
+| Checks | Install checks without signing in to any account: on Linux on every push, on Windows, macOS and Linux after each release. Cursor's CLI needs a sign-in even to add a marketplace, so it's checked after each release only, with an API key from a repository secret. Hands-on use in Cursor, Gemini CLI and Copilot at the end, with the evals. |
 | Delivery | One spec, two plans built back to back: 3A packages, install script and release; 3B `connect` and `doctor`. Released together as v0.2.0. |
 
 ## 3. The package
@@ -146,7 +146,7 @@ Settings folders follow each agent's own variable where it has one (`CODEX_HOME`
 2. Choose:
    - **In the developer's terminal:** a numbered question, "Set up Motion for which agents? 1 Claude Code, 2 Cursor, 3 Gemini CLI. Press Enter for all, or type numbers (1,3)." Numbers work in every terminal, including Git Bash's.
    - **One agent found:** no question.
-   - **`--agent claude,cursor`:** no question. An agent named there that isn't on this computer gets nothing written (a settings folder would make it look installed) and is reported ✗. A command Motif prints repeats the ids as it read them (`--agent "Claude, Cursor"` → `--agent claude,cursor`).
+   - **`--agent claude,cursor`:** no question. An agent named there that isn't on this computer gets nothing written (a settings folder would make it look installed) and is reported ✗. A command Motif prints repeats the ids as it read them, once each and in this table's order (`--agent "Cursor, Claude"` → `--agent claude,cursor`).
    - **The input ends at the question** (Ctrl+D, or Ctrl+Z on Windows): nothing changes, and it says so (exit 2).
    - **Not in a terminal, without `--agent`:** a source with no key is set up in every agent found (the output says which); a source with a key stops and prints the command to run in the developer's own terminal, as today.
 3. For a key source, ask for the key once with hidden input, as today, and check it the same way.
@@ -205,14 +205,14 @@ Both list each source with the agents that have it, for example "✓ Motion: Cla
 - The package: layout, manifests (valid, same version), Gemini TOML parses and names the right mode files, no Claude-only placeholders (`${CLAUDE_PLUGIN_ROOT}`, `$ARGUMENTS`) anywhere in `dist/agents/`, the build's refusal rule.
 - The marketplace files: each lists `motif` from the `plugins` branch.
 - The install scripts, against a local fake release (the bootstrap tests' approach): install, update, a checksum mismatch, a folder that isn't Motif's, `--uninstall`, OpenCode's command file; sh on macOS and Linux (and Git Bash), PowerShell on Windows.
-- `connect`: the arguments passed to each agent's command and the file edits for Cursor and Codex, with every other entry kept; the agent choice (numbers, Enter, `--agent`, not in a terminal); per-agent results and exit codes; keys never in output.
+- `connect`: the arguments passed to each agent's command and the file edits for Codex, Cursor and VS Code, with every other entry kept; the agent choice (numbers, Enter, `--agent`, not in a terminal); per-agent results and exit codes; keys never in output.
 - `doctor`: each agent's settings formats, user and project, including comments, a missing file and a broken one.
 - The skill lint: agent tool names only in `skill/agents.md`.
 
-### 9.2 Install checks (no signing in)
+### 9.2 Install checks (no accounts; Cursor with an API key)
 
-- **On every push (Linux):** CI installs each agent's CLI at a pinned version in a throwaway home (Codex, Copilot CLI, Gemini CLI, OpenCode, Cursor CLI), installs Motif from `dist/agents-local/` the way that agent installs plugins (OpenCode through the install script against a local fake release), and checks that the agent lists the `motif` skill (for example `gemini skills list`, `opencode debug skill`, `copilot skill list`, `codex plugin list`, `agent plugin marketplace list`).
-- **After each release (Windows, macOS, Linux):** the same, from GitHub exactly as §4 says, plus the installed skill's bootstrap running `doctor --json` with the tool downloaded from the release (as the Claude Code check does today).
+- **On every push (Linux):** CI installs each agent's CLI at a pinned version in a throwaway home (Codex, Copilot CLI, Gemini CLI, OpenCode; Cursor's CLI adds marketplaces only from a git URL and needs a sign-in, so it's checked after releases only), installs Motif from `dist/agents-local/` the way that agent installs plugins (OpenCode through the install script against a local fake release), and checks that the agent lists the `motif` skill (for example `gemini skills list`, `opencode debug skill`, `copilot skill list`, `codex plugin list`).
+- **After each release (Windows, macOS, Linux):** the same, from GitHub exactly as §4 says, plus the installed skill's bootstrap running `doctor --json` with the tool downloaded from the release (as the Claude Code check does today). Cursor's CLI adds the marketplace (`cursor-agent plugin marketplace list` shows it) with a key from the `CURSOR_API_KEY` secret, given to Cursor alone, on Windows and Linux.
 - **Weekly:** a scheduled run of the push check with each agent's latest version, so a breaking change in an agent shows up before people hit it.
 
 ### 9.3 Release steps
