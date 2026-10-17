@@ -31,6 +31,23 @@ describe("adding a server to a JSON settings file", () => {
     });
   });
 
+  test("keeps a tab-indented file's tabs, also when its servers are empty (final review)", () => {
+    const p = join(dir(), "mcp.json");
+    writeFileSync(p, '{\n\t"servers": {},\n\t"inputs": []\n}\n');
+    expect(addJsonServer(p, "servers", "refero", { type: "http", url: "https://api.refero.design/mcp" })).toEqual({ ok: true });
+    const after = readFileSync(p, "utf8");
+    expect(after).toContain('\t"inputs": []');
+    expect(after.split("\n").filter((l) => /^ +\S/.test(l))).toEqual([]);
+    expect(JSON.parse(after)).toEqual({ servers: { refero: { type: "http", url: "https://api.refero.design/mcp" } }, inputs: [] });
+  });
+
+  test("gives a 4-space file a 4-space entry (final review)", () => {
+    const p = join(dir(), "mcp.json");
+    writeFileSync(p, '{\n    "mcpServers": {\n        "a": {\n            "url": "https://a.example"\n        }\n    }\n}\n');
+    expect(addJsonServer(p, "mcpServers", "motion", { url: "https://mcp.motion.dev" })).toEqual({ ok: true });
+    expect(readFileSync(p, "utf8")).toContain('        "motion": {\n            "url": "https://mcp.motion.dev"\n        }');
+  });
+
   test("leaves a file that isn't valid JSON as it was", () => {
     const p = join(dir(), "mcp.json");
     writeFileSync(p, "{ nope");

@@ -11,7 +11,8 @@ import { SOURCES, sourceById, type SourceInfo } from "../sources/catalog";
 
 export interface ConnectDeps {
   which: (cmd: string) => string | null;
-  run: (exe: string, args: string[]) => Promise<{ code: number; output: string }>;
+  /** Runs a program; cwd is the folder to run it in (the current one when left out). */
+  run: (exe: string, args: string[], cwd?: string) => Promise<{ code: number; output: string }>;
   /** True when a person is at the terminal (Motif never reads keys any other way). */
   interactive: boolean;
   readSecret: (prompt: string) => Promise<string>;
@@ -35,9 +36,9 @@ export function spawnArgs(exe: string, args: string[], platform: NodeJS.Platform
   return { cmd: [exe, ...args], verbatim: false };
 }
 
-export async function runCommand(exe: string, args: string[]): Promise<{ code: number; output: string }> {
+export async function runCommand(exe: string, args: string[], cwd?: string): Promise<{ code: number; output: string }> {
   const { cmd, verbatim } = spawnArgs(exe, args);
-  const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe", windowsVerbatimArguments: verbatim });
+  const proc = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe", windowsVerbatimArguments: verbatim });
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { code, output: `${out}${err}`.trim() };
 }
@@ -172,7 +173,8 @@ async function addTo(agent: AgentInfo, server: ServerSpec, deps: ConnectDeps, en
   const command = async (cli: string, args: string[], keyFiles: string[]): Promise<AddResult> => {
     const exe = deps.which(cli);
     if (!exe) return { ok: false, output: `its "${cli}" command isn't on PATH`, keyFiles: [] };
-    const r = await deps.run(exe, args);
+    // From the home folder: an agent's command that can also write a project's settings never sees this project.
+    const r = await deps.run(exe, args, env.home);
     return { ok: r.code === 0, output: r.output, keyFiles };
   };
   const file = (path: string, edit: () => Edited): AddResult => {
@@ -227,6 +229,10 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   const wanted = typeof ctx.flags?.agent === "string" ? ctx.flags.agent : undefined;
   const agentFlag = wanted ? ` --agent ${wanted}` : "";
 
+  // Agents that already have the source are reported as such, and need no key.
+  const configured = deps.configured();
+  const has = (agent: AgentInfo) => configured.find((c) => c.id === source.id && c.agent === agent.id);
+
   let chosen: AgentInfo[];
   let note = "";
   if (wanted !== undefined) {
@@ -247,7 +253,7 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
       const picked = pickAgents(await deps.ask(`Set up ${source.label} for which agents? ${menu}. Press Enter for all, or type numbers (such as 1,3): `), found);
       if (!picked) return fail("That isn't a choice from the list. Nothing changed.", { error: "bad-choice" });
       chosen = picked;
-    } else if (source.connect.auth === "key") {
+    } else if (source.connect.auth === "key" && found.some((a) => !has(a))) {
       return needsTerminal(source, deps, agentFlag);
     } else {
       chosen = found;
@@ -256,7 +262,7 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   }
 
   let secret = "";
-  if (source.connect.auth === "key") {
+  if (source.connect.auth === "key" && chosen.some((a) => !has(a))) {
     if (!deps.interactive) return needsTerminal(source, deps, agentFlag);
     const key = await deps.readSecret(`Paste your ${source.label} key (get one at ${source.docs}); it won't be shown: `);
     if (!key) return fail("No key entered. Nothing changed.", { error: "no-key" });
@@ -266,10 +272,9 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   const server: ServerSpec = { name: source.connect.name, url: source.connect.url, ...(secret ? { headers: { [source.connect.keyHeader!]: secret } } : {}) };
   const hide = (text: string) => (secret ? text.replaceAll(secret, "<your key>") : text);
 
-  const configured = deps.configured();
   const results: AgentResult[] = [];
   for (const agent of chosen) {
-    const existing = configured.find((c) => c.id === source.id && c.agent === agent.id);
+    const existing = has(agent);
     if (existing) {
       results.push({ agent, status: "already", server: existing.server, where: existing.where });
       continue;

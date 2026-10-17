@@ -33,11 +33,18 @@ function readIfThere(path: string): { text: string } | Edited {
   }
 }
 
+/** The file's indent: a tab, or its smallest run of leading spaces (2 when nothing is indented). */
+function indentUnit(text: string): string {
+  const leads = text.split(/\r?\n/).map((l) => /^[ \t]*/.exec(l)![0]).filter((l) => l !== "");
+  if (leads.some((l) => l.startsWith("\t"))) return "\t";
+  return " ".repeat(leads.length > 0 ? Math.min(...leads.map((l) => l.length)) : 2);
+}
+
 /**
  * The text with name added after the last property of the object at key, indented like it, when that property starts
  * its own line (as agents write these files): no existing line is reformatted. Null when that isn't the case.
  */
-function insertAfterLast(text: string, key: string, name: string, value: unknown, eol: string): string | null {
+function insertAfterLast(text: string, key: string, name: string, value: unknown, eol: string, unit: string): string | null {
   const root = parseTree(text, [], { allowTrailingComma: true });
   const container = root ? findNodeAtLocation(root, [key]) : undefined;
   const last = container?.type === "object" ? container.children?.at(-1) : undefined;
@@ -47,7 +54,7 @@ function insertAfterLast(text: string, key: string, name: string, value: unknown
   const indent = text.slice(lineStart, last.offset);
   const lastEnd = last.offset + last.length;
   const between = text.slice(lastEnd, container.offset + container.length - 1);
-  const entry = `${JSON.stringify(name)}: ${JSON.stringify(value, null, 2).split("\n").join(`${eol}${indent}`)}`;
+  const entry = `${JSON.stringify(name)}: ${JSON.stringify(value, null, unit).split("\n").join(`${eol}${indent}`)}`;
   if (/^\s*,/.test(between)) {
     const afterComma = lastEnd + between.indexOf(",") + 1;
     return `${text.slice(0, afterComma)}${eol}${indent}${entry},${text.slice(afterComma)}`;
@@ -74,8 +81,9 @@ export function addJsonServer(path: string, key: string, name: string, server: R
   }
   const base = body.trim() === "" ? "{}" : body;
   const eol = base.includes("\r\n") ? "\r\n" : "\n";
-  const next = insertAfterLast(base, key, name, server, eol)
-    ?? applyEdits(base, modify(base, [key, name], server, { formattingOptions: { insertSpaces: true, tabSize: 2, eol } }));
+  const unit = indentUnit(base);
+  const formattingOptions = { insertSpaces: unit !== "\t", tabSize: unit === "\t" ? 1 : unit.length, eol };
+  const next = insertAfterLast(base, key, name, server, eol, unit) ?? applyEdits(base, modify(base, [key, name], server, { formattingOptions }));
   return writeSafely(path, `${bom}${next.endsWith(eol) ? next : next + eol}`, holdsKey);
 }
 

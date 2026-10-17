@@ -363,6 +363,35 @@ describe("motif connect: every agent (Part 3)", () => {
     }
   });
 
+  test("a key source every chosen agent already has needs no key, in a terminal or not (final review)", async () => {
+    const has21st = () => [{ id: "21st" as const, agent: "claude" as const, server: "21st", where: "~/.claude.json" }];
+    for (const interactive of [false, true]) {
+      const s = setup(["claude"], { interactive, configured: has21st });
+      const r = await runConnect(".", ctx("21st"), s.deps);
+      expect([interactive, r.exitCode, s.calls.prompts]).toEqual([interactive, 0, 0]);
+      expect(r.text).toContain("✓ Claude Code: already connected");
+    }
+    const both = setup(["claude", "gemini"], {
+      interactive: false,
+      configured: () => [...has21st(), { id: "21st", agent: "gemini", server: "21st", where: "~/.gemini/settings.json" }],
+    });
+    const r = await runConnect(".", ctx("21st"), both.deps);
+    expect(r.exitCode).toBe(0);
+    expect(both.agentRuns()).toEqual([]);
+  });
+
+  test("runs each agent's own command from the home folder, so it can't write the key into the project (final review)", async () => {
+    const cwds: (string | undefined)[] = [];
+    const s = setup(["claude", "copilot", "gemini", "opencode"], {
+      run: async (exe, _args, cwd) => {
+        if (!exe.endsWith("git")) cwds.push(cwd);
+        return { code: 0, output: "" };
+      },
+    });
+    expect((await runConnect(".", ctx("21st"), s.deps)).exitCode).toBe(0);
+    expect(cwds).toEqual([s.home, s.home, s.home, s.home]);
+  });
+
   test("warns about each settings file that now holds the key and is tracked by git", async () => {
     const s = setup(["cursor", "gemini"], { tracked: (args) => args.includes("mcp.json") });
     const r = await runConnect(".", ctx("21st"), s.deps);
