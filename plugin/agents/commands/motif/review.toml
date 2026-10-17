@@ -1,0 +1,6 @@
+description = "Motif: review and improve your app's look against its design guide."
+prompt = """
+Use Motif: activate the motif skill, read its SKILL.md, then follow modes/review.md in the skill's folder.
+
+What the developer asked for: {{args}}
+"""

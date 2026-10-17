@@ -1,0 +1,6 @@
+description = "Motif: start here. Asks whether you're starting a new app, adding a feature or improving your app's look."
+prompt = """
+Use Motif: activate the motif skill, read its SKILL.md, then follow modes/design.md in the skill's folder.
+
+What the developer asked for: {{args}}
+"""

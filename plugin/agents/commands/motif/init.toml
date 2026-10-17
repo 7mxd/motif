@@ -1,0 +1,6 @@
+description = "Motif: start a new app with its own design guide, from a short brief."
+prompt = """
+Use Motif: activate the motif skill, read its SKILL.md, then follow modes/init.md in the skill's folder.
+
+What the developer asked for: {{args}}
+"""
