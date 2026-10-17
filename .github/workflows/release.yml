@@ -49,11 +49,39 @@ jobs:
           path: dist/${{ matrix.asset }}
           if-no-files-found: error
 
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: cli/.bun-version
+      - name: Tag matches skill/VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: test "v$(tr -d ' \r\n' < skill/VERSION)" = "$GITHUB_REF_NAME"
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: Build and zip the Claude Code plugin (refuses a plugin.json version other than skill/VERSION)
+        working-directory: cli
+        run: |
+          bun run plugin
+          bun run plugin:zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: motif-claude-code.zip
+          path: dist/motif-claude-code.zip
+          if-no-files-found: error
+
   publish:
-    needs: build
+    needs: [build, plugin]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: Release notes exist
+        run: test -f "docs/releases/$GITHUB_REF_NAME.md"
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -61,7 +89,66 @@ jobs:
       - name: Checksums
         working-directory: dist
         run: sha256sum motif-* > SHA256SUMS && cat SHA256SUMS
+      - name: Notices
+        run: cp THIRD-PARTY-NOTICES.txt dist/
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Motif $GITHUB_REF_NAME" --generate-notes
+        shell: bash
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in v0.*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Motif $GITHUB_REF_NAME" --notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre
+
+  check:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Download the plugin and the checksums from the release
+        shell: bash
+        run: gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern motif-claude-code.zip --pattern SHA256SUMS --dir release
+      - name: The zip matches SHA256SUMS
+        shell: bash
+        working-directory: release
+        run: |
+          grep ' motif-claude-code.zip$' SHA256SUMS > zip.sha256
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum -c zip.sha256; else shasum -a 256 -c zip.sha256; fi
+      - name: Unpack (macOS, Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          unzip -q release/motif-claude-code.zip -d plugin
+          # Claude Code may unpack the plugin without the executable flag; the skill runs the bootstrap with sh either way.
+          chmod a-x plugin/skills/motif/bin/motif
+      - name: Unpack (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Expand-Archive -Path release/motif-claude-code.zip -DestinationPath plugin
+      - name: The plugin's bootstrap fetches the tool from the release and runs it (macOS, Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          MOTIF_HOME: ${{ runner.temp }}/motif-home
+        run: |
+          unset MOTIF_BIN
+          test "$(sh plugin/skills/motif/bin/motif --version)" = "${GITHUB_REF_NAME#v}"
+          sh plugin/skills/motif/bin/motif doctor --json > doctor.json
+          python3 -c 'import json; d = json.load(open("doctor.json")); assert d["command"] == "doctor" and d["ok"], d'
+      - name: The plugin's bootstrap fetches the tool from the release and runs it (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MOTIF_HOME: ${{ runner.temp }}\motif-home
+        run: |
+          Remove-Item Env:MOTIF_BIN -ErrorAction SilentlyContinue
+          $version = & .\plugin\skills\motif\bin\motif.cmd --version
+          if ($version -ne $env:GITHUB_REF_NAME.Substring(1)) { throw "motif --version printed '$version'" }
+          $json = & .\plugin\skills\motif\bin\motif.cmd doctor --json | Out-String
+          $doctor = $json | ConvertFrom-Json
+          if ($doctor.command -ne 'doctor' -or -not $doctor.ok) { throw "doctor --json printed: $json" }
