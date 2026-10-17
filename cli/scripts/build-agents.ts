@@ -4,6 +4,7 @@
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pluginManifest } from "./build-plugin";
+import { agentMarketplaces } from "./marketplace";
 
 const REPO = resolve(import.meta.dir, "../..");
 export const AGENT_PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
@@ -70,10 +71,32 @@ export function buildAgents(outDir: string, repo: string = REPO): void {
   }
   writeFileSync(join(outDir, "README.md"), lf(readFileSync(join(source, "branch-README.md"), "utf8")).replaceAll("{version}", version));
   for (const f of ["LICENSE", "THIRD-PARTY-NOTICES.txt"]) writeFileSync(join(outDir, f), lf(readFileSync(join(repo, f), "utf8")));
+  // Each agent's marketplace with Motif at the package's own root: adding the plugins branch itself as a marketplace
+  // (#plugins, --ref plugins) works too, should an agent not install from main's marketplace.
+  writeMarketplaces(outDir, agentMarketplaces({ local: "./" }));
+}
+
+function writeMarketplaces(root: string, files: Record<string, Record<string, unknown>>): void {
+  for (const [path, file] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), json(file));
+  }
+}
+
+/** A local marketplace for each agent, holding a copy of the package as motif/: for CI's checks and for trying a build. */
+export function buildAgentsLocal(agentsDir: string, outDir: string): void {
+  if (existsSync(outDir) && readdirSync(outDir).length > 0 && !isAgentsBuild(join(outDir, "motif"))) {
+    throw new Error(`${outDir} isn't a Motif local marketplace build, so it wasn't replaced.`);
+  }
+  rmSync(outDir, { recursive: true, force: true });
+  cpSync(agentsDir, join(outDir, "motif"), { recursive: true });
+  writeMarketplaces(outDir, agentMarketplaces({ local: "./motif" }));
 }
 
 if (import.meta.main) {
   const out = resolve(process.argv[2] ?? join(REPO, "dist", "agents"));
+  const local = resolve(process.argv[3] ?? join(REPO, "dist", "agents-local"));
   buildAgents(out);
-  console.log(`Built the package for other agents in ${out}`);
+  buildAgentsLocal(out, local);
+  console.log(`Built the package for other agents in ${out}, and a local marketplace for it in ${local}`);
 }

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pluginManifest } from "../scripts/build-plugin";
-import { marketplaceFile, marketplaceProblems } from "../scripts/marketplace";
+import { AGENT_MARKETPLACES, agentMarketplaceProblems, agentMarketplaces, marketplaceFile, marketplaceProblems, PLUGINS_BRANCH } from "../scripts/marketplace";
 
 const REPO = join(import.meta.dir, "../..");
 const FILE = join(REPO, ".claude-plugin", "marketplace.json");
@@ -56,5 +56,43 @@ describe("the marketplace file", () => {
 
   test.skipIf(!existsSync(FILE))("the repository's marketplace file is well formed", () => {
     expect(marketplaceProblems(JSON.parse(readFileSync(FILE, "utf8")))).toEqual([]);
+  });
+});
+
+describe("the other agents' marketplaces", () => {
+  const files = agentMarketplaces({ branch: PLUGINS_BRANCH });
+
+  test("one per agent, each listing Motif from the plugins branch in that agent's own format", () => {
+    expect(Object.keys(files).sort()).toEqual([".agents/plugins/marketplace.json", ".cursor-plugin/marketplace.json", ".github/plugin/marketplace.json"]);
+    expect(Object.values(AGENT_MARKETPLACES).map(String).sort()).toEqual(Object.keys(files).sort());
+    const codex = files[AGENT_MARKETPLACES.codex] as any;
+    expect(codex.plugins[0].source).toEqual({ source: "url", url: "https://github.com/7mxd/motif.git", ref: "plugins" });
+    for (const path of [AGENT_MARKETPLACES.cursor, AGENT_MARKETPLACES.copilot]) {
+      expect((files[path] as any).plugins[0].source).toEqual({ source: "github", repo: "7mxd/motif", ref: "plugins" });
+    }
+    for (const [path, file] of Object.entries(files)) expect([path, agentMarketplaceProblems(path, file)]).toEqual([path, []]);
+  });
+
+  test("the files on main are what the script writes", () => {
+    for (const [path, file] of Object.entries(files)) {
+      expect(JSON.parse(readFileSync(join(REPO, path), "utf8"))).toEqual(file);
+    }
+  });
+
+  test("a local marketplace points at the package beside it, or at its own root", () => {
+    const local = agentMarketplaces({ local: "./motif" });
+    expect((local[AGENT_MARKETPLACES.codex] as any).plugins[0].source).toEqual({ source: "local", path: "./motif" });
+    expect((local[AGENT_MARKETPLACES.copilot] as any).plugins[0].source).toBe("./motif");
+    expect((agentMarketplaces({ local: "./" })[AGENT_MARKETPLACES.cursor] as any).plugins[0].source).toBe("./");
+  });
+
+  test("names what's wrong in plain words", () => {
+    const codex = structuredClone(files[AGENT_MARKETPLACES.codex]) as any;
+    codex.plugins[0].source.ref = "main";
+    expect(agentMarketplaceProblems(AGENT_MARKETPLACES.codex, codex)).toEqual(['Motif must come from this repository\'s "plugins" branch.']);
+    expect(agentMarketplaceProblems(AGENT_MARKETPLACES.copilot, { name: "x", plugins: [] })).toEqual([
+      'The marketplace must be named "motif".',
+      "The marketplace must list one plugin, Motif.",
+    ]);
   });
 });

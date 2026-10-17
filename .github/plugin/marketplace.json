@@ -1,0 +1,21 @@
+{
+  "name": "motif",
+  "owner": {
+    "name": "7mxd",
+    "url": "https://github.com/7mxd"
+  },
+  "metadata": {
+    "description": "Motif: design guide tools for AI coding agents."
+  },
+  "plugins": [
+    {
+      "name": "motif",
+      "description": "Design and build polished, consistent app UI from a design guide your agent follows: mockups before code, screenshots after, and reviews in plain words.",
+      "source": {
+        "source": "github",
+        "repo": "7mxd/motif",
+        "ref": "plugins"
+      }
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { AGENT_PLUGIN_SCHEMA, agentPluginManifest, buildAgents, geminiManifest } from "../scripts/build-agents";
+import { AGENT_PLUGIN_SCHEMA, agentPluginManifest, buildAgents, buildAgentsLocal, geminiManifest } from "../scripts/build-agents";
+import { AGENT_MARKETPLACES, agentMarketplaces } from "../scripts/marketplace";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -89,5 +90,35 @@ describe("the package for other agents", () => {
     for (const f of [...COMMANDS, "README.md", "plugin.json", "gemini-extension.json"]) {
       expect(readFileSync(join(dir, f), "utf8").includes("\r") ? f : "LF").toBe("LF");
     }
+  });
+});
+
+describe("the marketplaces that reach the package", () => {
+  test("the package carries each agent's marketplace with Motif at its own root, for installs from the branch itself (Task 1 facts)", () => {
+    const out = fresh();
+    buildAgents(out);
+    for (const [path, file] of Object.entries(agentMarketplaces({ local: "./" }))) {
+      expect(JSON.parse(readFileSync(join(out, path), "utf8"))).toEqual(file);
+    }
+  });
+
+  test("the local marketplace holds the package as motif/ and each agent's marketplace pointing at it", () => {
+    const agents = fresh();
+    buildAgents(agents);
+    const local = join(tempDir("motif-agents-local-"), "agents-local");
+    buildAgentsLocal(agents, local);
+    expect(walk(join(local, "motif")).sort()).toEqual(walk(agents).sort());
+    for (const path of Object.values(AGENT_MARKETPLACES)) {
+      expect(JSON.stringify(JSON.parse(readFileSync(join(local, path), "utf8")))).toContain("./motif");
+    }
+  });
+
+  test("never replaces a folder that isn't a local marketplace build", () => {
+    const agents = fresh();
+    buildAgents(agents);
+    const local = join(tempDir("motif-agents-local-"), "agents-local");
+    mkdirSync(local, { recursive: true });
+    writeFileSync(join(local, "notes.txt"), "mine");
+    expect(() => buildAgentsLocal(agents, local)).toThrow("isn't a Motif local marketplace build");
   });
 });

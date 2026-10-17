@@ -1,7 +1,7 @@
 // Writes .claude-plugin/marketplace.json for a published release: Motif's plugin as that release's zip, pinned by the
 // checksum in its SHA256SUMS. Run it only after the release exists: bun scripts/marketplace.ts v0.1.0
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pluginManifest } from "./build-plugin";
 import { ZIP_NAME } from "./zip-plugin";
 
@@ -62,7 +62,67 @@ export function marketplaceProblems(file: unknown): string[] {
   return problems;
 }
 
+export const PLUGINS_BRANCH = "plugins";
+const REPO_SLUG = "7mxd/motif";
+
+/** Where each agent with a plugin system reads a marketplace, relative to the marketplace's root. */
+export const AGENT_MARKETPLACES = {
+  codex: ".agents/plugins/marketplace.json",
+  cursor: ".cursor-plugin/marketplace.json",
+  copilot: ".github/plugin/marketplace.json",
+} as const;
+
+export type MarketplaceSource = { branch: string } | { local: string };
+
+/** Each agent's marketplace: Motif from this repository's plugins branch, or from a folder relative to the marketplace. */
+export function agentMarketplaces(source: MarketplaceSource): Record<string, Record<string, unknown>> {
+  const m = pluginManifest("0") as { name: string; description: string };
+  const owner = { name: "7mxd", url: "https://github.com/7mxd" };
+  const description = "Motif: design guide tools for AI coding agents.";
+  const codexSource = "local" in source
+    ? { source: "local", path: source.local }
+    : { source: "url", url: `https://github.com/${REPO_SLUG}.git`, ref: source.branch };
+  const githubSource = "local" in source ? source.local : { source: "github", repo: REPO_SLUG, ref: source.branch };
+  const entry = (s: unknown) => ({ name: m.name, description: m.description, source: s });
+  return {
+    [AGENT_MARKETPLACES.codex]: {
+      name: "motif",
+      interface: { displayName: "Motif" },
+      plugins: [{ ...entry(codexSource), policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" } }],
+    },
+    [AGENT_MARKETPLACES.cursor]: { name: "motif", owner, metadata: { description }, plugins: [entry(githubSource)] },
+    [AGENT_MARKETPLACES.copilot]: { name: "motif", owner, metadata: { description }, plugins: [entry(githubSource)] },
+  };
+}
+
+/** What's wrong with one of the other agents' marketplace files on main, in plain words; empty when it's right. */
+export function agentMarketplaceProblems(path: string, file: unknown): string[] {
+  const m = (file ?? {}) as Record<string, any>;
+  const problems: string[] = [];
+  if (m.name !== "motif") problems.push('The marketplace must be named "motif".');
+  const plugins: any[] = Array.isArray(m.plugins) ? m.plugins : [];
+  if (plugins.length !== 1) problems.push("The marketplace must list one plugin, Motif.");
+  for (const p of plugins) {
+    if (p?.name !== NAME) problems.push(`The plugin entry must be named "${NAME}", as the plugin itself is.`);
+    if (p && "version" in p) problems.push("The plugin entry must not set a version: the package's own plugin.json gives it.");
+    const s = p?.source ?? {};
+    const fromBranch = path === AGENT_MARKETPLACES.codex
+      ? s.source === "url" && s.url === `https://github.com/${REPO_SLUG}.git` && s.ref === PLUGINS_BRANCH
+      : s.source === "github" && s.repo === REPO_SLUG && s.ref === PLUGINS_BRANCH;
+    if (!fromBranch) problems.push(`Motif must come from this repository's "${PLUGINS_BRANCH}" branch.`);
+  }
+  return problems;
+}
+
 if (import.meta.main) {
+  if (process.argv[2] === "--agents") {
+    for (const [path, file] of Object.entries(agentMarketplaces({ branch: PLUGINS_BRANCH }))) {
+      mkdirSync(dirname(join(REPO, path)), { recursive: true });
+      writeFileSync(join(REPO, path), `${JSON.stringify(file, null, 2)}\n`);
+      console.log(`Wrote ${path}`);
+    }
+    process.exit(0);
+  }
   const tag = process.argv[2] ?? "";
   if (!TAG.test(tag)) {
     console.error(`Usage: bun scripts/marketplace.ts <tag>, such as v0.1.0 (got "${tag}").`);
