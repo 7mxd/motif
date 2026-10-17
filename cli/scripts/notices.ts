@@ -23,6 +23,15 @@ export const FONT_NAMES: Record<string, string> = {
 
 const read = (repo: string, path: string) => readFileSync(join(repo, path), "utf8").replace(/\r\n/g, "\n").trimEnd();
 
+const AXE = "cli/vendor/axe-core/axe.min.js";
+
+/** The vendored axe-core's version, from the "/*! axe v4.14.0" line the file starts with. */
+function axeVersion(repo: string): string {
+  const version = /^\/\*! axe v(\d[\w.-]*)/.exec(readFileSync(join(repo, AXE), "utf8"))?.[1];
+  if (!version) throw new Error(`${AXE} doesn't start with "/*! axe v<version>": is it axe-core's own axe.min.js?`);
+  return version;
+}
+
 /** The libraries compiled into the motif tool (cli/package.json's dependencies), each with its licence file. */
 function toolLibraries(repo: string): [string, string][] {
   const deps = Object.keys(JSON.parse(read(repo, "cli/package.json")).dependencies ?? {}).sort();
@@ -39,7 +48,7 @@ export function noticesText(repo: string = REPO): string {
   const fonts = readdirSync(join(repo, FONT_DIR)).filter((f) => /^LICENSE-.+\.txt$/.test(f)).sort();
   const sections: [string, string][] = [
     [
-      "axe-core 4.14.0, in the motif tool (the accessibility audit of screenshots). Mozilla Public License 2.0.\nSource: https://github.com/dequelabs/axe-core (Motif's copy: cli/vendor/axe-core/)",
+      `axe-core ${axeVersion(repo)}, in the motif tool (the accessibility audit of screenshots). Mozilla Public License 2.0.\nSource: https://github.com/dequelabs/axe-core (Motif's copy: cli/vendor/axe-core/)`,
       `${read(repo, "cli/vendor/axe-core/LICENSE")}\n\n${read(repo, "cli/vendor/axe-core/LICENSE-3RD-PARTY.txt")}`,
     ],
     ...toolLibraries(repo),

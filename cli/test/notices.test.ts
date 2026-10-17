@@ -1,10 +1,29 @@
-import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { FONT_NAMES, noticesText } from "../scripts/notices";
+import { cleanupTempDirs, tempDir } from "./tmp";
+
+afterAll(cleanupTempDirs);
 
 const REPO = join(import.meta.dir, "../..");
 const lf = (s: string) => s.replace(/\r\n/g, "\n");
+
+/** The smallest repo noticesText can read: no fonts or libraries, and an axe.min.js that starts with firstLine. */
+function tinyRepo(firstLine: string): string {
+  const repo = tempDir("motif-notices-");
+  const put = (path: string, text: string) => {
+    mkdirSync(dirname(join(repo, path)), { recursive: true });
+    writeFileSync(join(repo, path), text);
+  };
+  put("cli/vendor/axe-core/axe.min.js", `${firstLine}\n * Copyright (c) Deque Systems, Inc.\n */\n`);
+  put("cli/vendor/axe-core/LICENSE", "axe-core licence");
+  put("cli/vendor/axe-core/LICENSE-3RD-PARTY.txt", "axe-core's third-party licences");
+  put("cli/package.json", JSON.stringify({ dependencies: {} }));
+  put("skill/preview-kit/vendor/LICENSE-motion.txt", "Motion licence");
+  mkdirSync(join(repo, "skill/preview-kit/fonts"), { recursive: true });
+  return repo;
+}
 
 describe("THIRD-PARTY-NOTICES.txt", () => {
   test("is up to date with the licence files (run bun run notices after changing them)", () => {
@@ -13,7 +32,8 @@ describe("THIRD-PARTY-NOTICES.txt", () => {
 
   test("covers axe-core, Motion, Bun and every bundled font, each with its licence", () => {
     const text = noticesText();
-    for (const s of ["axe-core 4.14.0", "Mozilla Public License", "Motion", "The MIT License", "Bun", "https://bun.com/docs/project/license", "SIL OPEN FONT LICENSE"]) {
+    expect(text).toMatch(/axe-core \d+\.\d+\.\d+, in the motif tool/);
+    for (const s of ["Mozilla Public License", "Motion", "The MIT License", "Bun", "https://bun.com/docs/project/license", "SIL OPEN FONT LICENSE"]) {
       expect(text).toContain(s);
     }
     const files = readdirSync(join(REPO, "skill/preview-kit/fonts")).filter((f) => /^LICENSE-.+\.txt$/.test(f));
@@ -35,6 +55,13 @@ describe("THIRD-PARTY-NOTICES.txt", () => {
       const licence = readdirSync(dir).find((f) => /^licen[cs]e/i.test(f))!;
       expect(text).toContain(lf(readFileSync(join(dir, licence), "utf8")).trim().split("\n")[0]!);
     }
+  });
+
+  test("names the axe-core version written in the vendored file, so upgrading the file updates the notices (final review)", () => {
+    const text = noticesText(tinyRepo("/*! axe v9.8.7"));
+    expect(text).toContain("axe-core 9.8.7, in the motif tool");
+    expect(text).not.toContain("4.14.0");
+    expect(() => noticesText(tinyRepo("/* another file */"))).toThrow('cli/vendor/axe-core/axe.min.js doesn\'t start with "/*! axe v');
   });
 
   test("says Motion and the fonts are in the tool too, and that Bun links LGPL-2 code (final review)", () => {
