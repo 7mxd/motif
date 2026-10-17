@@ -3,7 +3,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { CommandResult } from "../cli/output";
 import { findBrowser, type BrowserInfo } from "../detect/browser";
-import { findConfiguredSources, SOURCE_LABELS } from "../detect/sources";
+import { AGENTS, type AgentEnv } from "../agents/catalog";
+import { readAgentServers, sourcesIn } from "../detect/sources";
+import { SOURCES } from "../sources/catalog";
 import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, siteDir, STACK_LABELS } from "../detect/stacks";
 import { VERSION } from "../version";
 import { runValidate } from "./validate";
@@ -21,6 +23,8 @@ export interface DoctorDeps {
   home: string;
   findBrowser: () => BrowserInfo | null;
   which: (cmd: string) => string | null;
+  /** Environment variables (agents' settings folders follow some, e.g. CODEX_HOME). */
+  vars?: Record<string, string | undefined>;
 }
 
 export function defaultDoctorDeps(): DoctorDeps {
@@ -30,6 +34,7 @@ export function defaultDoctorDeps(): DoctorDeps {
     home: homedir(),
     findBrowser: () => findBrowser(),
     which: (c) => Bun.which(c),
+    vars: process.env,
   };
 }
 
@@ -81,10 +86,23 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
     }
   }
 
-  const sources = findConfiguredSources(cwd, deps.home);
-  if (sources.length > 0) push("sources", "ok", "Design sources", `Connected: ${[...new Set(sources.map((s) => SOURCE_LABELS[s.id]))].join(", ")}.`);
-  else push("sources", "optional", "Design sources", 'None connected. Everything works without them; you can add them later with "motif connect".');
+  const agentEnv: AgentEnv = { home: deps.home, platform: deps.platform, vars: deps.vars ?? {}, which: deps.which };
+  const read = readAgentServers(cwd, agentEnv);
+  const configured = sourcesIn(read.servers);
+  const sources = SOURCES.map((s) => ({
+    id: s.id,
+    label: s.label,
+    agents: configured.filter((c) => c.id === s.id).map(({ agent, server, where }) => ({ agent, server, where })),
+  }));
+  const agentLabel = (id: string) => AGENTS.find((a) => a.id === id)!.label;
+  const connected = sources.filter((s) => s.agents.length > 0);
+  if (connected.length > 0) {
+    const named = connected.map((s) => `${s.label} (${[...new Set(s.agents.map((a) => agentLabel(a.agent)))].join(", ")})`);
+    push("sources", "ok", "Design sources", `Connected: ${named.join(", ")}.`);
+  } else {
+    push("sources", "optional", "Design sources", 'None connected. Everything works without them; you can add them later with "motif connect".');
+  }
 
   const text = ["Motif doctor", ...items.map((i) => `  ${SYMBOL[i.status]} ${i.label} — ${i.detail}`)].join("\n");
-  return { command: "doctor", exitCode: 0, text, data: { items, apps } };
+  return { command: "doctor", exitCode: 0, text, data: { items, apps, sources, unreadable: read.unreadable } };
 }

@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import type { CommandResult, RunContext } from "../cli/output";
+import { agentById, defaultAgentEnv } from "../agents/catalog";
 import { findConfiguredSources, type ConfiguredSource } from "../detect/sources";
 import { SOURCES, sourceById, type SourceInfo } from "../sources/catalog";
 
@@ -65,7 +66,7 @@ function defaultDeps(cwd: string): ConnectDeps {
     run: runCommand,
     interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
     readSecret,
-    configured: () => findConfiguredSources(cwd, home),
+    configured: () => findConfiguredSources(cwd, home, defaultAgentEnv()),
     home,
     self: selfCommand(process.execPath),
   };
@@ -84,18 +85,25 @@ const KEY = /^[A-Za-z0-9._~+/=-]{8,}$/;
 const fail = (text: string, data: Record<string, unknown>): CommandResult => ({ command: "connect", exitCode: 2, text, data });
 
 function list(deps: ConnectDeps): CommandResult {
-  const connected = new Set(deps.configured().map((c) => c.id));
+  const configured = deps.configured();
+  const agentsFor = (id: string) => [...new Set(configured.filter((c) => c.id === id).map((c) => c.agent))];
   const lines = ["Design sources — all optional; Motif works fully without them:"];
   for (const s of SOURCES) {
-    const on = connected.has(s.id);
-    lines.push(`  ${on ? "✓" : "○"} ${s.label} — ${s.gives}. ${s.cost}.${on ? "" : ` Connect: ${deps.self} connect ${s.id}`}`);
+    const agents = agentsFor(s.id);
+    const where = agents.length > 0 ? ` In: ${agents.map((a) => agentById(a)!.label).join(", ")}.` : ` Connect: ${deps.self} connect ${s.id}`;
+    lines.push(`  ${agents.length > 0 ? "✓" : "○"} ${s.label} — ${s.gives}. ${s.cost}.${where}`);
   }
   lines.push("  Supahero needs nothing: Motif reads its public pages when you build a landing page.");
   return {
     command: "connect",
     exitCode: 0,
     text: lines.join("\n"),
-    data: { sources: SOURCES.map((s) => ({ id: s.id, label: s.label, connected: connected.has(s.id), gives: s.gives, cost: s.cost, command: `${deps.self} connect ${s.id}` })) },
+    data: {
+      sources: SOURCES.map((s) => {
+        const agents = agentsFor(s.id);
+        return { id: s.id, label: s.label, connected: agents.length > 0, agents, gives: s.gives, cost: s.cost, command: `${deps.self} connect ${s.id}` };
+      }),
+    },
   };
 }
 

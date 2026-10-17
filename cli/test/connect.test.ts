@@ -42,6 +42,8 @@ describe("motif connect (no source)", () => {
     expect((r.data.sources as { id: string; connected: boolean }[]).map((s) => [s.id, s.connected])).toEqual([
       ["motion", true], ["refero", false], ["21st", false], ["60fps", false],
     ]);
+    expect(r.text).toContain("In: Claude Code");
+    expect((r.data.sources as { id: string; agents: string[] }[]).find((s) => s.id === "motion")!.agents).toEqual(["claude"]);
   });
 });
 

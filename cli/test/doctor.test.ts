@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runDoctor, type DoctorDeps, type DoctorItem } from "../src/commands/doctor";
 import { copyFixture } from "./helpers";
@@ -76,7 +76,22 @@ describe("runDoctor", () => {
     const dir = tempDir("motif-src-");
     writeFileSync(join(dir, ".mcp.json"), JSON.stringify({ mcpServers: { refero: { url: "https://x" } } }));
     const r = await runDoctor(dir, deps());
-    expect(item(r.data.items as DoctorItem[], "sources")).toMatchObject({ status: "ok", detail: "Connected: Refero." });
+    expect(item(r.data.items as DoctorItem[], "sources")).toMatchObject({ status: "ok", detail: "Connected: Refero (Claude Code, GitHub Copilot CLI)." });
+  });
+
+  test("names the agents that have each source, and the settings files it couldn't read (Part 3)", async () => {
+    const home = tempDir("motif-doc-home-");
+    mkdirSync(join(home, ".cursor"), { recursive: true });
+    writeFileSync(join(home, ".cursor", "mcp.json"), JSON.stringify({ mcpServers: { motion: { url: "https://mcp.motion.dev" } } }));
+    mkdirSync(join(home, ".gemini"), { recursive: true });
+    writeFileSync(join(home, ".gemini", "settings.json"), "{ nope");
+    const r = await runDoctor(tempDir("motif-doc-app-"), deps({ home, platform: "linux", vars: {} }));
+    expect(r.exitCode).toBe(0);
+    expect(item(r.data.items as DoctorItem[], "sources")).toMatchObject({ status: "ok", detail: "Connected: Motion (Cursor)." });
+    const sources = r.data.sources as { id: string; agents: { agent: string; server: string; where: string }[] }[];
+    expect(sources.find((s) => s.id === "motion")!.agents).toEqual([{ agent: "cursor", server: "motion", where: "~/.cursor/mcp.json" }]);
+    expect(sources.find((s) => s.id === "refero")!.agents).toEqual([]);
+    expect(r.data.unreadable).toEqual([join(home, ".gemini", "settings.json")]);
   });
 
   test("motif doctor --json works end to end", () => {
