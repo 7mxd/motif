@@ -36,6 +36,7 @@ while [ $# -gt 0 ]; do
     *) fail "unknown option \"$1\". Use --agent opencode|agents, --version X.Y.Z or --uninstall." ;;
   esac
 done
+VERSION="${VERSION#v}"
 
 OPENCODE_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 if [ -z "$AGENT" ]; then
@@ -61,6 +62,10 @@ if [ -n "$COMMAND_FILE" ] && [ -e "$COMMAND_FILE" ] && ! is_motif_command "$COMM
 fi
 
 if [ "$UNINSTALL" = 1 ]; then
+  if [ ! -e "$TARGET" ] && { [ -z "$COMMAND_FILE" ] || [ ! -e "$COMMAND_FILE" ]; }; then
+    say "Motif isn't installed in $SKILLS, so there was nothing to remove."
+    exit 0
+  fi
   rm -rf "$TARGET"
   if [ -n "$COMMAND_FILE" ]; then rm -f "$COMMAND_FILE"; fi
   say "removed Motif from $SKILLS."
@@ -122,3 +127,6 @@ fi
 
 say "installed Motif v$VERSION in $TARGET, for $WHO."
 if [ -n "$COMMAND_FILE" ]; then say "start it in OpenCode with /motif."; else say "start it the way your agent starts a skill (for example /motif)."; fi
+if [ "$AGENT" = opencode ] && is_motif "$HOME/.agents/skills/motif"; then
+  say "OpenCode also reads ~/.agents/skills, which has an earlier Motif. To remove that one: curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | sh -s -- --agent agents --uninstall"
+fi

@@ -9,7 +9,8 @@ param([string]$Agent = $env:MOTIF_AGENT, [string]$Version = $env:MOTIF_VERSION, 
 function Invoke-MotifInstall([string]$Agent, [string]$Version, [bool]$Uninstall) {
   $ErrorActionPreference = 'Stop'
   $ProgressPreference = 'SilentlyContinue'
-  $Repo = if ($env:MOTIF_REPO) { $env:MOTIF_REPO } else { '7mxd/motif' }
+  if ($Version) { $Version = $Version -replace '^v', '' }
+  $Repo =if ($env:MOTIF_REPO) { $env:MOTIF_REPO } else { '7mxd/motif' }
   $Raw = if ($env:MOTIF_RAW_BASE) { $env:MOTIF_RAW_BASE } else { "https://raw.githubusercontent.com/$Repo/plugins" }
   $Mark = "Installed by Motif's install script"
   function Say([string]$Text) { Write-Host "Motif: $Text" }
@@ -45,6 +46,10 @@ function Invoke-MotifInstall([string]$Agent, [string]$Version, [bool]$Uninstall)
   }
 
   if ($Uninstall) {
+    if (-not (Test-Path -LiteralPath $Target) -and -not ($CommandFile -and (Test-Path -LiteralPath $CommandFile))) {
+      Say "Motif isn't installed in $Skills, so there was nothing to remove."
+      return 0
+    }
     if (Test-Path -LiteralPath $Target) { Remove-Item -LiteralPath $Target -Recurse -Force }
     if ($CommandFile -and (Test-Path -LiteralPath $CommandFile)) { Remove-Item -LiteralPath $CommandFile -Force }
     Say "removed Motif from $Skills."
@@ -107,6 +112,10 @@ function Invoke-MotifInstall([string]$Agent, [string]$Version, [bool]$Uninstall)
   }
   Say "installed Motif v$Version in $Target, for $Who."
   if ($CommandFile) { Say 'start it in OpenCode with /motif.' } else { Say 'start it the way your agent starts a skill (for example /motif).' }
+  $Shared = Join-Path (Join-Path (Join-Path $UserHome '.agents') 'skills') 'motif'
+  if ($Agent -eq 'opencode' -and (Test-Motif $Shared)) {
+    Say "OpenCode also reads ~/.agents/skills, which has an earlier Motif. To remove that one: & ([scriptblock]::Create((irm https://raw.githubusercontent.com/$Repo/main/install.ps1))) -Agent agents -Uninstall"
+  }
   return 0
 }
 

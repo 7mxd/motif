@@ -137,6 +137,46 @@ describe.skipIf(!sh)("install.sh", () => {
     expect(r.exitCode).toBe(2);
     expect(r.output).toContain('unknown option "--everything"');
   }, 60_000);
+
+  test("--version takes a leading v too (3A review)", async () => {
+    const r = await run(freshHome(), ["--agent", "agents", "--version", `v${VERSION}`], "ok", { MOTIF_RAW_BASE: `http://127.0.0.1:${server.port}/nowhere` });
+    expect({ code: r.exitCode, out: r.output }).toMatchObject({ code: 0 });
+    expect(r.output).not.toContain("vv");
+  }, 60_000);
+
+  test("--uninstall says so when there's nothing to remove (3A review)", async () => {
+    const r = await run(freshHome(), ["--agent", "agents", "--uninstall"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.output).toContain("nothing to remove");
+  }, 60_000);
+
+  test.skipIf(Boolean(Bun.which("opencode")))("with no OpenCode and no --agent, installs in ~/.agents/skills (3A review)", async () => {
+    const home = freshHome();
+    const r = await run(home, []);
+    expect(r.exitCode).toBe(0);
+    expect(existsSync(join(home, ".agents/skills/motif/SKILL.md"))).toBe(true);
+  }, 60_000);
+
+  test("installing for OpenCode points out an earlier Motif in ~/.agents/skills, which OpenCode also reads (3A review)", async () => {
+    const home = freshHome();
+    await run(home, ["--agent", "agents"]);
+    const config = slash(join(home, "cfg"));
+    mkdirSync(join(config, "opencode"), { recursive: true });
+    const r = await run(home, ["--agent", "opencode"], "ok", { XDG_CONFIG_HOME: config });
+    expect(r.exitCode).toBe(0);
+    expect(r.output).toContain("OpenCode also reads ~/.agents/skills");
+  }, 60_000);
+
+  test("leaves a /motif command that isn't Motif's alone (3A review)", async () => {
+    const home = freshHome();
+    const config = slash(join(home, "cfg"));
+    mkdirSync(join(config, "opencode/commands"), { recursive: true });
+    writeFileSync(join(config, "opencode/commands/motif.md"), "my own command\n");
+    const r = await run(home, ["--agent", "opencode"], "ok", { XDG_CONFIG_HOME: config });
+    expect(r.exitCode).toBe(2);
+    expect(r.output).toContain("isn't Motif's");
+    expect(readFileSync(join(config, "opencode/commands/motif.md"), "utf8")).toBe("my own command\n");
+  }, 60_000);
 });
 
 const isWin = process.platform === "win32";
@@ -211,5 +251,27 @@ describe.skipIf(!isWin)("install.ps1", () => {
     expect(u.exitCode).toBe(0);
     expect(existsSync(join(other, ".agents/skills/motif"))).toBe(false);
     expect(existsSync(join(other, ".agents/skills/mine"))).toBe(true);
+  }, 180_000);
+
+  test("running it again replaces an earlier Motif install, and takes a version with a leading v (3A review)", async () => {
+    const home = freshHome();
+    await run(file(["-Agent", "agents"]), envFor(home));
+    writeFileSync(join(home, ".agents/skills/motif/stale.md"), "old");
+    const r = await run(file(["-Agent", "agents", "-Version", `v${VERSION}`]), envFor(home, "ok", { MOTIF_RAW_BASE: `http://127.0.0.1:${server.port}/nowhere` }));
+    expect({ code: r.exitCode, out: r.output }).toMatchObject({ code: 0 });
+    expect(existsSync(join(home, ".agents/skills/motif/stale.md"))).toBe(false);
+  }, 180_000);
+
+  test("-Uninstall says so when there's nothing to remove; a /motif command that isn't Motif's is left alone (3A review)", async () => {
+    const home = freshHome();
+    const u = await run(file(["-Agent", "agents", "-Uninstall"]), envFor(home));
+    expect(u.exitCode).toBe(0);
+    expect(u.output).toContain("nothing to remove");
+    const config = join(home, "cfg");
+    mkdirSync(join(config, "opencode/commands"), { recursive: true });
+    writeFileSync(join(config, "opencode/commands/motif.md"), "my own command\n");
+    const r = await run(file(["-Agent", "opencode"]), envFor(home, "ok", { XDG_CONFIG_HOME: config }));
+    expect(r.exitCode).toBe(2);
+    expect(r.output).toContain("isn't Motif's");
   }, 180_000);
 });
