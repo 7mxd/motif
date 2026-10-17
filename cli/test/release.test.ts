@@ -90,6 +90,42 @@ describe("the release workflow", () => {
       "motif.cmd --version", "motif.cmd doctor --json", "MOTIF_HOME", "unset MOTIF_BIN",
     ]) expect(check).toContain(s);
   });
+
+  test("builds the package for other agents and the skill archives, checks their versions, and keeps the branch's files for publishing", () => {
+    const plugin = section("plugin");
+    for (const s of [
+      "bun run packages", "bun run skill:archives", "dist/agents/plugin.json", "dist/agents/gemini-extension.json",
+      "tar -czf dist/plugins-tree.tar.gz -C dist/agents .", "dist/motif-skill.zip", "dist/motif-skill.tar.gz", "name: plugins-tree",
+    ]) expect(plugin).toContain(s);
+  });
+
+  test("publishes the skill archives with the release, and the plugins branch only from its own artifact", () => {
+    const publish = section("publish");
+    for (const s of [
+      "pattern: motif-*", "name: plugins-tree", 'tar -xzf plugins-tree/plugins-tree.tar.gz -C "$dir"',
+      'commit -q -m "Motif $GITHUB_REF_NAME"', 'git -C "$dir" push origin "HEAD:refs/heads/plugins"', '"refs/tags/plugins-$GITHUB_REF_NAME"',
+    ]) expect(publish).toContain(s);
+    expect(publish.indexOf("gh release create")).toBeLessThan(publish.indexOf("refs/heads/plugins"));
+  });
+
+  test.skipIf(!sh)("moves the plugins branch only for a release without a suffix (review focus)", () => {
+    const line = section("publish").split("\n").find((l) => l.trim().startsWith('case "$GITHUB_REF_NAME" in *-*)'));
+    expect(line).toBeDefined();
+    const moves = (tag: string) =>
+      Bun.spawnSync([sh!, "-c", `${line!.trim()}\necho moved`], { env: { ...process.env, GITHUB_REF_NAME: tag } }).stdout.toString().includes("moved");
+    expect([moves("v1.0.0-rc.1"), moves("v0.3.0-beta.2"), moves("v0.2.0"), moves("v1.0.0")]).toEqual([false, false, true, true]);
+  });
+
+  test("checks every agent's install from GitHub on Windows, macOS and Linux after publishing, without the token", () => {
+    const agents = section("agents");
+    expect(agents).toContain("needs: publish");
+    for (const os of ["ubuntu-latest", "macos-latest", "windows-latest"]) expect(agents).toContain(os);
+    for (const s of [
+      "@openai/codex@$CODEX", "@github/copilot@$COPILOT", "@google/gemini-cli@$GEMINI", "opencode-ai@$OPENCODE", "https://cursor.com/install",
+      "bun scripts/agent-checks.ts --source github --doctor", "persist-credentials: false",
+    ]) expect(agents).toContain(s);
+    expect(agents).not.toContain("GH_TOKEN");
+  });
 });
 
 describe("the agents workflow", () => {
