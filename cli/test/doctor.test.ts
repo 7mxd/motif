@@ -94,6 +94,22 @@ describe("runDoctor", () => {
     expect(r.data.unreadable).toEqual([join(home, ".gemini", "settings.json")]);
   });
 
+  test("says which agent settings files it couldn't read, not only in --json (v0.2.0 review minor)", async () => {
+    const home = tempDir("motif-doc-home-");
+    mkdirSync(join(home, ".gemini"), { recursive: true });
+    writeFileSync(join(home, ".gemini", "settings.json"), "{ nope");
+    const r = await runDoctor(tempDir("motif-doc-app-"), deps({ home, platform: "linux", vars: {} }));
+    expect(item(r.data.items as DoctorItem[], "agent-settings")).toEqual({
+      id: "agent-settings",
+      status: "optional",
+      label: "Agent settings",
+      detail: "Motif couldn't read ~/.gemini/settings.json (it isn't valid, or can't be opened), so a design source set up there isn't shown.",
+    });
+    expect(r.text).toContain("○ Agent settings — Motif couldn't read ~/.gemini/settings.json");
+    const clean = await runDoctor(tempDir("motif-doc-app-"), deps({ vars: {} }));
+    expect(item(clean.data.items as DoctorItem[], "agent-settings")).toBeUndefined();
+  });
+
   test("motif doctor --json works end to end", () => {
     const dir = tempDir("motif-e2e-");
     const r = Bun.spawnSync([process.execPath, join(import.meta.dir, "../src/main.ts"), "doctor", "--json", "--cwd", dir]);

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { CommandResult } from "../cli/output";
 import { findBrowser, type BrowserInfo } from "../detect/browser";
-import { AGENTS, type AgentEnv } from "../agents/catalog";
+import { AGENTS, shown, type AgentEnv } from "../agents/catalog";
 import { readAgentServers, sourcesIn } from "../detect/sources";
 import { SOURCES } from "../sources/catalog";
 import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, siteDir, STACK_LABELS } from "../detect/stacks";
@@ -101,6 +101,11 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
     push("sources", "ok", "Design sources", `Connected: ${named.join(", ")}.`);
   } else {
     push("sources", "optional", "Design sources", 'None connected. Everything works without them; you can add them later with "motif connect".');
+  }
+  if (read.unreadable.length > 0) {
+    const files = read.unreadable.map((p) => shown(agentEnv, p)).join(", ");
+    const why = read.unreadable.length === 1 ? "it isn't valid, or can't be opened" : "they aren't valid, or can't be opened";
+    push("agent-settings", "optional", "Agent settings", `Motif couldn't read ${files} (${why}), so a design source set up there isn't shown.`);
   }
 
   const text = ["Motif doctor", ...items.map((i) => `  ${SYMBOL[i.status]} ${i.label} — ${i.detail}`)].join("\n");

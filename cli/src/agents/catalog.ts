@@ -73,7 +73,8 @@ export const AGENTS: AgentInfo[] = [
   {
     id: "codex",
     label: "Codex",
-    found: (e) => Boolean(e.which("codex")),
+    // Its settings folder too: Codex's app and editor extension use it without the codex command.
+    found: (e) => Boolean(e.which("codex")) || existsSync(codexHome(e)),
     settings: (e, cwd) => [user(e, join(codexHome(e), "config.toml"), "toml", "mcp_servers"), project(cwd, ".codex/config.toml", "toml", "mcp_servers")],
     signIn: (s) => `run "codex mcp login ${s}" in a terminal`,
   },

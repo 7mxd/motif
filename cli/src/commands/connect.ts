@@ -16,8 +16,8 @@ export interface ConnectDeps {
   /** True when a person is at the terminal (Motif never reads keys any other way). */
   interactive: boolean;
   readSecret: (prompt: string) => Promise<string>;
-  /** Reads a line the developer types in their own terminal (shown as typed): which agents to set up. */
-  ask: (prompt: string) => Promise<string>;
+  /** Reads a line the developer types in their own terminal (shown as typed): which agents to set up. Null when the input ends. */
+  ask: (prompt: string) => Promise<string | null>;
   configured: () => ConfiguredSource[];
   home: string;
   platform: NodeJS.Platform;
@@ -70,23 +70,27 @@ function readSecret(prompt: string): Promise<string> {
   });
 }
 
-/** Reads one line from the terminal, as typed. */
-function readLine(prompt: string): Promise<string> {
-  process.stdout.write(prompt);
-  const stdin = process.stdin;
+/** Reads one line from the terminal, as typed; null when the input ends first (Ctrl+D, or Ctrl+Z on Windows). */
+export function readLine(prompt: string, stdin: NodeJS.ReadableStream = process.stdin, stdout: NodeJS.WritableStream = process.stdout): Promise<string | null> {
+  stdout.write(prompt);
   let value = "";
   return new Promise((resolve) => {
-    const onData = (chunk: Buffer) => {
-      value += chunk.toString("utf8");
-      const end = value.search(/\r?\n/);
-      if (end !== -1) {
-        stdin.off("data", onData);
-        stdin.pause();
-        resolve(value.slice(0, end));
-      }
+    const done = (line: string | null) => {
+      stdin.off("data", onData);
+      stdin.off("end", onEnd);
+      stdin.pause();
+      if (line === null) stdout.write("\n");
+      resolve(line);
     };
-    stdin.resume();
+    const onData = (chunk: Buffer | string) => {
+      value += String(chunk);
+      const end = value.search(/\r?\n/);
+      if (end !== -1) done(value.slice(0, end));
+    };
+    const onEnd = () => done(null);
     stdin.on("data", onData);
+    stdin.on("end", onEnd);
+    stdin.resume();
   });
 }
 
@@ -227,21 +231,28 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   const config = JSON.parse(genericConfig(source));
   const manual = `To add it by hand, put this in your agent's MCP settings:\n${genericConfig(source)}`;
   const wanted = typeof ctx.flags?.agent === "string" ? ctx.flags.agent : undefined;
-  const agentFlag = wanted ? ` --agent ${wanted}` : "";
+  const asked = wanted?.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (wanted !== undefined) {
+    const unknown = asked!.find((a) => !agentById(a));
+    if (asked!.length === 0 || unknown !== undefined) {
+      return fail(`There's no agent called "${unknown ?? wanted}". Choose from: ${AGENT_IDS.join(", ")}.`, { error: "no-such-agent" });
+    }
+  }
+  const named = asked ? AGENTS.filter((a) => asked.includes(a.id)) : [];
+  // The ids as Motif read them, so a command it prints runs as it is.
+  const agentFlag = asked ? ` --agent ${named.map((a) => a.id).join(",")}` : "";
 
   // Agents that already have the source are reported as such, and need no key.
   const configured = deps.configured();
   const has = (agent: AgentInfo) => configured.find((c) => c.id === source.id && c.agent === agent.id);
 
   let chosen: AgentInfo[];
+  // Named with --agent but not on this computer: nothing is written for them (a settings folder would make them look installed).
+  let missing: AgentInfo[] = [];
   let note = "";
-  if (wanted !== undefined) {
-    const asked = wanted.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-    const unknown = asked.find((a) => !agentById(a));
-    if (asked.length === 0 || unknown !== undefined) {
-      return fail(`There's no agent called "${unknown ?? wanted}". Choose from: ${AGENT_IDS.join(", ")}.`, { error: "no-such-agent" });
-    }
-    chosen = AGENTS.filter((a) => asked.includes(a.id));
+  if (asked) {
+    chosen = named;
+    missing = named.filter((a) => !a.found(env) && !has(a));
   } else {
     const found = AGENTS.filter((a) => a.found(env));
     if (found.length === 0) {
@@ -250,7 +261,9 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
     if (found.length === 1) chosen = found;
     else if (deps.interactive) {
       const menu = found.map((a, i) => `${i + 1} ${a.label}`).join(", ");
-      const picked = pickAgents(await deps.ask(`Set up ${source.label} for which agents? ${menu}. Press Enter for all, or type numbers (such as 1,3): `), found);
+      const answer = await deps.ask(`Set up ${source.label} for which agents? ${menu}. Press Enter for all, or type numbers (such as 1,3): `);
+      if (answer === null) return fail("No answer. Nothing changed.", { error: "no-answer" });
+      const picked = pickAgents(answer, found);
       if (!picked) return fail("That isn't a choice from the list. Nothing changed.", { error: "bad-choice" });
       chosen = picked;
     } else if (source.connect.auth === "key" && found.some((a) => !has(a))) {
@@ -262,7 +275,7 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   }
 
   let secret = "";
-  if (source.connect.auth === "key" && chosen.some((a) => !has(a))) {
+  if (source.connect.auth === "key" && chosen.some((a) => !has(a) && !missing.includes(a))) {
     if (!deps.interactive) return needsTerminal(source, deps, agentFlag);
     const key = await deps.readSecret(`Paste your ${source.label} key (get one at ${source.docs}); it won't be shown: `);
     if (!key) return fail("No key entered. Nothing changed.", { error: "no-key" });
@@ -277,6 +290,10 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
     const existing = has(agent);
     if (existing) {
       results.push({ agent, status: "already", server: existing.server, where: existing.where });
+      continue;
+    }
+    if (missing.includes(agent)) {
+      results.push({ agent, status: "failed", output: "Motif didn't find it on this computer" });
       continue;
     }
     const r = await addTo(agent, server, deps, env);

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { genericConfig, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
+import { PassThrough } from "node:stream";
+import { genericConfig, readLine, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
 import type { ConfiguredSource } from "../src/detect/sources";
 import { sourceById } from "../src/sources/catalog";
 import { tempDir } from "./tmp";
@@ -397,5 +398,64 @@ describe("motif connect: every agent (Part 3)", () => {
     const r = await runConnect(".", ctx("21st"), s.deps);
     expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by git");
     expect(r.text).not.toContain("settings.json, which now holds your key");
+  });
+
+  test("--agent is read without spaces or capitals, and the command it prints is the one it read (v0.2.0 review minor)", async () => {
+    const s = setup(["claude", "cursor"], { interactive: false });
+    const r = await runConnect(".", { positionals: ["21st"], flags: { agent: "Claude, Cursor" } }, s.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.data.run).toBe("motif connect 21st --agent claude,cursor");
+    expect(r.text).toContain("  motif connect 21st --agent claude,cursor");
+  });
+
+  test("--agent naming an agent that isn't on this computer writes nothing for it, file agents too (v0.2.0 review minor)", async () => {
+    const s = setup(["claude"]);
+    const r = await runConnect(".", { positionals: ["motion"], flags: { agent: "claude,cursor,gemini" } }, s.deps);
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toContain("✓ Claude Code: added Motion");
+    expect(r.text).toContain("✗ Cursor: couldn't add it: Motif didn't find it on this computer");
+    expect(r.text).toContain("✗ Gemini CLI: couldn't add it: Motif didn't find it on this computer");
+    expect(existsSync(join(s.home, ".cursor"))).toBe(false);
+    expect(s.agentRuns().map((x) => x.cli)).toEqual(["claude"]);
+    const k = setup(["claude"]);
+    const kr = await runConnect(".", { positionals: ["21st"], flags: { agent: "cursor" } }, k.deps);
+    expect(kr.exitCode).toBe(2);
+    expect(k.calls.prompts).toBe(0);
+    expect(existsSync(join(k.home, ".cursor"))).toBe(false);
+  });
+
+  test("Codex counts as installed when its settings folder is there, as Cursor and VS Code do (v0.2.0 review minor)", async () => {
+    const s = setup([]);
+    mkdirSync(join(s.home, ".codex"));
+    const r = await runConnect(".", { positionals: ["motion"], flags: { agent: "codex" } }, s.deps);
+    expect(r.exitCode).toBe(0);
+    expect(readFileSync(join(s.home, ".codex", "config.toml"), "utf8")).toContain("[mcp_servers.motion]");
+  });
+
+  test("when the input ends at the agent question (Ctrl+D, Ctrl+Z), nothing changes and it says so (v0.2.0 review minor)", async () => {
+    const s = setup(["claude", "cursor"], { ask: async () => null });
+    const r = await runConnect(".", ctx("motion"), s.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toBe("No answer. Nothing changed.");
+    expect(s.agentRuns()).toEqual([]);
+  });
+});
+
+describe("readLine (v0.2.0 review minor)", () => {
+  const ended = (text: string) => {
+    const input = new PassThrough();
+    input.end(text);
+    return input;
+  };
+  const quiet = () => new PassThrough();
+
+  test("returns the line typed, without its line ending", async () => {
+    expect(await readLine("Which? ", ended("1,3\r\nmore"), quiet())).toBe("1,3");
+    expect(await readLine("Which? ", ended("2\n"), quiet())).toBe("2");
+  });
+
+  test("returns null when the input ends before a line does", async () => {
+    expect(await readLine("Which? ", ended(""), quiet())).toBeNull();
+    expect(await readLine("Which? ", ended("1, 2"), quiet())).toBeNull();
   });
 });

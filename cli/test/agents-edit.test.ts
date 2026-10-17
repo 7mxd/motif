@@ -1,5 +1,6 @@
-import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "jsonc-parser";
 import { addJsonServer, addTomlServer } from "../src/agents/edit";
@@ -111,5 +112,84 @@ describe("adding a server to Codex's config.toml", () => {
     writeFileSync(p, 'model = "gpt-5"');
     expect(addTomlServer(p, "motion", { url: "https://mcp.motion.dev" })).toEqual({ ok: true });
     expect(Bun.TOML.parse(readFileSync(p, "utf8"))).toEqual({ model: "gpt-5", mcp_servers: { motion: { url: "https://mcp.motion.dev" } } });
+  });
+});
+
+describe("connect follow-ups (v0.2.0 review minors)", () => {
+  const canSymlink = (() => {
+    try {
+      const d = dir();
+      writeFileSync(join(d, "a"), "");
+      symlinkSync(join(d, "a"), join(d, "b"), "file");
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  test("a file whose servers aren't an object is left as it was, with the reason, and nothing throws", () => {
+    for (const value of ["null", "[]", '"x"', "3"]) {
+      const p = join(dir(), "mcp.json");
+      const before = `{\n  "servers": ${value}\n}\n`;
+      writeFileSync(p, before);
+      const r = addJsonServer(p, "servers", "motion", { type: "http", url: "https://mcp.motion.dev" });
+      expect({ value, r }).toEqual({ value, r: { ok: false, reason: `${p}'s "servers" isn't a list of servers, so it wasn't changed` } });
+      expect(readFileSync(p, "utf8")).toBe(before);
+    }
+    const q = join(dir(), "config.toml");
+    writeFileSync(q, 'mcp_servers = "x"\n');
+    expect(addTomlServer(q, "motion", { url: "https://mcp.motion.dev" })).toEqual({
+      ok: false, reason: `${q}'s "mcp_servers" isn't a list of servers, so it wasn't changed`,
+    });
+    expect(readFileSync(q, "utf8")).toBe('mcp_servers = "x"\n');
+  });
+
+  test.skipIf(!canSymlink)("a settings file that is a link (dotfiles) stays a link; the file it points to gets the server", () => {
+    const home = dir();
+    const dotfiles = join(home, "dotfiles");
+    mkdirSync(dotfiles);
+    mkdirSync(join(home, ".cursor"));
+    const real = join(dotfiles, "mcp.json");
+    const link = join(home, ".cursor", "mcp.json");
+    writeFileSync(real, '{\n  "mcpServers": {}\n}\n');
+    symlinkSync(real, link, "file");
+    expect(addJsonServer(link, "mcpServers", "motion", { url: "https://mcp.motion.dev" })).toEqual({ ok: true });
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(readFileSync(real, "utf8"))).toEqual({ mcpServers: { motion: { url: "https://mcp.motion.dev" } } });
+    expect([...readdirSync(dotfiles), ...readdirSync(join(home, ".cursor"))].filter((f) => f.endsWith(".tmp"))).toEqual([]);
+    const toml = join(dotfiles, "config.toml");
+    const tomlLink = join(home, "config.toml");
+    writeFileSync(toml, 'model = "gpt-5"\n');
+    symlinkSync(toml, tomlLink, "file");
+    expect(addTomlServer(tomlLink, "motion", { url: "https://mcp.motion.dev" })).toEqual({ ok: true });
+    expect(lstatSync(tomlLink).isSymbolicLink()).toBe(true);
+    expect(readFileSync(toml, "utf8")).toContain("[mcp_servers.motion]");
+  });
+
+  test("a new file holding a key is written readable by its owner only from the start, not changed to that after", () => {
+    const writes = spyOn(fs, "writeFileSync");
+    try {
+      const p = join(dir(), "mcp.json");
+      addJsonServer(p, "mcpServers", "21st", { url: "https://21st.dev/api/mcp", headers: { "x-api-key": "abcd1234" } }, true);
+      const q = join(dir(), "config.toml");
+      addTomlServer(q, "21st", { url: "https://21st.dev/api/mcp", headers: { "x-api-key": "abcd1234" } }, true);
+      const temps = writes.mock.calls.filter((c) => String(c[0]).endsWith(".tmp"));
+      expect(temps.map((c) => (c[2] as { mode?: number } | undefined)?.mode)).toEqual([0o600, 0o600]);
+    } finally {
+      writes.mockRestore();
+    }
+  });
+
+  test("a comment after the last server stays on that server's line", () => {
+    const p = join(dir(), "mcp.json");
+    writeFileSync(p, '{\n  "mcpServers": {\n    "a": { "url": "https://a.example" }, // mine\n  }\n}\n');
+    expect(addJsonServer(p, "mcpServers", "motion", { url: "https://mcp.motion.dev" })).toEqual({ ok: true });
+    expect(readFileSync(p, "utf8")).toContain('    "a": { "url": "https://a.example" }, // mine\n    "motion": {');
+    const q = join(dir(), "mcp.json");
+    writeFileSync(q, '{\r\n  "mcpServers": {\r\n    "a": { "url": "https://a.example" } /* mine */\r\n  }\r\n}\r\n');
+    expect(addJsonServer(q, "mcpServers", "motion", { url: "https://mcp.motion.dev" })).toEqual({ ok: true });
+    const after = readFileSync(q, "utf8");
+    expect(after).toContain('    "a": { "url": "https://a.example" }, /* mine */\r\n    "motion": {');
+    expect(parse(after)).toEqual({ mcpServers: { a: { url: "https://a.example" }, motion: { url: "https://mcp.motion.dev" } } });
   });
 });
