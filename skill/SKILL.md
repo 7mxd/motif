@@ -21,7 +21,7 @@ The tool is in the skill folder's `bin` folder. Run it by its full path, from th
 | Windows PowerShell | `& "<skill folder>\bin\motif.cmd" <command>` |
 | Windows Command Prompt | `"<skill folder>\bin\motif.cmd" <command>` |
 
-Wherever Motif's files say `motif <command>`, run it this way.
+Wherever Motif's files say `motif <command>`, run it this way. If your agent didn't tell you where the skill folder is, [agents.md](agents.md) lists where each agent installs it.
 
 - Add `--json` whenever you read the output yourself: it prints one JSON object. Tell the developer what it means in plain words.
 - Exit codes: `0` all good, `1` problems found (the output lists them), `2` it couldn't run (the output says why).
@@ -39,7 +39,7 @@ Wherever Motif's files say `motif <command>`, run it this way.
 
 | The developer… | Follow |
 |---|---|
-| types /design, or asks for design help without saying what | [modes/design.md](modes/design.md) |
+| types /design or /motif with nothing else, or asks for design help without saying what | [modes/design.md](modes/design.md) |
 | wants a new app, or a new look from scratch | [modes/init.md](modes/init.md) |
 | wants a new screen, flow or feature | [modes/feature.md](modes/feature.md) |
 | wants to improve, review, audit or fix how the app looks | [modes/review.md](modes/review.md) |
@@ -58,7 +58,7 @@ Motif's guides for other stacks aren't ready yet. For an app on one of them, or 
    - Write a change into `DESIGN.md` or `design/tokens.json` (a new rule, role, value or wording) only after the developer approves that exact change, and name who approved it in the change-log line. Never put a name on an approval that didn't happen: with approvals turned off, write "not yet approved" and list the change at the end.
    - When what you built differs from what you showed (another approach, or a visible change you didn't describe), show it and ask before keeping it.
 3. **Ask with choices.** Offer two to four options with a recommended default, plus "or tell me in your own words". Ask everything a step needs in one round; "I don't know" is fine (use the default).
-   - When your agent has its own question prompt (the developer answers by picking an option), ask with it, after showing any pictures or proposal in your message: one item per decision, the recommended option first with "(Recommended)" in its label, up to four per prompt (more go in a second one). The prompt adds a box for the developer's own words.
+   - When your agent has its own question prompt (the developer answers by picking an option; [agents.md](agents.md) names each agent's), ask with it, after showing any pictures or proposal in your message: one item per decision, the recommended option first with "(Recommended)" in its label, up to four per prompt (more go in a second one). The prompt adds a box for the developer's own words.
    - Without one, ask in a numbered list at the end of your message with one decision per item.
    - Either way, ask again any that wasn't answered before going on.
 4. **Plain words.** Say "your design guide" and "theme values", never contract or tokens. Explain each finding in one line: what's wrong and why it matters. If the developer says "be brief", drop the explanations.
@@ -97,3 +97,4 @@ Make sure `design/.gitignore` lists `.progress.json` and `directions/` (create i
 - `presets/<style>/`: the 8 starting styles (`tokens.json`, `about.md`, `sample.html`).
 - [preview-kit/README.md](preview-kit/README.md): how to write mockups.
 - `sources/`: one note per design source. `adapters/`: one guide per stack.
+- [agents.md](agents.md): what differs between agents (where this folder is, the question prompt, the shell).

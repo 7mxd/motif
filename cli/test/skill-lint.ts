@@ -12,11 +12,14 @@ export function lineCount(text: string): number {
   return text === "" ? 0 : text.replace(/\n$/, "").split("\n").length;
 }
 
-const NOT_PORTABLE: [RegExp, string][] = [
-  [/\b(?:AskUserQuestion|TodoWrite|SlashCommand|WebFetch|WebSearch)\b/, "a specific agent's tool name"],
-  [/\b(?:Bash|Read|Write|Edit|Glob|Grep|Task|Skill) tool\b/, "a specific agent's tool name"],
-  [/\bmcp__\w+/, "an agent-specific MCP tool name (name tools by their own names, e.g. refero_get_style)"],
-  [/\$ARGUMENTS|\$\{CLAUDE_[A-Z_]+\}/, "an agent-specific variable"],
+/** The one file in skill/ that may name agents' tools: per-agent notes (Part 3 spec §5, core spec §5.5). */
+export const AGENT_NOTES = "agents.md";
+
+const NOT_PORTABLE: [RegExp, string, "tool" | "other"][] = [
+  [/\b(?:AskUserQuestion|TodoWrite|SlashCommand|WebFetch|WebSearch|request_user_input|ask_user|AskQuestion|askQuestions)\b/, "a specific agent's tool name", "tool"],
+  [/\b(?:Bash|Read|Write|Edit|Glob|Grep|Task|Skill) tool\b/, "a specific agent's tool name", "tool"],
+  [/\bmcp__\w+/, "an agent-specific MCP tool name (name tools by their own names, e.g. refero_get_style)", "other"],
+  [/\$ARGUMENTS|\$\{CLAUDE_[A-Z_]+\}/, "an agent-specific variable", "other"],
 ];
 const AGENT_FRONTMATTER = /^(?:allowed-tools|context|hooks|argument-hint|disable-model-invocation|user-invocable|model|agent):/m;
 const SKILL_KEYS = ["name", "description", "license", "compatibility", "metadata"];
@@ -73,7 +76,8 @@ export function lintSkillMarkdown(file: string, raw: string, opts: { exists: (sk
     }
   }
 
-  for (const [pattern, what] of NOT_PORTABLE) {
+  for (const [pattern, what, kind] of NOT_PORTABLE) {
+    if (kind === "tool" && file === AGENT_NOTES) continue;
     if (pattern.test(text)) problems.push(`${file} uses ${what}.`);
   }
   const fm = frontmatter(text);

@@ -217,3 +217,23 @@ describe("plain web, screens behind forms, and every size", () => {
     expect(read("modes/design.md")).toContain("No Node.js for a React app");
   });
 });
+
+describe("Motif in every agent (Part 3)", () => {
+  const skill = read("SKILL.md");
+  const agents = read("agents.md");
+
+  test("a bare /motif starts the design mode, as /design does", () => {
+    expect(skill).toContain("| types /design or /motif with nothing else, or asks for design help without saying what | [modes/design.md](modes/design.md) |");
+  });
+
+  test("SKILL.md sends agents to agents.md for the skill folder and the question prompt", () => {
+    expect(outOfOrder(skill, ["## Running the motif tool", "(agents.md)", "3. **Ask with choices.**", "(agents.md)", "## What's in the skill folder", "(agents.md)"])).toBeNull();
+  });
+
+  test("agents.md covers every agent: the skill folder, the question prompt and the shell", () => {
+    for (const a of ["Claude Code", "Codex", "Cursor", "GitHub Copilot", "VS Code", "Gemini CLI", "OpenCode", "Any other agent"]) expect(agents).toContain(a);
+    for (const s of ["skills/motif", "~/.agents/skills/motif", "request_user_input", "Plan mode", "ask_user", "numbered list", "PowerShell", "motif.cmd"]) {
+      expect(agents).toContain(s);
+    }
+  });
+});

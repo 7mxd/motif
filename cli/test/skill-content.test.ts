@@ -89,6 +89,14 @@ describe("the lint rules", () => {
     expect(lint("knowledge/ux-patterns/sign-in.md", good.replace("## Anatomy\n\n", ""))).toHaveLength(1);
     expect(lint("knowledge/motion.md", "# Motion\n\n## Anything\n")).toEqual([]);
   });
+
+  test("agent tool names appear only in agents.md (Part 3)", () => {
+    expect(lint("modes/feature.md", "Ask with ask_user.\n")).toEqual(["modes/feature.md uses a specific agent's tool name."]);
+    expect(lint("modes/feature.md", "Use request_user_input.\n")).toEqual(["modes/feature.md uses a specific agent's tool name."]);
+    expect(lint("modes/feature.md", "Use AskQuestion or askQuestions.\n")).toEqual(["modes/feature.md uses a specific agent's tool name."]);
+    expect(lint("agents.md", "| Codex | request_user_input | AskUserQuestion | ask_user |\n")).toEqual([]);
+    expect(lint("agents.md", "Use $ARGUMENTS.\n")).toEqual(["agents.md uses an agent-specific variable."]);
+  });
 });
 
 describe("everything in skill/", () => {
