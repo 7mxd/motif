@@ -4,20 +4,49 @@
 
 Design guide tools for AI coding agents: build web and mobile apps with polished UI, UX and motion — and keep them consistent as your app and team grow.
 
-> **Preview (v0.2.0).** Motif works in Claude Code today, for React web apps and plain web sites. Packages for Codex, Cursor, GitHub Copilot, Gemini CLI and OpenCode come with this release; more stacks and the first full release come next.
+> **Preview (v0.2.0).** Motif works in Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI and OpenCode, for React web apps and plain web sites. More stacks and the first full release come next.
 
 ## Install
 
-In Claude Code:
+**Claude Code**
 
 ```
 /plugin marketplace add 7mxd/motif
 /plugin install motif@motif
 ```
 
-Then ask for design work ("make this screen look better"), or type `/motif:design`.
+**Codex**
 
-You need Claude Code 2.1.224 or later and git. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v0.1.0) and checks it against the release's checksums. See the [release notes](docs/releases/v0.1.0.md), or [build and try the plugin from source](plugin/claude-code/README.md).
+```
+codex plugin marketplace add 7mxd/motif
+codex plugin add motif@motif
+```
+
+**GitHub Copilot CLI**
+
+```
+copilot plugin marketplace add 7mxd/motif
+copilot plugin install motif@motif
+```
+
+In VS Code, run "Chat: Install Plugin From Source" and enter `7mxd/motif`.
+
+**Cursor:** add the plugin marketplace `7mxd/motif` in Cursor's plugin settings, or in the CLI run `cursor-agent plugin marketplace add https://github.com/7mxd/motif`.
+
+**Gemini CLI**
+
+```
+gemini extensions install https://github.com/7mxd/motif --ref plugins --auto-update
+```
+
+**OpenCode, or any agent that reads `~/.agents/skills`**
+
+- macOS and Linux: `curl -fsSL https://raw.githubusercontent.com/7mxd/motif/main/install.sh | sh`
+- Windows PowerShell: `irm https://raw.githubusercontent.com/7mxd/motif/main/install.ps1 | iex`
+
+Then ask for design work ("make this screen look better"), or start Motif: `/motif:design` in Claude Code, `$motif` in Codex, `/motif` everywhere else.
+
+You need git, and Claude Code 2.1.224 or later if you use Claude Code. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v0.2.0) and checks it against the release's checksums. See the [release notes](docs/releases/v0.2.0.md), or build and try Motif from source: [Claude Code](plugin/claude-code/README.md), [other agents](plugin/agents/README.md).
 
 ## The `motif` tool
 

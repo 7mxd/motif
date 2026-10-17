@@ -3,7 +3,7 @@
 //   bun scripts/agent-checks.ts --source local     from dist/agents-local and dist/ (bun run packages, skill:archives first);
 //                                                  agents whose CLI isn't on PATH are skipped
 //   bun scripts/agent-checks.ts --source github    from GitHub, as people install it (after a release); every agent must run
-// Options: --agents codex,gemini (some agents only), --doctor (also run the tool).
+// Options: --agents codex,gemini (some agents only), --skip cursor (leave some out), --doctor (also run the tool).
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -238,10 +238,11 @@ if (import.meta.main) {
   const value = (flag: string) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined);
   const kind = value("--source");
   if (kind !== "local" && kind !== "github") {
-    console.error("Usage: bun scripts/agent-checks.ts --source local|github [--agents codex,gemini] [--doctor]");
+    console.error("Usage: bun scripts/agent-checks.ts --source local|github [--agents codex,gemini] [--skip cursor] [--doctor]");
     process.exit(2);
   }
   const only = value("--agents")?.split(",");
+  const skip = value("--skip")?.split(",") ?? [];
   const release = kind === "local" ? localRelease(join(REPO, "dist"), join(REPO, "dist", "agents")) : null;
   const source: CheckSource = kind === "local"
     ? { kind, marketplace: join(REPO, "dist", "agents-local"), agents: join(REPO, "dist", "agents") }
@@ -249,6 +250,10 @@ if (import.meta.main) {
   let failed = 0;
   for (const check of agentChecks(source, { release: release ?? undefined, cursorKey: process.env[CURSOR_KEY_VAR] || undefined })) {
     if (only && !only.includes(check.id)) continue;
+    if (skip.includes(check.id)) {
+      console.log(`○ ${check.label}: skipped (--skip ${check.id})`);
+      continue;
+    }
     const result = await checkAgent(check, { doctor: args.includes("--doctor"), missingIsSkip: kind === "local" });
     const mark = result.status === "ok" ? "✓" : result.status === "skipped" ? "○" : "✗";
     console.log(`${mark} ${check.label}: ${result.status === "skipped" ? `skipped (${result.detail})` : result.detail}`);

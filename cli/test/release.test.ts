@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { agentChecks } from "../scripts/agent-checks";
 
 const REPO = join(import.meta.dir, "../..");
 const VERSION = readFileSync(join(REPO, "skill/VERSION"), "utf8").trim();
@@ -39,6 +40,18 @@ describe("the READMEs", () => {
     }
     expect(readFileSync(join(REPO, "README.md"), "utf8")).toContain(`**Preview (v${VERSION}).**`);
     expect(readFileSync(join(REPO, "plugin/claude-code/README.md"), "utf8")).not.toContain("Until Motif's first release is published");
+  });
+
+  test("the README's install commands are the ones the release checks run (Part 3)", () => {
+    const readme = readFileSync(join(REPO, "README.md"), "utf8");
+    const ciOnly = new Set(["--consent", "--skip-settings"]);
+    for (const c of agentChecks({ kind: "github", repo: "7mxd/motif", branch: "plugins" }, { platform: "linux", repo: REPO })) {
+      if (c.id === "opencode") continue;
+      for (const step of c.steps) expect([c.id, readme.includes(step.filter((a) => !ciOnly.has(a)).join(" "))]).toEqual([c.id, true]);
+    }
+    for (const s of ["raw.githubusercontent.com/7mxd/motif/main/install.sh | sh", "raw.githubusercontent.com/7mxd/motif/main/install.ps1 | iex", "/motif", "$motif"]) {
+      expect(readme).toContain(s);
+    }
   });
 
   test("the README's motif connect row says it sets sources up in the agents you choose (Part 3)", () => {
@@ -156,6 +169,13 @@ describe("the release workflow", () => {
   test("a failed plugins-branch push doesn't skip the Claude Code check, and the agents check waits for the branch (3A review)", () => {
     expect(section("check")).toContain("needs: publish");
     expect(section("agents")).toContain("needs: plugins-branch");
+  });
+
+  test("on CI's macOS machine, the release check leaves Cursor out: its CLI can't save its login there (v0.2.0 release)", () => {
+    const agents = section("agents");
+    expect(agents).toContain("runner.os == 'macOS' && '--skip cursor' || ''");
+    expect(agents).toContain("- name: Install the Cursor CLI (Linux)");
+    expect(agents).not.toContain("Install the Cursor CLI (macOS");
   });
 
   test("the agents checks can't hold a runner for hours (3A review)", () => {

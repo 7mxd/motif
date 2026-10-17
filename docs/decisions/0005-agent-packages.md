@@ -14,5 +14,5 @@
 
 ## Consequences
 
-- Every release publishes `motif-skill.zip` and `motif-skill.tar.gz` too, and checks every agent's install from GitHub on Windows, macOS and Linux; CI checks them from the build on every push and with the agents' latest versions every week.
+- Every release publishes `motif-skill.zip` and `motif-skill.tar.gz` too, and checks every agent's install from GitHub on Windows, macOS and Linux (Cursor's on Windows and Linux: its CLI can't keep its sign-in on CI's macOS machine); CI checks them from the build on every push and with the agents' latest versions every week.
 - The plugins branch is written by CI only; a fix ships as a new release.

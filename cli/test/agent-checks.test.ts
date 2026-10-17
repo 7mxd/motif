@@ -167,6 +167,14 @@ describe("running a check (final review)", () => {
   });
 });
 
+describe("leaving an agent out of a run", () => {
+  test("--skip leaves an agent out and says so (the release check on CI's macOS machine)", () => {
+    const r = Bun.spawnSync([process.execPath, join(import.meta.dir, "../scripts/agent-checks.ts"), "--source", "github", "--agents", "cursor", "--skip", "cursor"]);
+    expect({ code: r.exitCode, out: r.stdout.toString() }).toMatchObject({ code: 0 });
+    expect(r.stdout.toString()).toContain("○ Cursor CLI: skipped (--skip cursor)");
+  });
+});
+
 describe("Cursor's check and its key (Cursor's CLI needs a sign-in even to add a marketplace)", () => {
   test("Cursor signs in with the key it's given, and no other agent gets it", () => {
     const checks = byId(agentChecks(github, { platform: "linux", repo: "/r", cursorKey: "cursor-key-1" }));
