@@ -33,7 +33,7 @@ const claudeRuns = (runs: { exe: string; args: string[] }[]) => runs.filter((r) 
 
 describe("motif connect (no source)", () => {
   test("lists every source with what it adds, its cost, and how to connect it", async () => {
-    const { deps } = fakes({ connected: [{ id: "motion", server: "motion", where: ".mcp.json" }] });
+    const { deps } = fakes({ connected: [{ id: "motion", agent: "claude", server: "motion", where: ".mcp.json" }] });
     const r = await runConnect(".", ctx(), deps);
     expect(r.exitCode).toBe(0);
     expect(r.text).toContain("✓ Motion");
@@ -61,7 +61,7 @@ describe("motif connect <source>", () => {
   });
 
   test("an already connected source is left alone", async () => {
-    const { deps, calls } = fakes({ connected: [{ id: "refero", server: "refero", where: "~/.claude.json" }] });
+    const { deps, calls } = fakes({ connected: [{ id: "refero", agent: "claude", server: "refero", where: "~/.claude.json" }] });
     const r = await runConnect(".", ctx("refero"), deps);
     expect(r.exitCode).toBe(0);
     expect(r.text).toContain("~/.claude.json");
@@ -194,10 +194,10 @@ describe("motif connect: from the final review", () => {
   });
 
   test("a source that is set up but not signed in says how to sign in", async () => {
-    const r = await runConnect(".", ctx("refero"), fakes({ connected: [{ id: "refero", server: "refero", where: "~/.claude.json" }] }).deps);
+    const r = await runConnect(".", ctx("refero"), fakes({ connected: [{ id: "refero", agent: "claude", server: "refero", where: "~/.claude.json" }] }).deps);
     expect(r.exitCode).toBe(0);
     expect(r.text).toContain("/mcp");
-    const motion = await runConnect(".", ctx("motion"), fakes({ connected: [{ id: "motion", server: "motion", where: "~/.claude.json" }] }).deps);
+    const motion = await runConnect(".", ctx("motion"), fakes({ connected: [{ id: "motion", agent: "claude", server: "motion", where: "~/.claude.json" }] }).deps);
     expect(motion.text).not.toContain("/mcp");
   });
 });

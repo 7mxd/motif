@@ -39,7 +39,7 @@ describe("the design source catalog", () => {
         github: { command: "gh-mcp" },
       },
     }));
-    expect(findConfiguredSources(cwd, home).map((s) => s.id).sort()).toEqual(["21st", "60fps", "motion", "refero"]);
+    expect([...new Set(findConfiguredSources(cwd, home).map((s) => s.id))].sort()).toEqual(["21st", "60fps", "motion", "refero"]);
   });
 });
 

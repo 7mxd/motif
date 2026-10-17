@@ -82,7 +82,7 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
   }
 
   const sources = findConfiguredSources(cwd, deps.home);
-  if (sources.length > 0) push("sources", "ok", "Design sources", `Connected: ${sources.map((s) => SOURCE_LABELS[s.id]).join(", ")}.`);
+  if (sources.length > 0) push("sources", "ok", "Design sources", `Connected: ${[...new Set(sources.map((s) => SOURCE_LABELS[s.id]))].join(", ")}.`);
   else push("sources", "optional", "Design sources", 'None connected. Everything works without them; you can add them later with "motif connect".');
 
   const text = ["Motif doctor", ...items.map((i) => `  ${SYMBOL[i.status]} ${i.label} — ${i.detail}`)].join("\n");
