@@ -9,7 +9,8 @@
     "presets": "bun scripts/build-presets.ts",
     "fonts": "bun scripts/vendor-fonts.ts",
     "plugin": "bun scripts/build-plugin.ts",
-    "plugin:zip": "bun scripts/zip-plugin.ts"
+    "plugin:zip": "bun scripts/zip-plugin.ts",
+    "notices": "bun scripts/notices.ts"
   },
   "dependencies": {
     "culori": "^4.0.2",
