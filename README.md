@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/cover.png" alt="Motif: the title and &quot;A design guide your coding agent follows&quot; beside two phones showing its sample site in light and dark, a card with that site's design guide colours, and a terminal card with Motif's checks passing"></p>
+
 # Motif
 
 Design guide tools for AI coding agents: build web and mobile apps with polished UI, UX and motion — and keep them consistent as your app and team grow.
