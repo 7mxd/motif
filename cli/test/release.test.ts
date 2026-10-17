@@ -73,6 +73,8 @@ describe("the release workflow", () => {
   test("gives each job only the access it needs: write only to publish, the token only to the download step (final review)", () => {
     expect(wf.slice(0, wf.indexOf("\njobs:"))).toContain("permissions:\n  contents: read");
     expect(section("publish")).toContain("permissions:\n      contents: write");
+    expect(section("plugins-branch")).toContain("permissions:\n      contents: write");
+    expect(wf.split("contents: write").length - 1).toBe(2);
     const check = section("check");
     const download = check.slice(check.indexOf("- name: Download the plugin"), check.indexOf("- name: The zip matches"));
     expect(download).toContain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
@@ -101,15 +103,17 @@ describe("the release workflow", () => {
 
   test("publishes the skill archives with the release, and the plugins branch only from its own artifact", () => {
     const publish = section("publish");
+    expect(publish).toContain("pattern: motif-*");
+    expect(publish).not.toContain("plugins-tree");
+    const branch = section("plugins-branch");
     for (const s of [
-      "pattern: motif-*", "name: plugins-tree", 'tar -xzf plugins-tree/plugins-tree.tar.gz -C "$dir"',
+      "needs: publish", "name: plugins-tree", 'tar -xzf plugins-tree/plugins-tree.tar.gz -C "$dir"',
       'commit -q -m "Motif $GITHUB_REF_NAME"', 'git -C "$dir" push origin "HEAD:refs/heads/plugins"', '"refs/tags/plugins-$GITHUB_REF_NAME"',
-    ]) expect(publish).toContain(s);
-    expect(publish.indexOf("gh release create")).toBeLessThan(publish.indexOf("refs/heads/plugins"));
+    ]) expect(branch).toContain(s);
   });
 
   test.skipIf(!sh)("moves the plugins branch only for a release without a suffix (review focus)", () => {
-    const line = section("publish").split("\n").find((l) => l.trim().startsWith('case "$GITHUB_REF_NAME" in *-*)'));
+    const line = section("plugins-branch").split("\n").find((l) => l.trim().startsWith('case "$GITHUB_REF_NAME" in *-*)'));
     expect(line).toBeDefined();
     const moves = (tag: string) =>
       Bun.spawnSync([sh!, "-c", `${line!.trim()}\necho moved`], { env: { ...process.env, GITHUB_REF_NAME: tag } }).stdout.toString().includes("moved");
@@ -118,7 +122,7 @@ describe("the release workflow", () => {
 
   test("checks every agent's install from GitHub on Windows, macOS and Linux after publishing, without the token", () => {
     const agents = section("agents");
-    expect(agents).toContain("needs: publish");
+    expect(agents).toContain("needs: plugins-branch");
     for (const os of ["ubuntu-latest", "macos-latest", "windows-latest"]) expect(agents).toContain(os);
     for (const s of [
       "@openai/codex@$CODEX", "@github/copilot@$COPILOT", "@google/gemini-cli@$GEMINI", "opencode-ai@$OPENCODE", "https://cursor.com/install",
@@ -132,6 +136,16 @@ describe("the release workflow", () => {
     const step = agents.slice(agents.indexOf("- name: Install the Cursor CLI (Windows)"), agents.indexOf("- name: Each agent installs Motif from GitHub"));
     expect(step).toContain("[Environment]::GetEnvironmentVariable('Path', 'User')");
     expect(step).toContain("$env:GITHUB_PATH");
+  });
+
+  test("a failed plugins-branch push doesn't skip the Claude Code check, and the agents check waits for the branch (3A review)", () => {
+    expect(section("check")).toContain("needs: publish");
+    expect(section("agents")).toContain("needs: plugins-branch");
+  });
+
+  test("the agents checks can't hold a runner for hours (3A review)", () => {
+    expect(section("agents")).toContain("timeout-minutes: 30");
+    expect(readFileSync(join(REPO, ".github/workflows/agents.yml"), "utf8")).toContain("timeout-minutes: 30");
   });
 });
 

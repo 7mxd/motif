@@ -39,7 +39,7 @@ Wherever Motif's files say `motif <command>`, run it this way. If your agent did
 
 | The developer… | Follow |
 |---|---|
-| types /design or /motif with nothing else, or asks for design help without saying what | [modes/design.md](modes/design.md) |
+| types /design, /motif or $motif with nothing else, or asks for design help without saying what | [modes/design.md](modes/design.md) |
 | wants a new app, or a new look from scratch | [modes/init.md](modes/init.md) |
 | wants a new screen, flow or feature | [modes/feature.md](modes/feature.md) |
 | wants to improve, review, audit or fix how the app looks | [modes/review.md](modes/review.md) |

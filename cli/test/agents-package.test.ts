@@ -131,6 +131,7 @@ describe("the docs for the package", () => {
     for (const s of [
       "bun run packages", "bun run skill:archives", "dist/agents-local", "codex plugin marketplace add", "copilot plugin marketplace add",
       "gemini extensions link", "cursor-agent", "install.sh", "install.ps1", "MOTIF_BIN", "bun scripts/agent-checks.ts --source local", "plugins branch",
+      "`bun run build`, which writes `dist/motif`",
     ]) expect(guide).toContain(s);
   });
 
@@ -140,5 +141,13 @@ describe("the docs for the package", () => {
     const core = read("docs/specs/2026-10-12-motif-core-design.md");
     expect(core).toContain("2026-10-17-motif-part3-agents-design.md");
     expect(core).toContain("skill/agents.md");
+  });
+
+  test("the Part 3 spec matches what was built: no /motif command file, no skills field, Codex and VS Code settings edited directly", () => {
+    const spec = read("docs/specs/2026-10-17-motif-part3-agents-design.md");
+    expect(spec).not.toContain("├── commands/motif.toml");
+    expect(spec).not.toContain('`skills: "./skills/"`');
+    expect(spec).toContain("for a URL it starts a sign-in and waits");
+    expect(spec).toContain("which doubles its quotes");
   });
 });

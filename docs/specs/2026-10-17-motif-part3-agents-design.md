@@ -42,17 +42,17 @@ dist/agents/
 ├── skills/motif/              skill/ as is (SKILL.md, VERSION, bin/, modes/, knowledge/, …)
 ├── plugin.json                Agent Plugins 1.0 manifest, read by Codex, Cursor, Copilot and VS Code
 ├── gemini-extension.json      Gemini CLI extension manifest
-├── commands/motif.toml        Gemini: /motif
 ├── commands/motif/            Gemini: /motif:design, /motif:init, /motif:feature, /motif:review
+├── .agents/plugins/, .cursor-plugin/, .github/plugin/   each agent's marketplace, pointing at this package itself
 ├── README.md                  what this branch is, how to install, "built from main at v<version>; don't edit"
 ├── LICENSE
 └── THIRD-PARTY-NOTICES.txt
 ```
 
-- **`plugin.json`** follows [Agent Plugins 1.0](https://agent-plugins.org): `$schema`, `name: "motif"`, `version` (from `skill/VERSION`), `description`, `author`, `homepage`, `repository`, `license`, `keywords`, and `skills: "./skills/"`. It declares no MCP servers: design sources are optional and set up by `motif connect` (§7).
+- **`plugin.json`** follows [Agent Plugins 1.0](https://agent-plugins.org): `$schema`, `name: "motif"`, `version` (from `skill/VERSION`), `description`, `author`, `homepage`, `repository`, `license`, and `keywords`; Agent Plugins finds `skills/` without it being named. It declares no MCP servers: design sources are optional and set up by `motif connect` (§7).
 - **An agent's own manifest** (`.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`, `.github/plugin/plugin.json`) is added only where that agent's install check (§9) shows it needs one.
 - **`gemini-extension.json`**: `name: "motif"`, `version`, `description`. No context file (nothing is added to every Gemini session) and no MCP servers. Gemini reads the skill from `skills/` and the commands from `commands/`.
-- **Gemini commands** are TOML. Each tells the model to activate the `motif` skill, read its `SKILL.md`, and (for the four namespaced ones) follow that mode's file, with the developer's words from `{{args}}`.
+- **Gemini commands** are TOML. Each tells the model to activate the `motif` skill, read its `SKILL.md`, and (for the four namespaced ones) follow that mode's file, with the developer's words from `{{args}}`. Gemini makes the `motif` skill itself `/motif`, so there's no `/motif` command file.
 - **Version:** every manifest carries `skill/VERSION`; a test fails if any differs.
 - **The build refuses** to write into a folder that has files and isn't an earlier `dist/agents` build, as the Claude Code plugin build does.
 
@@ -154,10 +154,10 @@ Settings folders follow each agent's own variable where it has one (`CODEX_HOME`
    | Agent | How |
    |---|---|
    | Claude Code | `claude mcp add --transport http --scope user [--header] <name> <url>` (as today) |
-   | Codex | No key: `codex mcp add <name> --url <url>`. With a key: a `[mcp_servers.<name>]` table with `url` and `http_headers` added to `config.toml`, since `codex mcp add` can't set headers |
+   | Codex | A `[mcp_servers.<name>]` table with `url` (and `http_headers` for a key) added to `config.toml`: `codex mcp add` can't set headers, and for a URL it starts a sign-in and waits for a browser |
    | Cursor | `mcpServers.<name>` (`url`, `headers`) added to `~/.cursor/mcp.json` |
    | Copilot CLI | `copilot mcp add --transport http [--header] <name> <url>` |
-   | VS Code | `code --add-mcp '<json>'` |
+   | VS Code | `servers.<name>` (`type`, `url`, `headers`) added to its user `mcp.json`: `code --add-mcp` would pass the JSON through cmd.exe on Windows, which doubles its quotes |
    | Gemini CLI | `gemini mcp add --scope user --transport http [--header] <name> <url>` |
    | OpenCode | `opencode mcp add <name> --url <url> [--header]` |
 
@@ -259,7 +259,7 @@ Known risks that remain:
 
 | | Codex 0.163 | Cursor CLI 2026.10.08 | Copilot CLI 1.0.98 / VS Code | Gemini CLI 0.64 | OpenCode 1.19 |
 |---|---|---|---|---|---|
-| Agent Skills | `.agents/skills`, `~/.agents/skills` | `.agents/skills`, `.cursor/skills`, `~/.cursor/skills`; also reads `.claude/skills` | `.github/skills`, `.agents/skills`, `~/.copilot/skills`, `~/.agents/skills` | `.gemini/skills`, `.agents/skills`, `~/.gemini/skills`, `~/.agents/skills`; extensions' `skills/` | `.opencode/skills`, `.agents/skills`, `.claude/skills`, `~/.config/opencode/skills`, `~/.agents/skills` |
+| Agent Skills | `.agents/skills`, `~/.agents/skills` | `.agents/skills`, `.cursor/skills`, `~/.agents/skills`, `~/.cursor/skills`; also reads `.claude/skills` | `.github/skills`, `.agents/skills`, `~/.copilot/skills`, `~/.agents/skills` | `.gemini/skills`, `.agents/skills`, `~/.gemini/skills`, `~/.agents/skills`; extensions' `skills/` | `.opencode/skills`, `.agents/skills`, `.claude/skills`, `~/.config/opencode/skills`, `~/.agents/skills` |
 | Plugins | `codex plugin marketplace add`; reads `plugin.json` (Agent Plugins), `.codex-plugin/`, `.claude-plugin/` | Cursor plugins and Agent Plugins; marketplaces from git | `copilot plugin`; reads `plugin.json`, `.github/plugin/`, `.claude-plugin/` | Extensions (`gemini-extension.json`), from git with `--ref`, auto-update | None (JS plugins only); skill and command folders |
 | Model told the skill's folder | Yes | Not documented | Not documented | Yes | Yes |
 | Question prompt | `request_user_input`, Plan mode only | Ask questions (interactive only) | `ask_user`; VS Code `askQuestions` | `ask_user` | `question` |

@@ -224,7 +224,7 @@ describe("Motif in every agent (Part 3)", () => {
   const agents = read("agents.md");
 
   test("a bare /motif starts the design mode, as /design does", () => {
-    expect(skill).toContain("| types /design or /motif with nothing else, or asks for design help without saying what | [modes/design.md](modes/design.md) |");
+    expect(skill).toContain("| types /design, /motif or $motif with nothing else, or asks for design help without saying what | [modes/design.md](modes/design.md) |");
   });
 
   test("SKILL.md sends agents to agents.md for the skill folder and the question prompt", () => {

@@ -15,7 +15,7 @@ From the repository's `cli` folder:
 
 ## Try a build
 
-Point the skill at a local build of the tool first: in `cli`, `bun run build`, then set `MOTIF_BIN` to `dist/motif` (`dist\motif.exe` on Windows) in the terminal you start the agent from. Then:
+Point the skill at a local build of the tool first: in `cli`, run `bun run build`, which writes `dist/motif` (`dist\motif.exe` on Windows) at the repository's root, then set `MOTIF_BIN` to that file in the terminal you start the agent from. Then:
 
 - **Codex:** `codex plugin marketplace add <repo>/dist/agents-local`, then `codex plugin add motif@motif`.
 - **GitHub Copilot CLI:** `copilot plugin marketplace add <repo>/dist/agents-local`, then `copilot plugin install motif@motif`. A local marketplace is loaded in place, so a rebuild shows up in the next session.

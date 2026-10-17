@@ -117,10 +117,6 @@ jobs:
           pattern: motif-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@v4
-        with:
-          name: plugins-tree
-          path: plugins-tree
       - name: Checksums
         working-directory: dist
         run: sha256sum motif-* > SHA256SUMS && cat SHA256SUMS
@@ -134,6 +130,18 @@ jobs:
           pre=""
           case "$GITHUB_REF_NAME" in v0.*|*-*) pre="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Motif $GITHUB_REF_NAME" --notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre
+
+  plugins-branch:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugins-tree
+          path: plugins-tree
       - name: Update the plugins branch, which every agent but Claude Code installs from
         shell: bash
         run: |
@@ -208,7 +216,7 @@ jobs:
           if ($doctor.command -ne 'doctor' -or -not $doctor.ok) { throw "doctor --json printed: $json" }
 
   agents:
-    needs: publish
+    needs: plugins-branch
     # A pre-release leaves the plugins branch as it was, so there's nothing new to check.
     if: ${{ !contains(github.ref_name, '-') }}
     strategy:
@@ -216,6 +224,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
       CODEX: 0.163.0
       COPILOT: 1.0.98

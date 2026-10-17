@@ -16,6 +16,7 @@ permissions:
 jobs:
   install:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       CODEX: ${{ github.event_name == 'schedule' && 'latest' || '0.163.0' }}
       COPILOT: ${{ github.event_name == 'schedule' && 'latest' || '1.0.98' }}
