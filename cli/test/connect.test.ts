@@ -1,11 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { genericConfig, readLine, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
 import type { ConfiguredSource } from "../src/detect/sources";
 import { sourceById } from "../src/sources/catalog";
 import { tempDir } from "./tmp";
+
+/** Whether this machine lets a test make a file link (Windows needs Developer Mode or an admin). */
+const canSymlink = (() => {
+  try {
+    const d = tempDir("motif-link-");
+    writeFileSync(join(d, "a"), "");
+    symlinkSync(join(d, "a"), join(d, "b"), "file");
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 function fakes(over: Partial<ConnectDeps> & { connected?: ConfiguredSource[]; claudeExit?: number; gitTracked?: boolean; key?: string } = {}) {
   const calls = { runs: [] as { exe: string; args: string[] }[], prompts: 0 };
@@ -413,8 +425,8 @@ describe("motif connect: every agent (Part 3)", () => {
     const r = await runConnect(".", { positionals: ["motion"], flags: { agent: "claude,cursor,gemini" } }, s.deps);
     expect(r.exitCode).toBe(1);
     expect(r.text).toContain("✓ Claude Code: added Motion");
-    expect(r.text).toContain("✗ Cursor: couldn't add it: Motif didn't find it on this computer");
-    expect(r.text).toContain("✗ Gemini CLI: couldn't add it: Motif didn't find it on this computer");
+    expect(r.text).toContain(`✗ Cursor: couldn't add it: Motif didn't find it on this computer (no ~/.cursor folder, and no "cursor" or "cursor-agent" command on PATH)`);
+    expect(r.text).toContain(`✗ Gemini CLI: couldn't add it: Motif didn't find it on this computer (no "gemini" command on PATH)`);
     expect(existsSync(join(s.home, ".cursor"))).toBe(false);
     expect(s.agentRuns().map((x) => x.cli)).toEqual(["claude"]);
     const k = setup(["claude"]);
@@ -438,6 +450,32 @@ describe("motif connect: every agent (Part 3)", () => {
     expect(r.exitCode).toBe(2);
     expect(r.text).toBe("No answer. Nothing changed.");
     expect(s.agentRuns()).toEqual([]);
+  });
+
+  test.skipIf(!canSymlink)("a key written through a settings link into a git-tracked dotfiles file gets the warning, naming that file (final review)", async () => {
+    const s = setup(["cursor"], { tracked: (args) => args[1]!.replace(/\\/g, "/").endsWith("/dotfiles/cursor") });
+    const dotfiles = join(s.home, "dotfiles", "cursor");
+    mkdirSync(dotfiles, { recursive: true });
+    writeFileSync(join(dotfiles, "mcp.json"), '{\n  "mcpServers": {}\n}\n');
+    symlinkSync(join(dotfiles, "mcp.json"), join(s.home, ".cursor", "mcp.json"), "file");
+    const r = await runConnect(".", { positionals: ["21st"], flags: { agent: "cursor" } }, s.deps);
+    expect(r.exitCode).toBe(0);
+    expect(readFileSync(join(dotfiles, "mcp.json"), "utf8")).toContain("secret-key-1");
+    expect(r.text).toMatch(/dotfiles[\\/]cursor[\\/]mcp\.json, which now holds your key, is tracked by git/);
+  });
+
+  test("an agent whose command can't be started is reported, and the others are still set up (final review)", async () => {
+    const s = setup(["claude", "cursor", "gemini"]);
+    const run = s.deps.run;
+    s.deps.run = async (exe, args, cwd) => {
+      if (exe.endsWith("/gemini")) throw new Error("spawn EACCES");
+      return run(exe, args, cwd);
+    };
+    const r = await runConnect(".", ctx("motion"), s.deps);
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toContain("✓ Claude Code: added Motion");
+    expect(r.text).toContain("✓ Cursor: added Motion");
+    expect(r.text).toContain("✗ Gemini CLI: couldn't add it: spawn EACCES");
   });
 });
 

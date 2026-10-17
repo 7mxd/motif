@@ -19,6 +19,15 @@ function realTarget(path: string): string {
   return path;
 }
 
+/** Where a settings path that is a link points, so a warning can name the file that really holds a key; null when it isn't a link. */
+export function linkTarget(path: string): string | null {
+  try {
+    return lstatSync(path).isSymbolicLink() ? realTarget(path) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Writes beside the file, then moves it into place, so a failed write never leaves half a settings file. */
 function writeSafely(path: string, text: string, holdsKey: boolean): Edited {
   const target = realTarget(path);

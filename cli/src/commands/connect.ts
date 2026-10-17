@@ -5,7 +5,7 @@ import {
   AGENT_IDS, AGENTS, agentById, codexHome, configHome, copilotHome, defaultAgentEnv, geminiDir, shown, vscodeUserDir,
   type AgentEnv, type AgentInfo,
 } from "../agents/catalog";
-import { addJsonServer, addTomlServer, type Edited } from "../agents/edit";
+import { addJsonServer, addTomlServer, linkTarget, type Edited } from "../agents/edit";
 import { findConfiguredSources, type ConfiguredSource } from "../detect/sources";
 import { SOURCES, sourceById, type SourceInfo } from "../sources/catalog";
 
@@ -293,10 +293,16 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
       continue;
     }
     if (missing.includes(agent)) {
-      results.push({ agent, status: "failed", output: "Motif didn't find it on this computer" });
+      results.push({ agent, status: "failed", output: `Motif didn't find it on this computer (${agent.notFound(env)})` });
       continue;
     }
-    const r = await addTo(agent, server, deps, env);
+    // One agent going wrong in a way nobody foresaw is that agent's failure; the others are still set up and reported.
+    let r: AddResult;
+    try {
+      r = await addTo(agent, server, deps, env);
+    } catch (e) {
+      r = { ok: false, output: e instanceof Error ? e.message : String(e), keyFiles: [] };
+    }
     results.push(r.ok ? { agent, status: "added", keyFiles: r.keyFiles } : { agent, status: "failed", output: hide(r.output) });
   }
 
@@ -315,7 +321,12 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   }
   if (secret) {
     const git = deps.which("git");
-    for (const file of ok.flatMap((r) => r.keyFiles ?? [])) {
+    // A settings file that is a link (dotfiles) put the key in the file it points to: that's the one git may track.
+    const keyFiles = ok.flatMap((r) => r.keyFiles ?? []).flatMap((f) => {
+      const target = linkTarget(f);
+      return target ? [f, target] : [f];
+    });
+    for (const file of keyFiles) {
       if (git && (await deps.run(git, ["-C", dirname(file), "ls-files", "--error-unmatch", basename(file)])).code === 0) {
         lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by git. Remove it from that repository before you push.`);
       }
