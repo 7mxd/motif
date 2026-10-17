@@ -175,13 +175,20 @@ describe("Cursor's check and its key (Cursor's CLI needs a sign-in even to add a
     for (const id of ["codex", "copilot", "gemini", "opencode"]) expect([id, "CURSOR_API_KEY" in checks[id]!.env("/h")]).toEqual([id, false]);
   });
 
-  test("without a key, Cursor's check is skipped in a local run and fails a release check", async () => {
-    const cursor = byId(agentChecks(local, { platform: "linux", repo: "/r" })).cursor!;
+  test("without a key, the release check of Cursor fails and names the secret", async () => {
+    const cursor = byId(agentChecks(github, { platform: "linux", repo: "/r" })).cursor!;
     expect(cursor.unavailable).toContain("CURSOR_API_KEY");
+    const failed = await checkAgent(cursor, { doctor: false, missingIsSkip: false });
+    expect(failed.status).toBe("failed");
+    expect(failed.detail).toContain("CURSOR_API_KEY");
+  });
+
+  test("on a push, Cursor waits for the release check: its CLI adds marketplaces only from a git URL (second agents run)", async () => {
+    const cursor = byId(agentChecks(local, { platform: "linux", repo: "/r", cursorKey: "cursor-key-1" })).cursor!;
+    expect(cursor.unavailable).toContain("git URL");
     const skipped = await checkAgent(cursor, { doctor: false, missingIsSkip: true });
-    expect(skipped.status).toBe("skipped");
-    expect(skipped.detail).toContain("CURSOR_API_KEY");
-    expect((await checkAgent(cursor, { doctor: false, missingIsSkip: false })).status).toBe("failed");
+    expect(skipped).toMatchObject({ status: "skipped" });
+    expect(skipped.detail).toContain("after a release");
   });
 
   test("the key never reaches another agent's processes, nor the tool the skill downloads", async () => {

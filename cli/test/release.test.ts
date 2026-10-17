@@ -169,12 +169,12 @@ describe("the agents workflow", () => {
 
   test("installs every agent's CLI without signing in and checks Motif installs in each, from the build", () => {
     for (const s of [
-      "@openai/codex@$CODEX", "@github/copilot@$COPILOT", "@google/gemini-cli@$GEMINI", "opencode-ai@$OPENCODE", "https://cursor.com/install",
+      "@openai/codex@$CODEX", "@github/copilot@$COPILOT", "@google/gemini-cli@$GEMINI", "opencode-ai@$OPENCODE",
       "bun run packages", "bun run skill:archives", "bun scripts/agent-checks.ts --source local",
     ]) expect(wf).toContain(s);
-    // Its one secret is a Cursor key, given only to the check step, which hands it to Cursor's CLI alone.
-    expect(wf.match(/secrets\.\w+/g)).toEqual(["secrets.CURSOR_API_KEY"]);
-    expect(wf.slice(wf.indexOf("- name: Each agent installs Motif from the build"))).toContain("MOTIF_CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}");
+    // Cursor's CLI adds marketplaces only from a git URL, so it's checked after a release, from GitHub (second agents run).
+    expect(wf).not.toContain("cursor.com/install");
+    expect(wf).not.toContain("secrets.");
     expect(wf).toContain("permissions:\n  contents: read");
   });
 

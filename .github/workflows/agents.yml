@@ -1,7 +1,8 @@
 name: agents
 
 # Each agent installs Motif's package and lists its skill, without signing in. Pinned versions on every push;
-# the agents' latest versions every Monday, so a change in an agent shows up before people hit it.
+# the agents' latest versions every Monday, so a change in an agent shows up before people hit it. Cursor is checked
+# after each release instead (release.yml): its CLI needs a sign-in and adds marketplaces only from a git URL.
 on:
   push:
     branches: [main]
@@ -43,11 +44,6 @@ jobs:
       - name: Install the agents' CLIs (no sign-in)
         run: |
           npm install -g "@openai/codex@$CODEX" "@github/copilot@$COPILOT" "@google/gemini-cli@$GEMINI" "opencode-ai@$OPENCODE"
-          curl https://cursor.com/install -fsS | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Each agent installs Motif from the build and lists its skill
         working-directory: cli
-        env:
-          # Cursor's CLI needs a sign-in even to add a marketplace; the check gives this key to Cursor alone.
-          MOTIF_CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: bun scripts/agent-checks.ts --source local

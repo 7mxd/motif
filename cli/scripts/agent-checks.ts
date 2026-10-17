@@ -103,7 +103,10 @@ export function agentChecks(
       listed: (out) => named(jsonIn(out), "motif"),
       // Cursor's CLI needs a sign-in even to add a marketplace.
       env: (h) => ({ ...home(h), ...(opts.cursorKey ? { CURSOR_API_KEY: opts.cursorKey } : {}) }),
-      unavailable: opts.cursorKey ? undefined : `needs a Cursor sign-in: give it a key in ${CURSOR_KEY_VAR} (CI: the CURSOR_API_KEY secret)`,
+      // It also adds marketplaces only from a git URL, so a local build is checked after a release, from GitHub.
+      unavailable: source.kind === "local"
+        ? "Cursor's CLI adds marketplaces only from a git URL, so it's checked after a release, from GitHub"
+        : opts.cursorKey ? undefined : `needs a Cursor sign-in: give it a key in ${CURSOR_KEY_VAR} (CI: the CURSOR_API_KEY secret)`,
       setup: nothing,
     },
     {
