@@ -56,8 +56,11 @@ function Invoke-MotifInstall([string]$Agent, [string]$Version, [bool]$Uninstall)
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     if (-not $Version) {
-      try { $Version = (Invoke-WebRequest -UseBasicParsing -Uri "$Raw/skills/motif/VERSION").Content.Trim() }
+      # To a file, then read as text: Windows PowerShell returns bytes, not text, when a server labels the file as binary.
+      $VersionFile = Join-Path $Tmp 'VERSION'
+      try { Invoke-WebRequest -UseBasicParsing -Uri "$Raw/skills/motif/VERSION" -OutFile $VersionFile }
       catch { return (Fail "couldn't find Motif's latest version. Check your internet connection and try again.") }
+      $Version = [IO.File]::ReadAllText($VersionFile).Trim()
     }
     if ($Version -notmatch '^[0-9A-Za-z.-]+$') { return (Fail """$Version"" isn't a Motif version.") }
     $Base = if ($env:MOTIF_DOWNLOAD_BASE) { $env:MOTIF_DOWNLOAD_BASE } else { "https://github.com/$Repo/releases/download/v$Version" }

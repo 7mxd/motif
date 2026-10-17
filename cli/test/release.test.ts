@@ -91,3 +91,21 @@ describe("the release workflow", () => {
     ]) expect(check).toContain(s);
   });
 });
+
+describe("the agents workflow", () => {
+  const wf = readFileSync(join(REPO, ".github/workflows/agents.yml"), "utf8").replace(/\r\n/g, "\n");
+
+  test("installs every agent's CLI without signing in and checks Motif installs in each, from the build", () => {
+    for (const s of [
+      "@openai/codex@$CODEX", "@github/copilot@$COPILOT", "@google/gemini-cli@$GEMINI", "opencode-ai@$OPENCODE", "https://cursor.com/install",
+      "bun run packages", "bun run skill:archives", "bun scripts/agent-checks.ts --source local",
+    ]) expect(wf).toContain(s);
+    expect(wf).not.toContain("secrets.");
+    expect(wf).toContain("permissions:\n  contents: read");
+  });
+
+  test("pins the agents' versions, and tries their latest versions every week", () => {
+    expect(wf).toContain("cron:");
+    expect(wf).toContain("github.event_name == 'schedule' && 'latest' || '0.163.0'");
+  });
+});

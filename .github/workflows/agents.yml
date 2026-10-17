@@ -1,0 +1,49 @@
+name: agents
+
+# Each agent installs Motif's package and lists its skill, without signing in. Pinned versions on every push;
+# the agents' latest versions every Monday, so a change in an agent shows up before people hit it.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    env:
+      CODEX: ${{ github.event_name == 'schedule' && 'latest' || '0.163.0' }}
+      COPILOT: ${{ github.event_name == 'schedule' && 'latest' || '1.0.98' }}
+      GEMINI: ${{ github.event_name == 'schedule' && 'latest' || '0.64.0' }}
+      OPENCODE: ${{ github.event_name == 'schedule' && 'latest' || '1.19.3' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: cli/.bun-version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: Build the package and the skill archives
+        working-directory: cli
+        run: |
+          bun run packages
+          bun run skill:archives
+      - name: Install the agents' CLIs (no sign-in)
+        run: |
+          npm install -g "@openai/codex@$CODEX" "@github/copilot@$COPILOT" "@google/gemini-cli@$GEMINI" "opencode-ai@$OPENCODE"
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Each agent installs Motif from the build and lists its skill
+        working-directory: cli
+        run: bun scripts/agent-checks.ts --source local

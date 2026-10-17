@@ -15,8 +15,8 @@ const slash = (p: string) => p.replace(/\\/g, "/");
 let server: ReturnType<typeof Bun.serve>;
 beforeAll(() => {
   const entries = skillArchiveEntries();
-  const tgz = skillTarGz(entries);
-  const zip = skillZip(entries);
+  const tgz = new Uint8Array(skillTarGz(entries));
+  const zip = new Uint8Array(skillZip(entries));
   const sum = (data: Uint8Array, name: string) => `${createHash("sha256").update(data).digest("hex")}  ${name}\n`;
   const sums = `${sum(tgz, SKILL_TGZ)}${sum(zip, SKILL_ZIP)}`;
   server = Bun.serve({
@@ -24,7 +24,8 @@ beforeAll(() => {
     hostname: "127.0.0.1",
     fetch(req) {
       const path = new URL(req.url).pathname;
-      if (path === "/raw/skills/motif/VERSION") return new Response(`${VERSION}\n`);
+      // Served as bytes, as a server may label it: install.ps1 must still read it as text (the local agent check, Task 8).
+      if (path === "/raw/skills/motif/VERSION") return new Response(`${VERSION}\n`, { headers: { "content-type": "application/octet-stream" } });
       if (path === `/ok/${SKILL_TGZ}` || path === `/bad/${SKILL_TGZ}`) return new Response(tgz);
       if (path === `/ok/${SKILL_ZIP}` || path === `/bad/${SKILL_ZIP}`) return new Response(zip);
       if (path === "/ok/SHA256SUMS") return new Response(sums);
