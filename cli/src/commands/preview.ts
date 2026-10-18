@@ -74,6 +74,54 @@ function directionTokens(cwd: string, file: string): string | null {
   return rel !== TOKENS_JSON && existsSync(join(cwd, rel)) ? rel : null;
 }
 
+/** The other directions beside a direction (each folder next to its own with a tokens.json), as their tokens.json paths. */
+function siblingDirections(cwd: string, rel: string): string[] {
+  const parent = posix.dirname(posix.dirname(rel));
+  let names: string[] = [];
+  try {
+    names = readdirSync(join(cwd, parent)).sort();
+  } catch {
+    return [];
+  }
+  return names
+    .map((name) => posix.join(parent, name, "tokens.json"))
+    .filter((other) => other !== rel && other !== TOKENS_JSON && existsSync(join(cwd, other)));
+}
+
+const byName = <T extends { name: string }>(items: T[]) => [...items].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+/** A theme's values in a fixed order, so two files that differ only in layout or key order compare equal. */
+const themeKey = (t: Theme) =>
+  JSON.stringify([byName(t.colors), byName(t.space), byName(t.radius), byName(t.shadows), byName(t.fonts), byName(t.durations), byName(t.easings), byName(t.springs)]);
+/** The families a theme's type roles start with (its type pairing, without companions). */
+const pairing = (t: Theme) => themeFonts(t).filter((f) => !f.companion).map((f) => f.family);
+const samePairing = (a: string[], b: string[]) => a.length === b.length && a.every((f) => b.some((g) => g.toLowerCase() === f.toLowerCase()));
+
+/**
+ * Directions are meant to be clearly different. One whose theme values match another's is refused; one that only
+ * shares its fonts gets a note (each direction names its own type pairing).
+ */
+function compareDirections(cwd: string, directions: Map<string, Theme>): { same: { tokens: string; sameAs: string } } | { notes: string[] } {
+  const notes: string[] = [];
+  const noted = new Set<string>();
+  for (const [rel, theme] of directions) {
+    const sameFonts: string[] = [];
+    for (const other of siblingDirections(cwd, rel)) {
+      const otherTheme = directions.get(other) ?? loadThemeFile(other, readFileSync(join(cwd, other), "utf8")).theme;
+      if (!otherTheme) continue;
+      if (themeKey(otherTheme) === themeKey(theme)) return { same: { tokens: rel, sameAs: other } };
+      const pair = [rel, other].sort().join("\n");
+      if (samePairing(pairing(theme), pairing(otherTheme)) && !noted.has(pair)) {
+        noted.add(pair);
+        sameFonts.push(posix.dirname(other));
+      }
+    }
+    if (sameFonts.length > 0) {
+      notes.push(`${posix.dirname(rel)} uses the same fonts as ${sameFonts.join(" and ")} (${pairing(theme).join(", ")}). Give each direction its own type pairing, so they're easy to tell apart.`);
+    }
+  }
+  return { notes };
+}
+
 /**
  * PNG base names: the file name, or the whole path when two mockups share a file name and an output folder (names that
  * differ only in case are the same file where case doesn't count).
@@ -130,6 +178,15 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     }
     directions.set(rel, loaded.theme);
   }
+  const compared = compareDirections(cwd, directions);
+  if ("same" in compared) {
+    const { tokens, sameAs } = compared.same;
+    return fail(
+      1,
+      `✗ ${tokens} has the same theme values as ${sameAs}, so the two directions would look the same.\nMake each direction clearly different (its colours, type pairing or density) before previewing it.`,
+      { error: "same-direction", tokens, sameAs },
+    );
+  }
   const needsGuide = !gallery && preset === undefined && files.some((f) => !directionTokens(cwd, f));
 
   let theme: Theme | null = null;
@@ -175,7 +232,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     ? PRESET_IDS.map((id) => ({ name: `preset-${id}`, url: `${server.url}/__motif/preset/${id}/sample.html`, outDir: defaultOut, ...fontsOf(presetTheme(id)) }))
     : files.map((f, i) => ({ name: names[i]!, url: server.url + urlPath(f), outDir: outFor(f), ...fontsOf(themeOf(f)) }));
 
-  const notes: string[] = [];
+  const notes: string[] = [...compared.notes];
   let pngs: string[] = [];
   let missingFonts: string[] = [];
   // Motif's own PNGs, known before each is written: saving them is no change to the mockups.
