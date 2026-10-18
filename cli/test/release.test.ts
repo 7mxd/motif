@@ -234,3 +234,13 @@ describe("the release's tests (review of batch G)", () => {
     for (const os of ["ubuntu-latest", "macos-latest", "windows-latest"]) expect(test).toContain(os);
   });
 });
+
+describe("keeping the pinned actions current", () => {
+  test("Dependabot checks the workflows' actions every week", () => {
+    const path = join(REPO, ".github/dependabot.yml");
+    expect(existsSync(path)).toBe(true);
+    const config = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+    expect(config).toContain('package-ecosystem: "github-actions"');
+    expect(config).toContain('interval: "weekly"');
+  });
+});
