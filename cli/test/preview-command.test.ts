@@ -127,7 +127,7 @@ describe("motif preview --png-only", () => {
     });
     const r = await runPreview(makeProject({ "home.html": MOCKUP }), ctx(["home.html"], { "png-only": true, preset: "warm" }), deps);
     expect(r.exitCode).toBe(0);
-    expect(css).toContain("#FBF6EF");
+    expect(css).toContain("#F5F8F1");
   });
 
   test("--gallery renders the 8 starting styles, with or without a design guide", async () => {

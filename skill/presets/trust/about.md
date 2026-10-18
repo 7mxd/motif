@@ -6,4 +6,4 @@
 
 **Avoid for:** games and playful social apps
 
-**Fonts:** Source Sans 3 throughout · **Corners:** 6 / 8 / 12 px · **Motion:** calm and predictable
+**Fonts:** Public Sans throughout, Mada for Arabic · **Corners:** 6 / 8 / 12 px · **Motion:** calm and predictable

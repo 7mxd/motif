@@ -145,7 +145,7 @@ describe("startPreviewServer", () => {
 
   test("serves the theme CSS, a preset's theme, the kit, and other files", withServer(async (base) => {
     expect(await (await fetch(`${base}/__motif/theme.css`)).text()).toContain("--motif-spring-smooth-duration");
-    expect(await (await fetch(`${base}/__motif/theme.css?preset=warm`)).text()).toContain("#FBF6EF");
+    expect(await (await fetch(`${base}/__motif/theme.css?preset=warm`)).text()).toContain("#F5F8F1");
     expect((await fetch(`${base}/__motif/kit/kit.css`)).status).toBe(200);
     expect((await fetch(`${base}/__motif/kit/nope.css`)).status).toBe(404);
     expect((await fetch(`${base}/__motif/kit/constructor`)).status).toBe(404);

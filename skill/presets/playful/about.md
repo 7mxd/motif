@@ -6,4 +6,4 @@
 
 **Avoid for:** banking, healthcare and enterprise tools
 
-**Fonts:** Fredoka for headings, Nunito for text · **Corners:** 10 / 18 / 28 px · **Motion:** lively and springy
+**Fonts:** Fredoka for headings, Nunito for text, Baloo Bhaijaan 2 for Arabic · **Corners:** 10 / 18 / 28 px · **Motion:** lively and springy

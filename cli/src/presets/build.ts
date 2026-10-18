@@ -64,7 +64,7 @@ export function presetTokens(spec: PresetSpec): Record<string, unknown> {
       lg: { $value: px(spec.radius.lg) },
       full: { $value: px(9999) },
     },
-    shadow: defaultShadows(),
+    shadow: defaultShadows(spec.light["text-primary"], spec.shadow),
     duration: {
       $type: "duration",
       instant: { $value: ms(0) },
@@ -82,9 +82,10 @@ export function presetTokens(spec: PresetSpec): Record<string, unknown> {
 }
 
 export function presetAbout(spec: PresetSpec): string {
-  const fonts = spec.fonts.display[0] === spec.fonts.body[0]
+  const main = spec.fonts.display[0] === spec.fonts.body[0]
     ? `${spec.fonts.body[0]} throughout`
     : `${spec.fonts.display[0]} for headings, ${spec.fonts.body[0]} for text`;
+  const fonts = `${main}, ${spec.fonts.body[1]} for Arabic`;
   return [
     `# ${spec.title}`,
     "",

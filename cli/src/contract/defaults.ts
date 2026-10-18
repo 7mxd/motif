@@ -35,9 +35,11 @@ export function srgbColor(hex: string) {
   return { colorSpace: "srgb", components: [channel(1), channel(3), channel(5)], hex: hex.toUpperCase() };
 }
 
-export function defaultShadows(): Record<string, unknown> {
+/** Three shadows in one colour (the style's dark text, so they never look like plain grey), scaled by strength. */
+export function defaultShadows(ink = "#000000", strength = 1): Record<string, unknown> {
+  const color = srgbColor(ink);
   const shadow = (y: number, blur: number, alpha: number) => ({
-    $value: { color: { colorSpace: "srgb", components: [0, 0, 0], alpha, hex: "#000000" }, offsetX: px(0), offsetY: px(y), blur: px(blur), spread: px(0) },
+    $value: { color: { colorSpace: color.colorSpace, components: color.components, alpha: Number((alpha * strength).toFixed(4)), hex: color.hex }, offsetX: px(0), offsetY: px(y), blur: px(blur), spread: px(0) },
   });
   return { $type: "shadow", sm: shadow(1, 2, 0.08), md: shadow(4, 12, 0.1), lg: shadow(12, 32, 0.14) };
 }

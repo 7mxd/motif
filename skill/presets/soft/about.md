@@ -6,4 +6,4 @@
 
 **Avoid for:** dense data tools and finance dashboards
 
-**Fonts:** Nunito throughout · **Corners:** 8 / 16 / 24 px · **Motion:** slow and gentle
+**Fonts:** Nunito throughout, Rubik for Arabic · **Corners:** 8 / 14 / 24 px · **Motion:** slow and gentle

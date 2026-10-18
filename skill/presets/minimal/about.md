@@ -6,4 +6,4 @@
 
 **Avoid for:** playful consumer apps and kids' products
 
-**Fonts:** Inter throughout · **Corners:** 4 / 8 / 12 px · **Motion:** quick and steady
+**Fonts:** Onest throughout, Readex Pro for Arabic · **Corners:** 3 / 6 / 10 px · **Motion:** quick and steady
