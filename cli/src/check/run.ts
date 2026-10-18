@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { siteDir, type AppInfo } from "../detect/stacks";
 import { isMotifGenerated, type GeneratedFile } from "../generate/header";
@@ -14,6 +15,7 @@ import { scanTailwind, scanThemeClassesV3, type ThemeRoles } from "./rules/tailw
 import { scanTailwindScale } from "./rules/tailwind-scale";
 import { scanValues } from "./rules/values";
 import { buildScale } from "./scale";
+import { suggestRole } from "./suggest";
 import type { Hit, Scale } from "./types";
 
 export interface ExceptionHit extends Hit {
@@ -30,12 +32,67 @@ export interface AppCheck {
 
 export function scanFile(file: SourceFile, scale: Scale | null, opts: { tailwind?: boolean; v3Roles?: ThemeRoles } = {}): Hit[] {
   const tailwind = opts.tailwind ?? true;
-  return [
+  const hits = [
     ...scanColors(file),
     ...(tailwind ? [...scanTailwind(file, scale), ...scanTailwindScale(file, scale)] : []),
-    ...(tailwind && opts.v3Roles ? scanThemeClassesV3(file, opts.v3Roles) : []),
     ...scanValues(file, scale),
   ];
+  if (!tailwind || !opts.v3Roles) return hits;
+  return [...hits.map((h) => ({ ...h, fix: tailwind3Fix(h) })), ...scanThemeClassesV3(file, opts.v3Roles)];
+}
+
+const V3_TAIL = " (Tailwind 3 can't use Motif's theme classes; Tailwind 4 adds them.)";
+/** A class (ease-in-out, md:duration-300), not a CSS value or a Motion setting. */
+const MOTION_CLASS = /^(?:[\w-]+:)*!?(?:ease|duration)-/;
+
+/** Tailwind 3 fixes: Motif writes only CSS variables there, so a class uses one as an arbitrary value. */
+export function tailwind3Fix(hit: Hit): string {
+  const util = hit.context === "text" ? "text" : hit.context === "border" ? "border" : "bg";
+  switch (hit.kind) {
+    case "color":
+      return `Use var(--motif-color-<role>): ${util}-[var(--motif-color-<role>)] in a class.${V3_TAIL}`;
+    case "font-size":
+      return `Use var(--motif-font-<role>-size): text-[length:var(--motif-font-<role>-size)] in a class.${V3_TAIL}`;
+    case "font-family":
+      return `Use var(--motif-font-<role>-family): font-[family-name:var(--motif-font-<role>-family)] in a class.${V3_TAIL}`;
+    case "radius":
+      return `Use var(--motif-radius-<role>): rounded-[var(--motif-radius-<role>)] in a class.${V3_TAIL}`;
+    case "easing":
+      return MOTION_CLASS.test(hit.text) ? `Use ease-[var(--motif-easing-<role>)] (standard, enter or exit).${V3_TAIL}` : hit.fix;
+    case "duration":
+      return MOTION_CLASS.test(hit.text) ? `Use duration-[var(--motif-duration-base)] (or fast, slow).${V3_TAIL}` : hit.fix;
+    default:
+      return hit.fix;
+  }
+}
+
+/** Tailwind 3's own names for colours, fonts and sizes, and easings: classes with them work there. */
+const TAILWIND3_NAMES = {
+  colors: new Set(["inherit", "current", "transparent", "black", "white"]),
+  fonts: new Set(["sans", "serif", "mono", "xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl", "5xl", "6xl", "7xl", "8xl", "9xl"]),
+  easings: new Set(["linear", "in", "out", "in-out"]),
+};
+
+/** The keys an app's tailwind.config.* defines (colors: { background: … }): its own classes, which work on Tailwind 3. */
+function tailwindConfigKeys(appDir: string): Set<string> {
+  const keys = new Set<string>();
+  for (const ext of ["js", "cjs", "mjs", "ts", "cts", "mts"]) {
+    const path = join(appDir, `tailwind.config.${ext}`);
+    if (!existsSync(path)) continue;
+    for (const m of readFileSync(path, "utf8").matchAll(/(?:^|[{,\s])["'`]?([A-Za-z_$][\w$-]*)["'`]?\s*:/gm)) keys.add(m[1]!);
+  }
+  return keys;
+}
+
+/** The theme's role names whose classes do nothing on Tailwind 3: not one the app's config or Tailwind 3 defines. */
+function tailwind3Roles(theme: Theme, appDir: string): ThemeRoles {
+  const own = tailwindConfigKeys(appDir);
+  const keep = (names: string[], defaults: Set<string>) => names.filter((n) => !own.has(n) && !defaults.has(n));
+  return {
+    colors: keep(theme.colors.map((c) => c.name), TAILWIND3_NAMES.colors),
+    fonts: keep(theme.fonts.map((f) => f.name), TAILWIND3_NAMES.fonts),
+    easings: keep(theme.easings.map((e) => e.name), TAILWIND3_NAMES.easings),
+  };
 }
 
 const byPosition = (a: Hit, b: Hit) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column;
@@ -66,8 +123,7 @@ export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths
     ? [{ path: srcDir === "." ? "motif.css" : `${srcDir}/motif.css`, content: motifCss(theme) }]
     : generateReactWeb(theme, { srcDir, tailwind: tailwindVersion });
   // On Tailwind 3, Motif's theme classes do nothing: they're flagged.
-  const v3Roles: ThemeRoles | undefined =
-    tailwindVersion === "v3" ? { colors: theme.colors.map((c) => c.name), fonts: theme.fonts.map((f) => f.name), easings: theme.easings.map((e) => e.name) } : undefined;
+  const v3Roles: ThemeRoles | undefined = tailwindVersion === "v3" ? tailwind3Roles(theme, appDir) : undefined;
   const expected = generatedHere.map((f) => ({ path: prefixPath(app.path, f.path), content: f.content }));
 
   // App-wide rules need the whole app even when the scan is narrowed to some paths.
@@ -86,7 +142,8 @@ export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths
   const scanned = expandHtml(files).flatMap((f) => scanFile(f, scale, { tailwind: !plain, v3Roles }));
   for (const found of [...scanned, ...appWide]) {
     if (!found.violation) continue;
-    const hit = plain ? { ...found, fix: plainFix(found) } : found;
+    const suggestion = suggestRole(found, theme, { tailwind3: tailwindVersion === "v3" });
+    const hit = { ...found, ...(plain ? { fix: plainFix(found) } : {}), ...(suggestion ? { suggestion } : {}) };
     const ex = exceptionFor(lines.get(hit.file) ?? [], hit.line);
     if (ex && "reason" in ex) exceptions.push({ ...hit, reason: ex.reason });
     else if (ex) violations.push({ ...hit, fix: `${hit.fix} (A "motif-ok" comment needs a reason, e.g. "motif-ok: required by the partner's brand guide".)` });

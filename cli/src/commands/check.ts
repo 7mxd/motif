@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { checkApp, type ExceptionHit } from "../check/run";
-import { suggestRole } from "../check/suggest";
 import type { Hit } from "../check/types";
 import { loadTokenDocument } from "../contract/load";
 import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
@@ -19,33 +18,39 @@ const MAX_GROUPS = 30;
 
 interface Group {
   rule: string;
+  kind?: string;
   text: string;
   count: number;
   files: number;
   message: string;
   fix: string;
   suggestion?: string;
+  /** Where the first few are (file:line). */
+  where: string[];
 }
 
-/** Problems grouped by rule and what was written (text-sm, #3b82f6), most frequent first. */
-function groupHits(hits: Hit[], theme: ReturnType<typeof buildTheme>): Group[] {
-  const groups = new Map<string, { hits: Hit[] }>();
+const WHERE = 3;
+
+/** Problems grouped by rule, kind and what was written (text-sm, #3b82f6), most frequent first. */
+function groupHits(hits: Hit[]): Group[] {
+  const groups = new Map<string, Hit[]>();
   for (const h of hits) {
-    const key = `${h.rule}|${h.text}`;
-    groups.set(key, { hits: [...(groups.get(key)?.hits ?? []), h] });
+    const key = `${h.rule}|${h.kind ?? ""}|${h.text}`;
+    groups.set(key, [...(groups.get(key) ?? []), h]);
   }
   return [...groups.values()]
-    .map(({ hits: [first, ...rest] }) => {
-      const all = [first!, ...rest];
-      const suggestion = suggestRole(first!, theme);
+    .map((all) => {
+      const first = all[0]!;
       return {
-        rule: first!.rule,
-        text: first!.text,
+        rule: first.rule,
+        ...(first.kind ? { kind: first.kind } : {}),
+        text: first.text,
         count: all.length,
         files: new Set(all.map((h) => h.file)).size,
-        message: first!.message,
-        fix: first!.fix,
-        ...(suggestion ? { suggestion } : {}),
+        message: first.message,
+        fix: first.fix,
+        ...(first.suggestion ? { suggestion: first.suggestion } : {}),
+        where: all.slice(0, WHERE).map((h) => `${h.file}:${h.line}`),
       };
     })
     .sort((a, b) => b.count - a.count || a.text.localeCompare(b.text));
@@ -138,16 +143,19 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   const allowed = exceptions.length ? ` (${exceptions.length} allowed with a reason)` : "";
 
   // The same problem many times (text-sm ×345 on a first check of a real app) is one line, with the closest role.
-  const groups = groupHits(violations, theme);
+  const groups = groupHits(violations);
   const grouped = violations.length > GROUP_OVER;
-  const groupLine = (g: Group) => `  ${g.count}× ${g.text}  ${g.message} ${g.suggestion ? `Closest: ${g.suggestion}.` : g.fix}`;
+  const where = (g: Group) => `At ${g.where.join(", ")}${g.count > g.where.length ? ` and ${g.count - g.where.length} more` : ""}.`;
+  const groupLine = (g: Group) => `  ${g.count}× ${g.text}  ${g.message} ${g.suggestion ? `Closest: ${g.suggestion}.` : g.fix} ${where(g)}`;
+  const rest = groups.slice(MAX_GROUPS);
+  const restCount = rest.reduce((n, g) => n + g.count, 0);
   const lines: string[] = !violations.length
     ? [`✓ No design problems found in ${plural(files, "file", "files")}.${allowed}`]
     : grouped
       ? [
           `✗ ${plural(violations.length, "design problem", "design problems")} in ${plural(filesWithProblems, "file", "files")}, grouped (--json lists each one)${allowed}:`,
           ...groups.slice(0, MAX_GROUPS).map(groupLine),
-          ...(groups.length > MAX_GROUPS ? [`  …and ${groups.length - MAX_GROUPS} more kinds.`] : []),
+          ...(rest.length ? [`  …and ${plural(rest.length, "more kind", "more kinds")} (${plural(restCount, "problem", "problems")}): motif check --json lists each one.`] : []),
         ]
       : [`✗ ${plural(violations.length, "design problem", "design problems")} in ${plural(filesWithProblems, "file", "files")}${allowed}:`,
          ...byFile(violations, (h) => `  ${h.line}:${h.column}  ${h.rule.padEnd(18)} ${h.message} ${h.fix}`)];

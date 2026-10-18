@@ -261,3 +261,45 @@ describe("a stylesheet linked for dark mode only (backlog)", () => {
     expect([hex(tokens, "background", "light"), hex(tokens, "background", "dark")]).toEqual(["#F2F2F7", "#0A0A0A"]);
   });
 });
+
+describe("the review of batch C2", () => {
+  const extracted = async (files: Record<string, string>) => {
+    const root = makeProject(files);
+    expect((await runExtract(root, { positionals: [] })).exitCode).toBe(0);
+    const tokens = read(root, "design/tokens.draft.json");
+    return [hex(tokens, "background", "light"), hex(tokens, "background", "dark")];
+  };
+
+  test("body { background: var(--x) } makes --x's colour the page's, whatever cards use more", async () => {
+    const cards = Array.from({ length: 6 }, (_, i) => `.card${i} { background: var(--c1); }`).join("\n");
+    const [light] = await extracted({
+      "public/index.html": '<!doctype html><link rel="stylesheet" href="styles.css"><p>Hi</p>',
+      "public/styles.css": `:root { --c1: #ffffff; --c2: #f4f4f5; --c3: #111111 }\nbody { background: var(--c2); color: var(--c3) }\n${cards}`,
+    });
+    expect(light).toBe("#F4F4F5");
+  });
+
+  test("a dark stylesheet linked from the site's root (/dark.css?v=2) is dark", async () => {
+    expect(await extracted({
+      "public/index.html": '<!doctype html><link rel="stylesheet" href="/styles.css?v=2"><link rel="stylesheet" href="/dark.css?v=2" media="(prefers-color-scheme: dark)"><p>Hi</p>',
+      "public/styles.css": ":root { --bg: #f2f2f7; --text: #111111 }\nbody { background: var(--bg); color: var(--text) }",
+      "public/dark.css": ":root { --bg: #0a0a0a; --text: #fafafa }",
+    })).toEqual(["#F2F2F7", "#0A0A0A"]);
+  });
+
+  test("a dark selector list keeps its colours dark, wherever it is in the file", async () => {
+    for (const css of [
+      ":root { --bg: #f2f2f7; --text: #111111 }\n.dark, .dark-mode { --bg: #0a0a0a; --text: #fafafa }\nbody { background: var(--bg); color: var(--text) }",
+      ".dark, .dark-mode { --bg: #0a0a0a; --text: #fafafa }\n:root { --bg: #f2f2f7; --text: #111111 }\nbody { background: var(--bg); color: var(--text) }",
+    ]) {
+      expect(await extracted({ "public/index.html": '<!doctype html><link rel="stylesheet" href="styles.css"><p>Hi</p>', "public/styles.css": css })).toEqual(["#F2F2F7", "#0A0A0A"]);
+    }
+  });
+
+  test("light-dark() gives a variable its light and dark values", async () => {
+    expect(await extracted({
+      "public/index.html": '<!doctype html><link rel="stylesheet" href="styles.css"><p>Hi</p>',
+      "public/styles.css": ":root { --bg: light-dark(#f2f2f7, #0a0a0a); --text: light-dark(#111111, #fafafa) }\nbody { background: var(--bg); color: var(--text) }",
+    })).toEqual(["#F2F2F7", "#0A0A0A"]);
+  });
+});

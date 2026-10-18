@@ -42,8 +42,24 @@ const CSS_VALUE_HINT = /\d(?:px|rem|em|%)|\b(?:solid|dashed|dotted|double|inset)
 const STYLE_SET = /\.style\.([A-Za-z]+)\s*=\s*["'`]?[^"'`]*$/;
 const PROPERTY_SET = /setProperty\(\s*["'`](--[\w-]+|[a-z-]+)["'`]\s*,\s*["'`]?[^"'`]*$/;
 const CANVAS_SET = /\.(fillStyle|strokeStyle|shadowColor)\s*=\s*["'`]?[^"'`]*$/;
-// Rules that style the page itself: their background is the page's.
-const PAGE_SELECTOR = /^(?:html|body|:root)(?![\w-])/;
+// The page itself: html, body or :root on its own (html.dark, :root[data-theme=x]), not something inside it (body .panel).
+const PAGE_ITEM = /^(?:html|body|:root)(?:[.#:[][^\s>+~]*)?$/i;
+
+/** A rule that styles the page itself: its background is the page's. */
+export const isPageSelector = (selector: string) => selector.split(",").some((s) => PAGE_ITEM.test(s.trim()));
+
+/** light-dark(a, b)'s two colours, as written; null for any other value. */
+function lightDarkArgs(value: string): string[] | null {
+  if (!/^light-dark\(/i.test(value) || !value.endsWith(")")) return null;
+  const inner = value.slice("light-dark(".length, -1);
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === "(") depth++;
+    else if (inner[i] === ")") depth--;
+    else if (inner[i] === "," && depth === 0) return [inner.slice(0, i).trim(), inner.slice(i + 1).trim()];
+  }
+  return null;
+}
 const SCRIPT_FN = /(?<![\w[-])(?:rgba?|hsla?|hwb|oklab|oklch|lab|lch)\(\s*[\d.][^()]*\)/g;
 const STYLE_NAMED = new RegExp(
   `\\b(color|background|backgroundColor|border(?:Top|Right|Bottom|Left)?Color|outlineColor|fill|stroke|textDecorationColor|caretColor|accentColor)\\s*:\\s*(["'])(${NAMED_ALT})\\2`,
@@ -85,10 +101,11 @@ export function scanColors(source: SourceFile): Hit[] {
 
   if (file.lang === "css") {
     const dark = [...darkRanges(file.text), ...(source.dark ?? [])];
-    // The selector of the rule each declaration is in (from the previous "{", "}" or ";" back to its "{").
+    // The selector of the rule each declaration is in (from the previous "{", "}" or ";" back to its "{"); none when the
+    // rule closed before it (an HTML page's style="" after its <style> block).
     const selectorAt = (index: number) => {
       const open = file.text.lastIndexOf("{", index);
-      if (open === -1) return "";
+      if (open === -1 || file.text.lastIndexOf("}", index) > open) return "";
       let s = open - 1;
       while (s >= 0 && file.text[s] !== "{" && file.text[s] !== "}" && file.text[s] !== ";") s--;
       return file.text.slice(s + 1, open).trim();
@@ -99,16 +116,19 @@ export function scanColors(source: SourceFile): Hit[] {
       if (prop.startsWith("--motif-")) continue;
       const start = m.index! + m[0].length - value.length;
       const context = colorContext(prop);
-      // A variable's colour is its value only when the value is that one colour (not a shadow or a color-mix()).
+      // A variable's colour is its value only when the value is that one colour (not a shadow or a color-mix()), or one of
+      // light-dark()'s two.
       const whole = value.trim().replace(/\s*!important$/i, "");
-      const page = context === "background" && selectorAt(m.index!).split(",").some((s) => PAGE_SELECTOR.test(s.trim()));
-      const extra = (literal: string): Pick<Hit, "prop" | "scheme" | "page"> => ({
-        ...(prop.startsWith("--") && literal === whole ? { prop } : {}),
-        ...(inRanges(start, dark) ? { scheme: "dark" as const } : {}),
+      const pair = prop.startsWith("--") ? lightDarkArgs(whole) : null;
+      const page = /^background(-color)?$/i.test(prop) && isPageSelector(selectorAt(m.index!));
+      // Each colour's own position: light-dark()'s second colour is its dark one.
+      const extra = (literal: string, at: number): Pick<Hit, "prop" | "scheme" | "page"> => ({
+        ...(prop.startsWith("--") && (literal === whole || pair?.includes(literal)) ? { prop } : {}),
+        ...(inRanges(at, dark) ? { scheme: "dark" as const } : {}),
         ...(page ? { page: true } : {}),
       });
-      for (const c of value.matchAll(CSS_COLOR_LITERAL)) add(start + c.index!, c[0], context, extra(c[0]));
-      if (CSS_COLOR_PROP.test(prop)) for (const n of value.matchAll(CSS_NAMED)) add(start + n.index!, n[0], context, extra(n[0]));
+      for (const c of value.matchAll(CSS_COLOR_LITERAL)) add(start + c.index!, c[0], context, extra(c[0], start + c.index!));
+      if (CSS_COLOR_PROP.test(prop)) for (const n of value.matchAll(CSS_NAMED)) add(start + n.index!, n[0], context, extra(n[0], start + n.index!));
     }
     return hits.sort((a, b) => a.line - b.line || a.column - b.column);
   }

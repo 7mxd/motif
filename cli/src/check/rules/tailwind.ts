@@ -106,30 +106,39 @@ export function scanThemeClassesV3(source: SourceFile, roles: ThemeRoles): Hit[]
   const at = locator(file.text);
   const hits: Hit[] = [];
   const alt = (names: string[]) => names.map(esc).join("|");
-  const patterns: [RegExp, (m: RegExpMatchArray) => string][] = [];
+  type Found = Pick<Hit, "kind" | "value" | "context" | "fix">;
+  const patterns: [RegExp, (m: RegExpMatchArray) => Found][] = [];
   if (roles.colors.length) {
     patterns.push([
       new RegExp(`${CLASS_PREFIX}(bg|text|border(?:-[xytrblse])?|ring(?:-offset)?|outline|fill|stroke|decoration|caret|accent|from|via|to|divide|placeholder)-(${alt(roles.colors)})(?:\\/\\d{1,3})?(?![\\w-])`, "g"),
-      (m) => `Use ${m[1]}-[var(--motif-color-${m[2]})], or upgrade to Tailwind 4.`,
+      (m) => ({ kind: "color", value: m[2]!, context: utilContext(m[1]!), fix: `Use ${m[1]}-[var(--motif-color-${m[2]})], or upgrade to Tailwind 4.` }),
     ]);
   }
   if (roles.fonts.length) {
-    patterns.push([new RegExp(`${CLASS_PREFIX}(text|font)-(${alt(roles.fonts)})(?![\\w-])`, "g"), () => "Use the role's CSS variable (var(--motif-font-…)) in an arbitrary value, or upgrade to Tailwind 4."]);
+    patterns.push([
+      new RegExp(`${CLASS_PREFIX}(text|font)-(${alt(roles.fonts)})(?![\\w-])`, "g"),
+      (m) =>
+        m[1] === "text"
+          ? { kind: "font-size", value: m[2]!, fix: `Use text-[length:var(--motif-font-${m[2]}-size)], or upgrade to Tailwind 4.` }
+          : { kind: "font-family", value: m[2]!, fix: `Use font-[family-name:var(--motif-font-${m[2]}-family)], or upgrade to Tailwind 4.` },
+    ]);
   }
   if (roles.easings.length) {
-    patterns.push([new RegExp(`${CLASS_PREFIX}ease-(${alt(roles.easings)})(?![\\w-])`, "g"), (m) => `Use ease-[var(--motif-easing-${m[1]})], or upgrade to Tailwind 4.`]);
+    patterns.push([
+      new RegExp(`${CLASS_PREFIX}ease-(${alt(roles.easings)})(?![\\w-])`, "g"),
+      (m) => ({ kind: "easing", value: m[1]!, fix: `Use ease-[var(--motif-easing-${m[1]})], or upgrade to Tailwind 4.` }),
+    ]);
   }
   for (const seg of classSegments(file)) {
-    for (const [pattern, fix] of patterns) {
+    for (const [pattern, found] of patterns) {
       for (const m of seg.text.matchAll(pattern)) {
+        const cls = m[0].replace(/^(?:[\w-]+:)*!?/, "");
         hits.push(makeHit(file, at, seg.offset + m.index!, {
           rule: "tailwind-palette",
-          kind: "color",
-          value: m[0],
-          text: m[0].replace(/^(?:[\w-]+:)*!?/, ""),
+          ...found(m),
+          text: m[0],
           violation: true,
-          message: `${m[0].replace(/^(?:[\w-]+:)*!?/, "")} is a class of Motif's Tailwind 4 theme: with Tailwind 3 it does nothing.`,
-          fix: fix(m),
+          message: `${cls} is a class of Motif's Tailwind 4 theme: with Tailwind 3 it does nothing.`,
         }));
       }
     }

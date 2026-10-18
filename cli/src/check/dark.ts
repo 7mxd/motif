@@ -33,10 +33,13 @@ function withoutNot(selector: string): string {
   return out;
 }
 
-/** A rule for dark mode only: every selector in its list asks for dark (".card, .dark .card" applies in both). */
+/**
+ * A rule for dark mode only: one selector in its list asks for dark, and the others are dark too, by name at least
+ * (".dark, .dark-mode"). One plain selector (".card, .dark .card") makes the rule apply in both.
+ */
 export function isDarkSelector(selector: string): boolean {
   const items = selector.split(",").map((s) => withoutNot(s.trim())).filter(Boolean);
-  return items.length > 0 && items.every((s) => DARK_SELECTOR.test(s));
+  return items.some((s) => DARK_SELECTOR.test(s)) && items.every((s) => DARK_SELECTOR.test(s) || /dark|night/i.test(s));
 }
 
 /** The second colour of each light-dark(light, dark): its dark value. */

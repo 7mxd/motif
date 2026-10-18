@@ -4,7 +4,7 @@ import { darkRanges } from "../check/dark";
 import { TAILWIND_SPACING_PX } from "../check/rules/tailwind-scale";
 import { inRanges, maskComments } from "../check/mask";
 import { scanFile } from "../check/run";
-import { colorContext, CSS_COLOR_LITERAL, CSS_DECLARATION } from "../check/rules/colors";
+import { colorContext, CSS_COLOR_LITERAL, CSS_DECLARATION, isPageSelector } from "../check/rules/colors";
 import type { Hit } from "../check/types";
 import { locator } from "../text";
 import { FONT_ROLES, SPACE_SCALE, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
@@ -105,8 +105,8 @@ function buttonFill(selector: string): "action" | "action-secondary" | undefined
 }
 
 /** Each outermost var(--name, fallback) in a value: the name, and where its fallback starts and ends. */
-function outerVars(value: string): { name: string; fallback?: [number, number] }[] {
-  const out: { name: string; fallback?: [number, number] }[] = [];
+function outerVars(value: string): { name: string; start: number; fallback?: [number, number] }[] {
+  const out: { name: string; start: number; fallback?: [number, number] }[] = [];
   for (let i = value.indexOf("var("); i >= 0; ) {
     let depth = 0;
     let end = value.length;
@@ -120,7 +120,7 @@ function outerVars(value: string): { name: string; fallback?: [number, number] }
     const inside = value.slice(i + 4, end);
     const name = inside.match(/^\s*(--[\w-]+)/)?.[1];
     const comma = inside.indexOf(",");
-    if (name) out.push({ name, ...(comma >= 0 ? { fallback: [i + 4 + comma + 1, end] as [number, number] } : {}) });
+    if (name) out.push({ name, start: i, ...(comma >= 0 ? { fallback: [i + 4 + comma + 1, end] as [number, number] } : {}) });
     i = value.indexOf("var(", end);
   }
   return out;
@@ -155,6 +155,8 @@ interface CssUse {
   value?: string;
   context: string;
   button?: "action" | "action-secondary";
+  /** The page's own background (body { background: var(--x) }). */
+  page?: true;
   example: string;
 }
 
@@ -185,12 +187,15 @@ function cssUses(file: SourceFile, aliases: Map<string, string>, fallbacks: Map<
     }
     const fill = /^background(-color)?$/i.test(prop);
     const button = fill ? buttonFill(selectorAt(m.index!)) : undefined;
+    const page = fill && isPageSelector(selectorAt(m.index!));
     const context = colorContext(prop);
     // The value's own start in the stylesheet, so a fallback's colours can be found where scanColors reports them.
     const valueStart = m.index! + m[0].length - raw.length + (raw.length - raw.trimStart().length);
     const vars = outerVars(value);
     for (const v of vars) {
-      uses.push({ name: v.name, context, ...(button ? { button } : {}), example });
+      // light-dark(var(--a), var(--b)): --b is the dark value, not a use.
+      if (inRanges(valueStart + v.start, dark)) continue;
+      uses.push({ name: v.name, context, ...(button ? { button } : {}), ...(page ? { page: true as const } : {}), example });
       // var(--x, #fff): the fallback only shows when --x has no colour, so it isn't a use of its own as well.
       if (!v.fallback) continue;
       for (const c of value.slice(v.fallback[0], v.fallback[1]).matchAll(CSS_COLOR_LITERAL)) {
@@ -354,6 +359,8 @@ export function collectOccurrences(
       if (use.button) own[use.button] = (own[use.button] ?? 0) + 1;
     }
     if (use.button) mark(value, use.button);
+    // A background set on the page itself, through a variable, is the page's.
+    if (use.page) mark(value, "page");
   }
   // A fallback's colour counts after all when its variable never got one.
   for (const { hit, name } of heldBack) if (!colorOf(name)) add("colors", hit.value!, hit, hit.context);

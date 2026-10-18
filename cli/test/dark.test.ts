@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { darkRanges } from "../src/check/dark";
+import { darkRanges, isDarkSelector } from "../src/check/dark";
 import type { SourceFile } from "../src/check/files";
 import { inRanges } from "../src/check/mask";
 import { scanColors } from "../src/check/rules/colors";
@@ -61,5 +61,12 @@ describe("darkRanges: from the backlog", () => {
   test("a <style> for dark mode only is dark", () => {
     const [cssView] = expandHtml([{ path: "index.html", abs: "", lang: "markup", text: '<style media="(prefers-color-scheme: dark)">.a { color: #abcabc }</style><style>.b { color: #defdef }</style>' }]);
     expect(scanColors(cssView!).map((h) => [h.value, h.scheme ?? "light"])).toEqual([["#abcabc", "dark"], ["#defdef", "light"]]);
+  });
+});
+
+describe("dark selector lists (review of batch C2)", () => {
+  test("a list of dark names is dark; one plain item makes the rule apply in both", () => {
+    for (const sel of [".dark, .dark-mode", '[data-theme="dark"], .theme-dark', ":root.dark, :root.night"]) expect(isDarkSelector(sel)).toBe(true);
+    for (const sel of [".card, .dark .card", ".dark-mode", ".night"]) expect(isDarkSelector(sel)).toBe(false);
   });
 });

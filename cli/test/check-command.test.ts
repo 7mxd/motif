@@ -173,3 +173,44 @@ describe("runCheck: from the backlog", () => {
     expect((r.data.groups as any[])[0]).toMatchObject({ rule: "off-scale", text: "p-7", count: 30, files: 1 });
   });
 });
+
+describe("runCheck: the review of batch C2", () => {
+  const V3 = JSON.stringify({ dependencies: { react: "^19", "react-dom": "^19" }, devDependencies: { vite: "^6", tailwindcss: "^3.4.0" } });
+  const v3Project = (files: Record<string, string>) => makeProject({ "package.json": V3, "src/main.tsx": "", "design/tokens.json": TOKENS, ...files });
+
+  test("grouping keeps different kinds of problem apart, and each line says where to look", async () => {
+    const css = Array.from({ length: 10 }, (_, i) => `.a${i} { padding: 13px; border-radius: 13px; font-size: 13px; }`).join("\n");
+    const r = await runCheck(project({ "src/a.css": css }), ctx());
+    const groups = r.data.groups as any[];
+    expect(groups.map((g) => [g.kind, g.text, g.count]).sort()).toEqual([["font-size", "13px", 10], ["radius", "13px", 10], ["space", "13px", 10]]);
+    expect(r.text).toContain("At src/a.css:1, src/a.css:2, src/a.css:3 and 7 more.");
+  });
+
+  test("past the last group, the line says how many are left and where to see them", async () => {
+    const app = `export const A = () => <div className="${Array.from({ length: 35 }, (_, i) => `p-[${101 + i}px]`).join(" ")}" />;\n`;
+    const r = await runCheck(project({ "src/A.tsx": app }), ctx());
+    expect(r.text).toContain("  1× p-[101px]  ");
+    expect(r.text).toContain("At src/A.tsx:1.");
+    expect(r.text).toContain("…and 5 more kinds (5 problems): motif check --json lists each one.");
+  });
+
+  test("Tailwind 3: names the app's own config defines, and Tailwind 3's own, aren't flagged", async () => {
+    const config = 'module.exports = { theme: { extend: { colors: { border: "hsl(var(--border))", background: "hsl(var(--background))" } } } };\n';
+    const app = 'export const A = () => <div className="bg-background border-border ring-offset-background bg-surface" />;\n';
+    const r = await runCheck(v3Project({ "tailwind.config.js": config, "src/A.tsx": app, "src/index.css": "@tailwind base;\n.x { @apply border-border; }\n" }), ctx());
+    const texts = (r.data.violations as any[]).map((h) => `${h.file} ${h.text}`);
+    expect(texts).toEqual(["src/A.tsx bg-surface"]);
+  });
+
+  test("Tailwind 3: fixes and suggestions use the variables, since the theme classes don't exist there", async () => {
+    const app = 'export const A = () => <div className="bg-blue-500 text-sm md:p-7 font-display ease-standard" />;\n';
+    const r = await runCheck(v3Project({ "src/A.tsx": app }), ctx());
+    const by = (text: string) => (r.data.violations as any[]).find((h) => h.text === text);
+    expect(by("bg-blue-500").fix).toContain("bg-[var(--motif-color-");
+    expect(by("text-sm").suggestion).toBe("text-[length:var(--motif-font-label-size)] (14px)");
+    expect(by("md:p-7").suggestion).toBe("md:p-6 (24px) or md:p-8 (32px)");
+    expect(by("font-display")).toMatchObject({ rule: "tailwind-palette", kind: "font-family", value: "display" });
+    expect(by("ease-standard")).toMatchObject({ rule: "tailwind-palette", kind: "easing", value: "standard" });
+    for (const h of r.data.violations as any[]) expect(h.fix).not.toMatch(/\b(?:bg-action-primary|text-text-secondary|text-body|font-body|ease-standard)\b(?!\])/);
+  });
+});

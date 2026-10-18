@@ -4,6 +4,8 @@ What `motif check` and `motif shot --audit` report in a React web app, and how t
 
 A value that truly must stay as it is (a partner's brand colour, say) gets a `motif-ok: <reason>` comment on its line or the line above. `motif check` lists these exceptions separately instead of as problems. Keep them rare, and always give the reason.
 
+On Tailwind 3, Motif writes the CSS variables only, so its role classes (`bg-action-primary`, `text-body`) don't exist there and are reported as `tailwind-palette`. Use the role's variable as an arbitrary value instead: `bg-[var(--motif-color-action-primary)]`, `text-[length:var(--motif-font-body-size)]`, `rounded-[var(--motif-radius-md)]`. Spacing classes (`p-4`) work on both. `motif check` words its fixes this way on Tailwind 3; upgrading to Tailwind 4 brings the role classes.
+
 ## `raw-color`
 
 A colour typed into code or CSS: hex, `rgb()`, `hsl()`, `oklch()` or a named colour.

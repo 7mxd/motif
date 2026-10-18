@@ -4,23 +4,28 @@ import type { SourceFile } from "../check/files";
 import { expandHtml } from "../check/html";
 import { appSourceFiles } from "../check/run";
 import type { CommandResult, RunContext } from "../cli/output";
-import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
+import { ADAPTERS_AVAILABLE, detectApps, siteDir, STACK_LABELS } from "../detect/stacks";
 import { buildDraft, collectOccurrences } from "../extract/draft";
 import { ownSpacingPx, readTailwindDefaults } from "../extract/tailwind-theme";
 import { isMotifGenerated } from "../generate/header";
-import { appLabel, noSuchApp, selectApps } from "../project/apps";
+import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
 import { plural } from "../text";
 
-/** Stylesheets a page links for dark mode only (<link media="(prefers-color-scheme: dark)">): all their colours are dark. */
-function darkLinked(files: SourceFile[]): SourceFile[] {
+/**
+ * Stylesheets a page links for dark mode only (<link media="(prefers-color-scheme: dark)">): all their colours are dark.
+ * A link from the site's root (/dark.css) is looked for in each of `roots`.
+ */
+function darkLinked(files: SourceFile[], roots: string[]): SourceFile[] {
   const dark = new Set<string>();
   for (const page of files.filter((f) => /\.html?$/i.test(f.path))) {
     for (const tag of page.text.matchAll(/<link\b[^>]*>/gi)) {
       if (!/\bmedia\s*=\s*["']?[^"'>]*prefers-color-scheme\s*:\s*dark/i.test(tag[0])) continue;
       const href = tag[0].match(/\bhref\s*=\s*["']?([^"'\s>]+)/i)?.[1];
       if (!href || /^[a-z]+:|^\/\//i.test(href)) continue;
-      dark.add(posix.normalize(href.startsWith("/") ? href.slice(1) : posix.join(posix.dirname(page.path), href.split(/[?#]/)[0]!)));
+      const path = href.split(/[?#]/)[0]!;
+      const targets = path.startsWith("/") ? roots.map((r) => posix.join(r, path)) : [posix.join(posix.dirname(page.path), path)];
+      for (const t of targets) dark.add(posix.normalize(t));
     }
   }
   return files.map((f) => (f.lang === "css" && dark.has(f.path) ? { ...f, dark: [[0, f.text.length]] as [number, number][] } : f));
@@ -51,7 +56,9 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   const ignore = readIgnorePatterns(cwd);
   const noTailwind = new Set<SourceFile>();
   const files = supported.flatMap((a) => {
-    const own = expandHtml(darkLinked(appSourceFiles(cwd, a, { ignore }).filter((f) => !isMotifGenerated(f.path, f.text))));
+    // The site's root: a plain site's folder, or a React app's public/ (or the app itself).
+    const roots = a.stack === "plain-web" ? [prefixPath(a.path, siteDir(cwd, a))] : [prefixPath(a.path, "public"), a.path];
+    const own = expandHtml(darkLinked(appSourceFiles(cwd, a, { ignore }).filter((f) => !isMotifGenerated(f.path, f.text)), roots));
     if (a.stack === "plain-web") for (const f of own) noTailwind.add(f);
     return own;
   });

@@ -106,3 +106,11 @@ describe("everything in skill/", () => {
     expect(problems).toEqual([]);
   });
 });
+
+describe("the React checks guide on Tailwind 3 (review of batch C2)", () => {
+  test("says how to fix classes there, where Motif writes only the variables", () => {
+    const checks = readFileSync(join(SKILL, "adapters/react-web/checks.md"), "utf8");
+    expect(checks).toContain("On Tailwind 3");
+    expect(checks).toContain("bg-[var(--motif-color-action-primary)]");
+  });
+});

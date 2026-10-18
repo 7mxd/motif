@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SourceFile } from "../src/check/files";
+import { expandHtml } from "../src/check/html";
 import { colorContext, scanColors } from "../src/check/rules/colors";
 
 const file = (path: string, text: string): SourceFile => ({
@@ -102,5 +103,25 @@ describe("raw-color in scripts: from the backlog", () => {
       ["#654321", "background"],
       ["#111111", "border"],
     ]);
+  });
+});
+
+describe("the review of batch C2", () => {
+  test("light-dark(): the first colour is light, the second dark", () => {
+    const hits = scanColors(file("a.css", ".a { color: light-dark(#111111, #eeeeee); }"));
+    expect(hits.map((h) => [h.value, h.scheme ?? "light"])).toEqual([["#111111", "light"], ["#eeeeee", "dark"]]);
+  });
+
+  test("the page is html, body or :root on its own, and only their background", () => {
+    const pages = (css: string) => scanColors(file("a.css", css)).filter((h) => h.page).map((h) => h.value);
+    expect(pages(":root { --card-bg: #ffffff; } body { background: #f4f4f5; }")).toEqual(["#f4f4f5"]);
+    expect(pages("body .panel { background: #ffffff; } :root .card { background-color: #eeeeee; }")).toEqual([]);
+    expect(pages("html, body { background-color: #fafafa; }")).toEqual(["#fafafa"]);
+  });
+
+  test("an inline style after a stylesheet isn't the page's", () => {
+    const views = expandHtml([{ path: "a.html", abs: "/a.html", text: '<style>:root{color:#111111}</style><div style="background:#ffffff">x</div>', lang: "markup" }]);
+    const css = views.find((v) => v.lang === "css")!;
+    expect(scanColors(css).filter((h) => h.page)).toEqual([]);
   });
 });
