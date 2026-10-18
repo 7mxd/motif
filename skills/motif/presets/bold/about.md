@@ -6,4 +6,4 @@
 
 **Avoid for:** calm reading experiences and wellness apps
 
-**Fonts:** Archivo for headings, Inter for text · **Corners:** 6 / 10 / 16 px · **Motion:** fast and punchy
+**Fonts:** Zalando Sans Expanded for headings, Zalando Sans for text, Alexandria for Arabic · **Corners:** 2 / 6 / 12 px · **Motion:** fast and punchy

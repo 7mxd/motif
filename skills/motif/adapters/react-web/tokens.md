@@ -63,15 +63,17 @@ Never use Tailwind's `dark:` variant for colours: the roles already change on th
 `motif tokens --json` lists the theme's `fonts`: each family with the weights its roles use (fonts every computer has are left out). Load each one with its Fontsource package:
 
 ```bash
-npm install @fontsource/inter
+npm install @fontsource/onest
 ```
 
-The package name is the family in lower case with hyphens for spaces: Inter is `@fontsource/inter`, Source Serif 4 is `@fontsource/source-serif-4`. Then import each weight once, in the root (Next.js: `src/app/layout.tsx`; Vite: `src/main.tsx`):
+The package name is the family in lower case with hyphens for spaces: Onest is `@fontsource/onest`, Source Serif 4 is `@fontsource/source-serif-4`. Then import each weight once, in the root (Next.js: `src/app/layout.tsx`; Vite: `src/main.tsx`):
 
 ```tsx
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/600.css";
+import "@fontsource/onest/400.css";
+import "@fontsource/onest/600.css";
 ```
+
+An Arabic companion, second in the theme's font list (such as Readex Pro), loads the same way: install its package and import the same weights. Its Arabic files download only when a page shows Arabic text.
 
 The font files are served with the app, so nothing loads from Google when people use it.
 

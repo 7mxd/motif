@@ -6,4 +6,4 @@
 
 **Avoid for:** family, food and lifestyle apps
 
-**Fonts:** Space Grotesk for headings, IBM Plex Sans for text · **Corners:** 4 / 6 / 10 px · **Motion:** crisp and snappy
+**Fonts:** TASA Orbiter for headings, Geologica for text, Changa for Arabic · **Corners:** 2 / 4 / 8 px · **Motion:** crisp and snappy

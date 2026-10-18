@@ -6,4 +6,4 @@
 
 **Avoid for:** enterprise software and developer tools
 
-**Fonts:** Fraunces for headings, DM Sans for text · **Corners:** 6 / 12 / 20 px · **Motion:** relaxed and soft
+**Fonts:** Vollkorn for headings, Merriweather Sans for text, El Messiri for Arabic · **Corners:** 6 / 10 / 16 px · **Motion:** relaxed and soft
