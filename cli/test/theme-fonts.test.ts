@@ -70,3 +70,11 @@ describe("every web font in a font list (preset refresh)", () => {
     expect(fonts.map((f) => [f.family, f.source])).toEqual([["Acme Sans", "google"], ["Helvetica", "system"], ["Arial", "system"]]);
   });
 });
+
+describe("Arabic companions Motif ships (preset refresh)", () => {
+  test("bundled when second in a list; the same family first in a list comes from Google, for its Latin letters (review focus)", () => {
+    expect(themeFonts(withFonts(["Onest", "Readex Pro", "sans-serif"])).map((f) => [f.family, f.source])).toEqual([["Onest", "bundled"], ["Readex Pro", "bundled"]]);
+    expect(themeFonts(withFonts(["Rubik", "sans-serif"])).map((f) => [f.family, f.source])).toEqual([["Rubik", "google"]]);
+    expect(themeFonts(withFonts(["Onest", "Rubik", "sans-serif"], ["Rubik", "sans-serif"])).find((f) => f.family === "Rubik")!.source).toBe("google");
+  });
+});

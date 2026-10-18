@@ -1,4 +1,4 @@
-import { isBundledFamily } from "../preview/font-list";
+import { bundledCoverage } from "../preview/font-list";
 import type { Theme } from "./theme";
 
 export interface ThemeFontUse {
@@ -38,12 +38,16 @@ export function stackFamilies(css: string): string[] {
 export function themeFonts(theme: Theme): ThemeFontUse[] {
   const uses = new Map<string, ThemeFontUse>();
   for (const font of theme.fonts) {
-    for (const family of stackFamilies(font.family)) {
+    stackFamilies(font.family).forEach((family, i) => {
       const key = family.toLowerCase();
-      const use = uses.get(key) ?? { family, weights: [], source: isBundledFamily(family) ? "bundled" : SYSTEM.has(key) ? "system" : "google" };
+      // The kit has only the Arabic letters of a style's Arabic companion: enough second in a list, not first.
+      const coverage = bundledCoverage(family);
+      const source = coverage === "full" || (coverage === "arabic" && i > 0) ? "bundled" : SYSTEM.has(key) ? "system" : "google";
+      const use = uses.get(key) ?? { family, weights: [], source };
+      if (use.source === "bundled" && source === "google") use.source = "google";
       if (!use.weights.includes(font.weight)) use.weights.push(font.weight);
       uses.set(key, use);
-    }
+    });
   }
   return [...uses.values()].map((u) => ({ ...u, weights: [...u.weights].sort((a, b) => a - b) }));
 }

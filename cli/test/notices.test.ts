@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { FONT_NAMES, noticesText } from "../scripts/notices";
+import { FONT_LIST } from "../src/preview/font-list";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -37,7 +38,7 @@ describe("THIRD-PARTY-NOTICES.txt", () => {
       expect(text).toContain(s);
     }
     const files = readdirSync(join(REPO, "skill/preview-kit/fonts")).filter((f) => /^LICENSE-.+\.txt$/.test(f));
-    expect(files).toHaveLength(11);
+    expect(files).toHaveLength(FONT_LIST.length);
     for (const f of files) {
       expect(FONT_NAMES[f] ? f : `${f} has no display name in FONT_NAMES`).toBe(f);
       expect(text).toContain(`${FONT_NAMES[f]}, in the Claude Code plugin`);

@@ -8,17 +8,34 @@ const FONT_DIR = "skill/preview-kit/fonts";
 
 /** Each bundled font's licence file and the font's name. */
 export const FONT_NAMES: Record<string, string> = {
+  "LICENSE-alexandria.txt": "Alexandria",
   "LICENSE-archivo.txt": "Archivo",
+  "LICENSE-baloo-bhaijaan-2.txt": "Baloo Bhaijaan 2",
+  "LICENSE-changa.txt": "Changa",
   "LICENSE-dm-sans.txt": "DM Sans",
+  "LICENSE-el-messiri.txt": "El Messiri",
   "LICENSE-fraunces.txt": "Fraunces",
   "LICENSE-fredoka.txt": "Fredoka",
+  "LICENSE-geologica.txt": "Geologica",
   "LICENSE-ibm-plex-sans.txt": "IBM Plex Sans",
   "LICENSE-inter.txt": "Inter",
+  "LICENSE-mada.txt": "Mada",
+  "LICENSE-markazi-text.txt": "Markazi Text",
+  "LICENSE-merriweather-sans.txt": "Merriweather Sans",
+  "LICENSE-noto-serif-display.txt": "Noto Serif Display",
   "LICENSE-nunito.txt": "Nunito",
+  "LICENSE-onest.txt": "Onest",
   "LICENSE-playfair-display.txt": "Playfair Display",
+  "LICENSE-public-sans.txt": "Public Sans",
+  "LICENSE-readex-pro.txt": "Readex Pro",
+  "LICENSE-rubik.txt": "Rubik",
   "LICENSE-source-sans-3.txt": "Source Sans 3",
   "LICENSE-source-serif-4.txt": "Source Serif 4",
   "LICENSE-space-grotesk.txt": "Space Grotesk",
+  "LICENSE-tasa-orbiter.txt": "TASA Orbiter",
+  "LICENSE-vollkorn.txt": "Vollkorn",
+  "LICENSE-zalando-sans.txt": "Zalando Sans",
+  "LICENSE-zalando-sans-expanded.txt": "Zalando Sans Expanded",
 };
 
 const read = (repo: string, path: string) => readFileSync(join(repo, path), "utf8").replace(/\r\n/g, "\n").trimEnd();
