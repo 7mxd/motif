@@ -29,7 +29,8 @@ const NOT_PORTABLE_SHELL: [RegExp, string][] = [
   [/&&|\|\|/, "chains commands with && or || (Windows PowerShell 5 can't; put one command per line)"],
   [/\$\(/, "uses $(…), which only POSIX shells understand"],
   [/^\s*export\s+\w+=/m, "sets a variable with export, which only POSIX shells understand"],
-  [/^\s*[A-Z_][A-Z0-9_]*=\S*\s+\S/m, "sets a variable for one command (NAME=value command), which only POSIX shells understand"],
+  // On one line, and not a comment after it (PORT=3000 # dev).
+  [/^[ \t]*[A-Z_][A-Z0-9_]*=\S*[ \t]+[^\s#]/m, "sets a variable for one command (NAME=value command), which only POSIX shells understand"],
 ];
 // motif, or a path ending in motif / motif.cmd / motif.ps1 / motif.exe (quoted or not), then a command name.
 const MOTIF_CALL = /(?:^|[\s"'(/\\&])motif(?:\.cmd|\.ps1|\.exe)?["']?[ \t]+([a-z][a-z-]*)/gm;
@@ -43,16 +44,18 @@ const LINK_PATTERNS = [/\]\(\s*(<[^>\n]*>|[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*
 function split(text: string): { blocks: { lang: string; body: string }[]; inline: string[]; prose: string } {
   const blocks: { lang: string; body: string }[] = [];
   const prose: string[] = [];
-  let open: { fence: string; lang: string; body: string[] } | null = null;
+  let open: { fence: string; indent: number; lang: string; body: string[] } | null = null;
   for (const line of text.split("\n")) {
     if (open === null) {
-      const m = line.match(/^[ \t]*(`{3,}|~{3,})(.*)$/);
-      if (m && !(m[1]![0] === "`" && m[2]!.includes("`"))) {
-        open = { fence: m[1]!, lang: m[2]!.trim().split(/\s+/)[0]!.toLowerCase(), body: [] };
+      const m = line.match(/^([ \t]*)(`{3,}|~{3,})(.*)$/);
+      if (m && !(m[2]![0] === "`" && m[3]!.includes("`"))) {
+        open = { fence: m[2]!, indent: m[1]!.length, lang: m[3]!.trim().split(/\s+/)[0]!.toLowerCase(), body: [] };
       } else prose.push(line);
       continue;
     }
-    const close = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)?.[1];
+    // Closes at its own indent (inside a list item, say) plus up to three spaces.
+    const c = line.match(/^( *)(`{3,}|~{3,})[ \t]*$/);
+    const close = c && c[1]!.length <= open.indent + 3 ? c[2] : undefined;
     if (close && close[0] === open.fence[0] && close.length >= open.fence.length) {
       blocks.push({ lang: open.lang, body: open.body.length > 0 ? `${open.body.join("\n")}\n` : "" });
       open = null;
@@ -141,13 +144,19 @@ function skillFrontmatter(fm: string | null): string[] {
     const m = fm.match(new RegExp(`^${key}:[ \\t]*(.*)$`, "m"));
     if (!m) return undefined;
     const value = m[1]!.trim();
-    // A YAML block (description: > or |, then indented lines) is read whole: folded with spaces, or kept as lines.
-    if (/^[>|][+-]?$/.test(value)) {
+    // A YAML block (description: > or |, maybe with an indent or chomping sign and a comment, then indented lines) is
+    // read whole, blank lines too: folded with spaces, or kept as lines.
+    if (/^[>|](?:[1-9][+-]?|[+-][1-9]?)?(?:[ \t]+#.*)?$/.test(value)) {
       const lines: string[] = [];
       for (const l of fm.slice(m.index! + m[0].length + 1).split("\n")) {
+        if (l.trim() === "") {
+          lines.push("");
+          continue;
+        }
         if (!/^\s+\S/.test(l)) break;
         lines.push(l.trim());
       }
+      while (lines.at(-1) === "") lines.pop();
       return lines.join(value.startsWith(">") ? " " : "\n");
     }
     return value.replace(/^(["'])(.*)\1$/, "$2");

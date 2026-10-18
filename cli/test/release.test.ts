@@ -225,3 +225,12 @@ describe("the README names what Motif's tool includes (backlog)", () => {
     for (const s of ["axe-core 4.14.0", "MPL-2.0", "THIRD-PARTY-NOTICES.txt", "github.com/dequelabs/axe-core"]) expect(readme).toContain(s);
   });
 });
+
+describe("the release's tests (review of batch G)", () => {
+  test("run on every system the tool is built for, like CI", () => {
+    const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
+    const test = wf.slice(wf.indexOf("\n  test:\n"), wf.indexOf("\n  build:\n"));
+    expect(test).toContain("runs-on: ${{ matrix.os }}");
+    for (const os of ["ubuntu-latest", "macos-latest", "windows-latest"]) expect(test).toContain(os);
+  });
+});

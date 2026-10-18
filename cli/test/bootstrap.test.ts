@@ -38,6 +38,9 @@ beforeAll(() => {
       // sha256sum --binary writes "hash *name" (backlog).
       if (path === `/star/${ASSET}`) return new Response(binary);
       if (path === "/star/SHA256SUMS") return new Response(goodSums.replace(`  ${ASSET}`, ` *${ASSET}`));
+      // Windows line endings in SHA256SUMS (review of batch G).
+      if (path === `/crlf/${ASSET}`) return new Response(binary);
+      if (path === "/crlf/SHA256SUMS") return new Response(goodSums.replace(/\n/g, "\r\n"));
       if (path === "/bad/SHA256SUMS") return new Response(badSums);
       return new Response("not found", { status: 404 });
     },
@@ -87,6 +90,11 @@ for (const runner of RUNNERS) {
 
     test('a SHA256SUMS line in the "hash *name" form is read too (backlog)', async () => {
       const r = await run("star", freshHome(), ["--version"]);
+      expect([r.exitCode, r.stdout.trim()]).toEqual([0, VERSION]);
+    });
+
+    test("a SHA256SUMS file with Windows line endings is read too (review of batch G)", async () => {
+      const r = await run("crlf", freshHome(), ["--version"]);
       expect([r.exitCode, r.stdout.trim()]).toEqual([0, VERSION]);
     });
 
@@ -160,8 +168,15 @@ describe("downloads that stall end instead of waiting forever (backlog)", () => 
     for (const p of ["skill/bin/motif", "install.sh"]) {
       expect(read(p)).toContain("--connect-timeout");
       expect(read(p)).toContain("--speed-time");
-      expect(read(p)).toContain("--timeout=");
+      // -T works in BusyBox's wget too; --tries isn't in every build.
+      expect(read(p)).toContain("wget -q -T 60");
+      expect(read(p)).not.toContain("--tries");
     }
-    for (const p of ["skill/bin/motif.ps1", "install.ps1"]) expect(read(p)).toContain("-TimeoutSec");
+    for (const p of ["skill/bin/motif.ps1", "install.ps1"]) {
+      // -TimeoutSec only limits the wait for the first reply; PowerShell 7.4+ needs OperationTimeoutSeconds for a stall.
+      expect(read(p)).toContain("TimeoutSec = 60");
+      expect(read(p)).toContain("OperationTimeoutSeconds = 60");
+      expect(read(p)).not.toContain("1800");
+    }
   });
 });

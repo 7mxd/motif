@@ -60,10 +60,14 @@ function Invoke-MotifInstall([string]$Agent, [string]$Version, [bool]$Uninstall)
   New-Item -ItemType Directory -Path $Tmp | Out-Null
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    # A server that stops answering gives up after a minute: TimeoutSec covers the wait for its reply, and PowerShell
+    # 7.4 and later need OperationTimeoutSeconds for a download that stalls part-way (Windows PowerShell stops at 5 minutes).
+    $Web = @{ UseBasicParsing = $true; TimeoutSec = 60 }
+    if ($PSVersionTable.PSVersion -ge [version]'7.4') { $Web.OperationTimeoutSeconds = 60 }
     if (-not $Version) {
       # To a file, then read as text: Windows PowerShell returns bytes, not text, when a server labels the file as binary.
       $VersionFile = Join-Path $Tmp 'VERSION'
-      try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1800 -Uri "$Raw/skills/motif/VERSION" -OutFile $VersionFile }
+      try { Invoke-WebRequest @Web -Uri "$Raw/skills/motif/VERSION" -OutFile $VersionFile }
       catch { return (Fail "couldn't find Motif's latest version. Check your internet connection and try again.") }
       $Version = [IO.File]::ReadAllText($VersionFile).Trim()
     }
@@ -73,8 +77,8 @@ function Invoke-MotifInstall([string]$Agent, [string]$Version, [bool]$Uninstall)
     $Zip = Join-Path $Tmp $Asset
     Say "downloading Motif v$Version..."
     try {
-      Invoke-WebRequest -UseBasicParsing -TimeoutSec 1800 -Uri "$Base/$Asset" -OutFile $Zip
-      Invoke-WebRequest -UseBasicParsing -TimeoutSec 1800 -Uri "$Base/SHA256SUMS" -OutFile (Join-Path $Tmp 'SHA256SUMS')
+      Invoke-WebRequest @Web -Uri "$Base/$Asset" -OutFile $Zip
+      Invoke-WebRequest @Web -Uri "$Base/SHA256SUMS" -OutFile (Join-Path $Tmp 'SHA256SUMS')
     } catch {
       return (Fail "couldn't download Motif v$Version. Check your internet connection and try again.")
     }

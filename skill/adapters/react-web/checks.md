@@ -89,16 +89,16 @@ From `motif shot --audit`: something still moves when reduced motion is on.
 
 `motif shot` captures each page as it loads. A screen that only appears after someone fills in a form, opens a panel or sends something needs a **state script**: a few lines of JavaScript, run in the page after it loads, that get it there. Keep one per state in `design/states/`, named after the state (letters, digits and dashes), and add `--state design/states/<state>.js` for each.
 
-React keeps a field's value itself, so set it the way typing would, then send the event React listens for:
+React keeps a field's value itself, so set it the way typing would (the setter of the field's own kind: input, textarea or select), then send the event React listens for (`change` for a select):
 
 ```js
 // design/states/searched.js: the results after a search. Only the search page has the field.
 const field = document.querySelector("input[name=q]");
 if (!field) return;
-Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(field, "linen");
+Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, "linen");
 field.dispatchEvent(new Event("input", { bubbles: true }));
-field.form.requestSubmit();
-await new Promise((r) => setTimeout(r, 300));
+// A field outside a <form>: click the page's own button instead.
+field.form?.requestSubmit();
 ```
 
 - It runs in every page `motif shot` captures: start it with a guard that returns on other pages (`if (!field) return;`), or capture only its page with `--routes`.

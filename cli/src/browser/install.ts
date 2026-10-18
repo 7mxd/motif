@@ -24,6 +24,19 @@ export function installedBrowser(home: string): string | null {
   }
 }
 
+/** The server's reply, or null when it didn't start answering within ms (its body then has its own idle limit). */
+async function answered(url: string, ms: number): Promise<Response | null> {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), ms);
+  try {
+    return await fetch(url, { signal: stop.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * The download, read piece by piece so a person can watch it arrive (total is 0 when the server doesn't say). One that
  * stops sending for idleMs gives up, instead of hanging until someone notices.
@@ -106,16 +119,23 @@ export async function installBrowser(opts: {
   const plat = cftPlatform(platform, opts.arch ?? process.arch);
   if (!plat) throw new Error(`Motif can't download a browser for this system (${platform}). Install Chrome or Chromium instead.`);
 
-  const indexRes = await fetch(opts.indexUrl ?? BROWSER_INDEX_URL, { signal: AbortSignal.timeout(30_000) }).catch(() => null);
+  const idleMs = opts.idleTimeoutMs ?? 60_000;
+  const indexRes = await answered(opts.indexUrl ?? BROWSER_INDEX_URL, Math.min(idleMs, 30_000));
   if (!indexRes?.ok) throw new Error(`Couldn't reach the Chrome for Testing download list${indexRes ? ` (HTTP ${indexRes.status})` : ""}. Check your internet connection and try again.`);
-  const index = (await indexRes.json()) as any;
+  let index: any;
+  try {
+    index = JSON.parse(new TextDecoder().decode(await download(indexRes, Math.min(idleMs, 30_000))));
+  } catch {
+    throw new Error("Couldn't read the Chrome for Testing download list. Check your internet connection and try again.");
+  }
   const stable = index?.channels?.Stable;
   const url: string | undefined = stable?.downloads?.["chrome-headless-shell"]?.find((d: any) => d.platform === plat)?.url;
   if (!stable?.version || !url) throw new Error(`The Chrome for Testing download list has no headless browser for ${plat}.`);
 
-  const zipRes = await fetch(url).catch(() => null);
-  if (!zipRes?.ok) throw new Error(`Couldn't download the browser${zipRes ? ` (HTTP ${zipRes.status})` : ""}. Try again later.`);
-  const bytes = await download(zipRes, opts.idleTimeoutMs ?? 60_000, opts.onProgress);
+  const zipRes = await answered(url, idleMs);
+  if (!zipRes) throw new Error(`Couldn't download the browser: the server didn't answer within ${Math.round(idleMs / 1000)} s. Check your internet connection and try again.`);
+  if (!zipRes.ok) throw new Error(`Couldn't download the browser (HTTP ${zipRes.status}). Try again later.`);
+  const bytes = await download(zipRes, idleMs, opts.onProgress);
   opts.onStage?.("unpacking");
   let entries: Record<string, Uint8Array>;
   try {

@@ -281,5 +281,6 @@ describe("install.sh reads SHA256SUMS in either form (backlog)", () => {
     const script = readFileSync(join(import.meta.dir, "../../install.sh"), "utf8");
     expect(script).not.toContain('grep " $ASSET\\$"');
     expect(script).toContain("sub(/^\\*/");
+    expect(script).toContain("sub(/\\r$/, \"\")");
   });
 });

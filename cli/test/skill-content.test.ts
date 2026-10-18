@@ -102,6 +102,17 @@ describe("the lint rules", () => {
     ]);
   });
 
+  test("lint: a fence inside a list closes; NAME=value lines and comments aren't one-command prefixes; a YAML block with a blank line or a comment is read whole (review of batch G)", () => {
+    const lint = (text: string, file = "modes/a.md") => lintSkillMarkdown(file, text, { exists: () => true, commands: ["doctor"] });
+    expect(lint("- step\n\n    ```sh\n    motif doctor\n    ```\n\nRun `motif nonsense`.\n")).toEqual(['modes/a.md mentions "motif nonsense", which isn\'t a Motif command.']);
+    expect(lint("```sh\nMOTIF_HOME=/x\nmotif doctor\n```\n")).toEqual([]);
+    expect(lint("```sh\nPORT=3000 # dev\n```\n")).toEqual([]);
+    const fm = (description: string) => `---\nname: motif\ndescription: ${description}\n---\n# Motif\n`;
+    const long = "x".repeat(600);
+    expect(lintSkillMarkdown("SKILL.md", fm(`>\n  ${long}\n\n  ${long}`), { exists: () => true, commands: [] })).toEqual([expect.stringContaining("1–1024 characters")]);
+    expect(lintSkillMarkdown("SKILL.md", fm(`> # note\n  ${long}\n  ${long}`), { exists: () => true, commands: [] })).toEqual([expect.stringContaining("1–1024 characters")]);
+  });
+
   test("UX pattern files have the five sections, in order", () => {
     const good = "# Sign-in\n\n## Goal\n\n## Anatomy\n\n## Required states\n\n## Common mistakes\n\n## Mobile and web\n";
     expect(lint("knowledge/ux-patterns/sign-in.md", good)).toEqual([]);
@@ -153,6 +164,27 @@ describe("the guides: from the backlog", () => {
     expect(tokens).toContain("<head>");
     expect(read("adapters/plain-web/README.md")).toContain("theme");
     expect(read("adapters/plain-web/motion.md")).toMatch(/::backdrop \{[^}]*animation/);
+  });
+
+  test("the head script keeps its names to itself and survives blocked storage; a site that blocks inline scripts has an alternative (review of batch G)", () => {
+    const tokens = read("adapters/plain-web/tokens.md").replace(/\r\n/g, "\n");
+    expect(tokens).toContain("<script>\n  try {");
+    expect(tokens).toContain("theme.js");
+  });
+
+  test("self-hosted fonts: a variable file covers its weights, static files get one @font-face each (review of batch G)", () => {
+    const tokens = read("adapters/react-web/tokens.md");
+    expect(tokens).toContain("variable font");
+    expect(tokens).toContain("font-weight: 700;");
+  });
+
+  test("the React state script works without a form and on any field; the Vite row keeps its options (review of batch G)", () => {
+    const checks = read("adapters/react-web/checks.md");
+    expect(checks).toContain("Object.getPrototypeOf(field)");
+    expect(checks).toContain("field.form?.requestSubmit()");
+    const readme = read("adapters/react-web/README.md");
+    expect(readme).toContain("`pnpm create vite my-app --template react-ts`");
+    expect(readme).toContain("bun.lockb");
   });
 
   test("React's checks say how to capture screens behind a form, and review links both stacks; the rebuild step's --state is only for scripts you have", () => {

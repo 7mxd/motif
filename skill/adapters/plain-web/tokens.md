@@ -76,10 +76,14 @@ Dark mode follows the system automatically. To offer a switch, set `data-theme` 
 
 ```html
 <script>
-  const saved = localStorage.getItem("theme");
-  if (saved) document.documentElement.dataset.theme = saved;
+  try {
+    const theme = localStorage.getItem("theme");
+    if (theme) document.documentElement.dataset.theme = theme;
+  } catch {}
 </script>
 ```
+
+The `try` block keeps its name to itself (a global `const` would clash with one of the same name in `app.js` and stop it) and lets the page draw when storage is blocked. A site whose security policy blocks inline scripts loads the same lines from a `theme.js` in `<head>`, without `defer`.
 
 The switch itself goes in `app.js`:
 

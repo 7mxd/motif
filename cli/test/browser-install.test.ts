@@ -171,6 +171,21 @@ describe("installBrowser (backlog)", () => {
     }
   });
 
+  test("a download whose server never answers gives up, and so does a list that stops part-way (review of batch G)", async () => {
+    const server = serve({});
+    const base = `http://127.0.0.1:${server.port}`;
+    server.reload({ fetch: (req) => (new URL(req.url).pathname === "/index.json" ? index(base) : new Promise<Response>(() => {})) });
+    try {
+      const started = Date.now();
+      await expect(installBrowser({ home: tempDir("motif-home-"), indexUrl: `${base}/index.json`, idleTimeoutMs: 500 })).rejects.toThrow("didn't answer");
+      expect(Date.now() - started).toBeLessThan(5000);
+      server.reload({ fetch: () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("{")); } }), { headers: { "content-type": "application/json" } }) });
+      await expect(installBrowser({ home: tempDir("motif-home-"), indexUrl: `${base}/index.json`, idleTimeoutMs: 500 })).rejects.toThrow("Couldn't read the Chrome for Testing download list");
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("reports how much has downloaded", async () => {
     await withZips([zipSync({ [exe]: strToU8("fake browser".repeat(1000)) })], async (indexUrl) => {
       const seen: [number, number][] = [];

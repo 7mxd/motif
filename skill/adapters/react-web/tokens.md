@@ -79,11 +79,30 @@ Don't use `next/font` or the `@fontsource-variable` packages for theme fonts: bo
 
 A font with no Fontsource package (a brand font, or one the developer bought) is served with the app: put its files and licence in `public/fonts/`, and declare it once under the exact family name the theme uses, in a stylesheet the root imports (Next.js: `src/app/globals.css`; Vite: `src/index.css`):
 
+A variable font covers every weight with one file, declared with its range:
+
 ```css
 @font-face {
   font-family: "Acme Sans";
   src: url("/fonts/acme-sans.woff2") format("woff2");
   font-weight: 400 700;
+  font-display: swap;
+}
+```
+
+Static files (a Regular and a Bold) get one `@font-face` each, under the same family name, so bold text uses the bold file:
+
+```css
+@font-face {
+  font-family: "Acme Sans";
+  src: url("/fonts/acme-sans-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Acme Sans";
+  src: url("/fonts/acme-sans-bold.woff2") format("woff2");
+  font-weight: 700;
   font-display: swap;
 }
 ```
