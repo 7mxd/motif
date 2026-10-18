@@ -119,6 +119,42 @@ describe("motif preview with directions", () => {
     expect(r.data.error).toBe("no-contract");
   });
 
+  // Motif previews one direction at a time, so each is compared with the other directions beside it, not only with the
+  // mockups on the command line (v0.4.0 hands-on test: Gemini made two "directions" from one unchanged preset).
+  test("a direction with the same theme values as another is refused, by name, before anything renders", async () => {
+    const same = JSON.stringify(validTokens());
+    const root = twoDirections({ "design/directions/calm/tokens.json": same, "design/directions/bold/tokens.json": JSON.stringify(validTokens(), null, 2) });
+    const { deps, calls } = fakeDeps();
+    const r = await runPreview(root, ctx(["design/directions/bold"], { "png-only": true }), deps);
+    expect(r.exitCode).toBe(1);
+    expect(r.data.error).toBe("same-direction");
+    expect(r.data).toMatchObject({ tokens: "design/directions/bold/tokens.json", sameAs: "design/directions/calm/tokens.json" });
+    expect(r.text).toContain("design/directions/bold/tokens.json");
+    expect(r.text).toContain("design/directions/calm/tokens.json");
+    expect(calls).toHaveLength(0);
+  });
+
+  test("a direction with the same fonts as another still renders, with a note to give it its own pairing", async () => {
+    const root = twoDirections();
+    const { deps, calls } = fakeDeps();
+    const r = await runPreview(root, ctx(["design/directions/bold"], { "png-only": true }), deps);
+    expect(r.exitCode).toBe(0);
+    expect(calls).toHaveLength(1);
+    const note = (r.data.notes as string[]).find((n) => n.includes("same fonts"));
+    expect(note).toContain("design/directions/calm");
+    expect(note).toContain("Inter");
+    expect(r.text).toContain(note!);
+  });
+
+  test("directions with their own fonts, and the design guide beside them, raise nothing", async () => {
+    const onest = validTokens();
+    onest.primitive.font.sans.$value = ["Onest", "system-ui", "sans-serif"];
+    const root = twoDirections({ "design/directions/bold/tokens.json": JSON.stringify(onest), "design/tokens.json": JSON.stringify(onest) });
+    const r = await runPreview(root, ctx(["design/directions/bold"], { "png-only": true }), fakeDeps().deps);
+    expect(r.exitCode).toBe(0);
+    expect(r.data.notes).toEqual([]);
+  });
+
   test("--out still puts every PNG in one folder", async () => {
     const root = twoDirections();
     const { deps, calls } = fakeDeps();

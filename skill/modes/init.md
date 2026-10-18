@@ -40,7 +40,7 @@ Make two or three clearly different directions: different colour moods, type pai
 Write the mockups with [the preview kit](../preview-kit/README.md): screen content and kit classes only, no colours, sizes or fonts of your own. Each mockup uses the `tokens.json` in its own folder.
 
 1. For each direction, run `motif validate --tokens design/directions/<name>/tokens.json` and fix every problem (readability first) before showing it.
-2. Run `motif preview design/directions/<name> --png-only` for each direction; the PNGs are saved next to the mockups.
+2. Run `motif preview design/directions/<name> --png-only` for each direction; the PNGs are saved next to the mockups. It refuses a direction whose theme values match another's, and notes one that shares another's fonts: change it until each direction is clearly its own, then run it again.
 3. For a live side-by-side view, run `motif preview --compare design/directions/<a>/<screen>.html design/directions/<b>/<screen>.html` in the background, or ask the developer to run it.
 4. Show the PNGs and describe each direction in one line ("Calm: soft neutrals, rounded corners, generous spacing; Onest, with Readex Pro for Arabic").
 5. The developer picks one, asks for a mix ("A's colours with B's type"), or asks for changes. Update the folders and show them again until they approve one.
