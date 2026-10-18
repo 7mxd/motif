@@ -30,6 +30,12 @@ const FRAMES = `[...document.querySelectorAll(".mk-frame")]
 const STATE_NAME = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 const WHOLE_PAGE = `({ x: 0, y: 0, width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight })`;
 /**
+ * The text each family is loaded with. Loading a family asks only for the faces that cover the text, and the default
+ * (a space) skips a face limited to Arabic letters, so a style's Arabic companion would wrongly count as missing.
+ */
+export const FONT_SAMPLE = "Aa \u0628";
+
+/**
  * Waits for the page's fonts within one shared budget, then lists the families with no face that loaded.
  * It first waits for the theme font stylesheets the preview server loads after the page (window.__motifFonts),
  * then loads each family explicitly (so ones the page doesn't use yet count too). Offline, or with a font server
@@ -41,7 +47,7 @@ export function fontsScript(families: string[], budgetMs: number = FONT_WAIT_MS)
     const deadline = Date.now() + ${budgetMs};
     const within = (p) => Promise.race([p, new Promise((r) => setTimeout(r, Math.max(0, deadline - Date.now())))]);
     await within(window.__motifFonts || Promise.resolve());
-    await within(Promise.allSettled(families.map((f) => document.fonts.load("16px " + JSON.stringify(f)))));
+    await within(Promise.allSettled(families.map((f) => document.fonts.load("16px " + JSON.stringify(f), ${JSON.stringify(FONT_SAMPLE)}))));
     await within(document.fonts.ready);
     const loaded = new Set([...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family.replace(/^["']|["']$/g, "")));
     // A font installed on this computer has no web font face, but text in it measures differently from the fallbacks.

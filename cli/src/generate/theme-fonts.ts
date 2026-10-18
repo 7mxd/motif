@@ -26,16 +26,24 @@ export function firstFamily(css: string): string | null {
   return first && !GENERIC.has(first.toLowerCase()) ? first : null;
 }
 
-/** Each family the theme's type roles ask for first, with the weights used. */
+/** Every family a type role names, unquoted and in order, without generic families: a companion second in the list counts too. */
+export function stackFamilies(css: string): string[] {
+  return css
+    .split(",")
+    .map((part) => part.trim().replace(/^(["'])(.*)\1$/, "$2").trim())
+    .filter((family) => family && !GENERIC.has(family.toLowerCase()));
+}
+
+/** Each family the theme's type roles name (the first, and any companion after it), with the weights used. */
 export function themeFonts(theme: Theme): ThemeFontUse[] {
   const uses = new Map<string, ThemeFontUse>();
   for (const font of theme.fonts) {
-    const family = firstFamily(font.family);
-    if (!family) continue;
-    const key = family.toLowerCase();
-    const use = uses.get(key) ?? { family, weights: [], source: isBundledFamily(family) ? "bundled" : SYSTEM.has(key) ? "system" : "google" };
-    if (!use.weights.includes(font.weight)) use.weights.push(font.weight);
-    uses.set(key, use);
+    for (const family of stackFamilies(font.family)) {
+      const key = family.toLowerCase();
+      const use = uses.get(key) ?? { family, weights: [], source: isBundledFamily(family) ? "bundled" : SYSTEM.has(key) ? "system" : "google" };
+      if (!use.weights.includes(font.weight)) use.weights.push(font.weight);
+      uses.set(key, use);
+    }
   }
   return [...uses.values()].map((u) => ({ ...u, weights: [...u.weights].sort((a, b) => a - b) }));
 }

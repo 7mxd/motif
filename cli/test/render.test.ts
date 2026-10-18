@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
-import { fontsScript, pngName, pngNamer, renderPngs } from "../src/preview/render";
+import { FONT_SAMPLE, fontsScript, pngName, pngNamer, renderPngs } from "../src/preview/render";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -123,6 +123,35 @@ describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
       expect(result.files).toHaveLength(2);
       expect(result.missingFonts.sort()).toEqual(["Gone", "Never Declared"]);
       expect(Date.now() - started).toBeLessThan(30_000);
+    } finally {
+      server.stop(true);
+    }
+  }, 60_000);
+
+  test("a face that only covers Arabic letters counts as loaded (preset refresh: review focus)", async () => {
+    const font = readFileSync(join(import.meta.dir, "../../skill/preview-kit/fonts/nunito.woff2"));
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(req) {
+        const path = new URL(req.url).pathname;
+        if (path === "/ar.woff2") return new Response(font, { headers: { "content-type": "font/woff2" } });
+        if (path !== "/") return new Response("Not found", { status: 404 });
+        const html = `<!doctype html><html><head><style>
+          @font-face { font-family: "Companion"; src: url("/ar.woff2") format("woff2"); unicode-range: U+0600-06FF; }
+          body { margin: 0 } .mk-frame { width: 200px; height: 100px; background: #eee }
+        </style></head><body><div class="mk-frame"><p style="font-family: Companion, sans-serif">Latin only</p></div></body></html>`;
+        return new Response(html, { headers: { "content-type": "text/html" } });
+      },
+    });
+    try {
+      const result = await renderPngs({
+        browserPath: browser!.path,
+        outDir: tempDir("motif-render-"),
+        targets: [{ name: "ar", url: `http://127.0.0.1:${server.port}/`, fonts: ["Companion"] }],
+      });
+      expect(result.missingFonts).toEqual([]);
+      expect(FONT_SAMPLE).toMatch(/[\u0600-\u06FF]/);
     } finally {
       server.stop(true);
     }

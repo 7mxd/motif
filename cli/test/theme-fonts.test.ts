@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildTheme, type Theme } from "../src/generate/theme";
-import { firstFamily, googleFontsUrl, themeFonts } from "../src/generate/theme-fonts";
+import { firstFamily, googleFontsUrl, stackFamilies, themeFonts } from "../src/generate/theme-fonts";
 import { presetTheme } from "../src/preview/presets";
 import { docFrom, validTokens } from "./helpers";
 
@@ -24,7 +24,7 @@ describe("firstFamily", () => {
 
 describe("themeFonts", () => {
   test("a starting style's fonts are all bundled, with the weights its roles use", () => {
-    const fonts = themeFonts(presetTheme("editorial")!);
+    const fonts = themeFonts(presetTheme("editorial")!).filter((f) => f.source !== "system");
     expect(fonts.map((f) => [f.family, f.source])).toEqual([["Playfair Display", "bundled"], ["Source Serif 4", "bundled"]]);
     for (const f of fonts) expect(f.weights).toEqual([...f.weights].sort((a, b) => a - b));
   });
@@ -50,5 +50,23 @@ describe("the system's own monospace fonts (review of batch D)", () => {
     for (const family of ["SFMono-Regular", "Liberation Mono", "Lucida Console", "DejaVu Sans Mono", "Andale Mono", "Menlo", "Consolas"]) {
       expect(themeFonts(withFonts([family, "monospace"])).map((f) => f.source)).toEqual(["system"]);
     }
+  });
+});
+
+describe("every web font in a font list (preset refresh)", () => {
+  test("stackFamilies: each family in order, unquoted, without generic families", () => {
+    expect(stackFamilies('Onest, "Readex Pro", system-ui, sans-serif')).toEqual(["Onest", "Readex Pro"]);
+    expect(stackFamilies("system-ui, sans-serif")).toEqual([]);
+  });
+
+  test("a companion second in the list is loaded too, with the same weights", () => {
+    const fonts = themeFonts(withFonts(["Plus Jakarta Sans", "Noto Kufi Arabic", "system-ui", "sans-serif"]));
+    expect(fonts.map((f) => f.family)).toEqual(["Plus Jakarta Sans", "Noto Kufi Arabic"]);
+    expect(fonts[1]!.weights).toEqual(fonts[0]!.weights);
+  });
+
+  test("system fonts later in the list are never fetched (review focus)", () => {
+    const fonts = themeFonts(withFonts(["Acme Sans", "Helvetica", "Arial", "sans-serif"]));
+    expect(fonts.map((f) => [f.family, f.source])).toEqual([["Acme Sans", "google"], ["Helvetica", "system"], ["Arial", "system"]]);
   });
 });
