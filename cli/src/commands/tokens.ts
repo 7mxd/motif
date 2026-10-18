@@ -159,7 +159,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     };
   }
 
-  const detected = detectApps(cwd).apps;
+  const { apps: detected, findings: settingProblems } = detectApps(cwd);
   const apps = selectApps(detected, ctx.app);
   if (apps === null) {
     return {
@@ -183,7 +183,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     .filter((f) => f.source !== "system")
     .map(({ family, weights }) => ({ family, weights }));
   const files: GeneratedFile[] = [];
-  const notes: string[] = [];
+  const notes: string[] = settingProblems.map((f) => f.message);
   const srcDirs = new Map<string, string>();
   const entries: { dir: string; entry: string; path: string; tailwind: boolean; cssPath: string }[] = [];
   let needsFallback = false;

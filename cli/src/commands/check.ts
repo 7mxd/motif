@@ -45,7 +45,8 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
     return { command: "check", exitCode: 2, text: "Your theme values file can't be read. Run motif validate to see why.", data: { error: "invalid-contract" } };
   }
 
-  const detected = detectApps(cwd).apps;
+  // A problem in design/motif.json (an app that isn't there) is a problem: check doesn't pass quietly without that app.
+  const { apps: detected, findings: settingProblems } = detectApps(cwd);
   const apps = selectApps(detected, ctx.app);
   if (apps === null) {
     return { command: "check", exitCode: 2, text: noSuchApp(ctx.app, detected), data: { error: "no-such-app" } };
@@ -111,12 +112,15 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (skipped.length) lines.push("", `Skipped (not supported yet): ${skipped.join(", ")}.`);
   if (violations.length) lines.push("", 'Fix these, or ask your agent: "fix the motif check findings".');
 
+  const settingsErrors = settingProblems.filter((f) => f.severity === "error");
+  if (settingProblems.length) lines.unshift(...settingProblems.map((f) => `${f.severity === "error" ? "✗" : "•"} ${f.message}`), "");
   return {
     command: "check",
-    exitCode: violations.length ? 1 : 0,
+    exitCode: violations.length || settingsErrors.length ? 1 : 0,
     text: lines.join("\n"),
     data: {
       violations,
+      settings: settingProblems,
       exceptions,
       warnings,
       summary: { files, violations: violations.length, exceptions: exceptions.length, warnings: warnings.length },

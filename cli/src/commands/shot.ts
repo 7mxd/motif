@@ -176,7 +176,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     return usage(`No Chrome or Edge found, so Motif can't take screenshots. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
   }
 
-  const detected = detectApps(cwd).apps;
+  const { apps: detected, findings: settingProblems } = detectApps(cwd);
   const selected = selectApps(detected, ctx.app);
   if (selected === null) {
     return usage(noSuchApp(ctx.app, detected), { error: "no-such-app" });
@@ -212,7 +212,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     );
   }
   const routes = discovery.routes.slice(0, MAX_ROUTES);
-  const notes: string[] = [];
+  const notes: string[] = settingProblems.map((f) => f.message);
   if (discovery.routes.length > routes.length) {
     notes.push(`Captured the first ${MAX_ROUTES} of ${discovery.routes.length} pages. Choose others with --routes.`);
   }

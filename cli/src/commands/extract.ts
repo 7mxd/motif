@@ -18,7 +18,7 @@ export const PREVIOUS_DRAFT_PATH = "design/tokens.draft.previous.json";
 
 
 export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandResult> {
-  const detected = detectApps(cwd).apps;
+  const { apps: detected, findings: settingProblems } = detectApps(cwd);
   const apps = selectApps(detected, ctx.app);
   if (apps === null) {
     return { command: "extract", exitCode: 2, text: noSuchApp(ctx.app, detected), data: { error: "no-such-app" } };
@@ -50,7 +50,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   const occ = collectOccurrences(files, tw, (f) => !noTailwind.has(f), (f) => noTailwind.has(f));
   const { tokens, report } = buildDraft(occ);
 
-  const notes = [...report.notes];
+  const notes = [...settingProblems.map((f) => f.message), ...report.notes];
   mkdirSync(join(cwd, "design"), { recursive: true });
   // The draft is meant to be edited; keep the last one rather than silently replacing someone's edits.
   if (existsSync(join(cwd, DRAFT_PATH))) {

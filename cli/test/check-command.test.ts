@@ -140,3 +140,16 @@ describe("runCheck: skipped apps", () => {
     expect((await runCheck(root, ctx())).text).toContain("apps/mobile (Flutter)");
   });
 });
+
+describe("runCheck and design/motif.json (review of batch C1)", () => {
+  test("an app the settings list that isn't there is reported, and check doesn't pass quietly without it", async () => {
+    const root = project({
+      "src/Clean.tsx": CLEAN,
+      "design/motif.json": JSON.stringify({ apps: [{ path: ".", stack: "react-web" }, { path: "admin", stack: "react-web" }] }),
+    });
+    const r = await runCheck(root, ctx());
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toContain(`✗ design/motif.json lists "admin", but there's no such folder here.`);
+    expect((r.data.settings as any[]).map((f) => f.code)).toEqual(["bad-settings"]);
+  });
+});
