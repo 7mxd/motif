@@ -10,6 +10,16 @@ const file = (text: string): SourceFile => ({ path: "a.tsx", abs: "a.tsx", text,
 const violations = (text: string, s = scale) =>
   scanTailwindScale(file(`<div className="${text}" />`), s).filter((h) => h.violation).map((h) => [h.rule, h.kind, h.value]);
 
+describe("font-mono and the optional mono role (backlog)", () => {
+  test("font-mono is the mono role when the theme has one; without it, the fix says how to add one", () => {
+    const t = validTokens();
+    t.font.mono = { $value: { fontFamily: ["ui-monospace", "monospace"], fontSize: { value: 14, unit: "px" }, fontWeight: 400, lineHeight: 1.5 } };
+    expect(violations("font-mono", buildScale(buildTheme(docFrom(t)), "src"))).toEqual([]);
+    const hits = scanTailwindScale(file('<div className="font-mono" />'), scale).filter((h) => h.violation);
+    expect(hits.map((h) => h.fix)).toEqual([expect.stringContaining("font.mono")]);
+  });
+});
+
 describe("scanTailwindScale", () => {
   test("spacing classes on the scale are fine", () => {
     expect(violations("p-4 m-0 gap-2 -mt-3 px-16")).toEqual([]);

@@ -69,6 +69,14 @@ Every colour role needs a dark value; `motif validate` reports any role without 
 | `easing` | standard, enter, exit — cubic Bézier curves |
 | `spring` | `snappy`, `smooth`, `bouncy` — each a `duration` (seconds) and a `bounce` (between −1 and 1) |
 
+### Optional roles
+
+A theme may leave these out. One it has must be the type shown, and `motif check` then accepts the matching classes and variables (`font-mono`, `var(--motif-font-mono-family)`).
+
+| Group | Roles |
+|---|---|
+| `font` | mono — code, keyboard keys and other fixed-width text; a typography value like the others. The presets start it from the system's own monospace fonts (`ui-monospace`, then Menlo, Consolas and so on), so nothing is downloaded. |
+
 Value shapes: sizes `{ "value": 16, "unit": "px" }`; durations `{ "value": 200, "unit": "ms" }`; easing `[0.2, 0, 0, 1]`; spring duration `{ "value": 0.4, "unit": "s" }` with bounce `0.1`.
 
 A project may add roles (a `color.chart-1`, say). Describe each new role in DESIGN.md section 3 or 4 and log it in the change log.

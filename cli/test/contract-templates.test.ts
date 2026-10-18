@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runValidate } from "../src/commands/validate";
-import { REQUIRED_ROLES, REQUIRED_SPRINGS } from "../src/contract/roles";
+import { OPTIONAL_ROLES, REQUIRED_ROLES, REQUIRED_SPRINGS } from "../src/contract/roles";
 import { templateTokens } from "../src/presets/build";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
@@ -43,5 +43,24 @@ describe("the design guide templates", () => {
 
   test("the template's change-log line follows spec.md's format", () => {
     expect(read("DESIGN.template.md")).toMatch(/^- \d{4}-\d{2}-\d{2} — .+ — .+ — approved by .+$/m);
+  });
+});
+
+describe("the optional mono role (backlog)", () => {
+  const skill = (rel: string) => readFileSync(join(CONTRACT, "..", rel), "utf8").replace(/\r\n/g, "\n");
+
+  test("spec.md names every optional role, as optional", () => {
+    const spec = read("spec.md");
+    expect(spec).toContain("### Optional roles");
+    for (const [group, { names }] of Object.entries(OPTIONAL_ROLES)) {
+      for (const name of names) expect(spec).toContain(`| \`${group}\` | ${name} `);
+    }
+  });
+
+  test("the craft guide says what it's for, the stack guides how to use it, and the preview kit sets code in it", () => {
+    expect(skill("knowledge/visual-craft.md")).toContain("- `mono`:");
+    expect(skill("adapters/plain-web/tokens.md")).toContain("`font.mono`");
+    expect(skill("adapters/react-web/tokens.md")).toContain("`font-mono`");
+    expect(skill("preview-kit/kit.css")).toMatch(/code, kbd, samp, pre \{[^}]*var\(--motif-font-mono-family, ui-monospace, monospace\)/);
   });
 });

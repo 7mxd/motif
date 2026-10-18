@@ -16,6 +16,13 @@ export const FONT_ROLES: [string, number, number][] = [
   ["display", 700, 1.1], ["title", 700, 1.2], ["heading", 600, 1.3], ["body", 400, 1.5], ["label", 500, 1.4], ["caption", 400, 1.4],
 ];
 
+/** The optional type role for code (name, weight, line height), and the system's own monospace fonts it starts from. */
+export const MONO_ROLE: [string, number, number] = ["mono", 400, 1.5];
+export const MONO_STACK = ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", "monospace"];
+
+/** A code font: monospace, ui-monospace, or a family named like one (JetBrains Mono, Fira Code, Menlo), but not Monoton. */
+export const isMonospace = (family: string) => /mono(?:space)?(?![a-z])|\bcode\b|consolas|menlo|monaco|courier|inconsolata|lucida console/i.test(family);
+
 export const px = (value: number) => ({ value, unit: "px" });
 export const ms = (value: number) => ({ value, unit: "ms" });
 

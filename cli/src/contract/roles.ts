@@ -22,6 +22,11 @@ export const REQUIRED_ROLES: Record<string, { type: string; names: string[] }> =
   easing: { type: "cubicBezier", names: ["standard", "enter", "exit"] },
 };
 
+/** Roles a theme may leave out; one it has must be the right type. */
+export const OPTIONAL_ROLES: Record<string, { type: string; names: string[] }> = {
+  font: { type: "typography", names: ["mono"] },
+};
+
 export const REQUIRED_SPRINGS = ["snappy", "smooth", "bouncy"];
 
 const MAX_DURATION_MS = 2000;
@@ -67,6 +72,10 @@ export function checkRoles(doc: TokenDocument): Finding[] {
         }
       }
     }
+  }
+
+  for (const [group, { type, names }] of Object.entries(OPTIONAL_ROLES)) {
+    for (const name of names) if (doc.tokens.has(`${group}.${name}`)) requireRole(`${group}.${name}`, type);
   }
 
   for (const name of REQUIRED_SPRINGS) {

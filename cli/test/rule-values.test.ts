@@ -10,6 +10,25 @@ const file = (path: string, text: string): SourceFile => ({ path, abs: path, tex
 const found = (path: string, text: string, s: typeof scale | null = scale) =>
   scanValues(file(path, text), s).filter((h) => h.violation).map((h) => [h.rule, h.kind, h.value]);
 
+describe("code fonts and the optional mono role (backlog)", () => {
+  const t = validTokens();
+  t.font.mono = { $value: { fontFamily: ["ui-monospace", "monospace"], fontSize: { value: 14, unit: "px" }, fontWeight: 400, lineHeight: 1.5 } };
+  const withMono = buildScale(buildTheme(docFrom(t)), "src");
+  const fixes = (path: string, text: string, s: typeof scale) => scanValues(file(path, text), s).filter((h) => h.violation).map((h) => h.fix);
+
+  test("a code font points to the mono role when the theme has one", () => {
+    expect(fixes("a.css", ".a { font-family: 'Fira Code', monospace; }", withMono)).toEqual([expect.stringContaining("var(--motif-font-mono-family)")]);
+    expect(fixes("a.tsx", '<code style={{ fontFamily: "monospace" }} />', withMono)).toEqual([expect.stringContaining("var(--motif-font-mono-family)")]);
+  });
+  test("and says how to add one when it doesn't", () => {
+    expect(fixes("a.css", ".a { font-family: ui-monospace, monospace; }", scale)).toEqual([expect.stringContaining("font.mono")]);
+  });
+  test("other fonts still point to the text roles", () => {
+    expect(fixes("a.css", ".a { font-family: 'Comic Sans MS'; }", withMono)).toEqual([expect.stringContaining("var(--motif-font-body-family)")]);
+    expect(fixes("a.css", ".a { font-family: Monoton, cursive; }", withMono)).toEqual([expect.stringContaining("var(--motif-font-body-family)")]);
+  });
+});
+
 describe("CSS declarations", () => {
   test("spacing off the scale; 0, auto and scale values are fine", () => {
     expect(found("a.css", ".a { padding: 13px 16px; margin: 0 auto; gap: 1rem; }")).toEqual([["off-scale", "space", "13px"]]);

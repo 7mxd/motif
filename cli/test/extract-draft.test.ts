@@ -119,6 +119,21 @@ describe("buildDraft: real-app details", () => {
     const t = buildDraft({ ...occ, fontFamily: [s("monospace", 13), s("Thmanyah Sans", 5)] }).tokens as any;
     expect(t.primitive.font.sans.$value[0]).toBe("Thmanyah Sans");
   });
+  test("a code font becomes the optional mono role, never the brand font (backlog)", () => {
+    const t = buildDraft({ ...occ, fontFamily: [s("Fira Code", 13), s("Inter", 5)] }).tokens as any;
+    expect(t.primitive.font.sans.$value[0]).toBe("Inter");
+    expect(t.primitive.font.mono.$value).toEqual(["Fira Code", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", "monospace"]);
+    expect(t.font.mono.$value.fontFamily).toBe("{primitive.font.mono}");
+    expect(validateTokens(docFrom(t))).toEqual([]);
+    expect(checkRoles(docFrom(t))).toEqual([]);
+  });
+  test("a generic monospace gives a mono role in the system's own fonts; an app without code text gets none (backlog)", () => {
+    const t = buildDraft({ ...occ, fontFamily: [s("monospace", 13), s("Thmanyah Sans", 5)] }).tokens as any;
+    expect(t.primitive.font.mono.$value[0]).toBe("ui-monospace");
+    const plain = buildDraft(occ).tokens as any;
+    expect(plain.font.mono).toBeUndefined();
+    expect(plain.primitive.font.mono).toBeUndefined();
+  });
 });
 
 describe("collectOccurrences + buildDraft: the page's background (backlog)", () => {

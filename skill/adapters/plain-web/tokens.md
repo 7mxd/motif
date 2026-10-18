@@ -48,6 +48,7 @@ Every colour, size, corner, shadow, font and timing comes from a variable:
 | `radius.md` | `var(--motif-radius-md)` |
 | `shadow.md` | `var(--motif-shadow-md)` |
 | `font.body` | `var(--motif-font-body-family)`, `-size`, `-weight` and `-line-height` |
+| `font.mono` (optional, for code) | `code, kbd, samp, pre { font-family: var(--motif-font-mono-family); }` |
 | `duration.base`, `easing.standard` | `var(--motif-duration-base)`, `var(--motif-easing-standard)` |
 
 Lengths that aren't design values stay as they are: a `1px` border, a `40rem` maximum width, a `3rem` minimum height for touch targets.

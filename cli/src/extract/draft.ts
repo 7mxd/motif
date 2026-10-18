@@ -7,7 +7,7 @@ import { scanFile } from "../check/run";
 import { colorContext, CSS_COLOR_LITERAL, CSS_DECLARATION, isPageSelector } from "../check/rules/colors";
 import type { Hit } from "../check/types";
 import { locator } from "../text";
-import { FONT_ROLES, SPACE_SCALE, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
+import { FONT_ROLES, MONO_ROLE, MONO_STACK, SPACE_SCALE, defaultShadows, isMonospace, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { clusterColors, parseColor, type ColorCluster, type Sample } from "./cluster";
 import type { TailwindDefaults } from "./tailwind-theme";
 
@@ -576,12 +576,20 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   let display = larger.length >= 3 ? larger[larger.length - 1]! : Math.round(body * 2.5);
   if (display <= title) display = Math.round(title * 1.4);
   const sizeOf: Record<string, number> = { display, title, heading, body, label, caption };
-  // The brand font, not a generic family that happens to be common (font-mono for code, system-ui fallbacks).
+  // The brand font, not a generic family that happens to be common (system-ui fallbacks), and not a code font.
   const GENERIC = new Set(["system-ui", "sans-serif", "serif", "monospace", "cursive", "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded"]);
-  const family = occ.fontFamily.find((f) => !GENERIC.has(f.value.toLowerCase()))?.value ?? occ.fontFamily[0]?.value ?? "system-ui";
+  const textFonts = occ.fontFamily.filter((f) => !isMonospace(f.value));
+  const family = textFonts.find((f) => !GENERIC.has(f.value.toLowerCase()))?.value ?? textFonts[0]?.value ?? "system-ui";
   const font: Record<string, unknown> = { $type: "typography" };
   for (const [role, weight, lineHeight] of FONT_ROLES) {
     font[role] = { $value: { fontFamily: "{primitive.font.sans}", fontSize: px(sizeOf[role]!), fontWeight: weight, lineHeight } };
+  }
+  // Code text gets the optional mono role: the app's own code font first, then the system's.
+  const code = occ.fontFamily.find((f) => isMonospace(f.value))?.value;
+  const monoFamilies = code === undefined ? [] : [...new Map([...(GENERIC.has(code.toLowerCase()) ? [] : [code]), ...MONO_STACK].map((f) => [f.toLowerCase(), f])).values()];
+  if (code !== undefined) {
+    const [name, weight, lineHeight] = MONO_ROLE;
+    font[name] = { $value: { fontFamily: "{primitive.font.mono}", fontSize: px(sizeOf.label!), fontWeight: weight, lineHeight } };
   }
 
   // Motion.
@@ -600,7 +608,10 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     },
     primitive: {
       color: { $type: "color", ...primitives },
-      font: { sans: { $type: "fontFamily", $value: [...new Set([family, "system-ui", "sans-serif"])] } },
+      font: {
+        sans: { $type: "fontFamily", $value: [...new Set([family, "system-ui", "sans-serif"])] },
+        ...(monoFamilies.length ? { mono: { $type: "fontFamily", $value: monoFamilies } } : {}),
+      },
     },
     color,
     font,

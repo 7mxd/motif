@@ -1,5 +1,5 @@
 import { wcagContrast } from "culori";
-import { FONT_ROLES, SPACE_SCALE, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
+import { FONT_ROLES, MONO_ROLE, MONO_STACK, SPACE_SCALE, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { PRESETS, type PaletteRole, type PresetSpec } from "./spec";
 
 const ON_BASES = ["action-primary", "action-secondary", "success", "warning", "danger", "info"] as const;
@@ -35,6 +35,11 @@ export function presetTokens(spec: PresetSpec): Record<string, unknown> {
       },
     };
   }
+  // The optional role for code, at the label size, in the system's own monospace fonts (nothing to download).
+  const [monoName, monoWeight, monoLineHeight] = MONO_ROLE;
+  font[monoName] = {
+    $value: { fontFamily: "{primitive.font.mono}", fontSize: px(spec.sizes.label), fontWeight: monoWeight, lineHeight: monoLineHeight },
+  };
   const space: Record<string, unknown> = { $type: "dimension" };
   for (const [key, value] of SPACE_SCALE) space[key] = { $value: px(value) };
 
@@ -45,6 +50,7 @@ export function presetTokens(spec: PresetSpec): Record<string, unknown> {
       font: {
         sans: { $type: "fontFamily", $value: spec.fonts.body },
         display: { $type: "fontFamily", $value: spec.fonts.display },
+        mono: { $type: "fontFamily", $value: MONO_STACK },
       },
     },
     color,

@@ -129,6 +129,8 @@ body {
 .mk-label { font: var(--motif-font-label-weight) var(--motif-font-label-size) / var(--motif-font-label-line-height) var(--motif-font-label-family); }
 .mk-caption { font: var(--motif-font-caption-weight) var(--motif-font-caption-size) / var(--motif-font-caption-line-height) var(--motif-font-caption-family); }
 .mk-muted { color: var(--motif-color-text-secondary); }
+/* Code in the theme's optional mono role, or the system's monospace fonts when it has none. */
+code, kbd, samp, pre { font-family: var(--motif-font-mono-family, ui-monospace, monospace); }
 
 /* ---------- Components ---------- */
 .mk-btn {

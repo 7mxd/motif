@@ -3,6 +3,7 @@ import type { SourceFile } from "../files";
 import { maskComments } from "../mask";
 import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../types";
 import { CLASS_PREFIX, classSegments } from "./tailwind";
+import { fontFix } from "./values";
 
 /** Tailwind v4's default --spacing (0.25rem), used to read spacing classes in apps without Motif's theme yet. */
 export const TAILWIND_SPACING_PX = 4;
@@ -64,7 +65,7 @@ export function scanTailwindScale(source: SourceFile, scale: Scale | null): Hit[
       push(base + m.index!, m[0], "raw-motion", "easing", m[1]!, !continuous && (scale ? !scale.easeKeys.has(m[1]!) : true), `Default easing ${m[0]}.`, `Use ${list("ease-", scale?.easeKeys) || "ease-standard"}.`);
     }
     for (const m of seg.text.matchAll(FONT)) {
-      push(base + m.index!, m[0], "raw-font", "font-family", m[1]!, scale ? !scale.textKeys.has(m[1]!) : true, `Default font ${m[0]}.`, "Use a font role class such as font-body.");
+      push(base + m.index!, m[0], "raw-font", "font-family", m[1]!, scale ? !scale.textKeys.has(m[1]!) : true, `Default font ${m[0]}.`, m[1] === "mono" ? fontFix("monospace", scale) : "Use a font role class such as font-body.");
     }
   }
   return hits.sort((a, b) => a.line - b.line || a.column - b.column);

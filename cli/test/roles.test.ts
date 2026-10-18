@@ -24,6 +24,12 @@ describe("checkRoles", () => {
     expect(f.map((x) => x.code)).toEqual(["wrong-type"]);
   });
 
+  test("font.mono is optional: a theme is complete without it, and with it, it must be a typography value (backlog)", () => {
+    expect(run((t) => delete t.font.mono)).toEqual([]);
+    const f = run((t) => (t.font.mono = { $type: "dimension", $value: { value: 14, unit: "px" } }));
+    expect(f.map((x) => [x.code, x.path])).toEqual([["wrong-type", "font.mono"]]);
+  });
+
   test("requires a dark value for every colour role", () => {
     const f = run((t) => delete t.color.border.$extensions);
     expect(f.map((x) => [x.code, x.path])).toEqual([["missing-dark", "color.border"]]);

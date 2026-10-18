@@ -28,6 +28,7 @@ Use one or two levers per level, not all five. A heading that is bigger, bolder,
 - `body`: content people read.
 - `label`: controls, buttons, tabs, form labels.
 - `caption`: metadata such as timestamps, counts and helper text.
+- `mono`: code, keyboard keys and values people copy exactly (an API key, an order number), if the theme has this optional role. Never for headings or prose.
 
 **The squint test.** Blur your eyes, or blur the screenshot. The most important thing should still stand out, and the screen should break into a few clear groups. If it turns into an even grey texture, the hierarchy is flat; if three things fight for attention, it is crowded.
 

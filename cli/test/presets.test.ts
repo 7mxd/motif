@@ -5,6 +5,7 @@ import { checkContrast } from "../src/contract/contrast";
 import { checkRoles } from "../src/contract/roles";
 import { validateTokens } from "../src/contract/tokens";
 import { buildTheme } from "../src/generate/theme";
+import { fontStylesheets } from "../src/generate/theme-fonts";
 import { presetAbout, presetSample, presetTokens } from "../src/presets/build";
 import { PRESETS } from "../src/presets/spec";
 import { generateReactWeb } from "../src/stacks/react-web/generate";
@@ -33,6 +34,15 @@ for (const spec of PRESETS) {
       expect(read(`presets/${spec.id}/tokens.json`)).toBe(JSON.stringify(tokens, null, 2) + "\n");
       expect(read(`presets/${spec.id}/about.md`)).toBe(presetAbout(spec));
       expect(read(`presets/${spec.id}/sample.html`)).toBe(presetSample(spec, template));
+    });
+
+    test("has the optional mono role for code, in the system's own monospace fonts, never downloaded (backlog)", () => {
+      const t = tokens as any;
+      expect(t.font.mono.$value.fontFamily).toBe("{primitive.font.mono}");
+      expect(t.primitive.font.mono.$value[0]).toBe("ui-monospace");
+      expect(fontStylesheets(buildTheme(doc)).join(" ")).not.toMatch(/mono/i);
+      const files = generateReactWeb(buildTheme(doc), { srcDir: "src", tailwind: "v4" });
+      expect(files.map((f) => f.content).join("\n")).toContain("--font-mono: var(--motif-font-mono-family);");
     });
 
     test("React web output stays the same", () => {

@@ -2,6 +2,7 @@ import { locator } from "../../text";
 import type { SourceFile } from "../files";
 import { inRanges, maskComments, rangesOf } from "../mask";
 import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../types";
+import { isMonospace } from "../../contract/defaults";
 import { CSS_DECLARATION } from "./colors";
 
 export const IMPORTS_MOTION = /from\s+["'](?:motion|motion\/react|motion\/react-client|framer-motion)["']/;
@@ -31,6 +32,14 @@ const sizeMessages: Record<"space" | "radius" | "font-size", (px: number, steps:
   "font-size": (px) => [`Text size ${px}px isn't one of your text roles.`, "Use var(--motif-font-<role>-size) or a text-<role> class."],
 };
 
+/** What to use instead of a written font: the theme's mono role for a code font (or how to add one), a text role otherwise. */
+export function fontFix(family: string, scale: Scale | null): string {
+  if (!isMonospace(family)) return "Use var(--motif-font-body-family) or a font role class such as font-body.";
+  return scale?.textKeys.has("mono")
+    ? "Use var(--motif-font-mono-family) or the font-mono class (your theme's mono role, for code)."
+    : "For code text, add the optional font.mono role to your theme values (design/tokens.json), then use var(--motif-font-mono-family) or font-mono.";
+}
+
 export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
   const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
@@ -53,7 +62,7 @@ export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
       const prop = m[1]!.toLowerCase();
       const value = m[2]!;
       const start = m.index! + m[0].length - value.length;
-      const fontMessage = (family: string): [string, string] => [`Hard-coded font ${family}.`, "Use var(--motif-font-body-family) or a font role class such as font-body."];
+      const fontMessage = (family: string): [string, string] => [`Hard-coded font ${family}.`, fontFix(family, scale)];
       if (prop.startsWith("--")) {
         // Not checked, but a font family declared in a variable (Tailwind's --font-sans, say) is seen by extract.
         const family = value.trim();
@@ -92,7 +101,7 @@ export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
         else size(start + m.index!, m[0], kind, m[4]!, m[5]!);
       }
       for (const m of block.matchAll(STYLE_FONT)) {
-        push(start + m.index!, m[0], "raw-font", "font-family", m[2]!, true, `Hard-coded font ${m[2]}.`, "Use var(--motif-font-body-family) or a font role class such as font-body.");
+        push(start + m.index!, m[0], "raw-font", "font-family", m[2]!, true, `Hard-coded font ${m[2]}.`, fontFix(m[2]!, scale));
       }
     }
     // Motion timings only inside transition settings and animate() calls; a toast's { duration: 4000 } isn't motion.
