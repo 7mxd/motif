@@ -116,7 +116,10 @@ describe("startPreviewServer", () => {
   test("loads theme fonts from Google only after the page, and only for themes that need them", async () => {
     const tokens = validTokens();
     tokens.primitive.font.sans.$value = ["Plus Jakarta Sans", "system-ui", "sans-serif"];
-    const root = makeProject({ "design/previews/a.html": MOCKUP, "design/directions/b/a.html": MOCKUP, "design/directions/b/tokens.json": JSON.stringify(validTokens()) });
+    // A direction whose fonts all ship with Motif needs nothing from Google.
+    const bundled = validTokens();
+    bundled.primitive.font.sans.$value = ["Onest", "system-ui", "sans-serif"];
+    const root = makeProject({ "design/previews/a.html": MOCKUP, "design/directions/b/a.html": MOCKUP, "design/directions/b/tokens.json": JSON.stringify(bundled) });
     const server = startPreviewServer({ root, theme: buildTheme(docFrom(tokens)) });
     try {
       const page = await (await fetch(`${server.url}/design/previews/a.html`)).text();
@@ -135,8 +138,8 @@ describe("startPreviewServer", () => {
   test("serves the built-in fonts and their stylesheet", withServer(async (base) => {
     const css = await fetch(`${base}/__motif/kit/fonts/fonts.css`);
     expect(css.headers.get("content-type")).toStartWith("text/css");
-    expect(await css.text()).toContain('font-family: "Inter";');
-    const font = await fetch(`${base}/__motif/kit/fonts/inter.woff2`);
+    expect(await css.text()).toContain('font-family: "Onest";');
+    const font = await fetch(`${base}/__motif/kit/fonts/onest.woff2`);
     expect(font.headers.get("content-type")).toBe("font/woff2");
     expect(new TextDecoder().decode(new Uint8Array(await font.arrayBuffer()).slice(0, 4))).toBe("wOF2");
     expect((await fetch(`${base}/__motif/kit/fonts/nope.woff2`)).status).toBe(404);

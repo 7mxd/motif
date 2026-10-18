@@ -15,8 +15,13 @@ describe("the fonts Motif ships", () => {
       expect(isBundledFamily(preset.fonts.body[0]!)).toBe(true);
       expect(isBundledFamily(preset.fonts.display[0]!)).toBe(true);
     }
-    expect(isBundledFamily("inter")).toBe(true);
+    expect(isBundledFamily("onest")).toBe(true);
     expect(isBundledFamily("Plus Jakarta Sans")).toBe(false);
+  });
+
+  test("the kit ships only the fonts the styles use (preset refresh)", () => {
+    const used = new Set(PRESETS.flatMap((p) => [...p.fonts.body, ...p.fonts.display]).map((f) => f.toLowerCase()));
+    expect(FONT_LIST.filter((f) => !used.has(f.family.toLowerCase())).map((f) => f.family)).toEqual([]);
   });
 
   test("each is a small woff2 file with its SIL Open Font License beside it", () => {

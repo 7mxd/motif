@@ -78,3 +78,9 @@ describe("Arabic companions Motif ships (preset refresh)", () => {
     expect(themeFonts(withFonts(["Onest", "Rubik", "sans-serif"], ["Rubik", "sans-serif"])).find((f) => f.family === "Rubik")!.source).toBe("google");
   });
 });
+
+describe("guides made before the preset refresh", () => {
+  test("a retired font still loads in mockups, from Google Fonts (review focus)", () => {
+    expect(themeFonts(withFonts(["Inter", "system-ui", "sans-serif"])).map((f) => [f.family, f.source])).toEqual([["Inter", "google"]]);
+  });
+});

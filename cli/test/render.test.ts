@@ -96,7 +96,7 @@ describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
   }, 60_000);
 
   test("names fonts that couldn't load, and still renders", async () => {
-    const font = readFileSync(join(import.meta.dir, "../../skill/preview-kit/fonts/inter.woff2"));
+    const font = readFileSync(join(import.meta.dir, "../../skill/preview-kit/fonts/onest.woff2"));
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
