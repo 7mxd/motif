@@ -55,13 +55,15 @@ A starting rhythm on the 4 px scale:
 
 **One family is enough; two at most.** A display family for headlines and a text family for everything else is the most a product needs. Contrast between levels comes from size and weight, not from more families.
 
+**Fonts with a voice.** Pick the pairing for the brand's mood from [type pairings](type-pairings.md), with an Arabic companion second in the list when the app may show Arabic. The fonts most generated sites share make a product look like a template.
+
 **Line length.** Reading text is comfortable at 45–75 characters per line. On wide screens, cap the width of reading columns instead of letting paragraphs run edge to edge. Use the line height that comes with each type role; don't tighten body text to fit more in.
 
 **Case and figures.**
 
 - Sentence case for titles, buttons and labels ("Save changes", not "Save Changes").
 - Capitals only for short labels, and only if the guide says so.
-- Tabular (fixed-width) figures for prices, times, tables and anything that updates in place, so numbers don't jiggle.
+- Tabular, lining figures (`font-variant-numeric: tabular-nums lining-nums`) for prices, times, tables and anything that updates in place, so numbers don't jiggle and old-style figures don't shrink.
 
 **Truncation.** Decide it per element, not by accident:
 

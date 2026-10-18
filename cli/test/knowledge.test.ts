@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { PRESETS } from "../src/presets/spec";
 
 const KNOWLEDGE = join(import.meta.dir, "../../skill/knowledge");
 const read = (rel: string) => readFileSync(join(KNOWLEDGE, rel), "utf8").replace(/\r\n/g, "\n");
@@ -26,7 +27,7 @@ describe("knowledge: visual craft and anti-patterns", () => {
   });
   covers("anti-patterns.md", {
     minLines: 100,
-    mustMention: ["gradient", "card grid", "shadow", "centred", "emoji", "icon", "copy", "lorem", "glass", "fade", "dark mode", "instead"],
+    mustMention: ["gradient", "card grid", "shadow", "centred", "emoji", "icon", "copy", "lorem", "glass", "fade", "dark mode", "instead", "default look"],
   });
 });
 describe("knowledge: motion and accessibility", () => {
@@ -80,5 +81,24 @@ describe("knowledge: fixes from the 1D-1 review", () => {
   });
   test("accessibility doesn't promise that text follows the reader's text-size setting", () => {
     expect(read("accessibility.md")).not.toContain("scale with the viewer's text size");
+  });
+});
+
+describe("knowledge: type pairings (preset refresh)", () => {
+  covers("type-pairings.md", {
+    minLines: 60,
+    mustMention: ["Inter", "Space Grotesk", "Fraunces", "Playfair Display", "purple", "cream", "neon", "Arabic", "tabular", "lining", "Fontsource", "second"],
+  });
+
+  test("it lists every starting style's own pairing, Arabic companion included", () => {
+    const text = read("type-pairings.md");
+    for (const p of PRESETS) for (const family of [p.fonts.body[0]!, p.fonts.display[0]!, p.fonts.body[1]!]) expect(text).toContain(family);
+  });
+
+  test("init's directions and review point to it", () => {
+    const skill = (rel: string) => readFileSync(join(KNOWLEDGE, "..", rel), "utf8");
+    expect(skill("modes/init.md")).toContain("../knowledge/type-pairings.md");
+    expect(skill("modes/review.md")).toContain("../knowledge/type-pairings.md");
+    expect(skill("SKILL.md")).toContain("knowledge/type-pairings.md");
   });
 });

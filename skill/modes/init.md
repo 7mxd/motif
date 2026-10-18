@@ -25,13 +25,13 @@ Save the answers in the progress file's `notes`, so a later session doesn't ask 
 Gather references for the brief's personality and the screens it needs:
 
 - With design sources connected, follow their notes: [Refero](../sources/refero.md) for styles and real screens, [60fps.design](../sources/60fps.md) for mobile motion, [Supahero](../sources/supahero.md) for a landing page's hero.
-- Always: [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), the [motion guide](../knowledge/motion.md), and the UX pattern guides for the first screens: [onboarding](../knowledge/ux-patterns/onboarding.md), [sign-in](../knowledge/ux-patterns/sign-in.md) and [home](../knowledge/ux-patterns/home-dashboard.md).
+- Always: [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [type pairings](../knowledge/type-pairings.md), the [motion guide](../knowledge/motion.md), and the UX pattern guides for the first screens: [onboarding](../knowledge/ux-patterns/onboarding.md), [sign-in](../knowledge/ux-patterns/sign-in.md) and [home](../knowledge/ux-patterns/home-dashboard.md).
 
 Write down in a few lines what you'll take from each reference. Keep links only.
 
 ## 4. Directions ⏸
 
-Make two or three clearly different directions: different colour moods, type pairings or densities, not one look with three accent colours. Each direction is a folder in `design/directions/`, such as `design/directions/calm/`, holding:
+Make two or three clearly different directions: different colour moods, type pairings or densities, not one look with three accent colours. Each direction names its font pairing (text, headings and an Arabic companion second in both font lists) from [type pairings](../knowledge/type-pairings.md), different from the other directions', with one line on why it suits the brief. Leave out the overused fonts and colour looks listed there unless the developer asks for them. Each direction is a folder in `design/directions/`, such as `design/directions/calm/`, holding:
 
 - `tokens.json`: start from the closest starting style (`presets/<style>/tokens.json` in the skill folder) or [the template](../contract/tokens.template.json), and change the values to fit the brief. Keep every role; [the format](../contract/spec.md) explains each one.
 - `tile.html`: a style tile with the colour roles as swatches, the type scale, and the key components (buttons, a field, a card, a list row) in their main states.
@@ -42,7 +42,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
 1. For each direction, run `motif validate --tokens design/directions/<name>/tokens.json` and fix every problem (readability first) before showing it.
 2. Run `motif preview design/directions/<name> --png-only` for each direction; the PNGs are saved next to the mockups.
 3. For a live side-by-side view, run `motif preview --compare design/directions/<a>/<screen>.html design/directions/<b>/<screen>.html` in the background, or ask the developer to run it.
-4. Show the PNGs and describe each direction in one line ("Calm: soft neutrals, rounded corners, generous spacing").
+4. Show the PNGs and describe each direction in one line ("Calm: soft neutrals, rounded corners, generous spacing; Onest, with Readex Pro for Arabic").
 5. The developer picks one, asks for a mix ("A's colours with B's type"), or asks for changes. Update the folders and show them again until they approve one.
 
 ## 5. Design guide

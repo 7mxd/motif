@@ -30,6 +30,14 @@ Each pattern has three parts: what it **looks like**, **why it hurts**, and what
 - **Why it hurts:** one radius for every size makes small things look swollen and big things look soft; nested elements end up with mismatched curves.
 - **Instead:** the radius roles by size (`radius.sm` for small controls up to `radius.lg` for cards and sheets), and `radius.full` only for pills, avatars and toggles the guide calls for.
 
+## Type and colour
+
+### The default look
+
+- **Looks like:** the fonts most generated sites share (Inter, Space Grotesk, Fraunces, Playfair Display and the rest of the list in [type pairings](type-pairings.md)), purple or indigo accents, cream with terracotta and a serif, near-black with one neon accent, or Tailwind's default colours used as they are.
+- **Why it hurts:** people have seen it on hundreds of generated sites, so the product reads as a template before they read a word, and the brand doesn't come through.
+- **Instead:** a pairing from [type pairings](type-pairings.md) that fits the guide's Direction, and an accent from the subject's own world. This one is advice: if the developer chose these on purpose, leave them.
+
 ## Layout
 
 ### The identical card grid
