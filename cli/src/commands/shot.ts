@@ -5,7 +5,7 @@ import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detec
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
-import { captureScreens, MAX_HEIGHT, type RouteResult, type StateScript } from "../shot/capture";
+import { captureScreens, describeSizes, MAX_HEIGHT, parseSizes, type RouteResult, type StateScript, type Viewport } from "../shot/capture";
 import { missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison } from "../shot/compare";
 import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { startStaticServer, type StaticServer } from "../shot/static-server";
@@ -112,6 +112,18 @@ function routeLine(r: RouteResult, width: number): string {
   return `  ${r.route.padEnd(width)}  ${what}`;
 }
 
+/** Where a page changed: something added or removed (what's below only moved), or from where it differs. */
+function whereChanged(c: Comparison): string {
+  if (c.from === undefined) return "";
+  if (c.taller && c.moved) {
+    const size = Math.abs(c.taller);
+    return c.taller > 0
+      ? `: ${size} px added at ${c.from} px down; what's below moved down unchanged`
+      : `: ${size} px removed at ${c.from} px down; what's below moved up unchanged`;
+  }
+  return `: from ${c.from} px down${c.taller ? `, ${Math.abs(c.taller)} px ${c.taller > 0 ? "taller" : "shorter"}` : ""}`;
+}
+
 function countText(findings: ReviewFinding[]): string {
   return (["critical", "major", "minor"] as const)
     .map((severity) => [severity, findings.filter((f) => f.severity === severity).length] as const)
@@ -148,6 +160,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   }
   const states = readStates(cwd, flags.state);
   if ("error" in states) return usage(states.error, { error: "usage" });
+  let viewports: Viewport[] | undefined;
+  if (typeof flags.sizes === "string") {
+    const sizes = parseSizes(flags.sizes);
+    if ("error" in sizes) return usage(sizes.error, { error: "usage" });
+    viewports = sizes;
+  }
   const browser = deps.findBrowser();
   if (!browser) {
     if (deps.browserOff?.()) {
@@ -238,7 +256,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if (typeof flags.out !== "string" && !existsSync(ignore)) {
       writeFileSync(ignore, "# Screenshots of the running app (motif shot). Not committed.\n*\n");
     }
-    captured = await deps.capture({ browserPath: browser.path, baseUrl, routes, outDir, audit, states });
+    captured = await deps.capture({ browserPath: browser.path, baseUrl, routes, outDir, audit, states, ...(viewports ? { viewports } : {}) });
   } catch (e) {
     return usage(`Couldn't take screenshots: ${message(e)}`, { error: "capture-failed" });
   } finally {
@@ -251,7 +269,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const width = Math.max(...captured.routes.map((r) => r.route.length));
   const lines = [
     shots.length > 0
-      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? "page" : "pages"} (three phone sizes, a tablet and a desktop, light and dark) in ${projectPath(cwd, outDir)}/`
+      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? "page" : "pages"} (${describeSizes(viewports)}, light and dark) in ${projectPath(cwd, outDir)}/`
       : "✗ No screenshots were taken.",
     ...captured.routes.map((r) => routeLine(r, width)),
   ];
@@ -284,6 +302,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
 
   const thisRun = captured.routes.flatMap((r) => r.shots);
   let comparisons: Comparison[] = [];
+  let compareError: string | undefined;
   let added: string[] = [];
   if (against) {
     const compareDir = join(outDir, "compare", against.kind === "set" ? against.name : "mockup");
@@ -302,18 +321,19 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       comparisons = await deps.compare({
         browserPath: browser.path,
         pairs,
-        labels: against.kind === "set" ? [`Before ("${against.name}")`, "Now"] : ["Mockup", "The app now"],
+        labels: against.kind === "set" ? [against.name === "before" ? "Before" : `Before ("${against.name}")`, "Now"] : ["Mockup", "The app now"],
         measure: against.kind === "set",
       });
     } catch (e) {
-      notes.push(`Couldn't make the side-by-side images: ${message(e)}`);
+      compareError = message(e);
+      notes.push(`Couldn't make the side-by-side images: ${compareError}`);
     }
     const where = projectPath(cwd, compareDir);
     if (against.kind === "set") {
       const changed = comparisons.filter((c) => (c.changed ?? 0) >= 0.1);
       const newPart = added.length > 0 ? `, ${added.length} new` : "";
       lines.push(`Compared with "${against.name}": ${changed.length} changed, ${comparisons.length - changed.length} with no visible change${newPart} (side by side in ${where}/)`);
-      for (const c of changed) lines.push(`  ${basename(c.after)}  ${c.changed}% different`);
+      for (const c of changed) lines.push(`  ${basename(c.after)}  ${c.changed}% different${whereChanged(c)}`);
     } else if (comparisons.length > 0) {
       lines.push(`Side by side with the mockup ${projectPath(cwd, against.file)}: ${comparisons.length} ${comparisons.length === 1 ? "image" : "images"} in ${where}/`);
     } else {
@@ -321,7 +341,18 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
   }
   let saved: string | undefined;
-  if (save) {
+  // A set is only replaced by a complete run: a page that didn't render, or a comparison that didn't work, would leave
+  // the next comparison nothing true to compare with.
+  const keepOld = save && existsSync(join(outDir, save))
+    ? failed.length > 0
+      ? "not every page rendered this time"
+      : compareError !== undefined && against?.kind === "set" && against.name === save
+        ? "the comparison with it didn't work"
+        : undefined
+    : undefined;
+  if (save && keepOld) {
+    notes.push(`Kept the earlier "${save}" set as it was: ${keepOld}. Fix that, then run --save ${save} again.`);
+  } else if (save) {
     const setDir = join(outDir, save);
     rmSync(setDir, { recursive: true, force: true });
     mkdirSync(setDir, { recursive: true });
@@ -343,6 +374,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         status: r.status,
         ...(r.finalUrl ? { finalUrl: r.finalUrl } : {}),
         ...(r.error ? { error: r.error } : {}),
+        ...(r.cropped ? { cropped: true } : {}),
         ...(r.pageErrors?.length ? { pageErrors: r.pageErrors } : {}),
         ...(r.auditError ? { auditError: r.auditError } : {}),
         shots: r.shots.map((s) => projectPath(cwd, s)),
@@ -358,11 +390,15 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
               after: projectPath(cwd, c.after),
               image: projectPath(cwd, c.out),
               ...(c.changed !== undefined ? { changed: c.changed } : {}),
+              ...(c.from !== undefined ? { from: c.from } : {}),
+              ...(c.taller !== undefined ? { taller: c.taller, moved: c.moved } : {}),
             })),
             added: added.map((a) => projectPath(cwd, a)),
+            ...(compareError !== undefined ? { compareError } : {}),
           }
         : {}),
       ...(saved ? { saved } : {}),
+      ...(notes.length > 0 ? { notes } : {}),
     },
   };
 }

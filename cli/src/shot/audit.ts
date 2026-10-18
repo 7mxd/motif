@@ -23,6 +23,8 @@ export interface RawIssue {
 export interface AuditIssue extends RawIssue {
   route: string;
   viewport: "mobile" | "desktop";
+  /** The size it was seen at, as in screenshot names (mobile-360, mobile, mobile-430, tablet, desktop). */
+  size?: string;
   scheme: Scheme;
   /** The screenshot of that page, viewport and scheme. */
   shot: string;
@@ -36,7 +38,8 @@ export type Severity = "critical" | "major" | "minor";
 export interface Place {
   screen: string;
   selector: string;
-  viewport: "mobile" | "desktop";
+  /** A tablet is named as one; phones are "mobile". */
+  viewport: "mobile" | "tablet" | "desktop";
   scheme?: Scheme;
   state?: string;
 }
@@ -247,7 +250,7 @@ function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" |
       return {
         severity: "minor",
         category: "target-size",
-        summary: `${subject(issue, false)} is ${issue.width}×${issue.height} px on a phone; 44×44 px is easier to tap.`,
+        summary: `${subject(issue, false)} is ${issue.width}×${issue.height} px on a ${issue.size === "tablet" ? "tablet" : "phone"}; 44×44 px is easier to tap.`,
         fix: "Give it at least 44×44 px on small screens, with padding or a larger hit area.",
         withScheme: false,
       };
@@ -263,19 +266,24 @@ function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" |
 }
 
 /**
- * Which finding an issue belongs to. Texts that fail with the same colours in one scheme are one problem wherever they
- * are (one colour role or one typed colour, usually); anything else is one element, at every size and in every state.
+ * Which finding an issue belongs to. Texts that fail with the same colours are one problem wherever they are, in
+ * either scheme (one colour role or one typed colour, usually); anything else is one element, at every size, in every
+ * state and on every page it's on (a shared header).
  */
 const groupKey = (i: AuditIssue) =>
   i.rule === "color-contrast" && i.fg && i.bg
-    ? `${i.rule}|${i.scheme}|${i.fg.toLowerCase()}|${i.bg.toLowerCase()}|${i.expected ?? 4.5}`
+    ? `${i.rule}|${i.fg.toLowerCase()}|${i.bg.toLowerCase()}|${i.expected ?? 4.5}`
     : i.rule === "color-contrast"
       ? `${i.rule}|${i.route}|${i.selector}|${i.scheme}`
-      : `${i.rule}|${i.route}|${i.selector}`;
+      : `${i.rule}|${i.selector}`;
 const placeKey = (i: AuditIssue) => `${i.route}|${i.state ?? ""}|${i.selector}`;
 
 const placeOf = (i: AuditIssue, withScheme: boolean): Place => ({
-  screen: i.route, selector: i.selector, viewport: i.viewport, ...(withScheme ? { scheme: i.scheme } : {}), ...(i.state ? { state: i.state } : {}),
+  screen: i.route,
+  selector: i.selector,
+  viewport: i.size === "tablet" ? "tablet" : i.viewport,
+  ...(withScheme ? { scheme: i.scheme } : {}),
+  ...(i.state ? { state: i.state } : {}),
 });
 
 /** Findings in the review format: repeats grouped (each with its places), worst first, numbered F-001, F-002… */
@@ -296,10 +304,13 @@ export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
     const { withScheme, ...verdict } = judge(lead);
     const texts = new Set(places.map((i) => `${i.route}|${i.selector}`));
     const labels = [...new Set(places.map((i) => i.label).filter(Boolean))].slice(0, 2).map((l) => `"${l}"`);
+    // The same colours failing in both schemes (a badge with fixed colours) say so.
+    const schemes = new Set(group.map((i) => i.scheme));
+    const mode = schemes.size > 1 ? "light and dark mode" : `${lead.scheme} mode`;
     const summary =
       lead.rule === "color-contrast" && texts.size > 1 && lead.fg && lead.bg
-        ? `${texts.size} texts are hard to read in ${lead.scheme} mode: ${lead.fg} on ${lead.bg} (${lead.ratio}:1, needs ${lead.expected ?? 4.5}:1)${labels.length ? `, such as ${labels.join(" and ")}` : ""}.`
-        : verdict.summary;
+        ? `${texts.size} texts are hard to read in ${mode}: ${lead.fg} on ${lead.bg} (${lead.ratio}:1, needs ${lead.expected ?? 4.5}:1)${labels.length ? `, such as ${labels.join(" and ")}` : ""}.`
+        : verdict.summary.replace(`in ${lead.scheme} mode`, `in ${mode}`);
     return {
       severity: verdict.severity,
       category: verdict.category,

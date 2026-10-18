@@ -300,7 +300,8 @@ describe("motif shot: the mockup while building, before and after a rebuild", ()
     const { deps, calls } = fakes();
     const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/,/settings", against: "before", save: "before" }), deps);
     expect(r.exitCode).toBe(0);
-    expect(calls.compared[0]).toMatchObject({ labels: ['Before ("before")', "Now"], measure: true });
+    // The default set's name isn't repeated in the label (backlog #37).
+    expect(calls.compared[0]).toMatchObject({ labels: ["Before", "Now"], measure: true });
     expect(calls.compared[0]!.pairs).toEqual([
       { before: join(root, "design/shots/before/index.mobile.png"), after: join(root, "design/shots/index.mobile.png"), out: join(root, "design/shots/compare/before/index.mobile.png") },
     ]);
@@ -361,5 +362,71 @@ describe("motif shot --against a mockup in a subfolder", () => {
     const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/welcome", against: "design/previews/onboarding/welcome.html" }), deps);
     expect(r.exitCode).toBe(0);
     expect(calls.compared[0]!.pairs.map((p) => p.before)).toEqual([join(root, "design/previews/welcome.png")]);
+  });
+});
+
+describe("motif shot: from the backlog", () => {
+  const before = () => makeProject({ "design/shots/before/index.mobile.png": "old", "design/shots/before/.motif-set": "" });
+
+  test("--save keeps the earlier set when a page didn't render, or the comparison with it didn't work", async () => {
+    const root = before();
+    const broken = fakes({ results: (o) => o.routes.map((route) => ({ route, url: "", status: 500, shots: [] })) });
+    const r = await runShot(root, ctx({ url: "http://localhost:3000", save: "before" }), broken.deps);
+    expect(readFileSync(join(root, "design/shots/before/index.mobile.png"), "utf8")).toBe("old");
+    expect(r.data.saved).toBeUndefined();
+    expect(r.text).toContain('Kept the earlier "before" set as it was: not every page rendered this time.');
+    const compareFails = fakes({ compare: async () => { throw new Error("the browser closed"); } });
+    const r2 = await runShot(root, ctx({ url: "http://localhost:3000", against: "before", save: "before" }), compareFails.deps);
+    expect(readFileSync(join(root, "design/shots/before/index.mobile.png"), "utf8")).toBe("old");
+    expect(r2.text).toContain('Kept the earlier "before" set as it was: the comparison with it didn\'t work.');
+  });
+
+  test("--json carries cropped pages, the notes, and why a comparison failed", async () => {
+    const { deps } = fakes({
+      results: (o) => o.routes.map((route) => ({ route, url: "", status: 200, cropped: true, shots: [join(o.outDir, "index.mobile.png")] })),
+      compare: async () => { throw new Error("the browser closed"); },
+    });
+    const r = await runShot(before(), ctx({ url: "http://localhost:3000", against: "before" }), deps);
+    expect((r.data.routes as { cropped?: boolean }[])[0]!.cropped).toBe(true);
+    expect(r.data.compareError).toBe("the browser closed");
+    expect(r.data.notes).toEqual([expect.stringContaining("Couldn't make the side-by-side images: the browser closed")]);
+  });
+
+  test("a set with its own name keeps it in the label", async () => {
+    const root = makeProject({ "design/shots/v1/index.mobile.png": "old", "design/shots/v1/.motif-set": "" });
+    const { deps, calls } = fakes();
+    await runShot(root, ctx({ url: "http://localhost:3000", against: "v1" }), deps);
+    expect(calls.compared[0]!.labels).toEqual(['Before ("v1")', "Now"]);
+  });
+
+  test("--sizes narrows the sizes for a quick run; the default is all five", async () => {
+    const { deps, calls } = fakes();
+    const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", sizes: "390,1440" }), deps);
+    expect(r.exitCode).toBe(0);
+    expect(calls.captured[0]!.viewports!.map((v) => v.width)).toEqual([390, 1440]);
+    expect(r.text).toContain("(390 and 1440 px wide, light and dark)");
+    const named = fakes();
+    await runShot(makeProject({}), ctx({ url: "http://localhost:3000", sizes: "phones,tablet" }), named.deps);
+    expect(named.calls.captured[0]!.viewports!.map((v) => v.width)).toEqual([360, 390, 430, 768]);
+    const all = fakes();
+    await runShot(makeProject({}), ctx({ url: "http://localhost:3000" }), all.deps);
+    expect(all.calls.captured[0]!.viewports).toBeUndefined();
+    const bad = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", sizes: "999" }), fakes().deps);
+    expect(bad.exitCode).toBe(2);
+    expect(bad.text).toBe('--sizes: "999" isn\'t one of the sizes. Use widths (360, 390, 430, 768, 1440) or names (phones, tablet, desktop), like --sizes 390,1440.');
+  });
+
+  test("a comparison says whether content moved or the page grew", async () => {
+    const { deps } = fakes({
+      compare: async (o) => [
+        { ...o.pairs[0]!, changed: 12.5, taller: 50, from: 100, moved: true },
+      ],
+    });
+    const r = await runShot(before(), ctx({ url: "http://localhost:3000", against: "before" }), deps);
+    expect(r.text).toContain("index.mobile.png  12.5% different: 50 px added at 100 px down; what's below moved down unchanged");
+    const grown = fakes({ compare: async (o) => [{ ...o.pairs[0]!, changed: 8, taller: 30, from: 600, moved: false }] });
+    const r2 = await runShot(before(), ctx({ url: "http://localhost:3000", against: "before" }), grown.deps);
+    expect(r2.text).toContain("index.mobile.png  8% different: from 600 px down, 30 px taller");
+    expect((r2.data.comparisons as { taller?: number; from?: number; moved?: boolean }[])[0]).toMatchObject({ taller: 30, from: 600, moved: false });
   });
 });

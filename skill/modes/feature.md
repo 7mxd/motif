@@ -27,7 +27,7 @@ Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show 
 - Reuse existing components first; extend one with a new variant before creating a new component.
 - Use theme values only ([the four rules](../contract/spec.md#the-four-rules)).
 - If the feature truly needs something the design guide doesn't have (a new component, a new value), stop and propose the change ⏸: what changes, from what to what, and why, in plain words. Once approved, update `design/tokens.json` and `DESIGN.md` (the component in section 5, a change-log line), run `motif validate` and `motif tokens`, and continue.
-- While you build, compare the app with the approved mockup whenever a screen takes shape: `motif shot --routes <route> --against design/previews/<feature>-<screen>.html` puts them side by side. Show the images if you can display them.
+- While you build, compare the app with the approved mockup whenever a screen takes shape: `motif shot --routes <route> --against design/previews/<feature>-<screen>.html` puts them side by side. For a quick look while you iterate, add `--sizes 390,1440` (a phone and a desktop); the final checks below use every size. Show the images if you can display them.
 
 ## 6. Verify
 

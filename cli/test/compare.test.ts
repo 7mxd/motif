@@ -173,6 +173,41 @@ describe.skipIf(!browser)("renderComparisons (needs Chrome, Edge or Chromium)", 
     expect(result!.changed).toBe(0);
   }, 60_000);
 
+  test("says whether content moved down or the page grew, and the image is as tall as its content (backlog)", async () => {
+    const dir = tempDir("motif-compare-");
+    const block = (h: number, c: string) => `<div style="height: ${h}px; background: ${c}"></div>`;
+    const full = async (body: string) => {
+      const b = await launchBrowser(browser!.path);
+      try {
+        const page = await b.newPage();
+        await page.setViewport(200, 100, 2);
+        await page.goto("data:text/html," + encodeURIComponent(`<body style="margin: 0; background: #ffffff">${body}</body>`));
+        const height = await page.evaluate<number>("document.documentElement.scrollHeight");
+        return await page.screenshot({ x: 0, y: 0, width: 200, height });
+      } finally {
+        await b.close();
+      }
+    };
+    writeFileSync(join(dir, "before.png"), await full(block(100, "#e11d48") + block(150, "#2563eb")));
+    writeFileSync(join(dir, "added.png"), await full(block(100, "#e11d48") + block(50, "#16a34a") + block(150, "#2563eb")));
+    writeFileSync(join(dir, "grown.png"), await full(block(100, "#e11d48") + block(200, "#2563eb")));
+    const [added, grown] = await renderComparisons({
+      browserPath: browser!.path,
+      labels: ["Before", "Now"],
+      measure: true,
+      pairs: [
+        { before: join(dir, "before.png"), after: join(dir, "added.png"), out: join(dir, "out", "added.png") },
+        { before: join(dir, "before.png"), after: join(dir, "grown.png"), out: join(dir, "out", "grown.png") },
+      ],
+    });
+    expect(added).toMatchObject({ taller: 50, moved: true });
+    expect(Math.abs(added!.from! - 100)).toBeLessThanOrEqual(2);
+    expect(grown).toMatchObject({ taller: 50, moved: false });
+    expect(Math.abs(grown!.from! - 250)).toBeLessThanOrEqual(2);
+    // Short pages make short images: no 900 px floor.
+    expect(pngSize(new Uint8Array(readFileSync(join(dir, "out", "added.png")))).height).toBeLessThan(900 * 2);
+  }, 60_000);
+
   test("nothing to compare is not an error", async () => {
     expect(await renderComparisons({ browserPath: browser!.path, labels: ["Before", "Now"], measure: true, pairs: [] })).toEqual([]);
   });

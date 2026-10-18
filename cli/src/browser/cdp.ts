@@ -18,6 +18,11 @@ export interface Page {
   /** With timeoutMs, a script still running after that long is stopped and the call fails. */
   evaluate<T = unknown>(expression: string, opts?: { timeoutMs?: number }): Promise<T>;
   screenshot(clip?: Clip): Promise<Uint8Array>;
+  /**
+   * Waits until nothing the page asked for has been loading for quietMs (what a page fetches after it loads: data,
+   * images, fonts), or maxMs at most. Live connections (server-sent events, WebSockets) don't count.
+   */
+  waitForQuiet(quietMs: number, maxMs: number): Promise<void>;
   /** Uncaught errors the page threw since the last call (first line of each), then forgets them. */
   takeErrors(): string[];
   close(): Promise<void>;
@@ -32,6 +37,13 @@ export interface Browser {
    */
   newPage(opts?: { isolated?: boolean }): Promise<Page>;
   close(): Promise<void>;
+}
+
+/** A page whose load event didn't come in time: what's there can still be captured. */
+export class LoadTimeout extends Error {
+  constructor() {
+    super("The page took too long to load.");
+  }
 }
 
 interface Message {
@@ -140,6 +152,7 @@ export async function openTab(send: Send, isolated: boolean): Promise<{ targetId
     const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
     await send("Page.enable", {}, sessionId);
     await send("Runtime.enable", {}, sessionId);
+    await send("Network.enable", {}, sessionId);
     return { targetId: targetId!, sessionId, ...(browserContextId ? { browserContextId } : {}) };
   } catch (e) {
     // A browser that stopped answering mustn't hold the real error up: each clean-up step gets two seconds.
@@ -159,17 +172,26 @@ export async function closeTab(send: Send, targetId: string, browserContextId?: 
   }
 }
 
-export async function launchBrowser(executable: string, opts: { timeoutMs?: number; callTimeoutMs?: number } = {}): Promise<Browser> {
+export async function launchBrowser(
+  executable: string,
+  opts: {
+    timeoutMs?: number;
+    callTimeoutMs?: number;
+    /** For a local dev server on https with its own certificate, which no browser trusts. */
+    ignoreCertificateErrors?: boolean;
+  } = {},
+): Promise<Browser> {
+  const args = opts.ignoreCertificateErrors ? [...ARGS, "--ignore-certificate-errors"] : ARGS;
   const timeoutMs = opts.timeoutMs ?? 20_000;
   // Every call to the browser gets an answer or an error: a page stuck in a loop must never hang Motif.
   const callTimeoutMs = opts.callTimeoutMs ?? 30_000;
   let started;
   try {
-    started = await start(executable, ARGS, timeoutMs);
+    started = await start(executable, args, timeoutMs);
   } catch (e) {
     // Some Linux setups block Chrome's sandbox for unprivileged users; retry once without it.
     if (process.platform === "linux" && e instanceof StartError && /sandbox/i.test(e.stderr)) {
-      started = await start(executable, [...ARGS, "--no-sandbox"], timeoutMs);
+      started = await start(executable, [...args, "--no-sandbox"], timeoutMs);
     } else {
       throw e;
     }
@@ -258,7 +280,7 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
       };
       const timer = setTimeout(() => {
         listeners.delete(listener);
-        reject(new Error("The page took too long to load."));
+        reject(new LoadTimeout());
       }, timeoutMs);
       listeners.add(listener);
     });
@@ -268,8 +290,21 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
     async newPage(opts: { isolated?: boolean } = {}): Promise<Page> {
       const { targetId, sessionId, browserContextId } = await openTab(send, opts.isolated ?? false);
       const errors: string[] = [];
+      // What the page is still loading, so a screenshot can wait until it's done (live connections never are).
+      const loading = new Set<string>();
+      let lastActivity = Date.now();
       const onError = (m: Message) => {
         if (m.sessionId !== sessionId) return;
+        if (m.method === "Network.requestWillBeSent") {
+          if (m.params?.type !== "EventSource" && m.params?.type !== "WebSocket") loading.add(String(m.params?.requestId));
+          lastActivity = Date.now();
+          return;
+        }
+        if (m.method === "Network.loadingFinished" || m.method === "Network.loadingFailed") {
+          loading.delete(String(m.params?.requestId));
+          lastActivity = Date.now();
+          return;
+        }
         if (m.method === "Runtime.exceptionThrown") {
           const details = m.params?.exceptionDetails;
           errors.push(String(details?.exception?.description ?? details?.text ?? "Unknown error").split("\n")[0]!);
@@ -319,6 +354,13 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
           const params = clip ? { format: "png", captureBeyondViewport: true, clip: { ...clip, scale: 1 } } : { format: "png" };
           const r = await send("Page.captureScreenshot", params, sessionId);
           return new Uint8Array(Buffer.from(r.data, "base64"));
+        },
+        async waitForQuiet(quietMs, maxMs) {
+          const deadline = Date.now() + maxMs;
+          while (Date.now() < deadline) {
+            if (loading.size === 0 && Date.now() - lastActivity >= quietMs) return;
+            await Bun.sleep(Math.min(50, quietMs));
+          }
         },
         takeErrors() {
           return errors.splice(0);

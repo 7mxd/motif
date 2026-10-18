@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { launchBrowser } from "../browser/cdp";
+import { launchBrowser, LoadTimeout } from "../browser/cdp";
 import { addPngText, readPngText } from "../browser/png";
 import { auditPage, type AuditIssue } from "./audit";
 
@@ -28,6 +28,30 @@ export const VIEWPORTS: Viewport[] = [
   { name: "mobile", file: "tablet", width: 768, height: 1024, scale: 2, mobile: true },
   { name: "desktop", width: 1440, height: 900, scale: 1, mobile: false },
 ];
+/** The sizes --sizes accepts: each width, and names for groups of them. */
+const SIZE_NAMES: Record<string, number[]> = { phones: [360, 390, 430], phone: [390], tablet: [768], desktop: [1440] };
+
+/** --sizes 390,1440 or --sizes phones,desktop: some of the five sizes, for a quick run. */
+export function parseSizes(value: string): Viewport[] | { error: string } {
+  const widths = new Set<number>();
+  for (const part of value.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean)) {
+    const named = SIZE_NAMES[part] ?? VIEWPORTS.filter((v) => String(v.width) === part || v.file === part).map((v) => v.width);
+    if (named.length === 0) {
+      return { error: `--sizes: "${part}" isn't one of the sizes. Use widths (${VIEWPORTS.map((v) => v.width).join(", ")}) or names (phones, tablet, desktop), like --sizes 390,1440.` };
+    }
+    for (const w of named) widths.add(w);
+  }
+  if (widths.size === 0) return { error: "--sizes needs at least one size, like --sizes 390,1440." };
+  return VIEWPORTS.filter((v) => widths.has(v.width));
+}
+
+/** How a run's sizes read in a sentence: all five, or their widths. */
+export function describeSizes(viewports: Viewport[] = VIEWPORTS): string {
+  if (viewports.length === VIEWPORTS.length) return "three phone sizes, a tablet and a desktop";
+  const widths = viewports.map((v) => String(v.width));
+  return `${widths.length > 1 ? `${widths.slice(0, -1).join(", ")} and ${widths.at(-1)}` : widths[0]} px wide`;
+}
+
 export const SCHEMES = ["light", "dark"] as const;
 export type Scheme = (typeof SCHEMES)[number];
 /** Taller pages are cropped: 8000 CSS px at 2× stays under Chrome's 16384 px screenshot limit. */
@@ -91,6 +115,8 @@ export interface CaptureOptions {
   states?: StateScript[];
   /** How long a state script may run (15 s). */
   stateTimeoutMs?: number;
+  /** Some of the sizes (--sizes); all five when not given. */
+  viewports?: Viewport[];
 }
 
 export function routeSlug(route: string): string {
@@ -115,22 +141,28 @@ export function shotName(slug: string, viewport: string, scheme: Scheme): string
 const HIDE_DEV_BADGES = `(() => { const s = document.createElement("style"); s.textContent = "nextjs-portal { display: none !important; }"; document.head.append(s); return true; })()`;
 const PAGE_HEIGHT = "document.documentElement.scrollHeight";
 
+/** An address on this computer: a dev server there may use https with a certificate of its own. */
+export const isLocal = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(url);
+
 async function probe(url: string, timeoutMs: number): Promise<{ status: number; finalUrl: string; error?: string }> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), ...(isLocal(url) ? { tls: { rejectUnauthorized: false } } : {}) });
     await res.arrayBuffer().catch(() => undefined);
     return { status: res.status, finalUrl: res.url };
   } catch (e) {
-    return { status: 0, finalUrl: url, error: e instanceof Error ? e.message : String(e) };
+    const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+    return { status: 0, finalUrl: url, error: timedOut ? `It didn't answer within ${Math.round(timeoutMs / 1000)} s.` : `Couldn't reach it: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
 export async function captureScreens(opts: CaptureOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[] }> {
-  const settleMs = opts.settleMs ?? 800;
+  // After the page has loaded and what it fetched has arrived (waitForQuiet), a moment for it to draw.
+  const settleMs = opts.settleMs ?? 400;
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const stateTimeoutMs = opts.stateTimeoutMs ?? 15_000;
   mkdirSync(opts.outDir, { recursive: true });
-  const browser = await launchBrowser(opts.browserPath);
+  const browser = await launchBrowser(opts.browserPath, { ignoreCertificateErrors: opts.baseUrl.startsWith("https:") && isLocal(opts.baseUrl) });
+  const viewports = opts.viewports ?? VIEWPORTS;
   const results: RouteResult[] = [];
   const issues: AuditIssue[] = [];
   const usedSlugs = new Set<string>();
@@ -146,15 +178,17 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
       if (answer.finalUrl !== url) result.finalUrl = answer.finalUrl;
       results.push(result);
       if (answer.status === 0) {
-        result.error = `Couldn't reach it: ${answer.error}`;
+        result.error = answer.error;
         continue;
       }
+      // A page whose load never finishes is captured as it is; after the first wait, the others are short.
+      let stuck = false;
 
       const addErrors = (messages: string[]) => {
         if (messages.length > 0) result.pageErrors = [...new Set([...(result.pageErrors ?? []), ...messages])];
       };
       try {
-        for (const viewport of VIEWPORTS) {
+        for (const viewport of viewports) {
           for (const scheme of SCHEMES) {
             const media = [
               { name: "prefers-color-scheme", value: scheme },
@@ -168,8 +202,17 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
               try {
                 await page.setViewport(viewport.width, viewport.height, viewport.scale, viewport.mobile);
                 await page.emulateMedia(media);
-                await page.goto(url, timeoutMs);
-                await page.evaluate("document.fonts.ready.then(() => true)");
+                try {
+                  await page.goto(url, stuck ? Math.min(timeoutMs, 2000) : timeoutMs);
+                } catch (e) {
+                  if (!(e instanceof LoadTimeout)) throw e;
+                  addErrors([`The page hadn't finished loading after ${Math.round(timeoutMs / 1000)} s; the screenshots show it as it was.`]);
+                  stuck = true;
+                }
+                // Fonts are ready only once the page has loaded: a page that never does waits a moment, not forever.
+                await page.evaluate(`Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 1000 : 5000}))]).then(() => true)`);
+                // What a stuck page is loading never arrives, so it isn't waited for.
+                if (!stuck) await page.waitForQuiet(300, 5000);
                 if (state) {
                   try {
                     await page.evaluate(stateExpression(state.script, stateTimeoutMs), { timeoutMs: stateTimeoutMs });
@@ -197,7 +240,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 if (opts.audit) {
                   try {
                     const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
-                    for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}) });
+                    for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, size: viewport.file ?? viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}) });
                   } catch (e) {
                     result.auditError = e instanceof Error ? e.message : String(e);
                   }

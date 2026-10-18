@@ -102,6 +102,32 @@ describe("start failures say why", () => {
   });
 });
 
+describe.skipIf(!browser)("waitForQuiet (backlog #30, needs a browser)", () => {
+  test("waits for what the page fetches after it loads", async () => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(req) {
+        if (new URL(req.url).pathname === "/late") {
+          await Bun.sleep(1200);
+          return new Response("late content");
+        }
+        return new Response('<p id="p">early</p><script>addEventListener("load", () => fetch("/late").then((r) => r.text()).then((t) => (document.getElementById("p").textContent = t)))</script>', { headers: { "content-type": "text/html" } });
+      },
+    });
+    const b = await launchBrowser(browser!.path);
+    try {
+      const page = await b.newPage();
+      await page.goto(`http://127.0.0.1:${server.port}/`);
+      await page.waitForQuiet(300, 5000);
+      expect(await page.evaluate<string>('document.getElementById("p").textContent')).toBe("late content");
+    } finally {
+      await b.close();
+      server.stop(true);
+    }
+  }, 30_000);
+});
+
 describe("tabs leave nothing behind (backlog)", () => {
   /** A stand-in for the browser's protocol: answers each method, or fails the one named. */
   function fakeSend(failing?: string) {

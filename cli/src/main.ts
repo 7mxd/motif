@@ -52,6 +52,7 @@ Shot options:
   --save <name>     Keep these screenshots as a named set, e.g. --save before
   --against <what>  Side by side with a saved set (after a rebuild) or a mockup (while building)
   --state <file.js> Also capture each page after this script runs in it (a state behind a form or a click); repeat for more
+  --sizes <list>    Only some sizes, for a quick run: widths (360, 390, 430, 768, 1440) or phones, tablet, desktop
 
 Tokens options:
   --stack preview   Write only the CSS mockups use (design/previews/motif.css)
@@ -100,6 +101,7 @@ export async function main(argv: string[]): Promise<number> {
         save: { type: "string" },
         against: { type: "string" },
         state: { type: "string", multiple: true },
+        sizes: { type: "string" },
         tokens: { type: "string" },
         agent: { type: "string" },
       },
@@ -152,6 +154,7 @@ export async function main(argv: string[]): Promise<number> {
         save: values.save,
         against: values.against,
         state: values.state,
+        sizes: values.sizes,
         tokens: values.tokens,
         agent: values.agent,
       },

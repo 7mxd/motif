@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { devCommand, findLocalUrl, outputSummary, startDevServer } from "../src/shot/devserver";
+import { answers, devCommand, findLocalUrl, outputSummary, startDevServer } from "../src/shot/devserver";
+import { selfSignedCert } from "./tls";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -30,6 +31,9 @@ describe("findLocalUrl", () => {
     expect(findLocalUrl("Network: http://192.168.1.4:8080/\nListening on http://0.0.0.0:8080")).toBe("http://127.0.0.1:8080");
     expect(findLocalUrl("ready - started server on [::]:3000, url: http://[::1]:3000.")).toBe("http://[::1]:3000");
     expect(findLocalUrl("compiling...")).toBeNull();
+  });
+  test("prefers the line that says Local, when several programs print addresses (backlog)", () => {
+    expect(findLocalUrl("[0] JSON Server is running on http://localhost:3001\n[1]   ➜  Local:   http://localhost:5173/\n")).toBe("http://localhost:5173/");
   });
 });
 
@@ -78,6 +82,11 @@ describe("devCommand", () => {
     expect(error(makeProject({ "package.json": JSON.stringify({ scripts: { dev: "vite" } }), "pnpm-lock.yaml": "" }))).toContain('Run "pnpm install"');
     expect(error(app({ "yarn.lock": "" }))).toContain("uses yarn, which isn't installed");
     expect(error(app({}), ["npm"])).toContain("Node.js isn't installed");
+  });
+
+  test("Yarn Plug'n'Play apps have no node_modules, and count as installed (backlog)", () => {
+    const pnp = makeProject({ "package.json": JSON.stringify({ scripts: { dev: "vite" } }), "yarn.lock": "", ".pnp.cjs": "" });
+    expect(devCommand(pnp, { platform: "linux", which: has(["yarn", "node"]) })).toMatchObject({ display: "yarn run dev" });
   });
 });
 
@@ -195,4 +204,29 @@ describe("outputSummary", () => {
     expect(summary[0]).toBe("Error: port 5173 is already in use");
     expect(summary.length).toBeLessThanOrEqual(8);
   });
+});
+
+const cert = selfSignedCert();
+describe.skipIf(!cert)("dev servers on https with their own certificate (backlog)", () => {
+  test("count as answering, instead of being waited for until the time runs out", async () => {
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, tls: cert!, fetch: () => new Response("hi") });
+    try {
+      expect(await answers(`https://127.0.0.1:${server.port}/`)).toBe(true);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
+describe.skipIf(process.platform === "win32")("stopping a dev server whose first process already ended (backlog)", () => {
+  test("still stops what it started", async () => {
+    const dir = tempDir("motif-dev-");
+    writeFileSync(join(dir, "server.ts"), SERVER);
+    // The shell starts the server in the background, then ends after a moment, as "tsc -w & vite" can leave things.
+    const server = await startDevServer({ cwd: dir, command: ["sh", "-c", `"${process.execPath}" server.ts & sleep 1`], timeoutMs: 20_000 });
+    const pid = pidIn(dir);
+    await Bun.sleep(1500);
+    await server.stop();
+    expect(await gone(pid)).toBe(true);
+  }, 30_000);
 });

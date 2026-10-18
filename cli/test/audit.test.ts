@@ -93,6 +93,25 @@ describe("toFindings", () => {
     expect(findings[0]!.locations!.map((l) => l.state)).toEqual(["sent", "error"]);
   });
 
+  test("the same colours failing in light and dark are one finding; one element on several pages is one finding (backlog)", () => {
+    const fixed = { fg: "#ffffff", bg: "#f59e0b", ratio: 2.1, expected: 4.5 };
+    const both = toFindings([issue({ ...fixed, selector: "#badge", label: "New" }), issue({ ...fixed, selector: "#badge", label: "New", scheme: "dark" })]);
+    expect(both).toHaveLength(1);
+    expect(both[0]!.summary).toBe('Text "New" is hard to read in light and dark mode (2.1:1, needs 4.5:1).');
+    const shared = toFindings([
+      issue({ rule: "target-mobile", selector: "header a.logo", kind: "link", label: "Home", width: 30, height: 30 }),
+      issue({ rule: "target-mobile", selector: "header a.logo", kind: "link", label: "Home", width: 30, height: 30, route: "/settings" }),
+    ]);
+    expect(shared).toHaveLength(1);
+    expect(shared[0]!.locations!.map((l) => l.screen)).toEqual(["/settings"]);
+  });
+
+  test("a tablet-only finding says tablet, not phone (backlog)", () => {
+    const [f] = toFindings([issue({ rule: "target-mobile", selector: "#go", kind: "button", label: "Go", width: 32, height: 32, size: "tablet" })]);
+    expect(f!.summary).toBe('The "Go" button is 32×32 px on a tablet; 44×44 px is easier to tap.');
+    expect(f!.location.viewport).toBe("tablet");
+  });
+
   test("reviewJson follows the review format", () => {
     expect(reviewJson([], ["/", "/settings"], "2026-10-13")).toEqual({ motifReview: 1, scope: "screens: /, /settings", date: "2026-10-13", findings: [] });
   });

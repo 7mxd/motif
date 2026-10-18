@@ -5,6 +5,7 @@ import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 import { captureScreens, routeSlug, routeUrl, shotName } from "../src/shot/capture";
 import { cleanupTempDirs, tempDir } from "./tmp";
+import { selfSignedCert } from "./tls";
 
 afterAll(cleanupTempDirs);
 
@@ -90,10 +91,29 @@ describe.skipIf(!browser)("captureScreens (needs Chrome, Edge or Chromium)", () 
     expect(byRoute["/missing"]!.status).toBe(404);
     expect(byRoute["/old"]!.status).toBe(200);
     expect(byRoute["/old"]!.finalUrl).toBe(`http://localhost:${server.port}/`);
-    expect(byRoute["/slow"]!.error).toBeString();
+    // A page that never finishes loading is captured as it is, with a note (backlog #33).
+    expect(byRoute["/slow"]!.shots).toHaveLength(10);
+    expect(byRoute["/slow"]!.pageErrors).toEqual([expect.stringContaining("hadn't finished loading after 3 s")]);
     expect(byRoute["/"]!.shots).toHaveLength(10);
     const unreachable = await captureScreens({ browserPath: browser!.path, baseUrl: "http://127.0.0.1:1", routes: ["/"], outDir: out, settleMs: 50, timeoutMs: 3000 });
     expect(unreachable.routes[0]).toMatchObject({ status: 0, shots: [] });
     expect(unreachable.routes[0]!.error).toContain("Couldn't reach");
+    const silent = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/never"], outDir: out, settleMs: 50, timeoutMs: 2000 });
+    expect(silent.routes[0]!.error).toBe("It didn't answer within 2 s.");
   }, 120_000);
+});
+
+const cert = selfSignedCert();
+describe.skipIf(!browser || !cert)("captureScreens on https with the dev server's own certificate (backlog)", () => {
+  test("a local app on https is captured", async () => {
+    const tls = Bun.serve({ hostname: "127.0.0.1", port: 0, tls: cert!, fetch: () => html("<h1>Secure</h1>") });
+    try {
+      const out = tempDir("motif-shots-");
+      const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `https://127.0.0.1:${tls.port}`, routes: ["/"], outDir: out, settleMs: 50, viewports: [{ name: "desktop", width: 1440, height: 900, scale: 1, mobile: false }] });
+      expect([routes[0]!.status, routes[0]!.error]).toEqual([200, undefined]);
+      expect(routes[0]!.shots).toHaveLength(2);
+    } finally {
+      tls.stop(true);
+    }
+  }, 60_000);
 });

@@ -14,6 +14,12 @@ export interface ComparePair {
 export interface Comparison extends ComparePair {
   /** How much of the page looks different, in percent (before/after comparisons only). */
   changed?: number;
+  /** How much taller the page is now, in CSS px (negative when shorter). */
+  taller?: number;
+  /** Where the first difference is, in CSS px from the top. */
+  from?: number;
+  /** Whether everything below the first difference is unchanged, only moved by `taller` (something was added or removed). */
+  moved?: boolean;
 }
 
 /** Pairs this run's screenshots with a saved set by file name; screenshots the set doesn't have are "added". */
@@ -123,8 +129,12 @@ img { display: block; width: 100%; border: 1px solid #d4d4d8; background: #fffff
 </style></head><body><div class="row"><figure><figcaption>${escapeHtml(labels[0])}</figcaption><div class="shot"><img id="a" src="/a.png?${n}">${frame(screens[0])}</div></figure><figure><figcaption>${escapeHtml(labels[1])}</figcaption><div class="shot"><img id="b" src="/b.png?${n}">${frame(screens[1])}</div></figure></div><p id="note"></p></body></html>`;
 }
 
-/** In the page: the share of the two images that differs (scaled to 300 px wide), written under them and returned. */
-const MEASURE = `(async () => {
+/**
+ * In the page: the share of the two images that differs (scaled to 300 px wide), written under them and returned, with
+ * where the first difference is, how much taller the page got, and whether what's below the first difference only
+ * moved. cssWidth is the screenshots' width in CSS px, for turning rows into CSS px.
+ */
+const measure = (cssWidth: number) => `(async () => {
   const a = document.getElementById("a"), b = document.getElementById("b");
   await Promise.all([a.decode(), b.decode()]);
   const w = 300;
@@ -148,7 +158,32 @@ const MEASURE = `(async () => {
   }
   const changed = Math.round((different / (w * h)) * 1000) / 10;
   document.getElementById("note").textContent = changed < 0.1 ? "No visible change." : "About " + changed + "% of the page looks different.";
-  return changed;
+  // Rows: one differs when more than 1% of its pixels do (antialiasing aside).
+  const rowDiffers = (ya, yb) => {
+    let n = 0;
+    for (let x = 0; x < w; x++) {
+      const i = (ya * w + x) * 4, j = (yb * w + x) * 4;
+      if (Math.abs(pa[i] - pb[j]) + Math.abs(pa[i + 1] - pb[j + 1]) + Math.abs(pa[i + 2] - pb[j + 2]) > 48) n++;
+    }
+    return n > w / 100;
+  };
+  let first = -1;
+  for (let y = 0; y < h && first < 0; y++) if (rowDiffers(y, y)) first = y;
+  const css = ${cssWidth} / w;
+  const shift = hb - ha;
+  let moved = false;
+  if (first >= 0 && shift !== 0 && first < ha) {
+    let same = 0, rows = 0;
+    for (let y = first; y < ha; y++) {
+      const yb = y + shift;
+      if (yb < 0 || yb >= hb) continue;
+      rows++;
+      if (!rowDiffers(y, yb)) same++;
+    }
+    moved = rows > 0 && same / rows >= 0.9;
+  }
+  const taller = Math.round(((b.naturalHeight / b.naturalWidth) - (a.naturalHeight / a.naturalWidth)) * ${cssWidth});
+  return { changed, taller, from: first < 0 ? undefined : Math.round(first * css), moved };
 })()`;
 
 /** Renders each pair side by side (labelled) into its out file; with measure, also says how much changed. */
@@ -187,13 +222,26 @@ export async function renderComparisons(opts: {
         const column = width > 1000 ? 720 : Math.round(width / 2);
         const pageWidth = column * 2 + 48;
         html = comparePage(opts.labels, column, n, [screenOf(before) ?? null, screenOf(after) ?? null]);
-        await page.setViewport(pageWidth, 900, 2);
+        // A short viewport, so the image is as tall as the two screenshots, not at least a screen's height.
+        await page.setViewport(pageWidth, 100, 2);
         await page.goto(`http://127.0.0.1:${server.port}/?${n}`);
-        const changed = opts.measure ? await page.evaluate<number>(MEASURE) : undefined;
+        // The screenshots' width in CSS px: what they recorded, or 2× for phones and 1× for wide ones.
+        const cssWidth = screenOf(after)?.width ?? (width > 1000 ? width : width / 2);
+        const measured = opts.measure ? await page.evaluate<{ changed: number; taller: number; from?: number; moved: boolean }>(measure(cssWidth)) : undefined;
         const height = Math.min(await page.evaluate<number>("document.documentElement.scrollHeight"), MAX_HEIGHT);
         mkdirSync(dirname(pair.out), { recursive: true });
         writeFileSync(pair.out, await page.screenshot({ x: 0, y: 0, width: pageWidth, height }));
-        results.push(changed === undefined ? { ...pair } : { ...pair, changed });
+        results.push(
+          measured === undefined
+            ? { ...pair }
+            : {
+                ...pair,
+                changed: measured.changed,
+                ...(measured.changed >= 0.1 && measured.from !== undefined
+                  ? { from: measured.from, ...(measured.taller !== 0 ? { taller: measured.taller, moved: measured.moved } : {}) }
+                  : {}),
+              },
+        );
       }
     } finally {
       await browser.close();

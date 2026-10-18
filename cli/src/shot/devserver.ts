@@ -67,7 +67,9 @@ export function devCommand(
   if (pm !== "bun" && !which("node")) {
     return { error: "Node.js isn't installed, and this app needs it to run. Install Node.js, or start the app yourself and pass its address with --url." };
   }
-  if (!existsSync(join(appDir, "node_modules")) && !existsSync(join(root, "node_modules"))) {
+  // Yarn Plug'n'Play installs into .pnp.cjs instead of node_modules.
+  const installed = (dir: string) => ["node_modules", ".pnp.cjs", ".pnp.js"].some((f) => existsSync(join(dir, f)));
+  if (!installed(appDir) && !installed(root)) {
     return { error: `This app's dependencies aren't installed yet. Run "${pm} install" in its folder, then try again.` };
   }
   const display = `${pm} run dev`;
@@ -78,7 +80,11 @@ export function devCommand(
 
 /** The first local address a dev server printed (Vite, Next.js and most others print one), or null. */
 export function findLocalUrl(output: string): string | null {
-  const m = output.replace(ANSI, "").match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1?\]|0\.0\.0\.0)(?::\d+)?(?:\/[^\s'"`<>]*)?/);
+  const address = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1?\]|0\.0\.0\.0)(?::\d+)?(?:\/[^\s'"`<>]*)?/;
+  const text = output.replace(ANSI, "");
+  // Where several programs print addresses (a dev server next to a mock API), the line that says "Local" is the app's.
+  const local = text.split(/\r?\n/).find((line) => /\bLocal\b/i.test(line) && address.test(line));
+  const m = (local ?? text).match(address);
   if (!m) return null;
   return m[0].replace(/[.,;)]+$/, "").replace("//0.0.0.0", "//127.0.0.1").replace("//[::]", "//[::1]");
 }
@@ -109,9 +115,10 @@ export function killTree(pid: number, force = false): void {
   }
 }
 
-async function answers(url: string): Promise<boolean> {
+/** Whether something answers at the address (a local dev server's own https certificate is fine). */
+export async function answers(url: string): Promise<boolean> {
   try {
-    await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(5000) });
+    await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(5000), tls: { rejectUnauthorized: false } });
     return true;
   } catch {
     return false;
@@ -153,6 +160,10 @@ export async function startDevServer(opts: { cwd: string; command: string[]; tim
       killTree(proc.pid);
       const done = await Promise.race([exited.then(() => true), Bun.sleep(3000).then(() => false)]);
       if (!done) killTree(proc.pid, true);
+    } else if (proc.pid && process.platform !== "win32") {
+      // The first process ended, but what it started in the background ("tsc -w & vite") is still in its group. (Not on
+      // Windows, where the id could by now be another program's.)
+      killTree(proc.pid, true);
     }
     cancelExitHook();
   };
