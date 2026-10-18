@@ -35,7 +35,7 @@ export function checkDesignMd(file: string, raw: string): Finding[] {
         if (m) header[m[1]!] = m[2]!.trim().replace(/^(["'])(.*)\1$/, "$2");
       }
       const version = Number(header.motifContract);
-      if (header.motifContract === undefined || !Number.isInteger(version)) {
+      if (header.motifContract === undefined || !/^\d+$/.test(header.motifContract) || version < 1) {
         add("missing-version", "error", `Add "motifContract: ${CONTRACT_VERSION}" to the header of your design guide.`, 1);
       } else if (version > CONTRACT_VERSION) {
         add("newer-format", "error", `Your design guide was made by a newer version of Motif (format ${version}). Update Motif to use it.`, 1);
@@ -50,18 +50,29 @@ export function checkDesignMd(file: string, raw: string): Finding[] {
 
   // Sections (level-2 headings, optional "N." prefix), outside code blocks
   const found: { name: string; line: number }[] = [];
-  let fence: string | null = null;
+  // As Markdown reads them: a fence opens a block only alone on its line (an info string may follow ``` but no more
+  // backticks), and closes it only with the same character, at least as long, and nothing after it.
+  let fence: { marker: string; line: number } | null = null;
   lines.forEach((l, i) => {
     if (i < bodyStart) return;
-    const marker = l.match(/^ {0,3}(`{3,}|~{3,})/)?.[1];
-    if (marker && (fence === null || (marker[0] === fence[0] && marker.length >= fence.length))) {
-      fence = fence === null ? marker : null;
+    if (fence === null) {
+      const open = l.match(/^ {0,3}(`{3,})[^`]*$/)?.[1] ?? l.match(/^ {0,3}(~{3,})/)?.[1];
+      if (open) {
+        fence = { marker: open, line: i + 1 };
+        return;
+      }
+    } else {
+      const close = l.match(/^ {0,3}(`{3,}|~{3,})\s*$/)?.[1];
+      if (close && close[0] === fence.marker[0] && close.length >= fence.marker.length) fence = null;
       return;
     }
-    if (fence !== null) return;
     const m = l.match(/^##\s+(?:\d+\.\s*)?(.+?)\s*#*\s*$/);
     if (m) found.push({ name: norm(m[1]!), line: i + 1 });
   });
+  if (fence !== null) {
+    const opened = fence as { marker: string; line: number };
+    add("unclosed-code-block", "warning", `A code block opened on line ${opened.line} is never closed, so everything after it reads as code. Close it with ${opened.marker}.`, opened.line);
+  }
   const positions: number[] = [];
   for (const section of REQUIRED_SECTIONS) {
     const idx = found.findIndex((f) => f.name === norm(section));

@@ -174,3 +174,53 @@ describe("detectApps: from the backlog", () => {
     expect(Date.now() - started).toBeLessThan(10_000);
   }, 60_000);
 });
+
+describe("detectApps: from the review of batch C1", () => {
+  test("a workspace root that is itself the app keeps it, beside a library in packages/", () => {
+    const next = project({
+      "package.json": JSON.stringify({ workspaces: ["packages/*"], dependencies: { next: "^15", react: "^19" } }),
+      "next.config.ts": "export default {};",
+      "app/page.tsx": "",
+      "packages/ui/package.json": pkg({}, { react: "^19", vite: "^6" }),
+    });
+    expect(detectApps(next).apps.map((a) => [a.path, a.stack])).toEqual([[".", "react-web"]]);
+    const cra = project({
+      "package.json": JSON.stringify({ workspaces: ["packages/*"], dependencies: { react: "^19", "react-scripts": "^5" } }),
+      "public/index.html": "<div id=root></div>",
+      "src/index.tsx": "",
+    });
+    expect(detectApps(cra).apps.map((a) => [a.path, a.stack])).toEqual([[".", "react-web"]]);
+    const empty = project({ "package.json": JSON.stringify({ workspaces: [], dependencies: { react: "^19", vite: "^6" } }), "apps/web/package.json": pkg({ react: "^19", vite: "^6" }) });
+    expect(detectApps(empty).apps.map((a) => a.path)).toEqual(["."]);
+  });
+
+  test("an ordinary SwiftUI app is found, however many images its asset catalogue holds", () => {
+    const files: Record<string, string> = { "MyApp.xcodeproj/project.pbxproj": "", "MyApp/ContentView.swift": "import SwiftUI" };
+    for (let i = 0; i < 1300; i++) for (const f of ["Contents.json", "a.png", "a@2x.png", "a@3x.png"]) files[`MyApp/Assets.xcassets/img${i}.imageset/${f}`] = "";
+    expect(detectStack(project(files))).toBe("swiftui");
+  }, 60_000);
+
+  test("the home-folder guard compares paths as the system does, and says what to do", () => {
+    const home = project({ "projects/app/package.json": pkg({ react: "^19", vite: "^6" }) });
+    const other = process.platform === "win32" ? home.replace(/^[A-Z]:/, (d) => d.toLowerCase()) : home;
+    const r = detectApps(other, { home });
+    expect(r.apps).toEqual([]);
+    expect(r.findings[0]!.message).toBe("This is your home folder, so Motif doesn't look through every folder in it. Run Motif inside your app's folder, or list your apps in design/motif.json.");
+  });
+
+  test("an absolute path in design/motif.json is named as such; a UTF-16 design/motif.json says to save it as UTF-8", () => {
+    const abs = project({ "web/package.json": pkg({}) });
+    const withAbs = project({ "design/motif.json": JSON.stringify({ apps: [{ path: join(abs, "web"), stack: "react-web" }] }) });
+    expect(detectApps(withAbs).findings[0]!.message).toBe(`design/motif.json lists "${join(abs, "web").replace(/\\/g, "/")}" as a full path: write it relative to this folder, like "web".`);
+    const utf16 = project({});
+    mkdirSync(join(utf16, "design"), { recursive: true });
+    writeFileSync(join(utf16, "design", "motif.json"), new Uint8Array([0xff, 0xfe, ...Buffer.from(JSON.stringify({ apps: [] }), "utf16le")]));
+    expect(detectApps(utf16).findings.map((f) => f.message)).toEqual([expect.stringContaining("saved as UTF-16")]);
+  });
+
+  test("Hugo's older configs (yaml, json, config/_default) and Zola sites aren't plain web; index.htm is served as the folder's page", () => {
+    expect(detectStack(project({ "config.yaml": "title: x", "layouts/index.html": "", "public/index.html": "" }))).toBeNull();
+    expect(detectStack(project({ "config/_default/hugo.toml": "", "public/index.html": "" }))).toBeNull();
+    expect(detectStack(project({ "config.toml": 'base_url = "x"', "templates/index.html": "", "public/index.html": "" }))).toBeNull();
+  });
+});

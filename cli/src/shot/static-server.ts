@@ -28,7 +28,8 @@ export function startStaticServer(root: string): StaticServer {
       if (statSync(file).isDirectory()) {
         // A folder's page links relative to the folder, so its address ends with "/".
         if (!path.endsWith("/")) return new Response(null, { status: 301, headers: { location: `${path}/` } });
-        file = realInside(root, join(file, "index.html"));
+        // index.html, or index.htm as older sites name it.
+        file = realInside(root, join(file, "index.html")) ?? realInside(root, join(file, "index.htm"));
         if (!file) return notFound();
       }
       if (!statSync(file).isFile()) return notFound();

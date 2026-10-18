@@ -1,6 +1,6 @@
 import { getNodeValue, parseTree, printParseErrorCode, type Node, type ParseError } from "jsonc-parser";
 import type { Finding } from "../findings";
-import { savedAsUtf16, UTF16_MESSAGE } from "../text";
+import { locator, savedAsUtf16, UTF16_MESSAGE } from "../text";
 import type { FlatToken, TokenDocument } from "./types";
 
 export function lineAt(text: string, offset: number): number {
@@ -9,22 +9,7 @@ export function lineAt(text: string, offset: number): number {
   return line;
 }
 
-/** lineAt for many offsets in one text: the newlines are found once, then each offset is looked up. */
-function lineFinder(text: string): (offset: number) => number {
-  const newlines: number[] = [];
-  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) newlines.push(i);
-  return (offset) => {
-    // How many newlines come before offset.
-    let lo = 0;
-    let hi = newlines.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (newlines[mid]! < offset) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo + 1;
-  };
-}
+
 
 function prop(obj: Node, name: string): Node | undefined {
   for (const p of obj.children ?? []) {
@@ -66,7 +51,9 @@ export function loadTokenDocument(
 
   const findings: Finding[] = [];
   const tokens = new Map<string, FlatToken>();
-  const lineOf = lineFinder(text);
+  // Each token's line, looked up: counting newlines again per token takes minutes on a large file.
+  const at = locator(text);
+  const lineOf = (offset: number) => at(offset).line;
 
   const walk = (group: Node, segs: string[], inherited: string | null): void => {
     for (const p of group.children ?? []) {

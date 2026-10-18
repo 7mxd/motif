@@ -13,7 +13,8 @@ import { buildTheme } from "../generate/theme";
 import { themeFonts } from "../generate/theme-fonts";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
-import { chooseSrcDir, detectTailwind, generateReactWeb, motifCss } from "../stacks/react-web/generate";
+import { motifCss } from "../generate/motif-css";
+import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
 import { TOKENS_JSON } from "./validate";
 
 export type FileStatus = "created" | "updated" | "unchanged" | "protected" | "skipped";

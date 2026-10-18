@@ -106,3 +106,16 @@ describe("runExtract: follow-ups", () => {
     expect((await runExtract(root, ctx)).text).toContain("apps/mobile (Flutter)");
   });
 });
+
+describe("motif extract and the app's own Tailwind spacing (review of batch C1)", () => {
+  test("an @theme --spacing in the app's CSS sets the step of its spacing classes", async () => {
+    const root = project({
+      "node_modules/tailwindcss/theme.css": THEME_CSS,
+      "src/index.css": '@import "tailwindcss";\n@theme {\n  --spacing: 0.5rem;\n}\n',
+      "src/App.tsx": 'export const App = () => <div className="p-3 bg-blue-500" />;',
+    });
+    expect((await runExtract(root, { positionals: [] })).exitCode).toBe(0);
+    const report = JSON.parse(readFileSync(join(root, "design/extract-report.json"), "utf8"));
+    expect(report.spacing.map((s: { px: number }) => s.px)).toEqual([24]);
+  });
+});

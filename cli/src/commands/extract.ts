@@ -6,7 +6,7 @@ import { appSourceFiles } from "../check/run";
 import type { CommandResult, RunContext } from "../cli/output";
 import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
 import { buildDraft, collectOccurrences } from "../extract/draft";
-import { readTailwindDefaults } from "../extract/tailwind-theme";
+import { ownSpacingPx, readTailwindDefaults } from "../extract/tailwind-theme";
 import { isMotifGenerated } from "../generate/header";
 import { appLabel, noSuchApp, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
@@ -42,7 +42,10 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
     return own;
   });
   const react = supported.filter((a) => a.stack === "react-web");
-  const tw = readTailwindDefaults([...react.map((a) => join(cwd, a.path)), cwd]);
+  const defaults = readTailwindDefaults([...react.map((a) => join(cwd, a.path)), cwd]);
+  // The app's own spacing step (@theme { --spacing }) wins over Tailwind's default.
+  const ownSpacing = ownSpacingPx(files.filter((f) => f.lang === "css" && !noTailwind.has(f)).map((f) => f.text));
+  const tw = defaults && ownSpacing !== null ? { ...defaults, spacingPx: ownSpacing } : defaults;
   // Plain web sites have no utility classes, and their own variables are read the way a person would.
   const occ = collectOccurrences(files, tw, (f) => !noTailwind.has(f), (f) => noTailwind.has(f));
   const { tokens, report } = buildDraft(occ);

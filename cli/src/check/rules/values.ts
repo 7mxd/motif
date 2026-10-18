@@ -2,11 +2,12 @@ import { locator } from "../../text";
 import type { SourceFile } from "../files";
 import { inRanges, maskComments, rangesOf } from "../mask";
 import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../types";
+import { CSS_DECLARATION } from "./colors";
 
 export const IMPORTS_MOTION = /from\s+["'](?:motion|motion\/react|motion\/react-client|framer-motion)["']/;
 
 // A property, or a custom property whose name may hold digits (--surface-2).
-import { CSS_DECLARATION } from "./colors";
+
 const SPACE_PROP = /^(?:(?:margin|padding)(?:-(?:top|right|bottom|left|inline|block)(?:-(?:start|end))?)?|gap|row-gap|column-gap|inset(?:-(?:inline|block)(?:-(?:start|end))?)?|top|right|bottom|left)$/i;
 const RADIUS_PROP = /^border(?:-(?:top|bottom|start|end)-(?:left|right|start|end))?-radius$/i;
 const MOTION_PROP = /^(?:transition|animation)(?:-(?:duration|delay|timing-function))?$/i;

@@ -77,3 +77,17 @@ describe("checkDesignMd: from the backlog", () => {
     expect(f[0]!.message).toContain("UTF-16");
   });
 });
+
+describe("checkDesignMd: from the review of batch C1", () => {
+  test("a code block left open is reported with its line; inline ``` and a closing ```js don't open or close one", () => {
+    const open = lf().replace("## 4. Motion", "```\nnot closed\n## 4. Motion");
+    expect(checkDesignMd("DESIGN.md", open).map((f) => [f.code, f.severity])).toContainEqual(["unclosed-code-block", "warning"]);
+    const inline = lf().replace("## 4. Motion", "```npm i motif``` installs it.\n## 4. Motion");
+    expect(codes(inline)).toEqual([]);
+  });
+
+  test('an empty or zero motifContract isn\'t a version', () => {
+    expect(codes(lf().replace("motifContract: 1", 'motifContract: ""'))).toEqual(["error:missing-version"]);
+    expect(codes(lf().replace("motifContract: 1", "motifContract: 0"))).toEqual(["error:missing-version"]);
+  });
+});

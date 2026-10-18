@@ -50,9 +50,13 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
 
   push("tool", "ok", "Motif tool", `Version ${VERSION} (${deps.platform}-${deps.arch}).`);
 
-  const { apps, findings } = detectApps(cwd);
-  for (const f of findings) push("settings", "needed", "Project settings", f.message);
-  if (apps.length === 0) {
+  const { apps, findings } = detectApps(cwd, { home: deps.home });
+  const wide = findings.find((f) => f.code === "home-folder");
+  for (const f of findings.filter((f) => f !== wide)) push("settings", "needed", "Project settings", f.message);
+  if (wide) {
+    // Not a place to start a new app: the developer is somewhere their app isn't.
+    push("app", "optional", "Your app", wide.message);
+  } else if (apps.length === 0) {
     push("app", "optional", "Your app", "No app found in this folder yet. That's fine — /design can start a new one.");
   }
   for (const app of apps) {

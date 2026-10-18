@@ -16,6 +16,21 @@ const toPx = (value: string): number | null => {
 };
 
 /** Tailwind v4 ships its default theme as CSS variables in node_modules/tailwindcss/theme.css. */
+/**
+ * The spacing step an app sets for itself in its CSS (@theme { --spacing: 0.5rem }), which Tailwind's own theme.css
+ * doesn't know: its spacing classes (p-3) count in that step.
+ */
+export function ownSpacingPx(cssTexts: string[]): number | null {
+  for (const css of cssTexts) {
+    for (const block of css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)) {
+      const m = block[1]!.match(/--spacing\s*:\s*([^;]+);/);
+      const px = m ? toPx(m[1]!.trim()) : null;
+      if (px !== null) return px;
+    }
+  }
+  return null;
+}
+
 export function readTailwindDefaults(dirs: string[]): TailwindDefaults | null {
   for (const dir of dirs) {
     let css: string;

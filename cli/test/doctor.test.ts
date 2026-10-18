@@ -127,3 +127,14 @@ describe("runDoctor", () => {
     expect(JSON.parse(r.stdout.toString())).toMatchObject({ command: "doctor", ok: true });
   });
 });
+
+describe("runDoctor in a home folder (review of batch C1)", () => {
+  test("says it's a home folder, and doesn't offer to start an app there", async () => {
+    const home = tempDir("motif-home-");
+    const r = await runDoctor(home, deps({ home }));
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app")).toMatchObject({ status: "optional", detail: expect.stringContaining("This is your home folder") });
+    expect(r.text).not.toContain("/design can start a new one");
+    expect(item(items, "settings")).toBeUndefined();
+  });
+});
