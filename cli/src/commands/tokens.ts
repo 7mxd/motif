@@ -106,6 +106,39 @@ function isReferenced(dir: string, name: string): boolean {
   return visit(dir);
 }
 
+/**
+ * Whether a page of the site links motif.css: only its pages count, not the design guide's mockups or docs that mention
+ * it (a site at the project's root has design/ and docs/ inside it).
+ */
+function linkedFromPages(dir: string): boolean {
+  let seen = 0;
+  const visit = (d: string, top: boolean): boolean => {
+    let entries: string[];
+    try {
+      entries = readdirSync(d);
+    } catch {
+      return false;
+    }
+    for (const e of entries) {
+      if (e === "node_modules" || e.startsWith(".") || (top && (e === "design" || e === "docs")) || seen++ > 2000) continue;
+      const p = join(d, e);
+      let isDir = false;
+      try {
+        isDir = statSync(p).isDirectory();
+      } catch {
+        continue;
+      }
+      if (isDir) {
+        if (visit(p, false)) return true;
+      } else if (/\.html?$/i.test(e) && /<link\b[^>]*motif\.css/i.test(readFileSync(p, "utf8"))) {
+        return true;
+      }
+    }
+    return false;
+  };
+  return visit(dir, true);
+}
+
 const STATUS_WIDTH = 10;
 
 export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandResult> {
@@ -240,7 +273,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       : `Next: load ${e.path} once: @import it from your main CSS file, or import it in your app's entry file.`);
   }
   for (const l of links) {
-    if (blockedPaths.has(l.path) || isReferenced(l.dir, "motif.css")) continue;
+    if (blockedPaths.has(l.path) || linkedFromPages(l.dir)) continue;
     notes.push(`Next: link ${l.path} in each page's <head>, before your own styles: <link rel="stylesheet" href="motif.css"> (write the path relative to the page).`);
   }
 

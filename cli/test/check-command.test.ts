@@ -153,3 +153,23 @@ describe("runCheck and design/motif.json (review of batch C1)", () => {
     expect((r.data.settings as any[]).map((f) => f.code)).toEqual(["bad-settings"]);
   });
 });
+
+describe("runCheck: from the backlog", () => {
+  test("in a Tailwind 3 app, Motif's theme classes are flagged: they need Tailwind 4", async () => {
+    const v3 = JSON.stringify({ dependencies: { react: "^19", "react-dom": "^19" }, devDependencies: { vite: "^6", tailwindcss: "^3.4.0" } });
+    const r = await runCheck(makeProject({ "package.json": v3, "src/main.tsx": "", "design/tokens.json": TOKENS, "src/A.tsx": CLEAN }), ctx());
+    const hit = (r.data.violations as any[]).find((h) => h.text === "bg-action-primary");
+    expect(hit).toMatchObject({ rule: "tailwind-palette" });
+    expect(hit.message).toBe("bg-action-primary is a class of Motif's Tailwind 4 theme: with Tailwind 3 it does nothing.");
+    expect(hit.fix).toBe("Use bg-[var(--motif-color-action-primary)], or upgrade to Tailwind 4.");
+  });
+
+  test("many problems are grouped by what they are, with the closest role suggested", async () => {
+    const lines = Array.from({ length: 30 }, (_, i) => `export const A${i} = () => <p className="text-sm p-7">x</p>;`).join("\n");
+    const r = await runCheck(project({ "src/Many.tsx": lines }), ctx());
+    expect(r.text).toContain("✗ 60 design problems in 1 file, grouped (--json lists each one):");
+    expect(r.text).toContain("  30× text-sm  Text size text-sm isn't one of your text roles. Closest: text-label (14px).");
+    expect(r.text).toContain("  30× p-7  Spacing p-7 isn't on your spacing scale. Closest: p-6 (24px) or p-8 (32px).");
+    expect((r.data.groups as any[])[0]).toMatchObject({ rule: "off-scale", text: "p-7", count: 30, files: 1 });
+  });
+});

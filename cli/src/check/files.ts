@@ -11,6 +11,8 @@ export interface SourceFile {
   abs: string;
   text: string;
   lang: Lang;
+  /** Parts of the text that apply only in dark mode beyond what the CSS says (a <style media="…dark">). */
+  dark?: [number, number][];
 }
 
 const LANGS: Record<string, Lang> = {

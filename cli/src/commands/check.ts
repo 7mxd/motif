@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { checkApp, type ExceptionHit } from "../check/run";
+import { suggestRole } from "../check/suggest";
 import type { Hit } from "../check/types";
 import { loadTokenDocument } from "../contract/load";
 import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
@@ -11,6 +12,44 @@ import { readIgnorePatterns } from "../project/settings";
 import { TOKENS_JSON } from "./validate";
 import { plural } from "../text";
 
+
+/** Past this many problems, the text groups them; --json always lists each one and the groups. */
+const GROUP_OVER = 25;
+const MAX_GROUPS = 30;
+
+interface Group {
+  rule: string;
+  text: string;
+  count: number;
+  files: number;
+  message: string;
+  fix: string;
+  suggestion?: string;
+}
+
+/** Problems grouped by rule and what was written (text-sm, #3b82f6), most frequent first. */
+function groupHits(hits: Hit[], theme: ReturnType<typeof buildTheme>): Group[] {
+  const groups = new Map<string, { hits: Hit[] }>();
+  for (const h of hits) {
+    const key = `${h.rule}|${h.text}`;
+    groups.set(key, { hits: [...(groups.get(key)?.hits ?? []), h] });
+  }
+  return [...groups.values()]
+    .map(({ hits: [first, ...rest] }) => {
+      const all = [first!, ...rest];
+      const suggestion = suggestRole(first!, theme);
+      return {
+        rule: first!.rule,
+        text: first!.text,
+        count: all.length,
+        files: new Set(all.map((h) => h.file)).size,
+        message: first!.message,
+        fix: first!.fix,
+        ...(suggestion ? { suggestion } : {}),
+      };
+    })
+    .sort((a, b) => b.count - a.count || a.text.localeCompare(b.text));
+}
 
 function byFile(hits: Hit[], line: (h: Hit) => string): string[] {
   const out: string[] = [];
@@ -98,10 +137,20 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   const filesWithProblems = new Set(violations.map((v) => v.file)).size;
   const allowed = exceptions.length ? ` (${exceptions.length} allowed with a reason)` : "";
 
-  const lines: string[] = violations.length
-    ? [`✗ ${plural(violations.length, "design problem", "design problems")} in ${plural(filesWithProblems, "file", "files")}${allowed}:`,
-       ...byFile(violations, (h) => `  ${h.line}:${h.column}  ${h.rule.padEnd(18)} ${h.message} ${h.fix}`)]
-    : [`✓ No design problems found in ${plural(files, "file", "files")}.${allowed}`];
+  // The same problem many times (text-sm ×345 on a first check of a real app) is one line, with the closest role.
+  const groups = groupHits(violations, theme);
+  const grouped = violations.length > GROUP_OVER;
+  const groupLine = (g: Group) => `  ${g.count}× ${g.text}  ${g.message} ${g.suggestion ? `Closest: ${g.suggestion}.` : g.fix}`;
+  const lines: string[] = !violations.length
+    ? [`✓ No design problems found in ${plural(files, "file", "files")}.${allowed}`]
+    : grouped
+      ? [
+          `✗ ${plural(violations.length, "design problem", "design problems")} in ${plural(filesWithProblems, "file", "files")}, grouped (--json lists each one)${allowed}:`,
+          ...groups.slice(0, MAX_GROUPS).map(groupLine),
+          ...(groups.length > MAX_GROUPS ? [`  …and ${groups.length - MAX_GROUPS} more kinds.`] : []),
+        ]
+      : [`✗ ${plural(violations.length, "design problem", "design problems")} in ${plural(filesWithProblems, "file", "files")}${allowed}:`,
+         ...byFile(violations, (h) => `  ${h.line}:${h.column}  ${h.rule.padEnd(18)} ${h.message} ${h.fix}`)];
   if (exceptions.length) {
     lines.push("", "Allowed with a reason:", ...exceptions.map((e) => `  ${e.file}:${e.line}  ${e.rule}  ${e.text} — motif-ok: ${e.reason}`));
   }
@@ -121,6 +170,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
     data: {
       violations,
       settings: settingProblems,
+      groups,
       exceptions,
       warnings,
       summary: { files, violations: violations.length, exceptions: exceptions.length, warnings: warnings.length },

@@ -53,3 +53,10 @@ describe("comments (scale)", () => {
     expect(scanTailwindScale(file("// was p-7 and duration-200\nexport const A = 1;"), scale)).toEqual([]);
   });
 });
+
+describe("scanTailwindScale: from the backlog", () => {
+  test("linear easing and a duration on something that spins or pulses are allowed; on a transition they aren't", () => {
+    expect(violations("animate-spin ease-linear duration-700")).toEqual([]);
+    expect(violations("transition ease-linear")).toEqual([["raw-motion", "easing", "linear"]]);
+  });
+});

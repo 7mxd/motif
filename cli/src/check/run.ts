@@ -10,7 +10,7 @@ import { listSourceFiles, matchesPaths, type SourceFile } from "./files";
 import { expandHtml } from "./html";
 import { generatedEditedHits, reducedMotionHits } from "./rules/app";
 import { scanColors } from "./rules/colors";
-import { scanTailwind } from "./rules/tailwind";
+import { scanTailwind, scanThemeClassesV3, type ThemeRoles } from "./rules/tailwind";
 import { scanTailwindScale } from "./rules/tailwind-scale";
 import { scanValues } from "./rules/values";
 import { buildScale } from "./scale";
@@ -28,11 +28,12 @@ export interface AppCheck {
   warnings: Hit[];
 }
 
-export function scanFile(file: SourceFile, scale: Scale | null, opts: { tailwind?: boolean } = {}): Hit[] {
+export function scanFile(file: SourceFile, scale: Scale | null, opts: { tailwind?: boolean; v3Roles?: ThemeRoles } = {}): Hit[] {
   const tailwind = opts.tailwind ?? true;
   return [
     ...scanColors(file),
     ...(tailwind ? [...scanTailwind(file, scale), ...scanTailwindScale(file, scale)] : []),
+    ...(tailwind && opts.v3Roles ? scanThemeClassesV3(file, opts.v3Roles) : []),
     ...scanValues(file, scale),
   ];
 }
@@ -40,7 +41,8 @@ export function scanFile(file: SourceFile, scale: Scale | null, opts: { tailwind
 const byPosition = (a: Hit, b: Hit) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column;
 
 /** Plain web fixes speak CSS: there are no utility classes on a plain site. */
-function plainFix(hit: Hit): string {
+export function plainFix(hit: Hit): string {
+  if (hit.rule === "reduced-motion") return 'Run motif tokens and link the motif.css it writes in each page (<link rel="stylesheet" href="motif.css">; it includes the rule), or add an @media (prefers-reduced-motion: reduce) rule.';
   if (hit.rule === "raw-color") return "Use var(--motif-color-<role>), or one of your own variables defined from it (--bg: var(--motif-color-background)).";
   if (hit.rule === "raw-font") return "Use var(--motif-font-<role>-family).";
   if (hit.rule === "off-scale" && hit.kind === "radius") return "Use var(--motif-radius-<role>).";
@@ -59,9 +61,13 @@ export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths
   const plain = app.stack === "plain-web";
   const srcDir = plain ? siteDir(root, app) : (app.srcDir ?? chooseSrcDir(appDir));
   const scale = buildScale(theme, srcDir);
+  const tailwindVersion = plain ? "none" : detectTailwind(appDir);
   const generatedHere: GeneratedFile[] = plain
     ? [{ path: srcDir === "." ? "motif.css" : `${srcDir}/motif.css`, content: motifCss(theme) }]
-    : generateReactWeb(theme, { srcDir, tailwind: detectTailwind(appDir) });
+    : generateReactWeb(theme, { srcDir, tailwind: tailwindVersion });
+  // On Tailwind 3, Motif's theme classes do nothing: they're flagged.
+  const v3Roles: ThemeRoles | undefined =
+    tailwindVersion === "v3" ? { colors: theme.colors.map((c) => c.name), fonts: theme.fonts.map((f) => f.name), easings: theme.easings.map((e) => e.name) } : undefined;
   const expected = generatedHere.map((f) => ({ path: prefixPath(app.path, f.path), content: f.content }));
 
   // App-wide rules need the whole app even when the scan is narrowed to some paths.
@@ -77,7 +83,7 @@ export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths
   const violations: Hit[] = [];
   const exceptions: ExceptionHit[] = [];
   const appWide = reducedMotionHits(expandHtml(appFiles), expandHtml(generated)).filter((h) => inScope.has(h.file));
-  const scanned = expandHtml(files).flatMap((f) => scanFile(f, scale, { tailwind: !plain }));
+  const scanned = expandHtml(files).flatMap((f) => scanFile(f, scale, { tailwind: !plain, v3Roles }));
   for (const found of [...scanned, ...appWide]) {
     if (!found.violation) continue;
     const hit = plain ? { ...found, fix: plainFix(found) } : found;

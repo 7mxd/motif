@@ -86,3 +86,21 @@ describe("colour context from CSS variable names", () => {
     ]);
   });
 });
+
+describe("raw-color in scripts: from the backlog", () => {
+  test("a colour after a space inside a CSS value in a string is found; prose like Room #101 isn't", () => {
+    expect(values("a.tsx", 'const s = { boxShadow: "0 1px 2px #cccccc", border: "1px solid #333" };\nconst t = "Room #101 is free";')).toEqual([
+      ["#cccccc", "other"],
+      ["#333", "border"],
+    ]);
+  });
+
+  test("colours set as styles from a script say how they're used", () => {
+    expect(values("a.js", 'el.style.background = "#abcdef";\nel.style.setProperty("--card-bg", "#123456");\nctx.fillStyle = "#654321";\nctx.strokeStyle = "#111111";')).toEqual([
+      ["#abcdef", "background"],
+      ["#123456", "background"],
+      ["#654321", "background"],
+      ["#111111", "border"],
+    ]);
+  });
+});

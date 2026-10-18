@@ -81,3 +81,18 @@ describe("the CSS inside an HTML page", () => {
     expect(files.map((f) => [f.path, f.lang])).toEqual([["old.htm", "css"], ["old.htm", "markup"]]);
   });
 });
+
+describe("htmlViews: from the backlog", () => {
+  test("script text never starts a comment or a style block; a <style-guide> element isn't <style>; old <!-- --> inside <style> still counts as CSS", () => {
+    const html = '<script>const s = "<!-- not a comment"; const t = \'<style>\';</script><style>.a { color: #ff0000 }</style><style-guide tone="x"></style-guide><style><!-- .b { color: #00ff00 } --></style>';
+    const css = htmlViews(html).css;
+    expect(css).toContain(".a { color: #ff0000 }");
+    expect(css).toContain(".b { color: #00ff00 }");
+    expect(css).not.toContain("tone");
+  });
+
+  test("entities in style attributes are read as their characters; a mask-icon's colour is exempt like theme-color", () => {
+    const hits = expandHtml([page('<div style="font-family: &quot;Comic Sans&quot;"></div><link rel="mask-icon" href="x.svg" color="#5bbad5">')]).flatMap((f) => scanFile(f, scale, { tailwind: false }));
+    expect(hits.filter((h) => h.violation).map((h) => [h.rule, h.value])).toEqual([["raw-font", '"Comic Sans"']]);
+  });
+});

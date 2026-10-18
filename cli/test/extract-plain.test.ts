@@ -248,3 +248,16 @@ describe("final review of Plan 2C: plain-site drafts never get worse than before
     expect(occ.roleNames).toEqual(["--ink"]);
   });
 });
+
+describe("a stylesheet linked for dark mode only (backlog)", () => {
+  test("its colours are the dark values", async () => {
+    const root = makeProject({
+      "public/index.html": '<!doctype html><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="dark.css" media="(prefers-color-scheme: dark)"><p>Hi</p>',
+      "public/styles.css": ":root { --bg: #f2f2f7; --text: #111111 }\nbody { background: var(--bg); color: var(--text) }",
+      "public/dark.css": ":root { --bg: #0a0a0a; --text: #fafafa }",
+    });
+    expect((await runExtract(root, { positionals: [] })).exitCode).toBe(0);
+    const tokens = read(root, "design/tokens.draft.json");
+    expect([hex(tokens, "background", "light"), hex(tokens, "background", "dark")]).toEqual(["#F2F2F7", "#0A0A0A"]);
+  });
+});

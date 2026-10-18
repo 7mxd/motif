@@ -3,6 +3,7 @@ import { darkRanges } from "../src/check/dark";
 import type { SourceFile } from "../src/check/files";
 import { inRanges } from "../src/check/mask";
 import { scanColors } from "../src/check/rules/colors";
+import { expandHtml } from "../src/check/html";
 
 const CSS = [
   ":root { --bg: #f2f2f7; }",
@@ -40,5 +41,25 @@ describe("dark-mode blocks", () => {
     const script: SourceFile = { path: "a.ts", abs: "/a.ts", text: 'const c = "#123456";', lang: "script" };
     expect(scanColors(script).map((h) => [h.prop, h.scheme])).toEqual([[undefined, undefined]]);
     expect(darkRanges(".dark { color: #000")).toEqual([[6, 19]]);
+  });
+});
+
+describe("darkRanges: from the backlog", () => {
+  const darkValues = (css: string) => {
+    const ranges = darkRanges(css);
+    return [...css.matchAll(/#[0-9a-f]{3,6}/gi)].filter((m) => inRanges(m.index!, ranges)).map((m) => m[0]);
+  };
+
+  test("a selector that excludes dark, or lists light and dark together, isn't dark; @media not … dark isn't either", () => {
+    expect(darkValues(":root:not(.dark) { --bg: #fff } :root:not([data-theme=dark]) { --a: #eee } .card, .dark .card { color: #111 } @media not (prefers-color-scheme: dark) { .a { color: #222 } }")).toEqual([]);
+  });
+
+  test("Bootstrap's and GitHub's dark attributes, and light-dark()'s second colour, are dark", () => {
+    expect(darkValues('[data-bs-theme="dark"] { --bg: #000 } [data-color-mode=dark] { --fg: #fafafa } .a { color: light-dark(#111, #eee) }')).toEqual(["#000", "#fafafa", "#eee"]);
+  });
+
+  test("a <style> for dark mode only is dark", () => {
+    const [cssView] = expandHtml([{ path: "index.html", abs: "", lang: "markup", text: '<style media="(prefers-color-scheme: dark)">.a { color: #abcabc }</style><style>.b { color: #defdef }</style>' }]);
+    expect(scanColors(cssView!).map((h) => [h.value, h.scheme ?? "light"])).toEqual([["#abcabc", "dark"], ["#defdef", "light"]]);
   });
 });

@@ -91,6 +91,52 @@ function classifyArbitrary(util: string, value: string, cls: string, motionImpor
   return null;
 }
 
+/** The theme's role names, for an app on Tailwind 3: Motif's theme classes need Tailwind 4 there. */
+export interface ThemeRoles {
+  colors: string[];
+  fonts: string[];
+  easings: string[];
+}
+
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Motif's theme classes in an app on Tailwind 3, which doesn't read the Tailwind 4 theme: they do nothing there. */
+export function scanThemeClassesV3(source: SourceFile, roles: ThemeRoles): Hit[] {
+  const file = { ...source, text: maskComments(source.text, source.lang) };
+  const at = locator(file.text);
+  const hits: Hit[] = [];
+  const alt = (names: string[]) => names.map(esc).join("|");
+  const patterns: [RegExp, (m: RegExpMatchArray) => string][] = [];
+  if (roles.colors.length) {
+    patterns.push([
+      new RegExp(`${CLASS_PREFIX}(bg|text|border(?:-[xytrblse])?|ring(?:-offset)?|outline|fill|stroke|decoration|caret|accent|from|via|to|divide|placeholder)-(${alt(roles.colors)})(?:\\/\\d{1,3})?(?![\\w-])`, "g"),
+      (m) => `Use ${m[1]}-[var(--motif-color-${m[2]})], or upgrade to Tailwind 4.`,
+    ]);
+  }
+  if (roles.fonts.length) {
+    patterns.push([new RegExp(`${CLASS_PREFIX}(text|font)-(${alt(roles.fonts)})(?![\\w-])`, "g"), () => "Use the role's CSS variable (var(--motif-font-…)) in an arbitrary value, or upgrade to Tailwind 4."]);
+  }
+  if (roles.easings.length) {
+    patterns.push([new RegExp(`${CLASS_PREFIX}ease-(${alt(roles.easings)})(?![\\w-])`, "g"), (m) => `Use ease-[var(--motif-easing-${m[1]})], or upgrade to Tailwind 4.`]);
+  }
+  for (const seg of classSegments(file)) {
+    for (const [pattern, fix] of patterns) {
+      for (const m of seg.text.matchAll(pattern)) {
+        hits.push(makeHit(file, at, seg.offset + m.index!, {
+          rule: "tailwind-palette",
+          kind: "color",
+          value: m[0],
+          text: m[0].replace(/^(?:[\w-]+:)*!?/, ""),
+          violation: true,
+          message: `${m[0].replace(/^(?:[\w-]+:)*!?/, "")} is a class of Motif's Tailwind 4 theme: with Tailwind 3 it does nothing.`,
+          fix: fix(m),
+        }));
+      }
+    }
+  }
+  return hits;
+}
+
 export function scanTailwind(source: SourceFile, scale: Scale | null): Hit[] {
   const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);

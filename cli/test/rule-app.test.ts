@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import type { SourceFile } from "../src/check/files";
 import { generatedEditedHits, reducedMotionHits } from "../src/check/rules/app";
+import { plainFix } from "../src/check/run";
 import { CSS_HEADER } from "../src/generate/header";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
@@ -45,5 +46,12 @@ describe("generated-edited", () => {
   });
   test("a file Motif didn't write is not its business here", () => {
     expect(generatedEditedHits(makeProject({ "src/styles/motif.css": ".mine {}" }), expected)).toEqual([]);
+  });
+});
+
+describe("reduced-motion on a plain web site (backlog)", () => {
+  test("the fix speaks of linking motif.css, not importing a stylesheet", () => {
+    const [hit] = reducedMotionHits([{ path: "public/styles.css", abs: "", lang: "css", text: "@keyframes spin { to { rotate: 1turn } } .s { animation: spin 1s infinite }" }], []);
+    expect(plainFix(hit!)).toContain('<link rel="stylesheet" href="motif.css">');
   });
 });

@@ -120,3 +120,15 @@ describe("buildDraft: real-app details", () => {
     expect(t.primitive.font.sans.$value[0]).toBe("Thmanyah Sans");
   });
 });
+
+describe("collectOccurrences + buildDraft: the page's background (backlog)", () => {
+  test("the background set on body is the page's, even when white cards use another more", () => {
+    const css: SourceFile = {
+      path: "styles.css", abs: "", lang: "css",
+      text: "body { background: #f4f4f5; color: #18181b }\n" + Array.from({ length: 6 }, (_, i) => `.card-${i} { background: #ffffff }`).join("\n"),
+    };
+    const { tokens, report } = buildDraft(collectOccurrences([css], null, () => false));
+    const hexOf = (role: string) => (tokens as any).primitive.color[report.roles[`color.${role}`]!].$value.hex.toLowerCase();
+    expect([hexOf("background"), hexOf("surface")]).toEqual(["#f4f4f5", "#ffffff"]);
+  });
+});

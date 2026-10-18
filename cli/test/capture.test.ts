@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
-import { captureScreens, routeSlug, routeUrl, shotName } from "../src/shot/capture";
+import { captureScreens, routeSlug, routeUrl, shotName, stateExpression } from "../src/shot/capture";
 import { cleanupTempDirs, tempDir } from "./tmp";
 import { selfSignedCert } from "./tls";
 
@@ -19,6 +19,9 @@ describe("names and addresses", () => {
     expect(routeUrl("http://localhost:3000", "/")).toBe("http://localhost:3000/");
     expect(routeUrl("http://localhost:3000/", "/settings")).toBe("http://localhost:3000/settings");
     expect(routeUrl("http://localhost:5173/app/", "/settings?tab=billing")).toBe("http://localhost:5173/app/settings?tab=billing");
+  });
+  test("a state script starts on the first line, so its errors name its own lines (backlog)", () => {
+    expect(stateExpression("first();\nsecond();").split("\n")[0]).toContain("first();");
   });
   test("shotName", () => {
     expect(shotName("index", "mobile", "light")).toBe("index.mobile.png");
@@ -141,5 +144,17 @@ describe.skipIf(!browser)("captureScreens: from the review of batch B", () => {
     const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/poll"], outDir: out, settleMs: 50, viewports: DESKTOP });
     expect(routes[0]!.shots).toHaveLength(2);
     expect(Date.now() - started).toBeLessThan(9_000);
+  }, 60_000);
+});
+
+describe.skipIf(!browser)("a page's own errors and its states (backlog)", () => {
+  test("an error the page throws as it loads is reported once, not again for each state", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({
+      browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/throws"], outDir: out, settleMs: 50,
+      viewports: [{ name: "desktop", width: 1440, height: 900, scale: 1, mobile: false }],
+      states: [{ name: "open", script: "document.body.dataset.open = '1';" }],
+    });
+    expect(routes[0]!.pageErrors).toEqual(["Error: boom: data is undefined"]);
   }, 60_000);
 });

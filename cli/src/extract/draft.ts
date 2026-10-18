@@ -165,7 +165,7 @@ interface CssUse {
  */
 function cssUses(file: SourceFile, aliases: Map<string, string>, fallbacks: Map<string, string>): CssUse[] {
   const css = maskComments(file.text, "css");
-  const dark = darkRanges(css);
+  const dark = [...darkRanges(css), ...(file.dark ?? [])];
   const at = locator(css);
   const selectorAt = selectorLookup(css);
   const uses: CssUse[] = [];
@@ -300,6 +300,8 @@ export function collectOccurrences(
             else add("unresolved", hit.text, hit);
           } else {
             add("colors", hit.value!, hit, hit.context);
+            // A background set on the page itself (html, body, :root) is the page's, whatever cards use more.
+            if (hit.page) mark(hit.value!, "page");
             // A colour in a script that isn't set as a style (a list to pick from, a default) is data, not the theme.
             if (follow && file.lang !== "css" && hit.rule === "raw-color" && hit.context === "other") mark(hit.value!, "data");
           }
@@ -434,7 +436,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
 
   const chosen: Record<string, ColorCluster | undefined> = {};
   // Page backgrounds are neutral; a much-used saturated background is a brand or action colour.
-  chosen.background = named.background ?? backgrounds.find((c) => c.c < 0.04) ?? backgrounds[0];
+  chosen.background = named.background ?? backgrounds.find((c) => used(c, "page") > 0 && c.c < 0.04) ?? backgrounds.find((c) => c.c < 0.04) ?? backgrounds[0];
   // Text must be readable on the background: white text used on buttons isn't the main text colour, whatever its name.
   const readableOn = (c: ColorCluster) => !chosen.background || wcagContrast(c.hex, chosen.background.hex) >= 3;
   for (const role of ["text-primary", "text-secondary"]) if (named[role] && !readableOn(named[role]!)) delete named[role];

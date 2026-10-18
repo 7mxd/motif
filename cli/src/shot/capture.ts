@@ -85,7 +85,8 @@ export interface StateScript {
 
 /** The script as an async function in the page; one still running after timeoutMs is stopped and reported. */
 export function stateExpression(script: string, timeoutMs = 15_000): string {
-  return `Promise.race([(async () => {\n${script}\n})(), new Promise((_, reject) => setTimeout(() => reject(new Error("it was still running after ${timeoutMs / 1000} seconds")), ${timeoutMs}))]).then(() => true)`;
+  // The script starts on the expression's first line, so an error's line number is the script's own.
+  return `Promise.race([(async () => {${script}\n})(), new Promise((_, reject) => setTimeout(() => reject(new Error("it was still running after ${timeoutMs / 1000} seconds")), ${timeoutMs}))]).then(() => true)`;
 }
 
 export interface RouteResult {
@@ -245,6 +246,9 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 await page.evaluate(`Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 1000 : 5000}))]).then(() => true)`);
                 // What a stuck page is loading never arrives, so it isn't waited for.
                 if (!stuck) await page.waitForQuiet(300, 5000);
+                // What the page threw as it loaded is the page's own error, the same in every state: not tagged.
+                const loadErrors = page.takeErrors();
+                addErrors(loadErrors);
                 if (state) {
                   try {
                     await page.evaluate(stateExpression(state.script, stateTimeoutMs), { timeoutMs: stateTimeoutMs });
@@ -256,7 +260,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 }
                 await Bun.sleep(settleMs);
                 const thrown = page.takeErrors();
-                if (thrown.length > 0) {
+                if (thrown.length > 0 || loadErrors.length > 0) {
                   addErrors(thrown.map(tag));
                 } else {
                   // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.

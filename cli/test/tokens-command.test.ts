@@ -191,3 +191,19 @@ describe("runTokens: unusual apps and settings", () => {
     expect(hint).toContain("src/styles/motif.tailwind.css");
   });
 });
+
+describe("motif tokens on a plain web site at the project's root (backlog)", () => {
+  test("says to link motif.css when no page does, even if the design guide or docs mention it", async () => {
+    const root = makeProject({
+      "design/tokens.json": TOKENS,
+      "index.html": "<!doctype html><title>x</title><p>Hi</p>",
+      "design/previews/home.html": '<link rel="stylesheet" href="motif.css">',
+      "docs/setup.html": "<p>Link motif.css in each page.</p>",
+    });
+    const r = await runTokens(root, ctx());
+    expect((r.data.notes as string[]).join("\n")).toContain("Next: link motif.css in each page's <head>");
+    writeFileSync(join(root, "index.html"), '<!doctype html><link rel="stylesheet" href="motif.css"><p>Hi</p>');
+    const again = await runTokens(root, ctx());
+    expect((again.data.notes as string[]).join("\n")).not.toContain("Next: link motif.css");
+  });
+});
