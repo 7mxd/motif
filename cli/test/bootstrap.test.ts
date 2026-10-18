@@ -15,31 +15,34 @@ const ASSET = `motif-${OS}-${ARCH}${isWin ? ".exe" : ""}`;
 const slash = (p: string) => p.replace(/\\/g, "/");
 
 let builtPath = "";
-let binary: Uint8Array<ArrayBuffer>;
 let server: ReturnType<typeof Bun.serve>;
+let sha = "";
 let hits = 0;
 
 beforeAll(() => {
   builtPath = join(tempDir("motif-build-"), isWin ? "motif.exe" : "motif");
   const build = Bun.spawnSync([process.execPath, "build", "--compile", join(REPO_ROOT, "cli/src/main.ts"), "--outfile", builtPath]);
   if (build.exitCode !== 0) throw new Error(build.stderr.toString());
-  binary = new Uint8Array(readFileSync(builtPath));
-  const goodSums = `${createHash("sha256").update(binary).digest("hex")}  ${ASSET}\n`;
+  sha = createHash("sha256").update(readFileSync(builtPath)).digest("hex");
+  const goodSums = `${sha}  ${ASSET}\n`;
   const badSums = `${"0".repeat(64)}  ${ASSET}\n`;
+  // Each download reads the file afresh rather than sharing one buffer with downloads running at the same time
+  // (a macOS CI run once saw one of six parallel downloads fail its checksum).
+  const asset = () => new Response(Bun.file(builtPath));
   server = Bun.serve({
     port: 0,
     fetch(req) {
       const path = new URL(req.url).pathname;
       if (path === `/ok/${ASSET}` || path === `/bad/${ASSET}`) {
         hits++;
-        return new Response(binary);
+        return asset();
       }
       if (path === "/ok/SHA256SUMS") return new Response(goodSums);
       // sha256sum --binary writes "hash *name" (backlog).
-      if (path === `/star/${ASSET}`) return new Response(binary);
+      if (path === `/star/${ASSET}`) return asset();
       if (path === "/star/SHA256SUMS") return new Response(goodSums.replace(`  ${ASSET}`, ` *${ASSET}`));
       // Windows line endings in SHA256SUMS (review of batch G).
-      if (path === `/crlf/${ASSET}`) return new Response(binary);
+      if (path === `/crlf/${ASSET}`) return asset();
       if (path === "/crlf/SHA256SUMS") return new Response(goodSums.replace(/\n/g, "\r\n"));
       if (path === "/bad/SHA256SUMS") return new Response(badSums);
       return new Response("not found", { status: 404 });
@@ -109,6 +112,8 @@ for (const runner of RUNNERS) {
       const r = await run("bad", home, ["--version"]);
       expect({ exitCode: r.exitCode, stderr: r.stderr }).toMatchObject({ exitCode: 2 });
       expect(r.stderr.toString()).toContain("failed its safety check");
+      // Both checksums, so a report (or a CI log) shows which side was wrong (macOS CI).
+      expect(r.stderr.toString()).toContain(`expected ${"0".repeat(64)}, got ${sha}`);
       expect(existsSync(cached(home))).toBe(false);
     }, 120_000);
 

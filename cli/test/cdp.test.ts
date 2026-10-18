@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeTab, launchBrowser, openTab, removeProfile, startFailureHint } from "../src/browser/cdp";
+import { closeTab, launchBrowser, openTab, removeProfile, removeProfileNow, startFailureHint } from "../src/browser/cdp";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 
@@ -64,6 +64,32 @@ describe("removeProfile", () => {
     expect(await removeProfile("profile", busyTwice, 5, 1)).toBe(true);
     expect(calls).toBe(3);
     expect(await removeProfile("profile", () => { throw new Error("resource busy or locked"); }, 3, 1)).toBe(false);
+  });
+});
+
+describe("removeProfileNow, at exit (macOS CI left a profile behind)", () => {
+  test("a folder that a lingering helper writes into again is removed again", () => {
+    let folder = true;
+    let helperWrites = 1;
+    const rm = () => void (folder = false);
+    const exists = () => {
+      if (!folder && helperWrites-- > 0) folder = true;
+      return folder;
+    };
+    expect(removeProfileNow("profile", rm, exists, 5, 1)).toBe(true);
+    expect(folder).toBe(false);
+  });
+
+  test("retries while the folder is held, then gives up quietly", () => {
+    let calls = 0;
+    let folder = true;
+    const busyTwice = () => {
+      if (++calls < 3) throw Object.assign(new Error("resource busy or locked"), { code: "EBUSY" });
+      folder = false;
+    };
+    expect(removeProfileNow("profile", busyTwice, () => folder, 5, 1)).toBe(true);
+    expect(calls).toBe(3);
+    expect(removeProfileNow("profile", () => { throw new Error("resource busy or locked"); }, () => true, 3, 1)).toBe(false);
   });
 });
 

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { onExit } from "../cleanup";
@@ -84,6 +84,29 @@ export async function removeProfile(
     } catch {
       await new Promise((r) => setTimeout(r, delayMs));
     }
+  }
+  return false;
+}
+
+/**
+ * Removes the profile at exit, when nothing can be awaited. The browser was just killed, and its helpers can still
+ * hold files (Windows) or write into the folder again for a moment (macOS), so it has to stay gone, not just go once.
+ */
+export function removeProfileNow(
+  dir: string,
+  rm: (dir: string) => void = (d) => rmSync(d, { recursive: true, force: true }),
+  exists: (dir: string) => boolean = existsSync,
+  attempts = 20,
+  delayMs = 100,
+): boolean {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      rm(dir);
+    } catch {
+      // Still held: try again.
+    }
+    Bun.sleepSync(delayMs);
+    if (!exists(dir)) return true;
   }
   return false;
 }
@@ -203,15 +226,7 @@ export async function launchBrowser(
   // If Motif exits (or is stopped with Ctrl+C) before close(), the browser goes with it, and so does its profile.
   const cancelExitHook = onExit(() => {
     if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
-    // Its helpers can hold files in the profile for a moment after it stops (Windows): wait briefly, as exit allows.
-    for (let i = 0; i < 20; i++) {
-      try {
-        rmSync(profile, { recursive: true, force: true });
-        return;
-      } catch {
-        Bun.sleepSync(50);
-      }
-    }
+    removeProfileNow(profile);
   });
 
   const ws = new WebSocket(wsUrl);

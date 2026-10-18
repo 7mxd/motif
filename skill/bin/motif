@@ -57,6 +57,7 @@ if [ ! -x "$BIN" ]; then
   ACTUAL=$(sha256 "$TMP/$ASSET")
   if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
     echo "Motif: the downloaded tool failed its safety check, so it wasn't used. Please try again later, or report this at https://github.com/$REPO/issues" >&2
+    echo "Motif: SHA-256 expected ${EXPECTED:-none}, got ${ACTUAL:-none}." >&2
     exit 2
   fi
   install_failed() {
