@@ -94,7 +94,8 @@ function hasSwiftUIImport(dir: string): boolean {
     if (depth > SWIFT_MAX_DEPTH || scanned >= SWIFT_MAX_FILES || seen >= SWIFT_MAX_ENTRIES) return false;
     let entries: string[];
     try {
-      entries = readdirSync(d);
+      // In name order: Linux and macOS list a folder in no set order, and how far the scan goes must not depend on it.
+      entries = readdirSync(d).sort();
     } catch {
       return false;
     }

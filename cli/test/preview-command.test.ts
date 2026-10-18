@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngNames, runPreview, type PreviewDeps } from "../src/commands/preview";
 import { openCommand } from "../src/preview/open";
@@ -283,6 +283,22 @@ describe("motif preview: fonts", () => {
 });
 
 describe("motif preview: from the backlog", () => {
+  test("in live preview, an event for a file whose content didn't change renders nothing (macOS reports ones from before the watch began)", async () => {
+    const root = project();
+    const { deps, calls, stop } = fakes();
+    const r = await runPreview(root, ctx(["design/previews"], { "no-open": true }), deps);
+    try {
+      expect(calls.render.length).toBe(1);
+      await Bun.sleep(300);
+      writeFileSync(join(root, "design/previews/home.html"), readFileSync(join(root, "design/previews/home.html")));
+      await Bun.sleep(1200);
+      expect(calls.render.length).toBe(1);
+    } finally {
+      stop();
+      await r.hold;
+    }
+  });
+
   test("in live preview, saving a mockup makes its PNGs again; Motif's own PNGs don't", async () => {
     const root = project();
     const { deps, calls, stop } = fakes();

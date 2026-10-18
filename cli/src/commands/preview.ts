@@ -233,11 +233,33 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
       if (changed.size > 0 && !stopped) void rerender();
     }
   };
+  // What each file beside a mockup holds, so an event for one whose content didn't change starts nothing: macOS reports
+  // changes made before the watch began, and an editor may save a file as it was.
+  const contentOf = (path: string) => {
+    try {
+      return Bun.hash(readFileSync(path));
+    } catch {
+      return null;
+    }
+  };
+  const held = new Map<string, ReturnType<typeof contentOf>>();
+  for (const dir of new Set(files.map((f) => dirname(join(cwd, f))))) {
+    let names: string[] = [];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      // A folder that went away has nothing to compare.
+    }
+    for (const name of names) held.set(pathKey(join(dir, name)), contentOf(join(dir, name)));
+  }
   server.watch(files, {
     ignore: (path) => ours.has(pathKey(path)),
     onChange: (path) => {
       const key = pathKey(path);
       if (!mockupAt.includes(key) && !ASSET.test(key)) return;
+      const now = contentOf(path);
+      if (held.has(key) && held.get(key) === now) return;
+      held.set(key, now);
       changed.add(key);
       clearTimeout(timer);
       timer = setTimeout(() => void rerender(), 300);

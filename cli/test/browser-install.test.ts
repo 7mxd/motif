@@ -140,7 +140,9 @@ describe("installBrowser (backlog)", () => {
       fetch: (req) =>
         new URL(req.url).pathname === "/index.json"
           ? index(base)
-          : new Response(new ReadableStream({ start(c) { c.enqueue(body.slice(0, 1000)); c.enqueue(body.slice(1000)); c.close(); } })),
+          : // Still open when the reply starts, so the server can't know the size and sends it in chunks (on Linux it
+          // otherwise buffers a stream that closes at once and gives its length).
+          new Response(new ReadableStream({ start(c) { c.enqueue(body.slice(0, 100)); setTimeout(() => { c.enqueue(body.slice(100)); c.close(); }, 50); } })),
     });
     try {
       const totals = new Set<number>();
