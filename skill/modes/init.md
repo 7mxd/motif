@@ -31,7 +31,7 @@ Write down in a few lines what you'll take from each reference. Keep links only.
 
 ## 4. Directions ⏸
 
-Make two or three clearly different directions: different colour moods, type pairings or densities, not one look with three accent colours. Each direction names its font pairing (text, headings and an Arabic companion second in both font lists) from [type pairings](../knowledge/type-pairings.md), different from the other directions', with one line on why it suits the brief. Leave out the overused fonts and colour looks listed there unless the developer asks for them. Each direction is a folder in `design/directions/`, such as `design/directions/calm/`, holding:
+Make two or three clearly different directions: different colour moods, type pairings or densities, not one look with three accent colours. Each direction names its font pairing (text and headings, plus an Arabic companion second in both font lists when the app may show Arabic) from [type pairings](../knowledge/type-pairings.md), different from the other directions', with one line on why it suits the brief. Leave out the overused fonts and colour looks listed there unless the developer asks for them. Each direction is a folder in `design/directions/`, such as `design/directions/calm/`, holding:
 
 - `tokens.json`: start from the closest starting style (`presets/<style>/tokens.json` in the skill folder) or [the template](../contract/tokens.template.json), and change the values to fit the brief. Keep every role; [the format](../contract/spec.md) explains each one.
 - `tile.html`: a style tile with the colour roles as swatches, the type scale, and the key components (buttons, a field, a card, a list row) in their main states.

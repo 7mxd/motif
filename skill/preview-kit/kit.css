@@ -122,9 +122,9 @@ body {
 .mk-grow { flex: 1; min-width: 0; }
 
 /* ---------- Type ---------- */
-.mk-display { font: var(--motif-font-display-weight) var(--motif-font-display-size) / var(--motif-font-display-line-height) var(--motif-font-display-family); }
-.mk-title { font: var(--motif-font-title-weight) var(--motif-font-title-size) / var(--motif-font-title-line-height) var(--motif-font-title-family); }
-.mk-heading { font: var(--motif-font-heading-weight) var(--motif-font-heading-size) / var(--motif-font-heading-line-height) var(--motif-font-heading-family); }
+.mk-display { font: var(--motif-font-display-weight) var(--motif-font-display-size) / var(--motif-font-display-line-height) var(--motif-font-display-family); font-variant-numeric: lining-nums; }
+.mk-title { font: var(--motif-font-title-weight) var(--motif-font-title-size) / var(--motif-font-title-line-height) var(--motif-font-title-family); font-variant-numeric: lining-nums; }
+.mk-heading { font: var(--motif-font-heading-weight) var(--motif-font-heading-size) / var(--motif-font-heading-line-height) var(--motif-font-heading-family); font-variant-numeric: lining-nums; }
 .mk-body { font: var(--motif-font-body-weight) var(--motif-font-body-size) / var(--motif-font-body-line-height) var(--motif-font-body-family); }
 .mk-label { font: var(--motif-font-label-weight) var(--motif-font-label-size) / var(--motif-font-label-line-height) var(--motif-font-label-family); }
 .mk-caption { font: var(--motif-font-caption-weight) var(--motif-font-caption-size) / var(--motif-font-caption-line-height) var(--motif-font-caption-family); }

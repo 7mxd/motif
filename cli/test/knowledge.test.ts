@@ -102,3 +102,26 @@ describe("knowledge: type pairings (preset refresh)", () => {
     expect(skill("SKILL.md")).toContain("knowledge/type-pairings.md");
   });
 });
+
+describe("type pairings: the final review's small items", () => {
+  const skill = (rel: string) => readFileSync(join(KNOWLEDGE, "..", rel), "utf8").replace(/\r\n/g, "\n");
+
+  test("init, the pairings guide and visual craft give one rule for the Arabic companion", () => {
+    for (const rel of ["modes/init.md", "knowledge/type-pairings.md", "knowledge/visual-craft.md"]) {
+      expect([rel, skill(rel).includes("may show Arabic")]).toEqual([rel, true]);
+    }
+  });
+
+  test("each pairing row names plain families, and no row repeats its text font as its Arabic companion", () => {
+    const rows = read("type-pairings.md").split("\n").filter((l) => l.startsWith("| ") && !l.startsWith("| Text") && !l.startsWith("|---"));
+    expect(rows.length).toBeGreaterThanOrEqual(20);
+    for (const row of rows) {
+      const [text, headings, arabic] = row.split("|").slice(1, 4).map((c) => c.trim());
+      expect([row, /[()]/.test(`${text}${headings}`), arabic === text]).toEqual([row, false, false]);
+    }
+  });
+
+  test("the plain web guide names a real Fontsource file for an Arabic companion", () => {
+    expect(skill("adapters/plain-web/tokens.md")).toContain("readex-pro-arabic-wght-normal.woff2");
+  });
+});

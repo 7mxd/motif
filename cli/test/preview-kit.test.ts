@@ -38,6 +38,14 @@ describe("preview kit", () => {
     }
   });
 
+  test("headings use lining figures, so a number in a heading font with old-style figures (Vollkorn) stays even (final review)", () => {
+    const css = read("kit.css");
+    for (const cls of ["mk-display", "mk-title", "mk-heading"]) {
+      const rule = css.slice(css.indexOf(`.${cls} {`));
+      expect([cls, rule.slice(0, rule.indexOf("}")).includes("font-variant-numeric: lining-nums;")]).toEqual([cls, true]);
+    }
+  });
+
   test("kit.js is valid JavaScript", () => {
     expect(() => new Bun.Transpiler({ loader: "js" }).transformSync(read("kit.js"))).not.toThrow();
   });

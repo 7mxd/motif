@@ -5,7 +5,7 @@ Fonts are one of the first things that make a site look generated: most sites bu
 ## How to use it
 
 - In init's directions, give each direction a different pairing from the mood that fits the brief, and say in one line why it suits the brand.
-- Put the Arabic companion second in both font lists, such as `["Onest", "Readex Pro", "system-ui", "sans-serif"]`. Arabic letters use it and Latin letters keep the main font. Apps download it only when a page shows Arabic text.
+- When the app may show Arabic (an Arabic-speaking audience, Arabic names, or text people type), put the Arabic companion second in both font lists, such as `["Onest", "Readex Pro", "system-ui", "sans-serif"]`. Arabic letters use it and Latin letters keep the main font. Apps download it only when a page shows Arabic text. The starting styles all have one; take it out for an app that never will.
 - The developer's own fonts (a brand font, a font they name) always come first.
 - Mockups load fonts outside the starting styles from Google Fonts. Apps load every font with its Fontsource package, as the stack guide's Fonts section says.
 
@@ -32,7 +32,7 @@ These are fine when the developer asks for them or the brand already uses them. 
 | Text | Headings | Arabic | Why |
 |---|---|---|---|
 | Zalando Sans | Zalando Sans Expanded | Alexandria | Wide headlines from the same family. The Bold style's pair. Latin letters only: no Cyrillic or Greek. |
-| Archivo | Archivo (weights 800–900) | Beiruti | A compact, punchy grotesk. |
+| Archivo | Archivo | Beiruti | A compact, punchy grotesk with heavy weights for big headlines. |
 | Libre Franklin | Big Shoulders | Alexandria | Tall, condensed headlines for sports and posters. |
 
 ### Technical (developer tools, AI products, analytics)
@@ -72,7 +72,7 @@ These are fine when the developer asks for them or the brand already uses them. 
 |---|---|---|---|
 | Nunito | Nunito | Rubik | Rounded and friendly. The Soft style's pair. It has no tabular figures, so avoid it in tables of numbers. |
 | Lexend | Lexend | Readex Pro | Made for easy reading; Readex Pro is its Arabic sibling. |
-| Rubik | Rubik | Rubik | Soft corners, and one family covers Latin and Arabic. |
+| Rubik | Rubik | None needed | Soft corners, and Rubik itself covers Latin and Arabic. |
 
 ### Playful (games, learning, kids, social)
 

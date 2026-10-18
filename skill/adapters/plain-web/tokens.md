@@ -119,7 +119,7 @@ Never write your own `prefers-color-scheme` rules for colours: the roles already
 
 Fontsource has the files for every Google font, with their licences (`fontsource.org`).
 
-For an Arabic companion, copy only its Arabic file (`<name>-arabic-wght-normal.woff2` in Fontsource's variable package) and add the `unicode-range` line from Fontsource's CSS for that file, so it's used for Arabic letters only. A Google Fonts link does this by itself.
+For an Arabic companion, copy only its Arabic file from Fontsource's variable package (`<id>-arabic-wght-normal.woff2`, such as `readex-pro-arabic-wght-normal.woff2`) and add the `unicode-range` line from Fontsource's CSS for that file, so it's used for Arabic letters only. A Google Fonts link does this by itself.
 
 **From Google Fonts.** One link per family in each page's `<head>`, before `motif.css`:
 
