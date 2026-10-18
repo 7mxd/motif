@@ -31,6 +31,8 @@ export const DROPPED_ENV = [
   "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
   "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
   "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT",
+  // Would load CLAUDE.md from folders added with --add-dir (the grader reads the app from outside it).
+  "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD",
 ];
 
 export function sessionEnv(base: Record<string, string | undefined>, motifBin: string): { env: Record<string, string>; dropped: string[] } {
@@ -73,6 +75,12 @@ const isolation = (mcpConfigFile: string) => [
   "--setting-sources", "project,local", "--strict-mcp-config", "--mcp-config", mcpConfigFile,
 ];
 
+/**
+ * What a session may not run: adding MCP servers to the developer's own coding agents, through Claude Code or Motif.
+ * The runner also checks the agents' settings after each session (agentSettings), whatever the command was.
+ */
+export const DENIED_COMMANDS = ["Bash(claude mcp *)", "PowerShell(claude mcp *)", "Bash(motif connect *)", "PowerShell(motif connect *)"];
+
 export function agentArgs(o: { pluginDir: string; mcpConfigFile: string; maxTurns: number; maxBudgetUsd: number; model?: string }): string[] {
   return [
     ...isolation(o.mcpConfigFile),
@@ -81,13 +89,17 @@ export function agentArgs(o: { pluginDir: string; mcpConfigFile: string; maxTurn
     "--max-turns", String(o.maxTurns), "--max-budget-usd", String(o.maxBudgetUsd),
     ...(o.model ? ["--model", o.model] : []),
     "--tools", AGENT_TOOLS.join(","),
+    "--disallowedTools", DENIED_COMMANDS.join(","),
   ];
 }
 
 /** Test C's grader: read-only tools, no plugin, a structured answer. */
-export function judgeArgs(o: { mcpConfigFile: string; schema: object; maxTurns: number; model?: string }): string[] {
+export function judgeArgs(o: { mcpConfigFile: string; schema: object; maxTurns: number; model?: string; appDir?: string }): string[] {
   return [
     ...isolation(o.mcpConfigFile),
+    // It works from a folder of its own and reads the app from there, so nothing the session left in the app (a
+    // CLAUDE.md, .claude/ settings) reaches the grader.
+    ...(o.appDir ? ["--add-dir", o.appDir] : []),
     "--permission-mode", "default", "--permission-prompts", "none",
     "--tools", JUDGE_TOOLS.join(","),
     "--max-turns", String(o.maxTurns),

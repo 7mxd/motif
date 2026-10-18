@@ -1,3 +1,4 @@
+"use client";
 import { useId, type ComponentProps } from "react";
 
 export function Textarea({ label, hint, error, id, className = "", rows = 4, ...props }: { label: string; hint?: string; error?: string } & ComponentProps<"textarea">) {

@@ -15,6 +15,12 @@ interface Scenario {
   result?: Record<string, unknown> | null;
   stderr?: string;
   exitCode?: number;
+  /** Starts a long-running child and writes its process id here (what a session leaves running). */
+  child?: string;
+  /** Writes this file when asked to stop (SIGTERM), then stops. */
+  onTerm?: string;
+  /** Prints an event holding this text with its bytes split across two writes. */
+  split?: string;
 }
 
 const file = process.env.FAKE_CLAUDE_SCENARIO;
@@ -36,6 +42,24 @@ out({
   ...scenario.init,
 });
 for (const e of scenario.events ?? []) out(e);
+if (scenario.onTerm) {
+  const file = scenario.onTerm;
+  process.on("SIGTERM", () => {
+    writeFileSync(file, "term");
+    process.exit(0);
+  });
+}
+if (scenario.child) {
+  const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], { stdio: ["ignore", "ignore", "ignore"] });
+  writeFileSync(scenario.child, String(child.pid));
+}
+if (scenario.split) {
+  const bytes = Buffer.from(JSON.stringify({ type: "assistant", text: scenario.split }) + "\n");
+  const cut = bytes.findIndex((b) => b >= 0x80) + 1 || bytes.length;
+  process.stdout.write(bytes.subarray(0, cut));
+  await Bun.sleep(150);
+  process.stdout.write(bytes.subarray(cut));
+}
 for (const [path, content] of Object.entries(scenario.files ?? {})) {
   mkdirSync(dirname(join(process.cwd(), path)), { recursive: true });
   writeFileSync(join(process.cwd(), path), content);

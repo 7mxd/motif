@@ -1,3 +1,4 @@
+"use client";
 import { useId, type ComponentProps } from "react";
 
 export function Input({ label, hint, error, id, className = "", ...props }: { label: string; hint?: string; error?: string } & ComponentProps<"input">) {

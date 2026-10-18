@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_TOOLS, agentArgs } from "../../tests/evals/claude";
 import { runSession, type SessionSpec } from "../../tests/evals/session";
@@ -87,5 +87,53 @@ describe("a session", () => {
     const o = await runSession(spec({}, { command: [join(tempDir("motif-none-"), "no-such-claude")] }));
     expect(o.end).toBe("failed");
     expect(o.init).toBeUndefined();
+  });
+});
+
+describe("a session's processes and output (backlog)", () => {
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const childPid = async (file: string) => {
+    for (let i = 0; i < 50 && !existsSync(file); i++) await Bun.sleep(100);
+    return Number(readFileSync(file, "utf8"));
+  };
+
+  test("at its time limit, what it started is stopped too", async () => {
+    const s = spec({ hangMs: 60_000 }, { timeoutMs: 3000 });
+    const pidFile = join(s.cwd, "child.pid");
+    writeFileSync(join(s.cwd, "scenario.json"), JSON.stringify({ hangMs: 60_000, child: pidFile }));
+    const o = await runSession(s);
+    expect(o.end).toBe("time-limit");
+    const pid = await childPid(pidFile);
+    await Bun.sleep(500);
+    expect(alive(pid)).toBe(false);
+  });
+
+  test.skipIf(process.platform === "win32")("it's asked to stop before it's made to, and what it left running after a normal end is stopped", async () => {
+    const s = spec({}, { timeoutMs: 3000 });
+    const termFile = join(s.cwd, "term.txt");
+    writeFileSync(join(s.cwd, "scenario.json"), JSON.stringify({ hangMs: 60_000, onTerm: termFile }));
+    expect((await runSession(s)).end).toBe("time-limit");
+    expect(existsSync(termFile)).toBe(true);
+
+    const t = spec({});
+    const pidFile = join(t.cwd, "child.pid");
+    writeFileSync(join(t.cwd, "scenario.json"), JSON.stringify({ child: pidFile }));
+    expect((await runSession(t)).end).toBe("finished");
+    const pid = await childPid(pidFile);
+    await Bun.sleep(500);
+    expect(alive(pid)).toBe(false);
+  });
+
+  test("a character split across two pieces of output is saved whole", async () => {
+    const s = spec({ split: "café" });
+    expect((await runSession(s)).end).toBe("finished");
+    expect(readFileSync(s.transcript, "utf8")).toContain("café");
   });
 });

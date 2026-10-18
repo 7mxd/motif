@@ -5,6 +5,12 @@ import { join } from "node:path";
 import { onExit } from "../../cli/src/cleanup";
 import { spawnArgs } from "../../cli/src/commands/connect";
 import { killTree } from "../../cli/src/shot/devserver";
+import { DROPPED_ENV } from "./claude";
+
+/** The environment without the keys that would bill an API account or point at another provider. */
+export function withoutProviderKeys(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !DROPPED_ENV.includes(k.toUpperCase())));
+}
 
 export interface RunResult { code: number; stdout: string; stderr: string; timedOut: boolean }
 export type Run = (cmd: string[], cwd: string, timeoutMs: number, env?: Record<string, string | undefined>) => Promise<RunResult>;
@@ -29,7 +35,7 @@ export const runCmd: Run = (cmd, cwd, timeoutMs, env) =>
     try {
       proc = spawn(line.cmd[0]!, line.cmd.slice(1), {
         cwd,
-        env: env ?? process.env,
+        env: env ?? withoutProviderKeys(process.env),
         stdio: ["ignore", "pipe", "pipe"],
         detached: process.platform !== "win32",
         windowsHide: true,
@@ -43,11 +49,14 @@ export const runCmd: Run = (cmd, cwd, timeoutMs, env) =>
     let stderr = "";
     let timedOut = false;
     let done = false;
-    proc.stdout!.on("data", (c: Buffer) => {
-      stdout = (stdout + c.toString()).slice(-KEEP);
+    // Decoded as a stream: a character split between two pieces of output arrives whole.
+    proc.stdout!.setEncoding("utf8");
+    proc.stderr!.setEncoding("utf8");
+    proc.stdout!.on("data", (c: string) => {
+      stdout = (stdout + c).slice(-KEEP);
     });
-    proc.stderr!.on("data", (c: Buffer) => {
-      stderr = (stderr + c.toString()).slice(-KEEP);
+    proc.stderr!.on("data", (c: string) => {
+      stderr = (stderr + c).slice(-KEEP);
     });
     const stop = () => {
       if (proc.pid) killTree(proc.pid, true);

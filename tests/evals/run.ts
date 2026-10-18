@@ -1,9 +1,10 @@
 // Runs Motif's agent evals (tests B, C and D, spec §13.2) through your signed-in Claude Code, one case at a time, and grades them.
 // Never an API key; never in CI. See tests/evals/README.md.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { agentSettings, changedSettings } from "./agents";
 import { CASES, needsBrowser, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
@@ -39,7 +40,8 @@ export interface RunDeps {
   prepare(c: EvalCase, dir: string): Promise<Workspace>;
   session(spec: SessionSpec): Promise<SessionOutcome>;
   collect(c: EvalCase, ws: Workspace, out: string, judge: JudgeFn): Promise<Grade>;
-  purge(claude: string, cwd: string): Promise<void>;
+  /** Clears Claude Code's saved data for a folder; says why when it couldn't. */
+  purge(claude: string, cwd: string): Promise<string | void>;
   removeDir(dir: string): void;
   git(): { commit: string; dirty: boolean };
   now(): Date;
@@ -49,6 +51,8 @@ export interface RunDeps {
   instructionFiles(dir: string): string[];
   /** The developer's own skills and agents, which no session may load. */
   personal(): string[];
+  /** The MCP servers in the developer's coding agents' user settings, which no session may change. */
+  agentSettings(): Record<string, string | null>;
 }
 
 const summary = (o: SessionOutcome): SessionSummary => ({
@@ -57,7 +61,7 @@ const summary = (o: SessionOutcome): SessionSummary => ({
 const resets = (at?: number) => (at ? ` (it resets ${new Date(at * 1000).toLocaleString()})` : "");
 const list = (v: unknown) => (typeof v === "string" ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
 
-export async function runEvals(argv: string[], deps: RunDeps, where: { repo: string; results: string }): Promise<number> {
+export async function runEvals(argv: string[], deps: RunDeps, where: { repo: string; results: string; /** Where case folders go without --work. */ work: string }): Promise<number> {
   let o: Record<string, string | boolean | undefined>;
   try {
     o = parseArgs({
@@ -93,6 +97,11 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       return 2;
     }
     state = loaded;
+    const options = ["--keep", "--model", "--judge-model", "--max-turns", "--tests", "--cases", "--work"];
+    const ignored = [...new Set(argv.map((a) => a.split("=")[0]!).filter((a) => options.includes(a)))];
+    if (ignored.length) {
+      deps.log(`--resume uses the options the run started with, so it leaves out ${ignored.length === 1 ? ignored[0] : `${ignored.slice(0, -1).join(", ")} and ${ignored.at(-1)}`}.`);
+    }
   } else {
     const picked = selectCases(CASES, { tests: list(o.tests), ids: list(o.cases) });
     if ("error" in picked) {
@@ -104,13 +113,16 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       deps.log("--max-turns needs a whole number above 0.");
       return 2;
     }
-    const id = newRunId(deps.now());
+    // Two runs started in the same second each get their own id.
+    const base = newRunId(deps.now());
+    let id = base;
+    for (let n = 2; existsSync(runDir(where.results, id)); n++) id = `${base}-${n}`;
     const git = deps.git();
     state = {
       motifEvalRun: 1, id, commit: git.commit, dirty: git.dirty, started: deps.now().toISOString(), claudeVersion: "", resumes: [],
       options: {
         keep: o.keep === true,
-        work: join(typeof o.work === "string" ? resolve(o.work) : join(tmpdir(), "motif-evals"), id),
+        work: join(typeof o.work === "string" ? resolve(o.work) : where.work, id),
         ...(typeof o.model === "string" ? { model: o.model } : {}),
         ...(typeof o["judge-model"] === "string" ? { judgeModel: o["judge-model"] } : {}),
         ...(maxTurns ? { maxTurns } : {}),
@@ -165,6 +177,10 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   save();
 
   const finish = (): number => writeReport(state, dir, deps);
+  const purge = async (cwd: string) => {
+    const why = await deps.purge(ready.claude, cwd);
+    if (why) deps.log(`Couldn't clear Claude Code's saved data for ${cwd}: ${why}`);
+  };
   const pause = (at?: number): number => {
     finish();
     deps.log(`\nPaused: your Claude plan's usage limit was reached${resets(at)}. Continue with: bun tests/evals/run.ts --resume ${state.id}`);
@@ -192,12 +208,22 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       delete cs.note;
       save();
       deps.log(`${c.id}: Claude Code is working (up to ${c.minutes} minutes). Everything it does goes to ${join(out, "session.jsonl")}.`);
+      const before = deps.agentSettings();
       const outcome = await deps.session({
         command: [ready.claude], args: caseArgs(c), cwd: cs.workspace.app, env, prompt: c.prompt,
         transcript: join(out, "session.jsonl"), timeoutMs: c.minutes * 60_000, expect: { pluginDir: p.pluginDir, auto: true, tools: AGENT_TOOLS, personal },
       });
       cs.session = summary(outcome);
-      await deps.purge(ready.claude, cs.workspace.app);
+      await purge(cs.workspace.app);
+      const changed = changedSettings(before, deps.agentSettings());
+      if (changed.length) {
+        cs.status = "error";
+        cs.note = `The session changed your coding agents' settings (${changed.join(", ")}): an eval session must never do that. Check their MCP servers (motif doctor lists the design sources), then run this again.`;
+        save();
+        deps.log(`\nStopped: ${cs.note}`);
+        finish();
+        return 2;
+      }
       if (outcome.end === "not-isolated") {
         cs.status = "error";
         cs.note = outcome.problems.join(" ");
@@ -235,12 +261,16 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
 
     deps.log(`${c.id}: grading…`);
     const ws = cs.workspace!;
-    const judge: JudgeFn = async (input, cwd) => {
+    // The grader works from a folder of its own and reads the app from there: nothing the session left in the app (a
+    // CLAUDE.md, .claude/ settings) reaches it.
+    const judge: JudgeFn = async (input, app) => {
+      const own = join(state.options.work, `${c.id}-grader`);
+      mkdirSync(own, { recursive: true });
       const r = await deps.session({
-        command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel }), cwd, env,
-        prompt: judgePrompt(input), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
+        command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel, appDir: app }), cwd: own, env,
+        prompt: judgePrompt(input, undefined, app), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
       });
-      await deps.purge(ready.claude, cwd);
+      await purge(own);
       if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "The grader's session didn't start.");
       if (r.end === "usage-limit") return { paused: r.resetsAt ? { resetsAt: r.resetsAt } : {} };
       if (r.end === "finished" && r.result?.structured !== undefined) return { verdict: readVerdict(r.result.structured, input) };
@@ -332,7 +362,8 @@ if (import.meta.main) {
       session: runSession,
       collect: (c, ws, out, judge) => collectAndGrade(c, ws, out, { run: runCmd, motif, judge }),
       purge: async (claude, cwd) => {
-        await runCmd([claude, "purge", "-y", cwd], repo, 60_000);
+        const r = await runCmd([claude, "purge", "-y", cwd], repo, 60_000);
+        if (r.code !== 0 || r.timedOut) return r.timedOut ? "it didn't finish within a minute" : r.stderr.trim().split("\n").pop() || `exit code ${r.code}`;
       },
       removeDir,
       git: () => gitState(repo),
@@ -341,8 +372,11 @@ if (import.meta.main) {
       env: process.env,
       instructionFiles: (dir) => memoryFiles(dir, homedir()),
       personal: () => personalNames(homedir()),
+      agentSettings: () => agentSettings(),
     },
-    { repo, results: join(repo, "tests", "evals", "results") },
+    // Case folders live in the home folder by default: macOS empties the temp folder of files untouched for 3 days,
+    // which would take a paused run's folders before --resume.
+    { repo, results: join(repo, "tests", "evals", "results"), work: join(homedir(), ".motif-evals") },
   );
   process.exit(code);
 }

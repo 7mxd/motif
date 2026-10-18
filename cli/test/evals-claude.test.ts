@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  AGENT_TOOLS, agentArgs, initInfo, isolationProblems, JUDGE_EXPECTED_TOOLS, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, resolveClaude, resultInfo, sessionEnv, usageLimit,
+  AGENT_TOOLS, agentArgs, DENIED_COMMANDS, initInfo, isolationProblems, JUDGE_EXPECTED_TOOLS, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, resolveClaude, resultInfo, sessionEnv, usageLimit,
 } from "../../tests/evals/claude";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -86,7 +86,9 @@ describe("an eval session's arguments", () => {
 
   test("only the tools a coding session needs: nothing that publishes, messages other sessions, schedules work or leaves the folder", () => {
     expect(pair(a, "--tools")).toBe(AGENT_TOOLS.join(","));
-    expect(a).not.toContain("--disallowedTools");
+    // Tools are an allowlist; the deny list holds only commands (adding MCP servers), never whole tools.
+    expect(pair(a, "--disallowedTools")).toBe(DENIED_COMMANDS.join(","));
+    for (const rule of DENIED_COMMANDS) expect(rule).toMatch(/^(Bash|PowerShell)\(.+\)$/);
     for (const t of ["Bash", "Read", "Write", "Edit", "Skill"]) expect(AGENT_TOOLS).toContain(t);
     for (const t of ["Artifact", "ArtifactComments", "ArtifactData", "SendMessage", "ListAgents", "RemoteTrigger", "PushNotification", "ScheduleWakeup", "CronCreate", "Workflow", "DesignSync", "EnterWorktree"]) {
       expect(AGENT_TOOLS).not.toContain(t);
@@ -204,5 +206,18 @@ describe("a session's end", () => {
     expect(usageLimit({ type: "result", subtype: "success", is_error: true, result: "You've hit your limit · resets 5pm" })).toEqual({});
     expect(usageLimit({ type: "result", subtype: "success", is_error: true, api_error_status: 429, result: "" })).toEqual({});
     expect(usageLimit({ type: "result", subtype: "success", is_error: false, result: "I added a rate limit notice." })).toBeNull();
+  });
+});
+
+describe("sessions can't change the developer's agents (backlog)", () => {
+  test("adding MCP servers through Claude Code or Motif is denied", () => {
+    const args = agentArgs({ pluginDir: "p", mcpConfigFile: "m.json", maxTurns: 5, maxBudgetUsd: 1 });
+    const denied = args[args.indexOf("--disallowedTools") + 1] ?? "";
+    for (const rule of ["Bash(claude mcp *)", "PowerShell(claude mcp *)", "Bash(motif connect *)", "PowerShell(motif connect *)"]) expect(denied).toContain(rule);
+  });
+
+  test("CLAUDE.md files in folders a session reads aren't loaded", () => {
+    const { env } = sessionEnv({ PATH: "/bin", CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" }, "/motif");
+    expect(env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD).toBeUndefined();
   });
 });

@@ -39,8 +39,13 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
   } catch (e) {
     return { end: "failed", problems: [`Claude Code couldn't start: ${(e as Error).message}`], minutes: 0 };
   }
+  // Asked first, so Claude Code can stop what it started; made to a few seconds later.
+  let forced: ReturnType<typeof setTimeout> | undefined;
   const stop = () => {
-    if (proc.pid) killTree(proc.pid, true);
+    if (!proc.pid || forced) return;
+    killTree(proc.pid);
+    forced = setTimeout(() => killTree(proc.pid!, true), 3000);
+    forced.unref?.();
   };
   const cancelExitHook = onExit(stop);
 
@@ -83,16 +88,18 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
     result = resultInfo(e) ?? result;
   };
 
-  proc.stdout!.on("data", (chunk: Buffer) => {
-    const text = chunk.toString();
+  // Decoded as a stream: a character split between two pieces of output arrives whole.
+  proc.stdout!.setEncoding("utf8");
+  proc.stderr!.setEncoding("utf8");
+  proc.stdout!.on("data", (text: string) => {
     appendFileSync(spec.transcript, text);
     pending += text;
     const lines = pending.split("\n");
     pending = lines.pop()!;
     for (const l of lines) if (l.trim()) onEvent(l);
   });
-  proc.stderr!.on("data", (chunk: Buffer) => {
-    stderr = (stderr + chunk.toString()).slice(-4000);
+  proc.stderr!.on("data", (chunk: string) => {
+    stderr = (stderr + chunk).slice(-4000);
   });
   let spawnError: Error | undefined;
   const ended = new Promise<number | null>((resolve) => {
@@ -110,6 +117,9 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
   }, spec.timeoutMs);
   const code = await ended;
   clearTimeout(timer);
+  if (forced) clearTimeout(forced);
+  // Whatever it left running (a dev server, a watcher) goes too: on macOS and Linux its process group outlives it.
+  if (proc.pid && process.platform !== "win32") killTree(proc.pid, true);
   cancelExitHook();
   if (pending.trim()) onEvent(pending);
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runCheck } from "../src/commands/check";
 import { runValidate } from "../src/commands/validate";
@@ -112,5 +112,39 @@ describe("the contract app's screens", () => {
     const layout = read("src/app/layout.tsx");
     expect(layout).toContain("<TabBar />");
     expect(layout).toContain("<Sidebar />");
+  });
+});
+
+describe("the contract app keeps its design guide's promises (backlog)", () => {
+  test("sheets and dialogs move with spring.smooth and leave with duration.fast and easing.exit; a sheet can be described", () => {
+    for (const f of ["src/components/Sheet.tsx", "src/components/Dialog.tsx"]) {
+      const s = read(f);
+      expect(s).toContain("AnimatePresence");
+      expect(s).toContain("spring.smooth");
+      expect(s).toContain("transition: { duration: duration.fast, ease: easing.exit }");
+    }
+    expect(read("src/components/Sheet.tsx")).toContain("RadixDialog.Description");
+  });
+
+  test("rows can be selected and pressed, and link cards pressed, with spring.snappy", () => {
+    const row = read("src/components/ListItem.tsx");
+    expect(row).toContain("aria-current");
+    for (const f of ["src/components/ListItem.tsx", "src/components/Card.tsx"]) {
+      expect(read(f)).toContain("whileTap={{ scale: 0.97 }}");
+      expect(read(f)).toContain("spring.snappy");
+    }
+  });
+
+  test("the top bar lines up with the page, and the sidebar's name sits below the screen's title", () => {
+    expect(read("src/components/TopBar.tsx")).toContain("md:px-8");
+    expect(read("src/components/Sidebar.tsx")).not.toContain("font-title");
+  });
+
+  test("prices read naturally, components that use hooks are client components, and the tab bar's safe-area padding works", () => {
+    expect(read("src/mock-data.ts")).not.toMatch(/unit: "\d+"/);
+    const components = readdirSync(join(APP, "src/components")).filter((f) => f.endsWith(".tsx"));
+    const hooked = components.filter((f) => /\buse[A-Z]\w*\(/.test(read(`src/components/${f}`)) && !read(`src/components/${f}`).startsWith('"use client";'));
+    expect(hooked).toEqual([]);
+    expect(read("src/app/layout.tsx")).toContain('viewportFit: "cover"');
   });
 });

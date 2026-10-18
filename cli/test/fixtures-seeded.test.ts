@@ -103,11 +103,12 @@ describe("the assembled seeded app", () => {
 
   test("motif validate reports the planted readability problem in the theme values", async () => {
     const r = await runValidate(dest);
-    const findings = r.data.findings as { code: string; file: string }[];
+    const findings = r.data.findings as { code: string; file: string; path?: string }[];
+    const planted = (f: (typeof findings)[number], i: any) => f.code === i.rule && f.file === i.location.file && f.path === i.location.path;
     for (const issue of byDetector("validate")) {
-      expect(findings.some((f) => f.code === issue.rule && f.file === issue.location.file)).toBe(true);
+      expect(findings.some((f) => planted(f, issue))).toBe(true);
     }
-    expect(findings.filter((f) => !byDetector("validate").some((i) => i.rule === f.code))).toEqual([]);
+    expect(findings.filter((f) => !byDetector("validate").some((i) => planted(f, i)))).toEqual([]);
   });
 
   test("every pinned line holds its anchor text, so a planted line can't drift unnoticed", () => {
@@ -130,6 +131,11 @@ describe("the assembled seeded app", () => {
     expect(banner).not.toContain("text-display");
     expect(at("src/app/page.tsx")).toContain('<TopBar title="Home"');
     expect(at("src/app/products/[id]/page.tsx")).toContain('disabled={product.stock === "out"}');
+  });
+
+  test("the files the list says to remove are in the contract app, so removing them means something (backlog)", () => {
+    const contract = join(import.meta.dir, "../../tests/fixtures/react-contract-app");
+    for (const path of list.remove as string[]) expect(existsSync(join(contract, path)) ? path : `${path} isn't in the contract app`).toBe(path);
   });
 
   test("the files the list says to remove are gone", () => {

@@ -68,3 +68,23 @@ describe("the app's package manager", () => {
     expect(packageManager(dir)).toBe("pnpm");
   });
 });
+
+describe("running programs (backlog)", () => {
+  test("they never see the keys that would bill an API account", async () => {
+    const before = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    try {
+      const r = await runCmd([process.execPath, "-e", "console.log(process.env.ANTHROPIC_API_KEY ?? 'none')"], tempDir("motif-run-"), 30_000);
+      expect(r.stdout.trim()).toBe("none");
+    } finally {
+      if (before === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = before;
+    }
+  });
+
+  test("a character split across two pieces of output arrives whole", async () => {
+    const script = "process.stdout.write(Buffer.from([0x63, 0x61, 0x66, 0xc3])); setTimeout(() => process.stdout.write(Buffer.from([0xa9, 0x0a])), 150);";
+    const r = await runCmd([process.execPath, "-e", script], tempDir("motif-run-"), 30_000);
+    expect(r.stdout.trim()).toBe("café");
+  });
+});

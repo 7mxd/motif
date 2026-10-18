@@ -191,3 +191,31 @@ describe("a plain site's screens", () => {
     expect(sameScreen("/index.html", "/")).toBe(true);
   });
 });
+
+describe("matching places (backlog)", () => {
+  const finding = (location: object): Finding => ({ id: "F", severity: "minor", category: "spacing", location: location as any, summary: "x" });
+  const issue = (over: Partial<SeededIssue> = {}): SeededIssue => ({ id: "S", kind: "exact", detectedBy: "check", categories: ["spacing"], severity: "minor", location: { file: "src/a.tsx", line: 17 }, summary: "x", ...over });
+  const none: LineText = () => undefined;
+
+  test("a line range (file:16-17) covers the planted line", () => {
+    expect(places(finding({ file: "src/a.tsx:16-17" }))[0]).toMatchObject({ file: "src/a.tsx", line: 16, lineEnd: 17 });
+    expect(gradeExact([finding({ file: "src/a.tsx:16-17" })], [issue()], none).exact).toEqual([{ id: "S", findings: ["F"] }]);
+  });
+
+  test("a file written from the app's root (/src/a.tsx) is that file", () => {
+    expect(places(finding({ file: "/src/a.tsx", line: 17 }), "/work/app")[0]!.file).toBe("src/a.tsx");
+    expect(places(finding({ file: "/src/a.tsx", line: 17 }))[0]!.file).toBe("src/a.tsx");
+  });
+
+  test("route groups and :param segments are the same screen", () => {
+    expect(sameScreen("/(shop)/products/[id]", "/products/oats")).toBe(true);
+    expect(sameScreen("/products/:id", "/products/oats")).toBe(true);
+    expect(sameScreen("/(shop)/products", "/settings")).toBe(false);
+  });
+
+  test("a planted problem can name more than one place: its CSS rule as well as its element", () => {
+    const planted = issue({ categories: ["contrast"], location: { file: "index.html", line: 63, screen: "/" }, also: [{ file: "styles.css", line: 55, anchor: "opacity: 0.4" }] });
+    const f: Finding = { id: "F", severity: "critical", category: "contrast", location: { file: "styles.css", line: 55 }, summary: "faded" };
+    expect(gradeExact([f], [planted], none).exact).toEqual([{ id: "S", findings: ["F"] }]);
+  });
+});

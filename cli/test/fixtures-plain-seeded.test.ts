@@ -19,7 +19,8 @@ const CATEGORIES = [
 type Consequence = { category: string; screens: string[]; schemes: string[]; note: string };
 type Issue = {
   id: string; kind: string; detectedBy: string; rule?: string; categories: string[]; severity: string;
-  location: { file?: string; line?: number; screen?: string; app?: boolean }; anchor?: string; summary: string; consequences?: Consequence[];
+  location: { file?: string; line?: number; screen?: string; app?: boolean; path?: string }; anchor?: string; summary: string; consequences?: Consequence[];
+  also?: { file: string; line: number; anchor: string }[];
 };
 const issues: Issue[] = list.issues;
 const byDetector = (d: string) => issues.filter((i) => i.detectedBy === d);
@@ -84,9 +85,10 @@ describe("the assembled plain seeded site", () => {
 
   test("motif validate reports the planted readability problem, and nothing else", async () => {
     const r = await runValidate(dest);
-    const findings = r.data.findings as { code: string; file: string }[];
-    for (const issue of byDetector("validate")) expect(findings.some((f) => f.code === issue.rule && f.file === issue.location.file)).toBe(true);
-    expect(findings.filter((f) => !byDetector("validate").some((i) => i.rule === f.code))).toEqual([]);
+    const findings = r.data.findings as { code: string; file: string; path?: string }[];
+    const planted = (f: (typeof findings)[number], i: Issue) => f.code === i.rule && f.file === i.location.file && f.path === i.location.path;
+    for (const issue of byDetector("validate")) expect(findings.some((f) => planted(f, issue))).toBe(true);
+    expect(findings.filter((f) => !byDetector("validate").some((i) => planted(f, i)))).toEqual([]);
   });
 
   test("every pinned line holds its anchor text", () => {
@@ -95,6 +97,24 @@ describe("the assembled plain seeded site", () => {
       const line = at(issue.location.file!).split("\n")[issue.location.line! - 1] ?? "";
       expect(line.includes(issue.anchor!) ? issue.id : `${issue.id}: "${line.trim()}"`).toBe(issue.id);
     }
+  });
+
+  test("the shot problems also point at the CSS rules that cause them, and every extra place holds its anchor (backlog)", () => {
+    const byId = (id: string) => issues.find((i) => i.id === id)!;
+    expect(byId("P-09").also).toEqual([{ file: "styles.css", line: 55, anchor: "opacity: 0.4" }]);
+    expect(byId("P-10").also).toEqual([{ file: "styles.css", line: 59, anchor: "width: 1.25rem" }]);
+    for (const issue of issues) {
+      for (const a of issue.also ?? []) {
+        const line = at(a.file).split("\n")[a.line - 1] ?? "";
+        expect(line.includes(a.anchor) ? issue.id : `${issue.id}: "${line.trim()}"`).toBe(issue.id);
+      }
+    }
+    expect(byId("P-15").summary).not.toContain("screen readers get no name");
+  });
+
+  test("motif check's warnings say the line too (backlog)", async () => {
+    const r = await runCheck(dest, { positionals: [] });
+    expect(r.text).toContain("  motif.css:1  ");
   });
 
   test("it has no state scripts, so a review has to write its own", () => {

@@ -4,7 +4,7 @@ import { BackIcon } from "./icons";
 
 export function TopBar({ title, backHref, actions }: { title: string; backHref?: string; actions?: ReactNode }) {
   return (
-    <header className="flex min-h-12 items-center gap-2 border-b border-border bg-surface px-4 py-2">
+    <header className="flex min-h-12 items-center gap-2 border-b border-border bg-surface px-4 py-2 md:px-8">
       {backHref && (
         <Link
           href={backHref}

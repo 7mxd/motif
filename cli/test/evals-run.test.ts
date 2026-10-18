@@ -55,9 +55,10 @@ function harness(over: Partial<RunDeps> = {}) {
     env: { PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x" },
     instructionFiles: () => [],
     personal: () => ["apple-design"],
+    agentSettings: () => ({ "~/.claude.json": "{}" }),
     ...over,
   };
-  return { deps, calls, lines, root, where: { repo: root, results: join(root, "results") }, work: join(root, "work") };
+  return { deps, calls, lines, root, where: { repo: root, results: join(root, "results"), work: join(root, "default-work") }, work: join(root, "work") };
 }
 
 const newFile = (path: string, text: string) => {
@@ -348,5 +349,64 @@ describe("the eval runner", () => {
     h.deps.git = () => ({ commit: "def4567890abcdef", dirty: true });
     expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
     expect(readFileSync(join(h.where.results, RUN, "report.md"), "utf8")).toContain("def4567890ab");
+  });
+});
+
+describe("the eval runner (backlog)", () => {
+  test("--resume keeps the run's own options and says which ones it leaves out", async () => {
+    let n = 0;
+    const h = harness({
+      session: async (s) => {
+        h.calls.session.push(s);
+        n++;
+        return n === 1 ? { ...finished(), end: "usage-limit" } : finished();
+      },
+    });
+    expect(await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where)).toBe(3);
+    await runEvals(["--resume", RUN, "--model", "other", "--keep"], h.deps, h.where);
+    expect(h.lines.join("\n")).toContain("--resume uses the options the run started with, so it leaves out --model and --keep.");
+  });
+
+  test("two runs started in the same second get their own ids", async () => {
+    const h = harness();
+    await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where);
+    await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where);
+    expect(existsSync(join(h.where.results, RUN, "run.json"))).toBe(true);
+    expect(existsSync(join(h.where.results, `${RUN}-2`, "run.json"))).toBe(true);
+  });
+
+  test("without --work, case folders go to the runner's own folder, not the temp folder the system empties", async () => {
+    const h = harness();
+    await runEvals(["--cases", "b-search"], h.deps, h.where);
+    expect((loadRun(h.where.results, RUN) as RunState).options.work).toBe(join(h.where.work, RUN));
+  });
+
+  test("Claude Code's saved data that can't be cleared is reported", async () => {
+    const h = harness({ purge: async () => "the folder was in use" });
+    await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where);
+    expect(h.lines.join("\n")).toContain("Couldn't clear Claude Code's saved data for");
+  });
+
+  test("a session that changed the developer's agent settings stops the run", async () => {
+    let n = 0;
+    const h = harness({ agentSettings: () => ({ "~/.claude.json": n++ === 0 ? "{}" : '{"figma":{}}' }) });
+    expect(await runEvals(["--cases", "b-search,b-settings", "--work", h.work], h.deps, h.where)).toBe(2);
+    expect(h.lines.join("\n")).toContain("changed your coding agents' settings (~/.claude.json)");
+    expect(h.calls.session).toHaveLength(1);
+  });
+
+  test("the grader works from a folder of its own, reading the app from outside it", async () => {
+    const h = harness({
+      collect: async (_c, ws, _out, judge) => {
+        await judge({ issues: [], unmatched: [] }, ws.app);
+        return PASS;
+      },
+    });
+    await runEvals(["--cases", "c-review", "--work", h.work], h.deps, h.where);
+    const app = h.calls.session[0]!.cwd;
+    const judgeSpec = h.calls.session.find((s) => s.args.includes("--json-schema"))!;
+    expect(judgeSpec.cwd).not.toBe(app);
+    expect(judgeSpec.args[judgeSpec.args.indexOf("--add-dir") + 1]).toBe(app);
+    expect(judgeSpec.prompt).toContain(app);
   });
 });

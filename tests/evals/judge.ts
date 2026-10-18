@@ -56,13 +56,15 @@ export class Paused extends Error {
 const show = (f: Finding) =>
   JSON.stringify({ id: f.id, severity: f.severity, category: f.category, location: f.location, ...(f.locations ? { locations: f.locations } : {}), summary: f.summary, fix: f.fix });
 
-export function judgePrompt(input: JudgeInput, rubric: string = readFileSync(RUBRIC, "utf8")): string {
+export function judgePrompt(input: JudgeInput, rubric: string = readFileSync(RUBRIC, "utf8"), appDir?: string): string {
   const partA = input.issues
     .map(({ issue, candidates }) =>
-      [`### ${issue.id} (${issue.categories.join(", ")})`, issue.summary, `Where: ${JSON.stringify(issue.location)}`, "Candidate findings:", ...candidates.map((f) => `- ${show(f)}`)].join("\n"))
+      [`### ${issue.id} (${issue.categories.join(", ")})`, issue.summary, `Where: ${JSON.stringify(issue.location)}${issue.also?.length ? `, also ${JSON.stringify(issue.also)}` : ""}`, "Candidate findings:", ...candidates.map((f) => `- ${show(f)}`)].join("\n"))
     .join("\n\n");
   return [
-    "You are grading a design review of the web app in this folder. Follow the rubric below exactly. Read the app's files (its code, design/ and the screenshots in design/shots/) to check claims. Don't change anything.",
+    appDir
+      ? `You are grading a design review of the web app in ${appDir}; the file paths below are relative to that folder. Follow the rubric below exactly. Read the app's files (its code, design/ and the screenshots in design/shots/) to check claims. Don't change anything.`
+      : "You are grading a design review of the web app in this folder. Follow the rubric below exactly. Read the app's files (its code, design/ and the screenshots in design/shots/) to check claims. Don't change anything.",
     rubric,
     "## Part A: planted problems and the findings that might describe them",
     partA || "(none)",

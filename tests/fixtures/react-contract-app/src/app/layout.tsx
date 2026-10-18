@@ -2,7 +2,7 @@ import "@fontsource/dm-sans/400.css";
 import "@fontsource/dm-sans/500.css";
 import "@fontsource/fraunces/600.css";
 import "@fontsource/fraunces/700.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { TabBar } from "@/components/TabBar";
@@ -13,6 +13,9 @@ export const metadata: Metadata = {
   title: "Larder",
   description: "Your neighbourhood grocer, delivered.",
 };
+
+// The page runs under the iPhone's home indicator, so the tab bar's env(safe-area-inset-bottom) padding has an effect.
+export const viewport: Viewport = { viewportFit: "cover" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

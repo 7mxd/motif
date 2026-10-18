@@ -36,19 +36,19 @@ bun tests/evals/run.ts                         # everything
 | `--keep` | Keep each case's folder after grading (to look at the apps) |
 | `--model <name>` · `--judge-model <name>` | The model for the sessions, and for test C's grader (default: your account's) |
 | `--max-turns <n>` | Cap every case at n turns: a quick check that the runner works |
-| `--work <folder>` | Where case folders go, one subfolder per run (default: your temp folder) |
+| `--work <folder>` | Where case folders go, one subfolder per run (default: `~/.motif-evals`, outside the temp folder, which macOS empties of files untouched for three days) |
 | `--claude <path>` | The Claude Code program to use |
 
 At the start of a run, the runner builds the motif tool and the Claude Code plugin from this checkout (`bun run build` and `bun run plugin` in `cli`), so the sessions test the code in front of you.
 
 ## What each session gets
 
-- **A fresh folder** in your temp folder: a copy of the fixture app with its packages installed (B, C), or an empty folder holding the brief as `brief.md` (D).
+- **A fresh folder** in `~/.motif-evals` (or `--work`): a copy of the fixture app with its packages installed (B, C), or an empty folder holding the brief as `brief.md` (D).
 - **Your Claude account only.** `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the other-provider switches are left out of the session's environment, and a session that reports any API key stops the run.
 - **None of your setup.** `--setting-sources project,local` leaves out your own settings, hooks, plugins, skills and agents; `--strict-mcp-config` with an empty list leaves out every MCP server (that's test D's "zero accounts"); only Motif's plugin is loaded, from `dist/claude-code`. The session's first event is checked for all of this (an API key, MCP servers, other plugins, your own skills or agents, tools outside the allowed list), and the run stops if anything is off, or if that first event is missing. A run won't start while a `CLAUDE.md` that every session would read sits in or above the case folders (or in `~/.claude/`): move it aside, or choose another `--work` folder.
-- **Unattended, never bypassed.** `--permission-mode auto --permission-prompts none`: Claude Code's auto mode approves ordinary work and refuses risky actions, and nobody is asked. Refusals are listed in the report. If a session doesn't start in auto mode (some models don't support it), the run stops and says to choose another with `--model`. Sessions get only the tools a coding session needs (files, the shell, search, skills, subagents, their task list and the web); nothing that publishes pages, messages your other sessions, schedules work or leaves the folder.
+- **Unattended, never bypassed.** `--permission-mode auto --permission-prompts none`: Claude Code's auto mode approves ordinary work and refuses risky actions, and nobody is asked. Refusals are listed in the report. If a session doesn't start in auto mode (some models don't support it), the run stops and says to choose another with `--model`. Sessions get only the tools a coding session needs (files, the shell, search, skills, subagents, their task list and the web); nothing that publishes pages, messages your other sessions, schedules work or leaves the folder. Commands that add MCP servers to your own coding agents (`claude mcp …`, `motif connect …`) are denied, and after each session the runner compares your agents' MCP servers with what they were before: a session that changed them stops the run.
 - **Gates off by instruction.** Each prompt starts a Motif command (`/motif:feature`, `/motif:review`, `/motif:init`) and adds "don't stop for approval", as a developer would.
-- **No traces.** Sessions keep no transcript in Claude Code (`--no-session-persistence`), and `claude purge` removes Claude Code's state for each case folder afterwards. Case folders are deleted after grading unless you pass `--keep`.
+- **No traces.** Sessions keep no transcript in Claude Code (`--no-session-persistence`), and `claude purge` removes Claude Code's state for each case folder afterwards. Case folders are deleted after grading unless you pass `--keep`. The grader (test C) works from a folder of its own and reads the app from there, so nothing a session left in the app (a `CLAUDE.md`, `.claude/` settings) reaches it.
 
 ## Usage limits and resuming
 

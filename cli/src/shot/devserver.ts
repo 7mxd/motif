@@ -143,9 +143,12 @@ export async function startDevServer(opts: { cwd: string; command: string[]; tim
     windowsHide: true,
   });
   let output = "";
-  const collect = (chunk: Buffer) => {
-    output = (output + chunk.toString()).slice(-20_000);
+  const collect = (chunk: string) => {
+    output = (output + chunk).slice(-20_000);
   };
+  // Decoded as a stream: a character split between two pieces of output arrives whole.
+  proc.stdout!.setEncoding("utf8");
+  proc.stderr!.setEncoding("utf8");
   proc.stdout!.on("data", collect);
   proc.stderr!.on("data", collect);
   const failure: { error?: Error } = {};

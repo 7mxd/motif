@@ -8,13 +8,21 @@ export const CATEGORIES = [
 ] as const;
 const SEVERITIES = ["critical", "major", "minor"];
 
-export interface Location { file?: string; line?: number; screen?: string; scheme?: string; viewport?: string; selector?: string; app?: boolean }
+export interface Location {
+  file?: string; line?: number; screen?: string; scheme?: string; viewport?: string; selector?: string; app?: boolean;
+  /** The last line of a range a finding names (file:16-17). */
+  lineEnd?: number;
+  /** A theme value's path (color.text-secondary), for a problem motif validate reports. */
+  path?: string;
+}
 export interface Consequence { category: string; screens: string[]; schemes: string[]; note: string }
 export interface SeededIssue {
   id: string; kind: "exact" | "judgement"; detectedBy: string; rule?: string; categories: string[]; severity: string;
   location: Location; anchor?: string; summary: string; consequences?: Consequence[];
   /** A finding anywhere in the problem's file counts (a hand edit to a generated file, which motif check reports at its header). */
   wholeFile?: boolean;
+  /** Other places that are the problem too (the CSS rule behind an element), each with the text its line holds. */
+  also?: { file: string; line: number; anchor: string }[];
 }
 export interface Finding { id: string; severity: string; category: string; source?: string; location: Location; locations?: Location[]; summary: string; fix?: string }
 
@@ -55,7 +63,8 @@ export function normFile(file: string, appRoot?: string): string {
     const rel = relative(appRoot, f);
     if (!rel.startsWith("..") && !isAbsolute(rel)) f = rel;
   }
-  return f.replace(/\\/g, "/").replace(/^\.\//, "");
+  // A path written from the app's root (/src/app/page.tsx) is that file.
+  return f.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/(?!\/)/, "");
 }
 
 /**
@@ -67,15 +76,17 @@ export function normScreen(screen: string): string {
   if (!s.startsWith("/")) s = `/${s}`;
   // A folder's index page is the folder: a plain site's "/index.html" is "/".
   s = s.replace(/\/index\.html?$/i, "/");
+  // A Next.js route group, (shop), isn't part of the address.
+  s = s.split("/").filter((seg, i) => i === 0 || !/^\(.+\)$/.test(seg)).join("/") || "/";
   if (s.length > 1) s = s.replace(/\/+$/, "");
   return s.toLowerCase() || "/";
 }
 
-/** A dynamic segment ([id]) matches any value. */
+/** A dynamic segment ([id], [slug], :id) matches any value. */
 export function sameScreen(a: string, b: string): boolean {
   const x = normScreen(a).split("/");
   const y = normScreen(b).split("/");
-  const dynamic = (s: string) => /^\[.+\]$/.test(s);
+  const dynamic = (s: string) => /^\[.+\]$|^:\w+$/.test(s);
   return x.length === y.length && x.every((s, i) => s === y[i] || dynamic(s) || dynamic(y[i]!));
 }
 
@@ -86,9 +97,11 @@ export function places(f: Finding, appRoot?: string): Location[] {
     const out: Location = { ...l };
     if (typeof l.line === "string") out.line = Number(l.line);
     if (typeof l.file === "string") {
-      const m = l.line === undefined ? l.file.match(/^(.*?):(\d+)(?::\d+)?$/) : null;
+      // "file:12", "file:12:5" or a range, "file:16-17".
+      const m = l.line === undefined ? l.file.match(/^(.*?):(\d+)(?:[-–](\d+)|:\d+)?$/) : null;
       out.file = normFile(m ? m[1]! : l.file, appRoot);
       if (m) out.line = Number(m[2]);
+      if (m?.[3]) out.lineEnd = Number(m[3]);
     }
     if (typeof l.screen === "string") out.screen = normScreen(l.screen);
     return out;
@@ -106,10 +119,15 @@ export function pointsAt(issue: SeededIssue, place: Location, lineText: LineText
 function how(issue: SeededIssue, place: Location, lineText: LineText): "place" | "screen" | null {
   const L = issue.location;
   if (L.app) return "place";
-  if (L.file && place.file === L.file) {
-    if (L.line === undefined || place.line === L.line || issue.wholeFile) return "place";
-    if (place.line !== undefined && issue.anchor && (lineText(place.file, place.line) ?? "").includes(issue.anchor)) return "place";
-  }
+  // The lines a place covers: one, or a range (capped, so a whole-file range can't match by sheer size).
+  const lines = place.line === undefined ? [] : Array.from({ length: Math.min(Math.max((place.lineEnd ?? place.line) - place.line + 1, 1), 50) }, (_, i) => place.line! + i);
+  const at = (file: string | undefined, line: number | undefined, anchor: string | undefined) =>
+    file !== undefined &&
+    place.file === file &&
+    (line === undefined || lines.includes(line) || (anchor !== undefined && lines.some((n) => (lineText(file, n) ?? "").includes(anchor))));
+  if (L.file && place.file === L.file && issue.wholeFile) return "place";
+  if (at(L.file, L.line, issue.anchor)) return "place";
+  if ((issue.also ?? []).some((a) => at(a.file, a.line, a.anchor))) return "place";
   return L.screen && place.screen && sameScreen(place.screen, L.screen) ? "screen" : null;
 }
 

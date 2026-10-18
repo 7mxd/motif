@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
-import { addedComponents, collectB, collectC, collectD, designSections, reactComponents, recordedIn } from "../../tests/evals/collect";
+import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, reactComponents, recordedIn } from "../../tests/evals/collect";
 import { Paused, type JudgeFn } from "../../tests/evals/judge";
 import type { SeededIssue } from "../../tests/evals/match";
 import { runCmd, type MotifResult, type Run } from "../../tests/evals/tools";
@@ -309,5 +309,18 @@ describe("test C on the plain seeded site", () => {
     expect(f.exact.found).toEqual(["P-01"]);
     expect(f.exact.missed).toHaveLength(seededSite.filter((i) => i.kind === "exact").length - 1);
     expect(f.judgement.missed).toHaveLength(seededSite.filter((i) => i.kind === "judgement").length);
+  });
+});
+
+describe("new components on a plain site (backlog)", () => {
+  test("a Component: line for a component the site already has isn't a new one", () => {
+    const diff = ["--- a/components.css", "+++ b/components.css", "+/* Component: Card — a group of related content, now with a footer */", "+/* Component: Stat — a number with a label */"].join("\n");
+    expect(addedComponents(diff, new Set(["Card"]))).toEqual(["Stat"]);
+    const plain = CASES.find((c) => c.id === "b-plain")!;
+    const full = [
+      "diff --git a/components.css b/components.css", "index 1111111..2222222 100644", "--- a/components.css", "+++ b/components.css", "@@ -1 +1,2 @@",
+      "+/* Component: Card — a group of related content, now with a footer */", "+/* Component: Stat — a number with a label */",
+    ].join("\n");
+    expect(componentFacts(plain, full).newComponents).toEqual(["Stat"]);
   });
 });

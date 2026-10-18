@@ -1,7 +1,29 @@
+"use client";
+import { motion } from "motion/react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { spring } from "@/design/motion";
 
-export function ListItem({ title, description, meta, leading, trailing, href }: { title: string; description?: string; meta?: ReactNode; leading?: ReactNode; trailing?: ReactNode; href?: string }) {
+const MotionLink = motion.create(Link);
+
+export function ListItem({
+  title,
+  description,
+  meta,
+  leading,
+  trailing,
+  href,
+  selected = false,
+}: {
+  title: string;
+  description?: string;
+  meta?: ReactNode;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  href?: string;
+  /** The row that's chosen (the order or product shown beside the list). */
+  selected?: boolean;
+}) {
   const body = (
     <>
       {leading}
@@ -13,15 +35,23 @@ export function ListItem({ title, description, meta, leading, trailing, href }: 
       {trailing}
     </>
   );
-  const row = "flex min-h-12 items-center gap-3 px-4 py-3";
+  const row = `flex min-h-12 items-center gap-3 px-4 py-3 ${selected ? "bg-surface-raised" : ""}`;
   return (
     <li className="border-b border-border last:border-b-0">
       {href ? (
-        <Link href={href} className={`${row} hover:bg-surface-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus`}>
+        <MotionLink
+          href={href}
+          aria-current={selected ? "true" : undefined}
+          whileTap={{ scale: 0.97 }}
+          transition={spring.snappy}
+          className={`${row} hover:bg-surface-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus`}
+        >
           {body}
-        </Link>
+        </MotionLink>
       ) : (
-        <div className={row}>{body}</div>
+        <div className={row} aria-current={selected ? "true" : undefined}>
+          {body}
+        </div>
       )}
     </li>
   );

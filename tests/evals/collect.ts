@@ -137,21 +137,41 @@ export function reactComponents(diff: string): ReactComponents {
 }
 
 /** A plain site's new components, from the session's diff of its pages and stylesheets. */
-const plainComponents = (diff: string) =>
-  addedComponents(diffFiles(diff).filter((f) => !f.deleted && /\.(css|html?)$/i.test(f.path)).map((f) => f.text).join("\n"));
+const plainComponents = (diff: string, existing: Set<string>) =>
+  addedComponents(diffFiles(diff).filter((f) => !f.deleted && /\.(css|html?)$/i.test(f.path)).map((f) => f.text).join("\n"), existing);
+
+/** The components a plain fixture already has: the names on its own "Component:" lines. */
+export function fixtureComponents(fixture: string, root = join(import.meta.dir, "..", "fixtures")): Set<string> {
+  const names = new Set<string>();
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "node_modules" && !entry.name.startsWith(".")) walk(path);
+      } else if (/\.(css|html?)$/i.test(entry.name)) {
+        for (const m of readFileSync(path, "utf8").matchAll(/Component:\s*([A-Za-z][\w-]*)/g)) names.add(m[1]!);
+      }
+    }
+  };
+  if (existsSync(join(root, fixture))) walk(join(root, fixture));
+  return names;
+}
 
 /** A B case's new components, and which the design guide records, from the session's diff (also used by --regrade). */
 export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi"> {
-  const found = isPlain(c) ? { newComponents: plainComponents(diff) } : reactComponents(diff);
+  const found = isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
   return { ...found, recorded: recordedIn(diff, found.newComponents) };
 }
 
-/** A plain site's new components: names on "Component:" lines the diff adds, minus those it only rewrote (a new variant). */
-export function addedComponents(diff: string): string[] {
+/**
+ * A plain site's new components: names on "Component:" lines the diff adds, minus those it only rewrote (a new variant)
+ * and those the site already had.
+ */
+export function addedComponents(diff: string, existing: Set<string> = new Set()): string[] {
   const named = (sign: "+" | "-") =>
     new Set(diff.split("\n").filter((l) => l.startsWith(sign) && !l.startsWith(sign.repeat(3))).flatMap((l) => [...l.matchAll(/Component:\s*([A-Za-z][\w-]*)/g)].map((m) => m[1]!)));
   const before = named("-");
-  return [...named("+")].filter((n) => !before.has(n));
+  return [...named("+")].filter((n) => !before.has(n) && !existing.has(n));
 }
 
 /** A plain site's folder of pages, as Motif finds it. */

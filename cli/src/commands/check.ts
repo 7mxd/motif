@@ -163,7 +163,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
     lines.push("", "Allowed with a reason:", ...exceptions.map((e) => `  ${e.file}:${e.line}  ${e.rule}  ${e.text} — motif-ok: ${e.reason}`));
   }
   if (warnings.length) {
-    lines.push("", "Warnings:", ...warnings.map((w) => `  ${w.file}  ${w.message} ${w.fix}`));
+    lines.push("", "Warnings:", ...warnings.map((w) => `  ${w.file}${w.line ? `:${w.line}` : ""}  ${w.message} ${w.fix}`));
   }
   const skipped = apps.filter((a) => !supported.includes(a)).map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
   if (skipped.length) lines.push("", `Skipped (not supported yet): ${skipped.join(", ")}.`);

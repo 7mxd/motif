@@ -139,6 +139,17 @@ describe("startDevServer", () => {
     expect(message).toContain("Cannot find module 'vite'");
   }, 30_000);
 
+  test("a character split across two pieces of its output arrives whole (backlog)", async () => {
+    const dir = tempDir("motif-dev-");
+    const crash = "process.stderr.write(Buffer.from([0x63, 0x61, 0x66, 0xc3])); setTimeout(() => { process.stderr.write(Buffer.from([0xa9, 0x0a])); process.exit(1); }, 150);";
+    writeFileSync(join(dir, "split.ts"), crash);
+    const message = await startDevServer({ cwd: dir, command: viaShell(dir, "split.ts"), timeoutMs: 20_000 }).then(
+      () => "started",
+      (e: Error) => e.message,
+    );
+    expect(message).toContain("café");
+  }, 30_000);
+
   test("a server that never says where it's running times out and is stopped", async () => {
     const dir = tempDir("motif-dev-");
     writeFileSync(join(dir, "silent.ts"), SILENT);

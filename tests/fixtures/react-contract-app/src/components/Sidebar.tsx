@@ -7,7 +7,7 @@ export function Sidebar() {
   const path = usePathname();
   return (
     <nav aria-label="Main" className="hidden shrink-0 flex-col gap-1 border-e border-border bg-surface p-4 md:flex md:w-64">
-      <p className="px-3 pb-4 font-title text-title">Larder</p>
+      <p className="px-3 pb-4 font-heading text-heading">Larder</p>
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const current = href === "/" ? path === "/" : path.startsWith(href);
         return (

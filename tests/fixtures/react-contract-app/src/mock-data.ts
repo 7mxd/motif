@@ -13,7 +13,7 @@ export interface Product {
 
 export const products: Product[] = [
   { id: "oats", name: "Rolled oats", unit: "1 kg", pricePence: 240, stock: "in", description: "Jumbo rolled oats from a mill two valleys over. Good for porridge and flapjacks." },
-  { id: "eggs", name: "Free-range eggs", unit: "6", pricePence: 285, stock: "low", description: "Large eggs from hens that spend their days outdoors." },
+  { id: "eggs", name: "Free-range eggs", unit: "6 eggs", pricePence: 285, stock: "low", description: "Large eggs from hens that spend their days outdoors." },
   { id: "sourdough", name: "Sourdough loaf", unit: "800 g", pricePence: 420, stock: "in", description: "Baked this morning with a three-day starter." },
   { id: "leeks", name: "Leeks", unit: "500 g", pricePence: 135, stock: "in", description: "Sweet, mild leeks, washed and trimmed." },
   { id: "cheddar", name: "Mature cheddar", unit: "250 g", pricePence: 375, stock: "in", description: "Aged for fourteen months; crumbly and sharp." },
