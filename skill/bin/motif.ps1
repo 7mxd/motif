@@ -57,7 +57,11 @@ if (-not (Test-Path -LiteralPath $Bin)) {
     }
     if (-not $Expected -or $Expected -ne $Actual) {
       [Console]::Error.WriteLine("Motif: the downloaded tool failed its safety check, so it wasn't used. Please try again later, or report this at https://github.com/$Repo/issues")
-      [Console]::Error.WriteLine("Motif: SHA-256 expected $(if ($Expected) { $Expected } else { 'none' }), got $Actual.")
+      if ($Expected) {
+        [Console]::Error.WriteLine("Motif: SHA-256 expected $Expected, got $Actual.")
+      } else {
+        [Console]::Error.WriteLine("Motif: SHA256SUMS has no line for $Asset.")
+      }
       exit 2
     }
     # A unique name per process: agents often run several tool calls at once, so first runs can overlap.

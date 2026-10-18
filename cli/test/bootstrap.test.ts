@@ -26,8 +26,8 @@ beforeAll(() => {
   sha = createHash("sha256").update(readFileSync(builtPath)).digest("hex");
   const goodSums = `${sha}  ${ASSET}\n`;
   const badSums = `${"0".repeat(64)}  ${ASSET}\n`;
-  // Each download reads the file afresh rather than sharing one buffer with downloads running at the same time
-  // (a macOS CI run once saw one of six parallel downloads fail its checksum).
+  // A macOS CI run once saw one of six parallel downloads fail its checksum. Serving each download from the file rules
+  // out one buffer shared between them, a guess at the cause; the bootstrap now prints both checksums, so a repeat says more.
   const asset = () => new Response(Bun.file(builtPath));
   server = Bun.serve({
     port: 0,
@@ -45,6 +45,9 @@ beforeAll(() => {
       if (path === `/crlf/${ASSET}`) return asset();
       if (path === "/crlf/SHA256SUMS") return new Response(goodSums.replace(/\n/g, "\r\n"));
       if (path === "/bad/SHA256SUMS") return new Response(badSums);
+      // A SHA256SUMS file that doesn't list this platform's file (review of the macOS flake fix).
+      if (path === `/noline/${ASSET}`) return asset();
+      if (path === "/noline/SHA256SUMS") return new Response(`${sha}  motif-plan9-x64${String.fromCharCode(10)}`);
       return new Response("not found", { status: 404 });
     },
   });
@@ -106,6 +109,13 @@ for (const runner of RUNNERS) {
       expect({ exitCode: r.exitCode, stderr: r.stderr }).toMatchObject({ exitCode: 2 });
       expect(r.stderr.toString()).toContain('Unknown command "fly"');
     }, 120_000);
+
+    test("a SHA256SUMS file with no line for this platform says so", async () => {
+      const r = await run("noline", freshHome(), ["--version"]);
+      expect(r.exitCode).toBe(2);
+      expect(r.stderr).toContain("failed its safety check");
+      expect(r.stderr).toContain(`SHA256SUMS has no line for ${ASSET}.`);
+    });
 
     test("a checksum mismatch aborts with a plain message and caches nothing", async () => {
       const home = freshHome();

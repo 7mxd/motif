@@ -16,6 +16,14 @@ const alive = (pid: number) => {
   }
 };
 
+/** Processes whose command line mentions the text (Chrome's helpers all name the profile folder). */
+function processesMentioning(text: string): string[] {
+  const out = process.platform === "win32"
+    ? Bun.spawnSync(["powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }"]).stdout.toString()
+    : Bun.spawnSync(["ps", "-A", "-o", "args="]).stdout.toString();
+  return out.split(/\r?\n/).filter((line) => line.includes(text) && !line.includes("Get-CimInstance"));
+}
+
 /** A script in a fresh temp folder (paths in it are JSON-quoted, so Windows backslashes survive). */
 function script(body: (dir: string) => string): { file: string; dir: string } {
   const dir = tempDir("motif-exit-");
@@ -107,6 +115,8 @@ process.exit(0);
     const deadline = Date.now() + 5000;
     while (alive(pid) && Date.now() < deadline) await Bun.sleep(100);
     expect(alive(pid)).toBe(false);
+    // Its helpers go with it, not just the main process (they can write into the profile again: macOS CI).
+    expect(processesMentioning(join(dir, "motif-browser-"))).toEqual([]);
     // Its temporary profile goes too (backlog).
     expect(readdirSync(dir).filter((n) => n.startsWith("motif-browser-"))).toEqual([]);
   }, 30_000);

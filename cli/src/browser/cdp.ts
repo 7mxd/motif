@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { onExit } from "../cleanup";
+import { killTree } from "../shot/devserver";
 
 export interface Clip {
   x: number;
@@ -89,15 +90,15 @@ export async function removeProfile(
 }
 
 /**
- * Removes the profile at exit, when nothing can be awaited. The browser was just killed, and its helpers can still
- * hold files (Windows) or write into the folder again for a moment (macOS), so it has to stay gone, not just go once.
+ * Removes the profile at exit, when nothing can be awaited. The browser and its helpers were just killed, but they can
+ * hold files for a moment (Windows) or finish a write into the folder (macOS), so it is checked again after a short wait.
  */
 export function removeProfileNow(
   dir: string,
   rm: (dir: string) => void = (d) => rmSync(d, { recursive: true, force: true }),
   exists: (dir: string) => boolean = existsSync,
   attempts = 20,
-  delayMs = 100,
+  delayMs = 50,
 ): boolean {
   for (let i = 0; i < attempts; i++) {
     try {
@@ -125,7 +126,11 @@ function start(executable: string, args: string[], timeoutMs: number): Promise<{
       cleanup();
       reject(err);
     };
-    const proc = spawn(executable, [...args, `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+    const proc = spawn(executable, [...args, `--user-data-dir=${profile}`, "about:blank"], {
+      stdio: ["ignore", "ignore", "pipe"],
+      // Its own process group, so its helpers can be stopped with it (Windows stops them with the browser).
+      detached: process.platform !== "win32",
+    });
     const timer = setTimeout(() => fail(new StartError(`The browser at ${executable} didn't start within ${Math.round(timeoutMs / 1000)} s.`, stderr)), timeoutMs);
     proc.stderr!.on("data", (chunk) => {
       stderr += chunk.toString();
@@ -225,7 +230,8 @@ export async function launchBrowser(
   const { proc, wsUrl, profile } = started;
   // If Motif exits (or is stopped with Ctrl+C) before close(), the browser goes with it, and so does its profile.
   const cancelExitHook = onExit(() => {
-    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    // The browser and every helper it started: a helper left running can write into the profile again (macOS).
+    if (proc.pid) killTree(proc.pid, true);
     removeProfileNow(profile);
   });
 
