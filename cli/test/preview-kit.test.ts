@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { launchBrowser } from "../src/browser/cdp";
 import { exceptionFor } from "../src/check/exceptions";
 import type { SourceFile } from "../src/check/files";
 import { scanColors } from "../src/check/rules/colors";
 import { scanValues } from "../src/check/rules/values";
 import { buildScale } from "../src/check/scale";
+import { findBrowser } from "../src/detect/browser";
 import { buildTheme } from "../src/generate/theme";
 import { docFrom, validTokens } from "./helpers";
 
@@ -60,4 +62,42 @@ describe("preview kit", () => {
     expect(read("vendor/motion.js").startsWith("!function(")).toBe(true);
     expect(read("vendor/LICENSE-motion.txt")).toContain("MIT");
   });
+});
+
+const browser = findBrowser();
+
+describe.skipIf(!browser)("preview kit layout (needs Chrome, Edge or Chromium)", () => {
+  // A badge or button placed straight in a card stretched to the card's width (v0.4.0 hands-on test, Copilot).
+  test("a badge or button in a column keeps its own width; a block button fills it; rows still centre", async () => {
+    const columns = ["mk-card", "mk-stack", "mk-screen", "mk-sheet", "mk-dialog"];
+    const html = `<style>${read("kit.css")} .mk-sheet, .mk-dialog { position: static; }</style>
+      ${columns.map((c) => `<div class="${c}" style="width: 400px" data-col="${c}">
+        <span class="mk-badge">New</span><button class="mk-btn">Go</button><button class="mk-btn mk-block">Wide</button>
+      </div>`).join("")}
+      <div class="mk-row-inline" id="row" style="width: 400px"><span class="mk-badge">New</span><button class="mk-btn">Go</button></div>`;
+    const b = await launchBrowser(browser!.path);
+    try {
+      const page = await b.newPage();
+      await page.setViewport(600, 1600);
+      await page.goto("data:text/html," + encodeURIComponent(html));
+      const measured = await page.evaluate<Record<string, { badge: number; btn: number; block: number; inner: number }>>(`(() => {
+        const out = {};
+        for (const col of document.querySelectorAll("[data-col]")) {
+          const s = getComputedStyle(col);
+          const w = (el) => Math.round(el.getBoundingClientRect().width);
+          out[col.dataset.col] = { badge: w(col.querySelector(".mk-badge")), btn: w(col.querySelector(".mk-btn:not(.mk-block)")),
+            block: w(col.querySelector(".mk-block")), inner: Math.round(col.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight)) };
+        }
+        return out;
+      })()`);
+      for (const c of columns) {
+        const m = measured[c]!;
+        expect([c, m.badge < m.inner / 2, m.btn < m.inner / 2, m.block]).toEqual([c, true, true, m.inner]);
+      }
+      const centres = await page.evaluate<number[]>(`[...document.querySelectorAll("#row > *")].map((el) => { const r = el.getBoundingClientRect(); return Math.round(r.top + r.height / 2); })`);
+      expect(centres[0]).toBe(centres[1]!);
+    } finally {
+      await b.close();
+    }
+  }, 60_000);
 });

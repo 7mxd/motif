@@ -151,6 +151,8 @@ code, kbd, samp, pre { font-family: var(--motif-font-mono-family, ui-monospace, 
 .mk-btn.mk-secondary { background: var(--motif-color-action-secondary); color: var(--motif-color-on-action-secondary); }
 .mk-btn.mk-ghost { background: transparent; color: var(--motif-color-action-primary); }
 .mk-btn.mk-block { display: flex; width: 100%; }
+/* Placed straight in a column, a badge or button keeps its own width (only .mk-block fills the line). */
+:is(.mk-screen, .mk-stack, .mk-card, .mk-sheet, .mk-dialog) > :is(.mk-badge, .mk-btn:not(.mk-block)) { align-self: flex-start; }
 .mk-btn:focus-visible, .mk-input:focus-visible, .mk-nav-item:focus-visible { outline: 2px solid var(--motif-color-focus); outline-offset: 2px; }
 
 .mk-field { display: flex; flex-direction: column; gap: var(--motif-space-2); }
