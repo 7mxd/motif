@@ -7,6 +7,8 @@ export interface ThemeFontUse {
   weights: number[];
   /** bundled: ships with Motif · system: on every common OS, never fetched · google: loaded from Google Fonts in mockups. */
   source: "bundled" | "google" | "system";
+  /** Never first in a font list: a companion (an Arabic font second in the list), checked with its Arabic letters. */
+  companion: boolean;
 }
 
 const GENERIC = new Set([
@@ -26,12 +28,21 @@ export function firstFamily(css: string): string | null {
   return first && !GENERIC.has(first.toLowerCase()) ? first : null;
 }
 
-/** Every family a type role names, unquoted and in order, without generic families: a companion second in the list counts too. */
+/**
+ * The families a page loads for a type role: the first, and each one after it up to the first generic or system font.
+ * A companion second in the list (an Arabic font) counts; fallbacks after a system font are never loaded or installed.
+ */
 export function stackFamilies(css: string): string[] {
-  return css
-    .split(",")
-    .map((part) => part.trim().replace(/^(["'])(.*)\1$/, "$2").trim())
-    .filter((family) => family && !GENERIC.has(family.toLowerCase()));
+  const all = css.split(",").map((part) => part.trim().replace(/^(["'])(.*)\1$/, "$2").trim());
+  const first = all[0];
+  if (!first || GENERIC.has(first.toLowerCase())) return [];
+  const families = [first];
+  for (const family of all.slice(1)) {
+    const key = family.toLowerCase();
+    if (!family || GENERIC.has(key) || SYSTEM.has(key)) break;
+    families.push(family);
+  }
+  return families;
 }
 
 /** Each family the theme's type roles name (the first, and any companion after it), with the weights used. */
@@ -43,7 +54,8 @@ export function themeFonts(theme: Theme): ThemeFontUse[] {
       // The kit has only the Arabic letters of a style's Arabic companion: enough second in a list, not first.
       const coverage = bundledCoverage(family);
       const source = coverage === "full" || (coverage === "arabic" && i > 0) ? "bundled" : SYSTEM.has(key) ? "system" : "google";
-      const use = uses.get(key) ?? { family, weights: [], source };
+      const use = uses.get(key) ?? { family, weights: [], source, companion: i > 0 };
+      if (i === 0) use.companion = false;
       if (use.source === "bundled" && source === "google") use.source = "google";
       if (!use.weights.includes(font.weight)) use.weights.push(font.weight);
       uses.set(key, use);

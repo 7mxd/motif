@@ -269,6 +269,13 @@ describe("motif preview: fonts", () => {
     expect(calls.render[0]!.targets[0]!.fonts).toEqual(["Inter"]);
   });
 
+  test("each target names the fonts used only as companions, so they're checked with Arabic letters (final review)", async () => {
+    const { deps, calls } = fakes();
+    await runPreview(makeProject({}), ctx([], { gallery: true, "png-only": true }), deps);
+    const minimal = calls.render[0]!.targets.find((t) => t.name === "preset-minimal")!;
+    expect([minimal.fonts, minimal.companions]).toEqual([["Onest", "Readex Pro"], ["Readex Pro"]]);
+  });
+
   test("a font that didn't load is named, with why", async () => {
     const r = await runPreview(project(), ctx(["design/previews/home.html"], { "png-only": true }), fakes({}, ["Plus Jakarta Sans"]).deps);
     expect(r.exitCode).toBe(0);

@@ -67,7 +67,16 @@ describe("every web font in a font list (preset refresh)", () => {
 
   test("system fonts later in the list are never fetched (review focus)", () => {
     const fonts = themeFonts(withFonts(["Acme Sans", "Helvetica", "Arial", "sans-serif"]));
-    expect(fonts.map((f) => [f.family, f.source])).toEqual([["Acme Sans", "google"], ["Helvetica", "system"], ["Arial", "system"]]);
+    expect(fonts.map((f) => [f.family, f.source])).toEqual([["Acme Sans", "google"]]);
+  });
+
+  test("the list stops at the first system or generic font: fallbacks after it are never loaded or installed (final review)", () => {
+    expect(stackFamilies('Fredoka, "Baloo Bhaijaan 2", Nunito, system-ui, sans-serif')).toEqual(["Fredoka", "Baloo Bhaijaan 2", "Nunito"]);
+    expect(stackFamilies('"Acme Sans", Helvetica, Roboto, sans-serif')).toEqual(["Acme Sans"]);
+    const apple = themeFonts(withFonts(["Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"]));
+    expect(apple.map((f) => f.family)).toEqual(["Inter"]);
+    const tailwind = ["ui-sans-serif", "system-ui", "sans-serif", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"];
+    expect(themeFonts(withFonts(tailwind))).toEqual([]);
   });
 });
 
@@ -82,5 +91,13 @@ describe("Arabic companions Motif ships (preset refresh)", () => {
 describe("guides made before the preset refresh", () => {
   test("a retired font still loads in mockups, from Google Fonts (review focus)", () => {
     expect(themeFonts(withFonts(["Inter", "system-ui", "sans-serif"])).map((f) => [f.family, f.source])).toEqual([["Inter", "google"]]);
+  });
+});
+
+describe("companions (final review)", () => {
+  test("a family is a companion only when it never comes first in a font list", () => {
+    expect(themeFonts(withFonts(["Onest", "Readex Pro", "sans-serif"])).map((f) => [f.family, f.companion])).toEqual([["Onest", false], ["Readex Pro", true]]);
+    const mixed = themeFonts(withFonts(["Onest", "Rubik", "sans-serif"], ["Rubik", "sans-serif"]));
+    expect(mixed.find((f) => f.family === "Rubik")!.companion).toBe(false);
   });
 });

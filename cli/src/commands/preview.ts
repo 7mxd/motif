@@ -39,7 +39,11 @@ const projectPath = (cwd: string, abs: string) => relative(cwd, abs).split(sep).
 const urlPath = (rel: string) => "/" + rel.split("/").map(encodeURIComponent).join("/");
 const isHtml = (name: string) => name.toLowerCase().endsWith(".html");
 /** The theme fonts a mockup should show (system fonts are always there). */
-const fontsOf = (t: Theme | null) => (t ? themeFonts(t).filter((f) => f.source !== "system").map((f) => f.family) : []);
+/** The fonts a preview checks: every theme font except the system's own, and which of them are only companions. */
+const fontsOf = (t: Theme | null) => {
+  const fonts = t ? themeFonts(t).filter((f) => f.source !== "system") : [];
+  return { fonts: fonts.map((f) => f.family), companions: fonts.filter((f) => f.companion).map((f) => f.family) };
+};
 
 /** The mockups named on the command line (files or folders of .html files), as project paths. */
 function collectFiles(cwd: string, args: string[]): { files: string[] } | { error: string } {
@@ -168,8 +172,8 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   };
   const names = pngNames(files, files.map(outFor));
   const targets: RenderTarget[] = gallery
-    ? PRESET_IDS.map((id) => ({ name: `preset-${id}`, url: `${server.url}/__motif/preset/${id}/sample.html`, outDir: defaultOut, fonts: fontsOf(presetTheme(id)) }))
-    : files.map((f, i) => ({ name: names[i]!, url: server.url + urlPath(f), outDir: outFor(f), fonts: fontsOf(themeOf(f)) }));
+    ? PRESET_IDS.map((id) => ({ name: `preset-${id}`, url: `${server.url}/__motif/preset/${id}/sample.html`, outDir: defaultOut, ...fontsOf(presetTheme(id)) }))
+    : files.map((f, i) => ({ name: names[i]!, url: server.url + urlPath(f), outDir: outFor(f), ...fontsOf(themeOf(f)) }));
 
   const notes: string[] = [];
   let pngs: string[] = [];

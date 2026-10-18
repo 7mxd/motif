@@ -9,6 +9,8 @@ export interface RenderTarget {
   outDir?: string;
   /** Font families the page should have; any that can't load are reported. */
   fonts?: string[];
+  /** Those of `fonts` used only as companions (second in a font list): they need only their Arabic letters. */
+  companions?: string[];
 }
 
 export interface RenderResult {
@@ -30,31 +32,33 @@ const FRAMES = `[...document.querySelectorAll(".mk-frame")]
 const STATE_NAME = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 const WHOLE_PAGE = `({ x: 0, y: 0, width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight })`;
 /**
- * The text each family is loaded with. Loading a family asks only for the faces that cover the text, and the default
- * (a space) skips a face limited to Arabic letters, so a style's Arabic companion would wrongly count as missing.
- */
-export const FONT_SAMPLE = "Aa \u0628";
-
-/**
  * Waits for the page's fonts within one shared budget, then lists the families with no face that loaded.
  * It first waits for the theme font stylesheets the preview server loads after the page (window.__motifFonts),
  * then loads each family explicitly (so ones the page doesn't use yet count too). Offline, or with a font server
  * that never answers, the budget runs out, the fallback is shown and those families are reported.
  */
-export function fontsScript(families: string[], budgetMs: number = FONT_WAIT_MS): string {
+export function fontsScript(families: string[], budgetMs: number = FONT_WAIT_MS, companions: string[] = []): string {
   return `(async () => {
     const families = ${JSON.stringify(families)};
+    const companions = ${JSON.stringify(companions)};
+    // A main font has to cover Latin letters (A); a companion only its Arabic ones. Loading asks only for the faces
+    // that cover the letter, and a face limited to Arabic letters must not pass for a main font (or be skipped).
+    const letter = (f) => (companions.includes(f) ? 0x628 : 0x41);
     const deadline = Date.now() + ${budgetMs};
     const within = (p) => Promise.race([p, new Promise((r) => setTimeout(r, Math.max(0, deadline - Date.now())))]);
     await within(window.__motifFonts || Promise.resolve());
-    await within(Promise.allSettled(families.map((f) => document.fonts.load("16px " + JSON.stringify(f), ${JSON.stringify(FONT_SAMPLE)}))));
+    await within(Promise.allSettled(families.map((f) => document.fonts.load("16px " + JSON.stringify(f), String.fromCodePoint(letter(f))))));
     await within(document.fonts.ready);
-    const loaded = new Set([...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family.replace(/^["']|["']$/g, "")));
+    const covers = (face, cp) => face.unicodeRange.split(",").some((range) => {
+      const [lo, hi] = range.trim().replace(/^u[+]/i, "").split("-");
+      return cp >= parseInt(lo.replace(/[?]/g, "0"), 16) && cp <= parseInt((hi || lo).replace(/[?]/g, "F"), 16);
+    });
+    const loaded = (f) => [...document.fonts].some((face) => face.status === "loaded" && face.family.replace(/^["']|["']$/g, "") === f && covers(face, letter(f)));
     // A font installed on this computer has no web font face, but text in it measures differently from the fallbacks.
     const ctx = document.createElement("canvas").getContext("2d");
     const width = (font) => { ctx.font = "72px " + font; return ctx.measureText("mmmmmmmmmmlli1WwQ@#").width; };
     const installed = (f) => ["monospace", "serif", "sans-serif"].some((g) => width(JSON.stringify(f) + ", " + g) !== width(g));
-    return families.filter((f) => !loaded.has(f) && !installed(f));
+    return families.filter((f) => !loaded(f) && !installed(f));
   })()`;
 }
 
@@ -125,7 +129,7 @@ export async function renderPngs(opts: {
           { name: "prefers-reduced-motion", value: "reduce" },
         ]);
         await page.goto(target.url, opts.timeoutMs);
-        const notLoaded = await page.evaluate<string[]>(fontsScript(target.fonts ?? []));
+        const notLoaded = await page.evaluate<string[]>(fontsScript(target.fonts ?? [], FONT_WAIT_MS, target.companions ?? []));
         if (scheme === "light") for (const family of notLoaded) missing.add(family);
         const frames = await page.evaluate<(Clip & { state: string })[]>(FRAMES);
         const clips = frames.length > 0 ? frames : [{ ...(await page.evaluate<Clip>(WHOLE_PAGE)), state: "" }];

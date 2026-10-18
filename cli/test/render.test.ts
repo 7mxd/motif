@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
-import { FONT_SAMPLE, fontsScript, pngName, pngNamer, renderPngs } from "../src/preview/render";
+import { fontsScript, pngName, pngNamer, renderPngs } from "../src/preview/render";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -140,7 +140,7 @@ describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
         const html = `<!doctype html><html><head><style>
           @font-face { font-family: "Companion"; src: url("/ar.woff2") format("woff2"); unicode-range: U+0600-06FF; }
           body { margin: 0 } .mk-frame { width: 200px; height: 100px; background: #eee }
-        </style></head><body><div class="mk-frame"><p style="font-family: Companion, sans-serif">Latin only</p></div></body></html>`;
+        </style></head><body><div class="mk-frame"><p style="font-family: Companion, sans-serif">Latin only${new URL(req.url).search ? " &#x628;" : ""}</p></div></body></html>`;
         return new Response(html, { headers: { "content-type": "text/html" } });
       },
     });
@@ -148,10 +148,16 @@ describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
       const result = await renderPngs({
         browserPath: browser!.path,
         outDir: tempDir("motif-render-"),
-        targets: [{ name: "ar", url: `http://127.0.0.1:${server.port}/`, fonts: ["Companion"] }],
+        targets: [{ name: "ar", url: `http://127.0.0.1:${server.port}/`, fonts: ["Companion"], companions: ["Companion"] }],
       });
       expect(result.missingFonts).toEqual([]);
-      expect(FONT_SAMPLE).toMatch(/[\u0600-\u06FF]/);
+      // The same face as a page's main font: its Latin letters fell back, even with Arabic text on the page (final review).
+      const main = await renderPngs({
+        browserPath: browser!.path,
+        outDir: tempDir("motif-render-"),
+        targets: [{ name: "main", url: `http://127.0.0.1:${server.port}/?arabic`, fonts: ["Companion"] }],
+      });
+      expect(main.missingFonts).toEqual(["Companion"]);
     } finally {
       server.stop(true);
     }

@@ -118,11 +118,15 @@ describe.skipIf(!browserForPresets)("previews of the starting styles (needs Chro
     const { themeFonts } = await import("../src/generate/theme-fonts");
     const server = startPreviewServer({ root: tempDir("motif-presets-"), theme: null });
     try {
-      const targets = PRESETS.map((p) => ({
-        name: p.id,
-        url: `${server.url}/__motif/preset/${p.id}/sample.html`,
-        fonts: themeFonts(presetTheme(p.id)!).filter((f) => f.source !== "system").map((f) => f.family),
-      }));
+      const targets = PRESETS.map((p) => {
+        const fonts = themeFonts(presetTheme(p.id)!).filter((f) => f.source !== "system");
+        return {
+          name: p.id,
+          url: `${server.url}/__motif/preset/${p.id}/sample.html`,
+          fonts: fonts.map((f) => f.family),
+          companions: fonts.filter((f) => f.companion).map((f) => f.family),
+        };
+      });
       const result = await renderPngs({ browserPath: browserForPresets!.path, outDir: tempDir("motif-presets-"), targets });
       expect(result.missingFonts).toEqual([]);
     } finally {
