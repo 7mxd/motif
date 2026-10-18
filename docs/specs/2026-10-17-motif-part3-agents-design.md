@@ -130,7 +130,7 @@ For OpenCode, which has no plugin system, and for any other agent that reads Age
 
 | Id | Agent | Found by |
 |---|---|---|
-| `claude` | Claude Code | `claude` on PATH |
+| `claude` | Claude Code | `claude` on PATH, or its own install in `~/.claude/local` |
 | `codex` | Codex | `codex` on PATH, or its settings folder (`$CODEX_HOME`, `~/.codex`) exists: Codex's app and editor extension use it without the command |
 | `cursor` | Cursor | `~/.cursor` exists, or `cursor` or `cursor-agent` on PATH |
 | `copilot` | GitHub Copilot CLI | `copilot` on PATH |
@@ -138,7 +138,7 @@ For OpenCode, which has no plugin system, and for any other agent that reads Age
 | `gemini` | Gemini CLI | `gemini` on PATH |
 | `opencode` | OpenCode | `opencode` on PATH |
 
-Settings folders follow each agent's own variable where it has one (`CODEX_HOME`, `COPILOT_HOME`, `GEMINI_CLI_HOME`, `XDG_CONFIG_HOME`).
+Settings folders follow each agent's own variable where it has one (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `COPILOT_HOME`, `GEMINI_CLI_HOME`, `XDG_CONFIG_HOME`).
 
 ### 7.2 `motif connect <source>`
 

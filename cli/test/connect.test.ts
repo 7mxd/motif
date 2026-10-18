@@ -469,6 +469,24 @@ describe("motif connect: every agent (Part 3)", () => {
     expect(r.text).toMatch(/dotfiles[\\/]cursor[\\/]mcp\.json, which now holds your key, is tracked by git/);
   });
 
+  test("Claude Code installed in ~/.claude/local is set up by that path, and CLAUDE_CONFIG_DIR's settings are the ones checked (backlog)", async () => {
+    const s = setup([]);
+    const local = join(s.home, ".claude", "local", "claude");
+    mkdirSync(join(s.home, ".claude", "local"), { recursive: true });
+    writeFileSync(local, "");
+    const r = await runConnect(".", ctx("motion"), s.deps);
+    expect(r.exitCode).toBe(0);
+    expect(s.calls.runs.find((x) => x.args[0] === "mcp")).toBeDefined();
+  });
+
+  test("a key file in a bare dotfiles repository (~/.dotfiles) gets the git warning (backlog)", async () => {
+    const s = setup(["cursor"], { tracked: (args) => args.includes("--git-dir") && args.some((a) => a.replace(/\\/g, "/").endsWith("/.dotfiles")) });
+    mkdirSync(join(s.home, ".dotfiles", "objects"), { recursive: true });
+    writeFileSync(join(s.home, ".dotfiles", "HEAD"), "ref: refs/heads/main\n");
+    const r = await runConnect(".", ctx("21st"), s.deps);
+    expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by your dotfiles repository (~/.dotfiles).");
+  });
+
   test.skipIf(!canSymlink)("a key file reached through a link is checked against git once, as the file it leads to (review of the gap fixes)", async () => {
     const s = setup(["cursor"], { tracked: () => true });
     const dotfiles = join(s.home, "dotfiles", "cursor");

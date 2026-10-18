@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_IDS, AGENTS, agentById, type AgentEnv, shown } from "../src/agents/catalog";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -70,5 +70,15 @@ describe("the agents Motif sets design sources up for", () => {
   test("show a path in the home folder as ~/…, and any other as it is", () => {
     expect(shown(env(), join("/h", "a", "b.json"))).toBe("~/a/b.json");
     expect(shown(env(), join("/elsewhere", "b.json"))).toBe(join("/elsewhere", "b.json"));
+  });
+});
+
+describe("Claude Code's own install and settings folder (backlog)", () => {
+  test("its local install (~/.claude/local) counts, and CLAUDE_CONFIG_DIR moves its settings", () => {
+    const home = tempDir("motif-agents-home-");
+    mkdirSync(join(home, ".claude", "local"), { recursive: true });
+    writeFileSync(join(home, ".claude", "local", "claude"), "");
+    expect(agentById("claude")!.found(env({ home }))).toBe(true);
+    expect(paths("claude", env({ vars: { CLAUDE_CONFIG_DIR: join("/h", "cfg") } }))[0]![0]).toBe("~/cfg/.claude.json");
   });
 });

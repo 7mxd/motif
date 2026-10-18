@@ -31,7 +31,9 @@ export const SOURCES: SourceInfo[] = [
     label: "Motion",
     gives: "search of Motion's animation docs and examples",
     cost: "Free, no account",
-    configPattern: /^motion(?:-plus)?$|mcp\.motion\.dev|motion-ai/im,
+    // Motion's own server, whatever it's named: another product's server named "motion" (usemotion.com), or Motion+'s
+    // tools (npx motion-ai), aren't this source.
+    configPattern: /mcp\.motion\.dev/i,
     tools: ["search-motion-docs"],
     note: "Motion+ subscribers can also add Motion's source and transition tools with npx motion-ai.",
     connect: { name: "motion", url: "https://mcp.motion.dev", auth: "none" },

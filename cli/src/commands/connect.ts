@@ -1,9 +1,9 @@
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import {
-  AGENT_IDS, AGENTS, agentById, codexHome, configHome, copilotHome, defaultAgentEnv, geminiDir, shown, vscodeUserDir,
+  AGENT_IDS, AGENTS, agentById, claudeLocal, claudeSettings, codexHome, configHome, copilotHome, defaultAgentEnv, geminiDir, shown, vscodeUserDir,
   type AgentEnv, type AgentInfo,
 } from "../agents/catalog";
 import { addJsonServer, addTomlServer, linkTarget, type Edited } from "../agents/edit";
@@ -122,6 +122,9 @@ function defaultDeps(cwd: string): ConnectDeps {
   };
 }
 
+/** Where people keep dotfiles in a bare repository (git --git-dir … --work-tree ~), yadm's included. */
+const DOTFILES_REPOS = [".dotfiles", ".cfg", ".dots", ".dotfiles.git", ".local/share/yadm/repo.git"];
+
 /** The settings other agents take (a placeholder where a key goes). */
 export function genericConfig(source: SourceInfo): string {
   const server: Record<string, unknown> = { type: "http", url: source.connect.url };
@@ -186,8 +189,8 @@ interface AddResult {
 async function addTo(agent: AgentInfo, server: ServerSpec, deps: ConnectDeps, env: AgentEnv): Promise<AddResult> {
   const header = server.headers ? Object.entries(server.headers)[0] : undefined;
   const colon = header ? ["--header", `${header[0]}: ${header[1]}`] : [];
-  const command = async (cli: string, args: string[], keyFiles: string[]): Promise<AddResult> => {
-    const exe = deps.which(cli);
+  const command = async (cli: string, args: string[], keyFiles: string[], installed: string | null = null): Promise<AddResult> => {
+    const exe = deps.which(cli) ?? installed;
     if (!exe) return { ok: false, output: `its "${cli}" command isn't on PATH`, keyFiles: [] };
     // From the home folder: an agent's command that can also write a project's settings never sees this project.
     const r = await deps.run(exe, args, env.home);
@@ -201,7 +204,7 @@ async function addTo(agent: AgentInfo, server: ServerSpec, deps: ConnectDeps, en
   const plain = { url: server.url, ...(server.headers ? { headers: server.headers } : {}) };
   switch (agent.id) {
     case "claude":
-      return command("claude", ["mcp", "add", ...colon, "--transport", "http", "--scope", "user", server.name, server.url], [join(env.home, ".claude.json")]);
+      return command("claude", ["mcp", "add", ...colon, "--transport", "http", "--scope", "user", server.name, server.url], [claudeSettings(env)], claudeLocal(env));
     case "codex": {
       const path = join(codexHome(env), "config.toml");
       return file(path, () => addTomlServer(path, server.name, plain, holdsKey));
@@ -344,9 +347,21 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
       } catch {}
       if (!keyFiles.has(same)) keyFiles.set(same, file);
     }
+    // Dotfiles kept in a bare repository (git --git-dir ~/.dotfiles --work-tree ~, yadm) aren't seen by git -C.
+    const bareRepos = DOTFILES_REPOS.map((r) => join(env.home, r)).filter((r) => existsSync(join(r, "HEAD")));
     for (const file of keyFiles.values()) {
-      if (git && (await deps.run(git, ["-C", dirname(file), "ls-files", "--error-unmatch", basename(file)])).code === 0) {
+      if (!git) break;
+      if ((await deps.run(git, ["-C", dirname(file), "ls-files", "--error-unmatch", basename(file)])).code === 0) {
         lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by git. Remove it from that repository before you push.`);
+        continue;
+      }
+      const inHome = relative(env.home, file);
+      if (inHome.startsWith("..") || isAbsolute(inHome)) continue;
+      for (const repo of bareRepos) {
+        if ((await deps.run(git, ["--git-dir", repo, "--work-tree", env.home, "ls-files", "--error-unmatch", inHome.split(sep).join("/")], env.home)).code === 0) {
+          lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by your dotfiles repository (${shown(env, repo)}). Remove it from that repository before you push.`);
+          break;
+        }
       }
     }
   }

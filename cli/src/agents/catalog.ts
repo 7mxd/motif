@@ -48,6 +48,13 @@ export function shown(e: AgentEnv, path: string): string {
 }
 
 export const codexHome = (e: AgentEnv) => e.vars.CODEX_HOME || join(e.home, ".codex");
+/** Claude Code's user settings: in CLAUDE_CONFIG_DIR when it's set, otherwise ~/.claude.json. */
+export const claudeSettings = (e: AgentEnv) => join(e.vars.CLAUDE_CONFIG_DIR || e.home, ".claude.json");
+/** Claude Code installed by its own installer, not on PATH: ~/.claude/local/claude. */
+export function claudeLocal(e: AgentEnv): string | null {
+  const dir = join(e.home, ".claude", "local");
+  return (e.platform === "win32" ? ["claude.exe", "claude.cmd", "claude"] : ["claude"]).map((n) => join(dir, n)).find((p) => existsSync(p)) ?? null;
+}
 export const copilotHome = (e: AgentEnv) => e.vars.COPILOT_HOME || join(e.home, ".copilot");
 export const geminiDir = (e: AgentEnv) => join(e.vars.GEMINI_CLI_HOME || e.home, ".gemini");
 export const configHome = (e: AgentEnv) => e.vars.XDG_CONFIG_HOME || join(e.home, ".config");
@@ -68,9 +75,9 @@ export const AGENTS: AgentInfo[] = [
   {
     id: "claude",
     label: "Claude Code",
-    found: (e) => Boolean(e.which("claude")),
+    found: (e) => Boolean(e.which("claude") || claudeLocal(e)),
     notFound: () => 'no "claude" command on PATH',
-    settings: (e, cwd) => [user(e, join(e.home, ".claude.json"), "json", "mcpServers"), project(cwd, ".mcp.json", "json", "mcpServers")],
+    settings: (e, cwd) => [user(e, claudeSettings(e), "json", "mcpServers"), project(cwd, ".mcp.json", "json", "mcpServers")],
     signIn: (s) => `in Claude Code, type /mcp, choose "${s}" and sign in`,
   },
   {
