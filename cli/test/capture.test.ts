@@ -139,12 +139,18 @@ describe.skipIf(!browser)("captureScreens: from the review of batch B", () => {
   }, 60_000);
 
   test("a request the page keeps open (a long poll) doesn't hold every screenshot up", async () => {
-    const out = tempDir("motif-shots-");
-    const started = Date.now();
-    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/poll"], outDir: out, settleMs: 50, viewports: DESKTOP });
-    expect(routes[0]!.shots).toHaveLength(2);
-    expect(Date.now() - started).toBeLessThan(9_000);
-  }, 60_000);
+    // Against a plain page captured the same way, so a slow machine's own time cancels out: each of the two screenshots
+    // waits about 2 s longer for the long poll (when it counts as live), not the 5 s it would wait if it held them up.
+    const time = async (route: string) => {
+      const started = Date.now();
+      const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: [route], outDir: tempDir("motif-shots-"), settleMs: 50, viewports: DESKTOP });
+      expect(routes[0]!.shots).toHaveLength(2);
+      return Date.now() - started;
+    };
+    const plain = await time("/");
+    const poll = await time("/poll");
+    expect(poll - plain).toBeLessThan(7_000);
+  }, 90_000);
 });
 
 describe.skipIf(!browser)("a page's own errors and its states (backlog)", () => {
