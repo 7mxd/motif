@@ -275,3 +275,11 @@ describe.skipIf(!isWin)("install.ps1", () => {
     expect(r.output).toContain("isn't Motif's");
   }, 180_000);
 });
+
+describe("install.sh reads SHA256SUMS in either form (backlog)", () => {
+  test('a "hash *name" line is accepted', () => {
+    const script = readFileSync(join(import.meta.dir, "../../install.sh"), "utf8");
+    expect(script).not.toContain('grep " $ASSET\\$"');
+    expect(script).toContain("sub(/^\\*/");
+  });
+});

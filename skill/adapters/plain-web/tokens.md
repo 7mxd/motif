@@ -72,19 +72,30 @@ Colours that are the user's own data (a colour they picked for their card, say) 
 
 ## Dark mode
 
-Dark mode follows the system automatically. To offer a switch, set `data-theme` on `<html>` and remember the choice:
+Dark mode follows the system automatically. To offer a switch, set `data-theme` on `<html>` and remember the choice. The saved choice is applied by a small script in `<head>`, before the page is drawn; in `app.js` (loaded with `defer`) it would run after, and the page would flash in the other theme first:
+
+```html
+<script>
+  const saved = localStorage.getItem("theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+</script>
+```
+
+The switch itself goes in `app.js`:
 
 ```js
-const saved = localStorage.getItem("theme");
-if (saved) document.documentElement.dataset.theme = saved;
-
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
   localStorage.setItem("theme", theme);
 }
+
+function followSystem() {
+  delete document.documentElement.dataset.theme;
+  localStorage.removeItem("theme");
+}
 ```
 
-Remove the attribute (`delete document.documentElement.dataset.theme`) to follow the system again. Never write your own `prefers-color-scheme` rules for colours: the roles already change.
+Never write your own `prefers-color-scheme` rules for colours: the roles already change.
 
 ## Fonts
 

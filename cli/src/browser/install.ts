@@ -24,15 +24,33 @@ export function installedBrowser(home: string): string | null {
   }
 }
 
-/** The download, read piece by piece so a person can watch it arrive (total is 0 when the server doesn't say). */
-async function download(res: Response, onProgress?: (got: number, total: number) => void): Promise<Uint8Array> {
+/**
+ * The download, read piece by piece so a person can watch it arrive (total is 0 when the server doesn't say). One that
+ * stops sending for idleMs gives up, instead of hanging until someone notices.
+ */
+async function download(res: Response, idleMs: number, onProgress?: (got: number, total: number) => void): Promise<Uint8Array> {
   const total = Number(res.headers.get("content-length")) || 0;
   if (!res.body) return new Uint8Array(await res.arrayBuffer());
+  const reader = res.body.getReader();
   const parts: Uint8Array[] = [];
   let got = 0;
-  for await (const part of res.body as unknown as AsyncIterable<Uint8Array>) {
-    parts.push(part);
-    got += part.length;
+  for (;;) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`The download stopped (nothing arrived for ${Math.round(idleMs / 1000)} s). Check your internet connection and try again.`)), idleMs);
+    });
+    let step: Awaited<ReturnType<typeof reader.read>>;
+    try {
+      step = await Promise.race([reader.read(), stalled]);
+    } catch (e) {
+      reader.cancel().catch(() => undefined);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (step.done) break;
+    parts.push(step.value);
+    got += step.value.length;
     onProgress?.(got, total);
   }
   const bytes = new Uint8Array(got);
@@ -81,12 +99,14 @@ export async function installBrowser(opts: {
   onProgress?: (got: number, total: number) => void;
   /** Told when the download is done and unpacking starts (it takes a few seconds and prints nothing). */
   onStage?: (stage: "unpacking") => void;
+  /** How long the download may send nothing before it gives up (60 s). */
+  idleTimeoutMs?: number;
 }): Promise<{ version: string; path: string; bytes: number }> {
   const platform = opts.platform ?? process.platform;
   const plat = cftPlatform(platform, opts.arch ?? process.arch);
   if (!plat) throw new Error(`Motif can't download a browser for this system (${platform}). Install Chrome or Chromium instead.`);
 
-  const indexRes = await fetch(opts.indexUrl ?? BROWSER_INDEX_URL).catch(() => null);
+  const indexRes = await fetch(opts.indexUrl ?? BROWSER_INDEX_URL, { signal: AbortSignal.timeout(30_000) }).catch(() => null);
   if (!indexRes?.ok) throw new Error(`Couldn't reach the Chrome for Testing download list${indexRes ? ` (HTTP ${indexRes.status})` : ""}. Check your internet connection and try again.`);
   const index = (await indexRes.json()) as any;
   const stable = index?.channels?.Stable;
@@ -95,7 +115,7 @@ export async function installBrowser(opts: {
 
   const zipRes = await fetch(url).catch(() => null);
   if (!zipRes?.ok) throw new Error(`Couldn't download the browser${zipRes ? ` (HTTP ${zipRes.status})` : ""}. Try again later.`);
-  const bytes = await download(zipRes, opts.onProgress);
+  const bytes = await download(zipRes, opts.idleTimeoutMs ?? 60_000, opts.onProgress);
   opts.onStage?.("unpacking");
   let entries: Record<string, Uint8Array>;
   try {

@@ -18,6 +18,15 @@ An app with `react` and `react-dom` in its `package.json`, plus `next` or `vite`
 
 Next.js is the default. Use Vite with React when the developer asks for a single-page app. Use the developer's package manager: swap `--use-npm` for `--use-pnpm`, `--use-yarn` or `--use-bun`.
 
+The commands here use npm. In a project that uses another package manager (its lockfile says which: `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`), use that one's form of each:
+
+| npm | pnpm | yarn | bun |
+|---|---|---|---|
+| `npm install motion` | `pnpm add motion` | `yarn add motion` | `bun add motion` |
+| `npm create vite@latest` | `pnpm create vite` | `yarn create vite` | `bun create vite` |
+| `npm run build` | `pnpm build` | `yarn build` | `bun run build` |
+| `npx tsc --noEmit` | `pnpm exec tsc --noEmit` | `yarn tsc --noEmit` | `bunx tsc --noEmit` |
+
 Next.js:
 
 ```bash

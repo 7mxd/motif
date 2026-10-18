@@ -19,7 +19,7 @@ Ask whether to review the whole app or named screens or features (default: the w
 
 1. `motif validate`: problems in the design guide itself.
 2. `motif check`: places in the code that bypass the design guide.
-3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, at three phone sizes, a tablet and a desktop). Screens that only appear after a form or a click (a result, an editor, an error) need a state script: write one per state in `design/states/`, as the stack guide's checks show ([plain web](../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)), and add `--state design/states/<state>.js` for each. It also writes its findings to `design/shots/audit.json` in the report format below.
+3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, at three phone sizes, a tablet and a desktop). Screens that only appear after a form or a click (a result, an editor, an error) need a state script: write one per state in `design/states/`, as the stack guide's checks show ([React web](../adapters/react-web/checks.md#screens-behind-a-form-or-a-click), [plain web](../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)), and add `--state design/states/<state>.js` for each. It also writes its findings to `design/shots/audit.json` in the report format below.
 
 **Judgement**, screen by screen and state by state, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, whether things people use together (a live preview and the controls that change it, a form and its result) fit on one screen, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's checks ([React web](../adapters/react-web/checks.md), [plain web](../adapters/plain-web/checks.md)).
 
@@ -95,7 +95,7 @@ Show the developer the summary and ask which findings to fix (suggest all critic
 
 ## 5. Rebuild
 
-1. Before changing anything, keep screenshots of the screens you'll touch, in the states the audit used: `motif shot --routes <routes> --state design/states/<state>.js --save before` (one `--state` per state script).
+1. Before changing anything, keep screenshots of the screens you'll touch, in the states the audit used: `motif shot --routes <routes> --state design/states/<state>.js --save before`: one `--state` per state script you have (leave --state out if there are none).
 2. Fix the chosen findings with theme values only. A new value, role or rule a fix needs goes through a design guide change ⏸ before you write it into `DESIGN.md` or `design/tokens.json`.
 3. Run the exact checks again: `motif validate`, `motif check` and `motif shot --audit` (with the same `--state` options).
 4. Run `motif shot --routes <routes> --state design/states/<state>.js --against before`, with the same options as when you saved, and show the before-and-after images; the output says how much each screen changed, and whether something was added (what's below only moved) or the page changed from some point down.

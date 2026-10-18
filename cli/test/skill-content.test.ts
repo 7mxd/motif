@@ -83,6 +83,25 @@ describe("the lint rules", () => {
     expect(lint("SKILL.md", fm(`name: motif\ndescription: Builds UI.\ncompatibility: ${"x".repeat(501)}`))).toEqual(["SKILL.md compatibility must be at most 500 characters (it has 501)."]);
   });
 
+  test("fences close as Markdown says; info strings may carry attributes; C:/ isn't a web link; NAME=value prefixes aren't portable (backlog)", () => {
+    const lint = (text: string, file = "modes/a.md") => lintSkillMarkdown(file, text, { exists: () => true, commands: ["doctor"] });
+    // A longer closing fence, or one at another indent, still closes the block: the motif command inside is checked.
+    expect(lint("```sh\nmotif nonsense\n````\n")).toEqual(['modes/a.md mentions "motif nonsense", which isn\'t a Motif command.']);
+    expect(lint("  ```sh\nmotif nonsense\n```\n")).toEqual(['modes/a.md mentions "motif nonsense", which isn\'t a Motif command.']);
+    // "bash title=x" is a bash block: its portability is checked.
+    expect(lint("```bash title=install\nmotif doctor && motif doctor\n```\n")).toEqual([expect.stringContaining("chains commands with && or ||")]);
+    expect(lint("```sh\nMOTIF_HOME=/tmp/m motif doctor\n```\n")).toEqual([expect.stringContaining("NAME=value")]);
+    expect(lint("[x](C:/Users/me/x.md)\n")).toEqual([expect.stringContaining("absolute path")]);
+  });
+
+  test("a description written as a YAML block is read whole (backlog)", () => {
+    const fm = (description: string) => `---\nname: motif\ndescription: ${description}\n---\n# Motif\n`;
+    expect(lintSkillMarkdown("SKILL.md", fm(">\n  Design guide tools for agents.\n  Mockups first."), { exists: () => true, commands: [] })).toEqual([]);
+    expect(lintSkillMarkdown("SKILL.md", fm(">\n" + "  " + "x".repeat(1100)), { exists: () => true, commands: [] })).toEqual([
+      "SKILL.md description must be 1–1024 characters (it has 1100).",
+    ]);
+  });
+
   test("UX pattern files have the five sections, in order", () => {
     const good = "# Sign-in\n\n## Goal\n\n## Anatomy\n\n## Required states\n\n## Common mistakes\n\n## Mobile and web\n";
     expect(lint("knowledge/ux-patterns/sign-in.md", good)).toEqual([]);
@@ -112,5 +131,34 @@ describe("the React checks guide on Tailwind 3 (review of batch C2)", () => {
     const checks = readFileSync(join(SKILL, "adapters/react-web/checks.md"), "utf8");
     expect(checks).toContain("On Tailwind 3");
     expect(checks).toContain("bg-[var(--motif-color-action-primary)]");
+  });
+});
+
+describe("the guides: from the backlog", () => {
+  const read = (p: string) => readFileSync(join(SKILL, p), "utf8");
+
+  test("the React guide's commands work with the project's own package manager", () => {
+    const guide = read("adapters/react-web/README.md");
+    for (const s of ["pnpm add", "yarn add", "bun add", "pnpm-lock.yaml"]) expect(guide).toContain(s);
+  });
+
+  test("a font without a Fontsource package is self-hosted under the theme's name", () => {
+    expect(read("adapters/react-web/tokens.md")).toContain("@font-face");
+  });
+
+  test("plain web: the button shows hover, the theme choice is set before the page draws and can be undone fully, the backdrop fades in", () => {
+    expect(read("adapters/plain-web/components.md")).toContain(":hover");
+    const tokens = read("adapters/plain-web/tokens.md");
+    expect(tokens).toContain('localStorage.removeItem("theme")');
+    expect(tokens).toContain("<head>");
+    expect(read("adapters/plain-web/README.md")).toContain("theme");
+    expect(read("adapters/plain-web/motion.md")).toMatch(/::backdrop \{[^}]*animation/);
+  });
+
+  test("React's checks say how to capture screens behind a form, and review links both stacks; the rebuild step's --state is only for scripts you have", () => {
+    expect(read("adapters/react-web/checks.md")).toContain("## Screens behind a form or a click");
+    const review = read("modes/review.md");
+    expect(review).toContain("../adapters/react-web/checks.md#screens-behind-a-form-or-a-click");
+    expect(review).toContain("leave --state out if there are none");
   });
 });

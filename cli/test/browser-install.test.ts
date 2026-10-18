@@ -153,6 +153,24 @@ describe("installBrowser (backlog)", () => {
     }
   });
 
+  test("a download that stops sending gives up, instead of waiting forever (backlog)", async () => {
+    const server = serve({});
+    const base = `http://127.0.0.1:${server.port}`;
+    server.reload({
+      fetch: (req) =>
+        new URL(req.url).pathname === "/index.json"
+          ? index(base)
+          : new Response(new ReadableStream({ start(c) { c.enqueue(new Uint8Array(10)); } }), { headers: { "content-length": "1000" } }),
+    });
+    try {
+      const started = Date.now();
+      await expect(installBrowser({ home: tempDir("motif-home-"), indexUrl: `${base}/index.json`, idleTimeoutMs: 500 })).rejects.toThrow("stopped");
+      expect(Date.now() - started).toBeLessThan(5000);
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("reports how much has downloaded", async () => {
     await withZips([zipSync({ [exe]: strToU8("fake browser".repeat(1000)) })], async (indexUrl) => {
       const seen: [number, number][] = [];

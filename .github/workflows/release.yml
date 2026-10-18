@@ -9,6 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  # A tag publishes only what passes the tests (CI ran them on the commit, but a tag can be pushed on any commit).
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        working-directory: cli
+        run: bun run typecheck
+      - name: Tests
+        working-directory: cli
+        run: bun test --timeout 300000
+
   build:
     strategy:
       fail-fast: true
@@ -21,8 +40,8 @@ jobs:
           - { os: macos-latest, target: bun-darwin-x64, asset: motif-darwin-x64, smoke: false }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: cli/.bun-version
       - name: Tag matches skill/VERSION
@@ -43,7 +62,7 @@ jobs:
         if: matrix.smoke
         shell: bash
         run: test "$(./dist/${{ matrix.asset }} --version)" = "$(tr -d ' \r\n' < skill/VERSION)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.asset }}
           path: dist/${{ matrix.asset }}
@@ -52,10 +71,10 @@ jobs:
   plugin:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: cli/.bun-version
       - name: Tag matches skill/VERSION
@@ -84,35 +103,35 @@ jobs:
           test "$(jq -r .version dist/agents/gemini-extension.json)" = "$v"
       - name: Pack the plugins branch's files (keeps the bootstrap's executable flag)
         run: tar -czf dist/plugins-tree.tar.gz -C dist/agents .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: motif-claude-code.zip
           path: dist/motif-claude-code.zip
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: motif-skill
           path: |
             dist/motif-skill.zip
             dist/motif-skill.tar.gz
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: plugins-tree
           path: dist/plugins-tree.tar.gz
           if-no-files-found: error
 
   publish:
-    needs: [build, plugin]
+    needs: [build, plugin, test]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Release notes exist
         run: test -f "docs/releases/$GITHUB_REF_NAME.md"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: motif-*
           path: dist
@@ -137,8 +156,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: plugins-tree
           path: plugins-tree
@@ -231,13 +250,13 @@ jobs:
       GEMINI: 0.64.0
       OPENCODE: 1.19.3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: cli/.bun-version
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - name: Install

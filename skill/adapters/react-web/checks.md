@@ -85,6 +85,26 @@ From `motif shot --audit`: something still moves when reduced motion is on.
 
 - Fix: `MotionConfig reducedMotion="user"` at the root; for custom animation, `useReducedMotion()` to turn it off.
 
+## Screens behind a form or a click
+
+`motif shot` captures each page as it loads. A screen that only appears after someone fills in a form, opens a panel or sends something needs a **state script**: a few lines of JavaScript, run in the page after it loads, that get it there. Keep one per state in `design/states/`, named after the state (letters, digits and dashes), and add `--state design/states/<state>.js` for each.
+
+React keeps a field's value itself, so set it the way typing would, then send the event React listens for:
+
+```js
+// design/states/searched.js: the results after a search. Only the search page has the field.
+const field = document.querySelector("input[name=q]");
+if (!field) return;
+Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(field, "linen");
+field.dispatchEvent(new Event("input", { bubbles: true }));
+field.form.requestSubmit();
+await new Promise((r) => setTimeout(r, 300));
+```
+
+- It runs in every page `motif shot` captures: start it with a guard that returns on other pages (`if (!field) return;`), or capture only its page with `--routes`.
+- Screenshots are named after the page and the state (`search@searched.mobile.png`); each starts as a first visit, and a script still running after 15 seconds is stopped and reported.
+- Use the same `--state` options for `--save` and `--against`, and mock data only.
+
 ## Reading the results
 
 Run both with `--json`. `motif check` lists `violations` (each with its file, line, rule and fix), `exceptions` and `warnings`. `motif shot --audit` writes its findings to `design/shots/audit.json` in the review format, with the screen, the element and a screenshot. Fix what they report, then run them again until both are clean.

@@ -63,7 +63,7 @@ function Invoke-MotifInstall([string]$Agent, [string]$Version, [bool]$Uninstall)
     if (-not $Version) {
       # To a file, then read as text: Windows PowerShell returns bytes, not text, when a server labels the file as binary.
       $VersionFile = Join-Path $Tmp 'VERSION'
-      try { Invoke-WebRequest -UseBasicParsing -Uri "$Raw/skills/motif/VERSION" -OutFile $VersionFile }
+      try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1800 -Uri "$Raw/skills/motif/VERSION" -OutFile $VersionFile }
       catch { return (Fail "couldn't find Motif's latest version. Check your internet connection and try again.") }
       $Version = [IO.File]::ReadAllText($VersionFile).Trim()
     }
@@ -73,8 +73,8 @@ function Invoke-MotifInstall([string]$Agent, [string]$Version, [bool]$Uninstall)
     $Zip = Join-Path $Tmp $Asset
     Say "downloading Motif v$Version..."
     try {
-      Invoke-WebRequest -UseBasicParsing -Uri "$Base/$Asset" -OutFile $Zip
-      Invoke-WebRequest -UseBasicParsing -Uri "$Base/SHA256SUMS" -OutFile (Join-Path $Tmp 'SHA256SUMS')
+      Invoke-WebRequest -UseBasicParsing -TimeoutSec 1800 -Uri "$Base/$Asset" -OutFile $Zip
+      Invoke-WebRequest -UseBasicParsing -TimeoutSec 1800 -Uri "$Base/SHA256SUMS" -OutFile (Join-Path $Tmp 'SHA256SUMS')
     } catch {
       return (Fail "couldn't download Motif v$Version. Check your internet connection and try again.")
     }

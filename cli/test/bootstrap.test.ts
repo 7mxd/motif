@@ -35,6 +35,9 @@ beforeAll(() => {
         return new Response(binary);
       }
       if (path === "/ok/SHA256SUMS") return new Response(goodSums);
+      // sha256sum --binary writes "hash *name" (backlog).
+      if (path === `/star/${ASSET}`) return new Response(binary);
+      if (path === "/star/SHA256SUMS") return new Response(goodSums.replace(`  ${ASSET}`, ` *${ASSET}`));
       if (path === "/bad/SHA256SUMS") return new Response(badSums);
       return new Response("not found", { status: 404 });
     },
@@ -81,6 +84,11 @@ for (const runner of RUNNERS) {
       expect(second.stderr.toString()).not.toContain("one time only");
       expect(hits - before).toBe(1);
     }, 120_000);
+
+    test('a SHA256SUMS line in the "hash *name" form is read too (backlog)', async () => {
+      const r = await run("star", freshHome(), ["--version"]);
+      expect([r.exitCode, r.stdout.trim()]).toEqual([0, VERSION]);
+    });
 
     test("passes arguments and exit codes through", async () => {
       const r = await run("ok", freshHome(), ["fly"]);
@@ -144,4 +152,16 @@ describe.skipIf(!isWin || !pwsh)("bootstrap started from a PowerShell 7 terminal
     expect({ exitCode, stderr }).toMatchObject({ exitCode: 0 });
     expect(stdout.trim()).toBe(VERSION);
   }, 120_000);
+});
+
+describe("downloads that stall end instead of waiting forever (backlog)", () => {
+  test("the scripts give up on a stalled connection", () => {
+    const read = (p: string) => readFileSync(join(REPO_ROOT, p), "utf8");
+    for (const p of ["skill/bin/motif", "install.sh"]) {
+      expect(read(p)).toContain("--connect-timeout");
+      expect(read(p)).toContain("--speed-time");
+      expect(read(p)).toContain("--timeout=");
+    }
+    for (const p of ["skill/bin/motif.ps1", "install.ps1"]) expect(read(p)).toContain("-TimeoutSec");
+  });
 });

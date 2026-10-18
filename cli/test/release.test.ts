@@ -78,7 +78,7 @@ describe("the release workflow", () => {
 
   test("publishes with written notes and the notices, only after checking the notes exist", () => {
     const publish = section("publish");
-    expect(publish).toContain("needs: [build, plugin]");
+    expect(publish).toContain("needs: [build, plugin, test]");
     expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre');
     expect(publish).not.toContain("--generate-notes");
     expect(publish).toContain("cp THIRD-PARTY-NOTICES.txt dist/");
@@ -201,5 +201,27 @@ describe("the agents workflow", () => {
   test("pins the agents' versions, and tries their latest versions every week", () => {
     expect(wf).toContain("cron:");
     expect(wf).toContain("github.event_name == 'schedule' && 'latest' || '0.163.0'");
+  });
+});
+
+describe("the release workflows are hardened (backlog)", () => {
+  test("a tag publishes only after the tests pass", () => {
+    const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
+    expect(wf).toContain("\n  test:\n");
+    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test\]/);
+  });
+
+  test("every action is pinned to a commit, with its version beside it", () => {
+    for (const f of ["release.yml", "ci.yml", "agents.yml"]) {
+      const wf = readFileSync(join(REPO, ".github/workflows", f), "utf8");
+      for (const m of wf.matchAll(/uses: (\S+)(.*)/g)) expect(`${f}: ${m[1]}${m[2]}`).toMatch(/@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
+    }
+  });
+});
+
+describe("the README names what Motif's tool includes (backlog)", () => {
+  test("axe-core, its licence and where its source is", () => {
+    const readme = readFileSync(join(REPO, "README.md"), "utf8");
+    for (const s of ["axe-core 4.14.0", "MPL-2.0", "THIRD-PARTY-NOTICES.txt", "github.com/dequelabs/axe-core"]) expect(readme).toContain(s);
   });
 });

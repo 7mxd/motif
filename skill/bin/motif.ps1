@@ -31,8 +31,8 @@ if (-not (Test-Path -LiteralPath $Bin)) {
     [Console]::Error.WriteLine("Motif: downloading the Motif tool v$Version (one time only)...")
     try {
       [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-      Invoke-WebRequest -UseBasicParsing -Uri "$Base/$Asset" -OutFile (Join-Path $Tmp $Asset)
-      Invoke-WebRequest -UseBasicParsing -Uri "$Base/SHA256SUMS" -OutFile (Join-Path $Tmp 'SHA256SUMS')
+      Invoke-WebRequest -UseBasicParsing -TimeoutSec 1800 -Uri "$Base/$Asset" -OutFile (Join-Path $Tmp $Asset)
+      Invoke-WebRequest -UseBasicParsing -TimeoutSec 1800 -Uri "$Base/SHA256SUMS" -OutFile (Join-Path $Tmp 'SHA256SUMS')
     } catch {
       [Console]::Error.WriteLine("Motif: couldn't download the Motif tool. Check your internet connection and try again.")
       exit 2

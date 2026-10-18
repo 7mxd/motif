@@ -73,8 +73,9 @@ if [ "$UNINSTALL" = 1 ]; then
 fi
 
 fetch() {
-  if command -v curl >/dev/null 2>&1; then curl -fsSL "$1" -o "$2"
-  elif command -v wget >/dev/null 2>&1; then wget -q "$1" -O "$2"
+  # A connection that stalls (under 1 KB/s for a minute) gives up instead of hanging an agent's tool call.
+  if command -v curl >/dev/null 2>&1; then curl -fsSL --connect-timeout 20 --speed-limit 1024 --speed-time 60 "$1" -o "$2"
+  elif command -v wget >/dev/null 2>&1; then wget -q --timeout=60 --tries=2 "$1" -O "$2"
   else return 1
   fi
 }
@@ -101,7 +102,8 @@ say "downloading Motif v$VERSION..."
 if ! fetch "$BASE/$ASSET" "$TMP/$ASSET" || ! fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS"; then
   fail "couldn't download Motif v$VERSION. Check your internet connection and try again."
 fi
-EXPECTED=$(grep " $ASSET\$" "$TMP/SHA256SUMS" | cut -d ' ' -f 1 || true)
+# "hash  name" or, from sha256sum --binary, "hash *name".
+EXPECTED=$(awk -v a="$ASSET" '{ n = $2; sub(/^\*/, "", n); if (n == a) print tolower($1) }' "$TMP/SHA256SUMS")
 if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$(sha256 "$TMP/$ASSET")" ]; then
   fail "the download failed its safety check, so nothing was installed. Please try again later, or report this at https://github.com/$REPO/issues"
 fi

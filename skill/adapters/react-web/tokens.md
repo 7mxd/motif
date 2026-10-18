@@ -77,6 +77,17 @@ The font files are served with the app, so nothing loads from Google when people
 
 Don't use `next/font` or the `@fontsource-variable` packages for theme fonts: both register the font under a different family name, so the theme's names wouldn't match and text would fall back.
 
+A font with no Fontsource package (a brand font, or one the developer bought) is served with the app: put its files and licence in `public/fonts/`, and declare it once under the exact family name the theme uses, in a stylesheet the root imports (Next.js: `src/app/globals.css`; Vite: `src/index.css`):
+
+```css
+@font-face {
+  font-family: "Acme Sans";
+  src: url("/fonts/acme-sans.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+```
+
 ## Tailwind v3
 
 Motif writes the CSS variables only. Use them as `bg-[var(--motif-color-action-primary)]`, or upgrade to Tailwind v4 for the generated theme.

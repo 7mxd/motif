@@ -66,6 +66,8 @@ Add `--json` for machine-readable output and `--cwd <folder>` to run elsewhere. 
 
 Full support today: React web apps, and plain web sites (HTML, CSS and JavaScript without a framework: a folder with an `index.html` in it, `public/`, `src/`, `site/` or `www/`). `motif check` and `motif extract` read CSS where it is, including `<style>` blocks and `style=""` attributes.
 
+Motif's tool includes axe-core 4.14.0 (MPL-2.0), unchanged, for the rendered checks; its source is at https://github.com/dequelabs/axe-core/tree/v4.14.0, and THIRD-PARTY-NOTICES.txt lists everything Motif includes with its licence.
+
 Previews and screenshots run on your computer only: the preview server listens on `127.0.0.1`, serves nothing outside your project, and nothing is uploaded. Screenshots of your app go to `design/shots/`, which Motif keeps out of git. Motif uses the Chrome or Edge you already have; it downloads a browser only when you run `motif browser install`. The 8 starting styles' fonts come with Motif; any other font your theme names is loaded from Google Fonts by your browser while previewing.
 
 Design: `docs/specs/2026-10-12-motif-core-design.md` · Plans: `docs/plans/`

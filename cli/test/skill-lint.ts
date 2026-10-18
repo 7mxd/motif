@@ -29,19 +29,38 @@ const NOT_PORTABLE_SHELL: [RegExp, string][] = [
   [/&&|\|\|/, "chains commands with && or || (Windows PowerShell 5 can't; put one command per line)"],
   [/\$\(/, "uses $(…), which only POSIX shells understand"],
   [/^\s*export\s+\w+=/m, "sets a variable with export, which only POSIX shells understand"],
+  [/^\s*[A-Z_][A-Z0-9_]*=\S*\s+\S/m, "sets a variable for one command (NAME=value command), which only POSIX shells understand"],
 ];
 // motif, or a path ending in motif / motif.cmd / motif.ps1 / motif.exe (quoted or not), then a command name.
 const MOTIF_CALL = /(?:^|[\s"'(/\\&])motif(?:\.cmd|\.ps1|\.exe)?["']?[ \t]+([a-z][a-z-]*)/gm;
 const LINK_PATTERNS = [/\]\(\s*(<[^>\n]*>|[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g, /^[ \t]*\[[^\]\n]+\]:[ \t]*(<[^>\n]*>|\S+)/gm];
 
-/** Fenced code blocks (with their language) and inline code spans, plus the text with the blocks taken out. */
+/**
+ * Fenced code blocks (with their language: the info string's first word) and inline code spans, plus the text with
+ * the blocks taken out. Fences as Markdown reads them: a block closes with the same character, at least as long, at
+ * any indent of up to three spaces.
+ */
 function split(text: string): { blocks: { lang: string; body: string }[]; inline: string[]; prose: string } {
   const blocks: { lang: string; body: string }[] = [];
-  const prose = text.replace(/^([ \t]*)(`{3,}|~{3,})([^\n]*)\n([\s\S]*?)^\1\2[ \t]*$/gm, (_m, _indent, _fence, info: string, body: string) => {
-    blocks.push({ lang: info.trim().toLowerCase(), body });
-    return "";
-  });
-  return { blocks, inline: [...prose.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]!), prose };
+  const prose: string[] = [];
+  let open: { fence: string; lang: string; body: string[] } | null = null;
+  for (const line of text.split("\n")) {
+    if (open === null) {
+      const m = line.match(/^[ \t]*(`{3,}|~{3,})(.*)$/);
+      if (m && !(m[1]![0] === "`" && m[2]!.includes("`"))) {
+        open = { fence: m[1]!, lang: m[2]!.trim().split(/\s+/)[0]!.toLowerCase(), body: [] };
+      } else prose.push(line);
+      continue;
+    }
+    const close = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)?.[1];
+    if (close && close[0] === open.fence[0] && close.length >= open.fence.length) {
+      blocks.push({ lang: open.lang, body: open.body.length > 0 ? `${open.body.join("\n")}\n` : "" });
+      open = null;
+    } else open.body.push(line);
+  }
+  if (open) blocks.push({ lang: open.lang, body: open.body.join("\n") });
+  const rest = prose.join("\n");
+  return { blocks, inline: [...rest.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]!), prose: rest };
 }
 
 function frontmatter(text: string): string | null {
@@ -60,6 +79,11 @@ export function lintSkillMarkdown(file: string, raw: string, opts: { exists: (sk
     for (const m of prose.matchAll(pattern)) {
       const shown = m[1]!.replace(/^<|>$/g, "");
       const target = shown.split("#")[0]!;
+      // A drive letter (C:/…) looks like a web address's scheme, but it's a path on one computer.
+      if (/^[A-Za-z]:[\\/]/.test(target)) {
+        problems.push(`${file} links to "${shown}", an absolute path on one computer (agents get only the skill folder).`);
+        continue;
+      }
       if (!target || /^[a-z][a-z+.-]*:/i.test(target)) continue;
       let decoded = target;
       try {
@@ -113,7 +137,21 @@ function skillFrontmatter(fm: string | null): string[] {
   for (const key of [...fm.matchAll(/^([A-Za-z][\w-]*):/gm)].map((m) => m[1]!)) {
     if (!SKILL_KEYS.includes(key)) problems.push(`SKILL.md frontmatter has "${key}", which the Agent Skills format doesn't define (allowed: ${SKILL_KEYS.join(", ")}).`);
   }
-  const field = (key: string) => fm.match(new RegExp(`^${key}:[ \\t]*(.*)$`, "m"))?.[1]?.trim().replace(/^(["'])(.*)\1$/, "$2");
+  const field = (key: string) => {
+    const m = fm.match(new RegExp(`^${key}:[ \\t]*(.*)$`, "m"));
+    if (!m) return undefined;
+    const value = m[1]!.trim();
+    // A YAML block (description: > or |, then indented lines) is read whole: folded with spaces, or kept as lines.
+    if (/^[>|][+-]?$/.test(value)) {
+      const lines: string[] = [];
+      for (const l of fm.slice(m.index! + m[0].length + 1).split("\n")) {
+        if (!/^\s+\S/.test(l)) break;
+        lines.push(l.trim());
+      }
+      return lines.join(value.startsWith(">") ? " " : "\n");
+    }
+    return value.replace(/^(["'])(.*)\1$/, "$2");
+  };
   if (field("name") !== "motif") problems.push("SKILL.md frontmatter needs name: motif (it must match the folder the skill is installed in).");
   const description = field("description") ?? "";
   if (description.length < 1 || description.length > 1024) problems.push(`SKILL.md description must be 1–1024 characters (it has ${description.length}).`);

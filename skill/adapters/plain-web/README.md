@@ -26,7 +26,7 @@ Create a folder named after the site, and in it:
 - `index.html`: the first page, linking the stylesheets in this order: `motif.css`, then `components.css`, then `styles.css`.
 - `components.css`: the shared components ([components](components.md)).
 - `styles.css`: the page layout, and the site's own names for roles if it has any ([theme code](tokens.md)).
-- `app.js`: the page's behaviour, loaded with `defer`.
+- `app.js`: the page's behaviour, loaded with `defer`. (A saved light or dark choice is the one exception: it's applied by a small script in `<head>`, so the page doesn't flash; see [theme code](tokens.md#dark-mode).)
 - `mock-data.js`: every piece of made-up content, in one file.
 
 A starting `index.html`:
