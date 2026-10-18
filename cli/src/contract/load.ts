@@ -1,11 +1,29 @@
 import { getNodeValue, parseTree, printParseErrorCode, type Node, type ParseError } from "jsonc-parser";
 import type { Finding } from "../findings";
+import { savedAsUtf16, UTF16_MESSAGE } from "../text";
 import type { FlatToken, TokenDocument } from "./types";
 
 export function lineAt(text: string, offset: number): number {
   let line = 1;
   for (let i = 0; i < offset && i < text.length; i++) if (text.charCodeAt(i) === 10) line++;
   return line;
+}
+
+/** lineAt for many offsets in one text: the newlines are found once, then each offset is looked up. */
+function lineFinder(text: string): (offset: number) => number {
+  const newlines: number[] = [];
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) newlines.push(i);
+  return (offset) => {
+    // How many newlines come before offset.
+    let lo = 0;
+    let hi = newlines.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (newlines[mid]! < offset) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo + 1;
+  };
 }
 
 function prop(obj: Node, name: string): Node | undefined {
@@ -20,6 +38,9 @@ export function loadTokenDocument(
   file: string,
   rawText: string,
 ): { doc: TokenDocument | null; findings: Finding[] } {
+  if (savedAsUtf16(rawText)) {
+    return { doc: null, findings: [{ code: "not-utf8", severity: "error", file, line: 1, message: UTF16_MESSAGE }] };
+  }
   const text = rawText.charCodeAt(0) === 0xfeff ? rawText.slice(1) : rawText;
   const errors: ParseError[] = [];
   const root = parseTree(text, errors, { disallowComments: true, allowTrailingComma: false });
@@ -45,6 +66,7 @@ export function loadTokenDocument(
 
   const findings: Finding[] = [];
   const tokens = new Map<string, FlatToken>();
+  const lineOf = lineFinder(text);
 
   const walk = (group: Node, segs: string[], inherited: string | null): void => {
     for (const p of group.children ?? []) {
@@ -52,7 +74,7 @@ export function loadTokenDocument(
       const key = String(keyNode?.value);
       if (key.startsWith("$")) continue;
       const path = [...segs, key].join(".");
-      const line = lineAt(text, p.offset);
+      const line = lineOf(p.offset);
       if (/[.{}]/.test(key)) {
         findings.push({ code: "bad-name", severity: "error", file, line, path, message: `The name "${key}" can't contain ".", "{" or "}".` });
         continue;

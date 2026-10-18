@@ -71,10 +71,17 @@ const GENERIC_FAMILIES = new Set([
   "ui-monospace", "ui-rounded", "math", "emoji", "fangsong",
 ]);
 
+/** Words that mean something else unquoted in a font list: a font with one of these names must be quoted. */
+const CSS_WIDE = new Set(["inherit", "initial", "unset", "revert", "revert-layer", "default"]);
+
 export function cssFontFamily(v: string | string[]): string {
   return (Array.isArray(v) ? v : [v])
     // A single identifier stays as it is: system keywords like -apple-system only work unquoted.
-    .map((name) => (GENERIC_FAMILIES.has(name.toLowerCase()) || /^-?[A-Za-z_][\w-]*$/.test(name) ? name : `"${name.replace(/"/g, '\\"')}"`))
+    .map((name) =>
+      GENERIC_FAMILIES.has(name.toLowerCase()) || (/^-?[A-Za-z_][\w-]*$/.test(name) && !CSS_WIDE.has(name.toLowerCase()))
+        ? name
+        : `"${name.replace(/"/g, '\\"')}"`,
+    )
     .join(", ");
 }
 

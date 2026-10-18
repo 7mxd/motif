@@ -11,7 +11,7 @@ import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/h
 import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
 import { buildTheme } from "../generate/theme";
 import { themeFonts } from "../generate/theme-fonts";
-import { appLabel, prefixPath, selectApps } from "../project/apps";
+import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
 import { chooseSrcDir, detectTailwind, generateReactWeb, motifCss } from "../stacks/react-web/generate";
 import { TOKENS_JSON } from "./validate";
@@ -164,7 +164,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     return {
       command: "tokens",
       exitCode: 2,
-      text: `There's no app at "${ctx.app}". Apps here: ${detected.map((a) => a.path).join(", ") || "none"}.`,
+      text: noSuchApp(ctx.app, detected),
       data: { error: "no-such-app" },
     };
   }

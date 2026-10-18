@@ -1,4 +1,5 @@
 import type { Finding } from "../findings";
+import { savedAsUtf16, UTF16_MESSAGE } from "../text";
 import { CONTRACT_VERSION } from "./roles";
 
 export const REQUIRED_SECTIONS = [
@@ -10,8 +11,10 @@ const norm = (s: string) =>
   s.toLowerCase().replace(/[’‘]/g, "'").replace(/\s*\/\s*/g, " / ").replace(/\s+/g, " ").trim();
 
 export function checkDesignMd(file: string, raw: string): Finding[] {
+  if (savedAsUtf16(raw)) return [{ code: "not-utf8", severity: "error", file, line: 1, message: UTF16_MESSAGE }];
   const text = raw.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
-  const lines = text.split("\n");
+  // Trailing spaces don't change a line's meaning.
+  const lines = text.split("\n").map((l) => l.trimEnd());
   const findings: Finding[] = [];
   const add = (code: string, severity: "error" | "warning", message: string, line?: number) =>
     findings.push({ code, severity, file, line, message });
@@ -28,7 +31,8 @@ export function checkDesignMd(file: string, raw: string): Finding[] {
       const header: Record<string, string> = {};
       for (const l of lines.slice(1, end)) {
         const m = l.match(/^([A-Za-z][\w-]*):\s*(.*)$/);
-        if (m) header[m[1]!] = m[2]!.trim();
+        // YAML allows a value in quotes: motifContract: "1".
+        if (m) header[m[1]!] = m[2]!.trim().replace(/^(["'])(.*)\1$/, "$2");
       }
       const version = Number(header.motifContract);
       if (header.motifContract === undefined || !Number.isInteger(version)) {
@@ -44,10 +48,17 @@ export function checkDesignMd(file: string, raw: string): Finding[] {
     }
   }
 
-  // Sections (level-2 headings, optional "N." prefix)
+  // Sections (level-2 headings, optional "N." prefix), outside code blocks
   const found: { name: string; line: number }[] = [];
+  let fence: string | null = null;
   lines.forEach((l, i) => {
     if (i < bodyStart) return;
+    const marker = l.match(/^ {0,3}(`{3,}|~{3,})/)?.[1];
+    if (marker && (fence === null || (marker[0] === fence[0] && marker.length >= fence.length))) {
+      fence = fence === null ? marker : null;
+      return;
+    }
+    if (fence !== null) return;
     const m = l.match(/^##\s+(?:\d+\.\s*)?(.+?)\s*#*\s*$/);
     if (m) found.push({ name: norm(m[1]!), line: i + 1 });
   });

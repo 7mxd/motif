@@ -35,6 +35,9 @@ describe("collectOccurrences", () => {
     expect(occ.unresolved).toEqual([]);
     expect(occ.colors.find((c) => c.value === "#111827")!.examples).toEqual(["src/App.tsx:1"]);
   });
+  test("spacing classes follow the app's own spacing base (Tailwind's --spacing) (backlog)", () => {
+    expect(values(collectOccurrences(files, { ...tw, spacingPx: 8 }).space).sort()).toEqual(["13px", "24px"]);
+  });
   test("without Tailwind installed, palette and key classes are unresolved", () => {
     expect(values(collectOccurrences(files, null).unresolved).sort()).toEqual(["bg-blue-500", "rounded-md", "text-sm", "text-white"]);
   });

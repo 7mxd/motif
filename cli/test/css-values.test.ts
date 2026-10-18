@@ -53,6 +53,9 @@ describe("other values", () => {
     // Names that aren't identifiers are still quoted: a leading digit, a hyphen before a digit, two hyphens.
     expect(cssFontFamily(["1Password", "-9Font", "--x"])).toBe('"1Password", "-9Font", "--x"');
   });
+  test("a CSS-wide keyword used as a font name is quoted, or it would mean the keyword (backlog)", () => {
+    expect(cssFontFamily(["inherit", "Initial", "unset", "revert", "revert-layer", "default", "Inter"])).toBe('"inherit", "Initial", "unset", "revert", "revert-layer", "default", Inter');
+  });
   test("font weights", () => {
     expect(fontWeightNumber(600)).toBe(600);
     expect(fontWeightNumber("semi-bold")).toBe(600);

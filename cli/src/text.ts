@@ -18,3 +18,16 @@ export function locator(text: string): (index: number) => { line: number; column
     return { line: lo + 1, column: index - starts[lo]! + 1 };
   };
 }
+
+/**
+ * Whether text read as UTF-8 was really saved as UTF-16 (Windows PowerShell 5.1's > and Out-File save files that way):
+ * its byte-order mark reads as two replacement characters, and ASCII letters come with zero bytes between them.
+ */
+export function savedAsUtf16(text: string): boolean {
+  return text.startsWith("\uFFFD\uFFFD") || /\u0000/.test(text.slice(0, 200));
+}
+
+export const UTF16_MESSAGE = "This file is saved as UTF-16, not UTF-8 (Windows PowerShell's > saves files that way). Open it in your editor and save it as UTF-8.";
+
+/** "1 file", "3 files". */
+export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

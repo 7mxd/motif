@@ -16,3 +16,8 @@ export function appLabel(app: AppInfo): string {
 export function prefixPath(appPath: string, rel: string): string {
   return appPath === "." ? rel : `${appPath}/${rel}`;
 }
+
+/** What a command says when --app names a folder with no app. */
+export function noSuchApp(app: string | undefined, detected: { path: string }[]): string {
+  return `There's no app at "${app}". Apps here: ${detected.map((a) => a.path).join(", ") || "none"}.`;
+}

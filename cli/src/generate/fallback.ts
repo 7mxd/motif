@@ -1,4 +1,4 @@
-import { motifCss } from "../stacks/react-web/generate";
+import { motifCss } from "./motif-css";
 import { cssColor, cssCubicBezier, num } from "./css-values";
 import { JSON_COMMENT, type GeneratedFile } from "./header";
 import type { Theme } from "./theme";

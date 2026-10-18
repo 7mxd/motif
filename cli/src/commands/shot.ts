@@ -3,7 +3,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
-import { selectApps } from "../project/apps";
+import { noSuchApp, selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
 import { captureScreens, describeSizes, MAX_HEIGHT, parseSizes, type RouteResult, type StateScript, type Viewport } from "../shot/capture";
 import { missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison } from "../shot/compare";
@@ -179,7 +179,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const detected = detectApps(cwd).apps;
   const selected = selectApps(detected, ctx.app);
   if (selected === null) {
-    return usage(`There's no app at "${ctx.app}". Apps here: ${detected.map((a) => a.path).join(", ") || "none"}.`, { error: "no-such-app" });
+    return usage(noSuchApp(ctx.app, detected), { error: "no-such-app" });
   }
   const app: AppInfo | undefined = selected.length === 1 ? selected[0] : undefined;
   if (!givenUrl) {

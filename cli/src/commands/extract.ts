@@ -8,20 +8,20 @@ import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
 import { buildDraft, collectOccurrences } from "../extract/draft";
 import { readTailwindDefaults } from "../extract/tailwind-theme";
 import { isMotifGenerated } from "../generate/header";
-import { appLabel, selectApps } from "../project/apps";
+import { appLabel, noSuchApp, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
+import { plural } from "../text";
 
 export const DRAFT_PATH = "design/tokens.draft.json";
 export const REPORT_PATH = "design/extract-report.json";
 export const PREVIOUS_DRAFT_PATH = "design/tokens.draft.previous.json";
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandResult> {
   const detected = detectApps(cwd).apps;
   const apps = selectApps(detected, ctx.app);
   if (apps === null) {
-    return { command: "extract", exitCode: 2, text: `There's no app at "${ctx.app}". Apps here: ${detected.map((a) => a.path).join(", ") || "none"}.`, data: { error: "no-such-app" } };
+    return { command: "extract", exitCode: 2, text: noSuchApp(ctx.app, detected), data: { error: "no-such-app" } };
   }
   const supported = apps.filter((a) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack));
   if (supported.length === 0) {

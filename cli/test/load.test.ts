@@ -72,3 +72,25 @@ describe("lineAt", () => {
     expect(lineAt("a\r\nb", 3)).toBe(2);
   });
 });
+
+describe("loadTokenDocument: from the backlog", () => {
+  test("a file saved as UTF-16 (Windows PowerShell's >) says to save it as UTF-8, not that the JSON is broken", () => {
+    const utf16 = new TextDecoder("utf-8").decode(new Uint8Array([0xff, 0xfe, ...Buffer.from(fixtureText, "utf16le")]));
+    const { doc, findings } = loadTokenDocument("design/tokens.json", utf16);
+    expect(doc).toBeNull();
+    expect(findings.map((f) => f.code)).toEqual(["not-utf8"]);
+    expect(findings[0]!.message).toBe(
+      "This file is saved as UTF-16, not UTF-8 (Windows PowerShell's > saves files that way). Open it in your editor and save it as UTF-8.",
+    );
+  });
+
+  test("a large file loads quickly (each token's line is looked up, not counted again)", () => {
+    const tokens: Record<string, unknown> = {};
+    for (let i = 0; i < 20_000; i++) tokens[`t${i}`] = { $type: "dimension", $value: { value: i, unit: "px" } };
+    const text = JSON.stringify({ space: tokens }, null, 2);
+    const started = Date.now();
+    const { doc } = loadTokenDocument("big.json", text);
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(doc!.tokens.get("space.t19999")!.line).toBe(lineAt(text, text.indexOf('"t19999"')));
+  });
+});

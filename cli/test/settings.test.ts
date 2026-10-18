@@ -26,7 +26,8 @@ describe("project settings", () => {
   });
 
   test("writeSettings writes formatted JSON that detectApps reads back, srcDir included", () => {
-    const root = makeProject({});
+    // The app and its folder are there: design/motif.json's apps must exist (backlog).
+    const root = makeProject({ "web/src/main.tsx": "" });
     writeSettings(root, { motifContract: 1, apps: [{ path: "web", stack: "react-web", srcDir: "src" }], ignore: [] });
     expect(readFileSync(join(root, "design", "motif.json"), "utf8")).toEndWith("}\n");
     expect(detectApps(root).apps).toEqual([{ path: "web", stack: "react-web", source: "motif.json", srcDir: "src" }]);

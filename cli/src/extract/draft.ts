@@ -1,6 +1,7 @@
 import { formatHex, wcagContrast } from "culori";
 import type { SourceFile } from "../check/files";
 import { darkRanges } from "../check/dark";
+import { TAILWIND_SPACING_PX } from "../check/rules/tailwind-scale";
 import { inRanges, maskComments } from "../check/mask";
 import { scanFile } from "../check/run";
 import { colorContext, CSS_COLOR_LITERAL, CSS_DECLARATION } from "../check/rules/colors";
@@ -303,9 +304,12 @@ export function collectOccurrences(
             if (follow && file.lang !== "css" && hit.rule === "raw-color" && hit.context === "other") mark(hit.value!, "data");
           }
           break;
-        case "space":
-          add("space", hit.value!, hit);
+        case "space": {
+          // A spacing class (p-3) counts in steps of the app's own spacing base (Tailwind's --spacing), not always 4 px.
+          const step = tw && tw.spacingPx !== TAILWIND_SPACING_PX && /^(?:[\w-]+:)*!?-?[a-z-]+-\d+(?:\.\d+)?$/.test(hit.text);
+          add("space", step ? `${(Number.parseFloat(hit.value!) / TAILWIND_SPACING_PX) * tw!.spacingPx}px` : hit.value!, hit);
           break;
+        }
         case "radius":
           sized("radius", hit, tw?.radiusPx);
           break;

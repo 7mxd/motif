@@ -7,11 +7,11 @@ import { loadTokenDocument } from "../contract/load";
 import { checkRoles } from "../contract/roles";
 import { validateTokens } from "../contract/tokens";
 import { formatFindings, type Finding } from "../findings";
+import { plural } from "../text";
 
 export const DESIGN_MD = "DESIGN.md";
 export const TOKENS_JSON = "design/tokens.json";
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export async function runValidate(cwd: string, opts: { tokens?: string } = {}): Promise<CommandResult> {
   if (opts.tokens !== undefined) return validateTokensFile(cwd, opts.tokens);

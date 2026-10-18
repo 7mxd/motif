@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, parse, resolve } from "node:path";
 import type { Finding } from "../findings";
 import { stripBom } from "../text";
 
@@ -30,9 +31,11 @@ const NOT_SITES = new Set(["apps", "packages", "docs", "design", "templates", "t
 /** Pages built by another UI library or a static-site generator: their sources aren't plain HTML and CSS. */
 const NOT_PLAIN_DEPS = ["preact", "solid-js", "lit", "@builder.io/qwik", "@stencil/core", "ember-source", "astro", "@11ty/eleventy"];
 const SSG_FILES = ["mkdocs.yml", "_config.yml", "hugo.toml", "hugo.yaml", "hugo.json", ".eleventy.js", "eleventy.config.js", "eleventy.config.mjs", "eleventy.config.cjs"];
+/** Hugo's older config.toml, told apart from other tools' by the folders a Hugo site has. */
+const isOldHugo = (dir: string, entries: string[]) => entries.includes("config.toml") && ["layouts", "themes", "archetypes"].some((d) => isDir(join(dir, d)));
 
 export function siteFolder(dir: string): string | null {
-  return SITE_FOLDERS.find((f) => existsSync(join(dir, f, "index.html"))) ?? null;
+  return SITE_FOLDERS.find((f) => existsSync(join(dir, f, "index.html")) || existsSync(join(dir, f, "index.htm"))) ?? null;
 }
 
 /** React counts as a web app only alongside web build tooling; a server that renders React (e.g. emails) is not one. */
@@ -44,6 +47,8 @@ const REACT_WEB_TOOLING = [
 const SKIP_DIRS = new Set(["node_modules", "Pods", ".build", "DerivedData", "build", "dist"]);
 const SWIFT_MAX_DEPTH = 4;
 const SWIFT_MAX_FILES = 2000;
+/** Files and folders looked at, at most: a project with very many folders is looked through only so far. */
+const SWIFT_MAX_ENTRIES = 5000;
 
 function readText(path: string): string | null {
   try {
@@ -74,8 +79,9 @@ function isDir(path: string): boolean {
 
 function hasSwiftUIImport(dir: string): boolean {
   let scanned = 0;
+  let seen = 0;
   const visit = (d: string, depth: number): boolean => {
-    if (depth > SWIFT_MAX_DEPTH || scanned >= SWIFT_MAX_FILES) return false;
+    if (depth > SWIFT_MAX_DEPTH || scanned >= SWIFT_MAX_FILES || seen >= SWIFT_MAX_ENTRIES) return false;
     let entries: string[];
     try {
       entries = readdirSync(d);
@@ -84,6 +90,7 @@ function hasSwiftUIImport(dir: string): boolean {
     }
     for (const name of entries) {
       if (name.startsWith(".") || SKIP_DIRS.has(name)) continue;
+      if (++seen > SWIFT_MAX_ENTRIES) return false;
       const p = join(d, name);
       if (name.endsWith(".swift")) {
         scanned++;
@@ -128,7 +135,7 @@ export function detectStack(dir: string): StackId | null {
 
   // Pages without a framework. React without known tooling isn't plain web: it's an app Motif can't place yet.
   if (deps?.has("react") || NOT_PLAIN_DEPS.some((d) => deps?.has(d))) return null;
-  if (SSG_FILES.some((f) => entries.includes(f))) return null;
+  if (SSG_FILES.some((f) => entries.includes(f)) || isOldHugo(dir, entries)) return null;
   return siteFolder(dir) !== null ? "plain-web" : null;
 }
 
@@ -139,6 +146,16 @@ const SERVER_FRAMEWORKS = ["express", "fastify", "koa", "hono", "@nestjs/core", 
  * not a server that merely renders React, and not a workspace root. Such apps are listed with an
  * unknown stack so doctor asks for design/motif.json instead of offering to start a new app.
  */
+/** A workspace root (npm, yarn or pnpm workspaces): its apps live in folders, though it may hoist their dependencies. */
+function isWorkspaceRoot(dir: string): boolean {
+  if (existsSync(join(dir, "pnpm-workspace.yaml"))) return true;
+  try {
+    return Boolean(JSON.parse(stripBom(readText(join(dir, "package.json")) ?? "{}")).workspaces);
+  } catch {
+    return false;
+  }
+}
+
 function isUnrecognisedReactApp(dir: string): boolean {
   const deps = packageDeps(dir);
   if (!deps || !deps.has("react") || SERVER_FRAMEWORKS.some((d) => deps.has(d))) return false;
@@ -167,17 +184,25 @@ function readSettings(root: string): { apps: AppInfo[] | null; findings: Finding
     return { apps: null, findings: [bad('design/motif.json needs an "apps" list, so Motif detected your apps instead.')] };
   }
   const findings: Finding[] = [];
-  const apps: AppInfo[] = parsed.apps.map((a: any) => {
+  const apps: AppInfo[] = [];
+  for (const a of parsed.apps as any[]) {
+    const path = rel(String(a?.path ?? "."));
+    // An app that isn't there (moved, or a typo) is left out: every command would fail on it.
+    if (!isDir(join(root, path))) {
+      findings.push(bad(`design/motif.json lists "${path}", but there's no such folder here.`));
+      continue;
+    }
     const stack = (STACK_IDS as readonly string[]).includes(a?.stack) ? (a.stack as StackId) : null;
     if (!stack) findings.push(bad(`Unknown stack "${String(a?.stack)}" for "${String(a?.path)}". Use one of: ${STACK_IDS.join(", ")}.`));
-    return {
-      path: rel(String(a?.path ?? ".")),
-      stack,
-      source: "motif.json" as const,
-      ...(typeof a?.srcDir === "string" ? { srcDir: rel(a.srcDir) } : {}),
-    };
-  });
-  return { apps, findings };
+    let srcDir = typeof a?.srcDir === "string" ? rel(a.srcDir) : undefined;
+    if (srcDir !== undefined && !isDir(join(root, path, srcDir))) {
+      findings.push(bad(`design/motif.json says the pages of "${path}" are in "${srcDir}", but there's no such folder.`));
+      srcDir = undefined;
+    }
+    apps.push({ path, stack, source: "motif.json" as const, ...(srcDir !== undefined ? { srcDir } : {}) });
+  }
+  // With none left, Motif finds the apps itself.
+  return { apps: apps.length > 0 ? apps : null, findings };
 }
 
 export interface AppInfo {
@@ -194,13 +219,32 @@ const detected = (root: string, path: string, stack: StackId | null): AppInfo =>
   ...(stack === "plain-web" ? { srcDir: siteFolder(join(root, path)) ?? "." } : {}),
 });
 
-export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[] } {
+/** A home folder or a drive's root: looking through every folder there is slow, and on macOS asks for permissions. */
+function isTooWide(root: string, home: string): boolean {
+  const r = resolve(root);
+  return r === resolve(home) || r === parse(r).root;
+}
+
+export function detectApps(root: string, opts: { home?: string } = {}): { apps: AppInfo[]; findings: Finding[] } {
   const settings = readSettings(root);
   if (settings.apps) return { apps: settings.apps, findings: settings.findings };
+  if (isTooWide(root, opts.home ?? homedir())) {
+    return {
+      apps: [],
+      findings: [...settings.findings, {
+        code: "home-folder",
+        severity: "warning",
+        file: ".",
+        message: "This is your home folder (or a drive's root), so Motif doesn't look through every folder in it. Run Motif inside your app's folder.",
+      }],
+    };
+  }
 
   const rootStack = detectStack(root);
   // Pages at the root may sit beside an app in a subfolder (a server's public/ and a React client/): look further first.
-  if ((rootStack && rootStack !== "plain-web") || isUnrecognisedReactApp(root)) {
+  // A workspace root whose hoisted dependencies look like one app is looked through too.
+  const workspace = isWorkspaceRoot(root);
+  if (((rootStack && rootStack !== "plain-web") || isUnrecognisedReactApp(root)) && !workspace) {
     return { apps: [detected(root, ".", rootStack)], findings: settings.findings };
   }
 
@@ -226,6 +270,9 @@ export function detectApps(root: string): { apps: AppInfo[]; findings: Finding[]
   if (existsSync(join(root, "apps"))) scan("apps");
   if (existsSync(join(root, "packages"))) scan("packages");
   apps.sort((a, b) => a.path.localeCompare(b.path));
+  if (workspace && rootStack && rootStack !== "plain-web" && apps.length === 0) {
+    return { apps: [detected(root, ".", rootStack)], findings: settings.findings };
+  }
   if (rootStack === "plain-web") {
     const others = apps.filter((a) => a.stack !== "plain-web");
     return { apps: others.length > 0 ? others : [detected(root, ".", rootStack)], findings: settings.findings };

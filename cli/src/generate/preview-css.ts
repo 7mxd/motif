@@ -1,4 +1,4 @@
-import { motifCss } from "../stacks/react-web/generate";
+import { motifCss } from "./motif-css";
 import { num } from "./css-values";
 import type { Theme } from "./theme";
 import { fontStylesheets, googleFontsUrl } from "./theme-fonts";

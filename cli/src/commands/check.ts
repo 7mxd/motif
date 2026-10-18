@@ -6,11 +6,11 @@ import type { Hit } from "../check/types";
 import { loadTokenDocument } from "../contract/load";
 import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
 import { buildTheme } from "../generate/theme";
-import { appLabel, selectApps } from "../project/apps";
+import { appLabel, noSuchApp, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
 import { TOKENS_JSON } from "./validate";
+import { plural } from "../text";
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 function byFile(hits: Hit[], line: (h: Hit) => string): string[] {
   const out: string[] = [];
@@ -48,7 +48,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   const detected = detectApps(cwd).apps;
   const apps = selectApps(detected, ctx.app);
   if (apps === null) {
-    return { command: "check", exitCode: 2, text: `There's no app at "${ctx.app}". Apps here: ${detected.map((a) => a.path).join(", ") || "none"}.`, data: { error: "no-such-app" } };
+    return { command: "check", exitCode: 2, text: noSuchApp(ctx.app, detected), data: { error: "no-such-app" } };
   }
   const supported = apps.filter((a) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack));
   if (supported.length === 0) {
