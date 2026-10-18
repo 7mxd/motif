@@ -183,3 +183,70 @@ body { @apply bg-paper text-ink; }
     expect([hex("text-primary", "light"), hex("text-primary", "dark"), hex("background", "light"), hex("background", "dark")]).toEqual(["#111827", "#F5F5F7", "#F9FAFB", "#0B0B0C"]);
   });
 });
+
+describe("React drafts: the review of batch E", () => {
+  /** Extracts a React app (Tailwind 4, with the given default palette) and reads a role's hex, light or dark. */
+  const draft = async (files: Record<string, string>, palette = "") => {
+    const root = makeProject({ "package.json": PKG, "node_modules/tailwindcss/theme.css": `@theme default {\n${palette}}\n`, ...files });
+    expect((await runExtract(root, ctx)).exitCode).toBe(0);
+    const tokens = JSON.parse(readFileSync(join(root, "design/tokens.draft.json"), "utf8"));
+    return (role: string, mode: "light" | "dark" = "light") => {
+      const t = tokens.color[role];
+      const alias: string = mode === "dark" ? t.$extensions["dev.motif"].modes.dark : t.$value;
+      return tokens.primitive.color[alias.match(/^\{primitive\.color\.(.+)\}$/)![1]!].$value.hex;
+    };
+  };
+  const many = (n: number, html: string) => Array.from({ length: n }, () => html).join("");
+
+  test("colours in a TypeScript theme object are the theme's, not data", async () => {
+    const hex = await draft({
+      "src/theme.ts": 'export const theme = createTheme({ palette: { primary: { main: "#1976d2" }, error: { main: "#d32f2f" }, success: { main: "#2e7d32" } } });\n',
+      "src/App.tsx": "export const App = () => <main>Hi</main>;\n",
+    });
+    expect([hex("action-primary"), hex("danger"), hex("success")]).toEqual(["#1976D2", "#D32F2F", "#2E7D32"]);
+  });
+
+  test("a page and its cards in one colour group keep their own dark values", async () => {
+    const css = `@import "tailwindcss";
+:root { --bg: #f9fafb; --surface: #ffffff; --ink: #111827; }
+.dark { --bg: #0b0b0c; --surface: #1c1c1f; --ink: #f9fafb; }
+@theme inline { --color-bg: var(--bg); --color-surface: var(--surface); --color-ink: var(--ink); }
+body { @apply bg-bg text-ink; }
+`;
+    const hex = await draft({ "src/index.css": css, "src/App.tsx": `export const App = () => <main>${many(6, '<div className="bg-surface text-ink">x</div>')}</main>;\n` });
+    expect(hex("background", "dark")).toBe("#0B0B0C");
+  });
+
+  test("dark: classes and @apply in a dark block are dark values, not the light theme", async () => {
+    const css = `@import "tailwindcss";
+@theme { --color-paper: #ffffff; --color-night: #0a0a0a; --color-ink: #111111; --color-chalk: #e5e5e5; }
+@media (prefers-color-scheme: dark) { body { @apply bg-night; } }
+`;
+    const hex = await draft({ "src/index.css": css, "src/App.tsx": `export const App = () => <main>${many(5, '<p className="bg-paper dark:bg-night text-ink dark:text-chalk">x</p>')}</main>;\n` });
+    expect([hex("background"), hex("text-primary")]).toEqual(["#FFFFFF", "#111111"]);
+  });
+
+  test("a default palette name the app redefines is counted once", async () => {
+    const hex = await draft(
+      { "src/index.css": '@import "tailwindcss";\n@theme { --color-gray-500: #64748b; }\n', "src/App.tsx": `export const App = () => <main>${many(5, '<p className="text-gray-900">x</p>')}${many(3, '<p className="text-gray-500">y</p>')}</main>;\n` },
+      "  --color-gray-900: #101828;\n  --color-gray-500: #6a7282;\n  --color-white: #fff;\n",
+    );
+    expect(hex("text-primary")).toBe("#101828");
+  });
+
+  test("the border is never the page's own colour", async () => {
+    const hex = await draft(
+      { "src/index.css": '@import "tailwindcss";\nbody { background: #ffffff; }\n', "src/App.tsx": `export const App = () => <main className="bg-white">${many(10, '<div className="border border-amber-200">x</div>')}${many(3, '<img className="ring-2 ring-white" />')}</main>;\n` },
+      "  --color-white: #fff;\n  --color-amber-200: #fee685;\n",
+    );
+    expect(hex("border")).toBe("#FEE685");
+  });
+
+  test("on a dark page, cards a step lighter are its surface", async () => {
+    const hex = await draft(
+      { "src/index.css": '@import "tailwindcss";\nbody { background: #09090b; }\n', "src/App.tsx": `export const App = () => <main>${many(8, '<div className="bg-zinc-800 text-zinc-100">x</div>')}</main>;\n` },
+      "  --color-zinc-800: #27272a;\n  --color-zinc-100: #f4f4f5;\n",
+    );
+    expect([hex("background"), hex("surface")]).toEqual(["#09090B", "#27272A"]);
+  });
+});

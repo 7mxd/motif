@@ -1,4 +1,4 @@
-import { formatHex, wcagContrast } from "culori";
+import { formatHex, wcagContrast, wcagLuminance } from "culori";
 import type { SourceFile } from "../check/files";
 import { darkRanges } from "../check/dark";
 import { CLASS_PREFIX, classSegments, utilContext } from "../check/rules/tailwind";
@@ -209,6 +209,9 @@ function cssUses(file: SourceFile, aliases: Map<string, string>, fallbacks: Map<
   return uses;
 }
 
+/** A class for dark mode only: dark:bg-zinc-950, md:dark:text-white. */
+const DARK_VARIANT = /(?:^|:)dark:/;
+
 /** Names a variable has for a role, in order of preference; a name only counts when its colour is used that way. */
 const ROLE_NAMES: { role: string; words: string[]; exact: boolean; usedAs?: string[] }[] = [
   { role: "text-secondary", words: ["muted", "subtle", "subdued", "dim", "faint", "meta", "hint"], exact: false, usedAs: ["text"] },
@@ -243,6 +246,8 @@ export function collectOccurrences(
   tw: TailwindDefaults | null,
   tailwindFor: (f: SourceFile) => boolean = () => true,
   followFor: (f: SourceFile) => boolean = () => false,
+  /** Files whose script colours that aren't styles are data (a plain site's lists to pick from). Not a React app's theme objects. */
+  dataFor: (f: SourceFile) => boolean = followFor,
 ): Occurrences {
   const buckets: Record<Bucket, Map<string, Sample>> = {
     colors: new Map(), space: new Map(), radius: new Map(), fontSize: new Map(), fontFamily: new Map(),
@@ -291,8 +296,9 @@ export function collectOccurrences(
         variables.set(hit.prop, v);
         if (follow) roleNames.add(hit.prop);
       }
-      // Dark-mode colours give roles their dark values (buildDraft); they don't compete with the light ones.
-      if (hit.kind === "color" && hit.scheme === "dark") continue;
+      // Dark-mode colours give roles their dark values (buildDraft); they don't compete with the light ones. A class with
+      // the dark: variant (dark:bg-zinc-950) is one too.
+      if (hit.kind === "color" && (hit.scheme === "dark" || DARK_VARIANT.test(hit.text))) continue;
       const fallbackFor = hit.kind === "color" ? fallbacks.get(`${hit.file}:${hit.line}:${hit.column}`) : undefined;
       if (fallbackFor) {
         heldBack.push({ hit, name: fallbackFor });
@@ -309,7 +315,7 @@ export function collectOccurrences(
             // A background set on the page itself (html, body, :root) is the page's, whatever cards use more.
             if (hit.page) mark(hit.value!, "page");
             // A colour in a script that isn't set as a style (a list to pick from, a default) is data, not the theme.
-            if (follow && file.lang !== "css" && hit.rule === "raw-color" && hit.context === "other") mark(hit.value!, "data");
+            if (dataFor(file) && file.lang !== "css" && hit.rule === "raw-color" && hit.context === "other") mark(hit.value!, "data");
           }
           break;
         case "space": {
@@ -340,7 +346,11 @@ export function collectOccurrences(
   }
   // A Tailwind 4 app's own colour classes (text-ink, bg-card): each is a use of the --color-* variable its @theme sets, so
   // an app styled through its theme is read the way it's used, not only from the few colours written out.
-  const themeColors = [...new Set([...aliases.keys(), ...variables.keys()])].filter((n) => n.startsWith("--color-")).map((n) => n.slice("--color-".length));
+  // A default palette name the app redefines (--color-gray-500) is already counted by its class through the palette.
+  const themeColors = [...new Set([...aliases.keys(), ...variables.keys()])]
+    .filter((n) => n.startsWith("--color-"))
+    .map((n) => n.slice("--color-".length))
+    .filter((n) => !tw?.colors.has(n));
   if (themeColors.length > 0) {
     const names = themeColors.sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
     const pattern = new RegExp(`${CLASS_PREFIX}(bg|text|border(?:-[xytrblse])?|ring(?:-offset)?|outline|fill|stroke|decoration|caret|accent|from|via|to|divide|placeholder)-(${names})(?:\\/\\d{1,3})?(?![\\w-])`, "g");
@@ -348,11 +358,14 @@ export function collectOccurrences(
       if (!followFor(file) || !tailwindFor(file)) continue;
       const masked = { ...file, text: maskComments(file.text, file.lang) };
       const at = locator(masked.text);
-      // body { @apply bg-paper } sets the page's background.
+      // body { @apply bg-paper } sets the page's background; an @apply in a dark-mode block sets dark values, not uses.
       const selectorAt = file.lang === "css" ? selectorLookup(masked.text) : () => "";
+      const dark = file.lang === "css" ? [...darkRanges(masked.text), ...(file.dark ?? [])] : [];
       for (const seg of classSegments(masked)) {
+        if (inRanges(seg.offset, dark)) continue;
         const page = isPageSelector(selectorAt(seg.offset));
         for (const m of seg.text.matchAll(pattern)) {
+          if (DARK_VARIANT.test(m[0])) continue;
           const context = utilContext(m[1]!);
           uses.push({
             name: `--color-${m[2]}`,
@@ -485,10 +498,14 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   chosen["text-secondary"] = named["text-secondary"] ?? textPick.find((c) => c !== chosen["text-primary"]) ?? chosen["text-primary"];
   // A surface sits close to the page (cards on it), not a mid-grey used for a dot or a chip, and is tinted no more than
   // the page is (an error badge's pale red isn't a surface).
-  const nearPage = (c: ColorCluster) =>
-    !chosen.background || (wcagContrast(c.hex, chosen.background.hex) < 1.2 && c.c <= Math.max(0.012, chosen.background.c * 2));
-  // The border role is the neutral line between things; a coloured one is usually a focus or an active state.
-  chosen.border = named.border ?? borders.find((c) => c.c < 0.04) ?? borders[0];
+  // On a dark page, surfaces step further from it (zinc-800 cards on zinc-950 are 1.33:1).
+  const bg = chosen.background;
+  const nearLimit = bg && wcagLuminance(bg.hex) < 0.2 ? 1.6 : 1.2;
+  const nearPage = (c: ColorCluster) => !bg || (wcagContrast(c.hex, bg.hex) < nearLimit && c.c <= Math.max(0.012, bg.c * 2));
+  // The border role is the neutral line between things; a coloured one is usually a focus or an active state. Never the
+  // page's own colour (a white ring around avatars), which would draw no line at all.
+  const visible = (c: ColorCluster) => !bg || (c !== bg && wcagContrast(c.hex, bg.hex) >= 1.1);
+  chosen.border = named.border ?? borders.find((c) => c.c < 0.04 && visible(c)) ?? borders.find((c) => c !== bg) ?? borders[0];
   // A card the colour of its own outline would lose its edge: the lines' colour isn't a surface.
   chosen.surface =
     named.surface ?? backgrounds.find((c) => c !== chosen.background && c !== chosen.border && c.c < 0.04 && nearPage(c)) ?? chosen.background;
@@ -556,8 +573,12 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
       candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ??
       candidates[0];
     if (!v) continue;
-    const name = `${chosen[role]!.id}-dark`;
-    primitives[name] = { $value: srgbColor(solidHex(v.dark)!) };
+    // Roles that share a colour group (a grey-50 page and its white cards) can have different dark values.
+    const value = srgbColor(solidHex(v.dark)!);
+    const shared = `${chosen[role]!.id}-dark`;
+    const taken = (primitives[shared] as { $value?: { hex?: string } } | undefined)?.$value?.hex;
+    const name = taken && taken !== value.hex ? `${chosen[role]!.id}-${role}-dark` : shared;
+    primitives[name] = { $value: value };
     darkBase[role] = name;
   }
   if (darkBase.surface) darkBase["surface-raised"] = darkBase.surface;
