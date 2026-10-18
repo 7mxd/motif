@@ -59,7 +59,12 @@ describe("the optional mono role (backlog)", () => {
 
   test("the craft guide says what it's for, the stack guides how to use it, and the preview kit sets code in it", () => {
     expect(skill("knowledge/visual-craft.md")).toContain("- `mono`:");
-    expect(skill("adapters/plain-web/tokens.md")).toContain("`font.mono`");
+    expect(skill("adapters/plain-web/tokens.md")).toContain("var(--motif-font-mono-family, ui-monospace, monospace)");
+    expect(skill("preview-kit/README.md")).toContain("`code`");
+    for (const stack of ["plain-web", "react-web"]) {
+      const rawFont = skill(`adapters/${stack}/checks.md`).split("## `raw-font`")[1]!.split("\n## ")[0]!;
+      expect(rawFont).toContain("font.mono");
+    }
     expect(skill("adapters/react-web/tokens.md")).toContain("`font-mono`");
     expect(skill("preview-kit/kit.css")).toMatch(/code, kbd, samp, pre \{[^}]*var\(--motif-font-mono-family, ui-monospace, monospace\)/);
   });

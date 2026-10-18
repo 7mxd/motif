@@ -71,7 +71,7 @@ Every colour role needs a dark value; `motif validate` reports any role without 
 
 ### Optional roles
 
-A theme may leave these out. One it has must be the type shown, and `motif check` then accepts the matching classes and variables (`font-mono`, `var(--motif-font-mono-family)`).
+A theme may leave these out. One it has must be the type shown. With `font.mono`, the generated theme has the `font-mono` class and `var(--motif-font-mono-family)`, and `motif check` points code fonts to them; without it, check proposes adding the role.
 
 | Group | Roles |
 |---|---|

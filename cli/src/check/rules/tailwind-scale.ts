@@ -31,6 +31,8 @@ function classListAt(text: string, index: number): string {
 }
 
 export function scanTailwindScale(source: SourceFile, scale: Scale | null): Hit[] {
+  // The text sizes to offer: the mono role is for code, not for prose.
+  const proseKeys = scale ? new Set([...scale.textKeys].filter((k) => k !== "mono")) : undefined;
   const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
   const hits: Hit[] = [];
@@ -51,7 +53,7 @@ export function scanTailwindScale(source: SourceFile, scale: Scale | null): Hit[
       push(base + m.index!, m[0], "off-scale", "radius", m[1]!, offScale(scale?.radiusKeys, m[1]!), `Corner size ${m[0]} isn't one of your radius roles.`, `Use ${list("rounded-", scale?.radiusKeys)}.`);
     }
     for (const m of seg.text.matchAll(TEXT_SIZE)) {
-      push(base + m.index!, m[0], "off-scale", "font-size", m[1]!, offScale(scale?.textKeys, m[1]!), `Text size ${m[0]} isn't one of your text roles.`, `Use ${list("text-", scale?.textKeys)}.`);
+      push(base + m.index!, m[0], "off-scale", "font-size", m[1]!, offScale(scale?.textKeys, m[1]!), `Text size ${m[0]} isn't one of your text roles.`, `Use ${list("text-", proseKeys)}.`);
     }
     for (const m of seg.text.matchAll(SHADOW)) {
       push(base + m.index!, m[0], "off-scale", "shadow", m[1]!, offScale(scale?.shadowKeys, m[1]!), `Shadow ${m[0]} isn't one of your shadow roles.`, `Use ${list("shadow-", scale?.shadowKeys)}.`);

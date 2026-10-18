@@ -23,6 +23,12 @@ describe("code fonts and the optional mono role (backlog)", () => {
   test("and says how to add one when it doesn't", () => {
     expect(fixes("a.css", ".a { font-family: ui-monospace, monospace; }", scale)).toEqual([expect.stringContaining("font.mono")]);
   });
+  test("a font that's already a variable isn't flagged, in a style object too (review of batch D)", () => {
+    expect(fixes("a.tsx", '<code style={{ fontFamily: "var(--motif-font-mono-family)" }} />', withMono)).toEqual([]);
+  });
+  test("adding the role is proposed as a design guide change, not edited in place (review of batch D)", () => {
+    expect(fixes("a.css", ".a { font-family: ui-monospace, monospace; }", scale)[0]).toMatch(/^For code text, propose adding the optional font\.mono role/);
+  });
   test("other fonts still point to the text roles", () => {
     expect(fixes("a.css", ".a { font-family: 'Comic Sans MS'; }", withMono)).toEqual([expect.stringContaining("var(--motif-font-body-family)")]);
     expect(fixes("a.css", ".a { font-family: Monoton, cursive; }", withMono)).toEqual([expect.stringContaining("var(--motif-font-body-family)")]);

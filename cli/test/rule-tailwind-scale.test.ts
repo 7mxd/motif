@@ -11,6 +11,12 @@ const violations = (text: string, s = scale) =>
   scanTailwindScale(file(`<div className="${text}" />`), s).filter((h) => h.violation).map((h) => [h.rule, h.kind, h.value]);
 
 describe("font-mono and the optional mono role (backlog)", () => {
+  test("a text size's fix doesn't offer the mono role for prose (review of batch D)", () => {
+    const t = validTokens();
+    t.font.mono = { $value: { fontFamily: ["ui-monospace", "monospace"], fontSize: { value: 14, unit: "px" }, fontWeight: 400, lineHeight: 1.5 } };
+    const [hit] = scanTailwindScale(file('<p className="text-sm" />'), buildScale(buildTheme(docFrom(t)), "src")).filter((h) => h.violation);
+    expect(hit!.fix).not.toContain("text-mono");
+  });
   test("font-mono is the mono role when the theme has one; without it, the fix says how to add one", () => {
     const t = validTokens();
     t.font.mono = { $value: { fontFamily: ["ui-monospace", "monospace"], fontSize: { value: 14, unit: "px" }, fontWeight: 400, lineHeight: 1.5 } };

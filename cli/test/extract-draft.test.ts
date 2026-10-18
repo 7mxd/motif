@@ -4,6 +4,7 @@ import { readPairs } from "../src/contract/contrast";
 import { checkRoles } from "../src/contract/roles";
 import { validateTokens } from "../src/contract/tokens";
 import type { Sample } from "../src/extract/cluster";
+import { isMonospace } from "../src/contract/defaults";
 import { buildDraft, collectOccurrences, type Occurrences } from "../src/extract/draft";
 import type { TailwindDefaults } from "../src/extract/tailwind-theme";
 import { docFrom } from "./helpers";
@@ -145,5 +146,21 @@ describe("collectOccurrences + buildDraft: the page's background (backlog)", () 
     const { tokens, report } = buildDraft(collectOccurrences([css], null, () => false));
     const hexOf = (role: string) => (tokens as any).primitive.color[report.roles[`color.${role}`]!].$value.hex.toLowerCase();
     expect([hexOf("background"), hexOf("surface")]).toEqual(["#f4f4f5", "#ffffff"]);
+  });
+});
+
+describe("code fonts (review of batch D)", () => {
+  test("which families are code fonts", () => {
+    const code = ["JetBrains Mono", "Fira Code", "Source Code Pro", "Cascadia Code", "SFMono-Regular", "ui-monospace", "monospace", "Menlo", "Consolas", "Courier New", "Monaspace Neon", "MonoLisa", "Iosevka", "Lucida Console", "Space Mono", "Noto Sans Mono", "'Fira Code', monospace"];
+    const text = ["Code Pro", "Code Next", "Code 39", "Kimono", "Monoton", "Monotype Corsiva", "Libre Barcode 39", "Codec Pro", "Inter"];
+    expect(code.filter((f) => !isMonospace(f))).toEqual([]);
+    expect(text.filter((f) => isMonospace(f))).toEqual([]);
+  });
+
+  test("an app set all in a mono font keeps it as its brand font, and is told it's the mono role too", () => {
+    const { tokens, report } = buildDraft({ ...occ, fontFamily: [s("Space Mono", 9)] }) as any;
+    expect(tokens.primitive.font.sans.$value[0]).toBe("Space Mono");
+    expect(tokens.primitive.font.mono.$value[0]).toBe("Space Mono");
+    expect(report.notes.join("\n")).toContain("Space Mono");
   });
 });

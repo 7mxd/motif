@@ -16,7 +16,8 @@ const GENERIC = new Set([
 const SYSTEM = new Set([
   "arial", "helvetica", "helvetica neue", "georgia", "times", "times new roman", "courier", "courier new", "verdana",
   "tahoma", "trebuchet ms", "segoe ui", "segoe ui variable", "sf pro", "sf pro text", "sf pro display", "sf mono",
-  "new york", "menlo", "monaco", "consolas", "cascadia code", "lucida grande",
+  "new york", "menlo", "monaco", "consolas", "cascadia code", "cascadia mono", "lucida grande", "sfmono-regular", "liberation mono",
+  "lucida console", "dejavu sans mono", "andale mono",
 ]);
 
 /** The family a type role asks for first, or null when its list starts with a generic family. */

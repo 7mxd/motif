@@ -37,7 +37,7 @@ export function fontFix(family: string, scale: Scale | null): string {
   if (!isMonospace(family)) return "Use var(--motif-font-body-family) or a font role class such as font-body.";
   return scale?.textKeys.has("mono")
     ? "Use var(--motif-font-mono-family) or the font-mono class (your theme's mono role, for code)."
-    : "For code text, add the optional font.mono role to your theme values (design/tokens.json), then use var(--motif-font-mono-family) or font-mono.";
+    : "For code text, propose adding the optional font.mono role to the design guide (a change the person approves), then use var(--motif-font-mono-family) or font-mono.";
 }
 
 export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
@@ -101,6 +101,8 @@ export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
         else size(start + m.index!, m[0], kind, m[4]!, m[5]!);
       }
       for (const m of block.matchAll(STYLE_FONT)) {
+        // Already a variable (var(--motif-font-mono-family)): nothing typed in.
+        if (/^\s*var\(/.test(m[2]!)) continue;
         push(start + m.index!, m[0], "raw-font", "font-family", m[2]!, true, `Hard-coded font ${m[2]}.`, fontFix(m[2]!, scale));
       }
     }

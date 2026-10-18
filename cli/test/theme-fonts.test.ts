@@ -44,3 +44,11 @@ describe("googleFontsUrl", () => {
     expect(googleFontsUrl("Plus Jakarta Sans", [400, 600, 700])).toBe("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap");
   });
 });
+
+describe("the system's own monospace fonts (review of batch D)", () => {
+  test("are never fetched, whichever comes first", () => {
+    for (const family of ["SFMono-Regular", "Liberation Mono", "Lucida Console", "DejaVu Sans Mono", "Andale Mono", "Menlo", "Consolas"]) {
+      expect(themeFonts(withFonts([family, "monospace"])).map((f) => f.source)).toEqual(["system"]);
+    }
+  });
+});

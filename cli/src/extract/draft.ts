@@ -579,7 +579,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   // The brand font, not a generic family that happens to be common (system-ui fallbacks), and not a code font.
   const GENERIC = new Set(["system-ui", "sans-serif", "serif", "monospace", "cursive", "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded"]);
   const textFonts = occ.fontFamily.filter((f) => !isMonospace(f.value));
-  const family = textFonts.find((f) => !GENERIC.has(f.value.toLowerCase()))?.value ?? textFonts[0]?.value ?? "system-ui";
+  const namedIn = (list: Sample[]) => list.find((f) => !GENERIC.has(f.value.toLowerCase()))?.value;
+  // An app set all in a mono font (a developer tool, a brutalist site) keeps it as its text font too.
+  const family = namedIn(textFonts) ?? namedIn(occ.fontFamily) ?? textFonts[0]?.value ?? "system-ui";
   const font: Record<string, unknown> = { $type: "typography" };
   for (const [role, weight, lineHeight] of FONT_ROLES) {
     font[role] = { $value: { fontFamily: "{primitive.font.sans}", fontSize: px(sizeOf[role]!), fontWeight: weight, lineHeight } };
@@ -639,6 +641,10 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     notes.push(`Your CSS sets ${variables.length} colour ${variables.length === 1 ? "variable" : "variables"}; design/extract-report.json shows the role each matches, so you can define them from Motif's (--bg: var(--motif-color-background)).`);
   }
   if (defaulted.length) notes.push(`No colour was found for ${defaulted.join(", ")}, so Motif used defaults.`);
+  if (code !== undefined) {
+    const which = GENERIC.has(code.toLowerCase()) ? "The system's monospace fonts" : code;
+    notes.push(`${which} became the optional mono role (font.mono), for code text${family === code ? `; ${code} stays your text font too` : ""}.`);
+  }
   const offScale = spacing.filter((s) => !s.onScale).length;
   if (offScale) notes.push(`${offScale} spacing ${offScale === 1 ? "value wasn't" : "values weren't"} on a 4px scale; the report shows the nearest step for each.`);
   const unresolved = [...occ.unresolved, ...unparsed];

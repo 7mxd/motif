@@ -39,7 +39,7 @@ A spacing, radius, font size or shadow value that isn't on the theme's scales.
 A font family typed into code.
 
 - Example: `font-family: "Inter", sans-serif`, `style={{ fontFamily: "Georgia" }}`.
-- Fix: a font role (`font-body`, `font-display`) or `var(--motif-font-body-family)`.
+- Fix: a font role (`font-body`, `font-display`) or `var(--motif-font-body-family)`. For a code font (`monospace`, `font-mono`, Fira Code), the optional `font.mono` role (`font-mono`, `var(--motif-font-mono-family)`); if the theme has no mono role, propose adding it as a design guide change.
 
 ## `raw-motion`
 
