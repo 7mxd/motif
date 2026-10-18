@@ -48,6 +48,7 @@ Every colour, size, corner, shadow, font and timing comes from a variable:
 | `radius.md` | `var(--motif-radius-md)` |
 | `shadow.md` | `var(--motif-shadow-md)` |
 | `font.body` | `var(--motif-font-body-family)`, `-size`, `-weight` and `-line-height` |
+| `font.mono` (optional, for code) | `code, kbd, samp, pre { font-family: var(--motif-font-mono-family, ui-monospace, monospace); }` (the fallback covers a theme without the role) |
 | `duration.base`, `easing.standard` | `var(--motif-duration-base)`, `var(--motif-easing-standard)` |
 
 Lengths that aren't design values stay as they are: a `1px` border, a `40rem` maximum width, a `3rem` minimum height for touch targets.
@@ -71,19 +72,34 @@ Colours that are the user's own data (a colour they picked for their card, say) 
 
 ## Dark mode
 
-Dark mode follows the system automatically. To offer a switch, set `data-theme` on `<html>` and remember the choice:
+Dark mode follows the system automatically. To offer a switch, set `data-theme` on `<html>` and remember the choice. The saved choice is applied by a small script in `<head>`, before the page is drawn; in `app.js` (loaded with `defer`) it would run after, and the page would flash in the other theme first:
+
+```html
+<script>
+  try {
+    const theme = localStorage.getItem("theme");
+    if (theme) document.documentElement.dataset.theme = theme;
+  } catch {}
+</script>
+```
+
+The `try` block keeps its name to itself (a global `const` would clash with one of the same name in `app.js` and stop it) and lets the page draw when storage is blocked. A site whose security policy blocks inline scripts loads the same lines from a `theme.js` in `<head>`, without `defer`.
+
+The switch itself goes in `app.js`:
 
 ```js
-const saved = localStorage.getItem("theme");
-if (saved) document.documentElement.dataset.theme = saved;
-
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
   localStorage.setItem("theme", theme);
 }
+
+function followSystem() {
+  delete document.documentElement.dataset.theme;
+  localStorage.removeItem("theme");
+}
 ```
 
-Remove the attribute (`delete document.documentElement.dataset.theme`) to follow the system again. Never write your own `prefers-color-scheme` rules for colours: the roles already change.
+Never write your own `prefers-color-scheme` rules for colours: the roles already change.
 
 ## Fonts
 

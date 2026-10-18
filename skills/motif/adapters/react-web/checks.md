@@ -4,6 +4,8 @@ What `motif check` and `motif shot --audit` report in a React web app, and how t
 
 A value that truly must stay as it is (a partner's brand colour, say) gets a `motif-ok: <reason>` comment on its line or the line above. `motif check` lists these exceptions separately instead of as problems. Keep them rare, and always give the reason.
 
+On Tailwind 3, Motif writes the CSS variables only, so its role classes (`bg-action-primary`, `text-body`) don't exist there and are reported as `tailwind-palette`. Use the role's variable as an arbitrary value instead: `bg-[var(--motif-color-action-primary)]`, `text-[length:var(--motif-font-body-size)]`, `rounded-[var(--motif-radius-md)]`. Spacing classes (`p-4`) work on both. `motif check` words its fixes this way on Tailwind 3; upgrading to Tailwind 4 brings the role classes.
+
 ## `raw-color`
 
 A colour typed into code or CSS: hex, `rgb()`, `hsl()`, `oklch()` or a named colour.
@@ -37,7 +39,7 @@ A spacing, radius, font size or shadow value that isn't on the theme's scales.
 A font family typed into code.
 
 - Example: `font-family: "Inter", sans-serif`, `style={{ fontFamily: "Georgia" }}`.
-- Fix: a font role (`font-body`, `font-display`) or `var(--motif-font-body-family)`.
+- Fix: a font role (`font-body`, `font-display`) or `var(--motif-font-body-family)`. For a code font (`monospace`, `font-mono`, Fira Code), the optional `font.mono` role (`font-mono`, `var(--motif-font-mono-family)`); if the theme has no mono role, propose adding it as a design guide change.
 
 ## `raw-motion`
 
@@ -82,6 +84,26 @@ From `motif shot --audit`: a control smaller than 24×24 px (critical), or small
 From `motif shot --audit`: something still moves when reduced motion is on.
 
 - Fix: `MotionConfig reducedMotion="user"` at the root; for custom animation, `useReducedMotion()` to turn it off.
+
+## Screens behind a form or a click
+
+`motif shot` captures each page as it loads. A screen that only appears after someone fills in a form, opens a panel or sends something needs a **state script**: a few lines of JavaScript, run in the page after it loads, that get it there. Keep one per state in `design/states/`, named after the state (letters, digits and dashes), and add `--state design/states/<state>.js` for each.
+
+React keeps a field's value itself, so set it the way typing would (the setter of the field's own kind: input, textarea or select), then send the event React listens for (`change` for a select):
+
+```js
+// design/states/searched.js: the results after a search. Only the search page has the field.
+const field = document.querySelector("input[name=q]");
+if (!field) return;
+Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, "linen");
+field.dispatchEvent(new Event("input", { bubbles: true }));
+// A field outside a <form>: click the page's own button instead.
+field.form?.requestSubmit();
+```
+
+- It runs in every page `motif shot` captures: start it with a guard that returns on other pages (`if (!field) return;`), or capture only its page with `--routes`.
+- Screenshots are named after the page and the state (`search@searched.mobile.png`); each starts as a first visit, and a script still running after 15 seconds is stopped and reported.
+- Use the same `--state` options for `--save` and `--against`, and mock data only.
 
 ## Reading the results
 

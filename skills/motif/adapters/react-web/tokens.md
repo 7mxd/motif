@@ -46,6 +46,7 @@ Importing it before Tailwind would let Tailwind's defaults win.
 | `radius.md` | `rounded-md` | `var(--motif-radius-md)` |
 | `shadow.md` | `shadow-md` | `var(--motif-shadow-md)` |
 | `font.body` | `font-body text-body` (the family, then the size with its line height and weight) | `var(--motif-font-body-family)` and `var(--motif-font-body-size)` |
+| `font.mono` (optional, for code) | `font-mono` (only when the theme has the role: Motif's theme replaces Tailwind's own font classes) | `var(--motif-font-mono-family)` |
 | `easing.standard` | `ease-standard` | `var(--motif-easing-standard)` |
 | `duration.base` with `easing.standard` | `transition` | — |
 
@@ -75,6 +76,36 @@ import "@fontsource/inter/600.css";
 The font files are served with the app, so nothing loads from Google when people use it.
 
 Don't use `next/font` or the `@fontsource-variable` packages for theme fonts: both register the font under a different family name, so the theme's names wouldn't match and text would fall back.
+
+A font with no Fontsource package (a brand font, or one the developer bought) is served with the app: put its files and licence in `public/fonts/`, and declare it once under the exact family name the theme uses, in a stylesheet the root imports (Next.js: `src/app/globals.css`; Vite: `src/index.css`):
+
+A variable font covers every weight with one file, declared with its range:
+
+```css
+@font-face {
+  font-family: "Acme Sans";
+  src: url("/fonts/acme-sans.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+```
+
+Static files (a Regular and a Bold) get one `@font-face` each, under the same family name, so bold text uses the bold file:
+
+```css
+@font-face {
+  font-family: "Acme Sans";
+  src: url("/fonts/acme-sans-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Acme Sans";
+  src: url("/fonts/acme-sans-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+```
 
 ## Tailwind v3
 

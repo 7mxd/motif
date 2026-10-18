@@ -42,6 +42,8 @@ CSS has no springs. Where the design guide asks for a spring, use the nearest du
 ```css
 dialog[open] { animation: toast-in var(--motif-duration-base) var(--motif-easing-enter); }
 dialog::backdrop { background: var(--motif-color-text-primary); opacity: 0.4; }
+dialog[open]::backdrop { animation: backdrop-in var(--motif-duration-base) var(--motif-easing-enter); }
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 0.4; } }
 ```
 
 **Changing a page's content.** The View Transitions API cross-fades a change where the browser supports it; elsewhere the change simply happens:

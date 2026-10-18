@@ -11,7 +11,7 @@ How Motif works with a site made of HTML, CSS and JavaScript and no framework: w
 
 ## How Motif recognises it
 
-A folder is a plain web site when it has an `index.html` and no framework in its `package.json` (a small server, or Vite on its own, is fine). The first of these folders with an `index.html` is the **site folder**, where the pages live: the project folder itself, then `public/`, `src/`, `site/` and `www/`. `motif doctor --json` lists the site with the stack `plain-web` and says where its pages are; `design/motif.json` records it as `srcDir`, and can name another folder for an unusual layout:
+A folder is a plain web site when it has an `index.html` (or `index.htm`) and no framework in its `package.json` (a small server, or Vite on its own, is fine). The first of these folders with one is the **site folder**, where the pages live: the project folder itself, then `public/`, `src/`, `site/` and `www/`. `motif doctor --json` lists the site with the stack `plain-web` and says where its pages are; `design/motif.json` records it as `srcDir`, and can name another folder for an unusual layout:
 
 ```json
 { "motifContract": 1, "apps": [{ "path": ".", "stack": "plain-web", "srcDir": "pages" }] }
@@ -26,7 +26,7 @@ Create a folder named after the site, and in it:
 - `index.html`: the first page, linking the stylesheets in this order: `motif.css`, then `components.css`, then `styles.css`.
 - `components.css`: the shared components ([components](components.md)).
 - `styles.css`: the page layout, and the site's own names for roles if it has any ([theme code](tokens.md)).
-- `app.js`: the page's behaviour, loaded with `defer`.
+- `app.js`: the page's behaviour, loaded with `defer`. (A saved light or dark choice is the one exception: it's applied by a small script in `<head>`, so the page doesn't flash; see [theme code](tokens.md#dark-mode).)
 - `mock-data.js`: every piece of made-up content, in one file.
 
 A starting `index.html`:

@@ -25,7 +25,7 @@ A spacing, corner or text size that isn't on the theme's scales.
 A font family typed into CSS or a script. `@font-face` declarations are fine: they load the theme's fonts.
 
 - Example: `font-family: Georgia, serif`.
-- Fix: a font role's family, `var(--motif-font-heading-family)`.
+- Fix: a font role's family, `var(--motif-font-heading-family)`. For a code font (`monospace`, Fira Code), the optional `font.mono` role's `var(--motif-font-mono-family)`; if the theme has no mono role, propose adding it as a design guide change.
 
 ## `raw-motion`
 

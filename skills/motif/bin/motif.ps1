@@ -31,8 +31,12 @@ if (-not (Test-Path -LiteralPath $Bin)) {
     [Console]::Error.WriteLine("Motif: downloading the Motif tool v$Version (one time only)...")
     try {
       [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-      Invoke-WebRequest -UseBasicParsing -Uri "$Base/$Asset" -OutFile (Join-Path $Tmp $Asset)
-      Invoke-WebRequest -UseBasicParsing -Uri "$Base/SHA256SUMS" -OutFile (Join-Path $Tmp 'SHA256SUMS')
+      # A server that stops answering gives up after a minute: TimeoutSec covers the wait for its reply, and PowerShell
+      # 7.4 and later need OperationTimeoutSeconds for a download that stalls part-way (Windows PowerShell stops at 5 minutes).
+      $Web = @{ UseBasicParsing = $true; TimeoutSec = 60 }
+      if ($PSVersionTable.PSVersion -ge [version]'7.4') { $Web.OperationTimeoutSeconds = 60 }
+      Invoke-WebRequest @Web -Uri "$Base/$Asset" -OutFile (Join-Path $Tmp $Asset)
+      Invoke-WebRequest @Web -Uri "$Base/SHA256SUMS" -OutFile (Join-Path $Tmp 'SHA256SUMS')
     } catch {
       [Console]::Error.WriteLine("Motif: couldn't download the Motif tool. Check your internet connection and try again.")
       exit 2

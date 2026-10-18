@@ -53,6 +53,9 @@ A component is an HTML pattern with classes: a base class named after the compon
   cursor: pointer;
   transition: transform var(--motif-duration-fast) var(--motif-easing-standard);
 }
+@media (hover: hover) {
+  .button:hover:not(:disabled) { filter: brightness(0.94); }
+}
 .button:active:not(:disabled) { transform: scale(0.97); }
 .button:focus-visible { outline: 2px solid var(--motif-color-focus); outline-offset: 2px; }
 .button:disabled { cursor: not-allowed; opacity: 0.5; }

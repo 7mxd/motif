@@ -45,7 +45,7 @@ Refero and 60fps.design need the developer to sign in once, after `motif connect
 | Agent | How the developer signs in |
 |---|---|
 | Claude Code | type /mcp, choose the server and sign in |
-| Codex | run `codex mcp login <server>` in a terminal |
+| Codex | run `codex mcp login <server>` in a terminal, or in Codex's app or editor extension open MCP servers in its settings and choose Authenticate |
 | Cursor | in Cursor's settings, under MCP, sign in to the server (or run `cursor-agent mcp login <server>`) |
 | GitHub Copilot CLI | type /mcp and sign in to the server |
 | VS Code (Copilot) | VS Code asks them to sign in the first time Copilot uses the server |
