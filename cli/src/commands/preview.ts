@@ -8,7 +8,7 @@ import type { Theme } from "../generate/theme";
 import { themeFonts } from "../generate/theme-fonts";
 import { openUrl } from "../preview/open";
 import { EMBEDDED_PRESETS, presetTheme } from "../preview/presets";
-import { renderPngs, type RenderTarget } from "../preview/render";
+import { CASELESS, renderPngs, type RenderTarget } from "../preview/render";
 import { startPreviewServer } from "../preview/server";
 import { loadThemeFile } from "../preview/theme-file";
 import { TOKENS_JSON } from "./validate";
@@ -70,13 +70,22 @@ function directionTokens(cwd: string, file: string): string | null {
   return rel !== TOKENS_JSON && existsSync(join(cwd, rel)) ? rel : null;
 }
 
-/** PNG base names: the file name, or the whole path when two mockups share a file name and an output folder. */
-function pngNames(files: string[], outDirs: string[]): string[] {
+/**
+ * PNG base names: the file name, or the whole path when two mockups share a file name and an output folder (names that
+ * differ only in case are the same file where case doesn't count).
+ */
+export function pngNames(files: string[], outDirs: string[], caseless: boolean = CASELESS): string[] {
+  const same = (a: string, b: string) => (caseless ? a.toLowerCase() === b.toLowerCase() : a === b);
   const base = files.map((f) => basename(f).replace(/\.html$/i, ""));
   return files.map((f, i) =>
-    base.some((b, j) => j !== i && b === base[i] && outDirs[j] === outDirs[i]) ? f.replace(/\.html$/i, "").replace(/\//g, "-") : base[i]!,
+    base.some((b, j) => j !== i && same(b, base[i]!) && same(outDirs[j]!, outDirs[i]!)) ? f.replace(/\.html$/i, "").replace(/\//g, "-") : base[i]!,
   );
 }
+
+/** A path as a key: normalized, and in one case where case doesn't count (the file watcher reports the case on disk). */
+const pathKey = (path: string) => (CASELESS ? normalize(path).toLowerCase() : normalize(path));
+/** Files a mockup can use: saving one makes its folder's PNGs again. Anything else (PNGs, editors' temporary files) doesn't. */
+const ASSET = /\.(css|js|mjs|json|svg|jpe?g|gif|webp|avif|woff2?|ttf|otf)$/i;
 
 function contractTheme(cwd: string): { theme: Theme | null; problems: Finding[] } {
   const path = join(cwd, "design", "tokens.json");
@@ -143,7 +152,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   const off = !browser && (deps.browserOff?.() ?? false);
   if (pngOnly && !browser) {
     return off
-      ? fail(2, `${BROWSER_OFF}, so Motif can't make PNGs. Unset MOTIF_BROWSER to use Chrome or Edge.`, { error: "browser-off", status: "needs_browser" })
+      ? fail(2, `${BROWSER_OFF}, so Motif can't make PNGs. Unset MOTIF_BROWSER to use Chrome or Edge.`, { error: "browser-off", status: "browser_off" })
       : fail(2, `No Chrome or Edge found, so Motif can't make PNGs. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
   }
 
@@ -165,14 +174,14 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   const notes: string[] = [];
   let pngs: string[] = [];
   let missingFonts: string[] = [];
-  // Motif's own PNGs: saving them is no change to the mockups.
+  // Motif's own PNGs, known before each is written: saving them is no change to the mockups.
   const ours = new Set<string>();
+  const onFile = (path: string) => void ours.add(pathKey(path));
   if (browser) {
     try {
       const what = gallery ? "the 8 starting styles" : `${targets.length} ${targets.length === 1 ? "mockup" : "mockups"}`;
       ctx.progress?.(`Making PNGs of ${what}, in light and dark…`);
-      const rendered = await deps.render({ browserPath: browser.path, targets, outDir: defaultOut });
-      for (const p of rendered.files) ours.add(normalize(p));
+      const rendered = await deps.render({ browserPath: browser.path, targets, outDir: defaultOut, onFile });
       pngs = rendered.files.map((p) => projectPath(cwd, p));
       missingFonts = rendered.missingFonts;
     } catch (e) {
@@ -187,7 +196,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     notes.push(off ? `${BROWSER_OFF}, so no PNGs were made.` : `No Chrome or Edge found, so no PNGs were made. ${INSTALL_HINT}`);
   }
   if (missingFonts.length > 0) {
-    notes.push(`Shown with a fallback font: ${missingFonts.join(", ")}. Motif includes the starting styles' fonts; other fonts come from Google Fonts, which didn't provide these (no connection, or not a Google font).`);
+    notes.push(`Shown with a fallback font: ${missingFonts.join(", ")}. Motif includes the starting styles' fonts; other fonts come from Google Fonts, which didn't provide these (no connection, or not a Google font), and it isn't installed on this computer.`);
   }
   const pngLines = pngs.length > 0 ? [`✓ Saved ${pngs.length} PNGs (light and dark):`, ...pngs.map((p) => `  ${p}`)] : [];
 
@@ -196,36 +205,42 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     return { command: "preview", exitCode: 0, text: [...pngLines, ...notes.map((n) => `• ${n}`)].join("\n"), data: { pngs, missingFonts, notes } };
   }
 
-  // Saving a mockup makes its PNGs again; saving anything else in its folder (shared CSS, an image) makes that folder's.
-  // One render at a time.
+  // Saving a mockup makes its PNGs again; saving a file it can use (shared CSS, an image) makes its folder's. Changes
+  // that come while a render runs wait for it, then go in one render.
+  const mockupAt = files.map((f) => pathKey(join(cwd, f)));
   let changed = new Set<string>();
-  const mockups = new Set(files.map((f) => normalize(join(cwd, f))));
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let rendering: Promise<void> = Promise.resolve();
+  let busy = false;
   let stopped = false;
-  const rerender = () => {
-    const paths = changed;
+  const rerender = async () => {
+    if (busy || stopped || !browser || gallery) return;
+    const paths = [...changed];
     changed = new Set();
-    const mockup = (i: number) => normalize(join(cwd, files[i]!));
-    const again = targets.filter((_, i) => !gallery && [...paths].some((p) => p === mockup(i) || (!mockups.has(p) && dirname(p) === dirname(mockup(i)))));
-    if (again.length === 0 || stopped || !browser) return;
-    rendering = rendering.then(async () => {
+    const again = targets.filter(
+      (_, i) => existsSync(join(cwd, files[i]!)) && paths.some((p) => p === mockupAt[i] || (ASSET.test(p) && dirname(p) === dirname(mockupAt[i]!))),
+    );
+    if (again.length === 0) return;
+    busy = true;
+    try {
+      const rendered = await deps.render({ browserPath: browser.path, targets: again, outDir: defaultOut, nameAgainst: targets, onFile });
       if (stopped) return;
-      try {
-        const rendered = await deps.render({ browserPath: browser.path, targets: again, outDir: defaultOut });
-        for (const p of rendered.files) ours.add(normalize(p));
-        ctx.progress?.(`Updated the PNGs of ${again.map((t) => t.name).join(", ")}.`);
-      } catch (e) {
-        ctx.progress?.(`Couldn't update the PNGs: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    });
+      ctx.progress?.(`Updated the PNGs of ${again.map((t) => t.name).join(", ")}.`);
+      if (rendered.missingFonts.length > 0) ctx.progress?.(`Shown with a fallback font: ${rendered.missingFonts.join(", ")}.`);
+    } catch (e) {
+      if (!stopped) ctx.progress?.(`Couldn't update the PNGs: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      busy = false;
+      if (changed.size > 0 && !stopped) void rerender();
+    }
   };
   server.watch(files, {
-    ignore: (path) => ours.has(normalize(path)),
+    ignore: (path) => ours.has(pathKey(path)),
     onChange: (path) => {
-      changed.add(normalize(path));
+      const key = pathKey(path);
+      if (!mockupAt.includes(key) && !ASSET.test(key)) return;
+      changed.add(key);
       clearTimeout(timer);
-      timer = setTimeout(rerender, 300);
+      timer = setTimeout(() => void rerender(), 300);
     },
   });
 
@@ -241,21 +256,21 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   const lines = [
     `✓ Previewing ${what} at ${url}`,
     ...pages.slice(1).map((p) => `  Also: ${server.url}${p}`),
-    gallery ? "  Press Ctrl+C to stop." : "  Pages reload when you save a mockup. Press Ctrl+C to stop.",
+    gallery ? "  Press Ctrl+C to stop." : browser ? "  Pages reload, and their PNGs are made again, when you save a mockup. Press Ctrl+C to stop." : "  Pages reload when you save a mockup. Press Ctrl+C to stop.",
     ...pngLines,
     ...notes.map((n) => `• ${n}`),
   ];
-  const hold = deps.waitForStop().then(async () => {
+  // A render still running when it's stopped isn't waited for: Motif exits, and its browser goes with it.
+  const hold = deps.waitForStop().then(() => {
     stopped = true;
     clearTimeout(timer);
-    await rendering;
     server.stop();
   });
   return {
     command: "preview",
     exitCode: 0,
     text: lines.join("\n"),
-    data: { url, files, pngs, missingFonts, notes, ...(browser ? {} : { status: "needs_browser" }) },
+    data: { url, files, pngs, missingFonts, notes, ...(browser ? {} : { status: off ? "browser_off" : "needs_browser" }) },
     hold,
   };
 }

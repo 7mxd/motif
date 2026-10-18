@@ -142,8 +142,10 @@ export async function openTab(send: Send, isolated: boolean): Promise<{ targetId
     await send("Runtime.enable", {}, sessionId);
     return { targetId: targetId!, sessionId, ...(browserContextId ? { browserContextId } : {}) };
   } catch (e) {
-    if (targetId) await send("Target.closeTarget", { targetId }).catch(() => undefined);
-    if (browserContextId) await send("Target.disposeBrowserContext", { browserContextId }).catch(() => undefined);
+    // A browser that stopped answering mustn't hold the real error up: each clean-up step gets two seconds.
+    const brief = (p: Promise<unknown>) => Promise.race([p.catch(() => undefined), Bun.sleep(2000)]);
+    if (targetId) await brief(send("Target.closeTarget", { targetId }));
+    if (browserContextId) await brief(send("Target.disposeBrowserContext", { browserContextId }));
     throw e;
   }
 }

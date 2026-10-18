@@ -37,6 +37,13 @@ describe("pngName", () => {
     expect(named("x.dark", out, 0, "light")).toBe(join(out, "x.dark.png"));
     expect(named("home", join("elsewhere"), 1, "light")).toBe(join("elsewhere", "home-2.png"));
   });
+
+  test("where case doesn't count, Home-2.html owns home's frame 2 too; the fallback is never taken (review of batch A)", () => {
+    const out = join("o");
+    const named = pngNamer(["home", "Home-2", "home_2"].map((name) => ({ name, url: "", outDir: out })), out, true);
+    expect(named("home", out, 1, "light")).toBe(join(out, "home_2_2.png"));
+    expect(named("Home-2", out, 0, "light")).toBe(join(out, "Home-2.png"));
+  });
 });
 
 describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {

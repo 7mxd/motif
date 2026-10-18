@@ -16,11 +16,12 @@ function runHooks(): void {
 }
 
 /**
- * A signal ends whatever runs until stopped, which then finishes normally; otherwise (or on a second Ctrl+C while it
- * stops) it ends the process with the signal's exit code. Either way the exit hooks run.
+ * Ctrl+C ends whatever runs until stopped, which then finishes normally; otherwise (or on a second Ctrl+C while it
+ * stops) it ends the process with the signal's exit code. A termination signal or a closed console always ends the
+ * process at once: there may be only seconds left. Either way the exit hooks run.
  */
 const onSignal = (code: number) => () => {
-  if (stopWaiters.length > 0) {
+  if (code === 130 && stopWaiters.length > 0) {
     const waiters = stopWaiters;
     stopWaiters = [];
     for (const resolve of waiters) resolve();
@@ -56,7 +57,7 @@ export function onExit(fn: () => void): () => void {
   };
 }
 
-/** Resolves on Ctrl+C (or a termination signal), so a command that runs until stopped can finish normally, with exit 0. */
+/** Resolves on Ctrl+C, so a command that runs until stopped can finish normally, with exit 0. */
 export function waitForStop(): Promise<void> {
   install();
   return new Promise((resolve) => stopWaiters.push(resolve));

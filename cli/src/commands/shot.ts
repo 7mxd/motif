@@ -151,7 +151,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const browser = deps.findBrowser();
   if (!browser) {
     if (deps.browserOff?.()) {
-      return usage(`${BROWSER_OFF}, so Motif can't take screenshots. Unset MOTIF_BROWSER to use Chrome or Edge.`, { error: "browser-off", status: "needs_browser" });
+      return usage(`${BROWSER_OFF}, so Motif can't take screenshots. Unset MOTIF_BROWSER to use Chrome or Edge.`, { error: "browser-off", status: "browser_off" });
     }
     return usage(`No Chrome or Edge found, so Motif can't take screenshots. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
   }

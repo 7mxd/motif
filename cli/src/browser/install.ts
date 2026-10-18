@@ -1,5 +1,6 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, normalize, sep } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { onExit } from "../cleanup";
+import { basename, dirname, join, normalize, relative, sep } from "node:path";
 import { unzipSync } from "fflate";
 
 export const BROWSER_INDEX_URL = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json";
@@ -32,7 +33,7 @@ async function download(res: Response, onProgress?: (got: number, total: number)
   for await (const part of res.body as unknown as AsyncIterable<Uint8Array>) {
     parts.push(part);
     got += part.length;
-    onProgress?.(got, Math.max(total, got));
+    onProgress?.(got, total);
   }
   const bytes = new Uint8Array(got);
   let at = 0;
@@ -46,12 +47,40 @@ async function download(res: Response, onProgress?: (got: number, total: number)
 /** An archive entry with an absolute path or a drive letter (one that climbs out with ".." is caught where it's written). */
 const outside = (name: string) => /^([\\/]|[A-Za-z]:)/.test(name);
 
+/** The folder (in the browsers folder) of the copy current.json names, if any. */
+function currentFolder(home: string): string | null {
+  const path = installedBrowser(home);
+  return path ? relative(browsersDir(home), path).split(sep)[0] ?? null : null;
+}
+
+/**
+ * Removes every folder in the browsers folder but the ones kept: older versions, an install stopped while unpacking, a
+ * copy that was in use last time. A folder still in use stays, and a later install tries again.
+ */
+function removeLeftovers(dir: string, keep: (string | null)[]): void {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names.filter((n) => n !== "current.json" && !keep.includes(n))) {
+    try {
+      rmSync(join(dir, name), { recursive: true, force: true });
+    } catch {
+      // Still in use: a later install tries again.
+    }
+  }
+}
+
 export async function installBrowser(opts: {
   home: string;
   indexUrl?: string;
   platform?: NodeJS.Platform;
   arch?: string;
   onProgress?: (got: number, total: number) => void;
+  /** Told when the download is done and unpacking starts (it takes a few seconds and prints nothing). */
+  onStage?: (stage: "unpacking") => void;
 }): Promise<{ version: string; path: string; bytes: number }> {
   const platform = opts.platform ?? process.platform;
   const plat = cftPlatform(platform, opts.arch ?? process.arch);
@@ -67,6 +96,7 @@ export async function installBrowser(opts: {
   const zipRes = await fetch(url).catch(() => null);
   if (!zipRes?.ok) throw new Error(`Couldn't download the browser${zipRes ? ` (HTTP ${zipRes.status})` : ""}. Try again later.`);
   const bytes = await download(zipRes, opts.onProgress);
+  opts.onStage?.("unpacking");
   let entries: Record<string, Uint8Array>;
   try {
     entries = unzipSync(bytes);
@@ -74,11 +104,13 @@ export async function installBrowser(opts: {
     throw new Error("The downloaded browser archive is damaged. Try again.");
   }
 
-  // Unpacked beside the install folder first, so a failure leaves the copy already installed as it was.
+  // Unpacked beside the install folder first, so a failure leaves the copy already installed as it was. What an
+  // earlier install left (stopped while unpacking, or an old copy that was in use) goes now.
   const dir = join(browsersDir(opts.home), String(stable.version));
   const partial = `${dir}.motif-${process.pid}.partial`;
   const exeIn = (base: string) => join(base, `chrome-headless-shell-${plat}`, platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell");
-  rmSync(partial, { recursive: true, force: true });
+  removeLeftovers(browsersDir(opts.home), [currentFolder(opts.home)]);
+  const cancelExitHook = onExit(() => rmSync(partial, { recursive: true, force: true }));
   try {
     const root = normalize(partial) + sep;
     for (const [name, data] of Object.entries(entries)) {
@@ -91,20 +123,35 @@ export async function installBrowser(opts: {
     }
   } catch (e) {
     rmSync(partial, { recursive: true, force: true });
+    cancelExitHook();
     throw new Error(`Couldn't unpack the browser (${e instanceof Error ? e.message : String(e)}). Nothing was changed; try again.`);
   }
   if (!existsSync(exeIn(partial))) {
     rmSync(partial, { recursive: true, force: true });
+    cancelExitHook();
     throw new Error(`The downloaded archive doesn't contain the browser (${exeIn(dir)}).`);
   }
+  // A copy already there is never deleted in place (one that's running can't be deleted whole, and a half-deleted
+  // copy wouldn't start): it's moved aside, or, when it's in use and can't be moved, the new copy gets a folder of its
+  // own. current.json names the new one; what's left goes now if it can, or on the next install.
+  let target = dir;
   try {
-    rmSync(dir, { recursive: true, force: true });
-    renameSync(partial, dir);
+    if (existsSync(dir)) {
+      try {
+        renameSync(dir, `${dir}.old-${process.pid}`);
+      } catch {
+        target = `${dir}-${process.pid}`;
+      }
+    }
+    renameSync(partial, target);
   } catch (e) {
     rmSync(partial, { recursive: true, force: true });
-    throw new Error(`Couldn't replace the browser in ${dir} (${e instanceof Error ? e.message : String(e)}). If a preview or screenshot is running, stop it and try again.`);
+    cancelExitHook();
+    throw new Error(`Couldn't put the browser in ${target} (${e instanceof Error ? e.message : String(e)}). Try again.`);
   }
-  const exe = exeIn(dir);
+  cancelExitHook();
+  const exe = exeIn(target);
   writeFileSync(join(browsersDir(opts.home), "current.json"), JSON.stringify({ version: stable.version, path: exe }, null, 2) + "\n");
+  removeLeftovers(browsersDir(opts.home), [basename(target)]);
   return { version: String(stable.version), path: exe, bytes: bytes.length };
 }

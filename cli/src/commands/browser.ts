@@ -5,14 +5,17 @@ import { motifHome } from "../home";
 
 export interface BrowserDeps {
   find: () => BrowserInfo | null;
-  install: (onProgress?: (got: number, total: number) => void) => Promise<{ version: string; path: string; bytes: number }>;
+  install: (
+    onProgress?: (got: number, total: number) => void,
+    onStage?: (stage: "unpacking") => void,
+  ) => Promise<{ version: string; path: string; bytes: number }>;
   /** True when MOTIF_BROWSER=none turns the browser off. */
   off?: () => boolean;
 }
 
 const defaultDeps: BrowserDeps = {
   find: () => findBrowser(),
-  install: (onProgress) => installBrowser({ home: motifHome(), onProgress }),
+  install: (onProgress, onStage) => installBrowser({ home: motifHome(), onProgress, onStage }),
   off: () => browserOff(),
 };
 
@@ -36,15 +39,17 @@ export async function runBrowser(_cwd: string, ctx: RunContext, deps: BrowserDep
     return { command: "browser", exitCode: 2, text: `Unknown action "${action}". Use "motif browser" or "motif browser install".`, data: { error: "usage" } };
   }
   try {
-    // For a person watching: every tenth of the download, once.
-    let shown = -1;
-    const r = await deps.install((got, total) => {
-      const tenth = total > 0 ? Math.floor((got / total) * 10) : -1;
-      if (tenth > shown && tenth >= 1) {
-        shown = tenth;
-        ctx.progress?.(`Downloading the browser… ${tenth * 10}%`);
-      }
-    });
+    // For a person watching: every tenth of the download once, or every 10 MB when the size isn't known.
+    let shown = 0;
+    const r = await deps.install(
+      (got, total) => {
+        const step = total > 0 ? Math.floor((got / total) * 10) : Math.floor(got / 10e6);
+        if (step <= shown) return;
+        shown = step;
+        ctx.progress?.(`Downloading the browser… ${total > 0 ? `${step * 10}%` : `${step * 10} MB`}`);
+      },
+      () => ctx.progress?.("Unpacking the browser…"),
+    );
     return {
       command: "browser",
       exitCode: 0,

@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { runPreview, type PreviewDeps } from "../src/commands/preview";
+import { pngNames, runPreview, type PreviewDeps } from "../src/commands/preview";
 import { openCommand } from "../src/preview/open";
 import type { RenderTarget } from "../src/preview/render";
 import { validTokens } from "./helpers";
@@ -312,5 +312,137 @@ describe("motif preview: from the backlog", () => {
     const r = await runPreview(project(), ctx(["design/previews/home.html"], { "png-only": true }), fakes({ findBrowser: () => null, browserOff: () => true }).deps);
     expect(r.exitCode).toBe(2);
     expect(r.text).toStartWith("MOTIF_BROWSER=none turns the browser off, so Motif can't make PNGs.");
+    // Not "needs_browser": installing a browser wouldn't help (review of the backlog's batch A).
+    expect(r.data.status).toBe("browser_off");
+  });
+});
+
+describe("live preview, from the review of the backlog's batch A", () => {
+  /** A renderer that writes the PNGs it names, as the real one does (telling preview each file first). */
+  function writingRender(calls: { names: string[]; nameAgainst?: string[] }[], fail?: (call: number) => boolean, hang?: (call: number) => boolean): PreviewDeps["render"] {
+    return async (o) => {
+      calls.push({ names: o.targets.map((t) => t.name), nameAgainst: o.nameAgainst?.map((t) => t.name) });
+      const n = calls.length;
+      if (hang?.(n)) await new Promise(() => {});
+      const files: string[] = [];
+      for (const t of o.targets) {
+        for (const f of [`${t.name}.png`, `${t.name}.dark.png`]) {
+          const file = join(t.outDir ?? o.outDir, f);
+          o.onFile?.(file);
+          mkdirSync(t.outDir ?? o.outDir, { recursive: true });
+          writeFileSync(file, `png ${n}`);
+          files.push(file);
+          if (fail?.(n)) throw new Error("the page took too long");
+        }
+      }
+      return { files, missingFonts: [] };
+    };
+  }
+  const settle = (ms: number) => Bun.sleep(ms);
+
+  test("Motif's own PNGs, written in any spelling or case, never start another render; a shared file starts one", async () => {
+    const root = project({ "design/previews/Home.png": "an older PNG", "design/previews/styles.css": "p {}" });
+    const calls: { names: string[] }[] = [];
+    const { deps, stop } = fakes({ render: writingRender(calls) });
+    const r = await runPreview(root, ctx(["design/previews"], { "no-open": true, out: join(root, "design", "previews").replace(/^[A-Z]:/, (d) => d.toLowerCase()) }), deps);
+    try {
+      await settle(300);
+      writeFileSync(join(root, "design/previews/styles.css"), "p { color: red }");
+      await settle(2500);
+      expect(calls.length).toBe(2);
+    } finally {
+      stop();
+      await r.hold;
+    }
+  });
+
+  test("a render that fails partway doesn't make its own PNGs start the next one", async () => {
+    const root = project({ "design/previews/styles.css": "p {}" });
+    const calls: { names: string[] }[] = [];
+    const { deps, stop } = fakes({ render: writingRender(calls, () => true) });
+    const r = await runPreview(root, ctx(["design/previews"], { "no-open": true }), deps);
+    try {
+      await settle(300);
+      writeFileSync(join(root, "design/previews/styles.css"), "p { color: red }");
+      await settle(2500);
+      expect(calls.length).toBe(2);
+    } finally {
+      stop();
+      await r.hold;
+    }
+  });
+
+  test("a re-render names its PNGs against every mockup, so it can't take another's name", async () => {
+    const root = project();
+    const calls: { names: string[]; nameAgainst?: string[] }[] = [];
+    const { deps, stop } = fakes({ render: writingRender(calls) });
+    const r = await runPreview(root, ctx(["design/previews"], { "no-open": true }), deps);
+    try {
+      await settle(300);
+      writeFileSync(join(root, "design/previews/home.html"), MOCKUP.replace("Hi", "Hello"));
+      const deadline = Date.now() + 5000;
+      while (calls.length < 2 && Date.now() < deadline) await settle(50);
+      expect(calls[1]).toEqual({ names: ["home"], nameAgainst: ["home", "settings"] });
+    } finally {
+      stop();
+      await r.hold;
+    }
+  });
+
+  test("editors' temporary files start nothing; a deleted mockup isn't rendered again", async () => {
+    const root = project({ "design/previews/styles.css": "p {}" });
+    const calls: { names: string[] }[] = [];
+    const { deps, stop } = fakes({ render: writingRender(calls) });
+    const r = await runPreview(root, ctx(["design/previews"], { "no-open": true }), deps);
+    try {
+      await settle(300);
+      for (const temp of ["home.html~", ".#home.html", "4913", "home.html.swp", "settings.html___jb_tmp___"]) writeFileSync(join(root, "design/previews", temp), "x");
+      await settle(1200);
+      expect(calls.length).toBe(1);
+      rmSync(join(root, "design/previews/settings.html"));
+      writeFileSync(join(root, "design/previews/styles.css"), "p { color: red }");
+      const deadline = Date.now() + 5000;
+      while (calls.length < 2 && Date.now() < deadline) await settle(50);
+      expect(calls[1]!.names).toEqual(["home"]);
+    } finally {
+      stop();
+      await r.hold;
+    }
+  });
+
+  test("stopping doesn't wait for a render in progress", async () => {
+    const root = project();
+    const calls: { names: string[] }[] = [];
+    const { deps, stop } = fakes({ render: writingRender(calls, undefined, (n) => n === 2) });
+    const r = await runPreview(root, ctx(["design/previews"], { "no-open": true }), deps);
+    await settle(300);
+    writeFileSync(join(root, "design/previews/home.html"), MOCKUP.replace("Hi", "Hello"));
+    const deadline = Date.now() + 5000;
+    while (calls.length < 2 && Date.now() < deadline) await settle(50);
+    const started = Date.now();
+    stop();
+    await r.hold;
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  test("says PNGs are remade on save, and a fallback font isn't installed here either", async () => {
+    const live = await runPreview(project(), ctx(["design/previews/home.html"], { "no-open": true }), fakes().deps);
+    expect(live.text).toContain("Pages reload, and their PNGs are made again, when you save a mockup.");
+    const fonts = await runPreview(project(), ctx(["design/previews/home.html"], { "png-only": true }), fakes({}, ["Brand Sans"]).deps);
+    expect(fonts.text).toContain("and it isn't installed on this computer");
+  });
+});
+
+describe("the skill and MOTIF_BROWSER=none (review of the backlog's batch A)", () => {
+  test("SKILL.md says not to offer a browser download when the browser is turned off", async () => {
+    const skill = await Bun.file(join(import.meta.dir, "../../skill/SKILL.md")).text();
+    expect(skill).toContain("browser_off");
+  });
+});
+
+describe("pngNames (review of the backlog's batch A)", () => {
+  test("mockups that share an output folder and differ only in case get their own names where case doesn't count", () => {
+    expect(pngNames(["a/Home.html", "b/home.html"], ["o", "o"], true)).toEqual(["a-Home", "b-home"]);
+    expect(pngNames(["a/Home.html", "b/home.html"], ["o", "o"], false)).toEqual(["Home", "home"]);
   });
 });

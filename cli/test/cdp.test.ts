@@ -129,6 +129,16 @@ describe("tabs leave nothing behind (backlog)", () => {
     expect(calls).toEqual([
       "Target.createBrowserContext", "Target.createTarget", "Target.attachToTarget", "Page.enable", "Target.closeTarget", "Target.disposeBrowserContext",
     ]);
+    // A browser that stops answering doesn't hold the original error up (review of batch A).
+    const hung = async (method: string) => {
+      if (method === "Target.createTarget") return { targetId: "tab" };
+      if (method === "Target.attachToTarget") throw new Error("attach failed");
+      if (method === "Target.createBrowserContext") return { browserContextId: "ctx" };
+      return new Promise(() => {});
+    };
+    const started = Date.now();
+    await expect(openTab(hung, true)).rejects.toThrow("attach failed");
+    expect(Date.now() - started).toBeLessThan(5000);
     const early = fakeSend("Target.createTarget");
     await expect(openTab(early.send, true)).rejects.toThrow("createTarget failed");
     expect(early.calls).toEqual(["Target.createBrowserContext", "Target.createTarget", "Target.disposeBrowserContext"]);

@@ -89,6 +89,7 @@ describe("motif shot: what it needs", () => {
     const r = await runShot(makeProject(NEXT_APP), ctx(), fakes({ findBrowser: () => null, browserOff: () => true }).deps);
     expect(r.exitCode).toBe(2);
     expect(r.text).toBe("MOTIF_BROWSER=none turns the browser off, so Motif can't take screenshots. Unset MOTIF_BROWSER to use Chrome or Edge.");
+    expect(r.data.status).toBe("browser_off");
   });
 
   test("an app it can start, or a running app's address", async () => {

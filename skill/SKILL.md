@@ -27,7 +27,7 @@ Wherever Motif's files say `motif <command>`, run it this way. If your agent did
 - Exit codes: `0` all good, `1` problems found (the output lists them), `2` it couldn't run (the output says why).
 - The first run downloads the tool for this computer once, checks it against the release's checksums and keeps it in `~/.motif`. If that fails (offline, a firewall), carry on without the exact steps: open mockups directly as [the preview kit](preview-kit/README.md) describes, review with judgement and the knowledge files, and say once that `motif doctor` will tell when the checks work again.
 - `motif preview` keeps serving mockups until it's stopped. Use `--png-only` when you need pictures, and start a live preview only in the background, or ask the developer to run it.
-- When a command reports `"status": "needs_browser"`, ask the developer before running `motif browser install`: it downloads a private browser of about 120 MB, which takes about 300 MB on disk. If they'd rather not, keep HTML mockups and skip pictures.
+- When a command reports `"status": "needs_browser"`, ask the developer before running `motif browser install`: it downloads a private browser of about 120 MB, which takes about 300 MB on disk. If they'd rather not, keep HTML mockups and skip pictures. `"status": "browser_off"` means they turned the browser off (MOTIF_BROWSER=none): don't offer a download; keep HTML mockups and skip pictures.
 
 ## At the start of a session
 

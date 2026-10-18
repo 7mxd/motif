@@ -58,31 +58,55 @@ export function pngName(name: string, index: number, scheme: "light" | "dark", s
   return `${name}${which}${scheme === "dark" ? ".dark" : ""}.png`;
 }
 
+/** Whether file names differ only in case count as one file here (Windows and macOS). */
+export const CASELESS = process.platform === "win32" || process.platform === "darwin";
+
 /**
  * Names each frame's PNG, so that a later frame or a dark PNG never takes the name of another mockup's own PNG in the
- * same folder (home.html's frame 2 and home-2.html; x.html in dark and x.dark.html): those use _ instead (home_2.png).
+ * same folder (home.html's frame 2 and home-2.html; x.html in dark and x.dark.html): those use _ instead (home_2.png),
+ * and _2, _3… after that while the name is still another mockup's.
  */
-export function pngNamer(targets: RenderTarget[], defaultOutDir: string): (name: string, outDir: string, index: number, scheme: "light" | "dark", state?: string) => string {
+export function pngNamer(
+  targets: RenderTarget[],
+  defaultOutDir: string,
+  caseless: boolean = CASELESS,
+): (name: string, outDir: string, index: number, scheme: "light" | "dark", state?: string) => string {
+  const key = (file: string) => (caseless ? file.toLowerCase() : file);
   const owner = new Map<string, string>();
   for (const t of targets) {
     const dir = t.outDir ?? defaultOutDir;
-    for (const scheme of SCHEMES) owner.set(join(dir, pngName(t.name, 0, scheme)), t.name);
+    for (const scheme of SCHEMES) owner.set(key(join(dir, pngName(t.name, 0, scheme))), t.name);
   }
+  const free = (file: string, name: string) => {
+    const taken = owner.get(key(file));
+    return taken === undefined || taken === name;
+  };
   return (name, outDir, index, scheme, state) => {
     const file = join(outDir, pngName(name, index, scheme, state));
-    const taken = owner.get(file);
-    if (taken === undefined || taken === name) return file;
+    if (free(file, name)) return file;
     const which = state ? `_${state}` : index > 0 ? `_${index + 1}` : "";
-    return join(outDir, `${name}${which}${scheme === "dark" ? "_dark" : ""}.png`);
+    const base = `${name}${which}${scheme === "dark" ? "_dark" : ""}`;
+    let alt = join(outDir, `${base}.png`);
+    for (let n = 2; !free(alt, name); n++) alt = join(outDir, `${base}_${n}.png`);
+    return alt;
   };
 }
 
 /** Renders each target in light and dark, one PNG per frame. Starts the browser once. */
-export async function renderPngs(opts: { browserPath: string; targets: RenderTarget[]; outDir: string; timeoutMs?: number }): Promise<RenderResult> {
+export async function renderPngs(opts: {
+  browserPath: string;
+  targets: RenderTarget[];
+  outDir: string;
+  timeoutMs?: number;
+  /** Every mockup being previewed, when only some are rendered again: names never take another's. */
+  nameAgainst?: RenderTarget[];
+  /** Told each PNG's path just before it's written. */
+  onFile?: (path: string) => void;
+}): Promise<RenderResult> {
   const browser = await launchBrowser(opts.browserPath, { timeoutMs: opts.timeoutMs });
   const written: string[] = [];
   const missing = new Set<string>();
-  const fileFor = pngNamer(opts.targets, opts.outDir);
+  const fileFor = pngNamer(opts.nameAgainst ?? opts.targets, opts.outDir);
   try {
     const page = await browser.newPage();
     await page.setViewport(VIEWPORT.width, VIEWPORT.height, VIEWPORT.scale);
@@ -105,7 +129,9 @@ export async function renderPngs(opts: { browserPath: string; targets: RenderTar
           const usable = STATE_NAME.test(state) && !named.has(state);
           if (usable) named.add(state);
           const file = fileFor(target.name, outDir, i, scheme, usable ? state : undefined);
-          writeFileSync(file, await page.screenshot(clip));
+          const png = await page.screenshot(clip);
+          opts.onFile?.(file);
+          writeFileSync(file, png);
           written.push(file);
         }
       }

@@ -51,10 +51,13 @@ export function injectKit(html: string, themeHref: string, fontLinks: string[] =
     '<script src="/__motif/kit/kit.js"></script>',
     ...(fontLinks.length > 0 ? [fontLoader(fontLinks)] : []),
   ].join("\n");
-  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${tags}\n</head>`);
-  // No </head>: right after <head>, else <html>, else the doctype; never before the doctype, which would draw the
-  // page in quirks mode.
-  const opening = /<head\b[^>]*>/i.exec(html) ?? /<html\b[^>]*>/i.exec(html) ?? /^\s*<!doctype[^>]*>/i.exec(html);
+  // Looked for outside comments (a "<head>" in a comment isn't the head), in a copy of the same length.
+  const seen = html.replace(/<!--[\s\S]*?-->/g, (c) => " ".repeat(c.length));
+  const close = /<\/head>/i.exec(seen);
+  if (close) return `${html.slice(0, close.index)}${tags}\n${html.slice(close.index)}`;
+  // No </head>: right after <head>, else <html>, else the doctype (comments may come first); never before the
+  // doctype, which would draw the page in quirks mode.
+  const opening = /<head\b[^>]*>/i.exec(seen) ?? /<html\b[^>]*>/i.exec(seen) ?? /^\s*<!doctype[^>]*>/i.exec(seen);
   if (!opening) return `${tags}\n${html}`;
   const at = opening.index + opening[0].length;
   return `${html.slice(0, at)}\n${tags}\n${html.slice(at)}`;

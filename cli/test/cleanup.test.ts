@@ -75,6 +75,22 @@ setTimeout(() => process.emit("SIGINT"), 50);
   });
 });
 
+describe("waitForStop and other signals (review of batch A)", () => {
+  test("a termination signal ends the process at once (143), hooks run, even while a command waits for Ctrl+C", () => {
+    const { file, dir } = script((d) => `
+import { writeFileSync } from "node:fs";
+import { onExit, waitForStop } from "${SRC}/cleanup";
+onExit(() => writeFileSync(${JSON.stringify(join(d, "ran"))}, "1"));
+setInterval(() => {}, 1000);
+waitForStop().then(() => writeFileSync(${JSON.stringify(join(d, "stopped"))}, "1"));
+setTimeout(() => process.emit("SIGTERM"), 50);
+`);
+    const r = Bun.spawnSync([process.execPath, file]);
+    expect(r.exitCode).toBe(143);
+    expect([existsSync(join(dir, "ran")), existsSync(join(dir, "stopped"))]).toEqual([true, false]);
+  });
+});
+
 describe.skipIf(!findBrowser())("browsers don't outlive Motif (needs Chrome, Edge or Chromium)", () => {
   test("a browser that wasn't closed is stopped when Motif exits", async () => {
     const { file, dir } = script(() => `

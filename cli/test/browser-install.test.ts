@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { cftPlatform, installBrowser, installedBrowser } from "../src/browser/install";
@@ -112,6 +112,47 @@ describe("installBrowser (backlog)", () => {
     });
   });
 
+  test("reinstalling the same version while its copy is in use replaces it; leftovers go on the next install (review of batch A)", async () => {
+    const zip = (text: string) => zipSync({ [exe]: strToU8(text) });
+    await withZips([zip("old browser"), zip("new browser"), zip("newest browser")], async (indexUrl) => {
+      const home = tempDir("motif-home-");
+      const first = await installBrowser({ home, indexUrl });
+      const held = openSync(first.path, "r");
+      try {
+        await installBrowser({ home, indexUrl });
+        expect(readFileSync(installedBrowser(home)!, "utf8")).toBe("new browser");
+      } finally {
+        closeSync(held);
+      }
+      mkdirSync(join(home, "browsers", "1.0.0.motif-99999.partial"), { recursive: true });
+      writeFileSync(join(home, "browsers", "1.0.0.motif-99999.partial", "junk"), "x");
+      await installBrowser({ home, indexUrl });
+      expect(readFileSync(installedBrowser(home)!, "utf8")).toBe("newest browser");
+      expect(readdirSync(join(home, "browsers")).sort()).toEqual(["1.2.3", "current.json"]);
+    });
+  });
+
+  test("says when it starts unpacking, and gives a total of 0 when the server doesn't say the size (review of batch A)", async () => {
+    const body = zipSync({ [exe]: strToU8("fake browser".repeat(1000)) });
+    const server = serve({});
+    const base = `http://127.0.0.1:${server.port}`;
+    server.reload({
+      fetch: (req) =>
+        new URL(req.url).pathname === "/index.json"
+          ? index(base)
+          : new Response(new ReadableStream({ start(c) { c.enqueue(body.slice(0, 1000)); c.enqueue(body.slice(1000)); c.close(); } })),
+    });
+    try {
+      const totals = new Set<number>();
+      const stages: string[] = [];
+      await installBrowser({ home: tempDir("motif-home-"), indexUrl: `${base}/index.json`, onProgress: (_got, total) => totals.add(total), onStage: (s) => stages.push(s) });
+      expect([...totals]).toEqual([0]);
+      expect(stages).toEqual(["unpacking"]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("reports how much has downloaded", async () => {
     await withZips([zipSync({ [exe]: strToU8("fake browser".repeat(1000)) })], async (indexUrl) => {
       const seen: [number, number][] = [];
@@ -158,6 +199,16 @@ describe("runBrowser", () => {
   test("MOTIF_BROWSER=none is named, not \"No Chrome or Edge found\" (backlog)", async () => {
     const r = await runBrowser(".", { positionals: [] }, { find: () => null, off: () => true, install: async () => ({ version: "", path: "", bytes: 0 }) });
     expect(r.text).toBe("MOTIF_BROWSER=none turns the browser off: previews and screenshots make no images. Unset MOTIF_BROWSER to use Chrome or Edge.");
+  });
+  test("without a size, install counts megabytes; it says when it unpacks (review of batch A)", async () => {
+    const lines: string[] = [];
+    const install = async (onProgress?: (got: number, total: number) => void, onStage?: (stage: "unpacking") => void) => {
+      for (const got of [5e6, 12e6, 15e6, 25e6]) onProgress?.(got, 0);
+      onStage?.("unpacking");
+      return { version: "9.9", path: "/m/shell", bytes: 25e6 };
+    };
+    await runBrowser(".", { positionals: ["install"], progress: (l: string) => lines.push(l) }, { find: () => null, install });
+    expect(lines).toEqual(["Downloading the browser… 10 MB", "Downloading the browser… 20 MB", "Unpacking the browser…"]);
   });
   test("install shows its progress to a person watching (backlog)", async () => {
     const lines: string[] = [];

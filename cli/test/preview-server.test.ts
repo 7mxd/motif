@@ -63,6 +63,14 @@ describe("injectKit without </head> (backlog)", () => {
     expect(b).toStartWith("<!DOCTYPE html>");
     expect(b.indexOf('href="/t.css"')).toBeGreaterThan(b.indexOf("<head>"));
   });
+
+  test("a comment before the doctype, or a <head> inside a comment, doesn't misplace the kit (review of batch A)", () => {
+    const a = injectKit("<!-- made by hand --><!doctype html><p>hi</p>", "/t.css");
+    expect(a).toStartWith("<!-- made by hand --><!doctype html>");
+    const b = injectKit("<!doctype html><!-- <head> goes here later --><p>hi</p>", "/t.css");
+    expect(b).toContain("<!-- <head> goes here later -->");
+    expect(b.indexOf('href="/t.css"')).toBeLessThan(b.indexOf("<!-- <head>"));
+  });
 });
 
 describe("a design direction with % in its folder name (backlog)", () => {
