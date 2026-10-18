@@ -155,6 +155,8 @@ export async function main(argv: string[]): Promise<number> {
         tokens: values.tokens,
         agent: values.agent,
       },
+      // Progress is for a person watching: on stderr, and only at a terminal (an agent's tool output stays clean).
+      progress: process.stderr.isTTY ? (line) => void process.stderr.write(`${line}\n`) : undefined,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

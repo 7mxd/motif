@@ -125,6 +125,38 @@ export function startFailureHint(stderr: string, platform: NodeJS.Platform = pro
   return last ? ` The browser said: ${last.slice(0, 300)}` : "";
 }
 
+/** A call to the browser's protocol. */
+export type Send = (method: string, params?: object, sessionId?: string) => Promise<any>;
+
+/**
+ * Opens a tab, in a context of its own when isolated (like a private window). When a step fails, what was made is
+ * closed again, so a failed tab never leaves a context behind.
+ */
+export async function openTab(send: Send, isolated: boolean): Promise<{ targetId: string; sessionId: string; browserContextId?: string }> {
+  const browserContextId: string | undefined = isolated ? (await send("Target.createBrowserContext", {})).browserContextId : undefined;
+  let targetId: string | undefined;
+  try {
+    ({ targetId } = await send("Target.createTarget", { url: "about:blank", ...(browserContextId ? { browserContextId } : {}) }));
+    const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
+    await send("Page.enable", {}, sessionId);
+    await send("Runtime.enable", {}, sessionId);
+    return { targetId: targetId!, sessionId, ...(browserContextId ? { browserContextId } : {}) };
+  } catch (e) {
+    if (targetId) await send("Target.closeTarget", { targetId }).catch(() => undefined);
+    if (browserContextId) await send("Target.disposeBrowserContext", { browserContextId }).catch(() => undefined);
+    throw e;
+  }
+}
+
+/** Closes a tab, and its own context even when closing the tab fails. */
+export async function closeTab(send: Send, targetId: string, browserContextId?: string): Promise<void> {
+  try {
+    await send("Target.closeTarget", { targetId });
+  } finally {
+    if (browserContextId) await send("Target.disposeBrowserContext", { browserContextId }).catch(() => undefined);
+  }
+}
+
 export async function launchBrowser(executable: string, opts: { timeoutMs?: number; callTimeoutMs?: number } = {}): Promise<Browser> {
   const timeoutMs = opts.timeoutMs ?? 20_000;
   // Every call to the browser gets an answer or an error: a page stuck in a loop must never hang Motif.
@@ -141,9 +173,18 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
     }
   }
   const { proc, wsUrl, profile } = started;
-  // If Motif exits (or is stopped with Ctrl+C) before close(), the browser goes with it.
+  // If Motif exits (or is stopped with Ctrl+C) before close(), the browser goes with it, and so does its profile.
   const cancelExitHook = onExit(() => {
     if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    // Its helpers can hold files in the profile for a moment after it stops (Windows): wait briefly, as exit allows.
+    for (let i = 0; i < 20; i++) {
+      try {
+        rmSync(profile, { recursive: true, force: true });
+        return;
+      } catch {
+        Bun.sleepSync(50);
+      }
+    }
   });
 
   const ws = new WebSocket(wsUrl);
@@ -223,11 +264,7 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
   return {
     pid: proc.pid!,
     async newPage(opts: { isolated?: boolean } = {}): Promise<Page> {
-      const browserContextId: string | undefined = opts.isolated ? (await send("Target.createBrowserContext", {})).browserContextId : undefined;
-      const { targetId } = await send("Target.createTarget", { url: "about:blank", ...(browserContextId ? { browserContextId } : {}) });
-      const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
-      await send("Page.enable", {}, sessionId);
-      await send("Runtime.enable", {}, sessionId);
+      const { targetId, sessionId, browserContextId } = await openTab(send, opts.isolated ?? false);
       const errors: string[] = [];
       const onError = (m: Message) => {
         if (m.sessionId !== sessionId) return;
@@ -286,8 +323,7 @@ export async function launchBrowser(executable: string, opts: { timeoutMs?: numb
         },
         async close() {
           listeners.delete(onError);
-          await send("Target.closeTarget", { targetId });
-          if (browserContextId) await send("Target.disposeBrowserContext", { browserContextId });
+          await closeTab(send, targetId, browserContextId);
         },
       };
     },

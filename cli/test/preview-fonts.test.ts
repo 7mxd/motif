@@ -55,4 +55,9 @@ describe("the fonts Motif ships", () => {
     expect(readme).toContain("## Fonts");
     expect(readme).toContain("fonts/fonts.css");
   });
+
+  test("the kit README says what to tell the developer when a font fell back (backlog)", () => {
+    const readme = readFileSync(join(import.meta.dir, "../../skill/preview-kit/README.md"), "utf8");
+    for (const s of ["missingFonts", "tell the developer", "installed on this computer", "Fonts section"]) expect(readme).toContain(s);
+  });
 });

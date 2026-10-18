@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
+import { windowsExe } from "../system";
 
 /** The program that opens a web address in the default browser. The address is one argument, never parsed by a shell. */
-export function openCommand(url: string, platform: NodeJS.Platform = process.platform): [string, string[]] {
-  if (platform === "win32") return ["rundll32", ["url.dll,FileProtocolHandler", url]];
+export function openCommand(url: string, platform: NodeJS.Platform = process.platform, env: Record<string, string | undefined> = process.env): [string, string[]] {
+  if (platform === "win32") return [windowsExe("rundll32.exe", env), ["url.dll,FileProtocolHandler", url]];
   if (platform === "darwin") return ["open", [url]];
   return ["xdg-open", [url]];
 }

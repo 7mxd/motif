@@ -14,6 +14,8 @@ export interface RunContext {
   positionals: string[];
   app?: string;
   flags?: Record<string, string | string[] | boolean | undefined>;
+  /** Shows a line of progress to a person at the terminal (on stderr; nothing when no one is watching). */
+  progress?: (line: string) => void;
 }
 
 export function emit(

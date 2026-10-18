@@ -256,7 +256,7 @@ describe("motif preview (live)", () => {
 describe("openCommand", () => {
   const url = "http://127.0.0.1:5000/__motif/compare?f=a.html&f=b.html";
   test("uses each system's own opener, passing the address as one argument", () => {
-    expect(openCommand(url, "win32")).toEqual(["rundll32", ["url.dll,FileProtocolHandler", url]]);
+    expect(openCommand(url, "win32", { SystemRoot: "C:\\Windows" })).toEqual(["C:\\Windows\\System32\\rundll32.exe", ["url.dll,FileProtocolHandler", url]]);
     expect(openCommand(url, "darwin")).toEqual(["open", [url]]);
     expect(openCommand(url, "linux")).toEqual(["xdg-open", [url]]);
   });
@@ -274,5 +274,43 @@ describe("motif preview: fonts", () => {
     expect(r.exitCode).toBe(0);
     expect(r.data.missingFonts).toEqual(["Plus Jakarta Sans"]);
     expect(r.text).toContain("Shown with a fallback font: Plus Jakarta Sans");
+  });
+
+  test("--json carries the same explanation (backlog)", async () => {
+    const r = await runPreview(project(), ctx(["design/previews/home.html"], { "png-only": true }), fakes({}, ["Plus Jakarta Sans"]).deps);
+    expect(r.data.notes).toEqual([expect.stringContaining("Shown with a fallback font: Plus Jakarta Sans")]);
+  });
+});
+
+describe("motif preview: from the backlog", () => {
+  test("in live preview, saving a mockup makes its PNGs again; Motif's own PNGs don't", async () => {
+    const root = project();
+    const { deps, calls, stop } = fakes();
+    const r = await runPreview(root, ctx(["design/previews"], { "no-open": true }), deps);
+    try {
+      expect(calls.render.length).toBe(1);
+      await Bun.sleep(300);
+      writeFileSync(join(root, "design/previews/home.png"), "a PNG Motif wrote");
+      writeFileSync(join(root, "design/previews/home.html"), MOCKUP.replace("Hi", "Hello"));
+      const deadline = Date.now() + 5000;
+      while (calls.render.length < 2 && Date.now() < deadline) await Bun.sleep(50);
+      await Bun.sleep(800);
+      expect(calls.render.map((c) => c.targets.map((t) => t.name))).toEqual([["home", "settings"], ["home"]]);
+    } finally {
+      stop();
+      await r.hold;
+    }
+  });
+
+  test("says it's making PNGs before it starts, for a person watching", async () => {
+    const lines: string[] = [];
+    await runPreview(project(), { positionals: ["design/previews"], flags: { "png-only": true }, progress: (l: string) => lines.push(l) }, fakes().deps);
+    expect(lines).toEqual(["Making PNGs of 2 mockups, in light and dark…"]);
+  });
+
+  test("MOTIF_BROWSER=none is named as the reason there are no PNGs", async () => {
+    const r = await runPreview(project(), ctx(["design/previews/home.html"], { "png-only": true }), fakes({ findBrowser: () => null, browserOff: () => true }).deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toStartWith("MOTIF_BROWSER=none turns the browser off, so Motif can't make PNGs.");
   });
 });

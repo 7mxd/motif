@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { CommandResult } from "../cli/output";
-import { findBrowser, type BrowserInfo } from "../detect/browser";
+import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { AGENTS, shown, type AgentEnv } from "../agents/catalog";
 import { readAgentServers, sourcesIn } from "../detect/sources";
 import { SOURCES } from "../sources/catalog";
@@ -25,6 +25,8 @@ export interface DoctorDeps {
   which: (cmd: string) => string | null;
   /** Environment variables (agents' settings folders follow some, e.g. CODEX_HOME). */
   vars?: Record<string, string | undefined>;
+  /** True when MOTIF_BROWSER=none turns the browser off. */
+  browserOff?: () => boolean;
 }
 
 export function defaultDoctorDeps(): DoctorDeps {
@@ -35,6 +37,7 @@ export function defaultDoctorDeps(): DoctorDeps {
     findBrowser: () => findBrowser(),
     which: (c) => Bun.which(c),
     vars: process.env,
+    browserOff: () => browserOff(),
   };
 }
 
@@ -67,6 +70,7 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
 
   const browser = deps.findBrowser();
   if (browser) push("browser", "ok", "Screenshots and previews", `Using ${browser.name}.`);
+  else if (deps.browserOff?.()) push("browser", "optional", "Screenshots and previews", `${BROWSER_OFF}: previews and screenshots make no images. Unset MOTIF_BROWSER to use Chrome or Edge.`);
   else push("browser", "needed", "Screenshots and previews", 'No Chrome or Edge found. Previews and screenshots need one: "motif browser install" downloads a private copy (about 120 MB to download, about 300 MB on disk).');
 
   if (apps.some((a) => a.stack && NODE_STACKS.includes(a.stack))) {

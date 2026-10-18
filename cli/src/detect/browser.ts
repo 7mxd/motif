@@ -63,6 +63,10 @@ export function browserCandidates(e: BrowserEnv): BrowserInfo[] {
   });
 }
 
+/** MOTIF_BROWSER=none: previews and screenshots make no images (for machines that must never start a browser). */
+export const browserOff = (env: Record<string, string | undefined> = process.env) => env.MOTIF_BROWSER === "none";
+export const BROWSER_OFF = "MOTIF_BROWSER=none turns the browser off";
+
 export function findBrowser(e: BrowserEnv = defaultBrowserEnv()): BrowserInfo | null {
   const override = e.env.MOTIF_BROWSER;
   if (override === "none") return null;

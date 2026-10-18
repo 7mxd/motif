@@ -12,9 +12,17 @@ import { loadThemeFile } from "./theme-file";
 export interface PreviewServer {
   url: string;
   port: number;
-  /** Start live reload for these mockups (project paths). Call it after saving PNGs next to them, or saving reloads the page being rendered. */
-  watch(files: string[]): void;
+  /**
+   * Start live reload for these mockups (project paths). Call it after saving PNGs next to them, or saving reloads the
+   * page being rendered. A change to a file ignore() accepts (Motif's own PNGs) is no change; onChange hears the others.
+   */
+  watch(files: string[], opts?: WatchOptions): void;
   stop(): void;
+}
+
+export interface WatchOptions {
+  ignore?: (path: string) => boolean;
+  onChange?: (path: string) => void;
 }
 
 export const CONTENT_TYPES: Record<string, string> = {
@@ -43,7 +51,13 @@ export function injectKit(html: string, themeHref: string, fontLinks: string[] =
     '<script src="/__motif/kit/kit.js"></script>',
     ...(fontLinks.length > 0 ? [fontLoader(fontLinks)] : []),
   ].join("\n");
-  return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${tags}\n</head>`) : `${tags}\n${html}`;
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${tags}\n</head>`);
+  // No </head>: right after <head>, else <html>, else the doctype; never before the doctype, which would draw the
+  // page in quirks mode.
+  const opening = /<head\b[^>]*>/i.exec(html) ?? /<html\b[^>]*>/i.exec(html) ?? /^\s*<!doctype[^>]*>/i.exec(html);
+  if (!opening) return `${tags}\n${html}`;
+  const at = opening.index + opening[0].length;
+  return `${html.slice(0, at)}\n${tags}\n${html.slice(at)}`;
 }
 
 /** The file a request path names, or null if it would leave the project folder. */
@@ -72,6 +86,11 @@ export function resolveInside(root: string, urlPath: string): string | null {
   } catch {
     return null;
   }
+  return pathInside(root, decoded);
+}
+
+/** The file a project path (already decoded) names, or null if it would leave the project folder. */
+function pathInside(root: string, decoded: string): string | null {
   if (decoded.includes("\0")) return null;
   const target = resolve(root, "." + (decoded.startsWith("/") ? decoded : `/${decoded}`));
   const rel = relative(root, target);
@@ -91,7 +110,8 @@ export function themeHrefFor(root: string, file: string): string {
 }
 
 function directionCss(root: string, rel: string, fontCssUrl?: FontCssUrl): string {
-  const file = resolveInside(root, rel);
+  // rel comes from the query string, already decoded once: a folder named "50% off" must not be decoded again.
+  const file = pathInside(root, rel);
   if (!file || basename(file) !== "tokens.json" || !existsSync(file)) return `/* There's no theme at ${rel}. */\n`;
   const { theme } = loadThemeFile(rel, readFileSync(file, "utf8"));
   return theme ? previewCss(theme, fontCssUrl) : `/* ${rel} has problems. Run: motif validate --tokens ${rel} */\n`;
@@ -194,10 +214,18 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       }
     }, 100);
   };
-  const watchFiles = (files: string[]) => {
+  const watchFiles = (files: string[], wopts: WatchOptions = {}) => {
     for (const dir of new Set(files.map((f) => dirname(resolve(root, f))))) {
       try {
-        watchers.push(watch(dir, notify));
+        watchers.push(
+          watch(dir, (_event, name) => {
+            // Some systems don't say which file changed: then pages reload, and nothing else is done.
+            const changed = name ? join(dir, String(name)) : null;
+            if (changed && wopts.ignore?.(changed)) return;
+            notify();
+            if (changed) wopts.onChange?.(changed);
+          }),
+        );
       } catch {
         // Live reload is a convenience; previews still work without it.
       }

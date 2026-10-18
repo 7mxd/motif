@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, sep } from "node:path";
 import { unzipSync } from "fflate";
 
@@ -23,7 +23,36 @@ export function installedBrowser(home: string): string | null {
   }
 }
 
-export async function installBrowser(opts: { home: string; indexUrl?: string; platform?: NodeJS.Platform; arch?: string }): Promise<{ version: string; path: string; bytes: number }> {
+/** The download, read piece by piece so a person can watch it arrive (total is 0 when the server doesn't say). */
+async function download(res: Response, onProgress?: (got: number, total: number) => void): Promise<Uint8Array> {
+  const total = Number(res.headers.get("content-length")) || 0;
+  if (!res.body) return new Uint8Array(await res.arrayBuffer());
+  const parts: Uint8Array[] = [];
+  let got = 0;
+  for await (const part of res.body as unknown as AsyncIterable<Uint8Array>) {
+    parts.push(part);
+    got += part.length;
+    onProgress?.(got, Math.max(total, got));
+  }
+  const bytes = new Uint8Array(got);
+  let at = 0;
+  for (const part of parts) {
+    bytes.set(part, at);
+    at += part.length;
+  }
+  return bytes;
+}
+
+/** An archive entry with an absolute path or a drive letter (one that climbs out with ".." is caught where it's written). */
+const outside = (name: string) => /^([\\/]|[A-Za-z]:)/.test(name);
+
+export async function installBrowser(opts: {
+  home: string;
+  indexUrl?: string;
+  platform?: NodeJS.Platform;
+  arch?: string;
+  onProgress?: (got: number, total: number) => void;
+}): Promise<{ version: string; path: string; bytes: number }> {
   const platform = opts.platform ?? process.platform;
   const plat = cftPlatform(platform, opts.arch ?? process.arch);
   if (!plat) throw new Error(`Motif can't download a browser for this system (${platform}). Install Chrome or Chromium instead.`);
@@ -37,7 +66,7 @@ export async function installBrowser(opts: { home: string; indexUrl?: string; pl
 
   const zipRes = await fetch(url).catch(() => null);
   if (!zipRes?.ok) throw new Error(`Couldn't download the browser${zipRes ? ` (HTTP ${zipRes.status})` : ""}. Try again later.`);
-  const bytes = new Uint8Array(await zipRes.arrayBuffer());
+  const bytes = await download(zipRes, opts.onProgress);
   let entries: Record<string, Uint8Array>;
   try {
     entries = unzipSync(bytes);
@@ -45,19 +74,37 @@ export async function installBrowser(opts: { home: string; indexUrl?: string; pl
     throw new Error("The downloaded browser archive is damaged. Try again.");
   }
 
+  // Unpacked beside the install folder first, so a failure leaves the copy already installed as it was.
   const dir = join(browsersDir(opts.home), String(stable.version));
-  rmSync(dir, { recursive: true, force: true });
-  const root = normalize(dir) + sep;
-  for (const [name, data] of Object.entries(entries)) {
-    if (name.endsWith("/")) continue;
-    const target = normalize(join(dir, name));
-    if (!target.startsWith(root)) continue; // never write outside the install folder
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, data);
-    if (platform !== "win32") chmodSync(target, 0o755);
+  const partial = `${dir}.motif-${process.pid}.partial`;
+  const exeIn = (base: string) => join(base, `chrome-headless-shell-${plat}`, platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell");
+  rmSync(partial, { recursive: true, force: true });
+  try {
+    const root = normalize(partial) + sep;
+    for (const [name, data] of Object.entries(entries)) {
+      if (name.endsWith("/") || outside(name)) continue;
+      const target = normalize(join(partial, name));
+      if (!target.startsWith(root)) continue; // never write outside the install folder
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, data);
+      if (platform !== "win32") chmodSync(target, 0o755);
+    }
+  } catch (e) {
+    rmSync(partial, { recursive: true, force: true });
+    throw new Error(`Couldn't unpack the browser (${e instanceof Error ? e.message : String(e)}). Nothing was changed; try again.`);
   }
-  const exe = join(dir, `chrome-headless-shell-${plat}`, platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell");
-  if (!existsSync(exe)) throw new Error(`The downloaded archive doesn't contain the browser (${exe}).`);
+  if (!existsSync(exeIn(partial))) {
+    rmSync(partial, { recursive: true, force: true });
+    throw new Error(`The downloaded archive doesn't contain the browser (${exeIn(dir)}).`);
+  }
+  try {
+    rmSync(dir, { recursive: true, force: true });
+    renameSync(partial, dir);
+  } catch (e) {
+    rmSync(partial, { recursive: true, force: true });
+    throw new Error(`Couldn't replace the browser in ${dir} (${e instanceof Error ? e.message : String(e)}). If a preview or screenshot is running, stop it and try again.`);
+  }
+  const exe = exeIn(dir);
   writeFileSync(join(browsersDir(opts.home), "current.json"), JSON.stringify({ version: stable.version, path: exe }, null, 2) + "\n");
   return { version: String(stable.version), path: exe, bytes: bytes.length };
 }

@@ -54,7 +54,7 @@ describe("devCommand", () => {
     const which = has(["bun", "npm", "node"]);
     expect(devCommand(app({ "bun.lock": "" }), { platform: "linux", which })).toMatchObject({ command: ["/usr/bin/bun", "run", "dev"] });
     expect(devCommand(app({}), { platform: "linux", which })).toMatchObject({ command: ["/usr/bin/npm", "run", "dev"] });
-    expect(devCommand(app({}), { platform: "win32", which })).toMatchObject({ command: ["cmd.exe", "/d", "/s", "/c", "npm run dev"] });
+    expect(devCommand(app({}), { platform: "win32", which, vars: {} })).toMatchObject({ command: ["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", "npm run dev"] });
     expect(devCommand(app({ "bun.lock": "" }), { platform: "win32", which })).toMatchObject({ command: ["/usr/bin/bun", "run", "dev"] });
   });
 

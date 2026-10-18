@@ -54,6 +54,32 @@ describe("injectKit", () => {
   });
 });
 
+describe("injectKit without </head> (backlog)", () => {
+  test("a mockup without </head> keeps its doctype first, so it isn't drawn in quirks mode", () => {
+    const a = injectKit("<!doctype html><title>x</title><p>hi</p>", "/t.css");
+    expect(a).toStartWith("<!doctype html>");
+    expect(a).toContain('<link rel="stylesheet" href="/t.css">');
+    const b = injectKit("<!DOCTYPE html>\n<html><head><meta charset=utf-8><p>hi", "/t.css");
+    expect(b).toStartWith("<!DOCTYPE html>");
+    expect(b.indexOf('href="/t.css"')).toBeGreaterThan(b.indexOf("<head>"));
+  });
+});
+
+describe("a design direction with % in its folder name (backlog)", () => {
+  test("its theme is found", async () => {
+    const root = makeProject({ "design/directions/50% off/tokens.json": JSON.stringify(validTokens()) });
+    const server = startPreviewServer({ root, theme });
+    try {
+      const res = await fetch(`${server.url}/__motif/theme.css?tokens=${encodeURIComponent("design/directions/50% off/tokens.json")}`);
+      const css = await res.text();
+      expect(css).not.toContain("There's no theme");
+      expect(css).toContain("--motif-");
+    } finally {
+      server.stop();
+    }
+  });
+});
+
 describe("resolveInside", () => {
   test("keeps requests inside the project folder", () => {
     const root = makeProject({});

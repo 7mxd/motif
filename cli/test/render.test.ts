@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
-import { pngName, renderPngs } from "../src/preview/render";
+import { fontsScript, pngName, pngNamer, renderPngs } from "../src/preview/render";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -23,6 +23,19 @@ describe("pngName", () => {
     // A frame of a state is named after it, like the state's screenshots (index@recent.mobile.png).
     expect(pngName("home", 1, "light", "recent")).toBe("home@recent.png");
     expect(pngName("home", 1, "dark", "recent")).toBe("home@recent.dark.png");
+  });
+
+  test("a frame or dark PNG never takes another mockup's own name (home-2.html, x.dark.html) (backlog)", () => {
+    const out = join("o");
+    const named = pngNamer(["home", "home-2", "x", "x.dark"].map((name) => ({ name, url: "", outDir: out })), out);
+    expect(named("home", out, 0, "light")).toBe(join(out, "home.png"));
+    expect(named("home", out, 1, "light")).toBe(join(out, "home_2.png"));
+    expect(named("home", out, 1, "dark")).toBe(join(out, "home_2_dark.png"));
+    expect(named("home", out, 2, "light")).toBe(join(out, "home-3.png"));
+    expect(named("home-2", out, 0, "light")).toBe(join(out, "home-2.png"));
+    expect(named("x", out, 0, "dark")).toBe(join(out, "x_dark.png"));
+    expect(named("x.dark", out, 0, "light")).toBe(join(out, "x.dark.png"));
+    expect(named("home", join("elsewhere"), 1, "light")).toBe(join("elsewhere", "home-2.png"));
   });
 });
 
@@ -107,4 +120,28 @@ describe.skipIf(!browser)("renderPngs (needs Chrome, Edge or Chromium)", () => {
       server.stop(true);
     }
   }, 60_000);
+});
+
+/** A font family installed on this computer, if one is known for this system. */
+function localFamily(): string | null {
+  if (process.platform === "win32") return existsSync("C:\\Windows\\Fonts\\arial.ttf") ? "Arial" : null;
+  if (process.platform === "darwin") return "Helvetica";
+  const r = Bun.spawnSync(["fc-list", ":", "family"]);
+  const first = r.exitCode === 0 ? r.stdout.toString().split("\n")[0]?.split(",")[0]?.trim() : "";
+  return first || null;
+}
+const local = localFamily();
+
+describe.skipIf(!browser || !local)("fonts installed on this computer (needs a browser)", () => {
+  test("a font installed here counts as shown, though no web font loaded; one that isn't anywhere is named (backlog)", async () => {
+    const { launchBrowser } = await import("../src/browser/cdp");
+    const b = await launchBrowser(browser!.path);
+    try {
+      const page = await b.newPage();
+      await page.goto("data:text/html," + encodeURIComponent("<!doctype html><p>x</p>"));
+      expect(await page.evaluate<string[]>(fontsScript([local!, "No Such Font Motif"], 1500))).toEqual(["No Such Font Motif"]);
+    } finally {
+      await b.close();
+    }
+  }, 30_000);
 });

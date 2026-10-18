@@ -11,7 +11,8 @@ const FAKE_MOTIF = [process.execPath, join(import.meta.dir, "fixtures", "evals",
 describe("running programs", () => {
   test("npm and other .cmd programs go through cmd.exe on Windows; others start directly", () => {
     const r = commandLine(["npm", "ci"], () => "C:\\nodejs\\npm.cmd", "win32");
-    expect(r.cmd.slice(0, 4)).toEqual(["cmd.exe", "/d", "/s", "/c"]);
+    expect(r.cmd[0]).toMatch(/cmd\.exe$/i);
+    expect(r.cmd.slice(1, 4)).toEqual(["/d", "/s", "/c"]);
     expect(r.verbatim).toBe(true);
     expect(commandLine(["git", "status"], () => "/usr/bin/git", "linux")).toEqual({ cmd: ["/usr/bin/git", "status"], verbatim: false });
   });

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findBrowser } from "../src/detect/browser";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -56,6 +56,25 @@ setInterval(() => {}, 1000);
   });
 });
 
+describe("waitForStop (backlog)", () => {
+  test("Ctrl+C ends a command that runs until stopped (a live preview): exit 0, hooks run", () => {
+    const { file, dir } = script((d) => `
+import { writeFileSync } from "node:fs";
+import { onExit, waitForStop } from "${SRC}/cleanup";
+onExit(() => writeFileSync(${JSON.stringify(join(d, "ran"))}, "1"));
+const keepAlive = setInterval(() => {}, 1000);
+waitForStop().then(() => {
+  writeFileSync(${JSON.stringify(join(d, "stopped"))}, "1");
+  clearInterval(keepAlive);
+});
+setTimeout(() => process.emit("SIGINT"), 50);
+`);
+    const r = Bun.spawnSync([process.execPath, file]);
+    expect(r.exitCode).toBe(0);
+    expect([existsSync(join(dir, "stopped")), existsSync(join(dir, "ran"))]).toEqual([true, true]);
+  });
+});
+
 describe.skipIf(!findBrowser())("browsers don't outlive Motif (needs Chrome, Edge or Chromium)", () => {
   test("a browser that wasn't closed is stopped when Motif exits", async () => {
     const { file, dir } = script(() => `
@@ -72,5 +91,7 @@ process.exit(0);
     const deadline = Date.now() + 5000;
     while (alive(pid) && Date.now() < deadline) await Bun.sleep(100);
     expect(alive(pid)).toBe(false);
+    // Its temporary profile goes too (backlog).
+    expect(readdirSync(dir).filter((n) => n.startsWith("motif-browser-"))).toEqual([]);
   }, 30_000);
 });

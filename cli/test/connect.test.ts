@@ -149,9 +149,14 @@ describe("motif connect <source>", () => {
 });
 
 describe("running claude", () => {
+  test("cmd.exe is started by its full path (%ComSpec%), so no other cmd.exe can stand in for it (backlog)", () => {
+    expect(spawnArgs("C:\\npm\\claude.cmd", ["mcp"], "win32", { ComSpec: "C:\\WINDOWS\\system32\\cmd.exe" }).cmd[0]).toBe("C:\\WINDOWS\\system32\\cmd.exe");
+    expect(spawnArgs("C:\\npm\\claude.cmd", ["mcp"], "win32", { SystemRoot: "D:\\Win" }).cmd[0]).toBe("D:\\Win\\System32\\cmd.exe");
+  });
+
   test("npm's .cmd shims on Windows go through cmd.exe with every argument quoted", () => {
-    expect(spawnArgs("C:\\Users\\me\\npm\\claude.cmd", ["mcp", "add", "--header", "x-api-key: a&b"], "win32")).toEqual({
-      cmd: ["cmd.exe", "/d", "/s", "/c", '""C:\\Users\\me\\npm\\claude.cmd" "mcp" "add" "--header" "x-api-key: a&b""'],
+    expect(spawnArgs("C:\\Users\\me\\npm\\claude.cmd", ["mcp", "add", "--header", "x-api-key: a&b"], "win32", {})).toEqual({
+      cmd: ["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", '""C:\\Users\\me\\npm\\claude.cmd" "mcp" "add" "--header" "x-api-key: a&b""'],
       verbatim: true,
     });
     expect(spawnArgs("C:\\tools\\claude.exe", ["mcp"], "win32")).toEqual({ cmd: ["C:\\tools\\claude.exe", "mcp"], verbatim: false });

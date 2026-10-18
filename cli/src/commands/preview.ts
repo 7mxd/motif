@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, posix, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
-import { findBrowser, type BrowserInfo } from "../detect/browser";
+import { waitForStop } from "../cleanup";
+import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { formatFindings, type Finding } from "../findings";
 import type { Theme } from "../generate/theme";
 import { themeFonts } from "../generate/theme-fonts";
@@ -17,17 +18,17 @@ export interface PreviewDeps {
   render: typeof renderPngs;
   openUrl: (url: string) => Promise<boolean>;
   waitForStop: () => Promise<void>;
+  /** True when MOTIF_BROWSER=none turns the browser off. */
+  browserOff?: () => boolean;
 }
 
 const defaultDeps: PreviewDeps = {
   findBrowser: () => findBrowser(),
   render: renderPngs,
   openUrl,
-  waitForStop: () =>
-    new Promise((resolve) => {
-      process.once("SIGINT", () => resolve());
-      process.once("SIGTERM", () => resolve());
-    }),
+  // Ctrl+C ends a live preview normally (exit 0), after the server stops.
+  waitForStop,
+  browserOff: () => browserOff(),
 };
 
 const PRESET_IDS = EMBEDDED_PRESETS.map((p) => p.id);
@@ -139,8 +140,11 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   }
 
   const browser = deps.findBrowser();
+  const off = !browser && (deps.browserOff?.() ?? false);
   if (pngOnly && !browser) {
-    return fail(2, `No Chrome or Edge found, so Motif can't make PNGs. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
+    return off
+      ? fail(2, `${BROWSER_OFF}, so Motif can't make PNGs. Unset MOTIF_BROWSER to use Chrome or Edge.`, { error: "browser-off", status: "needs_browser" })
+      : fail(2, `No Chrome or Edge found, so Motif can't make PNGs. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
   }
 
   // Live reload starts after the PNGs are saved: they usually land next to the mockups, and every save
@@ -161,9 +165,14 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   const notes: string[] = [];
   let pngs: string[] = [];
   let missingFonts: string[] = [];
+  // Motif's own PNGs: saving them is no change to the mockups.
+  const ours = new Set<string>();
   if (browser) {
     try {
+      const what = gallery ? "the 8 starting styles" : `${targets.length} ${targets.length === 1 ? "mockup" : "mockups"}`;
+      ctx.progress?.(`Making PNGs of ${what}, in light and dark…`);
       const rendered = await deps.render({ browserPath: browser.path, targets, outDir: defaultOut });
+      for (const p of rendered.files) ours.add(normalize(p));
       pngs = rendered.files.map((p) => projectPath(cwd, p));
       missingFonts = rendered.missingFonts;
     } catch (e) {
@@ -175,7 +184,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
       notes.push(`Couldn't make PNGs: ${message}`);
     }
   } else {
-    notes.push(`No Chrome or Edge found, so no PNGs were made. ${INSTALL_HINT}`);
+    notes.push(off ? `${BROWSER_OFF}, so no PNGs were made.` : `No Chrome or Edge found, so no PNGs were made. ${INSTALL_HINT}`);
   }
   if (missingFonts.length > 0) {
     notes.push(`Shown with a fallback font: ${missingFonts.join(", ")}. Motif includes the starting styles' fonts; other fonts come from Google Fonts, which didn't provide these (no connection, or not a Google font).`);
@@ -184,9 +193,41 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
 
   if (pngOnly) {
     server.stop();
-    return { command: "preview", exitCode: 0, text: [...pngLines, ...notes.map((n) => `• ${n}`)].join("\n"), data: { pngs, missingFonts } };
+    return { command: "preview", exitCode: 0, text: [...pngLines, ...notes.map((n) => `• ${n}`)].join("\n"), data: { pngs, missingFonts, notes } };
   }
-  server.watch(files);
+
+  // Saving a mockup makes its PNGs again; saving anything else in its folder (shared CSS, an image) makes that folder's.
+  // One render at a time.
+  let changed = new Set<string>();
+  const mockups = new Set(files.map((f) => normalize(join(cwd, f))));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let rendering: Promise<void> = Promise.resolve();
+  let stopped = false;
+  const rerender = () => {
+    const paths = changed;
+    changed = new Set();
+    const mockup = (i: number) => normalize(join(cwd, files[i]!));
+    const again = targets.filter((_, i) => !gallery && [...paths].some((p) => p === mockup(i) || (!mockups.has(p) && dirname(p) === dirname(mockup(i)))));
+    if (again.length === 0 || stopped || !browser) return;
+    rendering = rendering.then(async () => {
+      if (stopped) return;
+      try {
+        const rendered = await deps.render({ browserPath: browser.path, targets: again, outDir: defaultOut });
+        for (const p of rendered.files) ours.add(normalize(p));
+        ctx.progress?.(`Updated the PNGs of ${again.map((t) => t.name).join(", ")}.`);
+      } catch (e) {
+        ctx.progress?.(`Couldn't update the PNGs: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    });
+  };
+  server.watch(files, {
+    ignore: (path) => ours.has(normalize(path)),
+    onChange: (path) => {
+      changed.add(normalize(path));
+      clearTimeout(timer);
+      timer = setTimeout(rerender, 300);
+    },
+  });
 
   const pages = gallery
     ? ["/__motif/gallery"]
@@ -204,12 +245,17 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     ...pngLines,
     ...notes.map((n) => `• ${n}`),
   ];
-  const hold = deps.waitForStop().then(() => server.stop());
+  const hold = deps.waitForStop().then(async () => {
+    stopped = true;
+    clearTimeout(timer);
+    await rendering;
+    server.stop();
+  });
   return {
     command: "preview",
     exitCode: 0,
     text: lines.join("\n"),
-    data: { url, files, pngs, missingFonts, ...(browser ? {} : { status: "needs_browser" }) },
+    data: { url, files, pngs, missingFonts, notes, ...(browser ? {} : { status: "needs_browser" }) },
     hold,
   };
 }

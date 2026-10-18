@@ -1,19 +1,28 @@
 import { installBrowser } from "../browser/install";
 import type { CommandResult, RunContext } from "../cli/output";
-import { findBrowser, type BrowserInfo } from "../detect/browser";
+import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { motifHome } from "../home";
 
 export interface BrowserDeps {
   find: () => BrowserInfo | null;
-  install: () => Promise<{ version: string; path: string; bytes: number }>;
+  install: (onProgress?: (got: number, total: number) => void) => Promise<{ version: string; path: string; bytes: number }>;
+  /** True when MOTIF_BROWSER=none turns the browser off. */
+  off?: () => boolean;
 }
 
-const defaultDeps: BrowserDeps = { find: () => findBrowser(), install: () => installBrowser({ home: motifHome() }) };
+const defaultDeps: BrowserDeps = {
+  find: () => findBrowser(),
+  install: (onProgress) => installBrowser({ home: motifHome(), onProgress }),
+  off: () => browserOff(),
+};
 
 export async function runBrowser(_cwd: string, ctx: RunContext, deps: BrowserDeps = defaultDeps): Promise<CommandResult> {
   const action = ctx.positionals[0];
   if (!action) {
     const browser = deps.find();
+    if (!browser && deps.off?.()) {
+      return { command: "browser", exitCode: 0, text: `${BROWSER_OFF}: previews and screenshots make no images. Unset MOTIF_BROWSER to use Chrome or Edge.`, data: { browser: null, off: true } };
+    }
     return browser
       ? { command: "browser", exitCode: 0, text: `✓ Previews and screenshots use ${browser.name}: ${browser.path}`, data: { browser } }
       : {
@@ -27,7 +36,15 @@ export async function runBrowser(_cwd: string, ctx: RunContext, deps: BrowserDep
     return { command: "browser", exitCode: 2, text: `Unknown action "${action}". Use "motif browser" or "motif browser install".`, data: { error: "usage" } };
   }
   try {
-    const r = await deps.install();
+    // For a person watching: every tenth of the download, once.
+    let shown = -1;
+    const r = await deps.install((got, total) => {
+      const tenth = total > 0 ? Math.floor((got / total) * 10) : -1;
+      if (tenth > shown && tenth >= 1) {
+        shown = tenth;
+        ctx.progress?.(`Downloading the browser… ${tenth * 10}%`);
+      }
+    });
     return {
       command: "browser",
       exitCode: 0,

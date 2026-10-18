@@ -14,6 +14,12 @@ const read = (name: string) => readFileSync(join(KIT, name), "utf8");
 const scale = buildScale(buildTheme(docFrom(validTokens())), "src");
 
 describe("preview kit", () => {
+  test("skeletons stop pulsing under reduced motion, as the README says (backlog)", () => {
+    const css = read("kit.css");
+    const blocks = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/g)].map((m) => m[1]!).join("\n");
+    expect(blocks).toMatch(/\.mk-skeleton[^{]*\{[^}]*animation: none/);
+  });
+
   test("kit.css follows the design guide; only device chrome is exempt, with reasons", () => {
     const text = read("kit.css");
     const file: SourceFile = { path: "kit.css", abs: "", text, lang: "css" };

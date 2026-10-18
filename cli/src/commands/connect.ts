@@ -8,6 +8,7 @@ import {
 } from "../agents/catalog";
 import { addJsonServer, addTomlServer, linkTarget, type Edited } from "../agents/edit";
 import { findConfiguredSources, type ConfiguredSource } from "../detect/sources";
+import { windowsExe } from "../system";
 import { SOURCES, sourceById, type SourceInfo } from "../sources/catalog";
 
 export interface ConnectDeps {
@@ -29,10 +30,15 @@ export interface ConnectDeps {
 }
 
 /** npm installs `claude` as a .cmd file on Windows, which only cmd.exe can run; every argument is quoted for it. */
-export function spawnArgs(exe: string, args: string[], platform: NodeJS.Platform = process.platform): { cmd: string[]; verbatim: boolean } {
+export function spawnArgs(
+  exe: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+  env: Record<string, string | undefined> = process.env,
+): { cmd: string[]; verbatim: boolean } {
   if (platform === "win32" && /\.(cmd|bat)$/i.test(exe)) {
     const quote = (a: string) => `"${a.replace(/"/g, '""')}"`;
-    return { cmd: ["cmd.exe", "/d", "/s", "/c", `"${[exe, ...args].map(quote).join(" ")}"`], verbatim: true };
+    return { cmd: [windowsExe("cmd.exe", env), "/d", "/s", "/c", `"${[exe, ...args].map(quote).join(" ")}"`], verbatim: true };
   }
   return { cmd: [exe, ...args], verbatim: false };
 }
@@ -44,8 +50,8 @@ export async function runCommand(exe: string, args: string[], cwd?: string): Pro
   return { code, output: `${out}${err}`.trim() };
 }
 
-/** Reads a line from the terminal without showing it. */
-export function readSecret(prompt: string, stdin: NodeJS.ReadableStream = process.stdin, stdout: NodeJS.WritableStream = process.stdout): Promise<string> {
+/** Reads a line from the terminal without showing it. The prompt goes to stderr, so it never mixes into --json output. */
+export function readSecret(prompt: string, stdin: NodeJS.ReadableStream = process.stdin, stdout: NodeJS.WritableStream = process.stderr): Promise<string> {
   stdout.write(prompt);
   const raw = (on: boolean) => (stdin as { setRawMode?: (on: boolean) => void }).setRawMode?.(on);
   raw(true);
@@ -75,7 +81,7 @@ export function readSecret(prompt: string, stdin: NodeJS.ReadableStream = proces
 }
 
 /** Reads one line from the terminal, as typed; null when the input ends first (Ctrl+D, or Ctrl+Z on Windows). */
-export function readLine(prompt: string, stdin: NodeJS.ReadableStream = process.stdin, stdout: NodeJS.WritableStream = process.stdout): Promise<string | null> {
+export function readLine(prompt: string, stdin: NodeJS.ReadableStream = process.stdin, stdout: NodeJS.WritableStream = process.stderr): Promise<string | null> {
   stdout.write(prompt);
   let value = "";
   return new Promise((resolve) => {

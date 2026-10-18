@@ -85,6 +85,12 @@ describe("motif shot: what it needs", () => {
     expect(r.text).toContain("motif browser install");
   });
 
+  test("MOTIF_BROWSER=none is named as the reason, not a missing browser (backlog)", async () => {
+    const r = await runShot(makeProject(NEXT_APP), ctx(), fakes({ findBrowser: () => null, browserOff: () => true }).deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toBe("MOTIF_BROWSER=none turns the browser off, so Motif can't take screenshots. Unset MOTIF_BROWSER to use Chrome or Edge.");
+  });
+
   test("an app it can start, or a running app's address", async () => {
     const none = await runShot(makeProject({}), ctx(), fakes().deps);
     expect(none.exitCode).toBe(2);

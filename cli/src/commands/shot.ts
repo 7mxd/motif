@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
-import { findBrowser, type BrowserInfo } from "../detect/browser";
+import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
@@ -20,6 +20,8 @@ export interface ShotDeps {
   capture: typeof captureScreens;
   compare: typeof renderComparisons;
   today: () => string;
+  /** True when MOTIF_BROWSER=none turns the browser off. */
+  browserOff?: () => boolean;
 }
 
 const MAX_ROUTES = 12;
@@ -38,6 +40,7 @@ const defaultDeps: ShotDeps = {
   capture: captureScreens,
   compare: renderComparisons,
   today,
+  browserOff: () => browserOff(),
 };
 
 const usage = (text: string, data: Record<string, unknown>): CommandResult => ({ command: "shot", exitCode: 2, text, data });
@@ -147,6 +150,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if ("error" in states) return usage(states.error, { error: "usage" });
   const browser = deps.findBrowser();
   if (!browser) {
+    if (deps.browserOff?.()) {
+      return usage(`${BROWSER_OFF}, so Motif can't take screenshots. Unset MOTIF_BROWSER to use Chrome or Edge.`, { error: "browser-off", status: "needs_browser" });
+    }
     return usage(`No Chrome or Edge found, so Motif can't take screenshots. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
   }
 

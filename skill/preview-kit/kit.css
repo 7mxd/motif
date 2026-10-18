@@ -329,6 +329,9 @@ body {
   animation: mk-pulse calc(var(--motif-duration-slow) * 4) var(--motif-easing-standard) infinite alternate;
 }
 @keyframes mk-pulse { from { opacity: 1; } to { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .mk-skeleton { animation: none; }
+}
 .mk-empty {
   display: flex;
   flex-direction: column;

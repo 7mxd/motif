@@ -30,6 +30,16 @@ describe("runDoctor", () => {
     expect(r.text).toStartWith("Motif doctor");
   });
 
+  test("MOTIF_BROWSER=none is named, as something turned off, not missing (backlog)", async () => {
+    const r = await runDoctor(tempDir("motif-empty-"), deps({ browserOff: () => true }));
+    expect(item(r.data.items as DoctorItem[], "browser")).toEqual({
+      id: "browser",
+      status: "optional",
+      label: "Screenshots and previews",
+      detail: "MOTIF_BROWSER=none turns the browser off: previews and screenshots make no images. Unset MOTIF_BROWSER to use Chrome or Edge.",
+    });
+  });
+
   test("a React app with a valid guide, a browser and Node", async () => {
     const dir = copyFixture();
     writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { react: "^19", vite: "^6" } }));

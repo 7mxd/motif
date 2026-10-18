@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { launchBrowser, removeProfile, startFailureHint } from "../src/browser/cdp";
+import { closeTab, launchBrowser, openTab, removeProfile, startFailureHint } from "../src/browser/cdp";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 
@@ -99,5 +99,38 @@ describe("start failures say why", () => {
   test("otherwise the last line is repeated, and nothing is added when there was no output", () => {
     expect(startFailureHint("noise\n[1013/120000:ERROR:foo] something broke\n\n", "win32")).toBe(" The browser said: [1013/120000:ERROR:foo] something broke");
     expect(startFailureHint("", "win32")).toBe("");
+  });
+});
+
+describe("tabs leave nothing behind (backlog)", () => {
+  /** A stand-in for the browser's protocol: answers each method, or fails the one named. */
+  function fakeSend(failing?: string) {
+    const calls: string[] = [];
+    const send = async (method: string) => {
+      calls.push(method);
+      if (method === failing) throw new Error(`${method} failed`);
+      if (method === "Target.createBrowserContext") return { browserContextId: "ctx" };
+      if (method === "Target.createTarget") return { targetId: "tab" };
+      if (method === "Target.attachToTarget") return { sessionId: "s" };
+      return {};
+    };
+    return { send, calls };
+  }
+
+  test("closing an isolated tab disposes its context even when closing the tab fails", async () => {
+    const { send, calls } = fakeSend("Target.closeTarget");
+    await expect(closeTab(send, "tab", "ctx")).rejects.toThrow("closeTarget failed");
+    expect(calls).toEqual(["Target.closeTarget", "Target.disposeBrowserContext"]);
+  });
+
+  test("a tab that fails to open closes what was made: the tab, then its context", async () => {
+    const { send, calls } = fakeSend("Page.enable");
+    await expect(openTab(send, true)).rejects.toThrow("Page.enable failed");
+    expect(calls).toEqual([
+      "Target.createBrowserContext", "Target.createTarget", "Target.attachToTarget", "Page.enable", "Target.closeTarget", "Target.disposeBrowserContext",
+    ]);
+    const early = fakeSend("Target.createTarget");
+    await expect(openTab(early.send, true)).rejects.toThrow("createTarget failed");
+    expect(early.calls).toEqual(["Target.createBrowserContext", "Target.createTarget", "Target.disposeBrowserContext"]);
   });
 });

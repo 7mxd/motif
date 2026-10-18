@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { cftPlatform, installBrowser, installedBrowser } from "../src/browser/install";
@@ -77,6 +77,52 @@ describe("installBrowser", () => {
   });
 });
 
+describe("installBrowser (backlog)", () => {
+  async function withZips(zips: ReturnType<typeof zipSync>[], fn: (indexUrl: string) => Promise<void>) {
+    let n = 0;
+    const server = serve({});
+    const base = `http://127.0.0.1:${server.port}`;
+    server.reload({ fetch: (req) => (new URL(req.url).pathname === "/index.json" ? index(base) : new Response(zips[Math.min(n++, zips.length - 1)]!)) });
+    try {
+      await fn(`${base}/index.json`);
+    } finally {
+      server.stop(true);
+    }
+  }
+  const exe = `chrome-headless-shell-${plat}/${exeName}`;
+
+  test("an unpack that fails leaves the copy already installed as it was, and no half-unpacked folder", async () => {
+    const good = zipSync({ [exe]: strToU8("fake browser") });
+    const bad = zipSync({ [exe]: strToU8("new browser"), [`chrome-headless-shell-${plat}/x`]: strToU8("a file"), [`chrome-headless-shell-${plat}/x/y`]: strToU8("under a file") });
+    await withZips([good, bad], async (indexUrl) => {
+      const home = tempDir("motif-home-");
+      await installBrowser({ home, indexUrl });
+      await expect(installBrowser({ home, indexUrl })).rejects.toThrow("Couldn't unpack the browser");
+      expect(readFileSync(installedBrowser(home)!, "utf8")).toBe("fake browser");
+      expect(readdirSync(join(home, "browsers")).sort()).toEqual(["1.2.3", "current.json"]);
+    });
+  });
+
+  test("entries with a drive letter or an absolute path are skipped, not a raw error", async () => {
+    await withZips([zipSync({ [exe]: strToU8("fake browser"), "C:/evil.txt": strToU8("x"), "/abs.txt": strToU8("x") })], async (indexUrl) => {
+      const home = tempDir("motif-home-");
+      const r = await installBrowser({ home, indexUrl });
+      expect(readFileSync(r.path, "utf8")).toBe("fake browser");
+      expect(readdirSync(join(home, "browsers", "1.2.3"))).toEqual([`chrome-headless-shell-${plat}`]);
+    });
+  });
+
+  test("reports how much has downloaded", async () => {
+    await withZips([zipSync({ [exe]: strToU8("fake browser".repeat(1000)) })], async (indexUrl) => {
+      const seen: [number, number][] = [];
+      await installBrowser({ home: tempDir("motif-home-"), indexUrl, onProgress: (got, total) => seen.push([got, total]) });
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.at(-1)![0]).toBe(seen.at(-1)![1]);
+      expect(seen.every(([got], i) => i === 0 || got >= seen[i - 1]![0])).toBe(true);
+    });
+  });
+});
+
 describe("findBrowser with MOTIF_BROWSER and an installed copy", () => {
   const env = (over: Partial<BrowserEnv>): BrowserEnv => ({
     platform: "linux", env: {}, home: "/home/u", which: () => null, exists: () => true, ...over,
@@ -108,6 +154,19 @@ describe("runBrowser", () => {
     expect([ok.exitCode, ok.text.includes("9.9")]).toEqual([0, true]);
     const bad = await runBrowser(".", { positionals: ["install"] }, { find: () => null, install: async () => { throw new Error("offline"); } });
     expect([bad.exitCode, bad.text]).toEqual([2, "offline"]);
+  });
+  test("MOTIF_BROWSER=none is named, not \"No Chrome or Edge found\" (backlog)", async () => {
+    const r = await runBrowser(".", { positionals: [] }, { find: () => null, off: () => true, install: async () => ({ version: "", path: "", bytes: 0 }) });
+    expect(r.text).toBe("MOTIF_BROWSER=none turns the browser off: previews and screenshots make no images. Unset MOTIF_BROWSER to use Chrome or Edge.");
+  });
+  test("install shows its progress to a person watching (backlog)", async () => {
+    const lines: string[] = [];
+    const install = async (onProgress?: (got: number, total: number) => void) => {
+      for (const got of [10, 50, 55, 100]) onProgress?.(got, 100);
+      return { version: "9.9", path: "/m/shell", bytes: 100 };
+    };
+    await runBrowser(".", { positionals: ["install"], progress: (l: string) => lines.push(l) }, { find: () => null, install });
+    expect(lines).toEqual(["Downloading the browser… 10%", "Downloading the browser… 50%", "Downloading the browser… 100%"]);
   });
   test("an unknown action is a usage error", async () => {
     expect((await runBrowser(".", { positionals: ["fly"] }, { find: () => null, install: async () => ({ version: "", path: "", bytes: 0 }) })).exitCode).toBe(2);

@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { onExit } from "../cleanup";
+import { windowsExe } from "../system";
 
 export type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
 
@@ -48,7 +49,7 @@ const lockfileIn = (dir: string) => LOCKFILES.find(([file]) => existsSync(join(d
 /** How to start this app's dev server, or a plain explanation of why Motif can't. */
 export function devCommand(
   appDir: string,
-  env: { platform?: NodeJS.Platform; which?: (cmd: string) => string | null } = {},
+  env: { platform?: NodeJS.Platform; which?: (cmd: string) => string | null; vars?: Record<string, string | undefined> } = {},
 ): DevCommand | { error: string } {
   const platform = env.platform ?? process.platform;
   const which = env.which ?? ((cmd: string) => Bun.which(cmd));
@@ -71,7 +72,7 @@ export function devCommand(
   }
   const display = `${pm} run dev`;
   // npm, pnpm and yarn are .cmd scripts on Windows, and only cmd.exe can run those.
-  const command = platform === "win32" && pm !== "bun" ? ["cmd.exe", "/d", "/s", "/c", display] : [exe, "run", "dev"];
+  const command = platform === "win32" && pm !== "bun" ? [windowsExe("cmd.exe", env.vars), "/d", "/s", "/c", display] : [exe, "run", "dev"];
   return { command, display, packageManager: pm };
 }
 
@@ -99,7 +100,7 @@ export function outputSummary(output: string): string[] {
 export function killTree(pid: number, force = false): void {
   try {
     if (process.platform === "win32") {
-      spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+      spawnSync(windowsExe("taskkill.exe"), ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
     } else {
       process.kill(-pid, force ? "SIGKILL" : "SIGTERM"); // the server runs in its own process group
     }
