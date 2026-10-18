@@ -219,3 +219,11 @@ describe("matching places (backlog)", () => {
     expect(gradeExact([f], [planted], none).exact).toEqual([{ id: "S", findings: ["F"] }]);
   });
 });
+
+describe("line ranges (review of batch F)", () => {
+  test("a range wider than a few lines points at the file, not at every planted line in it", () => {
+    const f: Finding = { id: "F", severity: "minor", category: "raw-value", location: { file: "styles.css:10-50" }, summary: "x" };
+    const issue = (id: string, line: number): SeededIssue => ({ id, kind: "exact", detectedBy: "check", categories: ["raw-value"], severity: "minor", location: { file: "styles.css", line }, summary: "x" });
+    expect(gradeExact([f], [issue("P-01", 47), issue("P-02", 13)], () => undefined).exact).toEqual([{ id: "P-01", findings: [] }, { id: "P-02", findings: [] }]);
+  });
+});

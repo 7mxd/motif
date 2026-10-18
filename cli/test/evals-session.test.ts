@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_TOOLS, agentArgs } from "../../tests/evals/claude";
-import { runSession, type SessionSpec } from "../../tests/evals/session";
+import { descendantGroups, runSession, type SessionSpec } from "../../tests/evals/session";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -135,5 +135,13 @@ describe("a session's processes and output (backlog)", () => {
     const s = spec({ split: "café" });
     expect((await runSession(s)).end).toBe("finished");
     expect(readFileSync(s.transcript, "utf8")).toContain("café");
+  });
+});
+
+describe("the process groups a session leaves (review of batch F)", () => {
+  test("every group its descendants run in, from ps's list", () => {
+    const ps = ["  100     1   100", "  200   100   100", "  300   200   300", "  400   300   300", "  500     1   500", "  600   500   600"].join("\n");
+    expect(descendantGroups(100, ps).sort()).toEqual([100, 300]);
+    expect(descendantGroups(999, ps)).toEqual([]);
   });
 });

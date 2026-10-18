@@ -63,7 +63,7 @@ export function judgePrompt(input: JudgeInput, rubric: string = readFileSync(RUB
     .join("\n\n");
   return [
     appDir
-      ? `You are grading a design review of the web app in ${appDir}; the file paths below are relative to that folder. Follow the rubric below exactly. Read the app's files (its code, design/ and the screenshots in design/shots/) to check claims. Don't change anything.`
+      ? `You are grading a design review of the web app in ${appDir}; the file paths below are relative to that folder (a path starting with / is relative to it too). Follow the rubric below exactly. Read the app's files (its code, design/ and the screenshots in design/shots/) to check claims. Don't change anything.`
       : "You are grading a design review of the web app in this folder. Follow the rubric below exactly. Read the app's files (its code, design/ and the screenshots in design/shots/) to check claims. Don't change anything.",
     rubric,
     "## Part A: planted problems and the findings that might describe them",

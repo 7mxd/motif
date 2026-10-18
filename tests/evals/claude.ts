@@ -47,6 +47,8 @@ export function sessionEnv(base: Record<string, string | undefined>, motifBin: s
     env[key] = value;
   }
   env.MOTIF_BIN = motifBin;
+  // motif connect would change the developer's own agents (the skill may suggest it for a free source).
+  env.MOTIF_NO_CONNECT = "1";
   return { env, dropped };
 }
 
@@ -70,9 +72,9 @@ export const JUDGE_TOOLS = ["Read", "Grep", "Glob"];
 export const JUDGE_EXPECTED_TOOLS = [...JUDGE_TOOLS, "StructuredOutput"];
 
 /** Every session: headless, every event streamed, nothing saved, none of the developer's settings, no MCP servers. */
-const isolation = (mcpConfigFile: string) => [
+const isolation = (mcpConfigFile: string, sources = "project,local") => [
   "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
-  "--setting-sources", "project,local", "--strict-mcp-config", "--mcp-config", mcpConfigFile,
+  "--setting-sources", sources, "--strict-mcp-config", "--mcp-config", mcpConfigFile,
 ];
 
 /**
@@ -96,7 +98,8 @@ export function agentArgs(o: { pluginDir: string; mcpConfigFile: string; maxTurn
 /** Test C's grader: read-only tools, no plugin, a structured answer. */
 export function judgeArgs(o: { mcpConfigFile: string; schema: object; maxTurns: number; model?: string; appDir?: string }): string[] {
   return [
-    ...isolation(o.mcpConfigFile),
+    // Local settings only: with project settings on, Claude Code also loads skills and agents from --add-dir folders.
+    ...isolation(o.mcpConfigFile, "local"),
     // It works from a folder of its own and reads the app from there, so nothing the session left in the app (a
     // CLAUDE.md, .claude/ settings) reaches the grader.
     ...(o.appDir ? ["--add-dir", o.appDir] : []),

@@ -48,7 +48,7 @@ describe("each session's environment", () => {
       { PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x", anthropic_auth_token: "t", CLAUDE_CODE_USE_BEDROCK: "1", CLAUDECODE: "1", ANTHROPIC_BASE_URL: "", HOME: "/home/me", UNSET: undefined },
       "/repo/dist/motif",
     );
-    expect(env).toEqual({ PATH: "/bin", HOME: "/home/me", MOTIF_BIN: "/repo/dist/motif" });
+    expect(env).toEqual({ PATH: "/bin", HOME: "/home/me", MOTIF_BIN: "/repo/dist/motif", MOTIF_NO_CONNECT: "1" });
     expect(dropped.sort()).toEqual(["ANTHROPIC_API_KEY", "CLAUDECODE", "CLAUDE_CODE_USE_BEDROCK", "anthropic_auth_token"]);
   });
 });
@@ -102,7 +102,7 @@ describe("an eval session's arguments", () => {
     expect(pair(j, "--json-schema")).toBe('{"type":"object"}');
     expect(pair(j, "--permission-mode")).toBe("default");
     expect(pair(j, "--permission-prompts")).toBe("none");
-    expect(pair(j, "--setting-sources")).toBe("project,local");
+    expect(pair(j, "--setting-sources")).toBe("local");
     expect(j).toContain("--strict-mcp-config");
     expect(j).not.toContain("--plugin-dir");
   });
@@ -219,5 +219,16 @@ describe("sessions can't change the developer's agents (backlog)", () => {
   test("CLAUDE.md files in folders a session reads aren't loaded", () => {
     const { env } = sessionEnv({ PATH: "/bin", CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" }, "/motif");
     expect(env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD).toBeUndefined();
+  });
+});
+
+describe("the review of batch F", () => {
+  test("sessions run with motif connect turned off", () => {
+    expect(sessionEnv({ PATH: "/bin" }, "/motif").env.MOTIF_NO_CONNECT).toBe("1");
+  });
+
+  test("the grader loads only local settings: nothing a session left in the app's .claude/ reaches it", () => {
+    const j = judgeArgs({ mcpConfigFile: "/m", schema: { type: "object" }, maxTurns: 40, appDir: "/app" });
+    expect(j[j.indexOf("--setting-sources") + 1]).toBe("local");
   });
 });

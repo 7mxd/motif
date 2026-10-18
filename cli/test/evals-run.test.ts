@@ -5,7 +5,7 @@ import type { EvalCase } from "../../tests/evals/cases";
 import { AGENT_TOOLS, JUDGE_EXPECTED_TOOLS } from "../../tests/evals/claude";
 import type { Grade } from "../../tests/evals/grade";
 import { Paused } from "../../tests/evals/judge";
-import { runEvals, type RunDeps } from "../../tests/evals/run";
+import { runEvals, USAGE, type RunDeps } from "../../tests/evals/run";
 import type { SessionOutcome, SessionSpec } from "../../tests/evals/session";
 import { loadRun, type RunState } from "../../tests/evals/state";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -390,8 +390,9 @@ describe("the eval runner (backlog)", () => {
   test("a session that changed the developer's agent settings stops the run", async () => {
     let n = 0;
     const h = harness({ agentSettings: () => ({ "~/.claude.json": n++ === 0 ? "{}" : '{"figma":{}}' }) });
+    // (agentSettings is read before and after each session.)
     expect(await runEvals(["--cases", "b-search,b-settings", "--work", h.work], h.deps, h.where)).toBe(2);
-    expect(h.lines.join("\n")).toContain("changed your coding agents' settings (~/.claude.json)");
+    expect(h.lines.join("\n")).toContain("changed your coding agents' settings: ~/.claude.json (added figma)");
     expect(h.calls.session).toHaveLength(1);
   });
 
@@ -408,5 +409,39 @@ describe("the eval runner (backlog)", () => {
     expect(judgeSpec.cwd).not.toBe(app);
     expect(judgeSpec.args[judgeSpec.args.indexOf("--add-dir") + 1]).toBe(app);
     expect(judgeSpec.prompt).toContain(app);
+  });
+});
+
+describe("the eval runner (review of batch F)", () => {
+  test("the grader's folder is inside the case folder, so it goes when the case does", async () => {
+    const h = harness({
+      collect: async (_c, ws, _out, judge) => {
+        await judge({ issues: [], unmatched: [] }, ws.app);
+        return PASS;
+      },
+    });
+    await runEvals(["--cases", "c-review", "--work", h.work], h.deps, h.where);
+    const judgeSpec = h.calls.session.find((s) => s.args.includes("--json-schema"))!;
+    expect(judgeSpec.cwd).toBe(join(h.calls.removed[0]!, "grader"));
+  });
+
+  test("a CLAUDE.md that appeared above the grader's folder stops the run before the grader starts", async () => {
+    const h = harness({
+      instructionFiles: (dir) => (dir.endsWith("grader") ? [join(dir, "..", "CLAUDE.md")] : []),
+      collect: async (_c, ws, _out, judge) => {
+        await judge({ issues: [], unmatched: [] }, ws.app);
+        return PASS;
+      },
+    });
+    expect(await runEvals(["--cases", "c-review", "--work", h.work], h.deps, h.where)).toBe(2);
+    expect(h.calls.session.some((s) => s.args.includes("--json-schema"))).toBe(false);
+    expect(h.lines.join("\n")).toContain("CLAUDE.md");
+  });
+
+  test("the dry run's command can be pasted into a shell, and the usage names the default folder", async () => {
+    const h = harness();
+    await runEvals(["--cases", "b-search", "--dry-run"], h.deps, h.where);
+    expect(h.lines.join("\n")).toContain('--disallowedTools "Bash(claude mcp *),');
+    expect(USAGE).toContain("~/.motif-evals");
   });
 });

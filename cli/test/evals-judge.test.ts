@@ -52,3 +52,12 @@ describe("test C's model grader", () => {
     expect(e.resetsAt).toBe(1792000800);
   });
 });
+
+describe("where the app is (review of batch F)", () => {
+  test("the rubric points at the folder the prompt names, and /src paths are relative to it", () => {
+    expect(readFileSync(RUBRIC, "utf8")).not.toContain("in this folder");
+    const p = judgePrompt({ issues: [], unmatched: [] }, undefined, "/work/c-review/app");
+    expect(p).toContain("/work/c-review/app");
+    expect(p).toContain("a path starting with / is relative to it too");
+  });
+});

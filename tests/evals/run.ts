@@ -32,7 +32,7 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
   --model <name>         The model for the eval sessions (default: your account's)
   --judge-model <name>   The model for test C's grader (default: your account's)
   --max-turns <n>        Cap every case at n turns (for a quick check of the runner)
-  --work <folder>        Where case folders go (default: your temp folder)
+  --work <folder>        Where case folders go (default: ~/.motif-evals)
   --claude <path>        The Claude Code program to use`;
 
 export interface RunDeps {
@@ -54,6 +54,9 @@ export interface RunDeps {
   /** The MCP servers in the developer's coding agents' user settings, which no session may change. */
   agentSettings(): Record<string, string | null>;
 }
+
+/** An argument as a shell reads it: quoted when it holds spaces, brackets, commas or wildcards. */
+const shellWord = (a: string) => (/[\s()*,"']/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
 
 const summary = (o: SessionOutcome): SessionSummary => ({
   end: o.end, model: o.init?.model ?? "", turns: o.result?.turns ?? 0, minutes: o.minutes, costUsd: o.result?.costUsd ?? 0, denials: o.result?.denials ?? [], problems: o.problems,
@@ -143,7 +146,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
         `\n${c.id}: ${c.title}`,
         `  Folder: ${join(state.options.work, c.id, "app")}`,
         `  Limits: ${state.options.maxTurns ?? c.maxTurns} turns, ${c.minutes} minutes`,
-        `  Command: claude ${caseArgs(c).join(" ")}`,
+        `  Command: claude ${caseArgs(c).map(shellWord).join(" ")}`,
         "  Prompt (on standard input):",
         ...c.prompt.split("\n").map((l) => `    ${l}`),
       ].join("\n"));
@@ -215,10 +218,16 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       });
       cs.session = summary(outcome);
       await purge(cs.workspace.app);
-      const changed = changedSettings(before, deps.agentSettings());
+      // A file mid-write can't be read: look again a moment later before comparing.
+      let after = deps.agentSettings();
+      if (Object.values(after).includes(null)) {
+        await Bun.sleep(500);
+        after = deps.agentSettings();
+      }
+      const changed = changedSettings(before, after);
       if (changed.length) {
         cs.status = "error";
-        cs.note = `The session changed your coding agents' settings (${changed.join(", ")}): an eval session must never do that. Check their MCP servers (motif doctor lists the design sources), then run this again.`;
+        cs.note = `The session changed your coding agents' settings: ${changed.join(", ")}. An eval session must never do that. Check their MCP servers (motif doctor lists the design sources), then run this again.`;
         save();
         deps.log(`\nStopped: ${cs.note}`);
         finish();
@@ -264,8 +273,12 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     // The grader works from a folder of its own and reads the app from there: nothing the session left in the app (a
     // CLAUDE.md, .claude/ settings) reaches it.
     const judge: JudgeFn = async (input, app) => {
-      const own = join(state.options.work, `${c.id}-grader`);
+      // Inside the case's folder, so it goes when the case does.
+      const own = join(ws.dir, "grader");
       mkdirSync(own, { recursive: true });
+      // A session may have written a CLAUDE.md above it: the grader would read it.
+      const instructions = deps.instructionFiles(own);
+      if (instructions.length > 0) throw new Stopped(`The grader would read these instruction files: ${instructions.join(", ")}. Move them aside, then --resume.`);
       const r = await deps.session({
         command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel, appDir: app }), cwd: own, env,
         prompt: judgePrompt(input, undefined, app), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },

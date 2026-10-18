@@ -1,6 +1,6 @@
 // Runs one headless Claude Code session: the prompt on standard input, every event saved to a transcript, isolation checked as soon as
 // the session starts, a time limit, and the developer's usage limit noticed. The whole process tree is stopped on a time limit or Ctrl+C.
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { onExit } from "../../cli/src/cleanup";
@@ -23,6 +23,38 @@ export type SessionEnd = "finished" | "turn-cap" | "budget-cap" | "time-limit" |
 
 export interface SessionOutcome { end: SessionEnd; init?: InitInfo; result?: ResultInfo; problems: string[]; resetsAt?: number; minutes: number }
 
+/**
+ * The process groups a process's descendants run in, from `ps -A -o pid=,ppid=,pgid=`: Claude Code starts each shell
+ * command in a group of its own, which outlives Claude Code's (a dev server a session started).
+ */
+export function descendantGroups(root: number, ps: string): number[] {
+  const children = new Map<number, { pid: number; pgid: number }[]>();
+  for (const line of ps.split("\n")) {
+    const [pid, ppid, pgid] = line.trim().split(/\s+/).map(Number);
+    if (!pid || !pgid || ppid === undefined || Number.isNaN(ppid)) continue;
+    children.set(ppid, [...(children.get(ppid) ?? []), { pid, pgid }]);
+  }
+  const groups = new Set<number>();
+  const seen = new Set<number>();
+  for (const todo = [root]; todo.length > 0; ) {
+    const p = todo.pop()!;
+    if (seen.has(p)) continue;
+    seen.add(p);
+    for (const c of children.get(p) ?? []) {
+      groups.add(c.pgid);
+      todo.push(c.pid);
+    }
+  }
+  return [...groups];
+}
+
+/** The groups a process's descendants run in now (macOS, Linux); none on Windows, where taskkill /T follows the tree. */
+function groupsNow(pid: number): number[] {
+  if (process.platform === "win32") return [];
+  const r = spawnSync("ps", ["-A", "-o", "pid=,ppid=,pgid="], { encoding: "utf8" });
+  return r.status === 0 ? descendantGroups(pid, r.stdout) : [];
+}
+
 export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
   mkdirSync(dirname(spec.transcript), { recursive: true });
   writeFileSync(spec.transcript, "");
@@ -39,15 +71,37 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
   } catch (e) {
     return { end: "failed", problems: [`Claude Code couldn't start: ${(e as Error).message}`], minutes: 0 };
   }
-  // Asked first, so Claude Code can stop what it started; made to a few seconds later.
+  // The groups its commands run in, noted while it's alive, so what it started can be stopped after it ends.
+  const groups = new Set<number>();
+  const note = () => {
+    if (proc.pid) for (const g of groupsNow(proc.pid)) groups.add(g);
+  };
+  const stopGroups = () => {
+    for (const g of groups) {
+      try {
+        process.kill(-g, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    }
+  };
+  // Asked first, so Claude Code can stop what it started, and made to a few seconds later; at once when it isn't
+  // isolated or the runner is stopping (Ctrl+C).
   let forced: ReturnType<typeof setTimeout> | undefined;
-  const stop = () => {
-    if (!proc.pid || forced) return;
+  const stop = (now = false) => {
+    if (!proc.pid) return;
+    note();
+    if (now) {
+      killTree(proc.pid, true);
+      stopGroups();
+      return;
+    }
+    if (forced) return;
     killTree(proc.pid);
     forced = setTimeout(() => killTree(proc.pid!, true), 3000);
     forced.unref?.();
   };
-  const cancelExitHook = onExit(stop);
+  const cancelExitHook = onExit(() => stop(true));
 
   let init: InitInfo | undefined;
   let result: ResultInfo | undefined;
@@ -72,7 +126,7 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
         `Claude Code's first event didn't describe the session (it was ${JSON.stringify((e as any)?.type ?? null)}${(e as any)?.subtype ? `/${JSON.stringify((e as any).subtype)}` : ""}), so the runner can't check the session is isolated. This version of Claude Code may need the runner updated.`,
       );
       notIsolated = true;
-      stop();
+      stop(true);
       return;
     }
     if (i && !init) {
@@ -81,11 +135,15 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
       if (p.length > 0) {
         problems.push(...p);
         notIsolated = true;
-        stop();
+        stop(true);
       }
     }
     limit ??= usageLimit(e);
-    result = resultInfo(e) ?? result;
+    const r = resultInfo(e);
+    if (r) {
+      result = r;
+      note();
+    }
   };
 
   // Decoded as a stream: a character split between two pieces of output arrives whole.
@@ -120,6 +178,7 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
   if (forced) clearTimeout(forced);
   // Whatever it left running (a dev server, a watcher) goes too: on macOS and Linux its process group outlives it.
   if (proc.pid && process.platform !== "win32") killTree(proc.pid, true);
+  stopGroups();
   cancelExitHook();
   if (pending.trim()) onEvent(pending);
 

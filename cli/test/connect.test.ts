@@ -573,3 +573,31 @@ describe("reading from the terminal (v0.2.0 review minors)", () => {
     expect(await readSecret("Key: ", ended("abc"), quiet())).toBe("");
   });
 });
+
+describe("turning motif connect off for unattended runs (review of batch F)", () => {
+  test("MOTIF_NO_CONNECT=1 changes no agent's settings, and says so", async () => {
+    const home = tempDir("motif-connect-home-");
+    mkdirSync(join(home, ".cursor"));
+    const runs: string[] = [];
+    const deps: ConnectDeps = {
+      which: (c) => `/bin/${c}`,
+      run: async (exe) => {
+        runs.push(exe);
+        return { code: 0, output: "" };
+      },
+      interactive: false,
+      readSecret: async () => "k",
+      ask: async () => "",
+      configured: () => [],
+      home,
+      platform: "linux",
+      vars: { MOTIF_NO_CONNECT: "1" },
+      self: "motif",
+    };
+    const r = await runConnect(".", { positionals: ["motion"] }, deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("MOTIF_NO_CONNECT");
+    expect(runs).toEqual([]);
+    expect(existsSync(join(home, ".cursor", "mcp.json"))).toBe(false);
+  });
+});

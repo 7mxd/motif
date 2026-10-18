@@ -240,6 +240,10 @@ function needsTerminal(source: SourceInfo, deps: ConnectDeps, agentFlag: string)
 export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps = defaultDeps(cwd)): Promise<CommandResult> {
   const id = ctx.positionals[0];
   if (!id) return list(deps);
+  // For unattended runs (CI, Motif's own evals): nothing may change the developer's agents.
+  if (deps.vars.MOTIF_NO_CONNECT && deps.vars.MOTIF_NO_CONNECT !== "0") {
+    return fail("motif connect is turned off here (MOTIF_NO_CONNECT is set), so no agent's settings were changed.", { error: "connect-off" });
+  }
   const source = sourceById(id);
   if (!source) return fail(`There's no design source called "${id}". Choose one of: ${ids}.`, { error: "no-such-source" });
   const env: AgentEnv = { home: deps.home, platform: deps.platform, vars: deps.vars, which: deps.which };

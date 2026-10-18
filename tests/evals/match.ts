@@ -119,8 +119,9 @@ export function pointsAt(issue: SeededIssue, place: Location, lineText: LineText
 function how(issue: SeededIssue, place: Location, lineText: LineText): "place" | "screen" | null {
   const L = issue.location;
   if (L.app) return "place";
-  // The lines a place covers: one, or a range (capped, so a whole-file range can't match by sheer size).
-  const lines = place.line === undefined ? [] : Array.from({ length: Math.min(Math.max((place.lineEnd ?? place.line) - place.line + 1, 1), 50) }, (_, i) => place.line! + i);
+  // The lines a place covers: one, or a range of a few; a wider range points at the file (the model grader decides).
+  const span = place.line === undefined ? 0 : Math.max((place.lineEnd ?? place.line) - place.line + 1, 1);
+  const lines = place.line === undefined || span > 5 ? [] : Array.from({ length: span }, (_, i) => place.line! + i);
   const at = (file: string | undefined, line: number | undefined, anchor: string | undefined) =>
     file !== undefined &&
     place.file === file &&

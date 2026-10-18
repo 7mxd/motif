@@ -124,6 +124,7 @@ describe("the contract app keeps its design guide's promises (backlog)", () => {
       expect(s).toContain("transition: { duration: duration.fast, ease: easing.exit }");
     }
     expect(read("src/components/Sheet.tsx")).toContain("RadixDialog.Description");
+    for (const f of ["src/components/Sheet.tsx", "src/components/Dialog.tsx"]) expect(read(f)).toContain('{ "aria-describedby": undefined }');
   });
 
   test("rows can be selected and pressed, and link cards pressed, with spring.snappy", () => {

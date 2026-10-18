@@ -31,7 +31,7 @@ export function Dialog({
                 transition={{ duration: duration.base }}
               />
             </RadixDialog.Overlay>
-            <RadixDialog.Content asChild forceMount>
+            <RadixDialog.Content asChild forceMount {...(description ? {} : { "aria-describedby": undefined })}>
               <motion.div
                 className="fixed start-1/2 top-1/2 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg bg-surface-raised p-6 shadow-lg rtl:translate-x-1/2"
                 initial={{ opacity: 0, scale: 0.97 }}
