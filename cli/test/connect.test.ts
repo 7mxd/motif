@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
 import { genericConfig, readLine, readSecret, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
 import type { ConfiguredSource } from "../src/detect/sources";
@@ -458,7 +458,7 @@ describe("motif connect: every agent (Part 3)", () => {
   });
 
   test.skipIf(!canSymlink)("a key written through a settings link into a git-tracked dotfiles file gets the warning, naming that file (final review)", async () => {
-    const s = setup(["cursor"], { tracked: (args) => args[1]!.replace(/\\/g, "/").endsWith("/dotfiles/cursor") });
+    const s = setup(["cursor"], { tracked: (args) => args[args.indexOf("-C") + 1]!.replace(/\\/g, "/").endsWith("/dotfiles/cursor") });
     const dotfiles = join(s.home, "dotfiles", "cursor");
     mkdirSync(dotfiles, { recursive: true });
     writeFileSync(join(dotfiles, "mcp.json"), '{\n  "mcpServers": {}\n}\n');
@@ -469,14 +469,38 @@ describe("motif connect: every agent (Part 3)", () => {
     expect(r.text).toMatch(/dotfiles[\\/]cursor[\\/]mcp\.json, which now holds your key, is tracked by git/);
   });
 
-  test("Claude Code installed in ~/.claude/local is set up by that path, and CLAUDE_CONFIG_DIR's settings are the ones checked (backlog)", async () => {
-    const s = setup([]);
-    const local = join(s.home, ".claude", "local", "claude");
-    mkdirSync(join(s.home, ".claude", "local"), { recursive: true });
+  test("Claude Code installed but not on PATH is set up by its own path, and CLAUDE_CONFIG_DIR's settings are the ones git checks (backlog)", async () => {
+    const exes: string[] = [];
+    const gitPaths: string[] = [];
+    const s = setup([], {
+      run: async (exe, args) => {
+        exes.push(exe);
+        if (exe.endsWith("git")) {
+          gitPaths.push(args.join(" "));
+          return { code: 1, output: "" };
+        }
+        return { code: 0, output: "added" };
+      },
+    });
+    const local = join(s.home, ".local", "bin", "claude");
+    mkdirSync(dirname(local), { recursive: true });
     writeFileSync(local, "");
-    const r = await runConnect(".", ctx("motion"), s.deps);
+    const cfg = join(s.home, "cfg");
+    mkdirSync(cfg);
+    const r = await runConnect(".", ctx("21st"), { ...s.deps, vars: { CLAUDE_CONFIG_DIR: cfg } });
     expect(r.exitCode).toBe(0);
-    expect(s.calls.runs.find((x) => x.args[0] === "mcp")).toBeDefined();
+    expect(exes).toContain(local);
+    expect(gitPaths.some((g) => g.includes(cfg) && g.includes(".claude.json"))).toBe(true);
+  });
+
+  test("git reads the settings file's name literally, and finds yadm's repository under XDG_DATA_HOME (review of batch C3)", async () => {
+    const data = tempDir("motif-connect-data-");
+    const s = setup(["cursor"], { tracked: (args) => args.includes("--git-dir") && args.some((a) => a.replace(/\\/g, "/").endsWith("/yadm/repo.git")) });
+    mkdirSync(join(data, "yadm", "repo.git"), { recursive: true });
+    writeFileSync(join(data, "yadm", "repo.git", "HEAD"), "ref: refs/heads/main\n");
+    const r = await runConnect(".", ctx("21st"), { ...s.deps, vars: { XDG_DATA_HOME: data } });
+    expect(r.text).toContain("is tracked by your dotfiles repository");
+    for (const run of s.calls.runs.filter((x) => x.cli === "git")) expect(run.args[0]).toBe("--literal-pathspecs");
   });
 
   test("a key file in a bare dotfiles repository (~/.dotfiles) gets the git warning (backlog)", async () => {

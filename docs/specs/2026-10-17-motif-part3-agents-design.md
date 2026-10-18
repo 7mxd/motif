@@ -130,7 +130,7 @@ For OpenCode, which has no plugin system, and for any other agent that reads Age
 
 | Id | Agent | Found by |
 |---|---|---|
-| `claude` | Claude Code | `claude` on PATH, or its own install in `~/.claude/local` |
+| `claude` | Claude Code | `claude` on PATH, or installed but not on it: its installer's `~/.local/bin/claude` (`claude.exe` on Windows), or an older local install in `~/.claude/local` (or `$CLAUDE_CONFIG_DIR/local`) |
 | `codex` | Codex | `codex` on PATH, or its settings folder (`$CODEX_HOME`, `~/.codex`) exists: Codex's app and editor extension use it without the command |
 | `cursor` | Cursor | `~/.cursor` exists, or `cursor` or `cursor-agent` on PATH |
 | `copilot` | GitHub Copilot CLI | `copilot` on PATH |
@@ -167,7 +167,7 @@ Settings folders follow each agent's own variable where it has one (`CLAUDE_CONF
    A server that matches the source, under any name, is left alone and reported as already connected. A different server already using Motif's name, servers that aren't a list (`"servers": null`), or the servers key written twice, leave the file as it was, and that agent is reported ✗ with the reason. Anything else that goes wrong for one agent is that agent's ✗; the others are still set up.
 5. **Report one line per agent:** ✓ added, ✓ already connected, or ✗ with the reason and the settings to paste. One agent failing doesn't stop the others. Exit 0 when every chosen agent has the source, 1 when some failed, 2 when none could be set up.
 6. **Sign-in:** for Refero and 60fps.design, one line per agent on how to sign in (Claude Code `/mcp`; Codex `codex mcp login <name>`, or Authenticate under MCP servers in its app or editor extension; Gemini `/mcp auth <name>`; OpenCode `opencode mcp auth <name>`; Cursor's MCP settings; Copilot `/mcp`; VS Code's sign-in prompt on first use).
-7. **Keys:** typed only in the developer's own terminal, never in the chat; any output that echoes a key shows `<your key>` instead; a warning when a settings file now holding a key is tracked by git.
+7. **Keys:** typed only in the developer's own terminal, never in the chat; any output that echoes a key shows `<your key>` instead; a warning when a settings file now holding a key is tracked by git: by the repository its folder is in, or by a bare dotfiles repository in the home folder (`~/.dotfiles`, `~/.cfg`, `~/.dots`, `~/.dotfiles.git`, yadm's `~/.local/share/yadm/repo.git` or `$XDG_DATA_HOME/yadm/repo.git`).
 
 The exact command-line flags are confirmed against each agent's installed version during the plan (§12), and pinned by tests that check the arguments Motif passes.
 
@@ -177,7 +177,7 @@ Both list each source with the agents that have it, for example "✓ Motion: Cla
 
 | Agent | User | Project |
 |---|---|---|
-| Claude Code | `~/.claude.json` | `.mcp.json`, and `~/.claude.json`'s entry for this folder |
+| Claude Code | `~/.claude.json` (`$CLAUDE_CONFIG_DIR/.claude.json` when it's set) | `.mcp.json`, and that file's entry for this folder |
 | Codex | `$CODEX_HOME/config.toml` (`~/.codex`) | `.codex/config.toml` |
 | Cursor | `~/.cursor/mcp.json` | `.cursor/mcp.json` |
 | Copilot CLI | `$COPILOT_HOME/mcp-config.json` (`~/.copilot`) | `.mcp.json`, `.github/mcp.json` |

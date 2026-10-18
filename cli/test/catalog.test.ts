@@ -90,11 +90,12 @@ describe("the design source catalog: from the final review", () => {
 });
 
 describe("recognising Motion's server (backlog)", () => {
-  test("a server named motion that is another product's, or Motion+'s own tools, isn't the Motion source", async () => {
+  test("a server named motion that is another product's isn't the Motion source; the servers Motion's own installer writes are", async () => {
     const { sourcesIn } = await import("../src/detect/sources");
     const servers = (def: unknown, name = "motion") => [{ agent: "claude" as const, name, def, where: "~/.claude.json" }];
     expect(sourcesIn(servers({ type: "http", url: "https://api.usemotion.com/mcp" }))).toEqual([]);
-    expect(sourcesIn(servers({ command: "npx", args: ["-y", "motion-ai"] }))).toEqual([]);
+    // The servers Motion's own installer (npx motion-ai) writes: motion and motion-plus.
+    expect(sourcesIn(servers({ url: "https://mcp.motion.dev/plus" })).map((s) => s.id)).toEqual(["motion"]);
     expect(sourcesIn(servers({ type: "http", url: "https://mcp.motion.dev" }, "docs")).map((s) => s.id)).toEqual(["motion"]);
   });
 });

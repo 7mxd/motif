@@ -1,8 +1,8 @@
 // The coding agents Motif sets design sources up for: how to find each, where it keeps its MCP settings, and how to
 // sign in to a server there (Part 3 spec §7).
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export type AgentId = "claude" | "codex" | "cursor" | "copilot" | "vscode" | "gemini" | "opencode";
 export const AGENT_IDS: AgentId[] = ["claude", "codex", "cursor", "copilot", "vscode", "gemini", "opencode"];
@@ -48,12 +48,32 @@ export function shown(e: AgentEnv, path: string): string {
 }
 
 export const codexHome = (e: AgentEnv) => e.vars.CODEX_HOME || join(e.home, ".codex");
+/** CLAUDE_CONFIG_DIR as Claude Code reads it, a relative one from the home folder (where Motif runs claude); undefined when unset. */
+const claudeConfigDir = (e: AgentEnv) => {
+  const v = e.vars.CLAUDE_CONFIG_DIR;
+  return v ? (isAbsolute(v) ? v : resolve(e.home, v)) : undefined;
+};
 /** Claude Code's user settings: in CLAUDE_CONFIG_DIR when it's set, otherwise ~/.claude.json. */
-export const claudeSettings = (e: AgentEnv) => join(e.vars.CLAUDE_CONFIG_DIR || e.home, ".claude.json");
-/** Claude Code installed by its own installer, not on PATH: ~/.claude/local/claude. */
+export const claudeSettings = (e: AgentEnv) => join(claudeConfigDir(e) ?? e.home, ".claude.json");
+/** Claude Code's own installer puts it here and leaves PATH alone. */
+const claudeInstalled = (e: AgentEnv) => join(e.home, ".local", "bin", e.platform === "win32" ? "claude.exe" : "claude");
+
+const isFile = (p: string) => {
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Claude Code installed but not on PATH: by its own installer (~/.local/bin/claude), or an older local install in its
+ * folder (~/.claude/local, or CLAUDE_CONFIG_DIR's). On Windows that one's "claude" is a shell script, so its .cmd runs.
+ */
 export function claudeLocal(e: AgentEnv): string | null {
-  const dir = join(e.home, ".claude", "local");
-  return (e.platform === "win32" ? ["claude.exe", "claude.cmd", "claude"] : ["claude"]).map((n) => join(dir, n)).find((p) => existsSync(p)) ?? null;
+  const local = join(claudeConfigDir(e) ?? join(e.home, ".claude"), "local");
+  const older = e.platform === "win32" ? ["claude.cmd", "claude.exe"].map((n) => join(local, "node_modules", ".bin", n)) : [join(local, "claude")];
+  return [claudeInstalled(e), ...older].find(isFile) ?? null;
 }
 export const copilotHome = (e: AgentEnv) => e.vars.COPILOT_HOME || join(e.home, ".copilot");
 export const geminiDir = (e: AgentEnv) => join(e.vars.GEMINI_CLI_HOME || e.home, ".gemini");
@@ -76,7 +96,7 @@ export const AGENTS: AgentInfo[] = [
     id: "claude",
     label: "Claude Code",
     found: (e) => Boolean(e.which("claude") || claudeLocal(e)),
-    notFound: () => 'no "claude" command on PATH',
+    notFound: (e) => `no "claude" command on PATH, and no ${shown(e, claudeInstalled(e))}`,
     settings: (e, cwd) => [user(e, claudeSettings(e), "json", "mcpServers"), project(cwd, ".mcp.json", "json", "mcpServers")],
     signIn: (s) => `in Claude Code, type /mcp, choose "${s}" and sign in`,
   },

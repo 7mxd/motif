@@ -348,17 +348,19 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
       if (!keyFiles.has(same)) keyFiles.set(same, file);
     }
     // Dotfiles kept in a bare repository (git --git-dir ~/.dotfiles --work-tree ~, yadm) aren't seen by git -C.
-    const bareRepos = DOTFILES_REPOS.map((r) => join(env.home, r)).filter((r) => existsSync(join(r, "HEAD")));
+    const yadm = env.vars.XDG_DATA_HOME ? [join(env.vars.XDG_DATA_HOME, "yadm", "repo.git")] : [];
+    const bareRepos = [...DOTFILES_REPOS.map((r) => join(env.home, r)), ...yadm].filter((r) => existsSync(join(r, "HEAD")));
     for (const file of keyFiles.values()) {
       if (!git) break;
-      if ((await deps.run(git, ["-C", dirname(file), "ls-files", "--error-unmatch", basename(file)])).code === 0) {
+      // --literal-pathspecs: a folder named with [, * or ? is a name, not a pattern.
+      if ((await deps.run(git, ["--literal-pathspecs", "-C", dirname(file), "ls-files", "--error-unmatch", basename(file)])).code === 0) {
         lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by git. Remove it from that repository before you push.`);
         continue;
       }
       const inHome = relative(env.home, file);
       if (inHome.startsWith("..") || isAbsolute(inHome)) continue;
       for (const repo of bareRepos) {
-        if ((await deps.run(git, ["--git-dir", repo, "--work-tree", env.home, "ls-files", "--error-unmatch", inHome.split(sep).join("/")], env.home)).code === 0) {
+        if ((await deps.run(git, ["--literal-pathspecs", "--git-dir", repo, "--work-tree", env.home, "ls-files", "--error-unmatch", inHome.split(sep).join("/")], env.home)).code === 0) {
           lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by your dotfiles repository (${shown(env, repo)}). Remove it from that repository before you push.`);
           break;
         }

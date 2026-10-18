@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { AGENT_IDS, AGENTS, agentById, type AgentEnv, shown } from "../src/agents/catalog";
+import { dirname, join } from "node:path";
+import { AGENT_IDS, AGENTS, agentById, type AgentEnv, claudeLocal, shown } from "../src/agents/catalog";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -80,5 +80,40 @@ describe("Claude Code's own install and settings folder (backlog)", () => {
     writeFileSync(join(home, ".claude", "local", "claude"), "");
     expect(agentById("claude")!.found(env({ home }))).toBe(true);
     expect(paths("claude", env({ vars: { CLAUDE_CONFIG_DIR: join("/h", "cfg") } }))[0]![0]).toBe("~/cfg/.claude.json");
+  });
+});
+
+describe("Claude Code installed but not on PATH (review of batch C3)", () => {
+  const file = (path: string) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "");
+  };
+
+  test("its own installer's ~/.local/bin/claude counts, on every system", () => {
+    const linux = tempDir("motif-agents-home-");
+    file(join(linux, ".local", "bin", "claude"));
+    expect(claudeLocal(env({ home: linux }))).toBe(join(linux, ".local", "bin", "claude"));
+    const win = tempDir("motif-agents-home-");
+    file(join(win, ".local", "bin", "claude.exe"));
+    expect(claudeLocal(env({ home: win, platform: "win32" }))).toBe(join(win, ".local", "bin", "claude.exe"));
+  });
+
+  test("an older local install counts by a program Windows can run, in Claude's own folder (CLAUDE_CONFIG_DIR too)", () => {
+    const win = tempDir("motif-agents-home-");
+    file(join(win, ".claude", "local", "claude"));
+    expect(claudeLocal(env({ home: win, platform: "win32" }))).toBeNull();
+    file(join(win, ".claude", "local", "node_modules", ".bin", "claude.cmd"));
+    expect(claudeLocal(env({ home: win, platform: "win32" }))).toBe(join(win, ".claude", "local", "node_modules", ".bin", "claude.cmd"));
+    const moved = tempDir("motif-agents-home-");
+    file(join(moved, "cfg", "local", "claude"));
+    expect(claudeLocal(env({ home: moved, vars: { CLAUDE_CONFIG_DIR: join(moved, "cfg") } }))).toBe(join(moved, "cfg", "local", "claude"));
+    const folder = tempDir("motif-agents-home-");
+    mkdirSync(join(folder, ".claude", "local", "claude"), { recursive: true });
+    expect(claudeLocal(env({ home: folder }))).toBeNull();
+  });
+
+  test("a relative CLAUDE_CONFIG_DIR is read from the home folder, and the not-found text names the installer's place", () => {
+    expect(paths("claude", env({ vars: { CLAUDE_CONFIG_DIR: "cfg" } }))[0]![0]).toBe("~/cfg/.claude.json");
+    expect(agentById("claude")!.notFound(env())).toBe('no "claude" command on PATH, and no ~/.local/bin/claude');
   });
 });
