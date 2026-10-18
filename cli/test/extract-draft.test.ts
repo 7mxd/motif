@@ -164,3 +164,37 @@ describe("code fonts (review of batch D)", () => {
     expect(report.notes.join("\n")).toContain("Space Mono");
   });
 });
+
+describe("buildDraft: surfaces and borders (backlog 85, HiSalon)", () => {
+  test("a surface sits close to the page: a mid-grey used for dots isn't one", () => {
+    const page: Sample = { value: "#FFFFFF", count: 10, contexts: { background: 10, page: 1 }, examples: [] };
+    const t = (colors: Sample[]) => buildDraft({ ...occ, colors: [page, s("#111827", 9, "text"), ...colors] }).report;
+    const hexOf = (r: ReturnType<typeof t>, role: string) => (r.colors as any[]).find((c) => c.id === r.roles[role])?.hex;
+    const dots = t([s("#939599", 5, "background")]);
+    expect(hexOf(dots, "color.surface")).toBe("#FFFFFF");
+    // A hover or pressed fill (1.27:1 on white) is a step too far for a card; the presets' surfaces are within 1.1:1.
+    const hover = t([s("#E3E4E8", 5, "background")]);
+    expect(hexOf(hover, "color.surface")).toBe("#FFFFFF");
+    const cards = t([s("#939599", 5, "background"), s("#F3F4F6", 2, "background")]);
+    expect(hexOf(cards, "color.surface")).toBe("#F3F4F6");
+  });
+
+  test("a surface is tinted no more than the page: an error badge's pale red isn't one", () => {
+    const page: Sample = { value: "#F7F8FA", count: 10, contexts: { background: 10, page: 1 }, examples: [] };
+    const r = buildDraft({ ...occ, colors: [page, s("#111827", 9, "text"), s("#FDE8E8", 6, "background")] }).report;
+    expect((r.colors as any[]).find((c) => c.id === r.roles["color.surface"])?.hex).toBe("#F7F8FA");
+  });
+
+  test("a surface isn't the colour of the lines around it", () => {
+    const page: Sample = { value: "#FFFFFF", count: 10, contexts: { background: 10, page: 1 }, examples: [] };
+    const line: Sample = { value: "#E9EBEE", count: 11, contexts: { background: 5, border: 6 }, examples: [] };
+    const r = buildDraft({ ...occ, colors: [page, s("#111827", 9, "text"), line] }).report;
+    const hexOf = (role: string) => (r.colors as any[]).find((c) => c.id === r.roles[role])?.hex;
+    expect([hexOf("color.surface"), hexOf("color.border")]).toEqual(["#FFFFFF", "#E9EBEE"]);
+  });
+
+  test("a border prefers a neutral line over an accent ring", () => {
+    const r = buildDraft({ ...occ, colors: [...occ.colors, s("#7EEBC1", 5, "border")] }).report;
+    expect((r.colors as any[]).find((c) => c.id === r.roles["color.border"])?.hex).toBe("#E5E7EB");
+  });
+});

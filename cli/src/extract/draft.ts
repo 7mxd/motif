@@ -1,6 +1,7 @@
 import { formatHex, wcagContrast } from "culori";
 import type { SourceFile } from "../check/files";
 import { darkRanges } from "../check/dark";
+import { CLASS_PREFIX, classSegments, utilContext } from "../check/rules/tailwind";
 import { TAILWIND_SPACING_PX } from "../check/rules/tailwind-scale";
 import { inRanges, maskComments } from "../check/mask";
 import { scanFile } from "../check/run";
@@ -31,8 +32,8 @@ export interface Occurrences {
   /** How each followed variable is used through var(), by context (text, background, border, action…). */
   variableUses?: Record<string, Record<string, number>>;
   /**
-   * Read the site's own variables as a person would: uses through var(), names that say a role, buttons' fills, colour
-   * lists in scripts as data. Plain web sites only for now; React apps keep the drafts they had.
+   * Read the app's own variables as a person would: uses through var() and through the app's Tailwind theme classes,
+   * names that say a role, buttons' fills, colour lists in scripts as data.
    */
   followVariables?: boolean;
 }
@@ -337,6 +338,32 @@ export function collectOccurrences(
       }
     }
   }
+  // A Tailwind 4 app's own colour classes (text-ink, bg-card): each is a use of the --color-* variable its @theme sets, so
+  // an app styled through its theme is read the way it's used, not only from the few colours written out.
+  const themeColors = [...new Set([...aliases.keys(), ...variables.keys()])].filter((n) => n.startsWith("--color-")).map((n) => n.slice("--color-".length));
+  if (themeColors.length > 0) {
+    const names = themeColors.sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    const pattern = new RegExp(`${CLASS_PREFIX}(bg|text|border(?:-[xytrblse])?|ring(?:-offset)?|outline|fill|stroke|decoration|caret|accent|from|via|to|divide|placeholder)-(${names})(?:\\/\\d{1,3})?(?![\\w-])`, "g");
+    for (const file of files) {
+      if (!followFor(file) || !tailwindFor(file)) continue;
+      const masked = { ...file, text: maskComments(file.text, file.lang) };
+      const at = locator(masked.text);
+      // body { @apply bg-paper } sets the page's background.
+      const selectorAt = file.lang === "css" ? selectorLookup(masked.text) : () => "";
+      for (const seg of classSegments(masked)) {
+        const page = isPageSelector(selectorAt(seg.offset));
+        for (const m of seg.text.matchAll(pattern)) {
+          const context = utilContext(m[1]!);
+          uses.push({
+            name: `--color-${m[2]}`,
+            context,
+            ...(page && m[1] === "bg" ? { page: true as const } : {}),
+            example: `${file.path}:${at(seg.offset + m.index!).line}`,
+          });
+        }
+      }
+    }
+  }
   // Uses through var() count as uses of the variable's colour (following --a: var(--b) to --b); buttons' fills are actions.
   const colorOf = (name: string) => {
     let n = name;
@@ -368,7 +395,12 @@ export function collectOccurrences(
   return {
     colors: sorted(buckets.colors), space: sorted(buckets.space), radius: sorted(buckets.radius), fontSize: sorted(buckets.fontSize),
     fontFamily: sorted(buckets.fontFamily), duration: sorted(buckets.duration), easing: sorted(buckets.easing), unresolved: sorted(buckets.unresolved),
-    variables: [...variables.values()],
+    // A variable set from another one in light (--ink: var(--gray-900)) and written out in dark has its light value
+    // through that one, so its dark value can reach its role.
+    variables: [...variables.values()].map((v) => {
+      const light = v.light ?? (aliases.has(v.name) ? colorOf(v.name) : undefined);
+      return light ? { ...v, light } : v;
+    }),
     ...(files.some(followFor) ? { aliases: Object.fromEntries(aliases), roleNames: [...roleNames], variableUses, followVariables: true } : {}),
   };
 }
@@ -451,8 +483,15 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const textPick = (readable.length > 0 ? readable : text).filter((c) => c !== named["text-secondary"]);
   chosen["text-primary"] = named["text-primary"] ?? textPick[0] ?? named["text-secondary"];
   chosen["text-secondary"] = named["text-secondary"] ?? textPick.find((c) => c !== chosen["text-primary"]) ?? chosen["text-primary"];
-  chosen.surface = named.surface ?? backgrounds.find((c) => c !== chosen.background && c.c < 0.04) ?? chosen.background;
-  chosen.border = named.border ?? borders[0];
+  // A surface sits close to the page (cards on it), not a mid-grey used for a dot or a chip, and is tinted no more than
+  // the page is (an error badge's pale red isn't a surface).
+  const nearPage = (c: ColorCluster) =>
+    !chosen.background || (wcagContrast(c.hex, chosen.background.hex) < 1.2 && c.c <= Math.max(0.012, chosen.background.c * 2));
+  // The border role is the neutral line between things; a coloured one is usually a focus or an active state.
+  chosen.border = named.border ?? borders.find((c) => c.c < 0.04) ?? borders[0];
+  // A card the colour of its own outline would lose its edge: the lines' colour isn't a surface.
+  chosen.surface =
+    named.surface ?? backgrounds.find((c) => c !== chosen.background && c !== chosen.border && c.c < 0.04 && nearPage(c)) ?? chosen.background;
   const saturated = clusters.filter((c) => c.c >= 0.08 && !isData(c));
   // Buttons' fills say which colour is the main action, saturated or not (black pill buttons), but not a fill that is
   // the page or a card again (a reset giving buttons the surface colour).

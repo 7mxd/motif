@@ -67,8 +67,8 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   // The app's own spacing step (@theme { --spacing }) wins over Tailwind's default.
   const ownSpacing = ownSpacingPx(files.filter((f) => f.lang === "css" && !noTailwind.has(f)).map((f) => f.text));
   const tw = defaults && ownSpacing !== null ? { ...defaults, spacingPx: ownSpacing } : defaults;
-  // Plain web sites have no utility classes, and their own variables are read the way a person would.
-  const occ = collectOccurrences(files, tw, (f) => !noTailwind.has(f), (f) => noTailwind.has(f));
+  // Plain web sites have no utility classes. Every app's own variables are read the way a person would.
+  const occ = collectOccurrences(files, tw, (f) => !noTailwind.has(f), () => true);
   const { tokens, report } = buildDraft(occ);
 
   const notes = [...settingProblems.map((f) => f.message), ...report.notes];

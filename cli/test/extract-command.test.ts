@@ -119,3 +119,67 @@ describe("motif extract and the app's own Tailwind spacing (review of batch C1)"
     expect(report.spacing.map((s: { px: number }) => s.px)).toEqual([24]);
   });
 });
+
+describe("React apps: drafts follow the app's own variables (backlog 85)", () => {
+  // Styled through its own Tailwind 4 theme classes, as most real apps are: the colours are only ever variables.
+  const CSS = `@import "tailwindcss";
+:root { --ink: #111827; --ink-soft: #4b5563; --paper: #ffffff; --card: #f3f4f6; --line: #e5e7eb; --brand: #4338ca; --mint: #7eebc1; }
+[data-theme="dark"] { --ink: #f9fafb; --ink-soft: #a1a1aa; --paper: #0b0b0c; --card: #161618; --line: #2a2a2e; --brand: #a5b4fc; }
+@theme inline {
+  --color-ink: var(--ink); --color-ink-soft: var(--ink-soft); --color-paper: var(--paper); --color-card: var(--card);
+  --color-line: var(--line); --color-brand: var(--brand); --color-mint: var(--mint);
+}
+body { @apply bg-paper text-ink; }
+`;
+  const row = `<li className="bg-card text-ink border border-line rounded-lg p-4"><span className="text-ink-soft">Meta</span></li>`;
+  const APP_VARS = `export function App() {
+  return (
+    <main className="bg-paper text-ink">
+      <ul>${Array.from({ length: 8 }, () => row).join("")}</ul>
+      <button className="bg-brand text-paper px-4 py-2 focus-visible:ring-2 focus-visible:ring-mint">Book</button>
+      <button className="bg-brand text-paper px-4 py-2">Pay</button>
+    </main>
+  );
+}
+`;
+  test("its own theme classes count as uses of the variables behind them, light and dark", async () => {
+    const root = makeProject({ "package.json": PKG, "src/App.tsx": APP_VARS, "src/index.css": CSS });
+    expect((await runExtract(root, ctx)).exitCode).toBe(0);
+    const tokens = JSON.parse(readFileSync(join(root, "design/tokens.draft.json"), "utf8"));
+    const hex = (role: string, mode: "light" | "dark") => {
+      const t = tokens.color[role];
+      const alias: string = mode === "dark" ? t.$extensions["dev.motif"].modes.dark : t.$value;
+      return tokens.primitive.color[alias.match(/^\{primitive\.color\.(.+)\}$/)![1]!].$value.hex;
+    };
+    const roles = ["background", "surface", "border", "text-primary", "text-secondary", "action-primary"];
+    expect(Object.fromEntries(roles.map((r) => [r, `${hex(r, "light")} ${hex(r, "dark")}`]))).toEqual({
+      background: "#FFFFFF #0B0B0C",
+      surface: "#F3F4F6 #161618",
+      border: "#E5E7EB #2A2A2E",
+      "text-primary": "#111827 #F9FAFB",
+      "text-secondary": "#4B5563 #A1A1AA",
+      "action-primary": "#4338CA #A5B4FC",
+    });
+  });
+});
+
+describe("React apps: dark values through palette variables (backlog 85)", () => {
+  test("a role variable set from a palette in light and written out in dark keeps its dark value", async () => {
+    const css = `@import "tailwindcss";
+:root { --gray-900: #111827; --gray-50: #f9fafb; --ink: var(--gray-900); --paper: var(--gray-50); }
+[data-theme="dark"] { --ink: #f5f5f7; --paper: #0b0b0c; }
+@theme inline { --color-ink: var(--ink); --color-paper: var(--paper); }
+body { @apply bg-paper text-ink; }
+`;
+    const app = `export const App = () => <main className="bg-paper text-ink">${'<p className="text-ink">x</p>'.repeat(6)}</main>;\n`;
+    const root = makeProject({ "package.json": PKG, "src/App.tsx": app, "src/index.css": css });
+    expect((await runExtract(root, ctx)).exitCode).toBe(0);
+    const tokens = JSON.parse(readFileSync(join(root, "design/tokens.draft.json"), "utf8"));
+    const hex = (role: string, mode: "light" | "dark") => {
+      const t = tokens.color[role];
+      const alias: string = mode === "dark" ? t.$extensions["dev.motif"].modes.dark : t.$value;
+      return tokens.primitive.color[alias.match(/^\{primitive\.color\.(.+)\}$/)![1]!].$value.hex;
+    };
+    expect([hex("text-primary", "light"), hex("text-primary", "dark"), hex("background", "light"), hex("background", "dark")]).toEqual(["#111827", "#F5F5F7", "#F9FAFB", "#0B0B0C"]);
+  });
+});
