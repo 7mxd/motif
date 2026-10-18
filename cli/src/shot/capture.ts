@@ -1,5 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createHash, X509Certificate } from "node:crypto";
+import { connect } from "node:tls";
 import { launchBrowser, LoadTimeout } from "../browser/cdp";
 import { addPngText, readPngText } from "../browser/png";
 import { auditPage, type AuditIssue } from "./audit";
@@ -29,7 +31,7 @@ export const VIEWPORTS: Viewport[] = [
   { name: "desktop", width: 1440, height: 900, scale: 1, mobile: false },
 ];
 /** The sizes --sizes accepts: each width, and names for groups of them. */
-const SIZE_NAMES: Record<string, number[]> = { phones: [360, 390, 430], phone: [390], tablet: [768], desktop: [1440] };
+const SIZE_NAMES: Record<string, number[]> = { phones: [360, 390, 430], phone: [390], mobile: [390], tablet: [768], desktop: [1440] };
 
 /** --sizes 390,1440 or --sizes phones,desktop: some of the five sizes, for a quick run. */
 export function parseSizes(value: string): Viewport[] | { error: string } {
@@ -37,7 +39,7 @@ export function parseSizes(value: string): Viewport[] | { error: string } {
   for (const part of value.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean)) {
     const named = SIZE_NAMES[part] ?? VIEWPORTS.filter((v) => String(v.width) === part || v.file === part).map((v) => v.width);
     if (named.length === 0) {
-      return { error: `--sizes: "${part}" isn't one of the sizes. Use widths (${VIEWPORTS.map((v) => v.width).join(", ")}) or names (phones, tablet, desktop), like --sizes 390,1440.` };
+      return { error: `--sizes: "${part}" isn't one of the sizes. Use widths (${VIEWPORTS.map((v) => v.width).join(", ")}) or names (phones, mobile, tablet, desktop), like --sizes 390,1440.` };
     }
     for (const w of named) widths.add(w);
   }
@@ -96,6 +98,8 @@ export interface RouteResult {
   error?: string;
   /** Uncaught errors the page threw while loading (a crashed page can still answer HTTP 200). */
   pageErrors?: string[];
+  /** Set when the page never finished loading: it was captured as it was. */
+  loading?: string;
   cropped?: boolean;
   shots: string[];
   /** Set when the audit of this page couldn't finish. */
@@ -142,7 +146,31 @@ const HIDE_DEV_BADGES = `(() => { const s = document.createElement("style"); s.t
 const PAGE_HEIGHT = "document.documentElement.scrollHeight";
 
 /** An address on this computer: a dev server there may use https with a certificate of its own. */
-export const isLocal = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(url);
+export const isLocal = (url: string) => /^https?:\/\/((?:[\w-]+\.)*localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\])(:\d+)?(\/|$)/i.test(url);
+
+/** The SHA-256 of a local https server's public key (base64), so the browser accepts that certificate and no other. */
+export function serverKey(url: string, timeoutMs = 5000): Promise<string | null> {
+  const u = new URL(url);
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  return new Promise((resolve) => {
+    const socket = connect({ host, port: Number(u.port || 443), servername: /^[\d.:]+$/.test(host) ? undefined : host, rejectUnauthorized: false }, () => {
+      try {
+        const cert = socket.getPeerCertificate(true);
+        const spki = new X509Certificate(cert.raw).publicKey.export({ type: "spki", format: "der" });
+        resolve(createHash("sha256").update(spki).digest("base64"));
+      } catch {
+        resolve(null);
+      } finally {
+        socket.end();
+      }
+    });
+    socket.on("error", () => resolve(null));
+    socket.setTimeout(timeoutMs, () => {
+      socket.destroy();
+      resolve(null);
+    });
+  });
+}
 
 async function probe(url: string, timeoutMs: number): Promise<{ status: number; finalUrl: string; error?: string }> {
   try {
@@ -161,7 +189,9 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const stateTimeoutMs = opts.stateTimeoutMs ?? 15_000;
   mkdirSync(opts.outDir, { recursive: true });
-  const browser = await launchBrowser(opts.browserPath, { ignoreCertificateErrors: opts.baseUrl.startsWith("https:") && isLocal(opts.baseUrl) });
+  // A local dev server on https with its own certificate: the browser accepts that one certificate, nothing else.
+  const key = opts.baseUrl.startsWith("https:") && isLocal(opts.baseUrl) ? await serverKey(opts.baseUrl) : null;
+  const browser = await launchBrowser(opts.browserPath, key ? { trustedKeys: [key] } : {});
   const viewports = opts.viewports ?? VIEWPORTS;
   const results: RouteResult[] = [];
   const issues: AuditIssue[] = [];
@@ -204,9 +234,11 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 await page.emulateMedia(media);
                 try {
                   await page.goto(url, stuck ? Math.min(timeoutMs, 2000) : timeoutMs);
+                  // It loaded this time: later screenshots wait for it in full again.
+                  stuck = false;
                 } catch (e) {
                   if (!(e instanceof LoadTimeout)) throw e;
-                  addErrors([`The page hadn't finished loading after ${Math.round(timeoutMs / 1000)} s; the screenshots show it as it was.`]);
+                  result.loading = `It hadn't finished loading after ${Math.round(timeoutMs / 1000)} s; the screenshots show it as it was.`;
                   stuck = true;
                 }
                 // Fonts are ready only once the page has loaded: a page that never does waits a moment, not forever.
@@ -219,6 +251,8 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   } catch (e) {
                     addErrors([tag(e instanceof Error ? e.message : String(e))]);
                   }
+                  // What the script set off (a form sent, a list fetched) is waited for too.
+                  if (!stuck) await page.waitForQuiet(300, 5000);
                 }
                 await Bun.sleep(settleMs);
                 const thrown = page.takeErrors();

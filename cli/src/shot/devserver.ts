@@ -80,13 +80,20 @@ export function devCommand(
 
 /** The first local address a dev server printed (Vite, Next.js and most others print one), or null. */
 export function findLocalUrl(output: string): string | null {
+  return findLocalAddress(output)?.url ?? null;
+}
+
+/**
+ * The local address a dev server printed, and whether it was on a line that says "Local": where several programs print
+ * addresses (a dev server next to a mock API), that line is the app's.
+ */
+export function findLocalAddress(output: string): { url: string; onLocalLine: boolean } | null {
   const address = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1?\]|0\.0\.0\.0)(?::\d+)?(?:\/[^\s'"`<>]*)?/;
   const text = output.replace(ANSI, "");
-  // Where several programs print addresses (a dev server next to a mock API), the line that says "Local" is the app's.
   const local = text.split(/\r?\n/).find((line) => /\bLocal\b/i.test(line) && address.test(line));
   const m = (local ?? text).match(address);
   if (!m) return null;
-  return m[0].replace(/[.,;)]+$/, "").replace("//0.0.0.0", "//127.0.0.1").replace("//[::]", "//[::1]");
+  return { url: m[0].replace(/[.,;)]+$/, "").replace("//0.0.0.0", "//127.0.0.1").replace("//[::]", "//[::1]"), onLocalLine: local !== undefined };
 }
 
 // Lines that bury the cause: package-manager wrap-up, stack frames, object dumps, the Node version banner.
@@ -162,7 +169,9 @@ export async function startDevServer(opts: { cwd: string; command: string[]; tim
       if (!done) killTree(proc.pid, true);
     } else if (proc.pid && process.platform !== "win32") {
       // The first process ended, but what it started in the background ("tsc -w & vite") is still in its group. (Not on
-      // Windows, where the id could by now be another program's.)
+      // Windows, where the id could by now be another program's.) Asked to stop first, as above.
+      killTree(proc.pid);
+      await Bun.sleep(1000);
       killTree(proc.pid, true);
     }
     cancelExitHook();
@@ -170,6 +179,8 @@ export async function startDevServer(opts: { cwd: string; command: string[]; tim
 
   const deadline = Date.now() + timeoutMs;
   let url: string | null = null;
+  // An address not on a "Local" line (another program's, printed first) is taken only if no Local line comes soon.
+  let otherSince: number | null = null;
   try {
     while (Date.now() < deadline) {
       if (failure.error) throw new Error(`Couldn't run "${opts.command.join(" ")}": ${failure.error.message}`);
@@ -177,7 +188,9 @@ export async function startDevServer(opts: { cwd: string; command: string[]; tim
         await Promise.race([closed, Bun.sleep(500)]); // let the last output arrive
         throw new Error(`The dev server stopped (exit code ${proc.exitCode ?? proc.signalCode}) before it was ready.${tail()}`);
       }
-      url ??= findLocalUrl(output);
+      const found = findLocalAddress(output);
+      if (found && !found.onLocalLine) otherSince ??= Date.now();
+      url = found && (found.onLocalLine || Date.now() - otherSince! >= 1500) ? found.url : null;
       if (url && (await answers(url))) return { url, pid: proc.pid!, stop };
       await Bun.sleep(250);
     }

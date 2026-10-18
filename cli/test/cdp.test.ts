@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { closeTab, launchBrowser, openTab, removeProfile, startFailureHint } from "../src/browser/cdp";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
@@ -125,6 +128,29 @@ describe.skipIf(!browser)("waitForQuiet (backlog #30, needs a browser)", () => {
       await b.close();
       server.stop(true);
     }
+  }, 30_000);
+});
+
+describe.skipIf(!browser)("a page that loads too slowly (review of batch B)", () => {
+  test("its timeout is one error, with nothing printed besides", () => {
+    const SRC = join(import.meta.dir, "../src").replace(/\\/g, "/");
+    const dir = mkdtempSync(join(tmpdir(), "motif-goto-"));
+    const file = join(dir, "run.ts");
+    writeFileSync(file, `
+import { launchBrowser } from "${SRC}/browser/cdp";
+const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Promise((r) => setTimeout(() => r(new Response("<p>late</p>", { headers: { "content-type": "text/html" } })), 2500)) });
+const b = await launchBrowser(${JSON.stringify(browser!.path)});
+const page = await b.newPage();
+const message = await page.goto("http://127.0.0.1:" + server.port + "/", 1000).then(() => "loaded", (e) => e.message);
+console.log(message);
+await Bun.sleep(3000);
+await b.close();
+server.stop(true);
+`);
+    const r = Bun.spawnSync([process.execPath, file]);
+    rmSync(dir, { recursive: true, force: true });
+    expect(r.stdout.toString().trim()).toBe("The page took too long to load.");
+    expect(r.stderr.toString()).not.toContain("took too long");
   }, 30_000);
 });
 

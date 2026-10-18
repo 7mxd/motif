@@ -208,6 +208,42 @@ describe.skipIf(!browser)("renderComparisons (needs Chrome, Edge or Chromium)", 
     expect(pngSize(new Uint8Array(readFileSync(join(dir, "out", "added.png")))).height).toBeLessThan(900 * 2);
   }, 60_000);
 
+  test("on real text pages, an insert or a removal reads as moved, from where it happened (review of batch B)", async () => {
+    const dir = tempDir("motif-compare-");
+    const text = (n: number) => Array.from({ length: n }, (_, i) => `<p style="margin: 0 0 8px; font: 16px/1.4 sans-serif">Line ${i + 1} of the page, with some words.</p>`).join("");
+    const shot = async (body: string) => {
+      const b = await launchBrowser(browser!.path);
+      try {
+        const page = await b.newPage();
+        await page.setViewport(390, 100, 2);
+        await page.goto("data:text/html," + encodeURIComponent(`<body style="margin: 0; padding: 16px; background: #ffffff">${body}</body>`));
+        const height = await page.evaluate<number>("document.documentElement.scrollHeight");
+        return await page.screenshot({ x: 0, y: 0, width: 390, height });
+      } finally {
+        await b.close();
+      }
+    };
+    const banner = '<div style="height: 37px; background: #2563eb"></div>';
+    writeFileSync(join(dir, "before.png"), await shot(text(10) + text(10)));
+    writeFileSync(join(dir, "inserted.png"), await shot(text(10) + banner + text(10)));
+    writeFileSync(join(dir, "removed.png"), await shot(text(10) + text(4)));
+    const [inserted, removed, takenOut] = await renderComparisons({
+      browserPath: browser!.path,
+      labels: ["Before", "Now"],
+      measure: true,
+      pairs: [
+        { before: join(dir, "before.png"), after: join(dir, "inserted.png"), out: join(dir, "out", "inserted.png") },
+        { before: join(dir, "before.png"), after: join(dir, "removed.png"), out: join(dir, "out", "removed.png") },
+        { before: join(dir, "inserted.png"), after: join(dir, "before.png"), out: join(dir, "out", "taken-out.png") },
+      ],
+    });
+    expect(inserted).toMatchObject({ taller: 37, moved: true });
+    expect(takenOut).toMatchObject({ taller: -37, moved: true });
+    expect(Math.abs(inserted!.from! - takenOut!.from!)).toBeLessThanOrEqual(2);
+    expect(removed!.moved).toBe(false); // the end of the page was cut: nothing below the change is the same
+    expect(removed!.taller).toBeLessThan(0);
+  }, 60_000);
+
   test("nothing to compare is not an error", async () => {
     expect(await renderComparisons({ browserPath: browser!.path, labels: ["Before", "Now"], measure: true, pairs: [] })).toEqual([]);
   });

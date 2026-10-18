@@ -275,8 +275,11 @@ const groupKey = (i: AuditIssue) =>
     ? `${i.rule}|${i.fg.toLowerCase()}|${i.bg.toLowerCase()}|${i.expected ?? 4.5}`
     : i.rule === "color-contrast"
       ? `${i.rule}|${i.route}|${i.selector}|${i.scheme}`
-      : `${i.rule}|${i.selector}`;
-const placeKey = (i: AuditIssue) => `${i.route}|${i.state ?? ""}|${i.selector}`;
+      : // The same selector on another page is the same element only with the same label: a page's "button" is
+        // just the one button on that page.
+        `${i.rule}|${i.selector}|${i.kind}|${i.label ?? ""}`;
+// A colour problem seen in light and in dark is two places; anything else is one place in either scheme.
+const placeKey = (i: AuditIssue) => `${i.route}|${i.state ?? ""}|${i.selector}${i.rule === "color-contrast" ? `|${i.scheme}` : ""}`;
 
 const placeOf = (i: AuditIssue, withScheme: boolean): Place => ({
   screen: i.route,

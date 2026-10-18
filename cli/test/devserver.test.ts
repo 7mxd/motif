@@ -218,6 +218,28 @@ describe.skipIf(!cert)("dev servers on https with their own certificate (backlog
   });
 });
 
+describe("the app's address, printed after another program's (review of batch B)", () => {
+  test("waits a moment for a Local line before taking the first address", async () => {
+    const dir = tempDir("motif-dev-");
+    writeFileSync(join(dir, "both.ts"), `
+import { writeFileSync } from "node:fs";
+writeFileSync("server.pid", String(process.pid));
+const api = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("{}") });
+console.log("JSON Server is running on http://localhost:" + api.port);
+setTimeout(() => {
+  const app = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("<h1>App</h1>", { headers: { "content-type": "text/html" } }) });
+  console.log("  ➜  Local:   http://localhost:" + app.port + "/");
+}, 700);
+`);
+    const server = await startDevServer({ cwd: dir, command: viaShell(dir, "both.ts"), timeoutMs: 20_000 });
+    try {
+      expect(await (await fetch(server.url)).text()).toContain("App");
+    } finally {
+      await server.stop();
+    }
+  }, 30_000);
+});
+
 describe.skipIf(process.platform === "win32")("stopping a dev server whose first process already ended (backlog)", () => {
   test("still stops what it started", async () => {
     const dir = tempDir("motif-dev-");

@@ -177,11 +177,14 @@ export async function launchBrowser(
   opts: {
     timeoutMs?: number;
     callTimeoutMs?: number;
-    /** For a local dev server on https with its own certificate, which no browser trusts. */
-    ignoreCertificateErrors?: boolean;
+    /**
+     * Certificates to accept though no browser trusts them, by the SHA-256 of their public key (base64): a local dev
+     * server's own. Every other certificate is checked as usual.
+     */
+    trustedKeys?: string[];
   } = {},
 ): Promise<Browser> {
-  const args = opts.ignoreCertificateErrors ? [...ARGS, "--ignore-certificate-errors"] : ARGS;
+  const args = opts.trustedKeys?.length ? [...ARGS, `--ignore-certificate-errors-spki-list=${opts.trustedKeys.join(",")}`] : ARGS;
   const timeoutMs = opts.timeoutMs ?? 20_000;
   // Every call to the browser gets an answer or an error: a page stuck in a loop must never hang Motif.
   const callTimeoutMs = opts.callTimeoutMs ?? 30_000;
@@ -290,13 +293,14 @@ export async function launchBrowser(
     async newPage(opts: { isolated?: boolean } = {}): Promise<Page> {
       const { targetId, sessionId, browserContextId } = await openTab(send, opts.isolated ?? false);
       const errors: string[] = [];
-      // What the page is still loading, so a screenshot can wait until it's done (live connections never are).
-      const loading = new Set<string>();
+      // What the page is still loading, and since when, so a screenshot can wait until it's done (live connections
+      // never are).
+      const loading = new Map<string, number>();
       let lastActivity = Date.now();
       const onError = (m: Message) => {
         if (m.sessionId !== sessionId) return;
         if (m.method === "Network.requestWillBeSent") {
-          if (m.params?.type !== "EventSource" && m.params?.type !== "WebSocket") loading.add(String(m.params?.requestId));
+          if (m.params?.type !== "EventSource" && m.params?.type !== "WebSocket") loading.set(String(m.params?.requestId), Date.now());
           lastActivity = Date.now();
           return;
         }
@@ -326,6 +330,9 @@ export async function launchBrowser(
         },
         async goto(url, timeoutMs = 30_000) {
           const loaded = waitFor(sessionId, "Page.loadEventFired", timeoutMs);
+          // Navigating can take longer than the load wait (a slow server): its rejection is handled below, not left
+          // unhandled while Page.navigate is still answering.
+          loaded.catch(() => {});
           const r = await send("Page.navigate", { url }, sessionId);
           if (r.errorText) {
             loaded.catch(() => {});
@@ -358,7 +365,11 @@ export async function launchBrowser(
         async waitForQuiet(quietMs, maxMs) {
           const deadline = Date.now() + maxMs;
           while (Date.now() < deadline) {
-            if (loading.size === 0 && Date.now() - lastActivity >= quietMs) return;
+            // A request open for more than two seconds is a live connection (a long poll, a streamed response): it
+            // isn't waited for.
+            const now = Date.now();
+            const waiting = [...loading.values()].some((since) => now - since < 2000);
+            if (!waiting && now - lastActivity >= quietMs) return;
             await Bun.sleep(Math.min(50, quietMs));
           }
         },

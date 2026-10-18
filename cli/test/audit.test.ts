@@ -106,6 +106,20 @@ describe("toFindings", () => {
     expect(shared[0]!.locations!.map((l) => l.screen)).toEqual(["/settings"]);
   });
 
+  test("different elements that share a plain selector stay apart; a badge failing in both schemes lists both (review of batch B)", () => {
+    const apart = toFindings([
+      issue({ rule: "target-mobile", selector: "button", kind: "button", label: "Sign in", width: 120, height: 36, route: "/login" }),
+      issue({ rule: "target-mobile", selector: "button", kind: "button", label: "Save", width: 80, height: 36, route: "/settings" }),
+    ]);
+    expect(apart.map((f) => f.summary)).toEqual([
+      'The "Sign in" button is 120×36 px on a phone; 44×44 px is easier to tap.',
+      'The "Save" button is 80×36 px on a phone; 44×44 px is easier to tap.',
+    ]);
+    const fixed = { fg: "#ffffff", bg: "#f59e0b", ratio: 2.1, expected: 4.5 };
+    const [badge] = toFindings([issue({ ...fixed, selector: "#badge", label: "New" }), issue({ ...fixed, selector: "#badge", label: "New", scheme: "dark" })]);
+    expect([badge!.location.scheme, badge!.locations?.map((l) => l.scheme)]).toEqual(["light", ["dark"]]);
+  });
+
   test("a tablet-only finding says tablet, not phone (backlog)", () => {
     const [f] = toFindings([issue({ rule: "target-mobile", selector: "#go", kind: "button", label: "Go", width: 32, height: 32, size: "tablet" })]);
     expect(f!.summary).toBe('The "Go" button is 32×32 px on a tablet; 44×44 px is easier to tap.');

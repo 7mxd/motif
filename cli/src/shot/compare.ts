@@ -137,9 +137,11 @@ img { display: block; width: 100%; border: 1px solid #d4d4d8; background: #fffff
 const measure = (cssWidth: number) => `(async () => {
   const a = document.getElementById("a"), b = document.getElementById("b");
   await Promise.all([a.decode(), b.decode()]);
+  // Narrowed to 300 px for speed, but every row kept: a row of one image is a row of the other, so content that only
+  // moved lines up exactly.
   const w = 300;
-  const ha = Math.max(1, Math.round((a.naturalHeight * w) / a.naturalWidth));
-  const hb = Math.max(1, Math.round((b.naturalHeight * w) / b.naturalWidth));
+  const ha = Math.max(1, a.naturalHeight);
+  const hb = Math.max(1, b.naturalHeight);
   const h = Math.max(ha, hb);
   const pixels = (img, height) => {
     const canvas = document.createElement("canvas");
@@ -169,20 +171,25 @@ const measure = (cssWidth: number) => `(async () => {
   };
   let first = -1;
   for (let y = 0; y < h && first < 0; y++) if (rowDiffers(y, y)) first = y;
-  const css = ${cssWidth} / w;
+  // CSS px per row.
+  const css = ${cssWidth} / a.naturalWidth;
   const shift = hb - ha;
   let moved = false;
-  if (first >= 0 && shift !== 0 && first < ha) {
+  // Below the change, does the earlier page match the new one shifted by the difference? (For a removal, the rows
+  // that were taken out are skipped.)
+  const start = first + Math.max(0, -shift);
+  if (first >= 0 && shift !== 0 && start < ha) {
     let same = 0, rows = 0;
-    for (let y = first; y < ha; y++) {
+    for (let y = start; y < ha; y++) {
       const yb = y + shift;
       if (yb < 0 || yb >= hb) continue;
       rows++;
       if (!rowDiffers(y, yb)) same++;
     }
-    moved = rows > 0 && same / rows >= 0.9;
+    // A page's bottom margin alone isn't content that moved.
+    moved = rows * css >= 24 && same / rows >= 0.9;
   }
-  const taller = Math.round(((b.naturalHeight / b.naturalWidth) - (a.naturalHeight / a.naturalWidth)) * ${cssWidth});
+  const taller = Math.round(shift * css);
   return { changed, taller, from: first < 0 ? undefined : Math.round(first * css), moved };
 })()`;
 

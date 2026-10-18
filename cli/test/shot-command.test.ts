@@ -368,17 +368,55 @@ describe("motif shot --against a mockup in a subfolder", () => {
 describe("motif shot: from the backlog", () => {
   const before = () => makeProject({ "design/shots/before/index.mobile.png": "old", "design/shots/before/.motif-set": "" });
 
-  test("--save keeps the earlier set when a page didn't render, or the comparison with it didn't work", async () => {
-    const root = before();
-    const broken = fakes({ results: (o) => o.routes.map((route) => ({ route, url: "", status: 500, shots: [] })) });
-    const r = await runShot(root, ctx({ url: "http://localhost:3000", save: "before" }), broken.deps);
-    expect(readFileSync(join(root, "design/shots/before/index.mobile.png"), "utf8")).toBe("old");
-    expect(r.data.saved).toBeUndefined();
-    expect(r.text).toContain('Kept the earlier "before" set as it was: not every page rendered this time.');
+  test("--save updates the set with the pages that rendered; a page that didn't keeps its earlier screenshots; a failed comparison keeps the whole set (review of batch B)", async () => {
+    const root = makeProject({
+      "design/shots/before/index.mobile.png": "old",
+      "design/shots/before/settings.mobile.png": "old",
+      "design/shots/before/.motif-set": "",
+    });
+    const half = fakes({
+      results: (o) => o.routes.map((route) =>
+        route === "/settings"
+          ? { route, url: "", status: 500, shots: [join(o.outDir, "settings.mobile.png")] }
+          : { route, url: "", status: 200, shots: [join(o.outDir, "index.mobile.png")] }),
+    });
+    const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/,/settings", save: "before" }), half.deps);
+    expect(readFileSync(join(root, "design/shots/before/index.mobile.png"), "utf8")).toBe("png");
+    expect(readFileSync(join(root, "design/shots/before/settings.mobile.png"), "utf8")).toBe("old");
+    expect(r.data.saved).toBe("design/shots/before");
+    expect(r.text).toContain('Pages that didn\'t render kept their earlier screenshots in "before": /settings.');
     const compareFails = fakes({ compare: async () => { throw new Error("the browser closed"); } });
     const r2 = await runShot(root, ctx({ url: "http://localhost:3000", against: "before", save: "before" }), compareFails.deps);
-    expect(readFileSync(join(root, "design/shots/before/index.mobile.png"), "utf8")).toBe("old");
+    expect(readFileSync(join(root, "design/shots/before/settings.mobile.png"), "utf8")).toBe("old");
     expect(r2.text).toContain('Kept the earlier "before" set as it was: the comparison with it didn\'t work.');
+    expect(r2.exitCode).toBe(1);
+    const fresh = makeProject({});
+    const first = await runShot(fresh, ctx({ url: "http://localhost:3000", routes: "/,/settings", save: "before" }), half.deps);
+    expect(readdirSync(join(fresh, "design/shots/before")).sort()).toEqual([".motif-set", "index.mobile.png"]);
+    expect(first.text).toContain('Pages that didn\'t render weren\'t kept in "before": /settings.');
+  });
+
+  test("--save with --sizes keeps the set's other sizes (review of batch B)", async () => {
+    const root = makeProject({ "design/shots/before/index.mobile.png": "old", "design/shots/before/index.desktop.png": "old", "design/shots/before/.motif-set": "" });
+    const { deps } = fakes({ results: (o) => o.routes.map((route) => ({ route, url: "", status: 200, shots: [join(o.outDir, "index.desktop.png")] })) });
+    await runShot(root, ctx({ url: "http://localhost:3000", sizes: "desktop", save: "before" }), deps);
+    expect(readFileSync(join(root, "design/shots/before/index.mobile.png"), "utf8")).toBe("old");
+    expect(readFileSync(join(root, "design/shots/before/index.desktop.png"), "utf8")).toBe("png");
+  });
+
+  test("--sizes says which checks or mockup frames the sizes leave out; mobile is a size name (review of batch B)", async () => {
+    const audit = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", sizes: "mobile", audit: true }), fakes().deps);
+    expect(audit.text).toContain("The reduced-motion check runs at the desktop size, which --sizes left out.");
+    const desk = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", sizes: "desktop", audit: true }), fakes().deps);
+    expect(desk.text).toContain("The 44 px tap-target check runs on phones and tablets, which --sizes left out.");
+  });
+
+  test("a page that never finished loading says so, once (review of batch B)", async () => {
+    const { deps } = fakes({ results: (o) => o.routes.map((route) => ({ route, url: "", status: 200, loading: "It hadn't finished loading after 60 s; the screenshots show it as it was.", shots: [join(o.outDir, "index.mobile.png")] })) });
+    const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000" }), deps);
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toContain("✗ It hadn't finished loading after 60 s; the screenshots show it as it was.");
+    expect(r.text).not.toContain("the screenshots show what it looked like");
   });
 
   test("--json carries cropped pages, the notes, and why a comparison failed", async () => {
@@ -413,7 +451,7 @@ describe("motif shot: from the backlog", () => {
     expect(all.calls.captured[0]!.viewports).toBeUndefined();
     const bad = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", sizes: "999" }), fakes().deps);
     expect(bad.exitCode).toBe(2);
-    expect(bad.text).toBe('--sizes: "999" isn\'t one of the sizes. Use widths (360, 390, 430, 768, 1440) or names (phones, tablet, desktop), like --sizes 390,1440.');
+    expect(bad.text).toBe('--sizes: "999" isn\'t one of the sizes. Use widths (360, 390, 430, 768, 1440) or names (phones, mobile, tablet, desktop), like --sizes 390,1440.');
   });
 
   test("a comparison says whether content moved or the page grew", async () => {

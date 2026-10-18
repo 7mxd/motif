@@ -45,6 +45,10 @@ beforeAll(() => {
       if (path === "/slow") return html('<img src="/never" alt="">'); // the load event waits for this image forever
       if (path === "/never") return new Promise<Response>(() => {});
       if (path === "/throws") return html('<h1>Half a page</h1><script>throw new Error("boom: data is undefined")</script>');
+      if (path === "/later") return html('<button id="go">Go</button><script>document.getElementById("go").onclick = () => fetch("/data").then((r) => r.text()).then((t) => { const d = document.createElement("div"); d.style.height = t + "px"; document.body.append(d); });</script>');
+      if (path === "/data") return new Promise<Response>((res) => setTimeout(() => res(new Response("3000")), 900));
+      if (path === "/poll") return html('<h1>Live</h1><script>fetch("/hold")</script>');
+      if (path === "/hold") return new Promise<Response>(() => {});
       return html("<h1>Not found</h1>", 404);
     },
   });
@@ -93,7 +97,8 @@ describe.skipIf(!browser)("captureScreens (needs Chrome, Edge or Chromium)", () 
     expect(byRoute["/old"]!.finalUrl).toBe(`http://localhost:${server.port}/`);
     // A page that never finishes loading is captured as it is, with a note (backlog #33).
     expect(byRoute["/slow"]!.shots).toHaveLength(10);
-    expect(byRoute["/slow"]!.pageErrors).toEqual([expect.stringContaining("hadn't finished loading after 3 s")]);
+    expect(byRoute["/slow"]!.loading).toBe("It hadn't finished loading after 3 s; the screenshots show it as it was.");
+    expect(byRoute["/slow"]!.pageErrors).toBeUndefined();
     expect(byRoute["/"]!.shots).toHaveLength(10);
     const unreachable = await captureScreens({ browserPath: browser!.path, baseUrl: "http://127.0.0.1:1", routes: ["/"], outDir: out, settleMs: 50, timeoutMs: 3000 });
     expect(unreachable.routes[0]).toMatchObject({ status: 0, shots: [] });
@@ -115,5 +120,26 @@ describe.skipIf(!browser || !cert)("captureScreens on https with the dev server'
     } finally {
       tls.stop(true);
     }
+  }, 60_000);
+});
+
+const DESKTOP = [{ name: "desktop" as const, width: 1440, height: 900, scale: 1, mobile: false }];
+describe.skipIf(!browser)("captureScreens: from the review of batch B", () => {
+  test("what a state script starts loading is waited for, as the page itself is", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({
+      browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/later"], outDir: out, settleMs: 50, viewports: DESKTOP,
+      states: [{ name: "clicked", script: 'document.getElementById("go").click();' }],
+    });
+    expect(routes[0]!.pageErrors).toBeUndefined();
+    expect(size(join(out, "later@clicked.desktop.png")).height).toBeGreaterThanOrEqual(3000);
+  }, 60_000);
+
+  test("a request the page keeps open (a long poll) doesn't hold every screenshot up", async () => {
+    const out = tempDir("motif-shots-");
+    const started = Date.now();
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/poll"], outDir: out, settleMs: 50, viewports: DESKTOP });
+    expect(routes[0]!.shots).toHaveLength(2);
+    expect(Date.now() - started).toBeLessThan(9_000);
   }, 60_000);
 });

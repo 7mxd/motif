@@ -46,7 +46,7 @@ const defaultDeps: ShotDeps = {
 const usage = (text: string, data: Record<string, unknown>): CommandResult => ({ command: "shot", exitCode: 2, text, data });
 const projectPath = (cwd: string, abs: string) => relative(cwd, abs).split(sep).join("/") || ".";
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const rendered = (r: RouteResult) => !r.error && !r.pageErrors?.length && r.status >= 200 && r.status < 400;
+const rendered = (r: RouteResult) => !r.error && !r.pageErrors?.length && !r.loading && r.status >= 200 && r.status < 400;
 const SET_NAME = /^(?!compare$)[a-z0-9][a-z0-9-]*$/i;
 /** Marks a folder as a set of screenshots saved by --save, which a later --save may replace. */
 const SET_MARKER = ".motif-set";
@@ -108,7 +108,9 @@ function landedOn(r: RouteResult): string {
 function routeLine(r: RouteResult, width: number): string {
   const what = rendered(r)
     ? `${r.shots.length} screenshots${r.finalUrl ? ` (went to ${new URL(r.finalUrl).pathname})` : ""}${r.cropped ? ` (cropped at ${MAX_HEIGHT} px)` : ""}`
-    : `✗ ${r.error ?? (r.pageErrors?.length ? `the page threw an error: ${r.pageErrors[0]}` : `HTTP ${r.status}`)}${r.shots.length > 0 ? " (the screenshots show what it looked like)" : ""}`;
+    : r.loading && !r.error && !r.pageErrors?.length
+      ? `✗ ${r.loading}`
+      : `✗ ${r.error ?? (r.pageErrors?.length ? `the page threw an error: ${r.pageErrors[0]}` : `HTTP ${r.status}`)}${r.shots.length > 0 ? " (the screenshots show what it looked like)" : ""}`;
   return `  ${r.route.padEnd(width)}  ${what}`;
 }
 
@@ -301,6 +303,15 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   }
 
   const thisRun = captured.routes.flatMap((r) => r.shots);
+  // What --sizes left out that a check or a mockup's frames need.
+  if (viewports) {
+    const phones = viewports.some((v) => v.mobile);
+    const desktop = viewports.some((v) => !v.mobile);
+    if (audit && !desktop) notes.push("The reduced-motion check runs at the desktop size, which --sizes left out.");
+    if (audit && !phones) notes.push("The 44 px tap-target check runs on phones and tablets, which --sizes left out.");
+    if (against?.kind === "mockup" && !viewports.some((v) => v.width === 390)) notes.push("The mockup's phone frames pair with the 390 px screenshots, which --sizes left out.");
+    if (against?.kind === "mockup" && !desktop) notes.push("The mockup's wider frames pair with the desktop screenshots, which --sizes left out.");
+  }
   let comparisons: Comparison[] = [];
   let compareError: string | undefined;
   let added: string[] = [];
@@ -341,31 +352,30 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
   }
   let saved: string | undefined;
-  // A set is only replaced by a complete run: a page that didn't render, or a comparison that didn't work, would leave
-  // the next comparison nothing true to compare with.
-  const keepOld = save && existsSync(join(outDir, save))
-    ? failed.length > 0
-      ? "not every page rendered this time"
-      : compareError !== undefined && against?.kind === "set" && against.name === save
-        ? "the comparison with it didn't work"
-        : undefined
-    : undefined;
-  if (save && keepOld) {
-    notes.push(`Kept the earlier "${save}" set as it was: ${keepOld}. Fix that, then run --save ${save} again.`);
+  // A comparison with this very set that didn't work keeps it whole, so it can be made again. Otherwise the set takes
+  // this run's screenshots of the pages that rendered, file by file: a page that didn't render keeps its earlier ones,
+  // and sizes or states this run didn't take stay as they were (--sizes).
+  const keptWhole = save !== undefined && compareError !== undefined && against?.kind === "set" && against.name === save;
+  if (save && keptWhole) {
+    notes.push(`Kept the earlier "${save}" set as it was: the comparison with it didn't work. Run --save ${save} again once it does.`);
   } else if (save) {
     const setDir = join(outDir, save);
-    rmSync(setDir, { recursive: true, force: true });
+    const existed = existsSync(setDir);
     mkdirSync(setDir, { recursive: true });
-    for (const shot of thisRun) copyFileSync(shot, join(setDir, basename(shot)));
-    writeFileSync(join(setDir, SET_MARKER), "Screenshots kept by motif shot --save. Motif replaces this folder on the next --save with this name.\n");
+    for (const shot of captured.routes.filter(rendered).flatMap((r) => r.shots)) copyFileSync(shot, join(setDir, basename(shot)));
+    writeFileSync(join(setDir, SET_MARKER), "Screenshots kept by motif shot --save. Motif updates them on the next --save with this name.\n");
     saved = projectPath(cwd, setDir);
     lines.push(`✓ Kept these screenshots as "${save}" (${saved}/). After changes, compare with --against ${save}.`);
+    if (failed.length > 0) {
+      const pages = failed.map((r) => r.route).join(", ");
+      notes.push(existed ? `Pages that didn't render kept their earlier screenshots in "${save}": ${pages}.` : `Pages that didn't render weren't kept in "${save}": ${pages}.`);
+    }
   }
   lines.push(...notes.map((n) => `• ${n}`));
 
   return {
     command: "shot",
-    exitCode: failed.length > 0 || findings.length > 0 || (audit && captured.routes.some((r) => r.auditError)) ? 1 : 0,
+    exitCode: failed.length > 0 || findings.length > 0 || keptWhole || (audit && captured.routes.some((r) => r.auditError)) ? 1 : 0,
     text: lines.join("\n"),
     data: {
       url: baseUrl,
@@ -375,6 +385,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         ...(r.finalUrl ? { finalUrl: r.finalUrl } : {}),
         ...(r.error ? { error: r.error } : {}),
         ...(r.cropped ? { cropped: true } : {}),
+        ...(r.loading ? { loading: r.loading } : {}),
         ...(r.pageErrors?.length ? { pageErrors: r.pageErrors } : {}),
         ...(r.auditError ? { auditError: r.auditError } : {}),
         shots: r.shots.map((s) => projectPath(cwd, s)),
