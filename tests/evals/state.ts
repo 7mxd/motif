@@ -35,6 +35,20 @@ export const newRunId = (d: Date) =>
 
 export const runDir = (results: string, id: string) => join(results, id);
 
+/** Makes the folder of the first free id from base (base, base-2, base-3…) and returns that id: making it is what claims it. */
+export function reserveRunId(results: string, base: string): string {
+  mkdirSync(results, { recursive: true });
+  for (let n = 1; ; n++) {
+    const id = n === 1 ? base : `${base}-${n}`;
+    try {
+      mkdirSync(runDir(results, id));
+      return id;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    }
+  }
+}
+
 export function saveRun(results: string, state: RunState): void {
   const dir = runDir(results, state.id);
   mkdirSync(dir, { recursive: true });

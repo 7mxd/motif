@@ -375,6 +375,43 @@ describe("the eval runner (backlog)", () => {
     expect(existsSync(join(h.where.results, `${RUN}-2`, "run.json"))).toBe(true);
   });
 
+  test("two runs started at once, in the same second, get their own ids (backlog)", async () => {
+    const h = harness();
+    await Promise.all([
+      runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where),
+      runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where),
+    ]);
+    const ids = [RUN, `${RUN}-2`].map((id) => (loadRun(h.where.results, id) as RunState | null)?.id);
+    expect(ids).toEqual([RUN, `${RUN}-2`]);
+    expect((loadRun(h.where.results, `${RUN}-2`) as RunState).options.work).toBe(join(h.work, `${RUN}-2`));
+  });
+
+  test("a session's temp folder is inside its case's folder, so what it writes there goes with the case (evals 2026-10-19)", async () => {
+    // c-review sessions wrote helper scripts to the system's temp folder, which nothing cleared.
+    const seen: { tmp: string; exists: boolean; vars: string[] }[] = [];
+    const h = harness({
+      session: async (s) => {
+        h.calls.session.push(s);
+        seen.push({ tmp: s.env.TMP!, exists: existsSync(s.env.TMP!), vars: [s.env.TEMP!, s.env.TMPDIR!] });
+        return finished();
+      },
+      collect: async (_c, ws, _out, judge) => {
+        await judge({ issues: [], unmatched: [] }, ws.app);
+        return PASS;
+      },
+    });
+    await runEvals(["--cases", "c-review", "--work", h.work], h.deps, h.where);
+    const caseDir = join(h.work, RUN, "c-review");
+    expect(seen.map((s) => s.tmp)).toEqual([join(caseDir, "tmp"), join(caseDir, "grader", "tmp")]);
+    for (const s of seen) expect([s.exists, ...s.vars]).toEqual([true, s.tmp, s.tmp]);
+  });
+
+  test("a dry run writes nothing, not even its run's folder", async () => {
+    const h = harness();
+    await runEvals(["--cases", "b-search", "--dry-run", "--work", h.work], h.deps, h.where);
+    expect(existsSync(join(h.where.results, RUN))).toBe(false);
+  });
+
   test("without --work, case folders go to the runner's own folder, not the temp folder the system empties", async () => {
     const h = harness();
     await runEvals(["--cases", "b-search"], h.deps, h.where);

@@ -1,5 +1,5 @@
 // How the evals start Claude Code: which program, which arguments, which environment, and what its event stream says.
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 /**
@@ -50,6 +50,12 @@ export function sessionEnv(base: Record<string, string | undefined>, motifBin: s
   // motif connect would change the developer's own agents (the skill may suggest it for a free source).
   env.MOTIF_NO_CONNECT = "1";
   return { env, dropped };
+}
+
+/** env with its temp folder (TMP, TEMP, TMPDIR) at dir, made here: what a session writes to temp goes with its case's folder. */
+export function withTempFolder(env: Record<string, string>, dir: string): Record<string, string> {
+  mkdirSync(dir, { recursive: true });
+  return { ...env, TMP: dir, TEMP: dir, TMPDIR: dir };
 }
 
 /**

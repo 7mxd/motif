@@ -2,18 +2,18 @@
 // Never an API key; never in CI. See tests/evals/README.md.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
 import { CASES, needsBrowser, selectCases, type EvalCase } from "./cases";
-import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv } from "./claude";
+import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
 import { paths, preflight, type Ready } from "./preflight";
 import { renderReport, testVerdicts } from "./report";
 import { runSession, type SessionOutcome, type SessionSpec } from "./session";
-import { gitState, loadRun, newRunId, remaining, runDir, saveRun, type RunState, type SessionSummary } from "./state";
+import { gitState, loadRun, newRunId, remaining, reserveRunId, runDir, saveRun, type RunState, type SessionSummary } from "./state";
 import { motifRunner, runCmd } from "./tools";
 import { prepareWorkspace, removeDir, type Workspace } from "./workspace";
 
@@ -93,6 +93,8 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   const p = paths(where.repo);
 
   let state: RunState;
+  /** A new run's id without its "-2" (null when resuming). */
+  let idBase: string | null = null;
   if (typeof o.resume === "string") {
     const loaded = loadRun(where.results, o.resume);
     if ("error" in loaded) {
@@ -116,10 +118,11 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       deps.log("--max-turns needs a whole number above 0.");
       return 2;
     }
-    // Two runs started in the same second each get their own id.
-    const base = newRunId(deps.now());
-    let id = base;
-    for (let n = 2; existsSync(runDir(where.results, id)); n++) id = `${base}-${n}`;
+    // Two runs started in the same second each get their own id (one started at the same moment is settled when its
+    // folder is made, below).
+    idBase = newRunId(deps.now());
+    let id = idBase;
+    for (let n = 2; existsSync(runDir(where.results, id)); n++) id = `${idBase}-${n}`;
     const git = deps.git();
     state = {
       motifEvalRun: 1, id, commit: git.commit, dirty: git.dirty, started: deps.now().toISOString(), claudeVersion: "", resumes: [],
@@ -135,8 +138,8 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   }
 
   const todo = remaining(state).map((id) => CASES.find((c) => c.id === id)).filter((c): c is EvalCase => Boolean(c));
-  const dir = runDir(where.results, state.id);
-  const mcpConfigFile = join(dir, "no-mcp.json");
+  let dir = runDir(where.results, state.id);
+  let mcpConfigFile = join(dir, "no-mcp.json");
   const caseArgs = (c: EvalCase) =>
     agentArgs({ pluginDir: p.pluginDir, mcpConfigFile, maxTurns: state.options.maxTurns ?? c.maxTurns, maxBudgetUsd: c.maxBudgetUsd, model: state.options.model });
 
@@ -174,6 +177,16 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     if (git.commit !== state.commit || git.dirty !== state.dirty) state.resumes.push({ at: deps.now().toISOString(), commit: git.commit, dirty: git.dirty });
   }
   state.claudeVersion = ready.claudeVersion;
+  if (idBase !== null) {
+    // Another run started at the same moment can have found the same id free: the first to make its folder keeps it.
+    const id = reserveRunId(where.results, idBase);
+    if (id !== state.id) {
+      state.options.work = join(dirname(state.options.work), id);
+      state.id = id;
+      dir = runDir(where.results, id);
+      mcpConfigFile = join(dir, "no-mcp.json");
+    }
+  }
   mkdirSync(dir, { recursive: true });
   writeFileSync(mcpConfigFile, JSON.stringify({ mcpServers: {} }));
   const save = () => saveRun(where.results, state);
@@ -213,7 +226,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       deps.log(`${c.id}: Claude Code is working (up to ${c.minutes} minutes). Everything it does goes to ${join(out, "session.jsonl")}.`);
       const before = deps.agentSettings();
       const outcome = await deps.session({
-        command: [ready.claude], args: caseArgs(c), cwd: cs.workspace.app, env, prompt: c.prompt,
+        command: [ready.claude], args: caseArgs(c), cwd: cs.workspace.app, env: withTempFolder(env, join(cs.workspace.dir, "tmp")), prompt: c.prompt,
         transcript: join(out, "session.jsonl"), timeoutMs: c.minutes * 60_000, expect: { pluginDir: p.pluginDir, auto: true, tools: AGENT_TOOLS, personal },
       });
       cs.session = summary(outcome);
@@ -280,7 +293,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       const instructions = deps.instructionFiles(own);
       if (instructions.length > 0) throw new Stopped(`The grader would read these instruction files: ${instructions.join(", ")}. Move them aside, then --resume.`);
       const r = await deps.session({
-        command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel, appDir: app }), cwd: own, env,
+        command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel, appDir: app }), cwd: own, env: withTempFolder(env, join(own, "tmp")),
         prompt: judgePrompt(input, undefined, app), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
       });
       await purge(own);
