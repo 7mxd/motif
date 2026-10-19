@@ -213,7 +213,7 @@ describe.skipIf(!sh)("bootstrap via posix sh, against another first run", () => 
         "esac",
         `exec "${slash(Bun.which(cmd)!)}" "$@"`,
         "",
-      ].join("\n"));
+      ].join("\n"), { mode: 0o755 }); // On macOS and Linux, PATH skips a file that isn't executable.
     }
     const proc = Bun.spawn([sh!, join(REPO_ROOT, "skill/bin/motif"), "--version"], {
       env: {
