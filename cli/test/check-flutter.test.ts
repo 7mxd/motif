@@ -1,0 +1,105 @@
+import { afterAll, describe, expect, test } from "bun:test";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { emit } from "../src/cli/output";
+import { runCheck } from "../src/commands/check";
+import { runTokens } from "../src/commands/tokens";
+import { FIXTURES } from "./helpers";
+import { makeProject } from "./project";
+import { cleanupTempDirs } from "./tmp";
+
+afterAll(cleanupTempDirs);
+
+const TOKENS = readFileSync(join(FIXTURES, "contract/design/tokens.json"), "utf8");
+const PUBSPEC = "name: shop\nenvironment:\n  sdk: ^3.6.0\n\ndependencies:\n  flutter:\n    sdk: flutter\n  google_fonts: ^6.2.1\n\nflutter:\n  uses-material-design: true\n";
+const HOME = `import 'package:flutter/material.dart';
+
+class Home extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Color(0xFF3B82F6),
+      padding: EdgeInsets.all(13),
+      // motif-ok: partner brand
+      child: Text('Hi', style: TextStyle(color: Color(0xFFFF00AA))),
+    );
+  }
+}
+`;
+const FADE = `import 'package:flutter/material.dart';
+
+Widget fade(Widget child) => AnimatedOpacity(opacity: 1, duration: Duration(milliseconds: 200), child: child);
+`;
+const MOTION = "import 'package:flutter/widgets.dart';\n\nDuration fast(BuildContext context) => MotifMotion.duration(context, MotifDurations.fast);\n";
+
+/** A Flutter app at the project's root, with its theme code written by motif tokens. */
+async function flutterApp(files: Record<string, string>): Promise<string> {
+  const root = makeProject({ "pubspec.yaml": PUBSPEC, "design/tokens.json": TOKENS, "lib/main.dart": "void main() {}\n", ...files });
+  expect((await runTokens(root, { positionals: [] })).exitCode).toBe(0);
+  return root;
+}
+const check = (root: string) => runCheck(root, { positionals: [] });
+const where = (r: any) => (r.data.violations as any[]).map((h) => `${h.rule} ${h.file}:${h.line}:${h.column}`);
+
+describe("motif check on a Flutter app", () => {
+  test("reports typed colours and sizes with Dart fixes, and honours a reasoned motif-ok", async () => {
+    const r = await check(await flutterApp({ "lib/home.dart": HOME }));
+    expect(r.exitCode).toBe(1);
+    expect(where(r)).toEqual(["raw-color lib/home.dart:7:14", "off-scale lib/home.dart:8:31"]);
+    expect(r.text).toContain("Use MotifColors.of(context).<role>.");
+    expect(r.text).toContain("Use MotifSpace.s<N>.");
+    expect(r.text).not.toContain("var(--motif");
+    expect((r.data.exceptions as any[]).map((e) => [e.rule, e.file, e.line, e.reason])).toEqual([["raw-color", "lib/home.dart", 10, "partner brand"]]);
+    expect(r.text).toContain("lib/home.dart:10  raw-color  Color(0xFFFF00AA) — motif-ok: partner brand");
+  });
+
+  test("--json lists each hit with its file, line and column", async () => {
+    const r = await check(await flutterApp({ "lib/home.dart": HOME }));
+    let out = "";
+    emit(r, true, (s) => void (out += s));
+    const hits = JSON.parse(out).violations as any[];
+    expect(hits.map((h) => `${h.file}:${h.line}:${h.column}`)).toEqual(["lib/home.dart:7:14", "lib/home.dart:8:31"]);
+    expect(hits[0]).toMatchObject({ rule: "raw-color", kind: "color", value: "#3b82f6", context: "background", fix: "Use MotifColors.of(context).<role>." });
+  });
+
+  test("the generated theme file is never scanned; edited by hand, it is a warning", async () => {
+    const root = await flutterApp({ "lib/home.dart": "Widget a() => const SizedBox();\n" });
+    const clean = await check(root);
+    expect(clean.exitCode).toBe(0);
+    expect(clean.text).toStartWith("✓ No design problems found in 2 files.");
+    expect(clean.data.warnings).toEqual([]);
+
+    const theme = join(root, "lib/design/motif_theme.dart");
+    writeFileSync(theme, readFileSync(theme, "utf8").replace("Color(0x", "Color(0x1"));
+    const edited = await check(root);
+    expect(edited.data.violations).toEqual([]);
+    expect((edited.data.warnings as any[]).map((w) => [w.rule, w.file])).toEqual([["generated-edited", "lib/design/motif_theme.dart"]]);
+    expect(edited.text).toContain("Warnings:");
+  });
+
+  test("reduce motion: reported when the app animates without MotifMotion, gone once it uses it", async () => {
+    const bare = await check(await flutterApp({ "lib/fade.dart": FADE }));
+    expect(where(bare)).toEqual(["reduced-motion lib/fade.dart:3:30"]);
+    expect(bare.text).toContain('Animations here ignore the "reduce motion" setting.');
+    expect(bare.text).toContain("Use MotifMotion.duration(context, …) for durations");
+
+    const motif = await check(await flutterApp({ "lib/fade.dart": FADE, "lib/motion.dart": MOTION }));
+    expect(motif.data.violations).toEqual([]);
+    expect(motif.exitCode).toBe(0);
+  });
+
+  test("many problems are grouped with the closest generated member", async () => {
+    const lines = Array.from({ length: 26 }, (_, i) => `final c${i} = Container(color: Color(0xFF4B5563));`);
+    const r = await check(await flutterApp({ "lib/many.dart": [...lines, "final p = EdgeInsets.all(13);", ""].join("\n") }));
+    expect(r.text).toContain("26× Color(0xFF4B5563)");
+    expect(r.text).toContain("Closest: MotifColors.of(context).textSecondary.");
+    expect(r.text).toContain("Closest: MotifSpace.s3 (12px).");
+  });
+
+  test("names the stacks it reads when it can't read an app", async () => {
+    const root = makeProject({ "design/tokens.json": TOKENS, "package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "src/App.vue": "" });
+    const r = await check(root);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("motif check works on Flutter apps, React web apps and plain web sites in this version.");
+  });
+});

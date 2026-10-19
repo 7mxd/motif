@@ -8,6 +8,8 @@ import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
 import { buildThemeSet } from "../generate/theme";
 import { appLabel, noSuchApp, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
+import { andList } from "../stacks/flutter/fonts";
+import { checkableNativeStacks, nativeStack } from "../stacks/native";
 import { TOKENS_JSON } from "./validate";
 import { plural } from "../text";
 
@@ -95,13 +97,14 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (apps === null) {
     return { command: "check", exitCode: 2, text: noSuchApp(ctx.app, detected), data: { error: "no-such-app" } };
   }
-  const supported = apps.filter((a) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack));
+  const supported = apps.filter((a) => a.stack !== null && (ADAPTERS_AVAILABLE.includes(a.stack) || nativeStack(a.stack)?.scan !== undefined));
   if (supported.length === 0) {
     const others = apps.filter((a) => a.stack).map((a) => `${appLabel(a)} (${STACK_LABELS[a.stack!]})`);
+    const reads = [...checkableNativeStacks().map((s) => `${STACK_LABELS[s.id]} apps`), "React web apps", "plain web sites"];
     return {
       command: "check",
       exitCode: 2,
-      text: `motif check works on React web apps and plain web sites in this version.${others.length ? ` Found: ${others.join(", ")}.` : " Neither was found here."} Support for more stacks is coming soon.`,
+      text: `motif check works on ${andList(reads)} in this version.${others.length ? ` Found: ${others.join(", ")}.` : ` ${reads.length > 2 ? "None" : "Neither"} was found here.`} Support for more stacks is coming soon.`,
       data: { error: "unsupported-stack" },
     };
   }
@@ -124,9 +127,10 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
     paths.push(rel);
   }
 
-  const { base: theme, variants } = buildThemeSet(doc);
+  const set = buildThemeSet(doc);
+  const { base: theme, variants } = set;
   const ignore = readIgnorePatterns(cwd);
-  const results = supported.map((a) => checkApp(cwd, a, theme, { paths, ignore, variants }));
+  const results = supported.map((a) => checkApp(cwd, a, theme, { paths, ignore, variants, set }));
   if (paths.length > 0 && results.every((r) => r.files === 0)) {
     return {
       command: "check",

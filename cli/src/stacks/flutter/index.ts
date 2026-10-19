@@ -8,6 +8,7 @@ import type { NativeStack } from "../native";
 import { andList, flutterFonts } from "./fonts";
 import { generateFlutter } from "./generate";
 import { importFor } from "./project";
+import { dartFix, dartReducedMotion, dartRole, scanDart } from "./rules";
 
 /** What else a variant changes besides colours, in plain words. */
 function otherChanges(base: Theme, variant: Theme): string[] {
@@ -56,4 +57,11 @@ export const FLUTTER: NativeStack = {
       "It can be imported as package: only from inside a package's lib/ folder (with a name: in its pubspec.yaml): if it isn't, set themeDir in design/motif.json to a folder under your app's lib/ and run motif tokens again."
     );
   },
+
+  sourceFiles: (root, app, { ignore }) => listSourceFiles(root, app.path, { ignore, langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES }),
+  scan: scanDart,
+  // Motif's own file defines MotifMotion and reads disableAnimations: only the app's code says whether it respects reduce motion.
+  appWide: (files) => dartReducedMotion(files),
+  fix: dartFix,
+  role: dartRole,
 };

@@ -58,7 +58,8 @@ export function member(name: string, lead: string, taken: Set<string> = new Set(
   if (id === "" || /^[0-9]/.test(id)) id = `${lead}${id}`;
   return RESERVED.dart.has(id) || taken.has(id) ? `${id}Value` : id;
 }
-const colorField = (name: string) => member(name, "c", COLOR_MEMBERS);
+/** A colour role's member on MotifColors (text-secondary → textSecondary). */
+export const colorField = (name: string) => member(name, "c", COLOR_MEMBERS);
 
 const dartString = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\$/g, "\\$")}'`;
 const fontWeight = (w: number) => `FontWeight.w${Math.min(900, Math.max(100, Math.round(w / 100) * 100))}`;

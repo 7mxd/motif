@@ -45,6 +45,8 @@ export interface Scale {
   textKeys: Set<string>;
   shadowKeys: Set<string>;
   easeKeys: Set<string>;
+  /** The guide's durations in milliseconds, and 0 (native stacks judge typed durations against them). */
+  durationMs: Set<number>;
   /** Where the generated Motion module lives, for fix suggestions, e.g. "src/design/motion". */
   motionImport: string;
 }

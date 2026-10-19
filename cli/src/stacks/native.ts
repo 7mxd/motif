@@ -1,6 +1,6 @@
 import type { DoctorDeps, DoctorItem } from "../commands/doctor";
 import type { SourceFile } from "../check/files";
-import type { Hit, Scale } from "../check/types";
+import type { Hit, Scale, ValueKind } from "../check/types";
 import type { StackId, AppInfo } from "../detect/stacks";
 import type { Occurrences } from "../extract/draft";
 import type { GeneratedFile } from "../generate/header";
@@ -35,13 +35,21 @@ export interface NativeStack {
   sourceFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
   scan?(file: SourceFile, scale: Scale): Hit[];
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];
+  /** What to use instead of a hit, in the stack's own language. */
   fix?(hit: Hit): string;
+  /** A theme role as the stack's code names it, for "Closest:" suggestions (text-secondary → MotifColors.of(context).textSecondary). */
+  role?(kind: ValueKind, name: string): string;
   collect?(files: SourceFile[]): Occurrences;
   shoot?(opts: NativeShotOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }>;
   doctor?(deps: DoctorDeps): DoctorItem[];
 }
 
 const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER]]);
+
+/** The native stacks motif check reads. */
+export function checkableNativeStacks(): NativeStack[] {
+  return [...STACKS.values()].filter((s) => s.scan);
+}
 
 export function nativeStack(id: StackId | null): NativeStack | null {
   return (id && STACKS.get(id)) || null;

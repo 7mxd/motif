@@ -2,9 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { siteDir, type AppInfo } from "../detect/stacks";
 import { isMotifGenerated, type GeneratedFile } from "../generate/header";
-import type { Theme, ThemeVariant } from "../generate/theme";
+import type { Theme, ThemeSet, ThemeVariant } from "../generate/theme";
 import { prefixPath } from "../project/apps";
 import { motifCss } from "../generate/motif-css";
+import { nativeStack, type NativeStack } from "../stacks/native";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
 import { exceptionFor } from "./exceptions";
 import { listSourceFiles, matchesPaths, type SourceFile } from "./files";
@@ -113,7 +114,17 @@ export function appSourceFiles(root: string, app: AppInfo, opts: { ignore?: stri
   return listSourceFiles(root, app.path, { ignore: opts.ignore, ...(site === "." ? {} : { paths: [prefixPath(app.path, site)] }) });
 }
 
-export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths?: string[]; ignore?: string[]; variants?: ThemeVariant[] } = {}): AppCheck {
+export function checkApp(
+  root: string,
+  app: AppInfo,
+  theme: Theme,
+  opts: { paths?: string[]; ignore?: string[]; variants?: ThemeVariant[]; set?: ThemeSet } = {},
+): AppCheck {
+  const native = nativeStack(app.stack);
+  if (native?.scan) {
+    const set = opts.set ?? { base: theme, defaultId: null, defaultLabel: null, variants: opts.variants ?? [] };
+    return checkNativeApp(root, app, native, native.scan, set, opts);
+  }
   const appDir = join(root, app.path);
   const plain = app.stack === "plain-web";
   const srcDir = plain ? siteDir(root, app) : (app.srcDir ?? chooseSrcDir(appDir));
@@ -136,21 +147,58 @@ export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths
   // Exceptions are read from the files as written, not from their HTML views.
   const lines = new Map(files.map((f) => [f.path, f.text.split(/\r?\n/)]));
 
-  const violations: Hit[] = [];
-  const exceptions: ExceptionHit[] = [];
   const appWide = reducedMotionHits(expandHtml(appFiles), expandHtml(generated)).filter((h) => inScope.has(h.file));
   const scanned = expandHtml(files).flatMap((f) => scanFile(f, scale, { tailwind: !plain, v3Roles }));
-  for (const found of [...scanned, ...appWide]) {
-    if (!found.violation) continue;
+  const { violations, exceptions } = sortOut([...scanned, ...appWide], lines, (found) => {
     const suggestion = suggestRole(found, theme, { tailwind3: tailwindVersion === "v3", variants: opts.variants });
     // A colour in a variant's block gets a hint naming the variant (it's the fix itself, not a "closest" role).
     const variantHint = found.kind === "color" && found.variant ? suggestion : undefined;
-    const hit = { ...found, ...(plain ? { fix: plainFix(found) } : {}), ...(variantHint ? { fix: variantHint } : suggestion ? { suggestion } : {}) };
+    return { ...found, ...(plain ? { fix: plainFix(found) } : {}), ...(variantHint ? { fix: variantHint } : suggestion ? { suggestion } : {}) };
+  });
+  return {
+    app: app.path,
+    files: files.length,
+    violations: violations.sort(byPosition),
+    exceptions: exceptions.sort(byPosition),
+    warnings: generatedEditedHits(root, expected),
+  };
+}
+
+/** Violations, and the ones a reasoned "motif-ok" comment allows; a "motif-ok" without a reason doesn't allow anything. */
+function sortOut(found: Hit[], lines: Map<string, string[]>, decorate: (hit: Hit) => Hit): { violations: Hit[]; exceptions: ExceptionHit[] } {
+  const violations: Hit[] = [];
+  const exceptions: ExceptionHit[] = [];
+  for (const f of found) {
+    if (!f.violation) continue;
+    const hit = decorate(f);
     const ex = exceptionFor(lines.get(hit.file) ?? [], hit.line);
     if (ex && "reason" in ex) exceptions.push({ ...hit, reason: ex.reason });
     else if (ex) violations.push({ ...hit, fix: `${hit.fix} (A "motif-ok" comment needs a reason, e.g. "motif-ok: required by the partner's brand guide".)` });
     else violations.push(hit);
   }
+  return { violations, exceptions };
+}
+
+/** A native app (Flutter): its stack lists, reads and fixes its own code, and writes the theme files it expects. */
+function checkNativeApp(root: string, app: AppInfo, native: NativeStack, scan: NonNullable<NativeStack["scan"]>, set: ThemeSet, opts: { paths?: string[]; ignore?: string[] }): AppCheck {
+  const theme = set.base;
+  const themeDir = native.themeDir(root, app);
+  const scale = buildScale(theme, themeDir);
+  const expected = native.generate ? native.generate(set, { root, app, themeDir }).files : [];
+
+  const all = native.sourceFiles ? native.sourceFiles(root, app, { ignore: opts.ignore }) : [];
+  const generated = all.filter((f) => isMotifGenerated(f.path, f.text));
+  const appFiles = all.filter((f) => !isMotifGenerated(f.path, f.text));
+  const files = appFiles.filter((f) => matchesPaths(f.path, opts.paths ?? []));
+  const inScope = new Set(files.map((f) => f.path));
+  const lines = new Map(files.map((f) => [f.path, f.text.split(/\r?\n/)]));
+
+  const appWide = (native.appWide?.(appFiles, generated) ?? []).filter((h) => inScope.has(h.file));
+  const scanned = files.flatMap((f) => scan(f, scale));
+  const { violations, exceptions } = sortOut([...scanned, ...appWide], lines, (found) => {
+    const suggestion = suggestRole(found, theme, { variants: set.variants, ...(native.role ? { role: native.role } : {}) });
+    return { ...found, ...(native.fix ? { fix: native.fix(found) } : {}), ...(suggestion ? { suggestion } : {}) };
+  });
   return {
     app: app.path,
     files: files.length,

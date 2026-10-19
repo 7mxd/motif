@@ -11,6 +11,7 @@ export function buildScale(theme: Theme, srcDir: string): Scale {
     textKeys: new Set(theme.fonts.map((f) => f.name)),
     shadowKeys: new Set(theme.shadows.map((s) => s.name)),
     easeKeys: new Set(theme.easings.map((e) => e.name)),
+    durationMs: new Set([0, ...theme.durations.map((d) => d.ms)]),
     motionImport: `${srcDir}/design/motion`,
   };
 }

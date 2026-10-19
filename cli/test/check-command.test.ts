@@ -81,11 +81,12 @@ describe("runCheck", () => {
     expect(r.text).toContain("Warnings:");
   });
 
-  test("only React web apps are checked in this version", async () => {
-    const root = makeProject({ "pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n", "design/tokens.json": TOKENS });
+  test("only React web apps, plain web sites and Flutter apps are checked in this version", async () => {
+    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "src/App.vue": "", "design/tokens.json": TOKENS });
     const r = await runCheck(root, ctx());
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("Flutter");
+    expect(r.text).toContain("Vue / Nuxt");
+    expect(r.text).toContain("Flutter apps, React web apps and plain web sites");
   });
 
   test("no design guide → exit 2", async () => {
@@ -137,8 +138,12 @@ describe("runCheck: skipped apps", () => {
       "apps/web/package.json": PKG, "apps/web/src/Clean.tsx": CLEAN,
       "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
       "apps/mobile/lib/main.dart": "void main() {}\n",
+      "apps/admin/package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "apps/admin/src/App.vue": "",
     });
-    expect((await runCheck(root, ctx())).text).toContain("apps/mobile (Flutter)");
+    const text = (await runCheck(root, ctx())).text;
+    expect(text).toContain("Skipped (not supported yet): apps/admin (Vue / Nuxt).");
+    // Flutter apps are checked from 2E on.
+    expect(text).not.toContain("apps/mobile (Flutter)");
   });
 });
 
