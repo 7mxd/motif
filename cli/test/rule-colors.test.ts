@@ -112,8 +112,21 @@ describe("raw-color in scripts: from the backlog", () => {
     expect(values("a.js", 'el.style.background = "#abcdef";\nel.style.setProperty("--card-bg", "#123456");\nctx.fillStyle = "#654321";\nctx.strokeStyle = "#111111";')).toEqual([
       ["#abcdef", "background"],
       ["#123456", "background"],
-      ["#654321", "background"],
+      ["#654321", "other"],
       ["#111111", "border"],
+    ]);
+  });
+
+  test("a canvas fill is a shape's colour, not a background (deferred review)", () => {
+    expect(values("a.js", 'ctx.fillStyle = "#654321";')).toEqual([["#654321", "other"]]);
+  });
+
+  test("both colours of a style set with ?: are style colours (deferred review)", () => {
+    expect(values("a.js", 'el.style.color = dark ? "#ffffff" : "#111111";\nel.style.backgroundColor = mode === "dark" ? "#000000" : "#fafafa";')).toEqual([
+      ["#ffffff", "text"],
+      ["#111111", "text"],
+      ["#000000", "background"],
+      ["#fafafa", "background"],
     ]);
   });
 });

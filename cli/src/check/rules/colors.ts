@@ -74,9 +74,11 @@ function readsAsCssValue(str: string, at: number): boolean {
   return words.every((w) => CSS_VALUE_WORD.test(w));
 }
 // Styles set from a script: el.style.background = "…", el.style.setProperty("--card-bg", "…"), ctx.fillStyle = "…".
-const STYLE_SET = /\.style\.([A-Za-z]+)\s*=\s*["'`]?[^"'`]*$/;
-const PROPERTY_SET = /setProperty\(\s*["'`](--[\w-]+|[a-z-]+)["'`]\s*,\s*["'`]?[^"'`]*$/;
-const CANVAS_SET = /\.(fillStyle|strokeStyle|shadowColor)\s*=\s*["'`]?[^"'`]*$/;
+// Either colour of a choice is set too: el.style.color = dark ? "#fff" : "#111".
+const CHOICE = String.raw`(?:(?:[^"'\`;?]|"[^"]*"|'[^']*')*\?\s*(?:(?:"[^"]*"|'[^']*'|\`[^\`]*\`)\s*:\s*)?)?`;
+const STYLE_SET = new RegExp(String.raw`\.style\.([A-Za-z]+)\s*=\s*${CHOICE}["'\`]?[^"'\`]*$`);
+const PROPERTY_SET = new RegExp(String.raw`setProperty\(\s*["'\`](--[\w-]+|[a-z-]+)["'\`]\s*,\s*${CHOICE}["'\`]?[^"'\`]*$`);
+const CANVAS_SET = new RegExp(String.raw`\.(fillStyle|strokeStyle|shadowColor)\s*=\s*${CHOICE}["'\`]?[^"'\`]*$`);
 // The page itself: html, body or :root on its own (html.dark, :root[data-theme=x]), not something inside it (body .panel).
 const PAGE_ITEM = /^(?:html|body|:root)(?:[.#:[][^\s>+~]*)?$/i;
 
@@ -174,7 +176,8 @@ export function scanColors(source: SourceFile): Hit[] {
     const styled = before.match(STYLE_SET)?.[1] ?? before.match(PROPERTY_SET)?.[1];
     if (styled) return colorContext(styled);
     const canvas = before.match(CANVAS_SET)?.[1];
-    if (canvas) return canvas === "fillStyle" ? "background" : canvas === "strokeStyle" ? "border" : "other";
+    // A canvas fill colours shapes and chart marks, not the page: it isn't a background.
+    if (canvas) return canvas === "strokeStyle" ? "border" : "other";
     const key = before.match(KEY_BEFORE)?.[1];
     return key ? colorContext(key) : "other";
   };
