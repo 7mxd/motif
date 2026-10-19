@@ -3,6 +3,7 @@ import { join, relative, resolve, sep } from "node:path";
 import type { CommandResult } from "../cli/output";
 import { checkContrastAll } from "../contract/contrast";
 import { checkDesignMd } from "../contract/design-md";
+import { checkProjectFontFiles, readProjectFonts } from "../contract/fonts";
 import { loadTokenDocument } from "../contract/load";
 import { checkRoles } from "../contract/roles";
 import { validateTokens } from "../contract/tokens";
@@ -40,6 +41,8 @@ export async function runValidate(cwd: string, opts: { tokens?: string } = {}): 
     const contrast = checkContrastAll(doc);
     findings.push(...contrast.findings);
     contrastChecks = contrast.checked;
+    const project = readProjectFonts(doc);
+    findings.push(...project.findings, ...checkProjectFontFiles(cwd, project.fonts, doc));
   }
   findings.push(...checkDesignMd(DESIGN_MD, readFileSync(mdPath, "utf8"), { variants }));
 
@@ -91,6 +94,8 @@ function validateTokensFile(cwd: string, arg: string): CommandResult {
     const contrast = checkContrastAll(doc);
     findings.push(...contrast.findings);
     contrastChecks = contrast.checked;
+    const project = readProjectFonts(doc);
+    findings.push(...project.findings, ...checkProjectFontFiles(cwd, project.fonts, doc));
   }
   const errors = findings.filter((f) => f.severity === "error").length;
   const warnings = findings.length - errors;
