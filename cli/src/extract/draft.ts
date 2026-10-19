@@ -127,6 +127,22 @@ function outerVars(value: string): { name: string; start: number; fallback?: [nu
   return out;
 }
 
+/** The variable a value is only another name for: var(--b) gives --b. */
+const varOnly = (value: string) => value.match(/^var\(\s*(--[\w-]+)\s*\)$/)?.[1];
+
+/** light-dark(light, dark)'s two sides, as written; null for any other value. */
+function lightDarkSides(value: string): [string, string] | null {
+  if (!/^light-dark\(/i.test(value) || !value.endsWith(")")) return null;
+  const inner = value.slice("light-dark(".length, -1);
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === "(") depth++;
+    else if (inner[i] === ")") depth--;
+    else if (inner[i] === "," && depth === 0) return [inner.slice(0, i).trim(), inner.slice(i + 1).trim()];
+  }
+  return null;
+}
+
 /** Each rule's selector, found by where its block sits ("" outside any rule). */
 function selectorLookup(css: string): (index: number) => string {
   const blocks: { start: number; end: number; selector: string }[] = [];
@@ -164,24 +180,32 @@ interface CssUse {
 /**
  * How a stylesheet uses colours that `scanColors` can't see on its own: variables used through var() (each use counts
  * as a use of the variable's colour), variables defined from other variables, and the fills of buttons. Dark-mode
- * blocks are left out: they set dark values, they don't add uses.
+ * blocks add no uses: they set dark values, and a variable set from another one there goes in `darkAliases`.
  */
-function cssUses(file: SourceFile, aliases: Map<string, string>, fallbacks: Map<string, string>): CssUse[] {
+function cssUses(file: SourceFile, aliases: Map<string, string>, darkAliases: Map<string, string>, fallbacks: Map<string, string>): CssUse[] {
   const css = maskComments(file.text, "css");
   const dark = [...darkRanges(css), ...(file.dark ?? [])];
   const at = locator(css);
   const selectorAt = selectorLookup(css);
   const uses: CssUse[] = [];
   for (const m of css.matchAll(CSS_DECLARATION)) {
-    if (inRanges(m.index!, dark)) continue;
     // Custom properties are case-sensitive (--textPrimary isn't --textprimary).
     const prop = m[1]!;
     const raw = m[2]!;
     const value = raw.trim().replace(/\s*!important$/i, "");
     if (prop.startsWith("--motif-")) continue;
+    // .dark { --a: var(--b) } makes --b's colour --a's dark one.
+    if (inRanges(m.index!, dark)) {
+      const alias = prop.startsWith("--") ? varOnly(value) : undefined;
+      if (alias) darkAliases.set(prop, alias);
+      continue;
+    }
     const example = `${file.path}:${at(m.index!).line}`;
-    // --a: var(--b) makes --a another name for --b's colour.
-    const alias = prop.startsWith("--") ? value.match(/^var\(\s*(--[\w-]+)\s*\)$/)?.[1] : undefined;
+    // --a: var(--b) makes --a another name for --b's colour; --a: light-dark(var(--b), var(--c)) one for each mode.
+    const sides = prop.startsWith("--") ? lightDarkSides(value) : null;
+    const alias = prop.startsWith("--") ? varOnly(sides?.[0] ?? value) : undefined;
+    const darkAlias = sides ? varOnly(sides[1]) : undefined;
+    if (darkAlias) darkAliases.set(prop, darkAlias);
     if (alias) {
       aliases.set(prop, alias);
       continue;
@@ -275,6 +299,8 @@ export function collectOccurrences(
   };
   const variables = new Map<string, Variable>();
   const aliases = new Map<string, string>();
+  /** Variables set from another one for dark mode (.dark { --bg: var(--gray-950) }), name → the name it uses. */
+  const darkAliases = new Map<string, string>();
   const uses: CssUse[] = [];
   /** Colours written as a var() fallback, by place: counted only when the variable has no colour. */
   const fallbacks = new Map<string, string>();
@@ -286,7 +312,7 @@ export function collectOccurrences(
     const follow = followFor(file);
     if (follow && file.lang === "css") {
       const before = new Set(aliases.keys());
-      uses.push(...cssUses(file, aliases, fallbacks));
+      uses.push(...cssUses(file, aliases, darkAliases, fallbacks));
       for (const name of aliases.keys()) if (!before.has(name)) roleNames.add(name);
     }
     for (const hit of scanFile(file, null, { tailwind: tailwindFor(file) })) {
@@ -405,15 +431,31 @@ export function collectOccurrences(
   }
   // A fallback's colour counts after all when its variable never got one.
   for (const { hit, name } of heldBack) if (!colorOf(name)) add("colors", hit.value!, hit, hit.context);
+  // In dark mode a variable takes its dark value when it has one (written out, or set from another variable), and its
+  // light one otherwise (a palette's --gray-950 is set once, for both).
+  const darkOf = (name: string) => {
+    let n = name;
+    for (let depth = 0; depth < 8; depth++) {
+      const v = variables.get(n);
+      if (v?.dark) return v.dark;
+      const next = darkAliases.get(n) ?? (v?.light ? undefined : aliases.get(n));
+      if (!next) return v?.light;
+      n = next;
+    }
+    return undefined;
+  };
+  const all = new Map(variables);
+  for (const name of darkAliases.keys()) if (!all.has(name)) all.set(name, { name });
   const sorted = (m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
   return {
     colors: sorted(buckets.colors), space: sorted(buckets.space), radius: sorted(buckets.radius), fontSize: sorted(buckets.fontSize),
     fontFamily: sorted(buckets.fontFamily), duration: sorted(buckets.duration), easing: sorted(buckets.easing), unresolved: sorted(buckets.unresolved),
-    // A variable set from another one in light (--ink: var(--gray-900)) and written out in dark has its light value
-    // through that one, so its dark value can reach its role.
-    variables: [...variables.values()].map((v) => {
+    // A variable set from another one in light (--ink: var(--gray-900)) or in dark (.dark { --ink: var(--gray-50) }) has
+    // that one's colour for that mode, so its dark value can reach its role.
+    variables: [...all.values()].map((v) => {
       const light = v.light ?? (aliases.has(v.name) ? colorOf(v.name) : undefined);
-      return light ? { ...v, light } : v;
+      const dark = v.dark ?? (darkAliases.has(v.name) ? darkOf(v.name) : undefined);
+      return { ...v, ...(light ? { light } : {}), ...(dark ? { dark } : {}) };
     }),
     ...(files.some(followFor) ? { aliases: Object.fromEntries(aliases), roleNames: [...roleNames], variableUses, followVariables: true } : {}),
   };
