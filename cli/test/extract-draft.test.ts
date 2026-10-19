@@ -185,6 +185,17 @@ describe("buildDraft: surfaces and borders (backlog 85, HiSalon)", () => {
     expect((r.colors as any[]).find((c) => c.id === r.roles["color.surface"])?.hex).toBe("#F7F8FA");
   });
 
+  test("a cream card on a white page is a surface: a warm paper tone isn't a badge's tint", () => {
+    const page: Sample = { value: "#FFFFFF", count: 10, contexts: { background: 10, page: 1 }, examples: [] };
+    for (const cream of ["#FDF6E3", "#F5F0E6"]) {
+      const r = buildDraft({ ...occ, colors: [page, s("#111827", 9, "text"), s(cream, 6, "background")] }).report;
+      expect((r.colors as any[]).find((c) => c.id === r.roles["color.surface"])?.hex).toBe(cream);
+    }
+    // A pale green or blue fill is still a status tint, not a card.
+    const r = buildDraft({ ...occ, colors: [page, s("#111827", 9, "text"), s("#F0FDF4", 6, "background")] }).report;
+    expect((r.colors as any[]).find((c) => c.id === r.roles["color.surface"])?.hex).toBe("#FFFFFF");
+  });
+
   test("a surface isn't the colour of the lines around it", () => {
     const page: Sample = { value: "#FFFFFF", count: 10, contexts: { background: 10, page: 1 }, examples: [] };
     const line: Sample = { value: "#E9EBEE", count: 11, contexts: { background: 5, border: 6 }, examples: [] };
