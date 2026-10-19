@@ -106,13 +106,18 @@ function isReferenced(dir: string, name: string): boolean {
   return visit(dir);
 }
 
+/** A <link> to motif.css, or an @import of it (from a page's <style> or the site's own stylesheet). */
+const LOADS_MOTIF_CSS = /<link\b[^>]*motif\.css|@import\s+(?:url\(\s*)?["']?[^"'\s;)]*motif\.css/i;
+/** HTML and CSS comments: a link commented out loads nothing. */
+const MARKUP_COMMENT = /<!--[\s\S]*?(?:-->|$)|\/\*[\s\S]*?(?:\*\/|$)/g;
+
 /**
- * Whether a page of the site links motif.css: only its pages count, not the design guide's mockups or docs that mention
- * it (a site at the project's root has design/ and docs/ inside it).
+ * Whether a page of the site loads motif.css: only its pages and stylesheets count, not the design guide's mockups or
+ * docs that mention it (a site at the project's root has design/ and docs/ inside it, and a site may have its own).
  */
 function linkedFromPages(dir: string): boolean {
   let seen = 0;
-  const visit = (d: string, top: boolean): boolean => {
+  const visit = (d: string): boolean => {
     let entries: string[];
     try {
       entries = readdirSync(d);
@@ -120,7 +125,7 @@ function linkedFromPages(dir: string): boolean {
       return false;
     }
     for (const e of entries) {
-      if (e === "node_modules" || e.startsWith(".") || (top && (e === "design" || e === "docs")) || seen++ > 2000) continue;
+      if (e === "node_modules" || e.startsWith(".") || e === "design" || e === "docs" || e === "motif.css" || seen++ > 2000) continue;
       const p = join(d, e);
       let isDir = false;
       try {
@@ -129,14 +134,14 @@ function linkedFromPages(dir: string): boolean {
         continue;
       }
       if (isDir) {
-        if (visit(p, false)) return true;
-      } else if (/\.html?$/i.test(e) && /<link\b[^>]*motif\.css/i.test(readFileSync(p, "utf8"))) {
+        if (visit(p)) return true;
+      } else if (/\.(?:html?|css)$/i.test(e) && LOADS_MOTIF_CSS.test(readFileSync(p, "utf8").replace(MARKUP_COMMENT, ""))) {
         return true;
       }
     }
     return false;
   };
-  return visit(dir, true);
+  return visit(dir);
 }
 
 const STATUS_WIDTH = 10;

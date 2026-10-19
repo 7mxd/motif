@@ -41,6 +41,20 @@ describe("motif tokens on a plain web site", () => {
     expect(linked.notes.join("\n")).not.toContain("Next:");
   });
 
+  test("an @import of motif.css counts as linked, from a page or from the site's stylesheet (deferred review)", async () => {
+    const fromPage = await run(site({ "index.html": '<style>@import "motif.css";</style>' }));
+    expect(fromPage.notes.join("\n")).not.toContain("Next:");
+    const fromCss = await run(site({ "index.html": '<link rel="stylesheet" href="main.css">', "css/main.css": '@import url("../motif.css");' }));
+    expect(fromCss.notes.join("\n")).not.toContain("Next:");
+  });
+
+  test("a commented-out link, or one in a docs or design folder deeper in the site, doesn't count (deferred review)", async () => {
+    const commented = await run(site({ "index.html": '<!-- <link rel="stylesheet" href="motif.css"> -->', "main.css": '/* @import "motif.css"; */' }));
+    expect(commented.notes.join("\n")).toContain("Next: link motif.css");
+    const docs = await run(site({ "index.html": "<title>Site</title>", "blog/docs/setup.html": '<link rel="stylesheet" href="../../motif.css">', "blog/design/mock.html": '<link rel="stylesheet" href="../../motif.css">' }));
+    expect(docs.notes.join("\n")).toContain("Next: link motif.css");
+  });
+
   test("the flat values are written once when another app also needs them", async () => {
     const r = await run(site({
       "apps/site/public/index.html": "",
