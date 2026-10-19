@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runCheck } from "../src/commands/check";
 import { runValidate } from "../src/commands/validate";
+import { loadTokenDocument } from "../src/contract/load";
+import { motifCss } from "../src/generate/motif-css";
+import { buildThemeSet } from "../src/generate/theme";
 
 const APP = join(import.meta.dir, "../../tests/fixtures/react-contract-app");
 const read = (rel: string) => readFileSync(join(APP, rel), "utf8").replace(/\r\n/g, "\n");
@@ -54,6 +58,16 @@ describe("the contract app's variants", () => {
     expect(r.exitCode).toBe(0);
     expect(r.data.summary).toMatchObject({ errors: 0, warnings: 0, contrastChecks: tokens.$extensions["dev.motif"].pairs.length * 4 });
     expect(read("DESIGN.md")).toMatch(/^## Variants$/m);
+  });
+
+  test("its default look is unchanged: without the partner blocks, its motif.css is the one from before variants", () => {
+    const { doc } = loadTokenDocument("design/tokens.json", read("design/tokens.json"));
+    const set = buildThemeSet(doc!);
+    const css = motifCss(set.base, set.variants);
+    expect(css).toBe(read("src/styles/motif.css"));
+    const withoutPartner = css.split("\n\n").filter((rule) => !rule.includes('data-variant="partner"')).join("\n\n");
+    // The SHA-256 of tests/fixtures/react-contract-app/src/styles/motif.css at 1284b15, before Larder had variants.
+    expect(createHash("sha256").update(withoutPartner).digest("hex")).toBe("2eac359c5ce32e444d598e36705aa8755d1b6d2d289f624a9d322170afeb4d3c");
   });
 
   test("its generated styles carry the partner variant, and a switch on Home chooses it", async () => {

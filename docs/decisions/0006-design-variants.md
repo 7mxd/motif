@@ -11,9 +11,10 @@
 3. **Variants are colours first.** The format lets any role vary, but a colour role needs both a light and a dark value and any other role takes one value. Colour is what audiences and brands actually differ in; varying type or corners changes layout, and layout that differs per variant is a different design. Anything a variant changes beyond theme values (icons, imagery, copy tone) is described in the `## Variants` section of `DESIGN.md`, not generated.
 4. **Readability is checked per variant.** `motif validate` checks every pair in every variant, in light and dark, and says which one fails ("In the Partner variant, dark mode: …"). A variant that fails contrast is as broken as a default that does.
 5. **Previews and screenshots take `--variant <id>` or `--variant all`**, and a variant's PNG adds `+<id>` to its name, so the default's names don't change.
+6. **A variant id becomes a native identifier by camelCase**: `partner-store` is `partnerStore` in Dart, Kotlin, Swift and TypeScript. When the result is a word the target language reserves (`default`, `class` and the like), the stack appends `Variant` (`defaultVariant`). Ids are kebab-case (`^[a-z][a-z0-9-]*$`), so the camelCase form always starts with a letter and holds only letters and digits. Each stack's generator implements this in Phase A.
 
 ## Consequences
 
-- Larder's tests pin the format: its default look is unchanged, `motif validate` counts pairs × 4 checks (two variants, light and dark), and its generated `src/styles/motif.css` carries the partner block. A switch in its settings sets `data-variant`.
+- Larder's tests pin the format: its generated `src/styles/motif.css` without the partner blocks is byte for byte the file from before variants (its default look is unchanged), `motif validate` counts pairs × 4 checks (two variants, light and dark), and the generated file carries the partner block. A switch on its Home screen sets `data-variant`.
 - Each new stack's generated code switches variant in its own idiom (the Part 2 spec §6 and §7); the guide and its checks stay the same.
 - Generated variant blocks add to the style sheet's size for every variant declared, which is the price of switching with no code.

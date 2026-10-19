@@ -23,7 +23,7 @@ Ask whether to review the whole app or named screens or features (default: the w
 
 **Judgement**, screen by screen and state by state, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, whether things people use together (a live preview and the controls that change it, a form and its result) fit on one screen, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's checks ([React web](../adapters/react-web/checks.md), [plain web](../adapters/plain-web/checks.md)).
 
-When the design guide has variants, look at every variant's screenshots: `motif shot --routes <routes> --variant all` (files like `home+men.png`). A finding that applies to one variant says which in `location` (`"variant": "men"`) and in its summary; one that applies to all is reported once.
+When the design guide has variants, look at every variant's screenshots: `motif shot --routes <routes> --variant all` (files like `index+men.mobile.png`). A finding that applies to one variant says which in `location` (`"variant": "men"`) and in its summary; one that applies to all is reported once.
 
 Two things screenshots hide, so check them in the code too:
 

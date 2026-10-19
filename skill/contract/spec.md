@@ -110,9 +110,9 @@ A role's `$value` and `modes.dark` are always the default variant's. A role that
 }
 ```
 
-`motif validate` checks every readability pair in every variant, in light and dark ("In the Men variant, dark mode: …"), and reports a role that names an unknown variant. Write the `## Variants` section in DESIGN.md, and see [variants](../knowledge/variants.md) for when and how to use them.
+`motif validate` checks every readability pair in every variant, in light and dark ("In the Men variant, dark mode: …"), and reports a variant id that is repeated or not kebab-case, a role that names an unknown variant, and a role that gives the default variant values of its own (the default's values are the role's `$value` and `modes.dark`). Other commands refuse a variants block with errors until it's fixed. Write the `## Variants` section in DESIGN.md, and see [variants](../knowledge/variants.md) for when and how to use them.
 
-`motif tokens` writes every variant. On the web, `data-variant="<id>"` on `<html>` (the element that carries `data-theme`) selects one; the default needs no attribute. Mockups and screenshots take `--variant <id>` or `--variant all`, and a variant's PNG adds `+<id>` to the name: `home+men.png`, `home+men.dark.png`.
+`motif tokens` writes every variant. On the web, `data-variant="<id>"` on `<html>` (the element that carries `data-theme`) selects one; the default needs no attribute. Mockups and screenshots take `--variant <id>` or `--variant all`, and a variant's PNG adds `+<id>` to the name: `home+men.png` and `home+men.dark.png` for a mockup, `index+men.mobile.png` for a screenshot.
 
 ### Project fonts
 
