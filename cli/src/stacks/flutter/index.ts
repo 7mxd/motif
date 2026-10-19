@@ -6,6 +6,7 @@ import type { Theme, ThemeSet } from "../../generate/theme";
 import { prefixPath } from "../../project/apps";
 import type { NativeStack } from "../native";
 import { andList } from "../../text";
+import { collectFlutter } from "./extract";
 import { flutterFonts } from "./fonts";
 import { generateFlutter } from "./generate";
 import { importFor } from "./project";
@@ -65,4 +66,5 @@ export const FLUTTER: NativeStack = {
   appWide: (files) => dartReducedMotion(files),
   fix: dartFix,
   role: dartRole,
+  collect: collectFlutter,
 };

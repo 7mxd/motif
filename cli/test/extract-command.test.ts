@@ -65,11 +65,11 @@ describe("runExtract", () => {
   });
 
   test("other stacks aren't supported yet, and nothing is written", async () => {
-    const root = makeProject({ "pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n" });
+    const root = makeProject({ "build.gradle.kts": 'dependencies { implementation("androidx.compose.ui:ui") }\n' });
     const r = await runExtract(root, ctx);
     expect(r.exitCode).toBe(2);
     expect(existsSync(join(root, "design/tokens.draft.json"))).toBe(false);
-    expect(r.text).toContain("Flutter");
+    expect(r.text).toContain("Jetpack Compose");
   });
 
   test("white text on buttons doesn't become the main text colour", async () => {
@@ -101,10 +101,9 @@ describe("runExtract: follow-ups", () => {
   test("apps on other stacks are named as skipped", async () => {
     const root = makeProject({
       "apps/web/package.json": PKG, "apps/web/src/App.tsx": APP,
-      "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
-      "apps/mobile/lib/main.dart": "void main() {}\n",
+      "apps/android/build.gradle.kts": 'dependencies { implementation("androidx.compose.ui:ui") }\n',
     });
-    expect((await runExtract(root, ctx)).text).toContain("apps/mobile (Flutter)");
+    expect((await runExtract(root, ctx)).text).toContain("apps/android (Jetpack Compose)");
   });
 });
 

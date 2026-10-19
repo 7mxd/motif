@@ -37,6 +37,12 @@ export interface Occurrences {
    * names that say a role, buttons' fills, colour lists in scripts as data.
    */
   followVariables?: boolean;
+  /** Where the colours were read from, for the notes: an app's CSS (the default), or a Flutter app's Dart theme code. */
+  source?: "css" | "dart";
+  /** A label for a design variant whose name says more than its id (high-contrast → High Contrast). */
+  variantLabels?: Record<string, string>;
+  /** Notes from reading the code, for the report. */
+  notes?: string[];
 }
 
 export interface ExtractReport {
@@ -58,7 +64,7 @@ export interface ExtractReport {
 
 const MAX_EXAMPLES = 5;
 /** The lists of samples collected; variables and the settings are kept apart. */
-type Bucket = Exclude<keyof Occurrences, "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables">;
+type Bucket = Exclude<keyof Occurrences, "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables" | "source" | "variantLabels" | "notes">;
 
 // ---------- collecting ----------
 
@@ -525,6 +531,49 @@ export function collectOccurrences(
   };
 }
 
+/**
+ * Several stacks' occurrences as one (a web app and a Flutter app in one project): the same values' samples add up, and a
+ * variable or alias the first stack sets wins.
+ */
+export function mergeOccurrences(parts: Occurrences[]): Occurrences {
+  if (parts.length === 1) return parts[0]!;
+  const merged = (pick: (o: Occurrences) => Sample[]) => {
+    const byValue = new Map<string, Sample>();
+    for (const s of parts.flatMap(pick)) {
+      const own = byValue.get(s.value);
+      if (!own) {
+        byValue.set(s.value, { ...s, contexts: { ...s.contexts }, examples: [...s.examples] });
+        continue;
+      }
+      own.count += s.count;
+      for (const [k, n] of Object.entries(s.contexts)) own.contexts[k] = (own.contexts[k] ?? 0) + n;
+      own.examples = [...own.examples, ...s.examples].slice(0, MAX_EXAMPLES);
+    }
+    return [...byValue.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+  };
+  const variables = new Map<string, Variable>();
+  for (const v of parts.flatMap((o) => o.variables ?? [])) if (!variables.has(v.name)) variables.set(v.name, v);
+  const variableUses: Record<string, Record<string, number>> = {};
+  for (const [name, uses] of parts.flatMap((o) => Object.entries(o.variableUses ?? {}))) {
+    const own = (variableUses[name] ??= {});
+    for (const [k, n] of Object.entries(uses)) own[k] = (own[k] ?? 0) + n;
+  }
+  const sources = new Set(parts.map((o) => o.source ?? "css"));
+  const notes = parts.flatMap((o) => o.notes ?? []);
+  return {
+    colors: merged((o) => o.colors), space: merged((o) => o.space), radius: merged((o) => o.radius), fontSize: merged((o) => o.fontSize),
+    fontFamily: merged((o) => o.fontFamily), duration: merged((o) => o.duration), easing: merged((o) => o.easing), unresolved: merged((o) => o.unresolved),
+    variables: [...variables.values()],
+    aliases: Object.assign({}, ...[...parts].reverse().map((o) => o.aliases ?? {})),
+    roleNames: [...new Set(parts.flatMap((o) => o.roleNames ?? []))],
+    variableUses,
+    followVariables: parts.some((o) => o.followVariables),
+    ...(sources.size === 1 ? { source: [...sources][0] } : {}),
+    variantLabels: Object.assign({}, ...[...parts].reverse().map((o) => o.variantLabels ?? {})),
+    ...(notes.length ? { notes } : {}),
+  };
+}
+
 // ---------- building the draft ----------
 
 const DEFAULT_COLORS: Record<string, string> = {
@@ -808,7 +857,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     : [120, 200, 320];
   const standard = occ.easing[0]?.value.match(/\(([^)]*)\)/)?.[1]?.split(",").map((n) => Number(n.trim())) ?? [0.2, 0, 0, 1];
 
-  const designVariants = variantIds.length > 0 ? ["default", ...variantIds].map((id) => ({ id, label: id[0]!.toUpperCase() + id.slice(1) })) : [];
+  const designVariants =
+    variantIds.length > 0 ? ["default", ...variantIds].map((id) => ({ id, label: occ.variantLabels?.[id] ?? id[0]!.toUpperCase() + id.slice(1) })) : [];
   const tokens: Record<string, unknown> = {
     $extensions: {
       "dev.motif": {
@@ -835,9 +885,10 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   };
 
   const darkRoles = Object.keys(darkBase).filter((r) => BASE_ROLES.includes(r));
+  const dart = occ.source === "dart";
   const notes = [
     darkRoles.length
-      ? `Dark-mode colours came from your CSS for ${darkRoles.join(", ")}; the others were copied from light mode. Review them before turning on dark mode.`
+      ? `Dark-mode colours came from ${dart ? "your Dart theme code" : "your CSS"} for ${darkRoles.join(", ")}; the others were copied from light mode. Review them before turning on dark mode.`
       : "Dark-mode colours were copied from light mode. Review them before turning on dark mode.",
   ];
   const variables = (occ.variables ?? []).filter((v) => v.light).map((v) => {
@@ -846,12 +897,17 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     const role = byName ?? fits.find((r) => ROLE_CONTEXT[r] === colorContext(v.name)) ?? fits[0];
     return { name: v.name, light: v.light, ...(v.dark ? { dark: v.dark } : {}), ...(role ? { role: `color.${role}` } : {}), ...(v.variants ? { variants: v.variants } : {}) };
   });
-  if (designVariants.length > 0) {
+  if (designVariants.length > 0 && dart) {
+    notes.push(`Your palettes give ${designVariants.length} design variants (${designVariants.map((v) => v.id).join(", ")}): the default palette's colours are the default, and each other palette's colours are on the roles they match. Review them, and rename the variants.`);
+  } else if (designVariants.length > 0) {
     notes.push(`Your CSS sets ${designVariants.length} design variants (${designVariants.map((v) => v.id).join(", ")}): the :root colours are the default, and each other block's colours are on the roles they match. Review them, and rename the variants.`);
   }
-  if (variables.length) {
+  if (variables.length && dart) {
+    notes.push(`Your Dart theme code sets ${variables.length} ${variables.length === 1 ? "colour" : "colours"} (palette fields and ColorScheme arguments); design/extract-report.json shows the role each matches.`);
+  } else if (variables.length) {
     notes.push(`Your CSS sets ${variables.length} colour ${variables.length === 1 ? "variable" : "variables"}; design/extract-report.json shows the role each matches, so you can define them from Motif's (--bg: var(--motif-color-background)).`);
   }
+  notes.push(...(occ.notes ?? []));
   if (defaulted.length) notes.push(`No colour was found for ${defaulted.join(", ")}, so Motif used defaults.`);
   if (code !== undefined) {
     const which = GENERIC.has(code.toLowerCase()) ? "The system's monospace fonts" : code;

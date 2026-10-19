@@ -63,7 +63,7 @@ const num = (literal: string) => Number(literal.replace(/_/g, ""));
 const OPENERS = "([{";
 const CLOSERS = ")]}";
 
-interface Arg {
+export interface Arg {
   /** The named argument's name (padding: …), if it has one. */
   name?: string;
   /** Where the argument starts (its name, if it has one). */
@@ -75,7 +75,7 @@ interface Arg {
 }
 
 /** The arguments of the call whose "(" is at `open` (on masked text), and the index of its ")". Null when it doesn't close. */
-function callArgs(text: string, open: number): { args: Arg[]; close: number } | null {
+export function callArgs(text: string, open: number): { args: Arg[]; close: number } | null {
   const args: Arg[] = [];
   let depth = 0;
   let from = open + 1;
@@ -133,7 +133,7 @@ function callee(text: string, open: number): string {
 }
 
 /** The nearest named argument around `index` (climbing out of wrapper calls), and the call it's given to. */
-function namedArgument(text: string, index: number): { name: string; call: string } | null {
+export function namedArgument(text: string, index: number): { name: string; call: string } | null {
   let at = index;
   for (let level = 0; level < 8; level++) {
     const { argStart, open } = enclosing(text, at);
@@ -151,7 +151,7 @@ const BACKGROUND_CALLS = new Set(["Container", "BoxDecoration", "Material", "Car
 const TEXT_CALLS = new Set(["TextStyle", "Icon"]);
 const BORDER_CALLS = new Set(["BorderSide", "Border.all"]);
 
-function colorContext(text: string, index: number): "text" | "background" | "border" | "other" {
+export function colorContext(text: string, index: number): "text" | "background" | "border" | "other" {
   const arg = namedArgument(text, index);
   if (!arg) return "other";
   if (BACKGROUND_ARGS.has(arg.name)) return "background";

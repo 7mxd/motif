@@ -1,0 +1,15 @@
+name: shop
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_fonts: ^6.2.1
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Thmanyah Sans
+      fonts:
+        - asset: assets/fonts/ThmanyahSans-Regular.otf

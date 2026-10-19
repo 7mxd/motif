@@ -4,12 +4,13 @@ import type { SourceFile } from "../check/files";
 import { expandHtml } from "../check/html";
 import { appSourceFiles } from "../check/run";
 import type { CommandResult, RunContext } from "../cli/output";
-import { ADAPTERS_AVAILABLE, detectApps, siteDir, STACK_LABELS } from "../detect/stacks";
-import { buildDraft, collectOccurrences } from "../extract/draft";
+import { ADAPTERS_AVAILABLE, detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
+import { buildDraft, collectOccurrences, mergeOccurrences, type Occurrences } from "../extract/draft";
 import { ownSpacingPx, readTailwindDefaults } from "../extract/tailwind-theme";
 import { isMotifGenerated } from "../generate/header";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
+import { nativeStack, type NativeStack } from "../stacks/native";
 import { plural } from "../text";
 
 /**
@@ -42,34 +43,53 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   if (apps === null) {
     return { command: "extract", exitCode: 2, text: noSuchApp(ctx.app, detected), data: { error: "no-such-app" } };
   }
-  const supported = apps.filter((a) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack));
+  const isWeb = (a: AppInfo) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack);
+  /** A native stack (Flutter) whose code motif extract reads. */
+  const native = (a: AppInfo) => (isWeb(a) ? null : nativeStack(a.stack)?.collect ? nativeStack(a.stack) : null);
+  const supported = apps.filter((a) => isWeb(a) || native(a) !== null);
   if (supported.length === 0) {
     const others = apps.filter((a) => a.stack).map((a) => `${appLabel(a)} (${STACK_LABELS[a.stack!]})`);
     return {
       command: "extract",
       exitCode: 2,
-      text: `motif extract works on React web apps and plain web sites in this version.${others.length ? ` Found: ${others.join(", ")}.` : " Neither was found here."} Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.`,
+      text: `motif extract works on React web apps and plain web sites, and on Flutter apps, in this version.${others.length ? ` Found: ${others.join(", ")}.` : " None of them was found here."} Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.`,
       data: { error: "unsupported-stack" },
     };
   }
 
   const ignore = readIgnorePatterns(cwd);
   const noTailwind = new Set<SourceFile>();
-  const files = supported.flatMap((a) => {
+  const web = supported.filter(isWeb);
+  const webFiles = web.flatMap((a) => {
     // The site's root: a plain site's folder, or a React app's public/ (or the app itself).
     const roots = a.stack === "plain-web" ? [prefixPath(a.path, siteDir(cwd, a))] : [prefixPath(a.path, "public"), a.path];
     const own = expandHtml(darkLinked(appSourceFiles(cwd, a, { ignore }).filter((f) => !isMotifGenerated(f.path, f.text)), roots));
     if (a.stack === "plain-web") for (const f of own) noTailwind.add(f);
     return own;
   });
-  const react = supported.filter((a) => a.stack === "react-web");
-  const defaults = readTailwindDefaults([...react.map((a) => join(cwd, a.path)), cwd]);
-  // The app's own spacing step (@theme { --spacing }) wins over Tailwind's default.
-  const ownSpacing = ownSpacingPx(files.filter((f) => f.lang === "css" && !noTailwind.has(f)).map((f) => f.text));
-  const tw = defaults && ownSpacing !== null ? { ...defaults, spacingPx: ownSpacing } : defaults;
-  // Plain web sites have no utility classes. Every app's own variables are read the way a person would; colour lists in
-  // a plain site's scripts are data, but a React app's theme objects (MUI's createTheme) are its theme.
-  const occ = collectOccurrences(files, tw, (f) => !noTailwind.has(f), () => true, (f) => noTailwind.has(f));
+  const parts: Occurrences[] = [];
+  if (web.length > 0) {
+    const react = web.filter((a) => a.stack === "react-web");
+    const defaults = readTailwindDefaults([...react.map((a) => join(cwd, a.path)), cwd]);
+    // The app's own spacing step (@theme { --spacing }) wins over Tailwind's default.
+    const ownSpacing = ownSpacingPx(webFiles.filter((f) => f.lang === "css" && !noTailwind.has(f)).map((f) => f.text));
+    const tw = defaults && ownSpacing !== null ? { ...defaults, spacingPx: ownSpacing } : defaults;
+    // Plain web sites have no utility classes. Every app's own variables are read the way a person would; colour lists in
+    // a plain site's scripts are data, but a React app's theme objects (MUI's createTheme) are its theme.
+    parts.push(collectOccurrences(webFiles, tw, (f) => !noTailwind.has(f), () => true, (f) => noTailwind.has(f)));
+  }
+  // Native apps (Flutter): each stack reads all its apps' own files (not Motif's) together. With a web app as well, the
+  // values found in both are put together into one draft.
+  const nativeFiles = new Map<NativeStack, SourceFile[]>();
+  for (const a of supported) {
+    const stack = native(a);
+    if (!stack) continue;
+    const own = (stack.sourceFiles?.(cwd, a, { ignore }) ?? []).filter((f) => !isMotifGenerated(f.path, f.text));
+    nativeFiles.set(stack, [...(nativeFiles.get(stack) ?? []), ...own]);
+  }
+  for (const [stack, own] of nativeFiles) parts.push(stack.collect!(own));
+  const files = [...webFiles, ...[...nativeFiles.values()].flat()];
+  const occ = mergeOccurrences(parts);
   const { tokens, report } = buildDraft(occ);
 
   const notes = [...settingProblems.map((f) => f.message), ...report.notes];

@@ -69,6 +69,34 @@ export function dependsOn(dir: string, pkg: string): boolean {
   return false;
 }
 
+/** The font families a pubspec.yaml bundles (flutter: fonts: - family: Name). */
+export function fontFamilies(text: string): string[] {
+  const families: string[] = [];
+  let inFlutter = false;
+  let inFonts = false;
+  let fontsIndent = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*(#.*)?$/.test(line)) continue;
+    const indent = line.length - line.trimStart().length;
+    if (indent === 0) {
+      inFlutter = /^flutter:\s*(#.*)?$/.test(line);
+      inFonts = false;
+      continue;
+    }
+    if (!inFlutter) continue;
+    const key = line.match(/^(\s+)fonts:\s*(#.*)?$/);
+    if (key && (!inFonts || key[1]!.length <= fontsIndent)) {
+      inFonts = true;
+      fontsIndent = key[1]!.length;
+      continue;
+    }
+    if (inFonts && indent <= fontsIndent && !line.trimStart().startsWith("-")) inFonts = false;
+    const family = inFonts ? line.match(/^\s*-?\s*family:\s*["']?([^"'#]+?)["']?\s*(#.*)?$/)?.[1] : undefined;
+    if (family) families.push(family.trim());
+  }
+  return families;
+}
+
 /** The import line for a file under a package's lib/ folder, using the nearest pubspec.yaml above it. */
 export function importFor(root: string, file: string): string | null {
   const abs = resolve(root, file);
