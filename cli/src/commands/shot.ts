@@ -3,6 +3,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { loadTokenDocument } from "../contract/load";
 import { readVariants } from "../contract/variants";
+import { brokenVariants, variantRefusal, type VariantRefusal } from "./variant-flag";
 import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { noSuchApp, selectApps } from "../project/apps";
@@ -155,25 +156,28 @@ export function readStates(cwd: string, value: unknown): StateScript[] | { error
   return states;
 }
 
-/** The design guide's variants (the default first), read from design/tokens.json; none when it declares none. */
-function guideVariants(cwd: string): string[] {
+/**
+ * The design guide's variants (the default first), read from design/tokens.json; none when it declares none. Broken when
+ * its variants block has errors motif validate reports.
+ */
+function guideVariants(cwd: string): { ids: string[]; broken: boolean } {
   const path = join(cwd, "design", "tokens.json");
-  if (!existsSync(path)) return [];
+  if (!existsSync(path)) return { ids: [], broken: false };
   const { doc } = loadTokenDocument(path, readFileSync(path, "utf8"));
-  const { variants, defaultId } = doc ? readVariants(doc) : { variants: [], defaultId: null };
-  return defaultId ? variants.map((v) => v.id) : [];
+  if (!doc) return { ids: [], broken: false };
+  const { variants, defaultId, findings } = readVariants(doc);
+  return { ids: defaultId ? variants.map((v) => v.id) : [], broken: findings.some((f) => f.severity === "error") };
 }
 
 /** What --variant asks for: the variants to capture besides the default, or the refusal. */
 function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): { variants: string[] } | { error: CommandResult } {
-  const ids = guideVariants(cwd);
+  const { ids, broken } = guideVariants(cwd);
+  const refuse = (r: VariantRefusal): { error: CommandResult } => ({ error: { command: "shot", ...r } });
   // An audit with no --variant checks what people see in every variant.
+  if (broken && (flag !== undefined || audit)) return refuse(brokenVariants(flag));
   if (flag === undefined) return { variants: audit ? ids.slice(1) : [] };
-  if (ids.length === 0) return { error: usage("This design guide has no variants.", { error: "no-such-variant", variant: flag, variants: [] }) };
-  if (flag !== "all" && !ids.includes(flag)) {
-    const list = ids.map((id, n) => (n === 0 ? `${id} (the default)` : id)).join(", ");
-    return { error: usage(`This design guide has no variant called "${flag}". Variants: ${list}.`, { error: "no-such-variant", variant: flag, variants: ids }) };
-  }
+  const refusal = variantRefusal("This design guide", flag, ids);
+  if (refusal) return refuse(refusal);
   return { variants: flag === "all" ? ids.slice(1) : flag === ids[0] ? [] : [flag] };
 }
 

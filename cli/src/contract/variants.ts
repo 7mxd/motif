@@ -37,13 +37,26 @@ function roleVariants(tok: FlatToken): Record<string, Entry> {
   return isObj(v) ? (v as Record<string, Entry>) : {};
 }
 
-/** The design variants a guide declares; the default comes first. */
+/** The default variant's id: the one variant marked as the default, when its id is well formed. */
+function defaultOf(list: Declared[]): string | null {
+  const defaults = list.filter((d) => d.default === true);
+  const id = defaults.length === 1 ? defaults[0]!.id : null;
+  return typeof id === "string" && ID.test(id) ? id : null;
+}
+
+/**
+ * The design variants a guide declares; the default comes first. Only well-formed ids are listed (each once), so an id
+ * that motif validate rejects never reaches a selector or a file name.
+ */
 export function readVariants(doc: TokenDocument): { variants: VariantInfo[]; defaultId: string | null; findings: Finding[] } {
   const list = declared(doc);
   if (!list) return { variants: [], defaultId: null, findings: [] };
-  const variants = list.map((d) => ({ id: String(d.id), label: typeof d.label === "string" ? d.label : String(d.id) }));
-  const defaults = list.filter((d) => d.default === true);
-  const defaultId = defaults.length === 1 ? String(defaults[0]!.id) : null;
+  const variants: VariantInfo[] = [];
+  for (const d of list) {
+    if (typeof d.id !== "string" || !ID.test(d.id) || variants.some((v) => v.id === d.id)) continue;
+    variants.push({ id: d.id, label: typeof d.label === "string" ? d.label : d.id });
+  }
+  const defaultId = defaultOf(list);
   if (defaultId) variants.sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
   return { variants, defaultId, findings: checkVariants(doc) };
 }
@@ -77,15 +90,27 @@ export function checkVariants(doc: TokenDocument): Finding[] {
     findings.push({ code, severity, message, file: doc.file, ...extra });
 
   const ids = new Set<string>();
-  for (const d of list) {
-    ids.add(String(d.id));
-    if (typeof d.id !== "string" || !ID.test(d.id)) {
-      add("bad-variant-id", `The variant id "${String(d.id)}" must be lowercase words joined by dashes, like "women" or "dark-blue".`);
+  const repeated = new Set<string>();
+  list.forEach((d, i) => {
+    if (d.id === undefined) {
+      add("bad-variant-id", `Variant ${i + 1} has no id. Give each variant an id of lowercase words joined by dashes, like "women".`);
+      return;
     }
-  }
+    if (typeof d.id !== "string") {
+      add("bad-variant-id", `Variant ${i + 1}'s id must be text: lowercase words joined by dashes, like "women" or "dark-blue".`);
+      return;
+    }
+    if (!ID.test(d.id)) add("bad-variant-id", `The variant id "${d.id}" must be lowercase words joined by dashes, like "women" or "dark-blue".`);
+    if (ids.has(d.id) && !repeated.has(d.id)) {
+      repeated.add(d.id);
+      add("duplicate-variant-id", `Two variants have the id "${d.id}". Each variant needs its own.`);
+    }
+    ids.add(d.id);
+  });
   const defaults = list.filter((d) => d.default === true);
   if (defaults.length === 0) add("no-default-variant", 'No variant is marked as the default. Mark exactly one with "default": true.');
   if (defaults.length > 1) add("several-default-variants", "More than one variant is marked as the default. Only one can be.");
+  const defaultIds = new Set(defaults.map((d) => d.id).filter((id): id is string => typeof id === "string"));
 
   const mentioned = new Set<string>();
   for (const [path, tok] of doc.tokens) {
@@ -94,6 +119,10 @@ export function checkVariants(doc: TokenDocument): Finding[] {
       const where = { path, line: tok.line };
       if (!ids.has(vid)) {
         add("unknown-variant", `"${path}" has a value for the variant "${vid}", which the guide doesn't declare.`, where);
+        continue;
+      }
+      if (defaultIds.has(vid)) {
+        add("default-variant-values", `"${path}" gives the default variant "${vid}" its own values; the default's values are its $value and modes.dark.`, where);
         continue;
       }
       if (!isObj(entry) || entry.value === undefined) {
@@ -106,6 +135,8 @@ export function checkVariants(doc: TokenDocument): Finding[] {
       if (type === "color") {
         if (entry.dark === undefined) add("variant-missing-dark", `"${path}" (${vid}) has a value but no dark value. Colors need both.`, where);
         else parts.push(["dark", entry.dark, "dark"]);
+      } else if (type !== null && entry.dark !== undefined) {
+        add("variant-dark-ignored", `"${path}" (${vid}) has a dark value, but only colours have one. It's ignored.`, where, "warning");
       }
       for (const [name, raw, mode] of parts) {
         const r = resolveValue(doc, raw, [path], mode);
@@ -116,8 +147,9 @@ export function checkVariants(doc: TokenDocument): Finding[] {
     }
   }
   for (const d of list) {
-    const id = String(d.id);
-    if (d.default !== true && !mentioned.has(id)) {
+    const id = d.id;
+    if (typeof id === "string" && ID.test(id) && d.default !== true && !mentioned.has(id)) {
+      mentioned.add(id);
       add("empty-variant", `The variant "${id}" isn't used by any role yet.`, {}, "warning");
     }
   }

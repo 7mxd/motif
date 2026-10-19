@@ -1,9 +1,11 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
+import { readProjectFonts } from "../contract/fonts";
 import { loadTokenDocument } from "../contract/load";
 import { checkRoles } from "../contract/roles";
 import { validateTokens } from "../contract/tokens";
+import { checkVariants } from "../contract/variants";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { formatFindings, type Finding } from "../findings";
 import { flatTokensFile, generateFallback } from "../generate/fallback";
@@ -159,7 +161,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
 
   const { doc, findings: loadFindings } = loadTokenDocument(TOKENS_JSON, readFileSync(tokensPath, "utf8"));
   const problems: Finding[] = doc
-    ? [...loadFindings, ...validateTokens(doc), ...checkRoles(doc)].filter((f) => f.severity === "error")
+    ? [...loadFindings, ...validateTokens(doc), ...checkRoles(doc), ...checkVariants(doc), ...readProjectFonts(doc).findings].filter((f) => f.severity === "error")
     : loadFindings;
   if (!doc || problems.length > 0) {
     return {

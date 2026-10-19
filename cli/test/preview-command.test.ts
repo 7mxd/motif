@@ -525,3 +525,26 @@ describe("motif preview --variant", () => {
     expect(variantsOf(f)).toEqual(["men"]);
   });
 });
+
+describe("motif preview refuses variants and project fonts that motif validate rejects", () => {
+  const broken = (change: (ext: any) => void) => {
+    const t = twoVariantTokens();
+    change(t.$extensions["dev.motif"]);
+    return makeProject({ "design/tokens.json": JSON.stringify(t), "design/previews/home.html": MOCKUP });
+  };
+  const cases: [string, (ext: any) => void][] = [
+    ["an id that climbs folders", (ext) => ext.variants.push({ id: "../../../escaped", label: "X" })],
+    ["two defaults", (ext) => { ext.variants[1].default = true; }],
+    ["a font with no files", (ext) => { ext.fonts = [{ family: "Brand", files: [] }]; }],
+  ];
+  for (const [name, change] of cases) {
+    test(name, async () => {
+      const f = fakes();
+      const r = await runPreview(broken(change), ctx(["design/previews/home.html"], { "png-only": true, variant: "all" }), f.deps);
+      expect(r.exitCode).toBe(1);
+      expect(r.data).toMatchObject({ error: "invalid-contract" });
+      expect(r.text).toContain("Fix these first (motif validate shows details).");
+      expect(f.calls.render).toHaveLength(0);
+    });
+  }
+});

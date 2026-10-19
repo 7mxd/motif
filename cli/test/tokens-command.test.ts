@@ -227,3 +227,32 @@ describe("motif tokens on a plain web site at the project's root (backlog)", () 
     expect(readFileSync(join(root, "design/previews/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
   });
 });
+
+describe("runTokens refuses variants and project fonts that motif validate rejects", () => {
+  const WOMEN = { id: "women", label: "Women", default: true };
+  const MEN = { id: "men", label: "Men" };
+  const guide = (change: (ext: any) => void) => {
+    const t = twoVariantTokens();
+    change(t.$extensions["dev.motif"]);
+    return makeProject({ "package.json": reactPkg(), "src/main.tsx": "", "src/index.css": '@import "tailwindcss";\n', "design/tokens.json": JSON.stringify(t) });
+  };
+  const cases: [string, (ext: any) => void][] = [
+    ["an id that would break out of its selector", (ext) => ext.variants.push({ id: 'men"] , body{display:none} :root[x="', label: "X" })],
+    ["an id that climbs folders", (ext) => ext.variants.push({ id: "../../../escaped", label: "X" })],
+    ["two defaults", (ext) => { ext.variants = [WOMEN, { ...MEN, default: true }]; }],
+    ["no default", (ext) => { ext.variants = [{ id: "women", label: "Women" }, MEN]; }],
+    ["the same id twice", (ext) => ext.variants.push(MEN)],
+    ["a font with no files", (ext) => { ext.fonts = [{ family: "Brand", files: [] }]; }],
+  ];
+  for (const [name, change] of cases) {
+    test(name, async () => {
+      const root = guide(change);
+      const r = await runTokens(root, ctx());
+      expect(r.exitCode).toBe(1);
+      expect(r.data.error).toBe("invalid-contract");
+      expect(r.text).toContain("so no code was generated");
+      expect(r.text).toContain("Fix these first (motif validate shows details).");
+      expect(existsSync(join(root, "src/styles/motif.css"))).toBe(false);
+    });
+  }
+});

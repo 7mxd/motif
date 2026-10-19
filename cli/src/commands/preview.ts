@@ -12,6 +12,7 @@ import { CASELESS, renderPngs, type RenderTarget } from "../preview/render";
 import { startPreviewServer } from "../preview/server";
 import { loadThemeFile } from "../preview/theme-file";
 import { TOKENS_JSON } from "./validate";
+import { variantRefusal } from "./variant-flag";
 
 export interface PreviewDeps {
   findBrowser: () => BrowserInfo | null;
@@ -228,11 +229,8 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     for (const file of files) {
       const ids = variantIds(setOf(file));
       const who = directionTokens(cwd, file) ? posix.dirname(file) : "This design guide";
-      if (ids.length === 0) return fail(2, `${who} has no variants.`, { error: "no-such-variant", variant: variantFlag, variants: [] });
-      if (variantFlag !== "all" && !ids.includes(variantFlag)) {
-        const list = ids.map((id, n) => (n === 0 ? `${id} (the default)` : id)).join(", ");
-        return fail(2, `${who} has no variant called "${variantFlag}". Variants: ${list}.`, { error: "no-such-variant", variant: variantFlag, variants: ids });
-      }
+      const refusal = variantRefusal(who, variantFlag, ids);
+      if (refusal) return fail(refusal.exitCode, refusal.text, refusal.data);
       const chosen = variantFlag === "all" ? ids : [variantFlag];
       variantsFor.set(file, chosen.map((id) => (id === ids[0] ? undefined : id)));
     }

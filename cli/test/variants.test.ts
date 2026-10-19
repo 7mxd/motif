@@ -83,3 +83,47 @@ describe("checkVariants", () => {
     expect(checkVariants(withVariants(DECL, { men: COLOR_MEN }))).toEqual([]);
   });
 });
+
+describe("ids that can't be used", () => {
+  const INJECT = 'men"] , body{display:none} :root[x="';
+  test("readVariants lists only well-formed ids, so none reaches a selector or a file name", () => {
+    const r = readVariants(withVariants([DECL[0], { id: INJECT, label: "X" }, { id: "../../../escaped", label: "Y" }, DECL[1]], { men: COLOR_MEN }));
+    expect(r.variants.map((v) => v.id)).toEqual(["women", "men"]);
+    expect(r.findings.filter((f) => f.code === "bad-variant-id")).toHaveLength(2);
+  });
+  test("a badly formed default is no default", () => {
+    expect(readVariants(withVariants([{ id: "../x", label: "X", default: true }, DECL[1]])).defaultId).toBeNull();
+  });
+  test("a variant with no id, or an id that isn't text, is reported in words and never listed", () => {
+    const r = readVariants(withVariants([DECL[0], { label: "Kids" }, { id: 7, label: "Seven" }, DECL[1]], { men: COLOR_MEN }));
+    expect(r.variants.map((v) => v.id)).toEqual(["women", "men"]);
+    const msgs = r.findings.filter((f) => f.code === "bad-variant-id").map((f) => f.message);
+    expect(msgs).toHaveLength(2);
+    expect(msgs.join("\n")).not.toContain("undefined");
+    expect(msgs[0]).toContain("has no id");
+  });
+  test("two variants with the same id: an error, and the id is listed once", () => {
+    const r = readVariants(withVariants([DECL[0], DECL[1], { id: "men", label: "Men again" }], { men: COLOR_MEN }));
+    expect(r.variants.map((v) => v.id)).toEqual(["women", "men"]);
+    const f = r.findings.find((x) => x.code === "duplicate-variant-id");
+    expect(f).toMatchObject({ severity: "error", message: 'Two variants have the id "men". Each variant needs its own.' });
+  });
+});
+
+describe("role entries", () => {
+  test("values for the default variant are an error", () => {
+    const f = checkVariants(withVariants(DECL, { women: COLOR_MEN, men: COLOR_MEN })).find((x) => x.code === "default-variant-values");
+    expect(f).toMatchObject({
+      severity: "error",
+      path: "color.surface",
+      message: '"color.surface" gives the default variant "women" its own values; the default\'s values are its $value and modes.dark.',
+    });
+  });
+  test("a dark value on a role that isn't a colour is a warning: it's ignored", () => {
+    const t = validTokens();
+    t.$extensions = { ...(t.$extensions ?? {}), "dev.motif": { ...(t.$extensions?.["dev.motif"] ?? {}), variants: DECL } };
+    t.radius.md.$extensions = { "dev.motif": { variants: { men: { value: { value: 12, unit: "px" }, dark: { value: 4, unit: "px" } } } } };
+    const f = checkVariants(docFrom(t)).find((x) => x.code === "variant-dark-ignored");
+    expect(f).toMatchObject({ severity: "warning", path: "radius.md", message: '"radius.md" (men) has a dark value, but only colours have one. It\'s ignored.' });
+  });
+});

@@ -522,6 +522,19 @@ describe("motif shot --variant", () => {
     }
   });
 
+  test("a variants block motif validate rejects: refused, with or without --variant on an audit", async () => {
+    const t = twoVariantTokens();
+    t.$extensions["dev.motif"].variants.push({ id: "../../../escaped", label: "X" });
+    for (const flags of [{ url: URL_, variant: "all" }, { url: URL_, variant: "men" }, { url: URL_, audit: true }] as Record<string, string | boolean>[]) {
+      const f = fakes();
+      const r = await runShot(makeProject({ "design/tokens.json": JSON.stringify(t) }), ctx(flags), f.deps);
+      expect(r.exitCode).toBe(1);
+      expect(r.data).toMatchObject({ error: "invalid-variants" });
+      expect(r.text).toBe("Your design guide's variants have problems: fix them first (motif validate shows details).");
+      expect(f.calls.captured).toEqual([]);
+    }
+  });
+
   test("--audit alone covers every variant; without variants, as before", async () => {
     const f = fakes();
     await runShot(withVariants(), ctx({ url: URL_, audit: true }), f.deps);
