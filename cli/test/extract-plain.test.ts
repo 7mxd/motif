@@ -302,4 +302,20 @@ describe("the review of batch C2", () => {
       "public/styles.css": ":root { --bg: light-dark(#f2f2f7, #0a0a0a); --text: light-dark(#111111, #fafafa) }\nbody { background: var(--bg); color: var(--text) }",
     })).toEqual(["#F2F2F7", "#0A0A0A"]);
   });
+
+  test("light-dark(var(--a), var(--b)) is followed through both variables", async () => {
+    expect(await extracted({
+      "public/index.html": '<!doctype html><link rel="stylesheet" href="styles.css"><p>Hi</p>',
+      "public/styles.css": ":root { --gray-50: #f2f2f7; --gray-950: #0a0a0a; --ink: #111111; --bg: light-dark(var(--gray-50), var(--gray-950)) }\nbody { background: var(--bg); color: var(--ink) }",
+    })).toEqual(["#F2F2F7", "#0A0A0A"]);
+  });
+
+  test("a variable set from another one in a dark-mode block gets that one's colour as its dark value", async () => {
+    for (const dark of ["@media (prefers-color-scheme: dark) { :root { --bg: var(--gray-950) } }", ".dark { --bg: var(--gray-950) }"]) {
+      expect(await extracted({
+        "public/index.html": '<!doctype html><link rel="stylesheet" href="styles.css"><p>Hi</p>',
+        "public/styles.css": `:root { --gray-50: #f2f2f7; --gray-950: #0a0a0a; --bg: var(--gray-50) }\n${dark}\nbody { background: var(--bg); color: #111111 }`,
+      })).toEqual(["#F2F2F7", "#0A0A0A"]);
+    }
+  });
 });
