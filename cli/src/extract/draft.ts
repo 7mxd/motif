@@ -3,7 +3,7 @@ import type { SourceFile } from "../check/files";
 import { darkRanges } from "../check/dark";
 import { CLASS_PREFIX, classSegments, utilContext } from "../check/rules/tailwind";
 import { TAILWIND_SPACING_PX } from "../check/rules/tailwind-scale";
-import { inRanges, maskComments } from "../check/mask";
+import { inRanges, maskComments, rangesOf } from "../check/mask";
 import { scanFile } from "../check/run";
 import { colorContext, CSS_COLOR_LITERAL, CSS_DECLARATION, isPageSelector } from "../check/rules/colors";
 import type { Hit } from "../check/types";
@@ -182,6 +182,29 @@ function pageLookup(file: SourceFile, text: string): (index: number) => boolean 
 /** A background class, with or without variants: bg-stone-50, md:bg-stone-50. */
 const BG_CLASS = /(?:^|:)!?bg-/;
 
+/** An import's or a require's path: import "./bg-card.css", export { X } from "./text-ink", import("./x"). */
+const IMPORT_PATH = /\b(?:import|export)\b[\w\s{},*$]*?\bfrom\s*(["'])[^"'\n]*\1|\bimport\s*(["'])[^"'\n]*\2|\b(?:import|require)\s*\(\s*(["'`])[^"'`\n]*\3/g;
+/** A page's own words, between tags (<p>Give cards the bg-card class.</p>): no code, no attributes. */
+const TAG_TEXT = />[^<>{}"'`=;]*</g;
+
+/**
+ * Where a file's classes are: whether one at a place sets the page's background, and whether one isn't a use at all
+ * (in an import's path or the page's words, or see-through like bg-black/50, which isn't its solid colour).
+ */
+function classPlaces(file: SourceFile) {
+  const text = maskComments(file.text, file.lang);
+  const starts = [0];
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) starts.push(i + 1);
+  const notClasses = file.lang === "css" ? [] : [...rangesOf(text, IMPORT_PATH), ...rangesOf(text, TAG_TEXT)];
+  return {
+    text,
+    page: pageLookup(file, text),
+    /** A hit's place in the text. */
+    index: (hit: Hit) => starts[hit.line - 1]! + hit.column - 1,
+    notUse: (index: number, cls: string) => inRanges(index, notClasses) || cls.includes("/") || text[index + cls.length] === "/",
+  };
+}
+
 interface CssUse {
   /** A variable used through var(), or a colour written out (only for button fills). */
   name?: string;
@@ -331,17 +354,8 @@ export function collectOccurrences(
       uses.push(...cssUses(file, aliases, darkAliases, fallbacks));
       for (const name of aliases.keys()) if (!before.has(name)) roleNames.add(name);
     }
-    // Where the file's palette classes set the page's background, found once it has one.
-    let onPage: ((hit: Hit) => boolean) | undefined;
-    const pageHit = (hit: Hit) => {
-      if (!onPage) {
-        const starts = [0];
-        for (let i = 0; i < file.text.length; i++) if (file.text.charCodeAt(i) === 10) starts.push(i + 1);
-        const at = pageLookup(file, maskComments(file.text, file.lang));
-        onPage = (h) => at(starts[h.line - 1]! + h.column - 1);
-      }
-      return onPage(hit);
-    };
+    // Where the file's palette classes are, found once it has one.
+    let places: ReturnType<typeof classPlaces> | undefined;
     for (const hit of scanFile(file, null, { tailwind: tailwindFor(file) })) {
       if (hit.kind === "color" && hit.prop) {
         const v = variables.get(hit.prop) ?? { name: hit.prop };
@@ -363,9 +377,12 @@ export function collectOccurrences(
           if (hit.rule === "tailwind-palette") {
             const resolved = tw?.colors.get(hit.value!);
             if (resolved) {
+              places ??= classPlaces(file);
+              const index = places.index(hit);
+              if (places.notUse(index, hit.text)) break;
               add("colors", resolved, hit, hit.context);
               // body { @apply bg-stone-50 } and <body className="bg-stone-50"> set the page's background too.
-              if (BG_CLASS.test(hit.text) && pageHit(hit)) mark(resolved, "page");
+              if (BG_CLASS.test(hit.text) && places.page(index)) mark(resolved, "page");
             } else add("unresolved", hit.text, hit);
           } else {
             add("colors", hit.value!, hit, hit.context);
@@ -413,22 +430,23 @@ export function collectOccurrences(
     const pattern = new RegExp(`${CLASS_PREFIX}(bg|text|border(?:-[xytrblse])?|ring(?:-offset)?|outline|fill|stroke|decoration|caret|accent|from|via|to|divide|placeholder)-(${names})(?:\\/\\d{1,3})?(?![\\w-])`, "g");
     for (const file of files) {
       if (!followFor(file) || !tailwindFor(file)) continue;
-      const masked = { ...file, text: maskComments(file.text, file.lang) };
+      const places = classPlaces(file);
+      const masked = { ...file, text: places.text };
       const at = locator(masked.text);
       // body { @apply bg-paper } and <body className="bg-paper"> set the page's background; an @apply in a dark-mode block
       // sets dark values, not uses.
-      const pageAt = pageLookup(file, masked.text);
       const dark = file.lang === "css" ? [...darkRanges(masked.text), ...(file.dark ?? [])] : [];
       for (const seg of classSegments(masked)) {
         if (inRanges(seg.offset, dark)) continue;
         for (const m of seg.text.matchAll(pattern)) {
-          if (DARK_VARIANT.test(m[0])) continue;
+          const index = seg.offset + m.index!;
+          if (DARK_VARIANT.test(m[0]) || places.notUse(index, m[0])) continue;
           const context = utilContext(m[1]!);
           uses.push({
             name: `--color-${m[2]}`,
             context,
-            ...(m[1] === "bg" && pageAt(seg.offset + m.index!) ? { page: true as const } : {}),
-            example: `${file.path}:${at(seg.offset + m.index!).line}`,
+            ...(m[1] === "bg" && places.page(index) ? { page: true as const } : {}),
+            example: `${file.path}:${at(index).line}`,
           });
         }
       }
