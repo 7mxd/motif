@@ -166,6 +166,22 @@ function selectorLookup(css: string): (index: number) => string {
   };
 }
 
+/**
+ * Whether a class at this place sets the page's own background: in a rule for html, body or :root
+ * (body { @apply bg-stone-50 }), or on a <body> or <html> tag (<body className="bg-stone-50">).
+ */
+function pageLookup(file: SourceFile, text: string): (index: number) => boolean {
+  if (file.lang === "css") {
+    const selectorAt = selectorLookup(text);
+    return (index) => isPageSelector(selectorAt(index));
+  }
+  const tags = [...text.matchAll(/<(?:html|body)\b[^>]*>/gi)].map((m): [number, number] => [m.index!, m.index! + m[0].length]);
+  return (index) => inRanges(index, tags);
+}
+
+/** A background class, with or without variants: bg-stone-50, md:bg-stone-50. */
+const BG_CLASS = /(?:^|:)!?bg-/;
+
 interface CssUse {
   /** A variable used through var(), or a colour written out (only for button fills). */
   name?: string;
@@ -315,6 +331,17 @@ export function collectOccurrences(
       uses.push(...cssUses(file, aliases, darkAliases, fallbacks));
       for (const name of aliases.keys()) if (!before.has(name)) roleNames.add(name);
     }
+    // Where the file's palette classes set the page's background, found once it has one.
+    let onPage: ((hit: Hit) => boolean) | undefined;
+    const pageHit = (hit: Hit) => {
+      if (!onPage) {
+        const starts = [0];
+        for (let i = 0; i < file.text.length; i++) if (file.text.charCodeAt(i) === 10) starts.push(i + 1);
+        const at = pageLookup(file, maskComments(file.text, file.lang));
+        onPage = (h) => at(starts[h.line - 1]! + h.column - 1);
+      }
+      return onPage(hit);
+    };
     for (const hit of scanFile(file, null, { tailwind: tailwindFor(file) })) {
       if (hit.kind === "color" && hit.prop) {
         const v = variables.get(hit.prop) ?? { name: hit.prop };
@@ -335,8 +362,11 @@ export function collectOccurrences(
         case "color":
           if (hit.rule === "tailwind-palette") {
             const resolved = tw?.colors.get(hit.value!);
-            if (resolved) add("colors", resolved, hit, hit.context);
-            else add("unresolved", hit.text, hit);
+            if (resolved) {
+              add("colors", resolved, hit, hit.context);
+              // body { @apply bg-stone-50 } and <body className="bg-stone-50"> set the page's background too.
+              if (BG_CLASS.test(hit.text) && pageHit(hit)) mark(resolved, "page");
+            } else add("unresolved", hit.text, hit);
           } else {
             add("colors", hit.value!, hit, hit.context);
             // A background set on the page itself (html, body, :root) is the page's, whatever cards use more.
@@ -385,19 +415,19 @@ export function collectOccurrences(
       if (!followFor(file) || !tailwindFor(file)) continue;
       const masked = { ...file, text: maskComments(file.text, file.lang) };
       const at = locator(masked.text);
-      // body { @apply bg-paper } sets the page's background; an @apply in a dark-mode block sets dark values, not uses.
-      const selectorAt = file.lang === "css" ? selectorLookup(masked.text) : () => "";
+      // body { @apply bg-paper } and <body className="bg-paper"> set the page's background; an @apply in a dark-mode block
+      // sets dark values, not uses.
+      const pageAt = pageLookup(file, masked.text);
       const dark = file.lang === "css" ? [...darkRanges(masked.text), ...(file.dark ?? [])] : [];
       for (const seg of classSegments(masked)) {
         if (inRanges(seg.offset, dark)) continue;
-        const page = isPageSelector(selectorAt(seg.offset));
         for (const m of seg.text.matchAll(pattern)) {
           if (DARK_VARIANT.test(m[0])) continue;
           const context = utilContext(m[1]!);
           uses.push({
             name: `--color-${m[2]}`,
             context,
-            ...(page && m[1] === "bg" ? { page: true as const } : {}),
+            ...(m[1] === "bg" && pageAt(seg.offset + m.index!) ? { page: true as const } : {}),
             example: `${file.path}:${at(seg.offset + m.index!).line}`,
           });
         }

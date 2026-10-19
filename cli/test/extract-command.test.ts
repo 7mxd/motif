@@ -269,6 +269,28 @@ body { @apply bg-bg text-ink; }
     expect([hex("surface"), hex("surface", "dark")]).toEqual([hex("background"), "#18181B"]);
   });
 
+  test("a palette colour set on the page through @apply or <body className> is the page's, whatever cards use more", async () => {
+    const palette = "  --color-zinc-100: #f4f4f5;\n  --color-zinc-900: #18181b;\n  --color-white: #fff;\n";
+    const cards = many(8, '<div className="bg-white text-zinc-900">x</div>');
+    const viaApply = await draft({ "src/index.css": '@import "tailwindcss";\nbody { @apply bg-zinc-100 text-zinc-900; }\n', "src/App.tsx": `export const App = () => <main>${cards}</main>;\n` }, palette);
+    expect([viaApply("background"), viaApply("surface")]).toEqual(["#F4F4F5", "#FFFFFF"]);
+    const viaBody = await draft({
+      "src/index.css": '@import "tailwindcss";\n',
+      "src/app/layout.tsx": 'export default function Layout({ children }) { return <html lang="en"><body className="bg-zinc-100 text-zinc-900">{children}</body></html>; }\n',
+      "src/app/page.tsx": `export default function Page() { return <main>${cards}</main>; }\n`,
+    }, palette);
+    expect([viaBody("background"), viaBody("surface")]).toEqual(["#F4F4F5", "#FFFFFF"]);
+  });
+
+  test("an own theme colour on <body className> is the page's", async () => {
+    const hex = await draft({
+      "src/index.css": '@import "tailwindcss";\n@theme { --color-paper: #f4f4f5; --color-card: #ffffff; --color-ink: #111111; }\n',
+      "src/app/layout.tsx": 'export default function Layout({ children }) { return <html lang="en"><body className="bg-paper text-ink">{children}</body></html>; }\n',
+      "src/app/page.tsx": `export default function Page() { return <main>${many(8, '<div className="bg-card text-ink">x</div>')}</main>; }\n`,
+    });
+    expect([hex("background"), hex("surface")]).toEqual(["#F4F4F5", "#FFFFFF"]);
+  });
+
   test("on a dark page, cards a step lighter are its surface", async () => {
     const hex = await draft(
       { "src/index.css": '@import "tailwindcss";\nbody { background: #09090b; }\n', "src/App.tsx": `export const App = () => <main>${many(8, '<div className="bg-zinc-800 text-zinc-100">x</div>')}</main>;\n` },
