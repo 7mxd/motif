@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
 import { genericConfig, readLine, readSecret, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
@@ -171,6 +171,11 @@ describe("running claude", () => {
     writeFileSync(shim, "@echo off\r\necho [%1] [%2]\r\n");
     const r = await runCommand(shim, ["--header", "x-api-key: ab&c|d^e"]);
     expect(r).toEqual({ code: 0, output: '["--header"] ["x-api-key: ab&c|d^e"]' });
+  });
+
+  test("a program can be given its own environment (deferred minor)", async () => {
+    const r = await runCommand(process.execPath, ["-e", "console.log(process.env.MOTIF_PROBE)"], undefined, { ...process.env, MOTIF_PROBE: "given" });
+    expect(r).toEqual({ code: 0, output: "given" });
   });
 
   test("genericConfig is the JSON other agents take, with a key placeholder where one is needed", () => {
@@ -511,6 +516,92 @@ describe("motif connect: every agent (Part 3)", () => {
     writeFileSync(join(s.home, ".dotfiles", "HEAD"), "ref: refs/heads/main\n");
     const r = await runConnect(".", ctx("21st"), s.deps);
     expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by your dotfiles repository (~/.dotfiles).");
+  });
+
+  test("a key file in a vcsh repository, or in the repository GIT_DIR names, gets the git warning (deferred minor)", async () => {
+    const s = setup(["cursor"], { tracked: (args) => args.includes("--git-dir") && args.some((a) => a.replace(/\\/g, "/").endsWith("/vcsh/repo.d/dots.git")) });
+    const bare = (path: string) => {
+      mkdirSync(join(path, "objects"), { recursive: true });
+      writeFileSync(join(path, "HEAD"), "ref: refs/heads/main\n");
+    };
+    bare(join(s.home, ".config", "vcsh", "repo.d", "dots.git"));
+    const r = await runConnect(".", ctx("21st"), s.deps);
+    expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by your dotfiles repository (~/.config/vcsh/repo.d/dots.git).");
+    const g = setup(["cursor"], { tracked: (args) => args.includes("--git-dir") && args.some((a) => a.replace(/\\/g, "/").endsWith("/mydots")) });
+    bare(join(g.home, "mydots"));
+    const gr = await runConnect(".", ctx("21st"), { ...g.deps, vars: { GIT_DIR: join(g.home, "mydots"), GIT_WORK_TREE: g.home } });
+    expect(gr.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by your dotfiles repository (~/mydots).");
+  });
+
+  describe("with real git, in throwaway repositories (deferred minors)", () => {
+    const git = Bun.which("git");
+    // The test's own environment, without anything that points git at a repository or moves a settings folder.
+    const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(GIT_|XDG_|VCSH_)/i.test(k)));
+    /** Runs git in a folder for the test's own setup; the folder above the home is git's ceiling, so no outer repository counts. */
+    const gitIn = (cwd: string, ...args: string[]) => {
+      const r = Bun.spawnSync([git!, ...args], { cwd, env: { ...clean, GIT_CEILING_DIRECTORIES: dirname(cwd) } });
+      if (r.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr.toString()}`);
+    };
+    /** A temp home with Cursor, whose mcp.json is tracked by a repository at the home itself. */
+    function trackedHome() {
+      const s = setup(["cursor"]);
+      writeFileSync(join(s.home, ".cursor", "mcp.json"), '{\n  "mcpServers": {}\n}\n');
+      gitIn(s.home, "init", "-q");
+      gitIn(s.home, "add", ".cursor/mcp.json");
+      const vars = { ...clean, GIT_CEILING_DIRECTORIES: dirname(s.home) };
+      const deps: ConnectDeps = {
+        ...s.deps,
+        which: (c) => (c === "git" ? git : null),
+        vars,
+      };
+      // As Motif runs for real: deps.vars is its own environment, which a program it starts inherits unless told otherwise.
+      deps.run = async (exe, args, cwd, env) => {
+        if (exe !== git) return { code: 0, output: "" };
+        const r = Bun.spawnSync([exe, ...args], { cwd, env: env ?? deps.vars });
+        return { code: r.exitCode, output: `${r.stdout}${r.stderr}`.trim() };
+      };
+      return { home: s.home, deps, vars };
+    }
+    const cursor21st = { positionals: ["21st"], flags: { agent: "cursor" } };
+
+    test.skipIf(!git)("a GIT_DIR inherited from the environment doesn't hide the repository the file is in", async () => {
+      const t = trackedHome();
+      const other = tempDir("motif-other-repo-");
+      gitIn(other, "init", "-q");
+      t.deps.vars = { ...t.vars, GIT_DIR: join(other, ".git") };
+      const r = await runConnect(".", cursor21st, t.deps);
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by git");
+    });
+
+    test.skipIf(!git)("when git won't look (dubious ownership), it warns that it couldn't tell, rather than nothing", async () => {
+      const t = trackedHome();
+      // git's own switch for testing this check: it treats the repository as someone else's.
+      t.deps.vars = { ...t.vars, GIT_TEST_ASSUME_DIFFERENT_OWNER: "1" };
+      const r = await runConnect(".", cursor21st, t.deps);
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toContain("Warning: Motif couldn't check whether ~/.cursor/mcp.json, which now holds your key, is tracked by git (git said: fatal: detected dubious ownership");
+      expect(r.text).toContain("If it is, remove it from that repository before you push.");
+    });
+
+    test.skipIf(!git)("a file in no repository at all gets no warning", async () => {
+      const t = trackedHome();
+      rmSync(join(t.home, ".git"), { recursive: true, force: true });
+      const r = await runConnect(".", cursor21st, t.deps);
+      expect(r.exitCode).toBe(0);
+      expect(r.text).not.toContain("Warning");
+    });
+
+    test.skipIf(!git)("a key file in a vcsh repository is found by real git", async () => {
+      const t = trackedHome();
+      rmSync(join(t.home, ".git"), { recursive: true, force: true });
+      const repo = join(t.home, ".config", "vcsh", "repo.d", "cursor.git");
+      mkdirSync(repo, { recursive: true });
+      gitIn(repo, "init", "-q", "--bare");
+      gitIn(t.home, `--git-dir=${repo}`, `--work-tree=${t.home}`, "add", ".cursor/mcp.json");
+      const r = await runConnect(".", cursor21st, t.deps);
+      expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by your dotfiles repository (~/.config/vcsh/repo.d/cursor.git).");
+    });
   });
 
   test.skipIf(!canSymlink)("a key file reached through a link is checked against git once, as the file it leads to (review of the gap fixes)", async () => {

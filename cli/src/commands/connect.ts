@@ -1,6 +1,6 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import {
   AGENT_IDS, AGENTS, agentById, claudeLocal, claudeSettings, codexHome, configHome, copilotHome, defaultAgentEnv, geminiDir, shown, vscodeUserDir,
@@ -13,8 +13,8 @@ import { SOURCES, sourceById, type SourceInfo } from "../sources/catalog";
 
 export interface ConnectDeps {
   which: (cmd: string) => string | null;
-  /** Runs a program; cwd is the folder to run it in (the current one when left out). */
-  run: (exe: string, args: string[], cwd?: string) => Promise<{ code: number; output: string }>;
+  /** Runs a program; cwd is the folder to run it in (the current one when left out), env its environment (Motif's own when left out). */
+  run: (exe: string, args: string[], cwd?: string, env?: Record<string, string | undefined>) => Promise<{ code: number; output: string }>;
   /** True when a person is at the terminal (Motif never reads keys any other way). */
   interactive: boolean;
   readSecret: (prompt: string) => Promise<string>;
@@ -45,9 +45,9 @@ export function spawnArgs(
   return { cmd: [exe, ...args], verbatim: false };
 }
 
-export async function runCommand(exe: string, args: string[], cwd?: string): Promise<{ code: number; output: string }> {
+export async function runCommand(exe: string, args: string[], cwd?: string, env?: Record<string, string | undefined>): Promise<{ code: number; output: string }> {
   const { cmd, verbatim } = spawnArgs(exe, args);
-  const proc = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe", windowsVerbatimArguments: verbatim });
+  const proc = Bun.spawn(cmd, { cwd, env, stdout: "pipe", stderr: "pipe", windowsVerbatimArguments: verbatim });
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { code, output: `${out}${err}`.trim() };
 }
@@ -127,6 +127,25 @@ function defaultDeps(cwd: string): ConnectDeps {
 
 /** Where people keep dotfiles in a bare repository (git --git-dir … --work-tree ~), yadm's included. */
 const DOTFILES_REPOS = [".dotfiles", ".cfg", ".dots", ".dotfiles.git", ".local/share/yadm/repo.git"];
+
+/** vcsh's repositories, one per set of dotfiles, all with the home folder as their work tree. */
+function vcshRepos(e: AgentEnv): string[] {
+  const dir = e.vars.VCSH_REPO_D || join(configHome(e), "vcsh", "repo.d");
+  try {
+    return readdirSync(dir).filter((n) => n.endsWith(".git")).sort().map((n) => join(dir, n));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The environment without what points git at a repository (GIT_DIR, GIT_WORK_TREE and the rest, as git hooks and some
+ * dotfiles setups export them), so git -C finds the repository the file is really in.
+ */
+function withoutRepoVars(vars: Record<string, string | undefined>): Record<string, string | undefined> {
+  const repoVars = /^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|NAMESPACE|PREFIX|IMPLICIT_WORK_TREE)$/i;
+  return Object.fromEntries(Object.entries(vars).filter(([k]) => !repoVars.test(k)));
+}
 
 /** The settings other agents take (a placeholder where a key goes). */
 export function genericConfig(source: SourceInfo): string {
@@ -367,23 +386,50 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
       } catch {}
       if (!keyFiles.has(same)) keyFiles.set(same, file);
     }
-    // Dotfiles kept in a bare repository (git --git-dir ~/.dotfiles --work-tree ~, yadm) aren't seen by git -C.
+    // Dotfiles kept in a bare repository (git --git-dir ~/.dotfiles --work-tree ~, yadm, vcsh's several) aren't seen by
+    // git -C; nor is one named by an exported GIT_DIR.
     const yadm = env.vars.XDG_DATA_HOME ? [join(env.vars.XDG_DATA_HOME, "yadm", "repo.git")] : [];
-    const bareRepos = [...DOTFILES_REPOS.map((r) => join(env.home, r)), ...yadm].filter((r) => existsSync(join(r, "HEAD")));
+    const bareRepos: { repo: string; tree: string }[] = [...DOTFILES_REPOS.map((r) => join(env.home, r)), ...yadm, ...vcshRepos(env)]
+      .map((repo) => ({ repo, tree: env.home }));
+    if (env.vars.GIT_DIR) bareRepos.push({ repo: resolve(cwd, env.vars.GIT_DIR), tree: env.vars.GIT_WORK_TREE ? resolve(cwd, env.vars.GIT_WORK_TREE) : env.home });
+    const gitEnv = withoutRepoVars(env.vars);
+    /** Whether git tracks the file: yes, no, or what git said when it couldn't tell. */
+    const tracks = async (args: string[], at?: string): Promise<boolean | string> => {
+      let r: { code: number; output: string };
+      try {
+        // --literal-pathspecs: a folder named with [, * or ? is a name, not a pattern.
+        r = await deps.run(git!, ["--literal-pathspecs", ...args], at, gitEnv);
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
+      if (r.code === 0) return true;
+      // 1: the file isn't in that repository. Outside any repository there's nothing to track it.
+      if (r.code === 1 || /not a git repository/i.test(r.output)) return false;
+      return r.output.split(/\r?\n/).find((l) => l.trim() !== "")?.trim() ?? `git ended with code ${r.code}`;
+    };
     for (const file of keyFiles.values()) {
       if (!git) break;
-      // --literal-pathspecs: a folder named with [, * or ? is a name, not a pattern.
-      if ((await deps.run(git, ["--literal-pathspecs", "-C", dirname(file), "ls-files", "--error-unmatch", basename(file)])).code === 0) {
+      const unsure: string[] = [];
+      const here = await tracks(["-C", dirname(file), "ls-files", "--error-unmatch", basename(file)]);
+      if (here === true) {
         lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by git. Remove it from that repository before you push.`);
         continue;
       }
-      const inHome = relative(env.home, file);
-      if (inHome.startsWith("..") || isAbsolute(inHome)) continue;
-      for (const repo of bareRepos) {
-        if ((await deps.run(git, ["--literal-pathspecs", "--git-dir", repo, "--work-tree", env.home, "ls-files", "--error-unmatch", inHome.split(sep).join("/")], env.home)).code === 0) {
+      if (typeof here === "string") unsure.push(here);
+      let found = false;
+      for (const { repo, tree } of bareRepos) {
+        const inTree = relative(tree, file);
+        if (inTree.startsWith("..") || isAbsolute(inTree) || !existsSync(join(repo, "HEAD"))) continue;
+        const there = await tracks(["--git-dir", repo, "--work-tree", tree, "ls-files", "--error-unmatch", inTree.split(sep).join("/")], tree);
+        if (there === true) {
           lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by your dotfiles repository (${shown(env, repo)}). Remove it from that repository before you push.`);
+          found = true;
           break;
         }
+        if (typeof there === "string") unsure.push(there);
+      }
+      if (!found && unsure.length > 0) {
+        lines.push(`Warning: Motif couldn't check whether ${shown(env, file)}, which now holds your key, is tracked by git (git said: ${unsure[0]}). If it is, remove it from that repository before you push.`);
       }
     }
   }
