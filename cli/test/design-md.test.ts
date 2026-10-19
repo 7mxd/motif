@@ -90,4 +90,31 @@ describe("checkDesignMd: from the review of batch C1", () => {
     expect(codes(lf().replace("motifContract: 1", 'motifContract: ""'))).toEqual(["error:missing-version"]);
     expect(codes(lf().replace("motifContract: 1", "motifContract: 0"))).toEqual(["error:missing-version"]);
   });
+
+  describe("variants", () => {
+    const VARIANTS = [{ id: "women", label: "Women" }, { id: "men", label: "Men" }];
+    const run = (text: string) => checkDesignMd("DESIGN.md", text, { variants: VARIANTS });
+
+    test("the fixture needs nothing new when there are no variants", () => {
+      expect(checkDesignMd("DESIGN.md", lf(), { variants: [] })).toEqual([]);
+    });
+
+    test("variants without a Variants section is an error", () => {
+      const f = run(lf());
+      expect(f.map((x) => x.code)).toEqual(["missing-section"]);
+      expect(f[0]!.severity).toBe("error");
+      expect(f[0]!.message).toBe('Your design guide is missing the "Variants" section, which says what each variant is for.');
+    });
+
+    test("a variant the section doesn't mention is a warning", () => {
+      const f = run(lf() + "\n## Variants\nWomen is the default.\n");
+      expect(f.map((x) => `${x.severity}:${x.code}`)).toEqual(["warning:variant-not-described"]);
+      expect(f[0]!.message).toContain("men");
+    });
+
+    test("a section that names every variant is clean, wherever it sits", () => {
+      const text = lf().replace("## 4. Motion", "## Variants\nWomen is the default; Men is for the men's line.\n\n## 4. Motion");
+      expect(run(text)).toEqual([]);
+    });
+  });
 });

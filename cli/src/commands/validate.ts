@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { CommandResult } from "../cli/output";
-import { checkContrast } from "../contract/contrast";
+import { checkContrastAll } from "../contract/contrast";
 import { checkDesignMd } from "../contract/design-md";
 import { loadTokenDocument } from "../contract/load";
 import { checkRoles } from "../contract/roles";
 import { validateTokens } from "../contract/tokens";
+import { checkVariants, readVariants } from "../contract/variants";
 import { formatFindings, type Finding } from "../findings";
 import { plural } from "../text";
 
@@ -33,13 +34,14 @@ export async function runValidate(cwd: string, opts: { tokens?: string } = {}): 
   const { doc, findings: loadFindings } = loadTokenDocument(TOKENS_JSON, readFileSync(tokensPath, "utf8"));
   const findings: Finding[] = [...loadFindings];
   let contrastChecks = 0;
+  const variants = doc ? readVariants(doc).variants : [];
   if (doc) {
-    findings.push(...validateTokens(doc), ...checkRoles(doc));
-    const contrast = checkContrast(doc);
+    findings.push(...validateTokens(doc), ...checkRoles(doc), ...checkVariants(doc));
+    const contrast = checkContrastAll(doc);
     findings.push(...contrast.findings);
     contrastChecks = contrast.checked;
   }
-  findings.push(...checkDesignMd(DESIGN_MD, readFileSync(mdPath, "utf8")));
+  findings.push(...checkDesignMd(DESIGN_MD, readFileSync(mdPath, "utf8"), { variants }));
 
   // Spec §5.4: a newer format is refused outright — other checks would only add noise.
   const newer = findings.filter((f) => f.code === "newer-format");
@@ -62,7 +64,7 @@ export async function runValidate(cwd: string, opts: { tokens?: string } = {}): 
       + `${formatFindings(findings)}\n`
       + `Fix these, or ask your agent: "fix my design guide".`;
   } else {
-    text = `✓ Your design guide is valid — ${tokens} theme values and ${contrastChecks} readability checks (light + dark) passed.`
+    text = `✓ Your design guide is valid — ${tokens} theme values and ${contrastChecks} readability checks (${variants.length > 0 ? `light + dark, ${plural(variants.length, "variant", "variants")}` : "light + dark"}) passed.`
       + (warnings ? `\n${plural(warnings, "suggestion", "suggestions")}:\n${formatFindings(findings)}` : "");
   }
 
@@ -85,8 +87,8 @@ function validateTokensFile(cwd: string, arg: string): CommandResult {
   const findings: Finding[] = [...loadFindings];
   let contrastChecks = 0;
   if (doc) {
-    findings.push(...validateTokens(doc), ...checkRoles(doc));
-    const contrast = checkContrast(doc);
+    findings.push(...validateTokens(doc), ...checkRoles(doc), ...checkVariants(doc));
+    const contrast = checkContrastAll(doc);
     findings.push(...contrast.findings);
     contrastChecks = contrast.checked;
   }

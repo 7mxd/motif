@@ -1,6 +1,7 @@
 import type { Finding } from "../findings";
 import { savedAsUtf16, UTF16_MESSAGE } from "../text";
 import { CONTRACT_VERSION } from "./roles";
+import type { VariantInfo } from "./variants";
 
 export const REQUIRED_SECTIONS = [
   "Brief", "Direction", "Foundations", "Motion", "Components",
@@ -10,7 +11,7 @@ export const REQUIRED_SECTIONS = [
 const norm = (s: string) =>
   s.toLowerCase().replace(/[’‘]/g, "'").replace(/\s*\/\s*/g, " / ").replace(/\s+/g, " ").trim();
 
-export function checkDesignMd(file: string, raw: string): Finding[] {
+export function checkDesignMd(file: string, raw: string, opts: { variants?: VariantInfo[] } = {}): Finding[] {
   if (savedAsUtf16(raw)) return [{ code: "not-utf8", severity: "error", file, line: 1, message: UTF16_MESSAGE }];
   const text = raw.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   // Trailing spaces don't change a line's meaning.
@@ -81,6 +82,29 @@ export function checkDesignMd(file: string, raw: string): Finding[] {
   }
   if (positions.some((p, i) => i > 0 && p < positions[i - 1]!)) {
     add("section-order", "warning", `The sections of your design guide are out of order. Expected: ${REQUIRED_SECTIONS.join(", ")}.`);
+  }
+
+  // The Variants section is only needed when the guide has variants; it never counts in the order check above.
+  const variants = opts.variants ?? [];
+  if (variants.length > 0) {
+    const at = found.findIndex((f) => f.name === "variants");
+    if (at === -1) {
+      add("missing-section", "error", 'Your design guide is missing the "Variants" section, which says what each variant is for.');
+    } else {
+      const from = found[at]!.line;
+      const to = found[at + 1]?.line ?? lines.length + 1;
+      const body = lines.slice(from, to - 1).join(" ").toLowerCase();
+      // Whole words, so "men" isn't found inside "women".
+      const mentions = (word: string) => {
+        const w = word.toLowerCase().replace(/[^a-z0-9 -]/g, "");
+        return w !== "" && ` ${body.replace(/[^a-z0-9 -]+/g, " ").replace(/ +/g, " ")} `.includes(` ${w} `);
+      };
+      for (const v of variants) {
+        if (!mentions(v.id) && !mentions(v.label)) {
+          add("variant-not-described", "warning", `The "Variants" section doesn't say what the "${v.label}" variant (${v.id}) is for.`, from);
+        }
+      }
+    }
   }
 
   // Plain-language summary before the first section

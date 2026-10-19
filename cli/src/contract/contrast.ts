@@ -2,6 +2,7 @@ import type { Finding } from "../findings";
 import { contrastRatio } from "./color";
 import { resolveMode, type Mode } from "./resolve";
 import { MOTIF_EXT, type TokenDocument } from "./types";
+import { readVariants, variantView } from "./variants";
 import { validateValue, type DtcgColor } from "./values";
 
 export type PairKind = "text" | "large-text" | "ui";
@@ -85,4 +86,25 @@ export function checkContrast(doc: TokenDocument): { findings: Finding[]; checke
     }
   }
   return { findings, checked: pairs.length * modes.length };
+}
+
+/** Readability in every design variant (light and dark each). Without variants this is checkContrast. */
+export function checkContrastAll(doc: TokenDocument): { findings: Finding[]; checked: number } {
+  const { variants } = readVariants(doc);
+  if (variants.length === 0) return checkContrast(doc);
+  const findings: Finding[] = [];
+  let checked = 0;
+  variants.forEach((v, i) => {
+    const r = checkContrast(variantView(doc, v.id));
+    // Problems with the pair list itself don't depend on the variant: report them once.
+    for (const f of r.findings) {
+      if (f.code !== "low-contrast") {
+        if (i === 0) findings.push(f);
+        continue;
+      }
+      findings.push({ ...f, variant: v.id, message: f.message.replace(/^In (\w+) mode, /, `In the ${v.label} variant, $1 mode: `) });
+    }
+    checked += r.checked;
+  });
+  return { findings, checked };
 }
