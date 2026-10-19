@@ -38,6 +38,41 @@ const META_TAG = /<meta\b[^>]*>|<link\b[^>]*\brel\s*=\s*["']?mask-icon\b[^>]*>/g
 // A colour after a space inside a string that holds a CSS value ("0 1px 2px #ccc", "1px solid #333"), not prose.
 const SPACED_HEX = new RegExp(`(?<=\\s)${HEX}`, "g");
 const CSS_VALUE_HINT = /\d(?:px|rem|em|%)|\b(?:solid|dashed|dotted|double|inset)\b|\b(?:rgba?|hsla?)\(/;
+// Each word of a CSS value: a number or length, a colour, a function, or a keyword a border or shadow takes.
+const CSS_VALUE_WORD = new RegExp(
+  `^(?:-?\\d*\\.?\\d+(?:px|rem|em|%|vh|vw|ch)?|#[0-9a-fA-F]{3,8}|[\\w-]+\\([^()]*\\)|solid|dashed|dotted|double|groove|ridge|inset|outset|none|transparent|currentcolor|!important|${NAMED_ALT})$`,
+  "i",
+);
+
+/** Where the string around `index` starts and ends (inside its quotes), pairing quotes from the start of its line. */
+function stringAround(text: string, index: number): [number, number] | null {
+  const lineStart = text.lastIndexOf("\n", index - 1) + 1;
+  const lineEnd = text.indexOf("\n", index) === -1 ? text.length : text.indexOf("\n", index);
+  let open = -1;
+  for (let i = lineStart; i < lineEnd; i++) {
+    const ch = text[i]!;
+    if (open !== -1 && ch === "\\") i++;
+    else if (open === -1 && (ch === '"' || ch === "'" || ch === "`")) {
+      if (i > index) return null;
+      open = i;
+    } else if (open !== -1 && ch === text[open]) {
+      if (i > index) return [open + 1, i];
+      open = -1;
+    }
+  }
+  return null;
+}
+
+/** A CSS value, or one declaration's value in a list of them ("color: red; border: 1px solid #333"), not prose. */
+function readsAsCssValue(str: string, at: number): boolean {
+  const start = str.lastIndexOf(";", at) + 1;
+  const end = str.indexOf(";", at) === -1 ? str.length : str.indexOf(";", at);
+  const value = str.slice(start, end).replace(/^\s*(?:--[\w-]+|[a-z-]+)\s*:/, "");
+  if (!CSS_VALUE_HINT.test(value)) return false;
+  // A function is one word: rgba(0, 0, 0, 0.1).
+  const words = value.replace(/[\w-]+\([^()]*\)/g, (f) => f.replace(/[\s,/]/g, "")).split(/[\s,/]+/).filter(Boolean);
+  return words.every((w) => CSS_VALUE_WORD.test(w));
+}
 // Styles set from a script: el.style.background = "…", el.style.setProperty("--card-bg", "…"), ctx.fillStyle = "…".
 const STYLE_SET = /\.style\.([A-Za-z]+)\s*=\s*["'`]?[^"'`]*$/;
 const PROPERTY_SET = /setProperty\(\s*["'`](--[\w-]+|[a-z-]+)["'`]\s*,\s*["'`]?[^"'`]*$/;
@@ -153,14 +188,8 @@ export function scanColors(source: SourceFile): Hit[] {
   for (const m of file.text.matchAll(SPACED_HEX)) {
     if (found.has(m.index!) || inRanges(m.index!, metaTags)) continue;
     // Inside a quoted string on its line that reads as a CSS value.
-    const lineStart = file.text.lastIndexOf("\n", m.index! - 1) + 1;
-    const lineEnd = (file.text.indexOf("\n", m.index!) + 1 || file.text.length + 1) - 1;
-    const before = file.text.slice(lineStart, m.index!);
-    const q = /(["'`])[^"'`]*$/.exec(before);
-    if (!q) continue;
-    const close = file.text.indexOf(q[1]!, m.index!);
-    if (close === -1 || close > lineEnd) continue;
-    if (!CSS_VALUE_HINT.test(file.text.slice(lineStart + q.index + 1, close))) continue;
+    const str = stringAround(file.text, m.index!);
+    if (!str || !readsAsCssValue(file.text.slice(str[0], str[1]), m.index! - str[0])) continue;
     add(m.index!, m[0], contextBefore(m.index!));
   }
   for (const m of file.text.matchAll(SCRIPT_FN)) if (!inRanges(m.index!, metaTags)) add(m.index!, m[0], contextBefore(m.index!));

@@ -96,6 +96,18 @@ describe("raw-color in scripts: from the backlog", () => {
     ]);
   });
 
+  test("prose with a number and a #1234 isn't a CSS value, in a string or between attributes (deferred review)", () => {
+    expect(values("a.tsx", 'const t = "Faster by 30% #1234";')).toEqual([]);
+    expect(values("a.html", '<span class="w-2">Faster by 30% #1234 <b class="x">new</b></span>')).toEqual([]);
+  });
+
+  test("a spaced colour still counts in a value with its property, or after a pair of strings on its line (deferred review)", () => {
+    expect(values("a.js", 'el.style.cssText = "color: red; border: 1px solid #333";\nconst a = t("x"), b = "0 0 0 2px #fff";')).toEqual([
+      ["#333", "other"],
+      ["#fff", "other"],
+    ]);
+  });
+
   test("colours set as styles from a script say how they're used", () => {
     expect(values("a.js", 'el.style.background = "#abcdef";\nel.style.setProperty("--card-bg", "#123456");\nctx.fillStyle = "#654321";\nctx.strokeStyle = "#111111";')).toEqual([
       ["#abcdef", "background"],
