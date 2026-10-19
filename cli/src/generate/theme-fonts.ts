@@ -5,8 +5,8 @@ export interface ThemeFontUse {
   family: string;
   /** Weights the theme's type roles use with this family, lowest first. */
   weights: number[];
-  /** bundled: ships with Motif · system: on every common OS, never fetched · google: loaded from Google Fonts in mockups. */
-  source: "bundled" | "google" | "system";
+  /** bundled: ships with Motif · system: on every common OS, never fetched · project: the project's own font files, never fetched · google: loaded from Google Fonts in mockups. */
+  source: "bundled" | "google" | "project" | "system";
   /** Never first in a font list: a companion (an Arabic font second in the list), checked with its Arabic letters. */
   companion: boolean;
 }
@@ -48,12 +48,13 @@ export function stackFamilies(css: string): string[] {
 /** Each family the theme's type roles name (the first, and any companion after it), with the weights used. */
 export function themeFonts(theme: Theme): ThemeFontUse[] {
   const uses = new Map<string, ThemeFontUse>();
+  const own = new Set(theme.projectFonts.map((f) => f.family.toLowerCase()));
   for (const font of theme.fonts) {
     stackFamilies(font.family).forEach((family, i) => {
       const key = family.toLowerCase();
       // The kit has only the Arabic letters of a style's Arabic companion: enough second in a list, not first.
       const coverage = bundledCoverage(family);
-      const source = coverage === "full" || (coverage === "arabic" && i > 0) ? "bundled" : SYSTEM.has(key) ? "system" : "google";
+      const source = own.has(key) ? "project" : coverage === "full" || (coverage === "arabic" && i > 0) ? "bundled" : SYSTEM.has(key) ? "system" : "google";
       const use = uses.get(key) ?? { family, weights: [], source, companion: i > 0 };
       if (i === 0) use.companion = false;
       if (use.source === "bundled" && source === "google") use.source = "google";

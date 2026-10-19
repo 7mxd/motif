@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runTokens } from "../src/commands/tokens";
-import { FIXTURES } from "./helpers";
+import { FIXTURES, twoVariantTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -205,5 +205,25 @@ describe("motif tokens on a plain web site at the project's root (backlog)", () 
     writeFileSync(join(root, "index.html"), '<!doctype html><link rel="stylesheet" href="motif.css"><p>Hi</p>');
     const again = await runTokens(root, ctx());
     expect((again.data.notes as string[]).join("\n")).not.toContain("Next: link motif.css");
+  });
+
+  test("a two-variant guide puts the men variant in motif.css and the flat tokens", async () => {
+    const root = makeProject({
+      "package.json": reactPkg(), "src/main.tsx": "", "src/index.css": '@import "tailwindcss";\n',
+      "design/tokens.json": JSON.stringify(twoVariantTokens()),
+    });
+    const flutter = makeProject({ "pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n", "design/tokens.json": JSON.stringify(twoVariantTokens()) });
+    const r = await runTokens(root, ctx());
+    expect(r.exitCode).toBe(0);
+    expect(readFileSync(join(root, "src/styles/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
+    await runTokens(flutter, ctx());
+    expect(JSON.parse(readFileSync(join(flutter, "design/generated/tokens.flat.json"), "utf8")).variants.men["color.surface"].light).toBe("#123456");
+    expect(readFileSync(join(flutter, "design/generated/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
+  });
+
+  test("--stack preview carries the variants too", async () => {
+    const root = makeProject({ "design/tokens.json": JSON.stringify(twoVariantTokens()) });
+    await runTokens(root, { positionals: [], flags: { stack: "preview" } } as any);
+    expect(readFileSync(join(root, "design/previews/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
   });
 });

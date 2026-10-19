@@ -1,3 +1,5 @@
+import { readProjectFonts, type ProjectFont } from "../contract/fonts";
+import { readVariants, variantView } from "../contract/variants";
 import { resolveMode, resolveToken } from "../contract/resolve";
 import type { TokenDocument } from "../contract/types";
 import { durationToMs, validateValue, type DtcgColor, type DtcgDuration } from "../contract/values";
@@ -34,6 +36,8 @@ export interface Theme {
   durations: { name: string; ms: number }[];
   easings: { name: string; points: [number, number, number, number] }[];
   springs: { name: string; duration: number; bounce: number }[];
+  /** Font files the project bundles itself (never fetched from Google). */
+  projectFonts: ProjectFont[];
 }
 
 interface Typography {
@@ -45,7 +49,7 @@ interface Typography {
 }
 
 export function buildTheme(doc: TokenDocument): Theme {
-  const theme: Theme = { colors: [], space: [], radius: [], shadows: [], fonts: [], durations: [], easings: [], springs: [] };
+  const theme: Theme = { colors: [], space: [], radius: [], shadows: [], fonts: [], durations: [], easings: [], springs: [], projectFonts: readProjectFonts(doc).fonts };
   const springs = new Map<string, { duration?: number; bounce?: number }>();
 
   for (const tok of doc.tokens.values()) {
@@ -108,4 +112,27 @@ export function buildTheme(doc: TokenDocument): Theme {
     if (s.duration !== undefined && s.bounce !== undefined) theme.springs.push({ name, duration: s.duration, bounce: s.bounce });
   }
   return theme;
+}
+
+export interface ThemeVariant {
+  id: string;
+  label: string;
+  theme: Theme;
+}
+
+export interface ThemeSet {
+  base: Theme;
+  defaultId: string | null;
+  /** The non-default variants only. */
+  variants: ThemeVariant[];
+}
+
+/** The guide's own theme, plus one theme per non-default design variant. */
+export function buildThemeSet(doc: TokenDocument): ThemeSet {
+  const { variants, defaultId } = readVariants(doc);
+  return {
+    base: buildTheme(doc),
+    defaultId,
+    variants: variants.filter((v) => v.id !== defaultId).map((v) => ({ id: v.id, label: v.label, theme: buildTheme(variantView(doc, v.id)) })),
+  };
 }

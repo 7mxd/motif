@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildTheme, type Theme } from "../src/generate/theme";
-import { firstFamily, googleFontsUrl, stackFamilies, themeFonts } from "../src/generate/theme-fonts";
+import { firstFamily, fontStylesheets, googleFontsUrl, stackFamilies, themeFonts } from "../src/generate/theme-fonts";
 import { presetTheme } from "../src/preview/presets";
 import { docFrom, validTokens } from "./helpers";
 
@@ -99,5 +99,19 @@ describe("companions (final review)", () => {
     expect(themeFonts(withFonts(["Onest", "Readex Pro", "sans-serif"])).map((f) => [f.family, f.companion])).toEqual([["Onest", false], ["Readex Pro", true]]);
     const mixed = themeFonts(withFonts(["Onest", "Rubik", "sans-serif"], ["Rubik", "sans-serif"]));
     expect(mixed.find((f) => f.family === "Rubik")!.companion).toBe(false);
+  });
+});
+
+describe("project fonts", () => {
+  test("a family the project bundles is source project and never gets a Google stylesheet", () => {
+    const tokens = validTokens();
+    tokens.primitive.font.sans.$value = ["Thmanyah Sans", "sans-serif"];
+    tokens.$extensions = { "dev.motif": { fonts: [{ family: "Thmanyah Sans", files: [{ path: "assets/fonts/T.woff2", weight: 400, style: "normal" }] }] } };
+    const theme = buildTheme(docFrom(tokens));
+    expect(themeFonts(theme).find((f) => f.family === "Thmanyah Sans")!.source).toBe("project");
+    expect(fontStylesheets(theme).join(" ")).not.toContain("Thmanyah");
+    // without the declaration the same family would be fetched
+    delete tokens.$extensions;
+    expect(fontStylesheets(buildTheme(docFrom(tokens))).join(" ")).toContain("Thmanyah");
   });
 });

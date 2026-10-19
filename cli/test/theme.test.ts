@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { buildTheme } from "../src/generate/theme";
-import { docFrom, validTokens } from "./helpers";
+import { buildTheme, buildThemeSet } from "../src/generate/theme";
+import { docFrom, twoVariantTokens, validTokens } from "./helpers";
 
 const theme = buildTheme(docFrom(validTokens()));
 
@@ -42,5 +42,28 @@ describe("buildTheme", () => {
     const t = validTokens();
     t.color.surface.$value = "{primitive.color.nope}";
     expect(buildTheme(docFrom(t)).colors.some((c) => c.name === "surface")).toBe(false);
+  });
+});
+
+describe("buildThemeSet", () => {
+  test("the default variant is the base; the others carry their own values", () => {
+    const set = buildThemeSet(docFrom(twoVariantTokens()));
+    expect(set.defaultId).toBe("women");
+    expect(set.variants.map((v) => v.id)).toEqual(["men"]);
+    expect(set.variants[0]!.label).toBe("Men");
+    expect(set.variants[0]!.theme.colors.find((c) => c.name === "surface")!.light.hex).toBe("#123456");
+    expect(set.base.colors.find((c) => c.name === "surface")!.light.hex).toBe("#FFFFFF");
+  });
+  test("no variants block: no variants, and the base is today's theme", () => {
+    const set = buildThemeSet(docFrom(validTokens()));
+    expect(set.defaultId).toBeNull();
+    expect(set.variants).toEqual([]);
+    expect(set.base).toEqual(theme);
+  });
+  test("project fonts are on the theme; none by default", () => {
+    expect(theme.projectFonts).toEqual([]);
+    const t = validTokens();
+    t.$extensions = { "dev.motif": { fonts: [{ family: "Thmanyah Sans", files: [{ path: "assets/fonts/T.woff2", weight: 400, style: "normal" }] }] } };
+    expect(buildTheme(docFrom(t)).projectFonts.map((f) => f.family)).toEqual(["Thmanyah Sans"]);
   });
 });

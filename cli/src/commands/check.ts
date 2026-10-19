@@ -5,7 +5,7 @@ import { checkApp, type ExceptionHit } from "../check/run";
 import type { Hit } from "../check/types";
 import { loadTokenDocument } from "../contract/load";
 import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
-import { buildTheme } from "../generate/theme";
+import { buildThemeSet } from "../generate/theme";
 import { appLabel, noSuchApp, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
 import { TOKENS_JSON } from "./validate";
@@ -124,9 +124,9 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
     paths.push(rel);
   }
 
-  const theme = buildTheme(doc);
+  const { base: theme, variants } = buildThemeSet(doc);
   const ignore = readIgnorePatterns(cwd);
-  const results = supported.map((a) => checkApp(cwd, a, theme, { paths, ignore }));
+  const results = supported.map((a) => checkApp(cwd, a, theme, { paths, ignore, variants }));
   if (paths.length > 0 && results.every((r) => r.files === 0)) {
     return {
       command: "check",

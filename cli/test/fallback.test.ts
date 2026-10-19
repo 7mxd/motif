@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { generateFallback, flatTokens } from "../src/generate/fallback";
 import { isMotifGenerated } from "../src/generate/header";
-import { buildTheme } from "../src/generate/theme";
-import { docFrom, validTokens } from "./helpers";
+import { buildTheme, buildThemeSet } from "../src/generate/theme";
+import { docFrom, twoVariantTokens, validTokens } from "./helpers";
 
 const theme = buildTheme(docFrom(validTokens()));
 
@@ -22,5 +22,15 @@ describe("fallback output", () => {
     const files = generateFallback(theme);
     expect(files.map((f) => f.path)).toEqual(["design/generated/motif.css", "design/generated/tokens.flat.json"]);
     for (const f of files) expect(isMotifGenerated(f.path, f.content)).toBe(true);
+  });
+
+  test("variants appear in the flat tokens only when there are some", () => {
+    expect(flatTokens(theme, [])).not.toHaveProperty("variants");
+    const set = buildThemeSet(docFrom(twoVariantTokens()));
+    const flat = flatTokens(set.base, set.variants) as any;
+    expect(Object.keys(flat.variants)).toEqual(["men"]);
+    expect(flat.variants.men["color.surface"]).toEqual({ light: "#123456", dark: "#654321" });
+    expect(flat.variants.men).not.toHaveProperty("variants");
+    expect(flat["color.surface"]).toEqual({ light: "#FFFFFF", dark: "#111827" });
   });
 });

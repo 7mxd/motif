@@ -28,3 +28,25 @@ export function copyFixture(): string {
   cpSync(join(FIXTURES, "contract"), dir, { recursive: true });
   return dir;
 }
+
+/**
+ * The fixture tokens with two variants (women default, men). In men: surface changes light and dark, border changes
+ * light only (its dark value stays the base dark), and radius.md changes.
+ */
+export function twoVariantTokens(): any {
+  const t = validTokens();
+  t.$extensions = { ...(t.$extensions ?? {}), "dev.motif": { ...(t.$extensions?.["dev.motif"] ?? {}), variants: [{ id: "women", label: "Women", default: true }, { id: "men", label: "Men" }] } };
+  const add = (role: any, variants: unknown) => {
+    role.$extensions = { "dev.motif": { ...(role.$extensions?.["dev.motif"] ?? {}), variants } };
+  };
+  add(t.color.surface, { men: { value: hexColor("#123456"), dark: hexColor("#654321") } });
+  add(t.color.border, { men: { value: hexColor("#ABCDEF"), dark: "{primitive.color.gray.700}" } });
+  add(t.radius.md, { men: { value: { value: 12, unit: "px" } } });
+  return t;
+}
+
+/** A DTCG colour value from a #RRGGBB string. */
+export function hexColor(hex: string) {
+  const n = (i: number) => Number((parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(4));
+  return { colorSpace: "srgb", components: [n(1), n(3), n(5)], hex };
+}

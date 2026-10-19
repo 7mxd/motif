@@ -9,7 +9,7 @@ import { formatFindings, type Finding } from "../findings";
 import { flatTokensFile, generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
 import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
-import { buildTheme } from "../generate/theme";
+import { buildThemeSet } from "../generate/theme";
 import { themeFonts } from "../generate/theme-fonts";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
@@ -170,12 +170,13 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     };
   }
 
+  const set = buildThemeSet(doc);
   const stack = ctx.flags?.stack;
   if (typeof stack === "string") {
     if (stack !== "preview") {
       return { command: "tokens", exitCode: 2, text: `Unknown --stack "${stack}". The only one is "preview" (CSS for the preview kit).`, data: { error: "usage" } };
     }
-    const [result] = writeGenerated(cwd, [{ path: PREVIEW_CSS_PATH, content: previewCss(buildTheme(doc)) }]);
+    const [result] = writeGenerated(cwd, [{ path: PREVIEW_CSS_PATH, content: previewCss(set.base, undefined, set.variants) }]);
     const blocked = result!.status === "protected";
     return {
       command: "tokens",
@@ -216,7 +217,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     };
   }
 
-  const theme = buildTheme(doc);
+  const theme = set.base;
   const fonts = themeFonts(theme)
     .filter((f) => f.source !== "system")
     .map(({ family, weights }) => ({ family, weights }));
@@ -237,7 +238,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       if (tailwind === "v3") {
         notes.push(`${appLabel(app)}: Tailwind v3 found, so Motif wrote CSS variables only. Use them as bg-[var(--motif-color-action-primary)], or upgrade to Tailwind v4 for Motif's Tailwind theme.`);
       }
-      for (const f of generateReactWeb(theme, { srcDir, tailwind })) files.push({ path: prefixPath(app.path, f.path), content: f.content });
+      for (const f of generateReactWeb(theme, { srcDir, tailwind }, set.variants)) files.push({ path: prefixPath(app.path, f.path), content: f.content });
       const entry = tailwind === "v4" ? "motif.tailwind.css" : "motif.css";
       entries.push({
         dir: join(appDir, srcDir),
@@ -250,7 +251,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       const site = siteDir(cwd, app);
       srcDirs.set(app.path, site);
       const cssPath = prefixPath(app.path, site === "." ? "motif.css" : `${site}/motif.css`);
-      files.push({ path: cssPath, content: motifCss(theme) });
+      files.push({ path: cssPath, content: motifCss(theme, set.variants) });
       links.push({ dir: join(appDir, site), path: cssPath });
       needsFlat = true;
     } else if (app.stack) {
@@ -263,8 +264,8 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
         : `${appLabel(app)}: Motif couldn't tell which framework this app uses, so it wrote plain CSS variables and design/generated/tokens.flat.json. For full support, add the app and its stack to design/motif.json.`);
     }
   }
-  if (needsFallback) files.push(...generateFallback(theme));
-  else if (needsFlat) files.push(flatTokensFile(theme));
+  if (needsFallback) files.push(...generateFallback(theme, set.variants));
+  else if (needsFlat) files.push(flatTokensFile(theme, set.variants));
 
   const results = writeGenerated(cwd, files);
   const settingsStatus = updateSettings(cwd, detected, srcDirs, notes);

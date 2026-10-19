@@ -5,7 +5,7 @@ import { runTokens } from "../src/commands/tokens";
 import { CSS_HEADER } from "../src/generate/header";
 import { buildTheme } from "../src/generate/theme";
 import { motifCss } from "../src/stacks/react-web/generate";
-import { docFrom, validTokens } from "./helpers";
+import { docFrom, twoVariantTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -62,5 +62,12 @@ describe("motif tokens on a plain web site", () => {
     }));
     expect(r.files.filter((f) => f.path === "design/generated/tokens.flat.json")).toHaveLength(1);
     expect(r.files.map((f) => f.path)).toContain("apps/site/public/motif.css");
+  });
+
+  test("a two-variant guide: motif.css has the men variant and the flat tokens list it", async () => {
+    const root = makeProject({ "design/tokens.json": JSON.stringify(twoVariantTokens()), "public/index.html": "<title>Site</title>" });
+    expect((await run(root)).code).toBe(0);
+    expect(readFileSync(join(root, "public/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
+    expect(JSON.parse(readFileSync(join(root, "design/generated/tokens.flat.json"), "utf8")).variants.men["color.surface"].dark).toBe("#654321");
   });
 });

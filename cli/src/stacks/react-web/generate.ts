@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { num } from "../../generate/css-values";
 import { cssVar, indent, motifCss } from "../../generate/motif-css";
 import { CSS_HEADER, TS_HEADER, type GeneratedFile } from "../../generate/header";
-import type { Theme } from "../../generate/theme";
+import type { Theme, ThemeVariant } from "../../generate/theme";
 import { stripBom } from "../../text";
 
 export type TailwindVersion = "v4" | "v3" | "none";
@@ -96,8 +96,8 @@ export function motionTs(theme: Theme): string {
   ].join("\n");
 }
 
-export function generateReactWeb(theme: Theme, opts: { srcDir: string; tailwind: TailwindVersion }): GeneratedFile[] {
-  const files: GeneratedFile[] = [{ path: `${opts.srcDir}/styles/motif.css`, content: motifCss(theme) }];
+export function generateReactWeb(theme: Theme, opts: { srcDir: string; tailwind: TailwindVersion }, variants: ThemeVariant[] = []): GeneratedFile[] {
+  const files: GeneratedFile[] = [{ path: `${opts.srcDir}/styles/motif.css`, content: motifCss(theme, variants) }];
   if (opts.tailwind === "v4") files.push({ path: `${opts.srcDir}/styles/motif.tailwind.css`, content: tailwindCss(theme) });
   files.push({ path: `${opts.srcDir}/design/motion.ts`, content: motionTs(theme) });
   return files;

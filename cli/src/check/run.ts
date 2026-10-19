@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { siteDir, type AppInfo } from "../detect/stacks";
 import { isMotifGenerated, type GeneratedFile } from "../generate/header";
-import type { Theme } from "../generate/theme";
+import type { Theme, ThemeVariant } from "../generate/theme";
 import { prefixPath } from "../project/apps";
 import { motifCss } from "../generate/motif-css";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
@@ -113,15 +113,15 @@ export function appSourceFiles(root: string, app: AppInfo, opts: { ignore?: stri
   return listSourceFiles(root, app.path, { ignore: opts.ignore, ...(site === "." ? {} : { paths: [prefixPath(app.path, site)] }) });
 }
 
-export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths?: string[]; ignore?: string[] } = {}): AppCheck {
+export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths?: string[]; ignore?: string[]; variants?: ThemeVariant[] } = {}): AppCheck {
   const appDir = join(root, app.path);
   const plain = app.stack === "plain-web";
   const srcDir = plain ? siteDir(root, app) : (app.srcDir ?? chooseSrcDir(appDir));
   const scale = buildScale(theme, srcDir);
   const tailwindVersion = plain ? "none" : detectTailwind(appDir);
   const generatedHere: GeneratedFile[] = plain
-    ? [{ path: srcDir === "." ? "motif.css" : `${srcDir}/motif.css`, content: motifCss(theme) }]
-    : generateReactWeb(theme, { srcDir, tailwind: tailwindVersion });
+    ? [{ path: srcDir === "." ? "motif.css" : `${srcDir}/motif.css`, content: motifCss(theme, opts.variants) }]
+    : generateReactWeb(theme, { srcDir, tailwind: tailwindVersion }, opts.variants);
   // On Tailwind 3, Motif's theme classes do nothing: they're flagged.
   const v3Roles: ThemeRoles | undefined = tailwindVersion === "v3" ? tailwind3Roles(theme, appDir) : undefined;
   const expected = generatedHere.map((f) => ({ path: prefixPath(app.path, f.path), content: f.content }));

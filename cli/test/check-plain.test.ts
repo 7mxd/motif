@@ -2,9 +2,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { runCheck } from "../src/commands/check";
 import type { ExceptionHit } from "../src/check/run";
 import type { Hit } from "../src/check/types";
-import { buildTheme } from "../src/generate/theme";
+import { buildTheme, buildThemeSet } from "../src/generate/theme";
 import { motifCss } from "../src/stacks/react-web/generate";
-import { docFrom, validTokens } from "./helpers";
+import { docFrom, twoVariantTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -105,5 +105,15 @@ describe("what motif check reads on a plain web site (xBloom re-check)", () => {
     }));
     expect(r.violations).toEqual([]);
     expect(r.summary.files).toBe(1);
+  });
+
+  test("a motif.css generated from a guide with variants isn't reported as edited", async () => {
+    const tokens = twoVariantTokens();
+    const set = buildThemeSet(docFrom(tokens));
+    const PAGE = "<style>button { transition: opacity var(--motif-duration-fast) var(--motif-easing-standard); }</style>\n";
+    const root = makeProject({ "design/tokens.json": JSON.stringify(tokens), "public/index.html": PAGE, "public/motif.css": motifCss(set.base, set.variants) });
+    const r = await check(root);
+    expect(r.violations).toEqual([]);
+    expect(r.warnings).toEqual([]);
   });
 });
