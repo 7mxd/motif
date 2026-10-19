@@ -1,0 +1,12 @@
+{
+  "@@locale": "ar",
+  "appTitle": "المخزن",
+  "homeTitle": "الرئيسية",
+  "homeGreeting": "صباح الخير يا سارة",
+  "homeBody": "ثلاثة أصناف تنتهي صلاحيتها هذا الأسبوع.",
+  "openSettings": "الإعدادات",
+  "settingsTitle": "الإعدادات",
+  "settingsNotifications": "الإشعارات",
+  "settingsLanguage": "اللغة",
+  "settingsLanguageValue": "العربية"
+}

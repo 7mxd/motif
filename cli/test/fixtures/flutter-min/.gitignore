@@ -4,3 +4,4 @@ build/
 .flutter-plugins-dependencies
 *.iml
 .idea/
+lib/l10n/app_localizations*.dart

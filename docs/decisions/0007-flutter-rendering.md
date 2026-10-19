@@ -1,0 +1,60 @@
+# 0007 — Rendering Flutter screens
+
+- Date: 2026-10-20
+- Status: Accepted
+- Context: `motif shot` must show a Flutter app's screens the way people see them, in every size, light and dark, and right to left, on any developer's machine and in CI. A device or simulator is slow, and an iPhone simulator needs a Mac. `flutter test` can draw an app with no device, but by default it draws text in a test font of solid boxes, and Motif has to judge type and contrast from these pictures. This spike (plan 2E, Task 8) checked on Windows 11 with Flutter 3.44.8 / Dart 3.12.2 whether `flutter test` can render `cli/test/fixtures/flutter-min` with its real fonts: Onest from google_fonts for Latin text, a bundled Noto Naskh Arabic for Arabic, and Roboto for plain Material text. It can. The harness skeleton is `cli/src/stacks/flutter/harness/motif_shot_test.dart`, and its runner is `cli/src/stacks/flutter/harness.ts`. `cli/test/flutter-render.test.ts` checks both.
+
+## Decisions
+
+1. **Screens are drawn by `flutter test`, from a test file inside the app's `.motif` folder.** Motif writes `<app>/.motif/shot/motif_shot_test.dart` and `<app>/.motif/shot/config.json` (with `<app>/.motif/.gitignore` set to `*`). From the app folder it runs `flutter test .motif/shot/motif_shot_test.dart --dart-define=MOTIF_SHOT_CONFIG=<config path>`, and it deletes both files when the run ends, whatever the outcome. `package:<app>/main.dart` imports resolve from there, and paths with spaces work, so the fallback (a `test/.motif_shot_test.dart`) isn't needed.
+   - The harness source is the same in every run: only the package name in its import changes. Everything that varies (shots, fonts, output folder) goes in the JSON file. Because of this, `flutter test` reuses its compiled test between runs (see 6).
+   - `flutter test` refuses to run an app that doesn't list `flutter_test` in `dev_dependencies` ("cannot run without a dependency on either package:flutter_test or package:test"). `flutter create` adds it, so most apps have it. Motif never edits `pubspec.yaml`, so for an app without it Motif stops and shows the three lines to add.
+2. **Text is drawn in the app's real fonts, which the harness loads from files before the first frame.** There are three sources, and each family is registered with `FontLoader`:
+   - **Fonts bundled in `pubspec.yaml`** (`flutter: fonts:`) are loaded from their asset files under their family name.
+   - **google_fonts families.** Motif downloads every weight and style a family has once into `motifHome()/fonts/google/<Family>/`. It gets them from the Google Fonts CSS2 API, asking for `ital,wght@0,100;…;1,900`; the API answers with only the faces that exist, and sends static TTF files to a client that doesn't claim WOFF2 support (`User-Agent: Mozilla/4.0`). google_fonts asks the engine for `<Family>_<variant>`: `Onest_regular`, `Onest_italic`, `Onest_700`, `Onest_700italic`. The harness registers each file under that name, and registers all the files together under the plain family name, which google_fonts uses as its fallback. Before the app starts, the harness sets `GoogleFonts.config.allowRuntimeFetching = false`.
+   - **Roboto and `MaterialIcons`** come from the Flutter SDK's own copy (`<flutter>/bin/cache/artifacts/material_fonts/`). They are used for plain Material text and for icons.
+
+   The fonts work offline after the first run. A second run with the network blocked (a proxy that refuses connections) drew the same screenshots. Without the loaded fonts (the control run), every letter and icon was a box. Because downloading once worked, the other way (google_fonts fetching over real HTTP inside `tester.runAsync`) wasn't built. It would also need the network on every fresh machine and every CI run.
+3. **`flutter test` has no system font fallback.** On a phone, a character that the chosen font lacks is drawn by a system font. Under `flutter test`, it is drawn as the font's empty box. The spike showed this: with Onest's `fontFamilyFallback` removed, Arabic text became boxes. Text renders when an Arabic font is in the style's `fontFamilyFallback`, as in Motif's generated `MotifTheme` (the Arabic companion font) and in the fixture. If a family isn't loaded at all, its text falls back to the test font's solid boxes.
+4. **Sizes, safe areas, scheme and locale are set on the test view.**
+   - Phones are `mobile-360` (360×800), `mobile` (390×844) and `mobile-430` (430×932). `tablet` is 768×1024. All four use device pixel ratio 2. `desktop` (1440×900 at ratio 1) is drawn only with `--sizes desktop`.
+   - The size is set as `tester.view.physicalSize` (logical size × ratio) plus `devicePixelRatio`. Phones get an iPhone-like safe area through `padding` and `viewPadding`: 47 at the top and 34 at the bottom, in logical pixels, multiplied by the ratio.
+   - Light or dark is set with `platformBrightnessTestValue`. The app's `ThemeMode.system` follows it.
+   - The locale is set with `localeTestValue` and `localesTestValue`: `ar` for right to left. Arabic screens mirrored as expected.
+   - Every value is reset after each screenshot. `WidgetsApp.debugAllowBannerOverride = false` hides the DEBUG ribbon.
+   - Under `flutter test` the target platform is Android, so screens use Material's Android look (Roboto, Android page transitions). Apple's system font can't be shipped, so an iOS look isn't attempted.
+5. **A PNG is the root render view's layer.**
+   - The root `RepaintBoundary` is the `RenderView`. Inside `tester.runAsync`, the harness calls `(view.debugLayer as OffsetLayer).toImage(view.paintBounds)`, which is how flutter_test's own `captureImage` works, then `toByteData(format: png)`, and writes the file with `dart:io`.
+   - `paintBounds` is in physical pixels, so `mobile` gives 780×1688.
+   - Waiting uses bounded pumps: one `pump()`, then `pump(100 ms)` while a frame is scheduled, at most 50 times (5 s of test time). It never uses `pumpAndSettle`, which never finishes while a spinner is showing.
+   - Every screenshot calls `GoRouter.of(context).go(route)`, `/` included. The app's router is a global object, and it keeps the previous screenshot's location. The spike showed this: a `/` shot taken after `/settings`, without its own `go`, showed Settings. Other global state the app keeps also carries over from one screenshot to the next within a run.
+6. **Timings, and the run's time limit.** Measured on the fixture (Windows 11, Flutter 3.44.8):
+
+   | Run | Time |
+   |---|---|
+   | First run on a machine, in a fresh copy of the app (fonts downloaded, test compiled), 2 shots | 10.3 s |
+   | First run in a fresh copy, fonts already cached, 2 shots | 9.5 s |
+   | Later runs (`flutter test` reuses its compiled test), 2 shots | 3.2 s |
+   | Later runs, 10 shots | 3.8 s |
+   | Later runs, 40 shots | 5.5 s |
+
+   Each screenshot after the first adds about 60–75 ms. The time limit Task 9 uses is **240 s plus 3 s per screenshot**:
+   - The 240 s covers the first compile of a real app, which has much more code than the fixture, on a slow CI runner.
+   - The 3 s per screenshot covers heavy screens and two waits that each reach the 5 s cap. Each such wait costs real time for every frame pumped.
+7. **CI on Linux uses `subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2` (v2.23.0)** with `channel: stable`, `flutter-version: 3.44.8` and `cache: true`.
+   - The action is pinned to a commit, like the other actions in `ci.yml`.
+   - Flutter is pinned to an exact version for two reasons. The fixture's `pubspec.lock` was resolved by that SDK, which pins packages such as `clock` and `test_api`. Text drawing also changes between Flutter releases.
+   - `flutter test` needs no display, so the same test should run headless on `ubuntu-latest`. This hasn't been run on Linux yet; the first CI job with Flutter will prove it.
+   - Tests that need Flutter skip where it isn't installed (`hasFlutter`). The current matrix stays as it is until a job installs Flutter.
+
+## Consequences
+
+- Motif can show any Flutter app's screens on Windows, Linux or macOS with only the Flutter SDK: no emulator, no simulator, no Mac. The cost is that the screens use Android's look.
+- Motif must know which google_fonts families an app uses before the run starts. It finds them in the guide's font tokens and by scanning the app's code for `GoogleFonts.<name>(…)`, `GoogleFonts.<name>TextTheme(…)` and `GoogleFonts.getFont('<Family>')`. It maps each method name to its family through the `asMap()` table of the google_fonts package that the app resolves (the app's `.dart_tool/package_config.json` locates that package). A family that's missed shows up as boxes. The harness can check every `RenderParagraph`'s font families against the families it loaded, and add a note naming any that are missing (Task 9).
+- With runtime fetching off, google_fonts still tries its own load. For each family it prints "unable to load font Onest-Regular … allowRuntimeFetching is false", although the text renders in the font Motif loaded. Task 9 removes these lines from the Flutter output it shows when a run fails.
+- An app that relies on the phone's system fonts for another script (Arabic text in a Latin-only family with no fallback listed) gets boxes in its screenshots. Motif notes this instead of hiding it. Its own generated theme lists the Arabic companion as a fallback, so apps that use `MotifTheme` aren't affected.
+- Screenshots in one run share the app's global objects (router, singletons, caches). Task 9 navigates explicitly for every shot. Its setup script (`design/states/setup.dart`) is where an app resets anything else.
+- If `HTTP_PROXY` or `HTTPS_PROXY` is set, `flutter test` fails before any test starts. Its test listener connects to `127.0.0.1` through the proxy. Task 9 adds `127.0.0.1,localhost` to `NO_PROXY` for the run.
+- On Windows, killing the run at the time limit kills `flutter.bat` but may leave `flutter_tester` running. Task 9 kills the whole process tree (`taskkill /T /F`).
+- The same app can give PNGs that differ slightly between operating systems (anti-aliasing). Motif's tests compare sizes and whether light differs from dark, not exact pixels.
+- The font cache grows by about 0.8 MB for a family with nine weights (Onest). It is downloaded once per machine and shared by every app.

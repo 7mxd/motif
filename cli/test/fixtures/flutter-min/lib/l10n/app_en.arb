@@ -1,0 +1,12 @@
+{
+  "@@locale": "en",
+  "appTitle": "Larder",
+  "homeTitle": "Home",
+  "homeGreeting": "Good morning, Sara",
+  "homeBody": "Three items expire this week.",
+  "openSettings": "Settings",
+  "settingsTitle": "Settings",
+  "settingsNotifications": "Notifications",
+  "settingsLanguage": "Language",
+  "settingsLanguageValue": "English"
+}
