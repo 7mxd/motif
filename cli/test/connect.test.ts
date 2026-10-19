@@ -548,7 +548,11 @@ describe("motif connect: every agent (Part 3)", () => {
       writeFileSync(join(s.home, ".cursor", "mcp.json"), '{\n  "mcpServers": {}\n}\n');
       gitIn(s.home, "init", "-q");
       gitIn(s.home, "add", ".cursor/mcp.json");
-      const vars = { ...clean, GIT_CEILING_DIRECTORIES: dirname(s.home) };
+      // None of this computer's git settings: CI's runners trust every folder (safe.directory = *), which hides the
+      // dubious-ownership refusal these tests need.
+      const noConfig = join(dirname(s.home), "empty.gitconfig");
+      writeFileSync(noConfig, "");
+      const vars = { ...clean, GIT_CEILING_DIRECTORIES: dirname(s.home), GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: noConfig };
       const deps: ConnectDeps = {
         ...s.deps,
         which: (c) => (c === "git" ? git : null),
