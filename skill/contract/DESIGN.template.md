@@ -36,6 +36,15 @@ App name feels calm, clear and trustworthy. Replace this paragraph with three to
 - **Corners and elevation:**
 - **Icons:**
 
+## Variants
+
+<!-- When the app has no variants, delete this section. Otherwise it is required, and says: what each variant is for and who it serves; how the app chooses one; what changes beyond theme values (icons, imagery, illustration style, tone of copy); what stays the same in all of them so the app still reads as one brand. Name every variant here by its label or id. -->
+
+- **Variants and who they serve:**
+- **How the app chooses:**
+- **What changes beyond theme values:**
+- **What stays the same:**
+
 ## 4. Motion
 
 <!-- Which duration, easing and spring roles to use when; what animates and what never does; how screens and sheets enter and leave; press feedback; what happens when the viewer asks for reduced motion. -->

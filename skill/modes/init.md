@@ -29,11 +29,13 @@ Gather references for the brief's personality and the screens it needs:
 
 Write down in a few lines what you'll take from each reference. Keep links only.
 
+**If the brief calls for a variant** (a look for another audience, or a brand per customer), do a short research step on it first: how comparable apps handle it, what the connected design sources show, and the pitfalls. Then propose what differs (usually colours, maybe icons or imagery) and what stays the same, and ⏸ wait for the developer to approve what varies before anything is written. [Variants](../knowledge/variants.md) covers when a variant is worth it, and for an audience variant how to avoid stereotypes and keep both equally good. Approved variants go in the design guide in step 5 and are checked in step 7.
+
 ## 4. Directions ⏸
 
 Make two or three clearly different directions: different colour moods, type pairings or densities, not one look with three accent colours. Each direction names its font pairing (text and headings, plus an Arabic companion second in both font lists when the app may show Arabic) from [type pairings](../knowledge/type-pairings.md), different from the other directions', with one line on why it suits the brief. Leave out the overused fonts and colour looks listed there unless the developer asks for them. Each direction is a folder in `design/directions/`, such as `design/directions/calm/`, holding:
 
-- `tokens.json`: start from the closest starting style (`presets/<style>/tokens.json` in the skill folder) or [the template](../contract/tokens.template.json), and change the values to fit the brief. Keep every role; [the format](../contract/spec.md) explains each one.
+- `tokens.json`: start from the closest starting style (`presets/<style>/tokens.json` in the skill folder) or [the template](../contract/tokens.template.json), and change the values to fit the brief. Keep every role; [the format](../contract/spec.md) explains each one. With variants, add each one's values and `--variant all` when you preview.
 - `tile.html`: a style tile with the colour roles as swatches, the type scale, and the key components (buttons, a field, a card, a list row) in their main states.
 - `<screen>.html`: the one screen that best shows the app (usually home), in the right frame (a phone for mobile apps, a browser for web apps), with realistic mock content.
 
@@ -48,7 +50,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
 ## 5. Design guide
 
 1. Copy the approved direction's `tokens.json` to `design/tokens.json`.
-2. Write `DESIGN.md` from [the template](../contract/DESIGN.template.md): the summary, the brief, the direction (the style, references as links, the approved mockups), and every other section filled from the decisions so far. [The format](../contract/spec.md) says what each section holds.
+2. Write `DESIGN.md` from [the template](../contract/DESIGN.template.md) (keep its `## Variants` section only if there are variants): the summary, the brief, the direction (the style, references as links, the approved mockups), and every other section filled from the decisions so far. [The format](../contract/spec.md) says what each section holds.
 3. Move the approved mockups and their PNGs into `design/previews/`, then delete `design/directions/`.
 4. Run `motif validate` and fix every problem until it passes.
 5. Add the first change-log line, replacing the template's example line: `- <date> — Created the design guide — <name> chosen from <n> directions — approved by <developer>`.
@@ -68,7 +70,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
 
 1. Run `motif check` and fix every finding. Use a `motif-ok: <reason>` comment only for a value that truly must stay (a partner's brand colour, say).
 2. Run the project's build and type check (the stack guide names them; a plain web site has none).
-3. Run `motif shot --audit` for the starter screens, in light and dark at every size it takes (three phones, a tablet and a desktop), adding `--state` for each screen behind a form or a click (the stack guide's checks show how). Fix the critical and major findings, then run it again.
+3. Run `motif shot --audit` for the starter screens (it covers every variant), in light and dark at every size it takes (three phones, a tablet and a desktop), adding `--state` for each screen behind a form or a click (the stack guide's checks show how). Fix the critical and major findings, then run it again.
 4. For each screen with an approved mockup, run `motif shot --routes <route> --against design/previews/<screen>.html` and compare the app with the mockup. Fix differences that change the design.
 5. Show the developer the screenshots and a short summary: what was built, what passed, anything left for later.
 

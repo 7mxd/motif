@@ -19,9 +19,11 @@ Ask whether to review the whole app or named screens or features (default: the w
 
 1. `motif validate`: problems in the design guide itself.
 2. `motif check`: places in the code that bypass the design guide.
-3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, at three phone sizes, a tablet and a desktop). Screens that only appear after a form or a click (a result, an editor, an error) need a state script: write one per state in `design/states/`, as the stack guide's checks show ([React web](../adapters/react-web/checks.md#screens-behind-a-form-or-a-click), [plain web](../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)), and add `--state design/states/<state>.js` for each. It also writes its findings to `design/shots/audit.json` in the report format below.
+3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, at three phone sizes, a tablet and a desktop, and in every variant). Screens that only appear after a form or a click (a result, an editor, an error) need a state script: write one per state in `design/states/`, as the stack guide's checks show ([React web](../adapters/react-web/checks.md#screens-behind-a-form-or-a-click), [plain web](../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)), and add `--state design/states/<state>.js` for each. It also writes its findings to `design/shots/audit.json` in the report format below.
 
 **Judgement**, screen by screen and state by state, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, whether things people use together (a live preview and the controls that change it, a form and its result) fit on one screen, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's checks ([React web](../adapters/react-web/checks.md), [plain web](../adapters/plain-web/checks.md)).
+
+When the design guide has variants, look at every variant's screenshots: `motif shot --routes <routes> --variant all` (files like `home+men.png`). A finding that applies to one variant says which in `location` (`"variant": "men"`) and in its summary; one that applies to all is reported once.
 
 Two things screenshots hide, so check them in the code too:
 
@@ -43,8 +45,8 @@ Write the report as `design/reviews/<YYYY-MM-DD>-<scope>.json`, plus a Markdown 
       "severity": "critical",
       "category": "contrast",
       "source": "exact",
-      "location": { "screen": "/settings", "selector": "p.hint", "viewport": "mobile", "scheme": "dark" },
-      "summary": "Hint text is hard to read on cards in dark mode (2.8:1; it needs 4.5:1).",
+      "location": { "screen": "/settings", "selector": "p.hint", "viewport": "mobile", "scheme": "dark", "variant": "men" },
+      "summary": "In the Men variant, hint text is hard to read on cards in dark mode (2.8:1; it needs 4.5:1).",
       "fix": "Lighten text-secondary's dark value, or use text-primary on surface-raised.",
       "shot": "design/shots/settings.mobile.dark.png",
       "status": "open"

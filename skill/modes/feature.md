@@ -20,7 +20,7 @@ Read the matching UX pattern guides in `knowledge/ux-patterns/` in the skill fol
 
 Write a mockup of every new screen and state as `design/previews/<feature>-<screen>.html`, with [the preview kit](../preview-kit/README.md) and nothing but the design guide: kit classes only, no colours, sizes or fonts of your own. Show the loading, empty and error states the pattern guide lists, each in its own frame. Mark each state's frame with `data-state="<state>"`, the name its state script will have in `design/states/` (`<div class="mk-frame mk-phone mk-ios" data-state="empty">`), so it's later compared with that state of the app.
 
-Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show the PNGs (light and dark). Change the mockup until the developer approves it.
+Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show the PNGs (light and dark). When the app has variants, add `--variant all`: a new screen has to work in every one. Change the mockup until the developer approves it.
 
 ## 5. Build
 
@@ -32,9 +32,9 @@ Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show 
 ## 6. Verify
 
 1. Run `motif check` (no findings apart from justified `motif-ok` exceptions) and the project's build and type check.
-2. Run `motif shot --audit --routes <the new routes>`, adding `--state` for each new screen behind a form or a click. Fix the critical and major findings and run it again.
+2. Run `motif shot --audit --routes <the new routes>` (it covers every variant), adding `--state` for each new screen behind a form or a click. Fix the critical and major findings and run it again.
 3. For each screen, run `motif shot --routes <route> --state design/states/<state>.js --against design/previews/<feature>-<screen>.html`, with a `--state` for each state the mockup shows: each frame is put next to the same state of the app, and the output names any state you left out. Fix differences that change the design.
-4. Confirm every state from the mockup exists in the app: loading, empty, error, disabled.
+4. Confirm every state from the mockup exists in the app: loading, empty, error, disabled. With variants, look at the screen in each: `motif shot --routes <route> --variant all`.
 5. Show the developer the side-by-side images and a short summary of what was built and checked.
 
 Delete `design/.progress.json`.

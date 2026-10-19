@@ -21,7 +21,11 @@ Otherwise ask one question, putting first the option that fits this folder (from
 
 In one or two sentences, tell the developer what the mode does and where it will stop for them. For example: "I'll ask a few quick questions, show you two or three looks side by side, and build once you've picked one. Say 'skip previews' any time if you'd rather I just build."
 
-## 4. Mention anything missing, once
+## 4. A variant
+
+If they ask for a variant (a look for another audience or context, or a brand per customer), don't write it straight away. Do a short research step first: how comparable apps handle it, what the connected design sources show, and the pitfalls. Then say in plain words what would differ and what stays the same, and ⏸ wait for approval before changing `design/tokens.json` or `DESIGN.md`. Read [variants](../knowledge/variants.md) for when a variant is worth it, what to vary and how to avoid stereotypes. In an existing app that is a design guide change, handled in [feature](feature.md) step 5, with a new `## Variants` section if there is none.
+
+## 5. Mention anything missing, once
 
 If `motif doctor --json` reported something `needed` that the mode uses, say it now in one sentence with its fix, then carry on:
 
@@ -29,7 +33,7 @@ If `motif doctor --json` reported something `needed` that the mode uses, say it 
 - No Node.js for a React app: "Your app needs Node.js to run; install it from nodejs.org and I'll take it from there."
 - A design guide with problems: "Your design guide has a few problems; I'll fix them first."
 
-## 5. Continue
+## 6. Continue
 
 - Start a new app: [init](init.md)
 - Add a feature: [feature](feature.md)

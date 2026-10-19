@@ -269,3 +269,37 @@ describe("design sources in every agent (Part 3)", () => {
     for (const f of ["sources/refero.md", "sources/60fps.md"]) expect([f, read(f).includes("(../agents.md)")]).toEqual([f, true]);
   });
 });
+
+describe("design variants and project fonts in the skill", () => {
+  test("the format: spec.md documents variants, the default one, project fonts and data-variant", () => {
+    const spec = read("contract/spec.md");
+    for (const s of ['"variants"', '"default": true', '"fonts"', "data-variant"]) expect(spec).toContain(s);
+  });
+
+  test("the variants guide has its five headings and links to the format", () => {
+    const guide = read("knowledge/variants.md");
+    expect(outOfOrder(guide, ["## When a variant is worth it", "## What to vary", "## What never varies", "## Audience variants without stereotypes", "## Checking every variant"])).toBeNull();
+    expect(guide).toContain("../contract/spec.md");
+  });
+
+  test("init and design research a variant and wait for approval before writing it", () => {
+    for (const f of ["modes/init.md", "modes/design.md"]) {
+      expect(outOfOrder(read(f), ["variant", "research", "⏸", "(../knowledge/variants.md)"])).toBeNull();
+    }
+  });
+
+  test("review looks at every variant, and feature builds in every one", () => {
+    expect(read("modes/review.md")).toContain("--variant all");
+    expect(read("modes/feature.md")).toContain("--variant all");
+  });
+
+  test("both web stacks show how to choose a variant and how to load a project font", () => {
+    for (const f of ["adapters/react-web/tokens.md", "adapters/plain-web/tokens.md"]) {
+      for (const s of ["data-variant", "@font-face"]) expect(read(f)).toContain(s);
+    }
+  });
+
+  test("the template has an optional Variants section after Foundations", () => {
+    expect(outOfOrder(read("contract/DESIGN.template.md"), ["## 3. Foundations", "## Variants", "delete this section", "## 4. Motion"])).toBeNull();
+  });
+});

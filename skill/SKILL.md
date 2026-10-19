@@ -93,7 +93,7 @@ Make sure `design/.gitignore` lists `.progress.json` and `directions/` (create i
 ## What's in the skill folder
 
 - [contract/spec.md](contract/spec.md): the design guide format, with [DESIGN.template.md](contract/DESIGN.template.md) and [tokens.template.json](contract/tokens.template.json) to start from.
-- Knowledge: [visual craft](knowledge/visual-craft.md), [anti-patterns](knowledge/anti-patterns.md), [type pairings](knowledge/type-pairings.md), [motion](knowledge/motion.md), [accessibility](knowledge/accessibility.md), and one guide per UX pattern in `knowledge/ux-patterns/`, such as [sign-in](knowledge/ux-patterns/sign-in.md) and [lists and feeds](knowledge/ux-patterns/lists-feeds.md).
+- Knowledge: [visual craft](knowledge/visual-craft.md), [anti-patterns](knowledge/anti-patterns.md), [type pairings](knowledge/type-pairings.md), [motion](knowledge/motion.md), [accessibility](knowledge/accessibility.md), [variants](knowledge/variants.md), and one guide per UX pattern in `knowledge/ux-patterns/`, such as [sign-in](knowledge/ux-patterns/sign-in.md) and [lists and feeds](knowledge/ux-patterns/lists-feeds.md).
 - `presets/<style>/`: the 8 starting styles (`tokens.json`, `about.md`, `sample.html`).
 - [preview-kit/README.md](preview-kit/README.md): how to write mockups.
 - `sources/`: one note per design source. `adapters/`: one guide per stack.
