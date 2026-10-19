@@ -23,6 +23,11 @@ Ask whether to review the whole app or named screens or features (default: the w
 
 **Judgement**, screen by screen and state by state, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, whether things people use together (a live preview and the controls that change it, a form and its result) fit on one screen, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's checks ([React web](../adapters/react-web/checks.md), [plain web](../adapters/plain-web/checks.md)).
 
+Two things screenshots hide, so check them in the code too:
+
+- For every screen that shows data (a list, a feed, search results, a dashboard), find its loading, empty and error states. A screen that renders its mock data straight away looks complete, since mock data always loads and is never empty; one with no branch for any of the three is a `missing-state` finding.
+- Emoji standing in for the app's icons or decoration (on buttons, banners, feature cards, empty states) are an `anti-pattern` finding: see [emoji as UI](../knowledge/anti-patterns.md#emoji-as-ui). Emoji in content people write themselves are fine.
+
 ## 4. Report ⏸
 
 Write the report as `design/reviews/<YYYY-MM-DD>-<scope>.json`, plus a Markdown version beside it (`.md`):
