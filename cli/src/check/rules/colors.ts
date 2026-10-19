@@ -69,8 +69,12 @@ function readsAsCssValue(str: string, at: number): boolean {
   const end = str.indexOf(";", at) === -1 ? str.length : str.indexOf(";", at);
   const value = str.slice(start, end).replace(/^\s*(?:--[\w-]+|[a-z-]+)\s*:/, "");
   if (!CSS_VALUE_HINT.test(value)) return false;
-  // A function is one word: rgba(0, 0, 0, 0.1).
-  const words = value.replace(/[\w-]+\([^()]*\)/g, (f) => f.replace(/[\s,/]/g, "")).split(/[\s,/]+/).filter(Boolean);
+  // A function is one word: rgba(0, 0, 0, 0.1). A template's ${…} stands for a number: `${w}px solid #ddd`.
+  const words = value
+    .replace(/\$\{[^}]*\}/g, "0")
+    .replace(/[\w-]+\([^()]*\)/g, (f) => f.replace(/[\s,/]/g, ""))
+    .split(/[\s,/]+/)
+    .filter(Boolean);
   return words.every((w) => CSS_VALUE_WORD.test(w));
 }
 // Styles set from a script: el.style.background = "…", el.style.setProperty("--card-bg", "…"), ctx.fillStyle = "…".

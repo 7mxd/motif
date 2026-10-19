@@ -102,9 +102,10 @@ describe("raw-color in scripts: from the backlog", () => {
   });
 
   test("a spaced colour still counts in a value with its property, or after a pair of strings on its line (deferred review)", () => {
-    expect(values("a.js", 'el.style.cssText = "color: red; border: 1px solid #333";\nconst a = t("x"), b = "0 0 0 2px #fff";')).toEqual([
+    expect(values("a.js", 'el.style.cssText = "color: red; border: 1px solid #333";\nconst a = t("x"), b = "0 0 0 2px #fff";\nconst c = `${w}px solid #ddd`;')).toEqual([
       ["#333", "other"],
       ["#fff", "other"],
+      ["#ddd", "other"],
     ]);
   });
 
