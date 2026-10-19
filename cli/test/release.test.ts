@@ -219,10 +219,23 @@ describe("the release workflows are hardened (backlog)", () => {
   });
 });
 
+describe("vendored files are kept byte for byte (backlog)", () => {
+  // With text=auto, a Windows checkout (core.autocrlf) turns axe.min.js's line ends into CRLF, so the tool built there
+  // would embed different bytes from the one built on macOS or Linux.
+  test("git never changes the line ends of anything in cli/vendor", () => {
+    for (const f of ["cli/vendor/axe-core/axe.min.js", "cli/vendor/axe-core/LICENSE"]) {
+      const out = Bun.spawnSync(["git", "check-attr", "text", "--", f], { cwd: REPO }).stdout.toString().trim();
+      expect(out).toBe(`${f}: text: unset`);
+    }
+  });
+});
+
 describe("the README names what Motif's tool includes (backlog)", () => {
-  test("axe-core, its licence and where its source is", () => {
+  test("axe-core at the version vendored, its licence and where its source is", () => {
     const readme = readFileSync(join(REPO, "README.md"), "utf8");
-    for (const s of ["axe-core 4.14.0", "MPL-2.0", "THIRD-PARTY-NOTICES.txt", "github.com/dequelabs/axe-core"]) expect(readme).toContain(s);
+    // The version the vendored file says it is, so upgrading axe-core without the README fails here.
+    const version = readFileSync(join(REPO, "cli/vendor/axe-core/axe.min.js"), "utf8").match(/^\/\*! axe v(\d+\.\d+\.\d+)/)![1];
+    for (const s of [`axe-core ${version} (MPL-2.0)`, "THIRD-PARTY-NOTICES.txt", `github.com/dequelabs/axe-core/tree/v${version}`]) expect(readme).toContain(s);
   });
 });
 
