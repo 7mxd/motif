@@ -19,6 +19,8 @@ beforeAll(() => {
   const zip = new Uint8Array(skillZip(entries));
   const sum = (data: Uint8Array, name: string) => `${createHash("sha256").update(data).digest("hex")}  ${name}\n`;
   const sums = `${sum(tgz, SKILL_TGZ)}${sum(zip, SKILL_ZIP)}`;
+  // As sha256sum --binary writes it on Windows: "hash *name", with CRLF line ends and an upper-case hash.
+  const starred = sums.replace(/^([0-9a-f]{64})  /gm, (_, h: string) => `${h.toUpperCase()} *`).replace(/\n/g, "\r\n");
   server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
@@ -26,9 +28,10 @@ beforeAll(() => {
       const path = new URL(req.url).pathname;
       // Served as bytes, as a server may label it: install.ps1 must still read it as text (the local agent check, Task 8).
       if (path === "/raw/skills/motif/VERSION") return new Response(`${VERSION}\n`, { headers: { "content-type": "application/octet-stream" } });
-      if (path === `/ok/${SKILL_TGZ}` || path === `/bad/${SKILL_TGZ}`) return new Response(tgz);
-      if (path === `/ok/${SKILL_ZIP}` || path === `/bad/${SKILL_ZIP}`) return new Response(zip);
+      if (path === `/ok/${SKILL_TGZ}` || path === `/bad/${SKILL_TGZ}` || path === `/star/${SKILL_TGZ}`) return new Response(tgz);
+      if (path === `/ok/${SKILL_ZIP}` || path === `/bad/${SKILL_ZIP}` || path === `/star/${SKILL_ZIP}`) return new Response(zip);
       if (path === "/ok/SHA256SUMS") return new Response(sums);
+      if (path === "/star/SHA256SUMS") return new Response(starred);
       if (path === "/bad/SHA256SUMS") return new Response(`${"0".repeat(64)}  ${SKILL_TGZ}\n${"0".repeat(64)}  ${SKILL_ZIP}\n`);
       return new Response("not found", { status: 404 });
     },
@@ -96,6 +99,13 @@ describe.skipIf(!sh)("install.sh", () => {
     expect(r.exitCode).toBe(2);
     expect(r.output).toContain("failed its safety check");
     expect(readFileSync(join(home, ".agents/skills/motif/mark.txt"), "utf8")).toBe("kept");
+  }, 60_000);
+
+  test('reads SHA256SUMS written as "hash *name", with Windows line ends and an upper-case hash (backlog)', async () => {
+    const home = freshHome();
+    const r = await run(home, ["--agent", "agents"], "star");
+    expect({ code: r.exitCode, out: r.output }).toMatchObject({ code: 0 });
+    expect(existsSync(join(home, ".agents/skills/motif/SKILL.md"))).toBe(true);
   }, 60_000);
 
   test("a failed download says so plainly", async () => {
@@ -276,11 +286,3 @@ describe.skipIf(!isWin)("install.ps1", () => {
   }, 180_000);
 });
 
-describe("install.sh reads SHA256SUMS in either form (backlog)", () => {
-  test('a "hash *name" line is accepted', () => {
-    const script = readFileSync(join(import.meta.dir, "../../install.sh"), "utf8");
-    expect(script).not.toContain('grep " $ASSET\\$"');
-    expect(script).toContain("sub(/^\\*/");
-    expect(script).toContain("sub(/\\r$/, \"\")");
-  });
-});
