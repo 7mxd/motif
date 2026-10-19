@@ -3,8 +3,9 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngNames, runPreview, type PreviewDeps } from "../src/commands/preview";
 import { openCommand } from "../src/preview/open";
+import { pngName } from "../src/preview/render";
 import type { RenderTarget } from "../src/preview/render";
-import { validTokens } from "./helpers";
+import { twoVariantTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -467,5 +468,60 @@ describe("pngNames (review of the backlog's batch A)", () => {
   test("mockups that share an output folder and differ only in case get their own names where case doesn't count", () => {
     expect(pngNames(["a/Home.html", "b/home.html"], ["o", "o"], true)).toEqual(["a-Home", "b-home"]);
     expect(pngNames(["a/Home.html", "b/home.html"], ["o", "o"], false)).toEqual(["Home", "home"]);
+  });
+});
+
+describe("motif preview --variant", () => {
+  const variantProject = () => makeProject({ "design/tokens.json": JSON.stringify(twoVariantTokens()), "design/previews/home.html": MOCKUP });
+  const pngOnly = { "png-only": true };
+  const variantsOf = (f: ReturnType<typeof fakes>) => f.calls.render[0]!.targets.map((t) => t.variant);
+
+  test("one variant: the targets carry it, and its PNGs are named with it", async () => {
+    const f = fakes();
+    const r = await runPreview(variantProject(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "men" }), f.deps);
+    expect(r.exitCode).toBe(0);
+    expect(variantsOf(f)).toEqual(["men"]);
+    expect(pngName("home", 0, "light", undefined, "men")).toBe("home+men.png");
+    expect(pngName("home", 0, "dark", undefined, "men")).toBe("home+men.dark.png");
+    expect(pngName("index", 0, "dark", "sent", "men")).toBe("index@sent+men.dark.png");
+  });
+
+  test("the default variant by name renders without a suffix", async () => {
+    const f = fakes();
+    await runPreview(variantProject(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "women" }), f.deps);
+    expect(variantsOf(f)).toEqual([undefined]);
+  });
+
+  test("all: the default, then every other variant", async () => {
+    const f = fakes();
+    await runPreview(variantProject(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "all" }), f.deps);
+    expect(variantsOf(f)).toEqual([undefined, "men"]);
+  });
+
+  test("an unknown variant lists the ones there are, and renders nothing", async () => {
+    const f = fakes();
+    const r = await runPreview(variantProject(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "nope" }), f.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.data).toMatchObject({ error: "no-such-variant" });
+    expect(r.text).toContain("women");
+    expect(r.text).toContain("men");
+    expect(f.calls.render).toHaveLength(0);
+  });
+
+  test("a guide without variants", async () => {
+    const f = fakes();
+    const r = await runPreview(project(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "men" }), f.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.data).toMatchObject({ error: "no-such-variant" });
+    expect(r.text).toContain("This design guide has no variants.");
+    expect(f.calls.render).toHaveLength(0);
+  });
+
+  test("a design direction uses its own variants", async () => {
+    const f = fakes();
+    const root = makeProject({ "design/tokens.json": JSON.stringify(validTokens()), "design/directions/a/home.html": MOCKUP, "design/directions/a/tokens.json": JSON.stringify(twoVariantTokens()) });
+    const r = await runPreview(root, ctx(["design/directions/a/home.html"], { ...pngOnly, variant: "men" }), f.deps);
+    expect(r.exitCode).toBe(0);
+    expect(variantsOf(f)).toEqual(["men"]);
   });
 });

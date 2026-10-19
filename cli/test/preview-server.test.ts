@@ -2,9 +2,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { buildTheme } from "../src/generate/theme";
+import { buildTheme, buildThemeSet } from "../src/generate/theme";
 import { injectKit, resolveInside, startPreviewServer } from "../src/preview/server";
-import { docFrom, validTokens } from "./helpers";
+import { docFrom, twoVariantTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -221,4 +221,73 @@ describe("startPreviewServer", () => {
     expect(received).toContain("event: reload");
     expect(readFileSync(join(root, "design/previews/a.html"), "utf8")).toContain("Hi");
   }));
+});
+
+describe("project fonts and variants in the preview server", () => {
+  const withFonts = () => {
+    const t = twoVariantTokens();
+    t.$extensions["dev.motif"].fonts = [
+      { family: "Thmanyah Sans", files: [{ path: "assets/fonts/T-Regular.woff2", weight: 400, style: "normal" }, { path: "assets/fonts/T-Bold.woff2", weight: 700, style: "italic" }] },
+      { family: "Outside", files: [{ path: "../outside.woff2", weight: 400, style: "normal" }] },
+    ];
+    return t;
+  };
+
+  test("project-fonts.css has one @font-face per file, and each file is served", async () => {
+    const root = makeProject({ "design/previews/a.html": MOCKUP, "assets/fonts/T-Regular.woff2": "regular", "assets/fonts/T-Bold.woff2": "bold" });
+    const set = buildThemeSet(docFrom(withFonts()));
+    const server = startPreviewServer({ root, theme: set.base, themeSet: set });
+    try {
+      const res = await fetch(`${server.url}/__motif/project-fonts.css`);
+      expect(res.headers.get("content-type")).toStartWith("text/css");
+      const css = await res.text();
+      expect(css.match(/@font-face/g)).toHaveLength(3);
+      expect(css).toContain('font-family: "Thmanyah Sans"');
+      expect(css).toContain('url("/__motif/project-font/0")');
+      expect(css).toContain("font-weight: 700;");
+      expect(css).toContain("font-style: italic;");
+      expect(await (await fetch(`${server.url}/__motif/project-font/0`)).text()).toBe("regular");
+      expect(await (await fetch(`${server.url}/__motif/project-font/1`)).text()).toBe("bold");
+      expect(await (await fetch(`${server.url}/design/previews/a.html`)).text()).toContain('href="/__motif/project-fonts.css"');
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("a font file outside the project, or one that does not exist, is 404", async () => {
+    const root = makeProject({ "design/previews/a.html": MOCKUP, "assets/fonts/T-Regular.woff2": "x" });
+    writeFileSync(join(root, "..", "outside.woff2"), "secret");
+    const set = buildThemeSet(docFrom(withFonts()));
+    const server = startPreviewServer({ root, theme: set.base, themeSet: set });
+    try {
+      expect((await fetch(`${server.url}/__motif/project-font/2`)).status).toBe(404); // ../outside.woff2
+      expect((await fetch(`${server.url}/__motif/project-font/1`)).status).toBe(404); // listed, not on disk
+      expect((await fetch(`${server.url}/__motif/project-font/9`)).status).toBe(404);
+      expect((await fetch(`${server.url}/__motif/project-font/nope`)).status).toBe(404);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("without project fonts the stylesheet is 404 and pages do not link it", async () => {
+    const root = makeProject({ "design/previews/a.html": MOCKUP });
+    const server = startPreviewServer({ root, theme });
+    try {
+      expect((await fetch(`${server.url}/__motif/project-fonts.css`)).status).toBe(404);
+      expect(await (await fetch(`${server.url}/design/previews/a.html`)).text()).not.toContain("project-fonts.css");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("theme.css carries the guide's variants", async () => {
+    const root = makeProject({ "design/previews/a.html": MOCKUP });
+    const set = buildThemeSet(docFrom(twoVariantTokens()));
+    const server = startPreviewServer({ root, theme: set.base, themeSet: set });
+    try {
+      expect(await (await fetch(`${server.url}/__motif/theme.css`)).text()).toContain(':root[data-variant="men"]');
+    } finally {
+      server.stop();
+    }
+  });
 });

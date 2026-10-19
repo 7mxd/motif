@@ -4,7 +4,7 @@ import type { CommandResult, RunContext } from "../cli/output";
 import { waitForStop } from "../cleanup";
 import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { formatFindings, type Finding } from "../findings";
-import type { Theme } from "../generate/theme";
+import type { Theme, ThemeSet } from "../generate/theme";
 import { themeFonts } from "../generate/theme-fonts";
 import { openUrl } from "../preview/open";
 import { EMBEDDED_PRESETS, presetTheme } from "../preview/presets";
@@ -134,14 +134,17 @@ export function pngNames(files: string[], outDirs: string[], caseless: boolean =
   );
 }
 
+/** The variants a theme set offers, the default first (the ids; none when the guide declares no variants). */
+const variantIds = (set: ThemeSet | null): string[] => (set && set.defaultId ? [set.defaultId, ...set.variants.map((v) => v.id)] : []);
+
 /** A path as a key: normalized, and in one case where case doesn't count (the file watcher reports the case on disk). */
 const pathKey = (path: string) => (CASELESS ? normalize(path).toLowerCase() : normalize(path));
 /** Files a mockup can use: saving one makes its folder's PNGs again. Anything else (PNGs, editors' temporary files) doesn't. */
 const ASSET = /\.(css|js|mjs|json|svg|jpe?g|gif|webp|avif|woff2?|ttf|otf)$/i;
 
-function contractTheme(cwd: string): { theme: Theme | null; problems: Finding[] } {
+function contractTheme(cwd: string): { theme: Theme | null; themeSet: ThemeSet | null; problems: Finding[] } {
   const path = join(cwd, "design", "tokens.json");
-  if (!existsSync(path)) return { theme: null, problems: [] };
+  if (!existsSync(path)) return { theme: null, themeSet: null, problems: [] };
   return loadThemeFile(TOKENS_JSON, readFileSync(path, "utf8"));
 }
 
@@ -163,7 +166,10 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   const files = collected.files;
   if (compare && files.length < 2) return fail(2, "--compare needs at least two mockups (or a folder with two or more).", { error: "usage" });
 
+  const variantFlag = typeof flags.variant === "string" ? flags.variant : undefined;
+  if (variantFlag !== undefined && gallery) return fail(2, "--variant shows your own mockups; leave it out with --gallery.", { error: "usage" });
   const directions = new Map<string, Theme>();
+  const directionSets = new Map<string, ThemeSet>();
   for (const file of gallery ? [] : files) {
     const rel = directionTokens(cwd, file);
     if (!rel || directions.has(rel)) continue;
@@ -177,6 +183,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
       );
     }
     directions.set(rel, loaded.theme);
+    if (loaded.themeSet) directionSets.set(rel, loaded.themeSet);
   }
   const compared = compareDirections(cwd, directions);
   if ("same" in compared) {
@@ -190,6 +197,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
   const needsGuide = !gallery && preset === undefined && files.some((f) => !directionTokens(cwd, f));
 
   let theme: Theme | null = null;
+  let themeSet: ThemeSet | null = null;
   if (preset !== undefined) {
     theme = presetTheme(preset);
     if (!theme) return fail(2, `There's no starting style called "${preset}". Choose one of: ${PRESET_IDS.join(", ")}.`, { error: "no-such-preset" });
@@ -207,6 +215,27 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
       return fail(2, "No design guide found in this folder (missing design/tokens.json).\nPreview with a starting style instead: --preset <name> (motif preview --gallery shows all 8).", { error: "no-contract" });
     }
     theme = loaded.theme;
+    themeSet = loaded.themeSet;
+  }
+  const setOf = (file: string): ThemeSet | null => {
+    const rel = directionTokens(cwd, file);
+    return rel ? directionSets.get(rel) ?? null : themeSet;
+  };
+
+  // The variants to render for each mockup: its own set (a design direction has its own), the default without a suffix.
+  const variantsFor = new Map<string, (string | undefined)[]>();
+  if (variantFlag !== undefined) {
+    for (const file of files) {
+      const ids = variantIds(setOf(file));
+      const who = directionTokens(cwd, file) ? posix.dirname(file) : "This design guide";
+      if (ids.length === 0) return fail(2, `${who} has no variants.`, { error: "no-such-variant", variant: variantFlag, variants: [] });
+      if (variantFlag !== "all" && !ids.includes(variantFlag)) {
+        const list = ids.map((id, n) => (n === 0 ? `${id} (the default)` : id)).join(", ");
+        return fail(2, `${who} has no variant called "${variantFlag}". Variants: ${list}.`, { error: "no-such-variant", variant: variantFlag, variants: ids });
+      }
+      const chosen = variantFlag === "all" ? ids : [variantFlag];
+      variantsFor.set(file, chosen.map((id) => (id === ids[0] ? undefined : id)));
+    }
   }
 
   const browser = deps.findBrowser();
@@ -219,7 +248,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
 
   // Live reload starts after the PNGs are saved: they usually land next to the mockups, and every save
   // would otherwise reload the page the renderer is capturing.
-  const server = startPreviewServer({ root: cwd, theme });
+  const server = startPreviewServer({ root: cwd, theme, ...(themeSet ? { themeSet } : {}) });
   const outFlag = typeof flags.out === "string" ? resolve(cwd, flags.out) : null;
   const defaultOut = outFlag ?? join(cwd, "design", "previews");
   const outFor = (file: string) => outFlag ?? join(cwd, dirname(file));
@@ -228,9 +257,18 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     return rel ? directions.get(rel)! : theme;
   };
   const names = pngNames(files, files.map(outFor));
+  // The theme a mockup shows in one variant (its fonts may differ from the default's).
+  const themeIn = (file: string, variant: string | undefined) => (variant ? setOf(file)?.variants.find((v) => v.id === variant)?.theme ?? null : themeOf(file));
+  // targetFile[i] is the index in files of targets[i]: a mockup has one target per variant.
+  const targetFile: number[] = [];
   const targets: RenderTarget[] = gallery
     ? PRESET_IDS.map((id) => ({ name: `preset-${id}`, url: `${server.url}/__motif/preset/${id}/sample.html`, outDir: defaultOut, ...fontsOf(presetTheme(id)) }))
-    : files.map((f, i) => ({ name: names[i]!, url: server.url + urlPath(f), outDir: outFor(f), ...fontsOf(themeOf(f)) }));
+    : files.flatMap((f, i) =>
+        (variantsFor.get(f) ?? [undefined]).map((variant) => {
+          targetFile.push(i);
+          return { name: names[i]!, url: server.url + urlPath(f), outDir: outFor(f), ...fontsOf(themeIn(f, variant)), ...(variant ? { variant } : {}) };
+        }),
+      );
 
   const notes: string[] = [...compared.notes];
   let pngs: string[] = [];
@@ -278,7 +316,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
     const paths = [...changed];
     changed = new Set();
     const again = targets.filter(
-      (_, i) => existsSync(join(cwd, files[i]!)) && paths.some((p) => p === mockupAt[i] || (ASSET.test(p) && dirname(p) === dirname(mockupAt[i]!))),
+      (_, i) => existsSync(join(cwd, files[targetFile[i]!]!)) && paths.some((p) => p === mockupAt[targetFile[i]!] || (ASSET.test(p) && dirname(p) === dirname(mockupAt[targetFile[i]!]!))),
     );
     if (again.length === 0) return;
     busy = true;

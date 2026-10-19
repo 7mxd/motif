@@ -11,6 +11,8 @@ export interface RenderTarget {
   fonts?: string[];
   /** Those of `fonts` used only as companions (second in a font list): they need only their Arabic letters. */
   companions?: string[];
+  /** A design variant to show (its id): set as data-variant on <html> before each capture. The default variant has none. */
+  variant?: string;
 }
 
 export interface RenderResult {
@@ -62,10 +64,13 @@ export function fontsScript(families: string[], budgetMs: number = FONT_WAIT_MS,
   })()`;
 }
 
-/** A frame's PNG: numbered after the first (home-2.png), or named after the state it shows (home@recent.png). */
-export function pngName(name: string, index: number, scheme: "light" | "dark", state?: string): string {
+/**
+ * A frame's PNG: numbered after the first (home-2.png), or named after the state it shows (home@recent.png). A variant
+ * adds +<id> after that, before the .dark (home+men.dark.png).
+ */
+export function pngName(name: string, index: number, scheme: "light" | "dark", state?: string, variant?: string): string {
   const which = state ? `@${state}` : index > 0 ? `-${index + 1}` : "";
-  return `${name}${which}${scheme === "dark" ? ".dark" : ""}.png`;
+  return `${name}${which}${variant ? `+${variant}` : ""}${scheme === "dark" ? ".dark" : ""}.png`;
 }
 
 /** Whether file names differ only in case count as one file here (Windows and macOS). */
@@ -80,22 +85,22 @@ export function pngNamer(
   targets: RenderTarget[],
   defaultOutDir: string,
   caseless: boolean = CASELESS,
-): (name: string, outDir: string, index: number, scheme: "light" | "dark", state?: string) => string {
+): (name: string, outDir: string, index: number, scheme: "light" | "dark", state?: string, variant?: string) => string {
   const key = (file: string) => (caseless ? file.toLowerCase() : file);
   const owner = new Map<string, string>();
   for (const t of targets) {
     const dir = t.outDir ?? defaultOutDir;
-    for (const scheme of SCHEMES) owner.set(key(join(dir, pngName(t.name, 0, scheme))), t.name);
+    for (const scheme of SCHEMES) owner.set(key(join(dir, pngName(t.name, 0, scheme, undefined, t.variant))), t.name);
   }
   const free = (file: string, name: string) => {
     const taken = owner.get(key(file));
     return taken === undefined || taken === name;
   };
-  return (name, outDir, index, scheme, state) => {
-    const file = join(outDir, pngName(name, index, scheme, state));
+  return (name, outDir, index, scheme, state, variant) => {
+    const file = join(outDir, pngName(name, index, scheme, state, variant));
     if (free(file, name)) return file;
     const which = state ? `_${state}` : index > 0 ? `_${index + 1}` : "";
-    const base = `${name}${which}${scheme === "dark" ? "_dark" : ""}`;
+    const base = `${name}${which}${variant ? `+${variant}` : ""}${scheme === "dark" ? "_dark" : ""}`;
     let alt = join(outDir, `${base}.png`);
     for (let n = 2; !free(alt, name); n++) alt = join(outDir, `${base}_${n}.png`);
     return alt;
@@ -129,6 +134,7 @@ export async function renderPngs(opts: {
           { name: "prefers-reduced-motion", value: "reduce" },
         ]);
         await page.goto(target.url, opts.timeoutMs);
+        if (target.variant) await page.evaluate(`document.documentElement.dataset.variant = ${JSON.stringify(target.variant)}`);
         const notLoaded = await page.evaluate<string[]>(fontsScript(target.fonts ?? [], FONT_WAIT_MS, target.companions ?? []));
         if (scheme === "light") for (const family of notLoaded) missing.add(family);
         const frames = await page.evaluate<(Clip & { state: string })[]>(FRAMES);
@@ -138,7 +144,7 @@ export async function renderPngs(opts: {
         for (const [i, { state, ...clip }] of clips.entries()) {
           const usable = STATE_NAME.test(state) && !named.has(state);
           if (usable) named.add(state);
-          const file = fileFor(target.name, outDir, i, scheme, usable ? state : undefined);
+          const file = fileFor(target.name, outDir, i, scheme, usable ? state : undefined, target.variant);
           const png = await page.screenshot(clip);
           opts.onFile?.(file);
           writeFileSync(file, png);

@@ -39,6 +39,7 @@ Preview options:
   --compare         Show several mockups side by side
   --gallery         Show the 8 starting styles
   --png-only        Save PNGs and stop, without opening a browser
+  --variant <id|all>  Show mockups in one design variant (home+men.png), or in all of them
   --no-open         Serve without opening a browser
   --out <folder>    Where PNGs go (preview: next to each mockup; gallery: design/previews; shot: design/shots)
 
@@ -93,6 +94,7 @@ export async function main(argv: string[]): Promise<number> {
         "png-only": { type: "boolean", default: false },
         "no-open": { type: "boolean", default: false },
         preset: { type: "string" },
+        variant: { type: "string" },
         out: { type: "string" },
         stack: { type: "string" },
         url: { type: "string" },
@@ -146,6 +148,7 @@ export async function main(argv: string[]): Promise<number> {
         "png-only": values["png-only"],
         "no-open": values["no-open"],
         preset: values.preset,
+        variant: values.variant,
         out: values.out,
         stack: values.stack,
         url: values.url,

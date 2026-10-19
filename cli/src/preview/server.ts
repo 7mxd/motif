@@ -2,7 +2,8 @@ import { existsSync, readFileSync, realpathSync, statSync, watch, type FSWatcher
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { previewCss } from "../generate/preview-css";
 import { fontStylesheets } from "../generate/theme-fonts";
-import type { Theme } from "../generate/theme";
+import type { ProjectFont } from "../contract/fonts";
+import type { Theme, ThemeSet, ThemeVariant } from "../generate/theme";
 import { KIT_ASSETS, TEMPLATE_HTML } from "./assets";
 import { EMBEDDED_FONT_FILES, FONTS_CSS } from "./fonts";
 import { comparePage, galleryPage } from "./pages";
@@ -42,9 +43,10 @@ function fontLoader(links: string[]): string {
   return `<script>window.__motifFonts=new Promise(function(done){addEventListener("load",function(){var urls=${JSON.stringify(links).replace(/</g, "\\u003c")},left=urls.length;urls.forEach(function(u){var l=document.createElement("link");l.rel="stylesheet";l.href=u;l.onload=l.onerror=function(){if(--left===0)done()};document.head.appendChild(l)})})});</script>`;
 }
 
-export function injectKit(html: string, themeHref: string, fontLinks: string[] = []): string {
+export function injectKit(html: string, themeHref: string, fontLinks: string[] = [], projectFontsHref?: string): string {
   const tags = [
     `<link rel="stylesheet" href="${themeHref}">`,
+    ...(projectFontsHref ? [`<link rel="stylesheet" href="${projectFontsHref}">`] : []),
     '<link rel="stylesheet" href="/__motif/kit/fonts/fonts.css">',
     '<link rel="stylesheet" href="/__motif/kit/kit.css">',
     '<script src="/__motif/kit/vendor/motion.js"></script>',
@@ -112,30 +114,67 @@ export function themeHrefFor(root: string, file: string): string {
   return `/__motif/theme.css?tokens=${encodeURIComponent(rel)}`;
 }
 
+/** The query that picks a design direction's own fonts (none for the design guide). */
+function tokensQuery(root: string, file: string): string {
+  const own = join(dirname(file), "tokens.json");
+  const rel = relative(root, own).split(sep).join("/");
+  return rel === GUIDE_TOKENS || !existsSync(own) ? "" : `?tokens=${encodeURIComponent(rel)}`;
+}
+
+/** @font-face rules for every project font file; file n is served at /__motif/project-font/n. */
+function projectFontsCss(fonts: ProjectFont[], query: string): string {
+  let n = 0;
+  const rules = fonts.flatMap((f) =>
+    f.files.map((file) => {
+      const family = f.family.replace(/["\\]/g, "");
+      return [
+        "@font-face {",
+        `  font-family: "${family}";`,
+        `  src: url("/__motif/project-font/${n++}${query}");`,
+        `  font-weight: ${file.weight};`,
+        `  font-style: ${file.style};`,
+        "  font-display: swap;",
+        "}",
+        "",
+      ].join("\n");
+    }),
+  );
+  return rules.join("\n");
+}
+
 function directionCss(root: string, rel: string, fontCssUrl?: FontCssUrl): string {
   // rel comes from the query string, already decoded once: a folder named "50% off" must not be decoded again.
   const file = pathInside(root, rel);
   if (!file || basename(file) !== "tokens.json" || !existsSync(file)) return `/* There's no theme at ${rel}. */\n`;
-  const { theme } = loadThemeFile(rel, readFileSync(file, "utf8"));
-  return theme ? previewCss(theme, fontCssUrl) : `/* ${rel} has problems. Run: motif validate --tokens ${rel} */\n`;
+  const { theme, themeSet } = loadThemeFile(rel, readFileSync(file, "utf8"));
+  return theme ? previewCss(theme, fontCssUrl, themeSet?.variants) : `/* ${rel} has problems. Run: motif validate --tokens ${rel} */\n`;
 }
 
 /** Where a theme font's stylesheet comes from (Google Fonts; tests point it elsewhere). */
 type FontCssUrl = (family: string, weights: number[]) => string;
 
-export function startPreviewServer(opts: { root: string; theme: Theme | null; watch?: string[]; fontCssUrl?: FontCssUrl }): PreviewServer {
+export function startPreviewServer(opts: { root: string; theme: Theme | null; themeSet?: ThemeSet; watch?: string[]; fontCssUrl?: FontCssUrl }): PreviewServer {
   const root = resolve(opts.root);
   const encoder = new TextEncoder();
   const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const html = (body: string) => new Response(body, { headers: { "content-type": CONTENT_TYPES[".html"]!, "cache-control": "no-store" } });
+  const guideTheme = opts.themeSet?.base ?? opts.theme;
+  const guideVariants: ThemeVariant[] = opts.themeSet?.variants ?? [];
   const mockupTheme = (file: string): Theme | null => {
     const own = join(dirname(file), "tokens.json");
-    if (relative(root, own).split(sep).join("/") === GUIDE_TOKENS || !existsSync(own)) return opts.theme;
+    if (relative(root, own).split(sep).join("/") === GUIDE_TOKENS || !existsSync(own)) return guideTheme;
     return loadThemeFile("tokens.json", readFileSync(own, "utf8")).theme;
   };
+  // The project fonts of the design guide, or of the design direction a request names.
+  const projectFontsFor = (tokens: string | null): ProjectFont[] => {
+    if (tokens === null) return guideTheme?.projectFonts ?? [];
+    const file = pathInside(root, tokens);
+    if (!file || basename(file) !== "tokens.json" || !existsSync(file)) return [];
+    return loadThemeFile(tokens, readFileSync(file, "utf8")).theme?.projectFonts ?? [];
+  };
   const themeCss = (preset: string | null) => {
-    const theme = preset ? presetTheme(preset) : opts.theme;
-    return theme ? previewCss(theme, opts.fontCssUrl) : "/* No design guide yet: use --preset <name>, or write design/tokens.json. */\n";
+    const theme = preset ? presetTheme(preset) : guideTheme;
+    return theme ? previewCss(theme, opts.fontCssUrl, preset ? [] : guideVariants) : "/* No design guide yet: use --preset <name>, or write design/tokens.json. */\n";
   };
 
   const server = Bun.serve({
@@ -152,6 +191,20 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
         const tokens = url.searchParams.get("tokens");
         const css = tokens !== null ? directionCss(root, tokens, opts.fontCssUrl) : themeCss(url.searchParams.get("preset"));
         return new Response(css, { headers: { "content-type": CONTENT_TYPES[".css"]!, "cache-control": "no-store" } });
+      }
+      if (path === "/__motif/project-fonts.css") {
+        const tokens = url.searchParams.get("tokens");
+        const fonts = projectFontsFor(tokens);
+        if (fonts.length === 0) return notFound();
+        const query = tokens !== null ? `?tokens=${encodeURIComponent(tokens)}` : "";
+        return new Response(projectFontsCss(fonts, query), { headers: { "content-type": CONTENT_TYPES[".css"]!, "cache-control": "no-store" } });
+      }
+      const projectFont = path.match(/^\/__motif\/project-font\/(\d+)$/);
+      if (projectFont) {
+        const entry = projectFontsFor(url.searchParams.get("tokens")).flatMap((f) => f.files)[Number(projectFont[1])];
+        const file = entry ? pathInside(root, entry.path) : null;
+        if (!file || !existsSync(file) || !statSync(file).isFile() || !realInside(root, file)) return notFound();
+        return new Response(Bun.file(file), { headers: { "content-type": CONTENT_TYPES[extname(file).toLowerCase()] ?? "application/octet-stream", "cache-control": "no-store" } });
       }
       if (path.startsWith("/__motif/kit/fonts/")) {
         const name = path.slice("/__motif/kit/fonts/".length);
@@ -196,7 +249,8 @@ export function startPreviewServer(opts: { root: string; theme: Theme | null; wa
       if (ext === ".html") {
         const theme = mockupTheme(file);
         const links = theme ? fontStylesheets(theme, opts.fontCssUrl) : [];
-        return html(injectKit(readFileSync(file, "utf8"), themeHrefFor(root, file), links));
+        const query = tokensQuery(root, file);
+        return html(injectKit(readFileSync(file, "utf8"), themeHrefFor(root, file), links, theme && theme.projectFonts.length > 0 ? `/__motif/project-fonts.css${query}` : undefined));
       }
       return new Response(Bun.file(file), { headers: { "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream" } });
     },
