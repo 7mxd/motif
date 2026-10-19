@@ -38,6 +38,8 @@ export interface HooksSpec {
   setup?: string;
   /** --screen widgets: the class name and the package: import of the file that defines it. */
   screens: { name: string; import: string }[];
+  /** --state scripts: the state's name and the import of its file (design/states/filled.dart), relative to .motif/shot/. */
+  states?: { name: string; import: string }[];
 }
 
 const dartString = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\$/g, "\\$")}'`;
@@ -46,8 +48,10 @@ export const HOOKS_FILE = ".motif/shot/motif_hooks.dart";
 
 /** The source of motif_hooks.dart for one app. */
 export function hooksSource(spec: HooksSpec): string {
+  const states = spec.states ?? [];
   const imports = [
     "import 'package:flutter/material.dart';",
+    "import 'package:flutter_test/flutter_test.dart';",
     "",
     `import ${dartString(spec.main)} as app;`,
     ...(spec.goRouter ? ["import 'package:go_router/go_router.dart';"] : []),
@@ -56,6 +60,7 @@ export function hooksSource(spec: HooksSpec): string {
     ...(spec.theme ? [`import ${dartString(spec.theme)} as theme;`] : []),
     ...(spec.setup ? [`import ${dartString(spec.setup)} as setup;`] : []),
     ...spec.screens.map((s, i) => `import ${dartString(s.import)} as s${i};`),
+    ...states.map((s, i) => `import ${dartString(s.import)} as state${i};`),
   ];
   const lines = [
     "// Written by Motif for one screenshot run and deleted after it: the app's imports, for motif_shot_test.dart.",
@@ -65,14 +70,11 @@ export function hooksSource(spec: HooksSpec): string {
     "/// True when the app routes with go_router.",
     `const bool usesGoRouter = ${spec.goRouter};`,
     "",
-    "/// Starts the app as its main() does; the future is main's own, when it's async.",
+    "/// Starts the app as its main() does; the future is main's own, when it's async. main() or main(List<String> args),",
+    "/// told apart by its type (not by calling it and catching the error, which could be main's own).",
     "Future<void>? startApp() {",
-    "  Object? result;",
-    "  try {",
-    "    result = Function.apply(app.main, const []);",
-    "  } on NoSuchMethodError {",
-    "    result = Function.apply(app.main, [<String>[]]);",
-    "  }",
+    "  final Function main = app.main;",
+    "  final Object? result = main is Function() ? main() : Function.apply(main, [<String>[]]);",
     "  return result is Future ? result.then((_) {}) : null;",
     "}",
     "",
@@ -153,6 +155,12 @@ export function hooksSource(spec: HooksSpec): string {
     "Widget? screen(String name) {",
     ...spec.screens.map((s, i) => `  if (name == ${dartString(s.name)}) return s${i}.${s.name}();`),
     "  return null;",
+    "}",
+    "",
+    "/// Runs a --state script's motifState on the screen as it is.",
+    "Future<void> runState(String name, WidgetTester tester) async {",
+    ...states.map((s, i) => `  if (name == ${dartString(s.name)}) return state${i}.motifState(tester);`),
+    "  throw ArgumentError.value(name, 'state');",
     "}",
     "",
   ];

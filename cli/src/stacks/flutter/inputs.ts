@@ -1,9 +1,10 @@
 // What a developer gives motif shot for a Flutter app, read and checked before the run: design/states/setup.dart,
-// design/states/http.json and --screen widgets.
+// design/states/http.json, --state scripts and --screen widgets.
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { maskComments, maskStrings } from "../../check/mask";
+import type { StateScript } from "../../shot/capture";
 import { libDartFiles } from "./routes";
 
 export const SETUP_FILE = "design/states/setup.dart";
@@ -24,6 +25,18 @@ export function readSetup(root: string, appDir: string): string | null | { error
   const text = maskComments(readFileSync(file, "utf8"), "dart");
   if (!/\bmotifSetup\s*\(/.test(text)) return { error: `${SETUP_FILE} must define ${SETUP_SIGNATURE}.` };
   return importFrom(appDir, file);
+}
+
+export const STATE_SIGNATURE = "Future<void> motifState(WidgetTester tester) async";
+
+/** A --state's name and its import for the harness, or why it can't run: a Flutter state is a Dart file with motifState. */
+export function readState(appDir: string, state: StateScript): { name: string; import: string } | { error: string } {
+  const file = state.file ?? state.name;
+  if (!/\.dart$/i.test(file)) return { error: `--state: ${basename(file)} isn't a Dart file; a Flutter app's states are Dart files, like design/states/${state.name}.dart.` };
+  if (!/\bmotifState\s*\(/.test(maskComments(state.script, "dart"))) {
+    return { error: `--state: ${basename(file)} must define ${STATE_SIGNATURE}, which Motif runs on each screen once it has opened. Add it, then run motif shot again.` };
+  }
+  return { name: state.name, import: importFrom(appDir, file) };
 }
 
 export interface HttpRoute {
@@ -139,29 +152,73 @@ function needsArguments(name: string, body: string): string | null {
   return null;
 }
 
-/**
- * The --screen widget's import (the app's file that defines the class, as package:<pkg>/…), or why Motif can't open it:
- * it must be in the app's lib/ and need no arguments.
- */
-export function findScreen(appDir: string, pkg: string, name: string): { import: string } | { error: string } {
-  if (!/^[A-Za-z_$][\w$]*$/.test(name)) return { error: `--screen takes a widget's class name, like --screen SettingsScreen; "${name}" isn't one.` };
+/** Base classes that make a class a widget: Flutter's own, and those of the state management packages apps use most. */
+const WIDGET_BASES = new Set([
+  "Widget", "StatelessWidget", "StatefulWidget", "ConsumerWidget", "ConsumerStatefulWidget", "HookWidget", "StatefulHookWidget",
+  "HookConsumerWidget", "StatefulHookConsumerWidget", "GetView", "GetWidget", "StatelessObserverWidget", "StatefulObserverWidget",
+  "ViewModelWidget", "StackedView",
+]);
+
+interface ClassDecl {
+  file: string;
+  /** The class's declaration, as matched in the masked code. */
+  head: string;
+  /** What it extends, if anything. */
+  base?: string;
+  /** Its body, without the braces; null when it can't be read. */
+  body: string | null;
+}
+
+/** Where the app's lib/ declares a class, read from masked code (so names in strings and comments don't count). */
+function findClass(appDir: string, name: string): ClassDecl | null {
+  const pattern = new RegExp(`(^|[^\\w$])(abstract\\s+|sealed\\s+|base\\s+|final\\s+|interface\\s+)*class\\s+${name.replace(/\$/g, "\\$")}(?![\\w$])`);
   for (const file of libDartFiles(appDir)) {
     const text = readFileSync(file, "utf8");
     if (!text.includes(name)) continue;
     const code = maskStrings(maskComments(text, "dart"), "dart");
-    const decl = new RegExp(`(^|[^\\w$])(abstract\\s+|sealed\\s+|base\\s+|final\\s+|interface\\s+)*class\\s+${name.replace(/\$/g, "\\$")}(?![\\w$])`).exec(code);
+    const decl = pattern.exec(code);
     if (!decl) continue;
-    if (/\b(abstract|sealed|interface)\b/.test(decl[0])) return { error: `--screen ${name}: it's an abstract class, so Motif can't make one. Give a widget class it can make with ${name}().` };
     const open = code.indexOf("{", decl.index + decl[0].length);
+    const header = code.slice(decl.index + decl[0].length, open >= 0 ? open : undefined);
+    const base = /\bextends\s+([A-Za-z_$][\w$]*)/.exec(header)?.[1];
     const body = open >= 0 ? enclosed(code, open) : null;
-    const why = body ? needsArguments(name, body.inner) : null;
-    if (why) {
-      return {
-        error: `--screen ${name}: Motif opens a screen with no arguments (${name}()), and ${why}. Give it a constructor that needs none, or capture it through its route with --routes.`,
-      };
-    }
-    const rel = relative(join(appDir, "lib"), file).split(sep).join("/");
-    return { import: `package:${pkg}/${rel}` };
+    return { file, head: decl[0], ...(base ? { base } : {}), body: body?.inner ?? null };
   }
-  return { error: `--screen ${name}: there's no class ${name} in the app's lib/ folder.` };
+  return null;
+}
+
+/** True when a class extends a widget: one of Flutter's (or a state package's), or another widget class of the app. */
+function extendsWidget(appDir: string, decl: ClassDecl, seen = new Set<string>()): boolean {
+  const base = decl.base;
+  if (!base || seen.has(base)) return false;
+  seen.add(base);
+  const own = findClass(appDir, base);
+  if (own) return extendsWidget(appDir, own, seen);
+  // A base from a package Motif doesn't know: its name says whether it's a widget.
+  return WIDGET_BASES.has(base) || /(Widget|View|Screen|Page)$/.test(base);
+}
+
+/**
+ * The --screen widget's import (the app's file that defines the class, as package:<pkg>/…), or why Motif can't open it:
+ * it must be a public widget class in the app's lib/ that needs no arguments.
+ */
+export function findScreen(appDir: string, pkg: string, name: string): { import: string } | { error: string } {
+  if (!/^[A-Za-z_$][\w$]*$/.test(name)) return { error: `--screen takes a widget's class name, like --screen SettingsScreen; "${name}" isn't one.` };
+  if (name.startsWith("_")) {
+    return { error: `--screen ${name}: it's private to its file (its name starts with _), so Motif can't open it. Make it public, or capture it through its route with --routes.` };
+  }
+  const decl = findClass(appDir, name);
+  if (!decl) return { error: `--screen ${name}: there's no class ${name} in the app's lib/ folder.` };
+  if (/\b(abstract|sealed|interface)\b/.test(decl.head)) return { error: `--screen ${name}: it's an abstract class, so Motif can't make one. Give a widget class it can make with ${name}().` };
+  if (!extendsWidget(appDir, decl)) {
+    return { error: `--screen ${name}: it isn't a widget${decl.base ? ` (it extends ${decl.base})` : ""}. Give a screen's widget class, one that extends StatelessWidget or StatefulWidget.` };
+  }
+  const why = decl.body !== null ? needsArguments(name, decl.body) : null;
+  if (why) {
+    return {
+      error: `--screen ${name}: Motif opens a screen with no arguments (${name}()), and ${why}. Give it a constructor that needs none, or capture it through its route with --routes.`,
+    };
+  }
+  const rel = relative(join(appDir, "lib"), decl.file).split(sep).join("/");
+  return { import: `package:${pkg}/${rel}` };
 }

@@ -14,5 +14,6 @@
   "itemsEmpty": "Nothing to show",
   "signInTitle": "Sign in",
   "signInBody": "Sign in to see your items.",
+  "signInEmail": "Email",
   "signInButton": "Continue"
 }

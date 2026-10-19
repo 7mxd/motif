@@ -19,6 +19,8 @@ export interface RawIssue {
   bg?: string;
   width?: number;
   height?: number;
+  /** What to do about it in the app's own terms, when that isn't the web's (a Flutter app has no aria-label). */
+  fix?: string;
 }
 
 export interface AuditIssue extends RawIssue {
@@ -354,7 +356,7 @@ export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
       location: place(lead),
       ...(places.length > 1 ? { locations: places.slice(1).map(place) } : {}),
       summary,
-      fix: verdict.fix,
+      fix: lead.fix ?? verdict.fix,
       shot: lead.shot,
       status: "open",
     };

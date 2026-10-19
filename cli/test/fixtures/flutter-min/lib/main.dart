@@ -39,6 +39,7 @@ final router = GoRouter(
       path: '/sign-in',
       builder: (context, state) => const SignInScreen(),
     ),
+    GoRoute(path: '/audit', builder: (context, state) => const AuditScreen()),
   ],
 );
 
@@ -175,6 +176,8 @@ class SignInScreen extends StatelessWidget {
           children: [
             Text(l10n.signInBody),
             const SizedBox(height: 16),
+            TextField(decoration: InputDecoration(labelText: l10n.signInEmail)),
+            const SizedBox(height: 16),
             FilledButton(onPressed: () {}, child: Text(l10n.signInButton)),
           ],
         ),
@@ -206,6 +209,79 @@ class SettingsScreen extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// What Motif's audit should find: a pale caption on white, a 32 by 32 icon button with no name, and an icon that keeps
+/// turning when reduce motion is on.
+class AuditScreen extends StatelessWidget {
+  const AuditScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Audit')),
+      body: ColoredBox(
+        color: Colors.white,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const Text(
+              'Prices include tax',
+              style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 18,
+                  onPressed: () {},
+                  icon: const Icon(Icons.close),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Spinner(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// An icon that turns for ever, whatever the reduce motion setting says.
+class Spinner extends StatefulWidget {
+  const Spinner({super.key});
+
+  @override
+  State<Spinner> createState() => _SpinnerState();
+}
+
+class _SpinnerState extends State<Spinner> with SingleTickerProviderStateMixin {
+  late final AnimationController _turns = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 1),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _turns.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: RotationTransition(
+        turns: _turns,
+        child: const Icon(Icons.autorenew),
       ),
     );
   }

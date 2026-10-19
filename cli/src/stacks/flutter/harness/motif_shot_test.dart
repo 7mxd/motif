@@ -9,13 +9,16 @@
 //     "http": [{ "method": "GET", "path": "/items", "url": null, "file": "<abs>", "status": 200 }],
 //     "shots": [{ "file": "home+partner.mobile.rtl.png", "target": "/home", "route": "/home", "screen": null,
 //                 "width": 390, "height": 844, "dpr": 2, "safeTop": 47, "safeBottom": 34, "dark": false,
-//                 "locale": "ar", "rtl": true, "variant": "partner", "variantId": "partner" }] }
+//                 "locale": "ar", "rtl": true, "variant": "partner", "variantId": "partner", "size": "mobile",
+//                 "state": "filled", "checks": ["contrast", "names", "targets", "motion"] }] }
 // Each screenshot starts the app afresh: brightness, locale, reduced motion and size set on the test view, the variant
 // set on MotifTheme, design/states/setup.dart run, then the app's main() (or the widget setup returned). It waits with
-// bounded pumps (never pumpAndSettle, which a spinner never ends), opens the route, waits again and draws the PNG.
+// bounded pumps (never pumpAndSettle, which a spinner never ends), opens the route, waits again, runs the state's
+// motifState if the shot has one, and draws the PNG; with checks, it audits what it drew (motif_audit.dart).
 // It writes resultPath: { "screens": [{ "route", "shots": [file], "errors": [text], "unreachable"?, "landedOn"?,
-// "unanswered": ["GET <url>"], "blankImages": ["GET <url>"], "missingFonts": [family], "texts"? }],
-// "shots": [{ "file", "error"? }], "issues": [], "notes": [text] }.
+// "unanswered": ["GET <url>"], "blankImages": ["GET <url>"], "missingFonts": [family], "auditError"?, "texts"? }],
+// "shots": [{ "file", "error"? }], "issues": [{ rule, selector, label, kind, …, "route", "file", "size", "scheme",
+// "variant"?, "state"?, "rtl"? }], "notes": [text] }.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -26,6 +29,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'motif_audit.dart';
 import 'motif_hooks.dart' as hooks;
 import 'motif_http.dart';
 
@@ -33,6 +37,14 @@ const String _configPath = String.fromEnvironment('MOTIF_SHOT_CONFIG');
 
 /// The longest Motif waits for a screen to stop scheduling frames: 50 pumps of 100 ms of fake time.
 const int _maxPumps = 50;
+
+/// How long a state script or design/states/setup.dart may run: 15 s, as a state script on the web.
+const Duration _scriptLimit = Duration(seconds: 15);
+
+const String _setupFile = 'design/states/setup.dart';
+
+/// Moves a test's fake time on once a stuck state script has been left behind (see _keepGoing).
+Timer? _kicker;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +56,7 @@ void main() {
   final screens = <String, _Screen>{};
   final shots = <Map<String, Object?>>[];
   final notes = <String>{};
+  final issues = <Map<String, Object?>>[];
   final loaded = <String>{};
   final http = MotifHttp((config['http'] as List? ?? const []).cast<Map<String, dynamic>>());
   final plugins = _Plugins(config);
@@ -72,11 +85,13 @@ void main() {
   });
 
   tearDownAll(() {
+    _kicker?.cancel();
+    plugins.removeTemps();
     File(config['resultPath'] as String).writeAsStringSync(
       jsonEncode({
         'screens': [for (final s in screens.values) s.toJson(debug)],
         'shots': shots,
-        'issues': <Object>[],
+        'issues': issues,
         'notes': notes.toList(),
       }),
     );
@@ -85,10 +100,33 @@ void main() {
   for (final shot in (config['shots'] as List).cast<Map<String, dynamic>>()) {
     final file = shot['file'] as String;
     testWidgets(file, (tester) async {
+      _kicker?.cancel();
       final target = (shot['target'] ?? shot['route'] ?? shot['screen'] ?? file) as String;
       final screen = screens.putIfAbsent(target, () => _Screen(target));
       final run = _Run(screen, http, loaded);
-      final error = await _guarded(tester, run, () => _capture(tester, config, shot, '$outDir/$file', run, notes, plugins));
+      final checks = (shot['checks'] as List? ?? const []).cast<String>().toSet();
+      // The audit reads the semantics tree, which Flutter builds only when something asks for it (testWidgets does by
+      // default; the audit doesn't rely on that).
+      final semantics = checks.isEmpty ? null : tester.ensureSemantics();
+      final error = await _guarded(tester, run, () async {
+        try {
+          final found = await _capture(tester, config, shot, '$outDir/$file', run, notes, plugins, checks);
+          final where = {
+            'route': target,
+            'file': file,
+            'size': shot['size'],
+            'scheme': shot['dark'] == true ? 'dark' : 'light',
+            if (shot['variantId'] != null) 'variant': shot['variantId'],
+            if (shot['state'] != null) 'state': shot['state'],
+            if (shot['rtl'] == true) 'rtl': true,
+          };
+          for (final issue in found) {
+            issues.add({...issue, ...where});
+          }
+        } finally {
+          semantics?.dispose();
+        }
+      });
       if (run.captured) screen.shots.add(file);
       shots.add({'file': file, if (error != null) 'error': error});
     });
@@ -107,6 +145,7 @@ class _Screen {
   final Set<String> blankImages = {};
   final Set<String> missingFonts = {};
   final Set<String> texts = {};
+  String? auditError;
 
   Map<String, Object?> toJson(bool debug) => {
     'route': route,
@@ -117,6 +156,7 @@ class _Screen {
     'unanswered': unanswered.toList(),
     'blankImages': blankImages.toList(),
     'missingFonts': missingFonts.toList(),
+    if (auditError != null) 'auditError': auditError,
     if (debug) 'texts': texts.toList(),
   };
 }
@@ -129,13 +169,27 @@ class _Run {
   final Set<String> loaded;
   bool captured = false;
 
+  /// The state script running, once it has started: what goes wrong from then on is the state's.
+  String? state;
+
   void error(Object e) {
     final text = _describe(e);
     // google_fonts may not fetch, and its own load fails (google_fonts 6 rethrows it, unawaited), although Motif loaded
     // the font from files; a family Motif couldn't load is noted by _read, as text drawn in boxes.
-    if (text.contains('allowRuntimeFetching is false')) return;
-    if (text.isNotEmpty) screen.errors.add(text);
+    if (text.contains('allowRuntimeFetching is false') || text.isEmpty) return;
+    // As on the web, an error the screen threw by itself (already reported, untagged) isn't the state's.
+    final state = this.state;
+    screen.errors.add(state == null || screen.errors.contains(text) ? text : 'State "$state": $text');
   }
+}
+
+/// A problem Motif says in plain words, without Dart's "Bad state:" in front.
+class _Stop implements Exception {
+  _Stop(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
 }
 
 /// Plain words for what went wrong: a plugin with no phone behind it names itself.
@@ -180,7 +234,8 @@ Future<String?> _guarded(WidgetTester tester, _Run run, Future<void> Function() 
   }
 }
 
-Future<void> _capture(
+/// Draws one screenshot and audits it with [checks]; returns the problems the audit found.
+Future<List<Issue>> _capture(
   WidgetTester tester,
   Map<String, dynamic> config,
   Map<String, dynamic> shot,
@@ -188,6 +243,7 @@ Future<void> _capture(
   _Run run,
   Set<String> notes,
   _Plugins plugins,
+  Set<String> checks,
 ) async {
   final dpr = (shot['dpr'] as num).toDouble();
   tester.view.devicePixelRatio = dpr;
@@ -216,13 +272,16 @@ Future<void> _capture(
       (image ? run.screen.blankImages : run.screen.unanswered).add(request);
   final variant = shot['variant'] as String?;
   final wrong = hooks.setVariant(variant);
-  if (wrong != null) throw StateError(wrong);
+  if (wrong != null) throw _Stop(wrong);
   final setup = hooks.runSetup(
     (shot['variantId'] as String?) ?? (config['defaultVariant'] as String? ?? ''),
     locale,
     brightness,
   );
-  final root = await _await(tester, setup);
+  // A setup that hasn't finished would leave the screen half set up: it's the screen's error, not a start without it.
+  final waited = await _await(tester, setup, _scriptLimit);
+  if (!waited.done) throw _Stop("$_setupFile didn't finish within ${_scriptLimit.inSeconds} s.");
+  final root = waited.value;
   Future<void>? started;
   if (root != null) {
     await tester.pumpWidget(root);
@@ -247,14 +306,14 @@ Future<void> _capture(
     final navigator = _rootNavigator();
     if (navigator == null) {
       run.screen.unreachable = "Motif couldn't find the app's Navigator to open $screen on.";
-      return;
+      return const [];
     }
     unawaited(navigator.push(MaterialPageRoute<void>(builder: (_) => hooks.screen(screen)!)));
   } else if (route != null) {
     final unreachable = _open(route, run);
     if (unreachable != null) {
       run.screen.unreachable = unreachable;
-      return;
+      return const [];
     }
   }
   await _settle(tester, null);
@@ -262,24 +321,99 @@ Future<void> _capture(
   final missing = router == null ? null : hooks.goMissing(router);
   if (missing != null) {
     run.screen.unreachable = 'The app has no page at $route (go_router: ${missing.split('\n').first}).';
-    return;
+    return const [];
   }
   if (route != null) {
     final where = _location();
     if (where != null && _path(where) != _path(route)) run.screen.landedOn = _path(where);
   }
 
+  // The state script, after the screen has opened; what it throws is reported against the state, and the screenshot is
+  // still taken, as on the web.
+  final state = shot['state'] as String?;
+  if (state != null) {
+    run.state = state;
+    final failed = await _runState(tester, state);
+    if (failed != null) run.error(failed);
+    await _settle(tester, null);
+  }
+
   final view = tester.binding.renderViews.first;
   _read(view, run);
+  Pixels? pixels;
   final bytes = await tester.runAsync(() async {
     final layer = view.debugLayer! as OffsetLayer;
     final image = await layer.toImage(view.paintBounds);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    // The contrast check reads the colours of this very picture.
+    if (checks.contains('contrast')) {
+      final raw = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (raw != null) pixels = Pixels(raw, image.width, image.height);
+    }
     image.dispose();
     return data!.buffer.asUint8List();
   });
   File(path).writeAsBytesSync(bytes!);
   run.captured = true;
+  if (checks.isEmpty) return const [];
+
+  final issues = <Issue>[];
+  try {
+    issues.addAll(auditScreen(view, checks, pixels));
+    // Last, as it lets the screen run on for two seconds.
+    if (checks.contains('motion')) {
+      final moving = await stillMoving(tester);
+      if (moving != null) issues.add(moving);
+    }
+  } catch (e) {
+    run.screen.auditError ??= _describe(e);
+  }
+  return issues;
+}
+
+/// Runs a state script on the screen as it is; returns what it threw, or that it was still running after
+/// [_scriptLimit] of real time, or null. A script runs in the test's fake time, which moves only when it pumps: one
+/// waiting on that clock (Future.delayed without a pump), or on something that never comes, is left behind.
+Future<Object?> _runState(WidgetTester tester, String name) async {
+  final finished = Completer<Object?>();
+  Future<void>.sync(() => hooks.runState(name, tester)).then(
+    (_) {
+      if (!finished.isCompleted) finished.complete(null);
+    },
+    onError: (Object e) {
+      if (!finished.isCompleted) finished.complete(e);
+    },
+  );
+  final watchdog = Zone.root.createTimer(_scriptLimit, () {
+    if (finished.isCompleted) return;
+    finished.complete(
+      _Stop('it was still running after ${_scriptLimit.inSeconds} seconds (time passes in a state only when it pumps)'),
+    );
+    _keepGoing(tester);
+  });
+  try {
+    return await finished.future;
+  } finally {
+    watchdog.cancel();
+  }
+}
+
+/// flutter_test moves a test's fake time on only while the test waits for real work (runAsync). Once a stuck state
+/// script has been left behind, nothing would, so Motif does it until the test ends.
+void _keepGoing(WidgetTester tester) {
+  final binding = tester.binding;
+  _kicker?.cancel();
+  _kicker = Zone.root.createPeriodicTimer(const Duration(milliseconds: 5), (timer) {
+    if (!binding.inTest) {
+      timer.cancel();
+      return;
+    }
+    try {
+      binding.delayed(Duration.zero);
+    } catch (_) {
+      // Fake time was moving already.
+    }
+  });
 }
 
 String _path(String location) {
@@ -359,8 +493,16 @@ void _read(RenderObject root, _Run run) {
   visit(root);
 }
 
-/// Waits for a future the app started (main, the setup script) while pumping, at most [_maxPumps] times.
-Future<T?> _await<T>(WidgetTester tester, Future<T> future) async {
+/// What [_await] waited for: whether it finished in time, and its value.
+class _Waited<T> {
+  _Waited(this.done, this.value);
+  final bool done;
+  final T? value;
+}
+
+/// Waits for a future the setup script started while pumping, for at most [limit] of the app's clock or of real time,
+/// whichever comes first; rethrows what it threw.
+Future<_Waited<T>> _await<T>(WidgetTester tester, Future<T> future, Duration limit) async {
   var done = false;
   T? value;
   Object? error;
@@ -371,13 +513,17 @@ Future<T?> _await<T>(WidgetTester tester, Future<T> future) async {
     error = e;
     done = true;
   });
-  for (var i = 0; i < _maxPumps && !done; i++) {
-    await tester.pump(const Duration(milliseconds: 100));
+  const step = Duration(milliseconds: 100);
+  final clock = Stopwatch()..start();
+  var waited = Duration.zero;
+  while (!done && waited < limit && clock.elapsed < limit) {
+    await tester.pump(step);
+    waited += step;
     // Work outside fake time (a file read, say) needs a moment of real time.
     if (!done) await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
   }
   if (error != null) throw error!;
-  return value;
+  return _Waited(done, value);
 }
 
 /// Pumps until no frame is scheduled and what the app started has finished, at most [_maxPumps] times; never
@@ -405,11 +551,35 @@ class _Plugins {
   final Map<String, Object?> packageInfo;
   final bool connectivityList;
   final Map<String, String> secure = {};
+
+  /// path_provider's folder for this screenshot: a fresh one for each, so nothing one leaves is read by the next.
   Directory? _temp;
+  final List<Directory> _temps = [];
 
-  void reset() => secure.clear();
+  void reset() {
+    secure.clear();
+    _temp = null;
+  }
 
-  String get temp => (_temp ??= Directory.systemTemp.createTempSync('motif_shot_')).path;
+  String get temp => (_temp ??= _newTemp()).path;
+
+  Directory _newTemp() {
+    final dir = Directory.systemTemp.createTempSync('motif_shot_');
+    _temps.add(dir);
+    return dir;
+  }
+
+  /// Deletes the folders path_provider handed out, when the run ends.
+  void removeTemps() {
+    for (final dir in _temps) {
+      try {
+        dir.deleteSync(recursive: true);
+      } catch (_) {
+        // A file the app still holds open (on Windows); the system's temp folder is cleaned in time.
+      }
+    }
+    _temps.clear();
+  }
 
   Future<ByteData?>? handle(String channel, MessageHandler? handler, ByteData? message) {
     if (handler != null) return handler(message);

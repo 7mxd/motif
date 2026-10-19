@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { basename, join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { runShot } from "../src/commands/shot";
-import { HARNESS_HTTP, HARNESS_TEST, RESULT_FILE } from "../src/stacks/flutter/harness";
+import { HARNESS_AUDIT, HARNESS_HTTP, HARNESS_TEST, RESULT_FILE } from "../src/stacks/flutter/harness";
 import { HOOKS_FILE } from "../src/stacks/flutter/hooks";
 import { FIXTURES, hasFlutter } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -66,6 +66,7 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     expect(existsSync(join(app, HARNESS_TEST))).toBe(false);
     expect(existsSync(join(app, HOOKS_FILE))).toBe(false);
     expect(existsSync(join(app, HARNESS_HTTP))).toBe(false);
+    expect(existsSync(join(app, HARNESS_AUDIT))).toBe(false);
     expect(existsSync(join(app, ".motif/shot/config.json"))).toBe(false);
     expect(readFileSync(join(app, ".motif/.gitignore"), "utf8")).toBe("*\n");
   }, 600_000);
@@ -109,7 +110,102 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     expect(JSON.stringify(r.data.notes ?? [])).not.toContain("looks exactly like the default");
     expect(JSON.stringify(r.data.notes ?? [])).not.toContain("doesn't offer ar");
   }, 600_000);
+
+  test.skipIf(!flutter)("--audit finds /audit's pale caption, its small icon button with no name, and its icon that keeps turning (skipped without Flutter)", async () => {
+    // An audit with no --variant checks every variant, as on the web.
+    const r = await shot({ routes: "/audit", sizes: "390", audit: true });
+    if (r.exitCode !== 1) console.log(r.text);
+    expect(r.exitCode).toBe(1);
+    expect(r.data.shots).toEqual([
+      "design/shots/audit.mobile.png", "design/shots/audit+partner.mobile.png", "design/shots/audit.mobile.dark.png", "design/shots/audit+partner.mobile.dark.png",
+    ]);
+    expect(existsSync(join(app, HARNESS_AUDIT))).toBe(false);
+    const review = JSON.parse(readFileSync(join(app, "design", "shots", "audit.json"), "utf8"));
+    type Place = { selector: string; scheme?: string; variant?: string };
+    const findings = review.findings as { category: string; severity: string; summary: string; location: Place; locations?: Place[]; shot: string }[];
+    const of = (category: string) => findings.filter((f) => f.category === category);
+    // Nothing else on the screen is a problem: the AppBar's title, in the theme's colours, passes.
+    expect(findings).toHaveLength(4);
+
+    const caption = of("contrast")[0]!;
+    expect(caption).toMatchObject({ severity: "critical", summary: 'Text "Prices include tax" is hard to read in light and dark mode (2.32:1, needs 4.5:1).' });
+    expect(caption.location.selector).toBe('AuditScreen > Scaffold > ListView > Text("Prices include tax")');
+    expect([caption.location, ...(caption.locations ?? [])].map((l) => `${l.scheme} ${l.variant ?? "default"}`)).toEqual([
+      "light default", "light partner", "dark default", "dark partner",
+    ]);
+
+    const small = of("target-size");
+    expect(small.map((f) => f.summary)).toEqual(["A button is 32×32 px on a phone; 44×44 px is easier to tap."]);
+    expect(small[0]!.location.selector).toBe("AuditScreen > Scaffold > ListView > IconButton");
+    const unnamed = of("accessible-name");
+    expect(unnamed.map((f) => [f.summary, f.location.selector])).toEqual([["The button has no name a screen reader can say.", "AuditScreen > Scaffold > ListView > IconButton"]]);
+    const moving = of("reduced-motion");
+    expect(moving.map((f) => [f.summary, f.location.selector])).toEqual([
+      ['The "Spinner" element keeps moving when the viewer asks for reduced motion.', "AuditScreen > Scaffold > ListView > Spinner"],
+    ]);
+    expect(moving[0]!.shot).toBe("design/shots/audit.mobile.png");
+  }, 600_000);
+
+  test.skipIf(!flutter)("a state that types an address gives home@filled; a state that throws is reported, and the other screenshots are kept (skipped without Flutter)", async () => {
+    mkdirSync(join(app, "design", "states"), { recursive: true });
+    writeFileSync(join(app, "design", "states", "filled.dart"), FILLED);
+    writeFileSync(join(app, "design", "states", "broken.dart"), BROKEN);
+    process.env.MOTIF_DEBUG = "1";
+    try {
+      const r = await shot({ routes: "/home", sizes: "390", state: ["design/states/filled.dart", "design/states/broken.dart"] });
+      expect(r.exitCode).toBe(1);
+      expect(r.data.shots).toEqual([
+        "design/shots/home.mobile.png", "design/shots/home@filled.mobile.png", "design/shots/home@broken.mobile.png",
+        "design/shots/home.mobile.dark.png", "design/shots/home@filled.mobile.dark.png", "design/shots/home@broken.mobile.dark.png",
+      ]);
+      expect(Buffer.compare(png("home.mobile.png"), png("home@filled.mobile.png"))).not.toBe(0);
+      const route = routesOf(r.data)[0] as { pageErrors?: string[]; landedOn?: string };
+      expect(route.landedOn).toBe("/sign-in");
+      expect(route.pageErrors).toEqual(['State "broken": Bad state: The cart is empty.']);
+      expect(r.text).toContain('✗ the page threw an error: State "broken": Bad state: The cart is empty.');
+      const result = JSON.parse(readFileSync(join(app, RESULT_FILE), "utf8"));
+      expect(result.screens[0].texts).toContain("sara@example.com");
+    } finally {
+      delete process.env.MOTIF_DEBUG;
+      rmSync(join(app, "design", "states"), { recursive: true, force: true });
+    }
+  }, 600_000);
+
+  test.skipIf(!flutter)("a setup script that doesn't finish within 15 s is the screen's error, not a silent start without it (skipped without Flutter)", async () => {
+    mkdirSync(join(app, "design", "states"), { recursive: true });
+    writeFileSync(join(app, "design", "states", "setup.dart"), SLOW_SETUP);
+    try {
+      const r = await shot({ routes: "/", sizes: "390" });
+      expect(r.exitCode).toBe(1);
+      expect(routesOf(r.data)[0]).toMatchObject({ route: "/", status: 0, error: "design/states/setup.dart didn't finish within 15 s." });
+    } finally {
+      rmSync(join(app, "design", "states"), { recursive: true, force: true });
+    }
+  }, 600_000);
 });
+
+const FILLED = `import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// The sign-in form with an address typed in.
+Future<void> motifState(WidgetTester tester) async {
+  await tester.enterText(find.byType(TextField), 'sara@example.com');
+  await tester.pump();
+}
+`;
+const BROKEN = `import 'package:flutter_test/flutter_test.dart';
+
+Future<void> motifState(WidgetTester tester) async {
+  throw StateError('The cart is empty.');
+}
+`;
+const SLOW_SETUP = `import 'package:flutter/widgets.dart';
+
+Future<Widget?> motifSetup({required String variant, required Locale locale, required Brightness brightness}) async {
+  await Future<void>.delayed(const Duration(seconds: 30));
+  return null;
+}
+`;
 
 const PLAIN_PUBSPEC = `name: plain_app
 publish_to: none

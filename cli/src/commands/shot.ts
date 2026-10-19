@@ -214,10 +214,14 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   }
   const states = readStates(cwd, flags.state);
   if ("error" in states) return usage(states.error, { error: "usage" });
-  const screens = (Array.isArray(flags.screen) ? flags.screen : typeof flags.screen === "string" ? [flags.screen] : [])
-    .flatMap((v) => String(v).split(","))
-    .map((v) => v.trim())
-    .filter(Boolean);
+  const screens = [
+    ...new Set(
+      (Array.isArray(flags.screen) ? flags.screen : typeof flags.screen === "string" ? [flags.screen] : [])
+        .flatMap((v) => String(v).split(","))
+        .map((v) => v.trim())
+        .filter(Boolean),
+    ),
+  ];
   const rtlFlag = readRtl(flags.rtl);
   if (typeof rtlFlag === "object") return usage(rtlFlag.error, { error: "usage" });
   const rtl = rtlFlag;
@@ -237,7 +241,6 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (shoot && native && app) {
     const label = app.stack ? STACK_LABELS[app.stack] : "These";
     if (givenUrl !== undefined) return usage(`${label} apps are screenshotted from their code, not a URL; drop --url.`, { error: "usage" });
-    if (audit) return usage(`--audit doesn't check ${label} screens yet; run motif shot without it to take the screenshots.`, { error: "usage" });
     for (const s of states) {
       if (s.file?.endsWith(".dart")) continue;
       const base = basename(s.file ?? s.name);
@@ -250,6 +253,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     const refusal = native.shotRefusal?.(cwd, app, deps.which ?? ((cmd) => Bun.which(cmd)));
     if (refusal) return usage(refusal.text, { error: refusal.error });
+    // A widget or a state script that can't be used is a usage error, found before anything is written.
+    const problem = native.shotInputsProblem?.(cwd, app, { screens, states });
+    if (problem) return usage(problem, { error: "usage" });
   } else if (screens.length > 0) {
     return usage("--screen opens a Flutter widget by its class name; this app isn't a Flutter app. Use --routes for its pages.", { error: "usage" });
   }
@@ -427,7 +433,10 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (viewports) {
     const phones = viewports.some((v) => v.mobile);
     const desktop = viewports.some((v) => !v.mobile);
-    if (audit && !desktop) notes.push("The reduced-motion check runs at the desktop size, which --sizes left out.");
+    const motion = native?.motionSize;
+    if (audit && (motion ? !viewports.some((v) => v.width === motion.width) : !desktop)) {
+      notes.push(`The reduced-motion check runs at ${motion?.text ?? "the desktop size"}, which --sizes left out.`);
+    }
     if (audit && !phones) notes.push("The 44 px tap-target check runs on phones and tablets, which --sizes left out.");
     if (against?.kind === "mockup" && !viewports.some((v) => v.width === 390)) notes.push("The mockup's phone frames pair with the 390 px screenshots, which --sizes left out.");
     if (against?.kind === "mockup" && !desktop) notes.push("The mockup's wider frames pair with the desktop screenshots, which --sizes left out.");

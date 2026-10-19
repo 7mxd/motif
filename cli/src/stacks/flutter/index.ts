@@ -13,7 +13,7 @@ import { generateFlutter } from "./generate";
 import { importFor, pathDependencies } from "./project";
 import { dartFix, dartReducedMotion, dartRole, scanDart } from "./rules";
 import { discoverFlutterRoutes } from "./routes";
-import { FLUTTER_VARIANT_HOW, flutterShotRefusal, flutterTimeLimit, shootFlutter } from "./shot";
+import { FLUTTER_VARIANT_HOW, flutterShotRefusal, flutterTimeLimit, MOTION_WIDTH, readShotInputs, shootFlutter } from "./shot";
 
 /** What else a variant changes besides colours, in plain words. */
 function otherChanges(base: Theme, variant: Theme): string[] {
@@ -104,6 +104,11 @@ export const FLUTTER: NativeStack = {
       sharedCode: () => FLUTTER.sharedFiles!(opts.root, opts.app, {}).files.map((f) => f.text),
     }),
   shotRefusal: (root, app, which) => flutterShotRefusal(resolve(root, app.path), app.path, which("flutter")),
+  shotInputsProblem: (root, app, given) => {
+    const read = readShotInputs(resolve(root), resolve(root, app.path), given);
+    return "error" in read ? read.error : null;
+  },
+  motionSize: { width: MOTION_WIDTH, text: `the ${MOTION_WIDTH} px phone size` },
   shotTimeLimit: flutterTimeLimit,
   variantHow: FLUTTER_VARIANT_HOW,
   routes: discoverFlutterRoutes,

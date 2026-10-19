@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runShot, type ShotDeps } from "../src/commands/shot";
 import { NATIVE_VIEWPORTS, type RouteResult } from "../src/shot/capture";
-import { HARNESS_HTTP, HARNESS_TEST, RESULT_FILE, withNoProxy, type HarnessRun, type HarnessResult } from "../src/stacks/flutter/harness";
+import { HARNESS_AUDIT, HARNESS_HTTP, HARNESS_TEST, RESULT_FILE, withNoProxy, type HarnessRun, type HarnessResult } from "../src/stacks/flutter/harness";
 import { googleFamilies, resolvedPackages } from "../src/stacks/flutter/google";
 import { HOOKS_FILE } from "../src/stacks/flutter/hooks";
 import { findScreen, readHttpFixtures, screenSlug } from "../src/stacks/flutter/inputs";
@@ -48,6 +48,43 @@ class Order extends StatelessWidget {
 }
 `;
 const FLUTTER_APP = { "pubspec.yaml": PUBSPEC, "lib/main.dart": MAIN };
+/** Classes --screen must refuse or accept: a private widget, a model, a plain class, and a widget on the app's own base. */
+const EXTRA = `import 'package:flutter/material.dart';
+
+class _Hidden extends StatelessWidget {
+  const _Hidden();
+  @override
+  Widget build(BuildContext context) => const Text('Hidden');
+}
+
+class Cart extends ChangeNotifier {}
+
+class Plain {}
+
+abstract class BaseScreen extends StatefulWidget {
+  const BaseScreen({super.key});
+}
+
+class Promo extends BaseScreen {
+  const Promo({super.key});
+  @override
+  State<Promo> createState() => _PromoState();
+}
+
+class _PromoState extends State<Promo> {
+  @override
+  Widget build(BuildContext context) => const _Hidden();
+}
+`;
+const FILLED_STATE = `import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// The sign-in form with an address typed in.
+Future<void> motifState(WidgetTester tester) async {
+  await tester.enterText(find.byType(TextField), 'sara@example.com');
+  await tester.pump();
+}
+`;
 const NEXT_PKG = JSON.stringify({ scripts: { dev: "next dev" }, dependencies: { next: "^15", react: "^19", "react-dom": "^19" } });
 
 const ctx = (flags: Record<string, string | string[] | boolean> = {}) => ({ positionals: [], flags });
@@ -168,7 +205,7 @@ describe("motif shot on a Flutter app: what it refuses", () => {
   });
 
   test("a .js state, with a hint, while a .dart one is passed through", async () => {
-    const root = makeProject({ ...FLUTTER_APP, "design/states/editor.js": "document.body.click();", "design/states/filled.dart": "// a state\n" });
+    const root = makeProject({ ...FLUTTER_APP, "design/states/editor.js": "document.body.click();", "design/states/filled.dart": FILLED_STATE });
     const { deps, calls } = fakes();
     const js = await runShot(root, ctx({ state: ["design/states/editor.js"] }), deps);
     expect(js.exitCode).toBe(2);
@@ -176,6 +213,44 @@ describe("motif shot on a Flutter app: what it refuses", () => {
     const dart = await runShot(root, ctx({ state: ["design/states/filled.dart"], routes: "/" }), deps);
     expect(dart.exitCode).toBe(0);
     expect(calls[0]!.states.map((s) => [s.name, s.file])).toEqual([["filled", join(root, "design/states/filled.dart")]]);
+    // States run now: no note says they don't.
+    expect(JSON.stringify(dart.data.notes ?? [])).not.toContain("--state doesn't run");
+  });
+
+  test("a .dart state without motifState: exit 2 before anything is written", async () => {
+    const root = makeProject({ ...FLUTTER_APP, "design/states/filled.dart": "// a state\n" });
+    const { deps, calls } = fakes();
+    const r = await runShot(root, ctx({ state: ["design/states/filled.dart"], routes: "/" }), deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.data.error).toBe("usage");
+    expect(r.text).toBe(
+      "--state: filled.dart must define Future<void> motifState(WidgetTester tester) async, which Motif runs on each screen once it has opened. Add it, then run motif shot again.",
+    );
+    expect(calls).toHaveLength(0);
+    expect(existsSync(join(root, "design", "shots"))).toBe(false);
+  });
+
+  test("--screen problems are usage errors before anything is written: private, not a widget, missing; repeats count once", async () => {
+    const root = makeProject({ ...FLUTTER_APP, "lib/extra.dart": EXTRA });
+    const { deps, calls } = fakes((o) => ({ routes: o.screens.map((s) => ({ route: s, url: s, status: 200, shots: [join(o.outDir, `${screenSlug(s)}.mobile.png`)] })) }));
+    for (const [name, text] of [
+      ["_Hidden", "--screen _Hidden: it's private to its file (its name starts with _), so Motif can't open it. Make it public, or capture it through its route with --routes."],
+      ["Cart", "--screen Cart: it isn't a widget (it extends ChangeNotifier). Give a screen's widget class, one that extends StatelessWidget or StatefulWidget."],
+      ["Plain", "--screen Plain: it isn't a widget. Give a screen's widget class, one that extends StatelessWidget or StatefulWidget."],
+      ["Order", "--screen Order: Motif opens a screen with no arguments (Order()), and its constructor has required arguments. Give it a constructor that needs none, or capture it through its route with --routes."],
+      ["Nope", "--screen Nope: there's no class Nope in the app's lib/ folder."],
+    ]) {
+      const r = await runShot(root, ctx({ screen: [name!] }), deps);
+      expect(r.exitCode).toBe(2);
+      expect(r.data.error).toBe("usage");
+      expect(r.text).toBe(text!);
+    }
+    expect(calls).toHaveLength(0);
+    expect(existsSync(join(root, "design", "shots"))).toBe(false);
+    // A widget that extends the app's own base widget is a widget; a name given twice is opened once.
+    const ok = await runShot(root, ctx({ screen: ["Promo", "Settings,Promo"] }), deps);
+    expect(ok.exitCode).toBe(0);
+    expect(calls[0]!.screens).toEqual(["Promo", "Settings"]);
   });
 
   test("no Flutter: exit 2 with the install line", async () => {
@@ -350,6 +425,7 @@ process.exit(1);`,
     expect(existsSync(join(root, HARNESS_TEST))).toBe(false);
     expect(existsSync(join(root, HOOKS_FILE))).toBe(false);
     expect(existsSync(join(root, HARNESS_HTTP))).toBe(false);
+    expect(existsSync(join(root, HARNESS_AUDIT))).toBe(false);
     expect(existsSync(join(root, ".motif/shot/config.json"))).toBe(false);
   });
 
@@ -367,6 +443,155 @@ process.exit(1);`,
       no_proxy: "corp.example,127.0.0.1,localhost",
     });
     expect(withNoProxy({})).toMatchObject({ NO_PROXY: "127.0.0.1,localhost" });
+  });
+});
+
+describe("the audit and states on a Flutter app", () => {
+  const harness = (result: Record<string, unknown>, seen: { run?: HarnessRun }) => async (r: HarnessRun): Promise<HarnessResult> => {
+    seen.run = r;
+    return { code: 0, timedOut: false, output: "", shots: [], notes: [], result };
+  };
+
+  test("--audit runs: each screenshot gets its checks, and the harness's issues become audit.json's findings, in Flutter's terms", async () => {
+    const root = makeProject(FLUTTER_APP);
+    const caption = 'AuditScreen > Scaffold > ListView > Text("Prices include tax")';
+    const close = "AuditScreen > Scaffold > ListView > IconButton";
+    const light = { route: "/", size: "mobile", scheme: "light", file: "index.mobile.png" };
+    const seen: { run?: HarnessRun } = {};
+    const run = harness(
+      {
+        screens: [{ route: "/", shots: ["index.mobile.png", "index.mobile.dark.png"], errors: [] }],
+        issues: [
+          { rule: "color-contrast", selector: caption, label: "Prices include tax", kind: "element", ratio: 2.32, expected: 4.5, fg: "#aaaaaa", bg: "#ffffff", ...light },
+          { rule: "color-contrast", selector: caption, label: "Prices include tax", kind: "element", ratio: 2.32, expected: 4.5, fg: "#aaaaaa", bg: "#ffffff", ...light, scheme: "dark", file: "index.mobile.dark.png" },
+          { rule: "target-mobile", selector: close, label: "", kind: "button", width: 32, height: 32, ...light },
+          { rule: "name", selector: close, label: "", kind: "button", ...light },
+          { rule: "motion", selector: "AuditScreen > Scaffold > ListView > Spinner", label: "Spinner", kind: "element", ...light },
+        ],
+        notes: [],
+      },
+      seen,
+    );
+    const deps: ShotDeps = { ...fakes().deps, shoot: (o) => shootFlutter(o, { themeDir: "lib/design", run }) };
+    const r = await runShot(root, ctx({ routes: "/", sizes: "390", audit: true }), deps);
+    expect(r.exitCode).toBe(1);
+    expect(seen.run!.shots.map((s) => [s.file, s.size, s.checks])).toEqual([
+      ["index.mobile.png", "mobile", ["contrast", "names", "targets", "motion"]],
+      ["index.mobile.dark.png", "mobile", ["contrast", "names"]],
+    ]);
+    expect(r.text).toContain("✗ Audit: 1 critical, 2 major, 1 minor (details in design/shots/audit.json):");
+    const review = JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8"));
+    expect(review).toMatchObject({ motifReview: 1, scope: "screens: /", date: "2026-10-20" });
+    expect(review.findings).toEqual([
+      {
+        id: "F-001",
+        severity: "critical",
+        category: "contrast",
+        source: "exact",
+        location: { screen: "/", selector: caption, viewport: "mobile", scheme: "light" },
+        locations: [{ screen: "/", selector: caption, viewport: "mobile", scheme: "dark" }],
+        summary: 'Text "Prices include tax" is hard to read in light and dark mode (2.32:1, needs 4.5:1).',
+        fix: "Use a text colour role with more contrast on this background, or adjust the role in design/tokens.json (motif validate checks the pairs).",
+        shot: "design/shots/index.mobile.png",
+        status: "open",
+      },
+      {
+        id: "F-002",
+        severity: "major",
+        category: "accessible-name",
+        source: "exact",
+        location: { screen: "/", selector: close, viewport: "mobile" },
+        summary: "The button has no name a screen reader can say.",
+        fix: "Give it a name a screen reader can say: a tooltip (IconButton takes one), a visible label, or Semantics(label: …).",
+        shot: "design/shots/index.mobile.png",
+        status: "open",
+      },
+      {
+        id: "F-003",
+        severity: "major",
+        category: "reduced-motion",
+        source: "exact",
+        location: { screen: "/", selector: "AuditScreen > Scaffold > ListView > Spinner", viewport: "mobile" },
+        summary: 'The "Spinner" element keeps moving when the viewer asks for reduced motion.',
+        fix: "Stop this animation, or keep it still, when MediaQuery.disableAnimationsOf(context) is true (the system's reduce motion setting); MotifMotion.duration(context, …) is zero then.",
+        shot: "design/shots/index.mobile.png",
+        status: "open",
+      },
+      {
+        id: "F-004",
+        severity: "minor",
+        category: "target-size",
+        source: "exact",
+        location: { screen: "/", selector: close, viewport: "mobile" },
+        summary: "A button is 32×32 px on a phone; 44×44 px is easier to tap.",
+        fix: "Give it at least 44×44 px: padding, a SizedBox or a minimumSize in its style (Material's tap target size, 48, is the default).",
+        shot: "design/shots/index.mobile.png",
+        status: "open",
+      },
+    ]);
+  });
+
+  test("states: a screenshot after each state, its import and runner in the hooks, and main() told from main(args) by its type", async () => {
+    const root = makeProject({ ...FLUTTER_APP, "design/states/filled.dart": FILLED_STATE });
+    const seen: { run?: HarnessRun } = {};
+    const out = await shootFlutter(
+      options(root, { routes: ["/"], audit: true, viewports: [NATIVE_VIEWPORTS[3]!], states: [{ name: "filled", script: FILLED_STATE, file: join(root, "design/states/filled.dart") }] }),
+      {
+        themeDir: "lib/design",
+        run: harness(
+          {
+            screens: [{ route: "/", shots: ["index.tablet.png", "index@filled.tablet.png"], errors: ['State "filled": Bad state: no field'], auditError: "the semantics tree wasn't ready" }],
+            issues: [{ rule: "name", selector: "Scaffold > IconButton", label: "", kind: "button", route: "/", size: "tablet", scheme: "light", state: "filled", file: "index@filled.tablet.png" }],
+            notes: [],
+          },
+          seen,
+        ),
+      },
+    );
+    expect(seen.run!.shots.map((s) => [s.file, s.state ?? null, s.checks])).toEqual([
+      ["index.tablet.png", null, ["contrast", "names", "targets"]],
+      ["index@filled.tablet.png", "filled", ["contrast", "names", "targets"]],
+      ["index.tablet.dark.png", null, ["contrast", "names"]],
+      ["index@filled.tablet.dark.png", "filled", ["contrast", "names"]],
+    ]);
+    expect(seen.run!.hooks).toContain("import '../../design/states/filled.dart' as state0;");
+    expect(seen.run!.hooks).toContain("  if (name == 'filled') return state0.motifState(tester);");
+    expect(seen.run!.hooks).toContain("main is Function() ? main() : Function.apply(main, [<String>[]])");
+    expect(seen.run!.hooks).not.toContain("NoSuchMethodError");
+    const shots = join(root, "design", "shots");
+    expect(out.routes).toEqual([
+      {
+        route: "/",
+        url: "/",
+        status: 200,
+        shots: [join(shots, "index.tablet.png"), join(shots, "index@filled.tablet.png")],
+        auditError: "the semantics tree wasn't ready",
+        pageErrors: ['State "filled": Bad state: no field'],
+      },
+    ]);
+    expect(out.issues).toEqual([
+      {
+        rule: "name",
+        selector: "Scaffold > IconButton",
+        label: "",
+        kind: "button",
+        route: "/",
+        size: "tablet",
+        scheme: "light",
+        state: "filled",
+        viewport: "mobile",
+        shot: join(shots, "index@filled.tablet.png"),
+        fix: "Give it a name a screen reader can say: a tooltip (IconButton takes one), a visible label, or Semantics(label: …).",
+      },
+    ]);
+    expect(out.notes).toEqual([]);
+  });
+
+  test("--sizes without the 390 phone says the reduced-motion check didn't run", async () => {
+    const root = makeProject(FLUTTER_APP);
+    const r = await runShot(root, ctx({ routes: "/", sizes: "360", audit: true }), fakes().deps);
+    expect(r.data.notes).toContain("The reduced-motion check runs at the 390 px phone size, which --sizes left out.");
+    expect(JSON.stringify(r.data.notes)).not.toContain("desktop size");
   });
 });
 

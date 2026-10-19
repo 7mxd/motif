@@ -52,7 +52,7 @@ Shot options:
   --audit           Also check contrast, tap-target sizes, reduced motion and accessible names as rendered
   --save <name>     Keep these screenshots as a named set, e.g. --save before
   --against <what>  Side by side with a saved set (after a rebuild) or a mockup (while building)
-  --state <file.js> Also capture each page after this script runs in it (a state behind a form or a click); repeat for more
+  --state <file.js> Also capture each page after this script runs in it (a state behind a form or a click; Flutter: a .dart file with motifState); repeat for more
   --variant <id|all>  Also capture one design variant (index+men.mobile.png), or all of them; --audit alone covers every variant
   --sizes <list>    Only some sizes, for a quick run: widths (360, 390, 430, 768, 1440) or phones, tablet, desktop
   --rtl [<lang>]    Also capture each page right to left (index.mobile.rtl.png), in this language (default: ar)

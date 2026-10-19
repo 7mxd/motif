@@ -7,15 +7,15 @@ import { loadTokenDocument } from "../../contract/load";
 import { readVariants } from "../../contract/variants";
 import type { AppInfo } from "../../detect/stacks";
 import type { AuditIssue, RawIssue } from "../../shot/audit";
-import { routeSlug, shotName, type RouteResult, type Scheme } from "../../shot/capture";
+import { routeSlug, shotName, type RouteResult, type Scheme, type StateScript, type Viewport } from "../../shot/capture";
 import { prefixPath } from "../../project/apps";
 import { andList, stripBom } from "../../text";
 import type { NativeShotOptions } from "../native";
 import { dartIdentifier } from "../naming";
 import { googleFamilies, resolvedPackages, type ResolvedPackage } from "./google";
-import { flutterTail, runHarness, type FetchLike, type FlutterShot, type HarnessResult, type HarnessRun } from "./harness";
+import { flutterTail, runHarness, type AuditCheck, type FetchLike, type FlutterShot, type HarnessResult, type HarnessRun } from "./harness";
 import { hooksSource, mainFile } from "./hooks";
-import { findScreen, HTTP_FILE, readHttpFixtures, readSetup, screenSlug } from "./inputs";
+import { findScreen, HTTP_FILE, readHttpFixtures, readSetup, readState, screenSlug, type HttpRoute } from "./inputs";
 import { dependsOn, importFor, packageName } from "./project";
 import { libDartFiles } from "./routes";
 import { FLUTTER_INSTALL } from "./doctor";
@@ -91,7 +91,19 @@ interface RawScreen {
   blankImages?: string[];
   missingFonts?: string[];
   texts?: string[];
+  /** Why the audit couldn't finish on this screen. */
+  auditError?: string;
 }
+
+/** What the harness found, as a RawIssue with where it was seen: its screen, its screenshot's file and look. */
+type RawFlutterIssue = RawIssue & { route: string; file?: string; size: string; scheme: Scheme; variant?: string; state?: string; rtl?: boolean };
+
+/** What to do about each problem in a Flutter app, in its own terms (the web's fixes name CSS and ARIA). */
+export const FLUTTER_FIXES: Partial<Record<RawIssue["rule"], string>> = {
+  "target-mobile": "Give it at least 44×44 px: padding, a SizedBox or a minimumSize in its style (Material's tap target size, 48, is the default).",
+  motion: "Stop this animation, or keep it still, when MediaQuery.disableAnimationsOf(context) is true (the system's reduce motion setting); MotifMotion.duration(context, …) is zero then.",
+  name: "Give it a name a screen reader can say: a tooltip (IconButton takes one), a visible label, or Semantics(label: …).",
+};
 
 interface Target {
   /** A route ("/home") or a widget's class name. */
@@ -101,7 +113,19 @@ interface Target {
   slug: string;
 }
 
-/** Every screenshot of a run, in the web's order: per screen, size, scheme, then variant and direction. */
+/** The phone size the reduced-motion check runs at. */
+export const MOTION_WIDTH = 390;
+
+/**
+ * The audit's checks on one screenshot, as on the web: contrast and names everywhere; tap targets on phones and tablets,
+ * in light (they're the same in dark); reduced motion in light at the 390 phone size, once for each variant, direction and state.
+ */
+export function auditChecks(v: Viewport, scheme: Scheme): AuditCheck[] {
+  const light = scheme === "light";
+  return ["contrast", "names", ...(light && v.mobile ? (["targets"] as const) : []), ...(light && v.mobile && v.width === MOTION_WIDTH ? (["motion"] as const) : [])];
+}
+
+/** Every screenshot of a run, in the web's order: per screen, size, scheme, then variant, direction and state. */
 export function planShots(opts: NativeShotOptions, targets: Target[]): FlutterShot[] {
   const shots: FlutterShot[] = [];
   for (const t of targets) {
@@ -109,21 +133,27 @@ export function planShots(opts: NativeShotOptions, targets: Target[]): FlutterSh
       for (const scheme of ["light", "dark"] as Scheme[]) {
         for (const variant of [undefined, ...opts.variants]) {
           for (const lang of [undefined, ...(opts.rtl ? [opts.rtl] : [])]) {
-            const phone = v.mobile && v.width < 600;
-            shots.push({
-              file: shotName(t.slug, v.file ?? v.name, scheme, variant, Boolean(lang)),
-              target: t.key,
-              ...(t.route ? { route: t.route } : { screen: t.screen }),
-              width: v.width,
-              height: v.height,
-              dpr: v.scale,
-              // An iPhone's status bar and home indicator, in logical pixels.
-              ...(phone ? { safeTop: 47, safeBottom: 34 } : {}),
-              dark: scheme === "dark",
-              locale: lang ?? "en_US",
-              ...(lang ? { rtl: true } : {}),
-              ...(variant ? { variant: dartIdentifier(variant), variantId: variant } : {}),
-            });
+            for (const state of [undefined, ...opts.states.map((s) => s.name)]) {
+              const phone = v.mobile && v.width < 600;
+              const size = v.file ?? v.name;
+              shots.push({
+                file: shotName(state ? `${t.slug}@${state}` : t.slug, size, scheme, variant, Boolean(lang)),
+                target: t.key,
+                ...(t.route ? { route: t.route } : { screen: t.screen }),
+                width: v.width,
+                height: v.height,
+                dpr: v.scale,
+                // An iPhone's status bar and home indicator, in logical pixels.
+                ...(phone ? { safeTop: 47, safeBottom: 34 } : {}),
+                dark: scheme === "dark",
+                locale: lang ?? "en_US",
+                ...(lang ? { rtl: true } : {}),
+                ...(variant ? { variant: dartIdentifier(variant), variantId: variant } : {}),
+                size,
+                ...(state ? { state } : {}),
+                ...(opts.audit ? { checks: auditChecks(v, scheme) } : {}),
+              });
+            }
           }
         }
       }
@@ -164,7 +194,7 @@ export function mapResult(
     const s = screens.find((x) => x.route === t.key);
     const shots = (s?.shots ?? []).map((f) => (isAbsolute(f) ? f : join(outDir, f)));
     const errors = s?.errors ?? [];
-    const base = { route: t.key, url: t.key, shots, ...(s?.landedOn ? { landedOn: s.landedOn } : {}) };
+    const base = { route: t.key, url: t.key, shots, ...(s?.landedOn ? { landedOn: s.landedOn } : {}), ...(s?.auditError ? { auditError: s.auditError } : {}) };
     if (shots.length > 0) return { ...base, status: 200, ...(errors.length > 0 ? { pageErrors: errors } : {}) };
     const error =
       s?.unreachable ??
@@ -173,24 +203,63 @@ export function mapResult(
     const rest = s?.unreachable ? errors : errors.slice(1);
     return { ...base, status: 0, error, ...(rest.length > 0 ? { pageErrors: rest } : {}) };
   });
-  const raw = (Array.isArray(result.issues) ? result.issues : []) as (RawIssue & { route: string; size: string; scheme: Scheme; variant?: string; state?: string; rtl?: boolean })[];
+  const raw = (Array.isArray(result.issues) ? result.issues : []) as RawFlutterIssue[];
   const slugOf = new Map(targets.map((t) => [t.key, t.slug]));
-  const issues = raw.map(({ rtl, ...i }): AuditIssue => ({
-    ...i,
-    viewport: i.size === "desktop" ? "desktop" : "mobile",
-    shot: join(outDir, shotName(`${slugOf.get(i.route) ?? routeSlug(i.route)}${i.state ? `@${i.state}` : ""}`, i.size, i.scheme, i.variant, Boolean(rtl))),
-    ...(rtl ? { rtl: true as const } : {}),
-  }));
+  const issues = raw.map(({ rtl, file, ...i }): AuditIssue => {
+    const fix = FLUTTER_FIXES[i.rule];
+    return {
+      ...i,
+      viewport: i.size === "desktop" ? "desktop" : "mobile",
+      shot: join(outDir, file ?? shotName(`${slugOf.get(i.route) ?? routeSlug(i.route)}${i.state ? `@${i.state}` : ""}`, i.size, i.scheme, i.variant, Boolean(rtl))),
+      ...(rtl ? { rtl: true as const } : {}),
+      ...(fix ? { fix } : {}),
+    };
+  });
   const notes = [...(Array.isArray(result.notes) ? (result.notes as string[]) : []), ...screenNotes(screens)];
   return { routes, issues, notes };
+}
+
+interface ShotInputs {
+  pkg: string;
+  screens: { name: string; import: string }[];
+  states: { name: string; import: string }[];
+  setup: string | null;
+  http: HttpRoute[];
+}
+
+/**
+ * What motif shot is given for a Flutter app, read and checked before anything is written: the app's package name, the
+ * --screen widgets, the --state scripts, design/states/setup.dart and design/states/http.json. The first problem, if any.
+ */
+export function readShotInputs(root: string, appDir: string, given: { screens: string[]; states: StateScript[] }): ShotInputs | { error: string } {
+  const pkg = packageName(appDir);
+  if (!pkg) return { error: `There's no package name in ${join(appDir, "pubspec.yaml")}, so Motif can't import the app. Add a name: line to it.` };
+  const screens: ShotInputs["screens"] = [];
+  for (const name of given.screens) {
+    const found = findScreen(appDir, pkg, name);
+    if ("error" in found) return found;
+    screens.push({ name, import: found.import });
+  }
+  const states: ShotInputs["states"] = [];
+  for (const state of given.states) {
+    const found = readState(appDir, state);
+    if ("error" in found) return found;
+    states.push(found);
+  }
+  const setup = readSetup(root, appDir);
+  if (setup && typeof setup === "object") return setup;
+  const http = readHttpFixtures(root);
+  if ("error" in http) return http;
+  return { pkg, screens, states, setup, http };
 }
 
 /** FLUTTER.shoot: writes the harness, runs flutter test, reads what it drew, and always removes the harness. */
 export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDeps): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }> {
   const root = resolve(opts.root);
   const appDir = resolve(root, opts.app.path);
-  const pkg = packageName(appDir);
-  if (!pkg) throw new Error(`There's no package name in ${join(appDir, "pubspec.yaml")}, so Motif can't import the app.`);
+  const inputs = readShotInputs(root, appDir, opts);
+  if ("error" in inputs) throw new Error(inputs.error);
+  const { pkg, screens, states, setup, http } = inputs;
   const packages = resolvedPackages(appDir);
 
   const used = new Set<string>();
@@ -200,21 +269,12 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
     used.add(slug);
     return { key: route, route, slug };
   });
-  const screens: { name: string; import: string }[] = [];
-  for (const name of opts.screens) {
-    const found = findScreen(appDir, pkg, name);
-    if ("error" in found) throw new Error(found.error);
-    screens.push({ name, import: found.import });
+  for (const { name } of screens) {
     let slug = screenSlug(name);
     for (let n = 2; used.has(slug); n++) slug = `${screenSlug(name)}-${n}`;
     used.add(slug);
     targets.push({ key: name, screen: name, slug });
   }
-
-  const setup = readSetup(root, appDir);
-  if (setup && typeof setup === "object") throw new Error(setup.error);
-  const http = readHttpFixtures(root);
-  if ("error" in http) throw new Error(http.error);
 
   // The generated theme switches variants through MotifTheme.debugVariantOverride, when it has variants.
   const themeFile = join(root, deps.themeDir, "motif_theme.dart");
@@ -227,6 +287,7 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
     ...(theme ? { theme } : {}),
     ...(setup ? { setup } : {}),
     screens,
+    states,
   });
 
   const code = [...libDartFiles(appDir).map((f) => readFileSync(f, "utf8")), ...(deps.sharedCode?.() ?? [])];
@@ -262,7 +323,5 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
     throw new Error(tail ? `${why} The last lines it printed:\n${tail}` : why);
   }
   const mapped = mapResult(targets, opts.outDir, result.result, result.timedOut ? { seconds: Math.round(opts.timeoutMs / 1000) } : null);
-  const notes = [...result.notes, ...mapped.notes];
-  if (opts.states.length > 0) notes.push("--state doesn't run on Flutter apps yet: the screenshots show each screen as it opens.");
-  return { ...mapped, notes };
+  return { ...mapped, notes: [...result.notes, ...mapped.notes] };
 }

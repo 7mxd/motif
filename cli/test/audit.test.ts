@@ -126,6 +126,13 @@ describe("toFindings", () => {
     expect(f!.location.viewport).toBe("tablet");
   });
 
+  test("an issue that says what to do in its app's own terms (a Flutter app has no aria-label) keeps that fix", () => {
+    const [own] = toFindings([issue({ rule: "name", selector: "Scaffold > IconButton", kind: "button", label: "", fix: "Give it a tooltip." })]);
+    expect(own!.fix).toBe("Give it a tooltip.");
+    const [web] = toFindings([issue({ rule: "name", selector: "#go", kind: "button", label: "" })]);
+    expect(web!.fix).toBe("Give it a visible label or an accessible name (aria-label, or alt for an image).");
+  });
+
   test("a control with no name is an accessible-name finding, one per element across sizes, schemes, variants and directions", () => {
     const unnamed = (over: Partial<AuditIssue>) =>
       issue({ rule: "name", selector: "#menu", kind: "button", label: "", ratio: undefined, expected: undefined, ...over });

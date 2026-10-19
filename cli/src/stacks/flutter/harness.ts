@@ -6,6 +6,7 @@ import { onExit } from "../../cleanup";
 import { motifHome } from "../../home";
 import { killTree } from "../../shot/devserver";
 import { stripBom } from "../../text";
+import auditSource from "./harness/motif_audit.dart" with { type: "text" };
 import httpSource from "./harness/motif_http.dart" with { type: "text" };
 import harnessSource from "./harness/motif_shot_test.dart" with { type: "text" };
 import { defaultHooks, HOOKS_FILE, hooksSource } from "./hooks";
@@ -14,6 +15,8 @@ import { packageName } from "./project";
 export const HARNESS_TEST = ".motif/shot/motif_shot_test.dart";
 /** The harness's in-memory HTTP, next to it; the same in every run too. */
 export const HARNESS_HTTP = ".motif/shot/motif_http.dart";
+/** The harness's audit (--audit), next to it; the same in every run too. */
+export const HARNESS_AUDIT = ".motif/shot/motif_audit.dart";
 /** Where the harness writes what it did; cleared before every run. */
 export const RESULT_FILE = ".motif/shot/result.json";
 
@@ -40,7 +43,15 @@ export interface FlutterShot {
   /** The variant as the generated theme's MotifVariant names it (Dart), and as the guide does. */
   variant?: string;
   variantId?: string;
+  /** The size as screenshot names give it (mobile-360, mobile, tablet…), for the audit's issues. */
+  size?: string;
+  /** A --state script to run on the screen before it's drawn: its name. */
+  state?: string;
+  /** The audit's checks on this screenshot (--audit): contrast, names, targets, motion. */
+  checks?: AuditCheck[];
 }
+
+export type AuditCheck = "contrast" | "names" | "targets" | "motion";
 
 export interface FontEntry {
   family: string;
@@ -335,6 +346,7 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
   const testFile = join(run.appDir, HARNESS_TEST);
   const hooksFile = join(run.appDir, HOOKS_FILE);
   const httpFile = join(run.appDir, HARNESS_HTTP);
+  const auditFile = join(run.appDir, HARNESS_AUDIT);
   const configFile = join(shotDir, "config.json");
   // A run that fails before writing anything mustn't return the last run's screenshots.
   const resultPath = join(run.appDir, RESULT_FILE);
@@ -345,6 +357,7 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
   try {
     writeFileSync(testFile, HARNESS_SOURCE);
     writeFileSync(httpFile, httpSource);
+    writeFileSync(auditFile, auditSource);
     writeFileSync(hooksFile, run.hooks ?? hooksSource(defaultHooks(run.appDir, pkg)));
     writeFileSync(configFile, JSON.stringify({ ...run.config, outDir: resolve(run.outDir), resultPath, fonts, shots: run.shots }));
     const command = run.command ?? [flutter, "test"];
@@ -392,6 +405,7 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
     rmSync(testFile, { force: true });
     rmSync(hooksFile, { force: true });
     rmSync(httpFile, { force: true });
+    rmSync(auditFile, { force: true });
     rmSync(configFile, { force: true });
   }
 }
