@@ -227,6 +227,9 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
             ];
             for (const state of [undefined, ...(opts.states ?? [])]) {
               const tag = (message: string) => (state ? `State "${state.name}": ${message}` : message);
+              // An error the page threw on its own (already reported, untagged, from the plain screenshot) isn't the
+              // state's when it lands while the state's script runs: it's reported once.
+              const tagNew = (messages: string[]) => messages.map((m) => (result.pageErrors?.includes(m) ? m : tag(m)));
               // Each screenshot starts as a first visit, in a tab of its own: nothing an earlier page or state stored
               // (a theme choice, a dismissed banner, a cookie) changes it.
               const page = await browser.newPage({ isolated: true });
@@ -261,7 +264,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 await Bun.sleep(settleMs);
                 const thrown = page.takeErrors();
                 if (thrown.length > 0 || loadErrors.length > 0) {
-                  addErrors(thrown.map(tag));
+                  addErrors(tagNew(thrown));
                 } else {
                   // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.
                   await page.evaluate(HIDE_DEV_BADGES);
@@ -287,7 +290,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 // A plain page that fails stops its route, as before. A state that leaves the page unusable costs only
                 // its own screenshot: the rest go on, each in its own tab anyway.
                 if (!state) throw e;
-                addErrors([...page.takeErrors().map(tag), tag(`Motif couldn't capture this state: ${e instanceof Error ? e.message : String(e)}`)]);
+                addErrors([...tagNew(page.takeErrors()), tag(`Motif couldn't capture this state: ${e instanceof Error ? e.message : String(e)}`)]);
               } finally {
                 await page.close().catch(() => undefined);
               }
