@@ -7,6 +7,7 @@ import { AGENTS, shown, type AgentEnv } from "../agents/catalog";
 import { readAgentServers, sourcesIn } from "../detect/sources";
 import { SOURCES } from "../sources/catalog";
 import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, siteDir, STACK_LABELS } from "../detect/stacks";
+import { flutterDoctor } from "../stacks/flutter/doctor";
 import { VERSION } from "../version";
 import { runValidate } from "./validate";
 
@@ -27,6 +28,8 @@ export interface DoctorDeps {
   vars?: Record<string, string | undefined>;
   /** True when MOTIF_BROWSER=none turns the browser off. */
   browserOff?: () => boolean;
+  /** Runs a program and returns its exit code and output (a missing program gives a non-zero code). */
+  run?: (cmd: string[]) => { code: number; stdout: string };
 }
 
 export function defaultDoctorDeps(): DoctorDeps {
@@ -38,6 +41,14 @@ export function defaultDoctorDeps(): DoctorDeps {
     which: (c) => Bun.which(c),
     vars: process.env,
     browserOff: () => browserOff(),
+    run: (cmd) => {
+      try {
+        const r = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore" });
+        return { code: r.exitCode ?? 1, stdout: r.stdout.toString() };
+      } catch {
+        return { code: 127, stdout: "" };
+      }
+    },
   };
 }
 
@@ -81,6 +92,8 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
     if (deps.which("node")) push("node", "ok", "Node.js", "Found. Your app needs it to run (Motif itself doesn't).");
     else push("node", "needed", "Node.js", "Not found. Your app needs Node.js to run — install it from nodejs.org.");
   }
+
+  if (apps.some((a) => a.stack === "flutter")) items.push(...flutterDoctor(deps));
 
   const hasGuide = existsSync(join(cwd, "DESIGN.md")) && existsSync(join(cwd, "design", "tokens.json"));
   if (!hasGuide) {

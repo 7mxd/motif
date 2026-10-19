@@ -63,6 +63,62 @@ describe("runDoctor", () => {
     expect(app.detail).toContain("Flutter detected");
   });
 
+  describe("the Flutter toolchain", () => {
+    const flutterApp = () => {
+      const dir = tempDir("motif-flutter-sdk-");
+      writeFileSync(join(dir, "pubspec.yaml"), "dependencies:\n  flutter:\n    sdk: flutter\n");
+      mkdirSync(join(dir, "lib"), { recursive: true });
+      writeFileSync(join(dir, "lib", "main.dart"), "void main() {}\n");
+      return dir;
+    };
+    const json = '{"frameworkVersion":"3.44.8","dartSdkVersion":"3.12.2 (stable)"}';
+    const found = (c: string) => (c === "flutter" ? "/sdk/bin/flutter" : null);
+    const flutterItem = async (over: Partial<DoctorDeps>) =>
+      item((await runDoctor(flutterApp(), deps(over))).data.items as DoctorItem[], "flutter");
+
+    test("reports the Flutter and Dart versions", async () => {
+      const ran: string[][] = [];
+      const it = await flutterItem({ which: found, run: (cmd) => { ran.push(cmd); return { code: 0, stdout: json }; } });
+      expect(it).toEqual({ id: "flutter", status: "ok", label: "Flutter SDK", detail: "Flutter 3.44.8 (Dart 3.12.2)." });
+      expect(ran[0]).toEqual(["/sdk/bin/flutter", "--version", "--machine"]);
+    });
+
+    test("reads the JSON after an upgrade banner", async () => {
+      const banner = "╔═══╗\n║ A new version of Flutter is available! ║\n╚═══╝\n";
+      const it = await flutterItem({ which: found, run: () => ({ code: 0, stdout: banner + json }) });
+      expect(it).toMatchObject({ status: "ok", detail: "Flutter 3.44.8 (Dart 3.12.2)." });
+    });
+
+    test("asks to install Flutter when it isn't found", async () => {
+      const it = await flutterItem({ which: () => null, run: () => ({ code: 1, stdout: "" }) });
+      expect(it).toEqual({
+        id: "flutter",
+        status: "needed",
+        label: "Flutter SDK",
+        detail: "Flutter isn't installed. Theme code, checks and drafts work without it; screenshots need it: install it from https://docs.flutter.dev/get-started/install.",
+      });
+    });
+
+    test("asks to upgrade when Flutter is older than 3.27", async () => {
+      const old = '{"frameworkVersion":"3.24.5","dartSdkVersion":"3.5.4"}';
+      const it = await flutterItem({ which: found, run: () => ({ code: 0, stdout: old }) });
+      expect(it).toMatchObject({ status: "needed", detail: "Flutter 3.24.5 is older than 3.27, which Motif's theme code needs. Run flutter upgrade." });
+    });
+
+    test("exactly 3.27.0 is fine", async () => {
+      const it = await flutterItem({ which: found, run: () => ({ code: 0, stdout: '{"frameworkVersion":"3.27.0","dartSdkVersion":"3.6.0"}' }) });
+      expect(it).toMatchObject({ status: "ok" });
+    });
+
+    test("no Flutter app means no flutter item, and the app line stays as it was", async () => {
+      const web = copyFixture();
+      writeFileSync(join(web, "package.json"), JSON.stringify({ dependencies: { react: "^19", vite: "^6" } }));
+      expect(item((await runDoctor(web, deps({ which: found }))).data.items as DoctorItem[], "flutter")).toBeUndefined();
+      const items = (await runDoctor(flutterApp(), deps({ which: found, run: () => ({ code: 0, stdout: json }) }))).data.items as DoctorItem[];
+      expect(item(items, "app:.")!.detail).toContain("Full support is coming soon");
+    });
+  });
+
   test("a React app Motif can't place asks for design/motif.json instead of offering a new app", async () => {
     const dir = tempDir("motif-esbuild-");
     writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { react: "^19" }, devDependencies: { esbuild: "^0.24" } }));
