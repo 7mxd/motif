@@ -5,6 +5,7 @@ import { PriceTag } from "@/components/PriceTag";
 import { PromoBanner } from "@/components/PromoBanner";
 import { RecipeCard } from "@/components/RecipeCard";
 import { TopBar } from "@/components/TopBar";
+import { VariantSwitch } from "@/components/VariantSwitch";
 import { products } from "@/mock-data";
 
 const FEATURES = [
@@ -47,6 +48,11 @@ export default function Home() {
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           <RecipeCard title="Leek and potato soup" minutes={35} />
           <RecipeCard title="Lemon roast chicken" minutes={80} />
+        </div>
+        <div className="mt-8 text-start">
+          <Card>
+            <VariantSwitch />
+          </Card>
         </div>
       </div>
     </main>
