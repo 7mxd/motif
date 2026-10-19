@@ -498,10 +498,12 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   chosen["text-secondary"] = named["text-secondary"] ?? textPick.find((c) => c !== chosen["text-primary"]) ?? chosen["text-primary"];
   // A surface sits close to the page (cards on it), not a mid-grey used for a dot or a chip, and is tinted no more than
   // the page is (an error badge's pale red isn't a surface).
-  // On a dark page, surfaces step further from it (zinc-800 cards on zinc-950 are 1.33:1).
+  // On a dark page, surfaces step further from it (zinc-800 cards on zinc-950 are 1.33:1). A warm paper tone (cream cards
+  // on white) is a surface, though tinted more: it sits in the yellow-orange hues, apart from status reds, greens and blues.
   const bg = chosen.background;
   const nearLimit = bg && wcagLuminance(bg.hex) < 0.2 ? 1.6 : 1.2;
-  const nearPage = (c: ColorCluster) => !bg || (wcagContrast(c.hex, bg.hex) < nearLimit && c.c <= Math.max(0.012, bg.c * 2));
+  const paper = (c: ColorCluster) => c.c <= 0.03 && c.h >= 60 && c.h <= 110;
+  const nearPage = (c: ColorCluster) => !bg || (wcagContrast(c.hex, bg.hex) < nearLimit && (c.c <= Math.max(0.012, bg.c * 2) || paper(c)));
   // The border role is the neutral line between things; a coloured one is usually a focus or an active state. Never the
   // page's own colour (a white ring around avatars), which would draw no line at all.
   const visible = (c: ColorCluster) => !bg || (c !== bg && wcagContrast(c.hex, bg.hex) >= 1.1);
