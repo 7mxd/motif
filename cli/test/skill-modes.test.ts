@@ -182,6 +182,15 @@ describe("plain web, screens behind forms, and every size", () => {
     expect(review).toContain("(../adapters/plain-web/checks.md)");
   });
 
+  test("review reads each data screen's code for its loading, empty and error states, and looks for emoji used as UI (evals 2026-10-19)", () => {
+    // c-review missed a product list with no loading or empty state (its screenshots, from mock data, looked complete)
+    // and emoji standing in for the app's icons.
+    const review = read("modes/review.md");
+    expect(outOfOrder(review, [
+      "## 3. Audit", "**Judgement**", "loading, empty and error", "mock data", "(../knowledge/anti-patterns.md#emoji-as-ui)", "## 4. Report ⏸",
+    ])).toBeNull();
+  });
+
   test("review shows a guide change before writing it, and asks before keeping a fix that turned out differently (hands-on test)", () => {
     const review = read("modes/review.md");
     expect(outOfOrder(review, [
