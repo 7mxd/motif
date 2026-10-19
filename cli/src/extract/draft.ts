@@ -1,6 +1,6 @@
 import { formatHex, wcagContrast, wcagLuminance } from "culori";
 import type { SourceFile } from "../check/files";
-import { darkRanges } from "../check/dark";
+import { darkRanges, variantAt, variantRanges } from "../check/dark";
 import { CLASS_PREFIX, classSegments, utilContext } from "../check/rules/tailwind";
 import { TAILWIND_SPACING_PX } from "../check/rules/tailwind-scale";
 import { inRanges, maskComments, rangesOf } from "../check/mask";
@@ -12,7 +12,8 @@ import { FONT_ROLES, MONO_ROLE, MONO_STACK, SPACE_SCALE, defaultShadows, isMonos
 import { clusterColors, parseColor, type ColorCluster, type Sample } from "./cluster";
 import type { TailwindDefaults } from "./tailwind-theme";
 
-export interface Variable { name: string; light?: string; dark?: string }
+/** A colour variable: its :root values, and the values a design variant's block gives it (by variant id). */
+export interface Variable { name: string; light?: string; dark?: string; variants?: Record<string, { light?: string; dark?: string }> }
 
 export interface Occurrences {
   colors: Sample[];
@@ -49,7 +50,9 @@ export interface ExtractReport {
   durations: Sample[];
   easings: Sample[];
   unresolved: Sample[];
-  variables: { name: string; light?: string; dark?: string; role?: string }[];
+  variables: { name: string; light?: string; dark?: string; role?: string; variants?: Record<string, { light?: string; dark?: string }> }[];
+  /** The design variants the CSS sets, the first being the :root palette (the default). */
+  designVariants?: { id: string; label: string }[];
   notes: string[];
 }
 
@@ -219,11 +222,13 @@ interface CssUse {
 /**
  * How a stylesheet uses colours that `scanColors` can't see on its own: variables used through var() (each use counts
  * as a use of the variable's colour), variables defined from other variables, and the fills of buttons. Dark-mode
- * blocks add no uses: they set dark values, and a variable set from another one there goes in `darkAliases`.
+ * blocks add no uses: they set dark values, and a variable set from another one there goes in `darkAliases`. A design
+ * variant's block (`[data-variant="men"] { … }`) sets that variant's values, not the default's, so it adds nothing either.
  */
 function cssUses(file: SourceFile, aliases: Map<string, string>, darkAliases: Map<string, string>, fallbacks: Map<string, string>): CssUse[] {
   const css = maskComments(file.text, "css");
   const dark = [...darkRanges(css), ...(file.dark ?? [])];
+  const variants = variantRanges(css);
   const at = locator(css);
   const selectorAt = selectorLookup(css);
   const uses: CssUse[] = [];
@@ -232,7 +237,7 @@ function cssUses(file: SourceFile, aliases: Map<string, string>, darkAliases: Ma
     const prop = m[1]!;
     const raw = m[2]!;
     const value = raw.trim().replace(/\s*!important$/i, "");
-    if (prop.startsWith("--motif-")) continue;
+    if (prop.startsWith("--motif-") || variantAt(m.index!, variants)) continue;
     // .dark { --a: var(--b) } makes --b's colour --a's dark one.
     if (inRanges(m.index!, dark)) {
       const alias = prop.startsWith("--") ? varOnly(value) : undefined;
@@ -357,6 +362,17 @@ export function collectOccurrences(
     // Where the file's palette classes are, found once it has one.
     let places: ReturnType<typeof classPlaces> | undefined;
     for (const hit of scanFile(file, null, { tailwind: tailwindFor(file) })) {
+      // A colour a design variant's block sets belongs to that variant's palette, not the default's.
+      if (hit.kind === "color" && hit.variant) {
+        if (hit.prop) {
+          const v = variables.get(hit.prop) ?? { name: hit.prop };
+          const own = ((v.variants ??= {})[hit.variant] ??= {});
+          if (hit.scheme === "dark") own.dark ??= hit.value;
+          else own.light ??= hit.value;
+          variables.set(hit.prop, v);
+        }
+        continue;
+      }
       if (hit.kind === "color" && hit.prop) {
         const v = variables.get(hit.prop) ?? { name: hit.prop };
         if (hit.scheme === "dark") v.dark ??= hit.value;
@@ -685,6 +701,41 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     if (darkBase[role]) darkBase[`on-${role}`] = onColor(hexOf(darkBase[role]!)) === WHITE ? "white" : "ink";
   }
 
+  // Design variants: the colours blocks like [data-variant="men"] { … } give variables that match a role. The :root palette is
+  // the default; a variant with no dark value keeps its light one in dark mode, as the default does.
+  const variantIds = [...new Set((occ.variables ?? []).flatMap((v) => Object.keys(v.variants ?? {})))];
+  const variantRoles: Record<string, Record<string, { value: string; dark: string }>> = {};
+  const addPrimitive = (name: string, hex: string) => {
+    let n = name;
+    for (let k = 2; primitives[n] && hexOf(n) !== hex; k++) n = `${name}-${k}`;
+    primitives[n] ??= { $value: srgbColor(hex) };
+    return n;
+  };
+  if (variantIds.length > 0) {
+    for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
+      const candidates = (occ.variables ?? []).filter((x) => x.variants && inCluster(chosen[role], x.light));
+      const entry = follow ? ROLE_NAMES.find((e) => e.role === role) : undefined;
+      const v = (entry && candidates.find((x) => nameScore(x.name, entry) >= 0)) ?? candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ?? candidates[0];
+      if (!v) continue;
+      for (const id of variantIds) {
+        const own = v.variants![id];
+        const lightHex = solidHex(own?.light);
+        const darkHex = solidHex(own?.dark);
+        if (!lightHex && !darkHex) continue;
+        const value = lightHex ? addPrimitive(`${chosen[role]!.id}-${id}`, lightHex) : base[role]!;
+        (variantRoles[role] ??= {})[id] = { value, dark: darkHex ? addPrimitive(`${chosen[role]!.id}-${id}-dark`, darkHex) : value };
+      }
+    }
+    // The roles that follow another role, as in the default palette.
+    const follows: [string, string][] = [["surface-raised", "surface"], ["focus", "action-primary"], ["text-inverse", "background"]];
+    for (const [role, source] of follows) if (variantRoles[source]) variantRoles[role] = variantRoles[source]!;
+    for (const role of ["action-primary", "success", "warning", "danger", "info"]) {
+      if (!variantRoles[role]) continue;
+      const on = (name: string) => (onColor(hexOf(name)) === WHITE ? "white" : "ink");
+      variantRoles[`on-${role}`] = Object.fromEntries(Object.entries(variantRoles[role]!).map(([id, x]) => [id, { value: on(x.value), dark: on(x.dark) }]));
+    }
+  }
+
   const color: Record<string, unknown> = { $type: "color" };
   const order = [
     "background", "surface", "surface-raised", "border", "text-primary", "text-secondary", "text-inverse", "action-primary",
@@ -694,7 +745,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   for (const role of order) {
     const alias = `{primitive.color.${base[role]}}`;
     const dark = darkBase[role] ? `{primitive.color.${darkBase[role]}}` : alias;
-    color[role] = { $value: alias, $extensions: { "dev.motif": { modes: { dark } } } };
+    const own = variantRoles[role];
+    const variants = own ? Object.fromEntries(Object.entries(own).map(([id, x]) => [id, { value: `{primitive.color.${x.value}}`, dark: `{primitive.color.${x.dark}}` }])) : undefined;
+    color[role] = { $value: alias, $extensions: { "dev.motif": { modes: { dark }, ...(variants ? { variants } : {}) } } };
   }
 
   // Spacing: the standard 4px scale.
@@ -754,11 +807,13 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     : [120, 200, 320];
   const standard = occ.easing[0]?.value.match(/\(([^)]*)\)/)?.[1]?.split(",").map((n) => Number(n.trim())) ?? [0.2, 0, 0, 1];
 
+  const designVariants = variantIds.length > 0 ? ["default", ...variantIds].map((id) => ({ id, label: id[0]!.toUpperCase() + id.slice(1) })) : [];
   const tokens: Record<string, unknown> = {
     $extensions: {
       "dev.motif": {
         motifContract: 1,
         pairs: pairsExtension(),
+        ...(variantIds.length > 0 ? { variants: designVariants.map((v, i) => ({ id: v.id, label: v.label, ...(i === 0 ? { default: true } : {}) })) } : {}),
       },
     },
     primitive: {
@@ -788,8 +843,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     const fits = BASE_ROLES.filter((r) => inCluster(chosen[r], v.light));
     const byName = follow ? fits.find((r) => ROLE_NAMES.some((e) => e.role === r && nameScore(v.name, e) >= 0)) : undefined;
     const role = byName ?? fits.find((r) => ROLE_CONTEXT[r] === colorContext(v.name)) ?? fits[0];
-    return { name: v.name, light: v.light, ...(v.dark ? { dark: v.dark } : {}), ...(role ? { role: `color.${role}` } : {}) };
+    return { name: v.name, light: v.light, ...(v.dark ? { dark: v.dark } : {}), ...(role ? { role: `color.${role}` } : {}), ...(v.variants ? { variants: v.variants } : {}) };
   });
+  if (designVariants.length > 0) {
+    notes.push(`Your CSS sets ${designVariants.length} design variants (${designVariants.map((v) => v.id).join(", ")}): the :root colours are the default, and each other block's colours are on the roles they match. Review them, and rename the variants.`);
+  }
   if (variables.length) {
     notes.push(`Your CSS sets ${variables.length} colour ${variables.length === 1 ? "variable" : "variables"}; design/extract-report.json shows the role each matches, so you can define them from Motif's (--bg: var(--motif-color-background)).`);
   }
@@ -815,6 +873,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     easings: occ.easing,
     unresolved,
     variables,
+    ...(designVariants.length > 0 ? { designVariants } : {}),
     notes,
   };
   return { tokens, report };

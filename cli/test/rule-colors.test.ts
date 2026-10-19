@@ -34,6 +34,31 @@ describe("raw-color in CSS", () => {
   });
 });
 
+describe("raw-color in a variant's block", () => {
+  const hitsIn = (css: string) => scanColors(file("a.css", css)).map((h) => [h.value, h.variant, h.scheme]);
+  test("a hex inside [data-gender=\"male\"] is a finding tagged with the variant", () => {
+    const [root, male] = scanColors(file("a.css", ':root { --accent: #112233 }\n[data-gender="male"] { --accent: #0e5c4d }'));
+    expect(root!.variant).toBeUndefined();
+    expect(male).toMatchObject({ rule: "raw-color", value: "#0e5c4d", variant: "male", violation: true });
+  });
+  test("classes on the root, and the variant's dark values", () => {
+    expect(hitsIn(".theme-men { --a: #111111 }\nhtml.women { --a: #222222 }")).toEqual([["#111111", "men", undefined], ["#222222", "women", undefined]]);
+    expect(hitsIn('@media (prefers-color-scheme: dark) { [data-variant="men"] { --a: #333333 } }')).toEqual([["#333333", "men", "dark"]]);
+    expect(hitsIn('[data-variant="men"].dark { --a: #444444 }')).toEqual([["#444444", "men", "dark"]]);
+  });
+  test("other rules and light/dark switches are not variants", () => {
+    const css = [
+      '[data-theme="dark"] { --a: #111111 }',
+      ".card { --a: #222222 }",
+      '[data-variant="men"] .card { --a: #333333 }',
+      '[data-variant="men"] { color: #444444 }',
+    ].join("\n");
+    expect(hitsIn(css)).toEqual([
+      ["#111111", undefined, "dark"], ["#222222", undefined, undefined], ["#333333", undefined, undefined], ["#444444", undefined, undefined],
+    ]);
+  });
+});
+
 describe("raw-color in scripts", () => {
   test("style objects: hex and named colours", () => {
     expect(values("a.tsx", '<p style={{ color: "#fff", backgroundColor: "white" }} />')).toEqual([

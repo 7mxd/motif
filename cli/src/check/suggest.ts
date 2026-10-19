@@ -1,5 +1,8 @@
 // The closest role for a size that isn't on the guide's scale: what motif check suggests when it groups repeats.
-import type { Theme } from "../generate/theme";
+import { formatHex } from "culori";
+import { parseColor } from "../extract/cluster";
+import { cssColor } from "../generate/css-values";
+import type { Theme, ThemeVariant } from "../generate/theme";
 import type { Hit } from "./types";
 
 // Tailwind's default text sizes and corner sizes, for its classes (text-sm, rounded-xl); Tailwind 3's corners are smaller.
@@ -17,12 +20,33 @@ function nearest<T extends { name: string }>(roles: T[], px: number, size: (r: T
   return roles.filter((r) => Math.abs(size(r) - px) === best).slice(0, 2);
 }
 
+/** A colour as #rrggbb (with alpha when it has some), so two spellings of one colour compare equal. */
+function normalHex(value: string): string | undefined {
+  const c = parseColor(value);
+  return c ? formatHex(c)?.toLowerCase() : undefined;
+}
+
+/**
+ * For a colour set in a variant's block: the role that variant gives that colour, and what to do about it. Nothing when the
+ * guide has no such variant, or none of its roles has the colour.
+ */
+function variantColorHint(hit: Hit, variants: ThemeVariant[]): string | undefined {
+  const variant = variants.find((v) => v.id === hit.variant);
+  const wanted = normalHex(hit.value ?? "");
+  if (!variant || !wanted) return undefined;
+  const dark = hit.scheme === "dark";
+  const role = variant.theme.colors.find((c) => normalHex(cssColor(dark ? c.dark : c.light)) === wanted);
+  if (!role) return undefined;
+  return `This is the ${variant.label} variant's ${dark ? "dark " : ""}${role.name}: use var(--motif-color-${role.name}) and set data-variant="${variant.id}".`;
+}
+
 /**
  * "text-label (14px)", "p-6 (24px) or p-8 (32px)", or a CSS variable outside classes; nothing for other problems. A
  * class keeps its variants (md:p-6). On Tailwind 3, which has no theme classes for Motif's roles, text sizes and corners
  * use the variables as arbitrary values.
  */
-export function suggestRole(hit: Hit, theme: Theme, opts: { tailwind3?: boolean } = {}): string | undefined {
+export function suggestRole(hit: Hit, theme: Theme, opts: { tailwind3?: boolean; variants?: ThemeVariant[] } = {}): string | undefined {
+  if (hit.kind === "color" && hit.variant) return variantColorHint(hit, opts.variants ?? []);
   const [, variants = "", base = hit.text] = hit.text.match(/^((?:[\w-]+:)*!?)(.*)$/) ?? [];
   const cls = CLASS.test(base);
   const prefix = cls ? variants + base.replace(/-(?:\[[^\]]+\]|[^-]+)$/, "-") : "";

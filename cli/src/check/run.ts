@@ -142,8 +142,10 @@ export function checkApp(root: string, app: AppInfo, theme: Theme, opts: { paths
   const scanned = expandHtml(files).flatMap((f) => scanFile(f, scale, { tailwind: !plain, v3Roles }));
   for (const found of [...scanned, ...appWide]) {
     if (!found.violation) continue;
-    const suggestion = suggestRole(found, theme, { tailwind3: tailwindVersion === "v3" });
-    const hit = { ...found, ...(plain ? { fix: plainFix(found) } : {}), ...(suggestion ? { suggestion } : {}) };
+    const suggestion = suggestRole(found, theme, { tailwind3: tailwindVersion === "v3", variants: opts.variants });
+    // A colour in a variant's block gets a hint naming the variant (it's the fix itself, not a "closest" role).
+    const variantHint = found.kind === "color" && found.variant ? suggestion : undefined;
+    const hit = { ...found, ...(plain ? { fix: plainFix(found) } : {}), ...(variantHint ? { fix: variantHint } : suggestion ? { suggestion } : {}) };
     const ex = exceptionFor(lines.get(hit.file) ?? [], hit.line);
     if (ex && "reason" in ex) exceptions.push({ ...hit, reason: ex.reason });
     else if (ex) violations.push({ ...hit, fix: `${hit.fix} (A "motif-ok" comment needs a reason, e.g. "motif-ok: required by the partner's brand guide".)` });

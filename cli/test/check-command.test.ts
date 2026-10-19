@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runCheck } from "../src/commands/check";
 import { runTokens } from "../src/commands/tokens";
-import { FIXTURES } from "./helpers";
+import { FIXTURES, hexColor, twoVariantTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -212,5 +212,19 @@ describe("runCheck: the review of batch C2", () => {
     expect(by("font-display")).toMatchObject({ rule: "tailwind-palette", kind: "font-family", value: "display" });
     expect(by("ease-standard")).toMatchObject({ rule: "tailwind-palette", kind: "easing", value: "standard" });
     for (const h of r.data.violations as any[]) expect(h.fix).not.toMatch(/\b(?:bg-action-primary|text-text-secondary|text-body|font-body|ease-standard)\b(?!\])/);
+  });
+
+  test("a colour in a variant's block names the variant and its role", async () => {
+    const tokens = twoVariantTokens();
+    tokens.color["action-primary"].$extensions = { "dev.motif": { ...(tokens.color["action-primary"].$extensions?.["dev.motif"] ?? {}), variants: { men: { value: hexColor("#0E5C4D"), dark: hexColor("#5CC9B3") } } } };
+    const css = ':root { --accent: #ff0000 }\n[data-variant="men"] { --accent: #0e5c4d; --card: #777777 }\n[data-variant="men"].dark { --accent: #5cc9b3 }\n';
+    const r = await runCheck(project({ "design/tokens.json": JSON.stringify(tokens), "src/index.css": css }), ctx());
+    const hit = (value: string) => (r.data.violations as any[]).find((h) => h.value === value);
+    expect(hit("#0e5c4d")).toMatchObject({ variant: "men", fix: `This is the Men variant's action-primary: use var(--motif-color-action-primary) and set data-variant="men".` });
+    expect(hit("#5cc9b3").fix).toBe(`This is the Men variant's dark action-primary: use var(--motif-color-action-primary) and set data-variant="men".`);
+    // No role has that colour in the variant: the usual advice, still tagged.
+    expect(hit("#777777")).toMatchObject({ variant: "men" });
+    expect(hit("#777777").fix).toContain("Use a theme colour");
+    expect(hit("#ff0000").variant).toBeUndefined();
   });
 });

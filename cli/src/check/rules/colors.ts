@@ -1,5 +1,5 @@
 import { locator } from "../../text";
-import { darkRanges } from "../dark";
+import { darkRanges, variantAt, variantRanges } from "../dark";
 import type { SourceFile } from "../files";
 import { inRanges, maskComments, rangesOf } from "../mask";
 import { makeHit, type Hit } from "../types";
@@ -127,7 +127,7 @@ export function scanColors(source: SourceFile): Hit[] {
   const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
   const hits: Hit[] = [];
-  const add = (index: number, literal: string, context: string, extra: Pick<Hit, "prop" | "scheme" | "page"> = {}) =>
+  const add = (index: number, literal: string, context: string, extra: Pick<Hit, "prop" | "scheme" | "page" | "variant"> = {}) =>
     hits.push(makeHit(file, at, index, {
       rule: "raw-color",
       text: literal,
@@ -142,6 +142,7 @@ export function scanColors(source: SourceFile): Hit[] {
 
   if (file.lang === "css") {
     const dark = [...darkRanges(file.text), ...(source.dark ?? [])];
+    const variants = variantRanges(file.text);
     // The selector of the rule each declaration is in (from the previous "{", "}" or ";" back to its "{"); none when the
     // rule closed before it (an HTML page's style="" after its <style> block).
     const selectorAt = (index: number) => {
@@ -163,10 +164,11 @@ export function scanColors(source: SourceFile): Hit[] {
       const pair = prop.startsWith("--") ? lightDarkArgs(whole) : null;
       const page = /^background(-color)?$/i.test(prop) && isPageSelector(selectorAt(m.index!));
       // Each colour's own position: light-dark()'s second colour is its dark one.
-      const extra = (literal: string, at: number): Pick<Hit, "prop" | "scheme" | "page"> => ({
+      const extra = (literal: string, at: number): Pick<Hit, "prop" | "scheme" | "page" | "variant"> => ({
         ...(prop.startsWith("--") && (literal === whole || pair?.includes(literal)) ? { prop } : {}),
         ...(inRanges(at, dark) ? { scheme: "dark" as const } : {}),
         ...(page ? { page: true } : {}),
+        ...(variantAt(at, variants) ? { variant: variantAt(at, variants) } : {}),
       });
       for (const c of value.matchAll(CSS_COLOR_LITERAL)) add(start + c.index!, c[0], context, extra(c[0], start + c.index!));
       if (CSS_COLOR_PROP.test(prop)) for (const n of value.matchAll(CSS_NAMED)) add(start + n.index!, n[0], context, extra(n[0], start + n.index!));

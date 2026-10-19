@@ -318,4 +318,46 @@ describe("the review of batch C2", () => {
       })).toEqual(["#F2F2F7", "#0A0A0A"]);
     }
   });
+
+  test("blocks that set a variant's colours become variants of the draft", async () => {
+    const page = [
+      "<!doctype html><style>",
+      "  :root { --bg: #ffffff; --text: #111111; --accent: #c2410c; }",
+      '  [data-gender="female"] { --accent: #be185d; --bg: #fdf2f8; }',
+      '  [data-gender="male"] { --accent: #0e5c4d; }',
+      '  @media (prefers-color-scheme: dark) { [data-gender="male"] { --accent: #5cc9b3; } }',
+      "  body { background: var(--bg); color: var(--text); } button { background: var(--accent); }",
+      "</style>",
+    ].join("\n");
+    const root = makeProject({ "public/index.html": page });
+    expect((await runExtract(root, { positionals: [] })).exitCode).toBe(0);
+    const tokens = read(root, "design/tokens.draft.json");
+    expect(tokens.$extensions["dev.motif"].variants).toEqual([
+      { id: "default", label: "Default", default: true },
+      { id: "female", label: "Female" },
+      { id: "male", label: "Male" },
+    ]);
+    const prim = (alias: string) => tokens.primitive.color[alias.match(/^\{primitive\.color\.(.+)\}$/)![1]!].$value.hex;
+    const accent = tokens.color["action-primary"].$extensions["dev.motif"].variants;
+    expect(Object.keys(accent)).toEqual(["female", "male"]);
+    expect([prim(accent.female.value), prim(accent.female.dark)]).toEqual(["#BE185D", "#BE185D"]);
+    expect([prim(accent.male.value), prim(accent.male.dark)]).toEqual(["#0E5C4D", "#5CC9B3"]);
+    expect(prim(tokens.color.background.$extensions["dev.motif"].variants.female.value)).toBe("#FDF2F8");
+    expect(tokens.color.background.$extensions["dev.motif"].variants.male).toBeUndefined();
+    // The default palette is the :root one, untouched by the variants.
+    expect(hex(tokens, "action-primary", "light")).toBe("#C2410C");
+    const report = read(root, "design/extract-report.json");
+    expect(report.designVariants).toEqual([{ id: "default", label: "Default" }, { id: "female", label: "Female" }, { id: "male", label: "Male" }]);
+    expect(report.variables).toContainEqual({ name: "--accent", light: "#c2410c", role: "color.action-primary", variants: { female: { light: "#be185d" }, male: { light: "#0e5c4d", dark: "#5cc9b3" } } });
+    expect(report.notes.join("\n")).toContain("3 design variants (default, female, male)");
+  });
+
+  test("a site with no variant blocks drafts without any variants", async () => {
+    const root = makeProject({ "public/index.html": XBLOOM_LIKE });
+    await runExtract(root, { positionals: [] });
+    const tokens = read(root, "design/tokens.draft.json");
+    expect(tokens.$extensions["dev.motif"].variants).toBeUndefined();
+    expect(JSON.stringify(tokens)).not.toContain('"variants"');
+    expect(read(root, "design/extract-report.json").designVariants).toBeUndefined();
+  });
 });

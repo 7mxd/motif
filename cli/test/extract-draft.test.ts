@@ -235,3 +235,36 @@ describe("buildDraft: surfaces and borders (backlog 85, HiSalon)", () => {
     expect((r.colors as any[]).find((c) => c.id === r.roles["color.border"])?.hex).toBe("#E5E7EB");
   });
 });
+
+describe("buildDraft with design variants", () => {
+  const css = [
+    ":root { --accent: #c2410c; --bg: #ffffff; --text: #111111 }",
+    '[data-variant="men"] { --accent: #0e5c4d; --bg: #f1f5f4 }',
+    '[data-variant="men"].dark { --accent: #5cc9b3 }',
+    "body { background: var(--bg); color: var(--text) } button { background: var(--accent) }",
+  ].join("\n");
+  const found = collectOccurrences([{ path: "a.css", abs: "", lang: "css", text: css }], null, () => false, () => true);
+
+  test("collects a variant's values on the variable, apart from the default's", () => {
+    expect(found.variables!.find((v) => v.name === "--accent")).toEqual({ name: "--accent", light: "#c2410c", variants: { men: { light: "#0e5c4d", dark: "#5cc9b3" } } });
+    expect(values(found.colors)).not.toContain("#0e5c4d");
+  });
+
+  test("the draft declares the variants and stays a valid guide", () => {
+    const { tokens } = buildDraft(found);
+    const t = tokens as any;
+    expect(t.$extensions["dev.motif"].variants).toEqual([{ id: "default", label: "Default", default: true }, { id: "men", label: "Men" }]);
+    expect(Object.keys(t.color["action-primary"].$extensions["dev.motif"].variants)).toEqual(["men"]);
+    // Roles that follow another role follow it in the variant too.
+    expect(t.color.focus.$extensions["dev.motif"].variants.men).toEqual(t.color["action-primary"].$extensions["dev.motif"].variants.men);
+    const doc = docFrom(tokens);
+    expect(validateTokens(doc)).toEqual([]);
+    expect(checkRoles(doc)).toEqual([]);
+  });
+
+  test("without variant blocks nothing about variants is drafted", () => {
+    const { tokens, report } = buildDraft(occ);
+    expect(JSON.stringify(tokens)).not.toContain("variants");
+    expect(report.designVariants).toBeUndefined();
+  });
+});

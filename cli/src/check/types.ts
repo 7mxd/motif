@@ -28,6 +28,8 @@ export interface Hit {
   prop?: string;
   /** "dark" for colours set inside a dark-mode block. */
   scheme?: "dark";
+  /** The design variant whose block sets this colour ([data-variant="men"] { --accent: … }). */
+  variant?: string;
   /** For backgrounds: set on the page itself (html, body, :root), not on a card or a button. */
   page?: true;
   /** For grouped output: the closest role to use instead (motif check). */

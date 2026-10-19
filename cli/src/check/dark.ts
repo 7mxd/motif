@@ -77,3 +77,68 @@ export function darkRanges(css: string): [number, number][] {
   }
   return [...ranges, ...lightDarkRanges(css)];
 }
+
+// ---------- design variants ----------
+// A block that sets a variant: its selector is one thing on the page itself — an attribute with a value ([data-variant="men"],
+// [data-gender=male]) or a class (.theme-men, html.men, :root.men) — and it redefines custom properties.
+const NOT_VARIANT_ATTR = /^data-(?:theme|mode|color-scheme|bs-theme|color-mode|state)$/i;
+const NOT_VARIANT_VALUE = /^(?:light|dark|auto|system)$/i;
+const ROOT_TAGS = /^(?:html|body|:root)$/i;
+
+/** A variant id as the design guide spells it: lower-case, kebab-case. */
+export function variantId(raw: string): string {
+  const id = raw.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  return /^[a-z]/.test(id) ? id : `v-${id}`;
+}
+
+/** The variant one selector asks for, or undefined (a dark/light switch, a descendant, a plain class). */
+function selectorVariant(selector: string): string | undefined {
+  const rest = withoutNot(selector.trim());
+  // One compound selector: no spaces or combinators outside the brackets.
+  if (!rest || /[\s>+~]/.test(rest.replace(/\[[^\]]*\]/g, ""))) return undefined;
+  const tag = rest.match(/^(?:html|body|:root)(?![\w-])/i)?.[0];
+  let found: string | undefined;
+  for (const m of rest.matchAll(/\[\s*([\w-]+)\s*=\s*["']?([^"'\]\s]+)["']?\s*\]/g)) {
+    if (!/^data-/i.test(m[1]!) || NOT_VARIANT_ATTR.test(m[1]!) || NOT_VARIANT_VALUE.test(m[2]!)) continue;
+    found ??= m[2]!;
+  }
+  if (found) return variantId(found);
+  for (const m of rest.matchAll(/\.([\w-]+)/g)) {
+    const name = m[1]!;
+    if (/^(?:dark|light)(?:-mode|-theme)?$/i.test(name) || /^dark|night/i.test(name)) continue;
+    // A bare class names a variant only as theme-<id>; on html, body or :root any class does.
+    if (/^theme-./i.test(name)) return variantId(name.replace(/^theme-/i, ""));
+    if (tag && ROOT_TAGS.test(tag)) return variantId(name);
+  }
+  return undefined;
+}
+
+/** The blocks that set a design variant's custom properties, with the variant's id. */
+export function variantRanges(css: string): { id: string; range: [number, number] }[] {
+  const out: { id: string; range: [number, number] }[] = [];
+  for (let i = 0; i < css.length; i++) {
+    if (css[i] !== "{") continue;
+    let s = i - 1;
+    while (s >= 0 && css[s] !== "{" && css[s] !== "}" && css[s] !== ";") s--;
+    const selector = css.slice(s + 1, i).trim();
+    if (!selector || selector.startsWith("@")) continue;
+    const end = blockEnd(css, i);
+    // It must redefine custom properties.
+    if (!/(?:^|[;{\s])--[\w-]+\s*:/.test(css.slice(i + 1, end))) continue;
+    for (const item of selector.split(",")) {
+      const id = selectorVariant(item);
+      if (id) {
+        out.push({ id, range: [i, end] });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/** The id of the variant block a place is in, if any (the innermost). */
+export function variantAt(index: number, ranges: { id: string; range: [number, number] }[]): string | undefined {
+  let best: { id: string; range: [number, number] } | undefined;
+  for (const r of ranges) if (index >= r.range[0] && index < r.range[1] && (!best || r.range[0] > best.range[0])) best = r;
+  return best?.id;
+}
