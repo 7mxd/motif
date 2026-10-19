@@ -16,7 +16,8 @@ function run(cmd: string[], cwd: string): { code: number; out: string } {
 const mobile = { route: "/", width: 390, height: 844, dpr: 2, safeTop: 47, safeBottom: 34, locale: "en" };
 
 describe("the Flutter screenshot harness (decision 0007)", () => {
-  test.skipIf(!hasFlutter())("renders flutter-min's home in light and dark with flutter test", async () => {
+  // Needs the Flutter SDK on the PATH (bun's skipIf takes no reason, so the name says it).
+  test.skipIf(!hasFlutter())("renders flutter-min's home in light and dark with flutter test (skipped without Flutter)", async () => {
     const flutter = Bun.which("flutter")!;
     const app = tempDir("motif-flutter-");
     cpSync(join(FIXTURES, "flutter-min"), app, {

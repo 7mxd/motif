@@ -7,4 +7,3 @@ skill/bin/motif text eol=lf
 cli/vendor/** -text
 cli/test/fixtures/generated-baseline/** -text
 *.ttf binary
-*.otf binary

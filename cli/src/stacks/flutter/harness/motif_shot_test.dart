@@ -41,6 +41,8 @@ void main() {
     for (final font in (config['fonts'] as List).cast<Map<String, dynamic>>()) {
       final loader = FontLoader(font['family'] as String);
       for (final path in (font['files'] as List).cast<String>()) {
+        // Motif checks the files before the run; one that has gone since is skipped rather than failing every shot.
+        if (!File(path).existsSync()) continue;
         loader.addFont(File(path).readAsBytes().then((bytes) => ByteData.sublistView(bytes)));
       }
       await loader.load();
