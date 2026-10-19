@@ -105,6 +105,8 @@ export interface RouteResult {
   shots: string[];
   /** Set when the audit of this page couldn't finish. */
   auditError?: string;
+  /** Set when the page didn't turn right to left by itself in the --rtl language, so Motif set dir="rtl" on <html>. */
+  rtlForced?: boolean;
 }
 
 export interface CaptureOptions {
@@ -124,6 +126,11 @@ export interface CaptureOptions {
   viewports?: Viewport[];
   /** Design variants to capture besides the default (always captured): each page again with data-variant set on <html>. */
   variants?: string[];
+  /**
+   * Also capture each page right to left, in this language (a BCP 47 primary tag such as "ar"): the page loads in that
+   * locale, and gets dir="rtl" from Motif when it doesn't turn right to left by itself.
+   */
+  rtl?: string;
 }
 
 export function routeSlug(route: string): string {
@@ -140,9 +147,12 @@ export function routeUrl(base: string, route: string): string {
   return url.toString();
 }
 
-/** index.mobile.png; in a variant, index+men.mobile.png (after the state: index@sent+men.mobile.dark.png). */
-export function shotName(slug: string, viewport: string, scheme: Scheme, variant?: string): string {
-  return `${slug}${variant ? `+${variant}` : ""}.${viewport}${scheme === "dark" ? ".dark" : ""}.png`;
+/**
+ * index.mobile.png; in a variant, index+men.mobile.png (after the state: index@sent+men.mobile.dark.png); right to left,
+ * .rtl after the size and before .dark (home@filled+men.mobile.rtl.dark.png).
+ */
+export function shotName(slug: string, viewport: string, scheme: Scheme, variant?: string, rtl?: boolean): string {
+  return `${slug}${variant ? `+${variant}` : ""}.${viewport}${rtl ? ".rtl" : ""}${scheme === "dark" ? ".dark" : ""}.png`;
 }
 
 // The Next.js dev badge isn't part of the app.
@@ -228,7 +238,9 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
               { name: "prefers-color-scheme", value: scheme },
               { name: "prefers-reduced-motion", value: "reduce" },
             ];
-            for (const variant of [undefined, ...(opts.variants ?? [])]) {
+            // Each variant left to right and, with --rtl, right to left in that language.
+            const looks = [undefined, ...(opts.variants ?? [])].flatMap((variant) => [undefined, ...(opts.rtl ? [opts.rtl] : [])].map((lang) => ({ variant, lang })));
+            for (const { variant, lang } of looks) {
               for (const state of [undefined, ...(opts.states ?? [])]) {
                 const tag = (message: string) => (state ? `State "${state.name}": ${message}` : message);
                 // An error the page threw on its own (already reported, untagged, from the plain screenshot) isn't the
@@ -240,6 +252,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                 try {
                   await page.setViewport(viewport.width, viewport.height, viewport.scale, viewport.mobile);
                   await page.emulateMedia(media);
+                  if (lang) await page.emulateLocale(lang);
                   try {
                     await page.goto(url, stuck ? Math.min(timeoutMs, 2000) : timeoutMs);
                     // It loaded this time: later screenshots wait for it in full again.
@@ -256,6 +269,11 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   // What the page threw as it loaded is the page's own error, the same in every state: not tagged.
                   const loadErrors = page.takeErrors();
                   addErrors(loadErrors);
+                  if (lang && !(await page.evaluate<boolean>(`getComputedStyle(document.documentElement).direction === "rtl"`))) {
+                    // The page didn't turn right to left by itself in that language: Motif turns it, and says so.
+                    await page.evaluate(`(() => { const html = document.documentElement; html.dir = "rtl"; html.lang = ${JSON.stringify(lang)}; return true; })()`);
+                    result.rtlForced = true;
+                  }
                   if (variant) {
                     // The variant is chosen on <html>, after load and before any state runs; its fonts may differ.
                     await page.evaluate(`document.documentElement.dataset.variant = ${JSON.stringify(variant)}; Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 500 : 2000}))]).then(() => true)`);
@@ -281,7 +299,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   if (fullHeight > MAX_HEIGHT) result.cropped = true;
                   // Where the page was scrolled to (a state can scroll something into view): comparisons frame that screen.
                   const top = Math.round(await page.evaluate<number>("scrollY"));
-                  const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.file ?? viewport.name, scheme, variant));
+                  const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.file ?? viewport.name, scheme, variant, Boolean(lang)));
                   const png = await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) });
                   const screen: Screen = { width: viewport.width, top, height: viewport.height };
                   writeFileSync(file, addPngText(png, SCREEN_KEY, JSON.stringify(screen)));
@@ -289,7 +307,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   if (opts.audit) {
                     try {
                       const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
-                      for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, size: viewport.file ?? viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}), ...(variant ? { variant } : {}) });
+                      for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, size: viewport.file ?? viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}), ...(variant ? { variant } : {}), ...(lang ? { rtl: true as const } : {}) });
                     } catch (e) {
                       result.auditError = e instanceof Error ? e.message : String(e);
                     }

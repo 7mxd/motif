@@ -49,12 +49,13 @@ Validate options:
 Shot options:
   --url <address>   Use an app that's already running instead of starting it
   --routes <list>   Pages to capture, e.g. /,/settings (default: found from your app)
-  --audit           Also check contrast, tap-target sizes and reduced motion as rendered
+  --audit           Also check contrast, tap-target sizes, reduced motion and accessible names as rendered
   --save <name>     Keep these screenshots as a named set, e.g. --save before
   --against <what>  Side by side with a saved set (after a rebuild) or a mockup (while building)
   --state <file.js> Also capture each page after this script runs in it (a state behind a form or a click); repeat for more
   --variant <id|all>  Also capture one design variant (index+men.mobile.png), or all of them; --audit alone covers every variant
   --sizes <list>    Only some sizes, for a quick run: widths (360, 390, 430, 768, 1440) or phones, tablet, desktop
+  --rtl [<lang>]    Also capture each page right to left (index.mobile.rtl.png), in this language (default: ar)
 
 Tokens options:
   --stack preview   Write only the CSS mockups use (design/previews/motif.css)
@@ -77,11 +78,43 @@ const COMMANDS: Record<string, Runner> = {
 /** Every command the tool has (the skill's content test checks that the skill only mentions these). */
 export const COMMAND_NAMES = Object.keys(COMMANDS);
 
+/**
+ * --rtl takes an optional value, which parseArgs can't express: it's taken out of the arguments here. The argument
+ * after it is its value unless it's an option (starts with -), looks like a path (has /, \ or .), or names a command;
+ * --rtl=<lang> works too. Whether the value is a language is for shot to say.
+ */
+export function readRtlFlag(argv: string[]): { args: string[]; rtl?: string | true } {
+  const args: string[] = [];
+  let rtl: string | true | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === "--") {
+      args.push(...argv.slice(i));
+      break;
+    }
+    if (arg.startsWith("--rtl=")) {
+      rtl = arg.slice("--rtl=".length);
+    } else if (arg === "--rtl") {
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith("-") && !/[/\\.]/.test(next) && !Object.hasOwn(COMMANDS, next)) {
+        rtl = next;
+        i++;
+      } else {
+        rtl = true;
+      }
+    } else {
+      args.push(arg);
+    }
+  }
+  return { args, ...(rtl !== undefined ? { rtl } : {}) };
+}
+
 export async function main(argv: string[]): Promise<number> {
+  const { args, rtl } = readRtlFlag(argv);
   let parsed;
   try {
     parsed = parseArgs({
-      args: argv,
+      args,
       allowPositionals: true,
       strict: true,
       options: {
@@ -159,6 +192,7 @@ export async function main(argv: string[]): Promise<number> {
         against: values.against,
         state: values.state,
         sizes: values.sizes,
+        rtl,
         tokens: values.tokens,
         agent: values.agent,
       },

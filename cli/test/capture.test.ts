@@ -26,6 +26,10 @@ describe("names and addresses", () => {
   test("shotName", () => {
     expect(shotName("index", "mobile", "light")).toBe("index.mobile.png");
     expect(shotName("index", "desktop", "dark")).toBe("index.desktop.dark.png");
+    // Right to left comes after the size and before .dark.
+    expect(shotName("home@filled", "mobile", "dark", "men", true)).toBe("home@filled+men.mobile.rtl.dark.png");
+    expect(shotName("index", "mobile-360", "light", undefined, true)).toBe("index.mobile-360.rtl.png");
+    expect(shotName("index", "mobile", "light", undefined, false)).toBe("index.mobile.png");
   });
 });
 

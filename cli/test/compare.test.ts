@@ -5,7 +5,7 @@ import { launchBrowser } from "../src/browser/cdp";
 import { addPngText, pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 import { shotName } from "../src/shot/capture";
-import { comparePage, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
+import { comparePage, identicalVariantNotes, identicalVariants, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -322,5 +322,66 @@ describe("variants", () => {
     ]);
     expect(pairs.map((p) => p.fallback ?? false)).toEqual([false, true, false]);
     expect(added).toEqual([]);
+  });
+});
+
+describe("right to left", () => {
+  const names = (dir: string, pairs: { before: string; after: string }[]) => pairs.map((p) => [p.before.slice(dir.length + 1), p.after.slice(dir.length + 1)]);
+
+  test("names with .rtl are right-to-left shots; their state, variant and size read as before", () => {
+    expect(isRtlShot("home@filled+men.mobile.rtl.dark.png")).toBe(true);
+    expect(isRtlShot(join("shots", "index.mobile-360.rtl.png"))).toBe(true);
+    expect(isRtlShot("index.mobile.dark.png")).toBe(false);
+    expect(isRtlShot("rtl.mobile.png")).toBe(false);
+  });
+
+  test("a saved set: RTL shots pair by name (a variant's with the default's RTL shot), never with left-to-right ones", () => {
+    const dir = tempDir("motif-pairs-");
+    mkdirSync(join(dir, "before"));
+    for (const f of ["index.mobile.png", "index.mobile.rtl.png", "index.mobile.rtl.dark.png"]) writeFileSync(join(dir, "before", f), "x");
+    const shots = ["index.mobile.rtl.png", "index+men.mobile.rtl.dark.png", "about.mobile.rtl.png"].map((f) => join(dir, f));
+    const { pairs, added } = pairWithSet(shots, join(dir, "before"), join(dir, "compare"));
+    expect(names(dir, pairs)).toEqual([
+      [join("before", "index.mobile.rtl.png"), "index.mobile.rtl.png"],
+      [join("before", "index.mobile.rtl.dark.png"), "index+men.mobile.rtl.dark.png"],
+    ]);
+    expect(pairs.map((p) => [p.variant, p.fallback ?? false])).toEqual([[undefined, false], ["men", true]]);
+    expect(added).toEqual([join(dir, "about.mobile.rtl.png")]);
+  });
+
+  test("a mockup's PNGs never pair with RTL shots, and a state captured only right to left isn't one the run has", () => {
+    const dir = tempDir("motif-mockup-");
+    for (const f of ["home.png", "home@saved.png"]) writeFileSync(join(dir, f), pngHeader(820, 1728));
+    const shots = ["index.mobile.png", "index.mobile.rtl.png", "index@saved.mobile.rtl.png"].map((f) => join(dir, "shots", f));
+    const frames = mockupFrames(join(dir, "home.html"));
+    expect(names(dir, pairWithMockup(frames, shots, join(dir, "compare")))).toEqual([["home.png", join("shots", "index.mobile.png")]]);
+    expect(missingStateFrames(frames, shots)).toEqual(["saved"]);
+  });
+});
+
+describe("variants that look like the default", () => {
+  const write = (dir: string, files: Record<string, string>) =>
+    Object.entries(files).map(([name, content]) => {
+      writeFileSync(join(dir, name), content);
+      return join(dir, name);
+    });
+
+  test("a variant whose every screenshot is byte-identical to the default's of the same screen, size, scheme and direction", () => {
+    const dir = tempDir("motif-same-");
+    const shots = write(dir, {
+      "index.mobile.png": "a", "index.mobile.dark.png": "b", "index.mobile.rtl.png": "c", "index@sent.mobile.png": "d",
+      "index+men.mobile.png": "a", "index+men.mobile.dark.png": "b", "index+men.mobile.rtl.png": "c", "index@sent+men.mobile.png": "d",
+      "index+kids.mobile.png": "a", "index+kids.mobile.dark.png": "B", "index+kids.mobile.rtl.png": "c",
+    });
+    expect(identicalVariants(shots)).toEqual(["men"]);
+    expect(identicalVariantNotes(shots, "data-variant on <html>")).toEqual([
+      "The men variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (data-variant on <html>).",
+    ]);
+  });
+
+  test("nothing to say without variants, or when a variant's screenshot has no default to compare with", () => {
+    const dir = tempDir("motif-same-");
+    expect(identicalVariants(write(dir, { "index.mobile.png": "a", "index.mobile.dark.png": "a" }))).toEqual([]);
+    expect(identicalVariants(write(dir, { "about+men.mobile.png": "a" }))).toEqual([]);
   });
 });

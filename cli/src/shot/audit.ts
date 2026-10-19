@@ -2,7 +2,8 @@ import type { Page } from "../browser/cdp";
 import { AXE_SOURCE } from "./axe";
 import type { Scheme } from "./capture";
 
-export type IssueRule = "color-contrast" | "target-size" | "target-mobile" | "motion";
+/** "name": a control or image with no name a screen reader can say. */
+export type IssueRule = "color-contrast" | "target-size" | "target-mobile" | "motion" | "name";
 
 /** One problem, as the page reports it. */
 export interface RawIssue {
@@ -11,7 +12,7 @@ export interface RawIssue {
   selector: string;
   /** Its visible text or accessible name, shortened. */
   label: string;
-  kind: "link" | "button" | "field" | "element";
+  kind: "link" | "button" | "field" | "image" | "element";
   ratio?: number;
   expected?: number;
   fg?: string;
@@ -32,6 +33,8 @@ export interface AuditIssue extends RawIssue {
   state?: string;
   /** The design variant it was seen in; none for the default. */
   variant?: string;
+  /** Seen right to left (--rtl). */
+  rtl?: true;
 }
 
 export type Severity = "critical" | "major" | "minor";
@@ -46,12 +49,14 @@ export interface Place {
   state?: string;
   /** The design variant, when it isn't the default. */
   variant?: string;
+  /** Seen only right to left (--rtl). */
+  rtl?: true;
 }
 
 export interface ReviewFinding {
   id: string;
   severity: Severity;
-  category: "contrast" | "target-size" | "reduced-motion";
+  category: "contrast" | "target-size" | "reduced-motion" | "accessible-name";
   source: "exact";
   location: Place;
   /** The other places the same problem was found, when there are any. */
@@ -70,7 +75,8 @@ export interface Review {
 }
 
 interface AuditApi {
-  axe(rules: string[]): Promise<RawIssue[]>;
+  /** naming: the rules reported as "name". */
+  axe(rules: string[], naming: string[]): Promise<RawIssue[]>;
   smallTargets(min: number): RawIssue[];
   motion(sampleMs: number): Promise<RawIssue[]>;
 }
@@ -117,17 +123,18 @@ function installAudit(): boolean {
   const describe = (el: Element) => ({ selector: path(el), label: label(el), kind: kind(el) });
 
   const api: AuditApi = {
-    async axe(rules) {
+    async axe(rules, naming) {
       const result = await axe.run(document, { runOnly: { type: "rule", values: rules }, resultTypes: ["violations"] });
       const out: RawIssue[] = [];
       for (const violation of result.violations) {
         for (const node of violation.nodes) {
           const el = node.target.length === 1 ? document.querySelector(node.target[0]) : null;
-          const info = el ? describe(el) : { selector: node.target.join(" >>> "), label: "", kind: "element" as const };
+          const found = el ? describe(el) : { selector: node.target.join(" >>> "), label: "", kind: "element" as const };
+          const info = violation.id === "image-alt" ? { ...found, kind: "image" as const } : found;
           const data = (node.any.find((c: any) => c.id === violation.id) ?? node.any[0] ?? {}).data ?? {};
           const rect = el?.getBoundingClientRect();
           out.push({
-            rule: violation.id,
+            rule: naming.includes(violation.id) ? "name" : violation.id,
             ...info,
             ratio: data.contrastRatio,
             expected: data.expectedContrastRatio ? Number.parseFloat(data.expectedContrastRatio) : undefined,
@@ -212,13 +219,17 @@ function installAudit(): boolean {
 
 const INSTALL_AUDIT = `(${installAudit.toString()})()`;
 
+/** axe's rules for controls, links, fields and images with no name a screen reader can say: one rule here, "name". */
+const NAME_RULES = ["button-name", "link-name", "label", "image-alt"];
+
 /** Audits the page as it is now (loaded and settled, reduced motion emulated). */
 export async function auditPage(page: Page, ctx: { viewport: "mobile" | "desktop"; scheme: Scheme; motionSampleMs?: number }): Promise<RawIssue[]> {
   await page.evaluate(`${AXE_SOURCE}\n;true`);
   await page.evaluate(INSTALL_AUDIT);
   const light = ctx.scheme === "light";
-  const rules = light ? ["color-contrast", "target-size"] : ["color-contrast"];
-  const issues = await page.evaluate<RawIssue[]>(`__motifAudit.axe(${JSON.stringify(rules)})`);
+  // Names at every size and scheme: a page can show other controls in dark mode or on a phone.
+  const rules = light ? ["color-contrast", "target-size", ...NAME_RULES] : ["color-contrast", ...NAME_RULES];
+  const issues = await page.evaluate<RawIssue[]>(`__motifAudit.axe(${JSON.stringify(rules)}, ${JSON.stringify(NAME_RULES)})`);
   if (light && ctx.viewport === "mobile") issues.push(...(await page.evaluate<RawIssue[]>("__motifAudit.smallTargets(44)")));
   if (light && ctx.viewport === "desktop") issues.push(...(await page.evaluate<RawIssue[]>(`__motifAudit.motion(${ctx.motionSampleMs ?? 300})`)));
   return issues;
@@ -266,6 +277,14 @@ function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" |
         fix: 'Stop or simplify this animation under prefers-reduced-motion (React web: MotionConfig reducedMotion="user" at the app root, or Tailwind\'s motion-safe: variant).',
         withScheme: false,
       };
+    case "name":
+      return {
+        severity: "major",
+        category: "accessible-name",
+        summary: `The ${issue.kind} has no name a screen reader can say.`,
+        fix: "Give it a visible label or an accessible name (aria-label, or alt for an image).",
+        withScheme: false,
+      };
   }
 }
 
@@ -286,13 +305,15 @@ const groupKey = (i: AuditIssue) =>
 // Colours differ by variant, so a colour problem in each variant is a place of its own.
 const placeKey = (i: AuditIssue) => `${i.route}|${i.state ?? ""}|${i.selector}${i.rule === "color-contrast" ? `|${i.scheme}|${i.variant ?? ""}` : ""}`;
 
-const placeOf = (i: AuditIssue, withScheme: boolean): Place => ({
+/** rtl: the place was seen only right to left. */
+const placeOf = (i: AuditIssue, withScheme: boolean, rtl: boolean): Place => ({
   screen: i.route,
   selector: i.selector,
   viewport: i.size === "tablet" ? "tablet" : i.viewport,
   ...(withScheme ? { scheme: i.scheme } : {}),
   ...(i.state ? { state: i.state } : {}),
   ...(i.variant ? { variant: i.variant } : {}),
+  ...(rtl ? { rtl: true as const } : {}),
 });
 
 /** Findings in the review format: repeats grouped (each with its places), worst first, numbered F-001, F-002… */
@@ -311,6 +332,9 @@ export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
     const seen = new Set<string>();
     const places = [lead, ...group.filter((i) => i !== lead)].filter((i) => !seen.has(placeKey(i)) && Boolean(seen.add(placeKey(i))));
     const { withScheme, ...verdict } = judge(lead);
+    // A place seen left to right isn't a right-to-left problem, even when it was also seen right to left.
+    const leftToRight = new Set(group.filter((i) => !i.rtl).map(placeKey));
+    const place = (i: AuditIssue) => placeOf(i, withScheme, !leftToRight.has(placeKey(i)));
     const texts = new Set(places.map((i) => `${i.route}|${i.selector}`));
     const labels = [...new Set(places.map((i) => i.label).filter(Boolean))].slice(0, 2).map((l) => `"${l}"`);
     // The same colours failing in both schemes (a badge with fixed colours) say so.
@@ -327,8 +351,8 @@ export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
       severity: verdict.severity,
       category: verdict.category,
       source: "exact",
-      location: placeOf(lead, withScheme),
-      ...(places.length > 1 ? { locations: places.slice(1).map((i) => placeOf(i, withScheme)) } : {}),
+      location: place(lead),
+      ...(places.length > 1 ? { locations: places.slice(1).map(place) } : {}),
       summary,
       fix: verdict.fix,
       shot: lead.shot,

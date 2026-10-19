@@ -9,7 +9,9 @@ import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stack
 import { noSuchApp, selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
 import { captureScreens, describeSizes, MAX_HEIGHT, parseSizes, type RouteResult, type StateScript, type Viewport } from "../shot/capture";
-import { missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison } from "../shot/compare";
+import {
+  identicalVariantNotes, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison,
+} from "../shot/compare";
 import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { startStaticServer, type StaticServer } from "../shot/static-server";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
@@ -156,6 +158,20 @@ export function readStates(cwd: string, value: unknown): StateScript[] | { error
   return states;
 }
 
+/** How Motif sets a design variant on a web page, for the note when a variant looks exactly like the default. */
+export const WEB_VARIANT_HOW = "data-variant on <html>";
+
+/**
+ * --rtl's language: "ar" when it's given alone, else its value lowercased, which must be a BCP 47 primary language
+ * subtag (two or three letters). Nothing without --rtl.
+ */
+export function readRtl(value: unknown): string | undefined | { error: string } {
+  if (value === undefined || value === false) return undefined;
+  if (value === true) return "ar";
+  if (typeof value === "string" && /^[a-z]{2,3}$/i.test(value.trim())) return value.trim().toLowerCase();
+  return { error: "--rtl takes a language code of two or three letters, like --rtl ar or --rtl he (Arabic when none is given)." };
+}
+
 /**
  * The design guide's variants (the default first), read from design/tokens.json; none when it declares none. Broken when
  * its variants block has errors motif validate reports.
@@ -196,6 +212,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if ("error" in sizes) return usage(sizes.error, { error: "usage" });
     viewports = sizes;
   }
+  const rtlFlag = readRtl(flags.rtl);
+  if (typeof rtlFlag === "object") return usage(rtlFlag.error, { error: "usage" });
+  const rtl = rtlFlag;
   const chosen = chooseVariants(cwd, typeof flags.variant === "string" ? flags.variant : undefined, audit);
   if ("error" in chosen) return chosen.error;
   const variants = chosen.variants;
@@ -289,7 +308,10 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if (typeof flags.out !== "string" && !existsSync(ignore)) {
       writeFileSync(ignore, "# Screenshots of the running app (motif shot). Not committed.\n*\n");
     }
-    captured = await deps.capture({ browserPath: browser.path, baseUrl, routes, outDir, audit, states, ...(viewports ? { viewports } : {}), ...(variants.length > 0 ? { variants } : {}) });
+    captured = await deps.capture({
+      browserPath: browser.path, baseUrl, routes, outDir, audit, states,
+      ...(viewports ? { viewports } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
+    });
   } catch (e) {
     return usage(`Couldn't take screenshots: ${message(e)}`, { error: "capture-failed" });
   } finally {
@@ -302,10 +324,14 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const width = Math.max(...captured.routes.map((r) => r.route.length));
   const lines = [
     shots.length > 0
-      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? "page" : "pages"} (${describeSizes(viewports)}, light and dark${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
+      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? "page" : "pages"} (${describeSizes(viewports)}, light and dark${rtl ? `, right to left in ${rtl}` : ""}${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
       : "✗ No screenshots were taken.",
     ...captured.routes.map((r) => routeLine(r, width)),
   ];
+  for (const r of captured.routes.filter((r) => r.rtlForced)) {
+    notes.push(`${r.route} doesn't switch to right to left by itself for ${rtl}; Motif set dir="rtl" to show it.`);
+  }
+  notes.push(...identicalVariantNotes(captured.routes.flatMap((r) => r.shots), WEB_VARIANT_HOW));
 
   let findings: ReviewFinding[] = [];
   let auditFile: string | undefined;
@@ -325,9 +351,10 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       lines.push(`✗ Audit incomplete: it couldn't finish on ${incomplete.map((r) => `${r.route} (${r.auditError})`).join(", ")}.`);
     }
     if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
-    else if (incomplete.length === 0) lines.push(`✓ Audit: no contrast, tap-target or reduced-motion problems found (${auditFile}).`);
+    else if (incomplete.length === 0) lines.push(`✓ Audit: no contrast, tap-target or reduced-motion problems found, and no controls without a name (${auditFile}).`);
     for (const f of findings.slice(0, 15)) {
-      const where = `${f.location.screen}${f.location.state ? ` in "${f.location.state}"` : ""} (${f.location.viewport}${f.location.scheme ? `, ${f.location.scheme}` : ""}${f.location.variant ? `, ${f.location.variant} variant` : ""})`;
+      const l = f.location;
+      const where = `${l.screen}${l.state ? ` in "${l.state}"` : ""} (${l.viewport}${l.scheme ? `, ${l.scheme}` : ""}${l.variant ? `, ${l.variant} variant` : ""}${l.rtl ? ", right to left" : ""})`;
       lines.push(`  ${f.severity.padEnd(8)} ${where} ${f.summary}`);
     }
     if (findings.length > 15) lines.push(`  …and ${findings.length - 15} more in ${auditFile}.`);
@@ -355,6 +382,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       added = paired.added;
     } else {
       pairs = pairWithMockup(against.frames, thisRun, compareDir);
+      if (thisRun.some(isRtlShot)) notes.push("RTL screenshots aren't compared with the mockup, which is left to right.");
       for (const state of missingStateFrames(against.frames, thisRun)) {
         notes.push(`The mockup also shows "${state}", which this run didn't capture: add --state with its script (design/states/${state}.js).`);
       }
@@ -433,6 +461,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       shots,
       skipped: discovery.skipped,
       states: states.map((s) => s.name),
+      ...(rtl ? { rtl } : {}),
       ...(audit ? { findings, audit: auditFile } : {}),
       ...(against
         ? {

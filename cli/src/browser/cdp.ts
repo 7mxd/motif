@@ -15,6 +15,8 @@ export interface Clip {
 export interface Page {
   setViewport(width: number, height: number, scale?: number, mobile?: boolean): Promise<void>;
   emulateMedia(features: { name: string; value: string }[]): Promise<void>;
+  /** Loads pages in this language (a BCP 47 tag): navigator.language, Accept-Language and Intl's formats follow it. */
+  emulateLocale(locale: string): Promise<void>;
   goto(url: string, timeoutMs?: number): Promise<void>;
   /** With timeoutMs, a script still running after that long is stopped and the call fails. */
   evaluate<T = unknown>(expression: string, opts?: { timeoutMs?: number }): Promise<T>;
@@ -348,6 +350,13 @@ export async function launchBrowser(
         },
         async emulateMedia(features) {
           await send("Emulation.setEmulatedMedia", { features }, sessionId);
+        },
+        async emulateLocale(locale) {
+          // The browser's own user agent, unchanged: only the language it asks for (and navigator.language) changes.
+          const { userAgent } = await send("Browser.getVersion");
+          await send("Network.setUserAgentOverride", { userAgent, acceptLanguage: locale }, sessionId);
+          // Intl's formats (dates, numbers). A language ICU doesn't know keeps the default formats; the rest still applies.
+          await send("Emulation.setLocaleOverride", { locale }, sessionId).catch(() => undefined);
         },
         async goto(url, timeoutMs = 30_000) {
           const loaded = waitFor(sessionId, "Page.loadEventFired", timeoutMs);

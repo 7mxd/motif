@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readRtlFlag } from "../src/main";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -96,6 +97,25 @@ describe("main: shot", () => {
   test("is listed in help with its options", () => {
     const help = run("help").stdout.toString();
     for (const word of ["shot", "--url", "--routes", "--audit"]) expect(help).toContain(word);
+  });
+  test("--rtl takes an optional language: not an option or a path that follows it", () => {
+    expect(readRtlFlag(["shot", "--rtl"])).toEqual({ args: ["shot"], rtl: true });
+    expect(readRtlFlag(["shot", "--rtl", "he", "--audit"])).toEqual({ args: ["shot", "--audit"], rtl: "he" });
+    expect(readRtlFlag(["shot", "--rtl=fa"])).toEqual({ args: ["shot"], rtl: "fa" });
+    expect(readRtlFlag(["shot", "--rtl", "--audit"])).toEqual({ args: ["shot", "--audit"], rtl: true });
+    expect(readRtlFlag(["shot", "--rtl", "./app"])).toEqual({ args: ["shot", "./app"], rtl: true });
+    expect(readRtlFlag(["shot", "--rtl", "C:\\app"])).toEqual({ args: ["shot", "C:\\app"], rtl: true });
+    expect(readRtlFlag(["shot", "--rtl", "index.html"])).toEqual({ args: ["shot", "index.html"], rtl: true });
+    expect(readRtlFlag(["--rtl", "shot"])).toEqual({ args: ["shot"], rtl: true });
+    // What isn't a language is still its value, so shot can say what to give.
+    expect(readRtlFlag(["shot", "--rtl", "12"])).toEqual({ args: ["shot"], rtl: "12" });
+    expect(readRtlFlag(["shot", "--audit"])).toEqual({ args: ["shot", "--audit"] });
+  });
+  test("--rtl is listed in help, and a value that isn't a language is a usage error", () => {
+    expect(run("help").stdout.toString()).toContain("--rtl [<lang>]");
+    const r = run("shot", "--rtl", "12", "--url", "http://localhost:1", "--cwd", tempDir("motif-empty-"));
+    expect(r.exitCode).toBe(2);
+    expect(r.stdout.toString()).toContain("--rtl takes a language code");
   });
   test("with no app and no --url it says what to do", () => {
     const r = run("shot", "--cwd", tempDir("motif-empty-"));

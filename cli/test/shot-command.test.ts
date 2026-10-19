@@ -598,4 +598,102 @@ describe("motif shot --variant", () => {
     ]);
     expect(r.text).toContain('The "before" set has no screenshots in the men variant, so those were compared with its default ones.');
   });
+
+  const SAME = "The men variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (data-variant on <html>).";
+
+  test("a variant whose screenshots are byte-identical to the default's says the app may not switch the way Motif sets it (backlog)", async () => {
+    const same = await runShot(withVariants(), ctx({ url: URL_, variant: "men" }), fakes({ results: perVariant }).deps);
+    expect(same.exitCode).toBe(0);
+    expect(same.data.notes).toEqual([SAME]);
+    expect(same.text).toContain(`• ${SAME}`);
+    // The variant's own colours: different bytes, nothing to say.
+    const differ = fakes({
+      capture: async (o) => {
+        const routes = perVariant(o);
+        for (const shot of routes.flatMap((r) => r.shots)) {
+          mkdirSync(dirname(shot), { recursive: true });
+          writeFileSync(shot, shot.includes("+men") ? "men" : "png");
+        }
+        return { routes, issues: [] };
+      },
+    });
+    const r = await runShot(withVariants(), ctx({ url: URL_, variant: "men" }), differ.deps);
+    expect(r.text).not.toContain("looks exactly like the default");
+    expect(r.data.notes).toBeUndefined();
+  });
+});
+
+describe("motif shot --rtl", () => {
+  const URL_ = "http://localhost:3000";
+  /** The page left to right and, with --rtl, right to left too. */
+  const bothWays = (o: CaptureOptions): RouteResult[] =>
+    o.routes.map((route) => ({
+      route,
+      url: `${o.baseUrl}${route}`,
+      status: 200,
+      shots: ["", ...(o.rtl ? [".rtl"] : [])].map((d) => join(o.outDir, `${route === "/" ? "index" : route.slice(1)}.mobile${d}.png`)),
+    }));
+
+  test("captures right to left in Arabic by default, or in the language given", async () => {
+    const ar = fakes({ results: bothWays });
+    const r = await runShot(makeProject({}), ctx({ url: URL_, rtl: true }), ar.deps);
+    expect(r.exitCode).toBe(0);
+    expect(ar.calls.captured[0]!.rtl).toBe("ar");
+    expect(r.data.shots).toEqual(["design/shots/index.mobile.png", "design/shots/index.mobile.rtl.png"]);
+    expect(r.text).toContain("light and dark, right to left in ar)");
+    const he = fakes();
+    await runShot(makeProject({}), ctx({ url: URL_, rtl: "HE" }), he.deps);
+    expect(he.calls.captured[0]!.rtl).toBe("he");
+    // Without --rtl, nothing changes.
+    const plain = fakes();
+    const p = await runShot(makeProject({}), ctx({ url: URL_ }), plain.deps);
+    expect(plain.calls.captured[0]).not.toHaveProperty("rtl");
+    expect(p.text).not.toContain("right to left");
+  });
+
+  test("a value that isn't a language code is a usage error that says what to give", async () => {
+    for (const value of ["12", "", "arabic", "a"]) {
+      const f = fakes();
+      const r = await runShot(makeProject({}), ctx({ url: URL_, rtl: value }), f.deps);
+      expect(r.exitCode).toBe(2);
+      expect(r.data.error).toBe("usage");
+      expect(r.text).toBe("--rtl takes a language code of two or three letters, like --rtl ar or --rtl he (Arabic when none is given).");
+      expect(f.calls.captured).toEqual([]);
+    }
+  });
+
+  test("a page that doesn't turn right to left by itself is turned by Motif, and says so", async () => {
+    const f = fakes({ results: (o) => bothWays(o).map((r) => ({ ...r, rtlForced: true })) });
+    const r = await runShot(makeProject({}), ctx({ url: URL_, routes: "/,/settings", rtl: "he" }), f.deps);
+    expect(r.data.notes).toEqual([
+      `/ doesn't switch to right to left by itself for he; Motif set dir="rtl" to show it.`,
+      `/settings doesn't switch to right to left by itself for he; Motif set dir="rtl" to show it.`,
+    ]);
+  });
+
+  test("RTL shots pair by name with a saved set, and are never put next to a mockup", async () => {
+    const root = makeProject({ "design/shots/before/index.mobile.rtl.png": "old", "design/shots/before/.motif-set": "", "design/previews/settings.html": "<p>mockup</p>" });
+    const set = fakes({ results: bothWays });
+    await runShot(root, ctx({ url: URL_, rtl: true, against: "before" }), set.deps);
+    expect(set.calls.compared[0]!.pairs.map((p) => [p.before, p.after])).toEqual([
+      [join(root, "design/shots/before/index.mobile.rtl.png"), join(root, "design/shots/index.mobile.rtl.png")],
+    ]);
+    writeFileSync(join(root, "design/previews/settings.png"), pngHeader(820, 1728));
+    const mock = fakes({ results: bothWays });
+    const r = await runShot(root, ctx({ url: URL_, routes: "/settings", rtl: true, against: "design/previews/settings.html" }), mock.deps);
+    expect(r.exitCode).toBe(0);
+    expect(mock.calls.compared[0]!.pairs.map((p) => p.after)).toEqual([join(root, "design/shots/settings.mobile.png")]);
+    expect(r.text).toContain("• RTL screenshots aren't compared with the mockup, which is left to right.");
+  });
+
+  test("an audit finding seen only right to left says where", async () => {
+    const root = makeProject({});
+    const issues: AuditIssue[] = [
+      { rule: "name", selector: "#menu", label: "", kind: "button", route: "/", viewport: "mobile", size: "mobile", scheme: "light", rtl: true, shot: join(root, "design/shots/index.mobile.rtl.png") },
+    ];
+    const r = await runShot(root, ctx({ url: URL_, audit: true, rtl: true }), fakes({ results: bothWays, issues }).deps);
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toContain("major    / (mobile, right to left) The button has no name a screen reader can say.");
+    expect((r.data.findings as { category: string; location: { rtl?: boolean } }[])[0]).toMatchObject({ category: "accessible-name", location: { rtl: true } });
+  });
 });

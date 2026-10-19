@@ -126,6 +126,35 @@ describe("toFindings", () => {
     expect(f!.location.viewport).toBe("tablet");
   });
 
+  test("a control with no name is an accessible-name finding, one per element across sizes, schemes, variants and directions", () => {
+    const unnamed = (over: Partial<AuditIssue>) =>
+      issue({ rule: "name", selector: "#menu", kind: "button", label: "", ratio: undefined, expected: undefined, ...over });
+    const findings = toFindings([
+      unnamed({}),
+      unnamed({ size: "desktop", viewport: "desktop", scheme: "dark" }),
+      unnamed({ variant: "men" }),
+      unnamed({ rtl: true, shot: "design/shots/index.mobile.rtl.png" }),
+      unnamed({ selector: "#logo", kind: "image", rtl: true, shot: "design/shots/index.mobile.rtl.png" }),
+    ]);
+    expect(findings.map((f) => [f.severity, f.category, f.location.selector, f.summary])).toEqual([
+      ["major", "accessible-name", "#menu", "The button has no name a screen reader can say."],
+      ["major", "accessible-name", "#logo", "The image has no name a screen reader can say."],
+    ]);
+    expect(findings[0]!.fix).toBe("Give it a visible label or an accessible name (aria-label, or alt for an image).");
+    expect(findings[0]!.location).toEqual({ screen: "/", selector: "#menu", viewport: "mobile" });
+    expect(findings[0]!.locations).toBeUndefined();
+    // Seen only right to left: the place says so.
+    expect(findings[1]!.location).toEqual({ screen: "/", selector: "#logo", viewport: "mobile", rtl: true });
+  });
+
+  test("a contrast problem seen only right to left says so; one seen both ways is one place", () => {
+    const both = toFindings([issue({}), issue({ rtl: true })]);
+    expect(both[0]!.location).not.toHaveProperty("rtl");
+    expect(both[0]!.locations).toBeUndefined();
+    const onlyRtl = toFindings([issue({ rtl: true })]);
+    expect(onlyRtl[0]!.location).toMatchObject({ rtl: true });
+  });
+
   test("reviewJson follows the review format", () => {
     expect(reviewJson([], ["/", "/settings"], "2026-10-13")).toEqual({ motifReview: 1, scope: "screens: /, /settings", date: "2026-10-13", findings: [] });
   });

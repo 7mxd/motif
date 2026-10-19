@@ -33,6 +33,8 @@ const variantOf = (file: string): string | undefined => basename(file).match(VAR
 const withoutVariant = (file: string) => file.replace(VARIANT, "");
 /** The same name in a variant (home.dark.png → home+men.dark.png), after any state. */
 const inVariant = (file: string, variant: string) => file.replace(/((?:\.[a-z0-9-]+)*\.png)$/, `+${variant}$1`);
+/** A right-to-left screenshot: .rtl after its size, before any .dark (home@filled+men.mobile.rtl.dark.png). */
+export const isRtlShot = (file: string): boolean => /\.[a-z0-9-]+\.rtl(\.dark)?\.png$/.test(basename(file));
 
 /**
  * Pairs this run's screenshots with a saved set by file name; screenshots the set doesn't have are "added". A variant's
@@ -109,7 +111,9 @@ function shotFor(frame: string, shots: string[], variant: string | undefined = v
  * with the page as it opens) and the same variant (home+men.png ↔ index+men.mobile.png). A variant's screenshot whose
  * frame the mockup lacks is paired with the default's frame, marked as a fallback.
  */
-export function pairWithMockup(frames: string[], shots: string[], compareDir: string): ComparePair[] {
+export function pairWithMockup(frames: string[], allShots: string[], compareDir: string): ComparePair[] {
+  // A mockup is left to right: right-to-left screenshots are never put next to it.
+  const shots = allShots.filter((s) => !isRtlShot(s));
   const pairs: ComparePair[] = [];
   const variants = [...new Set(shots.map(variantOf).filter((v): v is string => Boolean(v)))];
   for (const frame of frames) {
@@ -127,10 +131,44 @@ export function pairWithMockup(frames: string[], shots: string[], compareDir: st
 }
 
 /** The states the mockup has frames of that this run didn't capture (no --state for them), each named once. */
-export function missingStateFrames(frames: string[], shots: string[]): string[] {
+export function missingStateFrames(frames: string[], allShots: string[]): string[] {
+  const shots = allShots.filter((s) => !isRtlShot(s));
   // A frame in a variant this run didn't capture isn't missing a state: the whole variant wasn't asked for.
   const captured = new Set(shots.map(variantOf));
   return [...new Set(frames.filter((f) => frameState(f) && captured.has(variantOf(f)) && !shotFor(f, shots)).map(frameState))];
+}
+
+/**
+ * The variants whose every screenshot in this run is byte-identical to the default's of the same screen, state, size,
+ * scheme and direction: the app likely didn't switch to them. A variant screenshot with no default one to compare with
+ * leaves its variant out.
+ */
+export function identicalVariants(shots: string[]): string[] {
+  const taken = new Set(shots);
+  const same = new Map<string, boolean>();
+  for (const shot of shots) {
+    const variant = variantOf(shot);
+    if (!variant || same.get(variant) === false) continue;
+    const dflt = join(dirname(shot), withoutVariant(basename(shot)));
+    let equal = false;
+    try {
+      equal = taken.has(dflt) && readFileSync(shot).equals(readFileSync(dflt));
+    } catch {
+      // A screenshot that can't be read can't show the variant looks the same: no note for it.
+    }
+    same.set(variant, equal);
+  }
+  return [...same].filter(([, equal]) => equal).map(([variant]) => variant);
+}
+
+/**
+ * Notes for variants that look exactly like the default. how says how Motif sets a variant on this stack, so the
+ * developer can see why the app may not follow it (on the web: data-variant on <html>).
+ */
+export function identicalVariantNotes(shots: string[], how: string): string[] {
+  return identicalVariants(shots).map(
+    (id) => `The ${id} variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (${how}).`,
+  );
 }
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);

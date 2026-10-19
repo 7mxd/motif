@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
+import { runShot } from "../src/commands/shot";
 import { findBrowser } from "../src/detect/browser";
 import { captureScreens, VIEWPORTS } from "../src/shot/capture";
 import { startStaticServer } from "../src/shot/static-server";
@@ -124,5 +125,49 @@ describe.skipIf(!browser)("captureScreens in a design variant (needs Chrome, Edg
     } finally {
       site.stop();
     }
+  }, 120_000);
+});
+
+describe.skipIf(!browser)("accessible names and right to left (needs Chrome, Edge or Chromium)", () => {
+  const PAGE = (body: string, head = "") =>
+    `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">${head}<style>body { margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111 }</style></head><body>${body}</body></html>`;
+
+  test("a button with only an icon in it has no name", async () => {
+    const root = makeProject({
+      "index.html": PAGE('<button id="menu" style="width: 48px; height: 48px"><svg width="16" height="16"></svg></button><button id="ok" style="width: 48px; height: 48px">OK</button>'),
+    });
+    const site = startStaticServer(root);
+    try {
+      const r = await captureScreens({ browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir: join(root, "shots"), settleMs: 50, audit: true, viewports: VIEWPORTS.filter((v) => v.width === 390) });
+      const named = r.issues.filter((i) => i.rule === "name");
+      expect(named.length).toBeGreaterThan(0);
+      expect(new Set(named.map((i) => `${i.selector} ${i.kind}`))).toEqual(new Set(["#menu button"]));
+      // Light and dark both: the check runs in every scheme.
+      expect(new Set(named.map((i) => i.scheme))).toEqual(new Set(["light", "dark"]));
+    } finally {
+      site.stop();
+    }
+  }, 120_000);
+
+  test("--rtl: a page with no dir is set right to left by Motif and says so; one that follows the language doesn't", async () => {
+    const root = makeProject({
+      "public/index.html": PAGE("<h1>Hello there</h1><p>A short line of text that sits on one side.</p>"),
+      "public/follows.html": PAGE(
+        "<h1>Hello there</h1><p>A short line of text that sits on one side.</p>",
+        '<script>document.documentElement.dir = navigator.language.startsWith("ar") ? "rtl" : "ltr"; document.documentElement.lang = navigator.language;</script>',
+      ),
+    });
+    const r = await runShot(root, { positionals: [], flags: { rtl: "ar", sizes: "390" } });
+    expect(r.exitCode).toBe(0);
+    expect(r.data.notes).toEqual([`/ doesn't switch to right to left by itself for ar; Motif set dir="rtl" to show it.`]);
+    const shots = join(root, "design/shots");
+    for (const name of ["index", "follows-html"]) {
+      for (const dark of ["", ".dark"]) {
+        const ltr = readFileSync(join(shots, `${name}.mobile${dark}.png`));
+        const rtl = readFileSync(join(shots, `${name}.mobile.rtl${dark}.png`));
+        expect(Buffer.compare(ltr, rtl)).not.toBe(0);
+      }
+    }
+    expect(r.text).toContain("light and dark, right to left in ar)");
   }, 120_000);
 });
