@@ -122,6 +122,8 @@ An app's own font files (a brand font, one the developer bought) are named once,
 "$extensions": { "dev.motif": { "motifContract": 1, "fonts": [ { "family": "Thmanyah Sans", "files": [ { "path": "assets/fonts/ThmanyahSans-Regular.woff2", "weight": 400, "style": "normal" } ] } ] } }
 ```
 
+Each file is a `.woff2`, `.woff`, `.ttf` or `.otf`, and a family may list the same weight and style in more than one format. The web uses WOFF2 first; native stacks (Flutter, Android, iOS) need `.ttf` or `.otf`, so list one of those too when the app has a native target.
+
 Use the family name in a role's `fontFamily` (through a primitive) as for any font. Files must exist inside the project; `motif validate` reports a missing file, a path outside the project and a font no role uses. Previews and screenshots load the files from the project. `motif tokens` never downloads fonts: the app loads its own files (on the web, with `@font-face`; the stack guide shows how).
 
 ## The four rules

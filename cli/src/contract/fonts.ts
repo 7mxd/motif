@@ -18,6 +18,8 @@ export interface ProjectFont {
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+/** The font formats a project may bundle: WOFF2 and WOFF for the web, TTF and OTF for every stack. */
+const FONT_FILE = /\.(woff2|woff|ttf|otf)$/i;
 /** A path that starts at a root or a drive, on any system. */
 const isAbsolutePath = (p: string) => isAbsolute(p) || /^([a-zA-Z]:|[\/])/.test(p);
 
@@ -25,11 +27,14 @@ const isAbsolutePath = (p: string) => isAbsolute(p) || /^([a-zA-Z]:|[\/])/.test(
 export function readProjectFonts(doc: TokenDocument): { fonts: ProjectFont[]; findings: Finding[] } {
   const ext = doc.rootExtensions?.[MOTIF_EXT];
   const list = isObj(ext) ? ext.fonts : undefined;
-  if (!Array.isArray(list)) return { fonts: [], findings: [] };
-
   const fonts: ProjectFont[] = [];
   const findings: Finding[] = [];
   const bad = (message: string) => findings.push({ code: "bad-project-font", severity: "error", message, file: doc.file });
+  if (list === undefined) return { fonts, findings };
+  if (!Array.isArray(list)) {
+    bad('"fonts" must be a list of fonts, like [ { "family": "Brand Sans", "files": [ … ] } ].');
+    return { fonts, findings };
+  }
 
   list.forEach((raw, i) => {
     const entry = isObj(raw) ? raw : {};
@@ -49,6 +54,7 @@ export function readProjectFonts(doc: TokenDocument): { fonts: ProjectFont[]; fi
       const fail = (message: string) => { bad(message); ok = false; };
       if (!path) fail(`${name} has a file with no path.`);
       else if (isAbsolutePath(path)) fail(`${name}: "${path}" must be a path inside the project, like "assets/fonts/Name.woff2".`);
+      else if (!FONT_FILE.test(path)) fail(`${name}: "${path}" must be a .woff2, .woff, .ttf or .otf file.`);
       if (typeof weight !== "number" || !Number.isInteger(weight) || weight < 100 || weight > 900) {
         fail(`${name}${path ? ` (${path})` : ""} needs a weight from 100 to 900.`);
       }

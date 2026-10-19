@@ -138,7 +138,7 @@ Fontsource has the files for every Google font, with their licences (`fontsource
 
 For an Arabic companion, copy only its Arabic file from Fontsource's variable package (`<id>-arabic-wght-normal.woff2`, such as `readex-pro-arabic-wght-normal.woff2`) and add the `unicode-range` line from Fontsource's CSS for that file, so it's used for Arabic letters only. A Google Fonts link does this by itself.
 
-**A project font.** A font named under `fonts` in the design guide is already in the project, at the paths the guide lists. `motif tokens` downloads nothing and the page loads it itself: declare it with `@font-face` under the guide's family name, with a `url()` relative to `styles.css` (add one `@font-face` per file, each with its `font-weight` and `font-style`, as the guide lists them). Previews load the same files from the project.
+**A project font.** A font named under `fonts` in the design guide is already in the project, at the paths the guide lists. `motif tokens` downloads nothing and the page loads it itself: declare it with `@font-face` under the guide's family name, with a `url()` relative to `styles.css` (add one `@font-face` per weight and style, with its `font-weight` and `font-style` as the guide lists them; when the guide lists that weight and style in several formats, put them all in one `src`, WOFF2 first, each with its `format()`). Previews load the same files from the project.
 
 **From Google Fonts.** One link per family in each page's `<head>`, before `motif.css`:
 

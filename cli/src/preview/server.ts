@@ -121,25 +121,41 @@ function tokensQuery(root: string, file: string): string {
   return rel === GUIDE_TOKENS || !existsSync(own) ? "" : `?tokens=${encodeURIComponent(rel)}`;
 }
 
-/** @font-face rules for every project font file; file n is served at /__motif/project-font/n. */
+/** Each font file type's CSS format(), in the order a browser should try them. */
+const FONT_FORMATS: [RegExp, string][] = [[/\.woff2$/i, "woff2"], [/\.woff$/i, "woff"], [/\.ttf$/i, "truetype"], [/\.otf$/i, "opentype"]];
+
+/**
+ * @font-face rules for the project fonts: one per family, weight and style, with all its files (WOFF2 first) in one src.
+ * File n of the flat list is served at /__motif/project-font/n.
+ */
 function projectFontsCss(fonts: ProjectFont[], query: string): string {
   let n = 0;
-  const rules = fonts.flatMap((f) =>
-    f.files.map((file) => {
-      const family = f.family.replace(/["\\]/g, "");
-      return [
+  const rules = new Map<string, { family: string; weight: number; style: string; src: { rank: number; css: string }[] }>();
+  for (const f of fonts) {
+    const family = f.family.replace(/["\\]/g, "");
+    for (const file of f.files) {
+      const key = JSON.stringify([family, file.weight, file.style]);
+      const rule = rules.get(key) ?? { family, weight: file.weight, style: file.style, src: [] };
+      const rank = FONT_FORMATS.findIndex(([ext]) => ext.test(file.path));
+      const format = rank >= 0 ? ` format("${FONT_FORMATS[rank]![1]}")` : "";
+      rule.src.push({ rank, css: `url("/__motif/project-font/${n++}${query}")${format}` });
+      rules.set(key, rule);
+    }
+  }
+  return [...rules.values()]
+    .map((r) =>
+      [
         "@font-face {",
-        `  font-family: "${family}";`,
-        `  src: url("/__motif/project-font/${n++}${query}");`,
-        `  font-weight: ${file.weight};`,
-        `  font-style: ${file.style};`,
+        `  font-family: "${r.family}";`,
+        `  src: ${r.src.sort((a, b) => a.rank - b.rank).map((s) => s.css).join(", ")};`,
+        `  font-weight: ${r.weight};`,
+        `  font-style: ${r.style};`,
         "  font-display: swap;",
         "}",
         "",
-      ].join("\n");
-    }),
-  );
-  return rules.join("\n");
+      ].join("\n"),
+    )
+    .join("\n");
 }
 
 function directionCss(root: string, rel: string, fontCssUrl?: FontCssUrl): string {

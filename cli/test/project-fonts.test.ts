@@ -39,6 +39,23 @@ describe("readProjectFonts", () => {
     expect(codes([entry({ files: [{ ...FILE, path: "/etc/font.woff2" }] })])).toContain("bad-project-font");
     expect(codes([entry({ files: [{ ...FILE, path: "C:\fonts\a.woff2" }] })])).toContain("bad-project-font");
   });
+  test("bad-project-font: a file that isn't WOFF2, WOFF, TTF or OTF", () => {
+    for (const path of ["assets/fonts/T.eot", "assets/fonts/T.svg", "assets/fonts/T"]) {
+      const f = read([entry({ files: [{ ...FILE, path }] })]).findings;
+      expect(f).toEqual([expect.objectContaining({ code: "bad-project-font", message: `The font "Thmanyah Sans": "${path}" must be a .woff2, .woff, .ttf or .otf file.` })]);
+    }
+  });
+  test("each allowed format reads, and a family may list the same weight and style in several", () => {
+    const files = ["T.woff2", "T.woff", "T.ttf", "T.OTF"].map((name) => ({ ...FILE, path: `assets/fonts/${name}` }));
+    expect(read([entry({ files })])).toEqual({ fonts: [{ family: "Thmanyah Sans", files }], findings: [] });
+  });
+  test("bad-project-font: fonts that aren't a list", () => {
+    for (const fonts of [{ family: "Thmanyah Sans" }, "Thmanyah Sans", null]) {
+      const r = read(fonts);
+      expect(r.fonts).toEqual([]);
+      expect(r.findings).toEqual([expect.objectContaining({ code: "bad-project-font", severity: "error" })]);
+    }
+  });
 });
 
 function projectWithFont(file = FILE.path) {

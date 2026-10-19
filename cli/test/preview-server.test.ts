@@ -254,6 +254,25 @@ describe("project fonts and variants in the preview server", () => {
     }
   });
 
+  test("one @font-face per weight and style, its files in one src list with WOFF2 first", async () => {
+    const t = twoVariantTokens();
+    const file = (path: string) => ({ path, weight: 400, style: "normal" });
+    t.$extensions["dev.motif"].fonts = [{ family: "Thmanyah Sans", files: [file("assets/fonts/T.otf"), file("assets/fonts/T.ttf"), file("assets/fonts/T.woff"), file("assets/fonts/T.woff2")] }];
+    const root = makeProject({ "design/previews/a.html": MOCKUP, "assets/fonts/T.otf": "otf", "assets/fonts/T.ttf": "ttf", "assets/fonts/T.woff": "woff", "assets/fonts/T.woff2": "woff2" });
+    const set = buildThemeSet(docFrom(t));
+    const server = startPreviewServer({ root, theme: set.base, themeSet: set });
+    try {
+      const css = await (await fetch(`${server.url}/__motif/project-fonts.css`)).text();
+      expect(css.match(/@font-face/g)).toHaveLength(1);
+      expect(css).toContain(
+        '  src: url("/__motif/project-font/3") format("woff2"), url("/__motif/project-font/2") format("woff"), url("/__motif/project-font/1") format("truetype"), url("/__motif/project-font/0") format("opentype");',
+      );
+      expect(await (await fetch(`${server.url}/__motif/project-font/3`)).text()).toBe("woff2");
+    } finally {
+      server.stop();
+    }
+  });
+
   test("a font file outside the project, or one that does not exist, is 404", async () => {
     const root = makeProject({ "design/previews/a.html": MOCKUP, "assets/fonts/T-Regular.woff2": "x" });
     writeFileSync(join(root, "..", "outside.woff2"), "secret");
