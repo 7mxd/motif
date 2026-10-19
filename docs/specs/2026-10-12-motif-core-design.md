@@ -215,6 +215,8 @@ Projects may add roles; added roles must be documented in `DESIGN.md` §3/§4 an
 
 **Variants (Part 2):** a guide may declare design variants (named alternative looks, such as a partner store's palette) at the root, and a role may add a value and dark value per variant; `DESIGN.md` then gets an unnumbered `## Variants` section after Foundations. A guide without variants is unchanged. The format and its rules are in [the Part 2 spec §5](2026-10-19-motif-part2-all-stacks-design.md) and [decision 0006](../decisions/0006-design-variants.md).
 
+**Project fonts (Part 2):** a guide may name fonts the project bundles itself, at `$extensions["dev.motif"].fonts`: each family with its files' paths, weights and styles, relative to the folder that holds `design/`. `motif validate` checks that the files exist inside the project; previews load them from the project; `motif tokens` never downloads fonts. See [the Part 2 spec §5, "A project's own fonts"](2026-10-19-motif-part2-all-stacks-design.md).
+
 ### 6.4 Spring maths (canonical model: duration + bounce)
 
 Springs are stored as perceptual duration `d` (seconds) and `bounce` `b`. With mass = 1:
