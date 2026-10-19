@@ -71,6 +71,7 @@ describe("detectApps", () => {
       "package.json": pkg({}),
       "apps/web/package.json": pkg({ react: "^19", vite: "^6" }),
       "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
+      "apps/mobile/lib/main.dart": "void main() {}\n",
     });
     expect(detectApps(root).apps).toEqual([
       { path: "apps/mobile", stack: "flutter", source: "detected" },

@@ -65,7 +65,7 @@ export function listSourceFiles(root: string, appPath: string, opts: { paths?: s
   const rootIgnore = ignore().add(DEFAULT_IGNORES).add(readGitignore(root)).add(opts.ignore ?? []).add(opts.extraIgnores ?? []);
   const app = toPosix(appPath) || ".";
   const appDir = join(root, app);
-  const appIgnore = app === "." ? null : ignore().add(readGitignore(appDir));
+  const appIgnore = app === "." ? null : ignore().add(readGitignore(appDir)).add(opts.extraIgnores ?? []);
   const wanted = (opts.paths ?? []).map(toPosix).filter(Boolean);
   const dirWanted = (rel: string) => wanted.length === 0 || wanted.some((w) => w === rel || w.startsWith(rel + "/") || rel.startsWith(w + "/"));
   const fileWanted = (rel: string) => wanted.length === 0 || wanted.some((w) => rel === w || rel.startsWith(w + "/"));

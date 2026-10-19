@@ -8,7 +8,7 @@ export const RESERVED: { dart: Set<string> } = {
     // Built-in identifiers and contextual keywords
     "abstract", "as", "covariant", "deferred", "dynamic", "export", "extension", "external", "factory", "Function",
     "get", "implements", "import", "interface", "late", "library", "mixin", "operator", "part", "required", "set",
-    "static", "typedef", "async", "await", "hide", "of", "on", "show", "sync", "yield",
+    "static", "typedef", "await", "yield",
   ]),
 };
 

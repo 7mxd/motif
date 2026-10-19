@@ -59,6 +59,7 @@ describe("motif tokens on a plain web site", () => {
     const r = await run(site({
       "apps/site/public/index.html": "",
       "apps/mobile/pubspec.yaml": "name: m\ndependencies:\n  flutter:\n    sdk: flutter\n",
+      "apps/mobile/lib/main.dart": "void main() {}\n",
     }));
     expect(r.files.filter((f) => f.path === "design/generated/tokens.flat.json")).toHaveLength(1);
     expect(r.files.map((f) => f.path)).toContain("apps/site/public/motif.css");

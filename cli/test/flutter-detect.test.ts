@@ -45,12 +45,41 @@ describe("Flutter apps inside a monorepo", () => {
     expect(dependsOn(join(root, "mobile/customer"), "riverpod")).toBe(false);
   });
 
+  test("a path dependency's own keys are not dependencies", () => {
+    const text = ["name: a", "dependencies:", "  flutter:", "    sdk: flutter", "  core:", "    path: ../core", "  other:", "    git:", "      url: x", ""].join("\n");
+    const root = makeProject({ "pubspec.yaml": text });
+    expect(dependsOn(root, "core")).toBe(true);
+    for (const k of ["path", "sdk", "git", "url"]) expect(dependsOn(root, k)).toBe(false);
+  });
+
   test("importFor uses the nearest pubspec above the file", () => {
     const root = tree();
     expect(importFor(root, "mobile/packages/core/lib/design/motif_theme.dart")).toBe("package:core/design/motif_theme.dart");
     expect(importFor(root, "mobile/customer/lib/a/b.dart")).toBe("package:customer/a/b.dart");
     expect(importFor(root, "dashboard/lib/x.dart")).toBeNull();
     expect(importFor(root, "mobile/customer/test/x.dart")).toBeNull();
+  });
+});
+
+describe("which Flutter folders are apps", () => {
+  test("a flavor app with only lib/main_dev.dart is listed", () => {
+    const root = makeProject({ "pubspec.yaml": pubspec("shop"), "lib/main_dev.dart": "void main() {}\n" });
+    expect(detectApps(root).apps.map((a) => a.path)).toEqual(["."]);
+    const nested = makeProject({ "package.json": "{}", "apps/shop/pubspec.yaml": pubspec("shop"), "apps/shop/lib/main_dev.dart": "x" });
+    expect(detectApps(nested).apps.map((a) => a.path)).toEqual(["apps/shop"]);
+  });
+  test("platform folders make an app too", () => {
+    const root = makeProject({ "pubspec.yaml": pubspec("shop"), "ios/Runner/x": "" });
+    expect(isFlutterApp(root)).toBe(true);
+  });
+  test("shared packages are not listed, at depth 2 or in packages/", () => {
+    const root = makeProject({
+      "package.json": "{}",
+      "mobile/shared_ui/pubspec.yaml": pubspec("shared_ui"), "mobile/shared_ui/lib/a.dart": "x",
+      "mobile/app/pubspec.yaml": pubspec("app"), "mobile/app/lib/main.dart": "x",
+      "packages/core/pubspec.yaml": pubspec("core"), "packages/core/lib/core.dart": "x",
+    });
+    expect(detectApps(root).apps.map((a) => a.path)).toEqual(["mobile/app"]);
   });
 });
 

@@ -141,6 +141,10 @@ describe("variant block shape and identifier clashes", () => {
     expect(f?.message).toContain('"a-1"');
     expect(f?.message).toContain('"a1"');
   });
+  test("ids that are the same Dart name clash", () => {
+    const f = checkVariants(withVariants([{ id: "default", label: "A", default: true }, { id: "default-variant", label: "B" }])).filter((x) => x.code === "variant-id-clash");
+    expect(f.length).toBe(1);
+  });
   test("distinct ids do not clash", () => {
     expect(codes(withVariants(DECL, { men: COLOR_MEN }))).not.toContain("variant-id-clash");
   });

@@ -319,6 +319,7 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
       if (!isDir(abs)) continue;
       const stack = detectStack(abs);
       if (stack === "plain-web" && NOT_SITES.has(name)) continue;
+      if (stack === "flutter" && isFlutterPackage(abs)) continue;
       if (stack || isUnrecognisedReactApp(abs)) {
         apps.push(detected(root, rel(relPath), stack));
       } else if (!base && name !== "apps" && name !== "packages") {
@@ -327,7 +328,7 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
     }
   };
   // One folder further (mobile/customer, mobile/admin), for stacks other than plain web only, and never for shared
-  // Flutter packages. (Folders at the first level keep being listed as before, with or without a lib/main.dart.)
+  // Flutter packages.
   const nested = (dir: string) => {
     let entries: string[];
     try {

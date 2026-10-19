@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { stripBom } from "../../text";
 
@@ -10,18 +10,36 @@ function pubspec(dir: string): string | null {
   }
 }
 
-const usesFlutter = (text: string) => /sdk:\s*flutter/.test(text) || /^flutter:/m.test(text);
+const PLATFORMS = ["android", "ios", "macos", "web", "windows", "linux"];
 
-/** A Flutter project with an entry point: an app. */
-export function isFlutterApp(dir: string): boolean {
-  const text = pubspec(dir);
-  return text !== null && usesFlutter(text) && existsSync(join(dir, "lib", "main.dart"));
+function isDir(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
-/** A Flutter project with no entry point: shared code that apps depend on. */
+const usesFlutter = (text: string) => /sdk:\s*flutter/.test(text) || /^flutter:/m.test(text);
+
+/**
+ * A Flutter project that runs: it has a main file (lib/main.dart, or a flavor's lib/main_dev.dart) or platform folders.
+ * Anything else is shared code that apps depend on.
+ */
+export function isFlutterApp(dir: string): boolean {
+  const text = pubspec(dir);
+  if (text === null || !usesFlutter(text)) return false;
+  if (PLATFORMS.some((p) => isDir(join(dir, p)))) return true;
+  try {
+    return readdirSync(join(dir, "lib")).some((n) => /^main.*\.dart$/.test(n));
+  } catch {
+    return false;
+  }
+}
+
 export function isFlutterPackage(dir: string): boolean {
   const text = pubspec(dir);
-  return text !== null && usesFlutter(text) && !existsSync(join(dir, "lib", "main.dart"));
+  return text !== null && usesFlutter(text) && !isFlutterApp(dir);
 }
 
 export function packageName(dir: string): string | null {
@@ -33,13 +51,20 @@ export function dependsOn(dir: string, pkg: string): boolean {
   const text = pubspec(dir);
   if (text === null) return false;
   let section = "";
+  let indent: number | null = null;
   for (const line of text.split(/\r?\n/)) {
+    if (/^\s*(#.*)?$/.test(line)) continue;
     const top = line.match(/^([A-Za-z_]+):/);
     if (top) {
       section = top[1]!;
+      indent = null;
       continue;
     }
-    if ((section === "dependencies" || section === "dev_dependencies") && new RegExp("^\\s+" + pkg + "\\s*:").test(line)) return true;
+    if (section !== "dependencies" && section !== "dev_dependencies") continue;
+    const key = line.match(/^(\s+)([A-Za-z0-9_]+)\s*:/);
+    if (!key) continue;
+    indent ??= key[1]!.length;
+    if (key[1]!.length === indent && key[2] === pkg) return true;
   }
   return false;
 }

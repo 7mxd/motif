@@ -1,5 +1,5 @@
 import type { Finding } from "../findings";
-import { camelCase } from "../stacks/naming";
+import { camelCase, dartIdentifier } from "../stacks/naming";
 import { resolveValue } from "./resolve";
 import { MOTIF_EXT, type FlatToken, type TokenDocument } from "./types";
 import { validateValue } from "./values";
@@ -113,13 +113,21 @@ export function checkVariants(doc: TokenDocument): Finding[] {
     }
     ids.add(d.id);
   });
-  const byName = new Map<string, string>();
+  // Two ids that become the same name in app code (a-1 and a1; default and default-variant for Dart).
+  const names = [camelCase, dartIdentifier];
+  const taken = names.map(() => new Map<string, string>());
+  const clashed = new Set<string>();
   for (const id of ids) {
     if (!ID.test(id)) continue;
-    const name = camelCase(id);
-    const other = byName.get(name);
-    if (other !== undefined) add("variant-id-clash", `The variant ids "${other}" and "${id}" both become "${name}" in app code. Rename one so they differ.`);
-    else byName.set(name, id);
+    names.forEach((toName, i) => {
+      const name = toName(id);
+      const other = taken[i]!.get(name);
+      if (other === undefined) return taken[i]!.set(name, id);
+      const key = `${other}|${id}`;
+      if (clashed.has(key)) return;
+      clashed.add(key);
+      add("variant-id-clash", `The variant ids "${other}" and "${id}" both become "${name}" in app code. Rename one so they differ.`);
+    });
   }
   const defaults = list.filter((d) => d.default === true);
   if (defaults.length === 0) add("no-default-variant", 'No variant is marked as the default. Mark exactly one with "default": true.');

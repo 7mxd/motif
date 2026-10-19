@@ -136,6 +136,7 @@ describe("runCheck: skipped apps", () => {
       "design/tokens.json": TOKENS,
       "apps/web/package.json": PKG, "apps/web/src/Clean.tsx": CLEAN,
       "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
+      "apps/mobile/lib/main.dart": "void main() {}\n",
     });
     expect((await runCheck(root, ctx())).text).toContain("apps/mobile (Flutter)");
   });

@@ -102,6 +102,7 @@ describe("runExtract: follow-ups", () => {
     const root = makeProject({
       "apps/web/package.json": PKG, "apps/web/src/App.tsx": APP,
       "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
+      "apps/mobile/lib/main.dart": "void main() {}\n",
     });
     expect((await runExtract(root, ctx)).text).toContain("apps/mobile (Flutter)");
   });

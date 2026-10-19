@@ -88,6 +88,15 @@ describe("listSourceFiles for Dart", () => {
     expect(paths(found)).toEqual(["lib/a.dart"]);
     expect(found[0]!.lang).toBe("dart");
   });
+  test("slash patterns apply inside a nested app too", () => {
+    const root = makeProject({
+      "mobile/customer/lib/a.dart": "x", "mobile/customer/lib/generated/x.dart": "x",
+      "mobile/customer/lib/l10n/app_localizations.dart": "x", "mobile/customer/lib/l10n/app_localizations_en.dart": "x",
+      "mobile/customer/test/a_test.dart": "x",
+    });
+    const found = listSourceFiles(root, "mobile/customer", { langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES });
+    expect(paths(found)).toEqual(["mobile/customer/lib/a.dart"]);
+  });
   test("without langs, Dart files are not listed (today's behaviour)", () => {
     expect(paths(listSourceFiles(makeProject(files), "."))).toEqual(["lib/b.ts"]);
   });
