@@ -96,3 +96,34 @@ describe("htmlViews: from the backlog", () => {
     expect(hits.filter((h) => h.violation).map((h) => [h.rule, h.value])).toEqual([["raw-font", '"Comic Sans"']]);
   });
 });
+
+describe("htmlViews: from the deferred review", () => {
+  test('a ">" inside a <style> tag\'s media attribute doesn\'t end the tag', () => {
+    const html = '<style media="(width >= 600px) and (prefers-color-scheme: dark)">.a { color: #111111 }</style>';
+    const { css, dark } = htmlViews(html);
+    expect(css).not.toContain("600px");
+    expect(dark).toEqual([[html.indexOf(".a"), html.indexOf("</style>")]]);
+  });
+
+  test("a <style> for anything but dark isn't dark: not all and (prefers-color-scheme: dark)", () => {
+    expect(htmlViews('<style media="not all and (prefers-color-scheme: dark)">.a { color: #111111 }</style>').dark).toEqual([]);
+  });
+
+  test("a custom element like <script-loader> isn't a script", () => {
+    const css = htmlViews('<script-loader src="x.js"></script-loader><div style="color: #ff0000"></div>').css;
+    expect(css).toContain("color: #ff0000");
+  });
+
+  test("CDATA markers in an SVG's <style> aren't CSS, and what a CDATA section holds starts nothing", () => {
+    const css = htmlViews('<svg><style><![CDATA[ .a { fill: #ffffff } ]]></style><text><![CDATA[ a <!-- b ]]></text></svg><div style="color: #00ff00"></div>').css;
+    expect(css).toContain(".a { fill: #ffffff }");
+    expect(css).not.toMatch(/CDATA|\]\]>/);
+    expect(css).toContain("color: #00ff00");
+  });
+
+  test("hex entities and the upper-case &QUOT; in style attributes are read as their characters", () => {
+    const fonts = (html: string) => expandHtml([page(html)]).flatMap((f) => scanFile(f, scale, { tailwind: false })).filter((h) => h.rule === "raw-font").map((h) => h.value);
+    expect(fonts('<div style="font-family: &#x27;Comic Sans&#x27;"></div>')).toEqual(["'Comic Sans'"]);
+    expect(fonts('<div style="font-family: &QUOT;Comic Sans&QUOT;"></div>')).toEqual(['"Comic Sans"']);
+  });
+});

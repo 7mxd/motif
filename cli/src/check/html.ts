@@ -5,11 +5,21 @@ import type { SourceFile } from "./files";
 // A start tag; quoted attribute values may hold ">".
 const TAG = /<[a-zA-Z][^\s/>]*(?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>/g;
 const STYLE_ATTR = /(\sstyle\s*=\s*)("([^"]*)"|'([^']*)')/gi;
-/** What may start a region: a comment, a script, or a style block (<style-guide> is another element). */
-const OPENER = /<!--|<script\b|<style(?=[\s>/])/gi;
-const DARK_MEDIA_ATTR = /\smedia\s*=\s*["']?[^"'>]*prefers-color-scheme\s*:\s*dark/i;
+/**
+ * What may start a region: a comment, a CDATA section (an SVG's), a script, or a style block (<style-guide> and
+ * <script-loader> are other elements).
+ */
+const OPENER = /<!--|<!\[CDATA\[|<script(?=[\s>/])|<style(?=[\s>/])/gi;
+const MEDIA_ATTR = /\smedia\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
 /** Characters written as entities in an attribute, as the browser reads them (quotes, mostly: font names). */
-const ENTITY = /&(?:quot|#34|apos|#39|amp);/g;
+const ENTITY = /&(?:quot|QUOT|#34|#[xX]22|apos|#39|#[xX]27|amp|AMP|#38|#[xX]26);/g;
+
+/** A <style> tag's media is for dark mode: it asks for dark, and not with "not" ("not all and (…: dark)" is light). */
+function darkMedia(tag: string): boolean {
+  const m = MEDIA_ATTR.exec(tag);
+  const media = m ? (m[1] ?? m[2] ?? m[3] ?? "") : "";
+  return /prefers-color-scheme\s*:\s*dark/i.test(media) && !/\bnot\b/i.test(media);
+}
 
 function blank(chars: string[], from: number, to: number): void {
   for (let i = from; i < to; i++) if (chars[i] !== "\n" && chars[i] !== "\r") chars[i] = " ";
@@ -17,17 +27,18 @@ function blank(chars: string[], from: number, to: number): void {
 
 interface Regions {
   comments: [number, number][];
+  cdata: [number, number][];
   scripts: [number, number][];
   /** [tag start, content start, content end, block end, dark only] */
   styles: [number, number, number, number, boolean][];
 }
 
 /**
- * The comments, scripts and style blocks, found in order: what's inside a script ("<!--" in a string, '<style>')
+ * The comments, CDATA sections, scripts and style blocks, found in order: what's inside a script ("<!--" in a string, '<style>')
  * starts nothing, and a comment marker inside a style block is just CSS's old way of hiding it.
  */
 function regions(text: string): Regions {
-  const found: Regions = { comments: [], scripts: [], styles: [] };
+  const found: Regions = { comments: [], cdata: [], scripts: [], styles: [] };
   const opener = new RegExp(OPENER.source, "gi");
   let m: RegExpExecArray | null;
   while ((m = opener.exec(text))) {
@@ -38,6 +49,12 @@ function regions(text: string): Regions {
       const end = close === -1 ? text.length : close + 3;
       found.comments.push([at, end]);
       opener.lastIndex = end;
+    } else if (kind === "<![cdata[") {
+      // Text in an SVG or MathML: what it holds ("<!--", "<style>") starts nothing.
+      const close = text.indexOf("]]>", at + 9);
+      const end = close === -1 ? text.length : close + 3;
+      found.cdata.push([at, end]);
+      opener.lastIndex = end;
     } else if (kind === "<script") {
       const close = /<\/script\s*>/gi;
       close.lastIndex = at;
@@ -46,14 +63,18 @@ function regions(text: string): Regions {
       found.scripts.push([at, end]);
       opener.lastIndex = end;
     } else {
-      const tagEnd = text.indexOf(">", at);
+      // The tag ends at its own ">", not one in a quoted attribute: media="(width >= 600px)".
+      const tag = new RegExp(TAG.source, "y");
+      tag.lastIndex = at;
+      const t = tag.exec(text);
+      const tagEnd = t ? at + t[0].length - 1 : text.indexOf(">", at);
       const contentStart = tagEnd === -1 ? text.length : tagEnd + 1;
       const close = /<\/style\s*>/gi;
       close.lastIndex = contentStart;
       const c = close.exec(text);
       const contentEnd = c ? c.index : text.length;
       const end = c ? c.index + c[0].length : text.length;
-      found.styles.push([at, contentStart, contentEnd, end, DARK_MEDIA_ATTR.test(text.slice(at, contentStart))]);
+      found.styles.push([at, contentStart, contentEnd, end, darkMedia(text.slice(at, contentStart))]);
       opener.lastIndex = end;
     }
   }
@@ -61,7 +82,7 @@ function regions(text: string): Regions {
 }
 
 export function htmlViews(text: string): { css: string; rest: string; dark: [number, number][] } {
-  const { comments, scripts, styles } = regions(text);
+  const { comments, cdata, scripts, styles } = regions(text);
   // Comments hide what's inside them from both views.
   const open = text.split("");
   for (const [a, b] of comments) blank(open, a, b);
@@ -77,10 +98,10 @@ export function htmlViews(text: string): { css: string; rest: string; dark: [num
     keep.push([contentStart, contentEnd]);
     if (darkOnly) dark.push([contentStart, contentEnd]);
   }
-  // style="" only in tags: not inside <style> or <script> blocks.
+  // style="" only in tags: not inside <style> or <script> blocks, or CDATA's text.
   const tagsOnly = uncommented.split("");
   for (const [a, , , b] of styles) blank(tagsOnly, a, b);
-  for (const [a, b] of scripts) blank(tagsOnly, a, b);
+  for (const [a, b] of [...scripts, ...cdata]) blank(tagsOnly, a, b);
   const tags = tagsOnly.join("");
   for (const t of tags.matchAll(TAG)) {
     for (const a of t[0].matchAll(STYLE_ATTR)) {
@@ -92,7 +113,7 @@ export function htmlViews(text: string): { css: string; rest: string; dark: [num
       let quotes = 0;
       for (const e of value.matchAll(ENTITY)) {
         const at = quote + 1 + e.index!;
-        const ch = /amp/.test(e[0]) ? "&" : /quot|34/.test(e[0]) ? '"' : "'";
+        const ch = /amp|#38|#x26/i.test(e[0]) ? "&" : /quot|#34|#x22/i.test(e[0]) ? '"' : "'";
         const pad = " ".repeat(e[0].length - 1);
         entities.push([at, ch === "&" ? ch + pad : quotes++ % 2 === 0 ? pad + ch : ch + pad]);
       }
@@ -108,10 +129,11 @@ export function htmlViews(text: string): { css: string; rest: string; dark: [num
     if (inCss[i]) rest[i] = " ";
     else css[i] = " ";
   }
-  // Inside a style block, the old "<!--" and "-->" that hid CSS from very old browsers are just markers.
+  // Inside a style block, the old "<!--" and "-->" that hid CSS from very old browsers, and an SVG's CDATA, are just
+  // markers.
   for (const [, contentStart, contentEnd] of styles) {
     const block = text.slice(contentStart, contentEnd);
-    for (const marker of block.matchAll(/<!--|-->/g)) blank(css, contentStart + marker.index!, contentStart + marker.index! + marker[0].length);
+    for (const marker of block.matchAll(/<!--|-->|<!\[CDATA\[|\]\]>/g)) blank(css, contentStart + marker.index!, contentStart + marker.index! + marker[0].length);
   }
   for (const [at, replacement] of entities) for (let i = 0; i < replacement.length; i++) css[at + i] = replacement[i]!;
   for (const s of separators) css[s] = ";";
