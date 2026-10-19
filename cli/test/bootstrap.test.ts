@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -194,4 +194,40 @@ describe("downloads that stall end instead of waiting forever (backlog)", () => 
       expect(read(p)).not.toContain("1800");
     }
   });
+});
+
+describe.skipIf(!sh)("bootstrap via posix sh, against another first run", () => {
+  // Six parallel first runs on Windows: one exec'd motif.exe while a slower run replaced it, and Windows refused
+  // ("Permission denied", exit 126). A run must never replace a tool another run already put in place.
+  test("a tool another run puts in place at the last moment is kept, not replaced", async () => {
+    const home = slash(tempDir("motif-home-"));
+    const fakes = tempDir("motif-fakes-");
+    // mv and ln as usual, except that just before one of them puts the tool in place, another run's copy (dated 2001)
+    // appears there.
+    for (const cmd of ["mv", "ln"]) {
+      writeFileSync(join(fakes, cmd), [
+        "#!/bin/sh",
+        'for dest; do :; done',
+        'case "$dest" in */bin/*/motif|*/bin/*/motif.exe)',
+        '  if [ ! -e "$dest" ]; then cp "$MOTIF_TEST_OTHER" "$dest" && chmod +x "$dest" && touch -t 200107010000 "$dest"; fi ;;',
+        "esac",
+        `exec "${slash(Bun.which(cmd)!)}" "$@"`,
+        "",
+      ].join("\n"));
+    }
+    const proc = Bun.spawn([sh!, join(REPO_ROOT, "skill/bin/motif"), "--version"], {
+      env: {
+        ...process.env, MOTIF_HOME: home, MOTIF_DOWNLOAD_BASE: `http://127.0.0.1:${server.port}/ok`, MOTIF_TEST_OTHER: slash(builtPath),
+        PATH: `${fakes}${isWin ? ";" : ":"}${process.env.PATH}`,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+    expect({ exitCode, stderr }).toMatchObject({ exitCode: 0 });
+    expect(stdout.trim()).toBe(VERSION);
+    const bin = join(home, "bin", VERSION, isWin ? "motif.exe" : "motif");
+    expect(statSync(bin).mtime.getFullYear()).toBe(2001);
+    expect(readdirSync(join(home, "bin", VERSION))).toEqual([isWin ? "motif.exe" : "motif"]);
+  }, 120_000);
 });

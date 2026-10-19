@@ -73,8 +73,11 @@ if [ ! -x "$BIN" ]; then
   PARTIAL=$(mktemp "$CACHE_DIR/.motif.XXXXXX") || install_failed
   mv -f "$TMP/$ASSET" "$PARTIAL" || install_failed
   chmod +x "$PARTIAL"
-  # If another run finished first (or its binary is busy on Windows), keep that one.
-  if [ -x "$BIN" ] || ! mv -f "$PARTIAL" "$BIN" 2>/dev/null; then
+  # Never replace a tool another run already put in place: it may be starting right now, and Windows refuses to start a
+  # program that's being swapped. A link makes $BIN only if it isn't there yet; a folder that can't hold links moves it.
+  if ln "$PARTIAL" "$BIN" 2>/dev/null || [ -x "$BIN" ]; then
+    rm -f "$PARTIAL"
+  elif ! mv -f "$PARTIAL" "$BIN" 2>/dev/null; then
     rm -f "$PARTIAL"
     [ -x "$BIN" ] || install_failed
   fi
