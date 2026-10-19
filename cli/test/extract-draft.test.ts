@@ -44,7 +44,33 @@ describe("collectOccurrences", () => {
   });
 });
 
-const s = (value: string, count: number, context?: string): Sample => ({ value, count, contexts: context ? { [context]: count } : {}, examples: [] });
+describe("collectOccurrences: what counts as a class use", () => {
+  const theme: SourceFile = { path: "src/index.css", abs: "", lang: "css", text: "@theme { --color-card: #fafafa; --color-ink: #111111; }" };
+  /** Each colour's count with this App.tsx beside the theme. */
+  const counts = (text: string) => {
+    const occ = collectOccurrences([theme, { path: "src/App.tsx", abs: "", lang: "script", text }], tw, () => true, () => true);
+    return Object.fromEntries(occ.colors.map((c) => [c.value, c.count]));
+  };
+  const none = counts("");
+
+  test("a class in a className counts", () => {
+    expect(counts('<div className="bg-card text-ink bg-blue-500" />')).toEqual({ ...none, "#fafafa": 2, "#111111": 2, "oklch(62.3% 0.214 259.815)": 1 });
+  });
+  test("a class name in an import path or in the page's prose isn't a use", () => {
+    const app = [
+      'import "./bg-card.css";',
+      'import { Ink } from "@/components/text-ink";',
+      'const Pane = lazy(() => import("./panes/bg-blue-500"));',
+      "export const A = () => <p>Give cards the bg-card class, and links the text-ink or bg-blue-500 one.</p>;",
+    ].join("\n");
+    expect(counts(app)).toEqual(none);
+  });
+  test("a see-through class (bg-card/10) isn't a use of the solid colour", () => {
+    expect(counts('<div className="bg-card/10 text-ink/50 bg-blue-500/20" />')).toEqual(none);
+  });
+});
+
+const s = (value: string, count: number, context?: string): Sample =>({ value, count, contexts: context ? { [context]: count } : {}, examples: [] });
 const occ: Occurrences = {
   colors: [
     s("#111827", 10, "text"), s("#FFFFFF", 8, "background"), s("#7C3AED", 5, "background"), s("#6B7280", 4, "text"),
