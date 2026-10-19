@@ -23,7 +23,7 @@ describe("the contract app (Larder)", () => {
   test("it's wired the way the React web guide says", () => {
     expect(read("src/app/globals.css").trim()).toBe('@import "tailwindcss";\n@import "../styles/motif.tailwind.css";');
     const layout = read("src/app/layout.tsx");
-    for (const s of ['import "@fontsource/dm-sans/400.css";', 'import "@fontsource/dm-sans/500.css";', 'import "@fontsource/fraunces/600.css";', 'import "@fontsource/fraunces/700.css";', "<Providers>", '<html lang="en">']) {
+    for (const s of ['import "@fontsource/dm-sans/400.css";', 'import "@fontsource/dm-sans/500.css";', 'import "@fontsource/fraunces/600.css";', 'import "@fontsource/fraunces/700.css";', "<Providers>", '<html lang="en" suppressHydrationWarning>']) {
       expect(layout).toContain(s);
     }
     expect(layout).not.toContain("next/font");
@@ -43,6 +43,25 @@ describe("the contract app (Larder)", () => {
     for (const s of ["/node_modules", "/.next/"]) expect(ignore).toContain(s);
     expect(read("design/.gitignore")).toContain(".progress.json");
     expect(existsSync(join(APP, "package-lock.json"))).toBe(true);
+  });
+});
+
+describe("the contract app's variants", () => {
+  test("it has a default look and a partner store's, both readable in light and dark", async () => {
+    const tokens = JSON.parse(read("design/tokens.json"));
+    expect(tokens.$extensions["dev.motif"].variants.map((v: { id: string }) => v.id)).toEqual(["default", "partner"]);
+    const r = await runValidate(APP);
+    expect(r.exitCode).toBe(0);
+    expect(r.data.summary).toMatchObject({ errors: 0, warnings: 0, contrastChecks: tokens.$extensions["dev.motif"].pairs.length * 4 });
+    expect(read("DESIGN.md")).toMatch(/^## Variants$/m);
+  });
+
+  test("its generated styles carry the partner variant, and a settings switch chooses it", async () => {
+    expect(read("src/styles/motif.css")).toContain(':root[data-variant="partner"]');
+    const r = await runCheck(APP, { positionals: [] });
+    expect(r.data.summary).toMatchObject({ violations: 0, exceptions: 0, warnings: 0 });
+    expect(read("src/components/VariantSwitch.tsx")).toContain("dataset.variant");
+    expect(read("src/app/settings/page.tsx")).toContain("<VariantSwitch");
   });
 });
 

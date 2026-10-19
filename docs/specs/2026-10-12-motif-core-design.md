@@ -213,6 +213,8 @@ Projects may add roles; added roles must be documented in `DESIGN.md` §3/§4 an
 
 **Contrast pairs:** `$extensions["dev.motif"].pairs` lists which text/on-colour roles are used on which surfaces. `validate` checks every pair in both modes.
 
+**Variants (Part 2):** a guide may declare design variants (named alternative looks, such as a partner store's palette) at the root, and a role may add a value and dark value per variant; `DESIGN.md` then gets an unnumbered `## Variants` section after Foundations. A guide without variants is unchanged. The format and its rules are in [the Part 2 spec §5](2026-10-19-motif-part2-all-stacks-design.md) and [decision 0006](../decisions/0006-design-variants.md).
+
 ### 6.4 Spring maths (canonical model: duration + bounce)
 
 Springs are stored as perceptual duration `d` (seconds) and `bounce` `b`. With mass = 1:
@@ -387,6 +389,8 @@ All commands: plain-language output by default; `--json` prints a single JSON ob
 | `motif extract [--app <path>]` | Draft a contract from existing code | Collects literal values with the same scanners as `check`; groups colours by perceptual distance (OKLab ΔE ≤ 0.03), snaps spacing/radius to the nearest scale step (4px base), groups font sizes into a type scale, collects durations/easings; infers roles from usage context (text, background, border, button); writes `design/tokens.draft.json` and `design/extract-report.json` (old value → proposed role map, with counts and file locations). |
 | `motif preview` | Render mockups | `motif preview <file.html|dir>` serves on `127.0.0.1` (random free port) with live reload, injects the contract CSS (or a preset's), opens the system browser, and writes PNGs at 2× to `design/previews/` (phone 390×844, desktop 1440×900, per frame used). `--compare a b c` shows several side by side. `--gallery` shows the presets. `--png-only` renders without opening a browser. |
 | `motif shot` | Screenshot the real app | Starts the app's dev server (or uses `--url`), waits until ready, captures the given routes (`--routes`) or adapter-discovered routes, at three phone widths (360, 390 and 430 px, each as tall as a phone browser shows while scrolling: 740, 767 and 855 px), a tablet (768 px) and a desktop (1440 px), light and dark, into `design/shots/`. Each screenshot records the part of the page that was on screen; `--against` images frame it. `--audit` also measures rendered contrast and target sizes and checks reduced-motion handling, reporting findings in review JSON format (§7.6). Stops the dev server it started. A plain web site is served from its own folder instead. `--state <file.js>` (repeatable) also captures each page after a script brings it to a state behind a form or a click (`index@<state>.png`). |
+
+Part 2 adds `--variant <id>` (or `all`) to `motif preview` and `motif shot`, and makes `validate`, `tokens`, `check` and `extract` aware of variants: every readability pair is checked in every variant, in light and dark, and `tokens` writes every variant (on the web, `:root[data-variant="<id>"]` blocks). See [the Part 2 spec §5](2026-10-19-motif-part2-all-stacks-design.md).
 
 ### 10.3 Browser use
 

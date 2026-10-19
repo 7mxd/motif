@@ -17,9 +17,15 @@ export const metadata: Metadata = {
 // The page runs under the iPhone's home indicator, so the tab bar's env(safe-area-inset-bottom) padding has an effect.
 export const viewport: Viewport = { viewportFit: "cover" };
 
+// Applies a saved variant before the page is drawn, so no one sees the default first.
+const APPLY_VARIANT = `try{var v=localStorage.getItem("larder-variant");if(v)document.documentElement.dataset.variant=v}catch(e){}`;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: APPLY_VARIANT }} />
+      </head>
       <body className="bg-background font-body text-body text-text-primary">
         <Providers>
           <div className="flex min-h-dvh">

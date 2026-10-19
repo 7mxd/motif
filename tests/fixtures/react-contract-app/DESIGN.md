@@ -30,6 +30,11 @@ Larder feels like a good neighbourhood grocer: warm, unhurried and honest about 
 - **Corners and elevation:** `radius.sm` for chips and badges, `radius.md` for buttons, fields and cards, `radius.lg` for sheets and dialogs, `radius.full` for avatars and switches. Cards use a `border` and no shadow; `shadow.md` for menus and toasts, `shadow.lg` for dialogs and sheets.
 - **Icons:** simple line icons drawn inline at 20 px with the text colour; icon-only buttons have an accessible name.
 
+## Variants
+
+- **default:** Larder's own look, in terracotta, for everyone who shops at the neighbourhood grocer.
+- **partner:** the palette for orders placed through a partner store, in deep green with a pale green accent. It changes only `action-primary`, `action-secondary` and `focus`; everything else, including type and spacing, stays as it is. It is readable in light and dark. Shoppers can choose it in Settings.
+
 ## 4. Motion
 
 - **Presses and small changes:** `spring.snappy` for presses (scale to 0.97) and toggles; `duration.fast` for colour and opacity changes.

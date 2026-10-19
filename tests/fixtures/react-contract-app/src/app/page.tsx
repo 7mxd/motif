@@ -31,6 +31,9 @@ export default function Home() {
             ))}
           </ul>
         </section>
+        <ul className="rounded-md border border-border bg-surface">
+          <ListItem href="/settings" title="Settings" description="Appearance" />
+        </ul>
       </div>
     </main>
   );
