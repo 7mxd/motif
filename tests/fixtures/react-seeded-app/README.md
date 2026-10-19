@@ -38,6 +38,8 @@ bun tests/fixtures/assemble.ts react-seeded-app <empty folder>
 | S-22 | judgement | Add buttons appear only on hover | `/products`, `src/app/products/page.tsx:19` |
 | S-23 | judgement | Everything centred; giant headline, tiny body | `/` |
 
+Larder's partner variant comes along (its tokens and generated CSS are in the overlay, with S-10's hand edit kept as it is), so `motif validate` reports S-11 once per variant ("In the Default variant", "In the Partner variant"); both are S-11. The overlay's Home replaces Larder's, so the partner switch on Larder's Home isn't on screen in the seeded app (the switch component is still in the code).
+
 ## How a grader reads the list
 
 - `location` with `file` and `line`: a finding must point there (each such issue has an `anchor`, text that is on that line). `file` alone: anywhere in that file. `screen`: that route. `file` and `screen` together: either one, except that for an exact problem a finding naming only the screen counts once the model grader confirms it describes this problem (another problem's knock-on can share the screen). `app: true`: the category alone.

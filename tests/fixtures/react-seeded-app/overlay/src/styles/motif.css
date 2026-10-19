@@ -125,6 +125,26 @@
   --motif-color-on-info: #2A1F17;
 }
 
+:root[data-variant="partner"] {
+  --motif-color-action-primary: #1F6F5C;
+  --motif-color-action-secondary: #D9EEE6;
+  --motif-color-focus: #1F6F5C;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-variant="partner"]:not([data-theme="light"]) {
+    --motif-color-action-primary: #7FD1B9;
+    --motif-color-action-secondary: #1F3A32;
+    --motif-color-focus: #7FD1B9;
+  }
+}
+
+:root[data-variant="partner"][data-theme="dark"] {
+  --motif-color-action-primary: #7FD1B9;
+  --motif-color-action-secondary: #1F3A32;
+  --motif-color-focus: #7FD1B9;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

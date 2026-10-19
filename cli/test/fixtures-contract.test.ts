@@ -56,12 +56,12 @@ describe("the contract app's variants", () => {
     expect(read("DESIGN.md")).toMatch(/^## Variants$/m);
   });
 
-  test("its generated styles carry the partner variant, and a settings switch chooses it", async () => {
+  test("its generated styles carry the partner variant, and a switch on Home chooses it", async () => {
     expect(read("src/styles/motif.css")).toContain(':root[data-variant="partner"]');
     const r = await runCheck(APP, { positionals: [] });
     expect(r.data.summary).toMatchObject({ violations: 0, exceptions: 0, warnings: 0 });
     expect(read("src/components/VariantSwitch.tsx")).toContain("dataset.variant");
-    expect(read("src/app/settings/page.tsx")).toContain("<VariantSwitch");
+    expect(read("src/app/page.tsx")).toContain("<VariantSwitch");
   });
 });
 

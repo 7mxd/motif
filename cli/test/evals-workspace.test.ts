@@ -32,8 +32,8 @@ describe("a case's folder", () => {
 
   test("lists what the session added, changed and deleted, ignoring installed packages and build output", async () => {
     const ws = await prepareWorkspace(byId("b-settings"), join(tempDir("motif-ws-"), "b"), run);
-    mkdirSync(join(ws.app, "src/app/search"), { recursive: true });
-    writeFileSync(join(ws.app, "src/app/search/page.tsx"), "export default function Search() { return null; }\n");
+    mkdirSync(join(ws.app, "src/app/settings"), { recursive: true });
+    writeFileSync(join(ws.app, "src/app/settings/page.tsx"), "export default function Settings() { return null; }\n");
     writeFileSync(join(ws.app, "src/app/page.tsx"), "export default function Home() { return null; }\n");
     rmSync(join(ws.app, "src/components/Badge.tsx"));
     mkdirSync(join(ws.app, "node_modules/x"), { recursive: true });
@@ -41,11 +41,11 @@ describe("a case's folder", () => {
     mkdirSync(join(ws.app, ".next"), { recursive: true });
     writeFileSync(join(ws.app, ".next/trace"), "");
     expect(sorted(await changes(ws, run))).toEqual(sorted([
-      { status: "added", path: "src/app/search/page.tsx" },
+      { status: "added", path: "src/app/settings/page.tsx" },
       { status: "modified", path: "src/app/page.tsx" },
       { status: "deleted", path: "src/components/Badge.tsx" },
     ]));
-    expect(await patch(ws, run, ["src/app/search/page.tsx"])).toContain("+export default function Search()");
+    expect(await patch(ws, run, ["src/app/settings/page.tsx"])).toContain("+export default function Settings()");
   });
 
   test("a git repository the session makes inside the app doesn't change the record", async () => {

@@ -33,7 +33,7 @@ Larder feels like a good neighbourhood grocer: warm, unhurried and honest about 
 ## Variants
 
 - **default:** Larder's own look, in terracotta, for everyone who shops at the neighbourhood grocer.
-- **partner:** the palette for orders placed through a partner store, in deep green with a pale green accent. It changes only `action-primary`, `action-secondary` and `focus`; everything else, including type and spacing, stays as it is. It is readable in light and dark. Shoppers can choose it in Settings.
+- **partner:** the palette for orders placed through a partner store, in deep green with a pale green accent. It changes only `action-primary`, `action-secondary` and `focus`; everything else, including type and spacing, stays as it is. It is readable in light and dark. Shoppers can choose it on Home.
 
 ## 4. Motion
 

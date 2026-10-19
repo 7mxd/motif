@@ -3,6 +3,7 @@ import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { ListItem } from "@/components/ListItem";
 import { TopBar } from "@/components/TopBar";
+import { VariantSwitch } from "@/components/VariantSwitch";
 import { formatPrice, orders, user } from "@/mock-data";
 
 export default function Home() {
@@ -31,9 +32,9 @@ export default function Home() {
             ))}
           </ul>
         </section>
-        <ul className="rounded-md border border-border bg-surface">
-          <ListItem href="/settings" title="Settings" description="Appearance" />
-        </ul>
+        <Card>
+          <VariantSwitch />
+        </Card>
       </div>
     </main>
   );

@@ -45,7 +45,7 @@ const newApp = (brief: string, title: string): EvalCase => ({
 
 export const CASES: EvalCase[] = [
   feature("b-settings", "Settings screen", "/settings",
-    "Build out the settings screen at /settings: it so far has only a partner store look switch under Appearance. Add switches for order-update and offer notifications, the delivery address with a way to change it, appearance choice (system, light or dark) next to the existing switch, and a sign-out button. Link to it from the app's navigation as well as from Home."),
+    "Add a settings screen at /settings: switches for order-update and offer notifications, the delivery address with a way to change it, appearance (system, light or dark), and a sign-out button. Link to it from the app's navigation."),
   feature("b-search", "Search with an empty state", "/search",
     "Add product search at /search: a search field, matching products as a list, a state for when nothing matches that suggests another search, and a state for before anything is typed."),
   feature("b-profile", "Profile edit form with validation", "/profile/edit",
