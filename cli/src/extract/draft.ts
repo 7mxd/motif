@@ -702,8 +702,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   }
 
   // Design variants: the colours blocks like [data-variant="men"] { … } give variables that match a role. The :root palette is
-  // the default; a variant with no dark value keeps its light one in dark mode, as the default does.
-  const variantIds = [...new Set((occ.variables ?? []).flatMap((v) => Object.keys(v.variants ?? {})))];
+  // the default; a variant with no dark value keeps its light one in dark mode, as the default does. A block for
+  // [data-variant="default"] is that default, so it isn't drafted as a variant of its own.
+  const variantIds = [...new Set((occ.variables ?? []).flatMap((v) => Object.keys(v.variants ?? {})))].filter((id) => id !== "default");
   const variantRoles: Record<string, Record<string, { value: string; dark: string }>> = {};
   const addPrimitive = (name: string, hex: string) => {
     let n = name;

@@ -3,6 +3,7 @@ import type { SourceFile } from "../src/check/files";
 import { readPairs } from "../src/contract/contrast";
 import { checkRoles } from "../src/contract/roles";
 import { validateTokens } from "../src/contract/tokens";
+import { checkVariants } from "../src/contract/variants";
 import type { Sample } from "../src/extract/cluster";
 import { isMonospace } from "../src/contract/defaults";
 import { buildDraft, collectOccurrences, type Occurrences } from "../src/extract/draft";
@@ -260,6 +261,16 @@ describe("buildDraft with design variants", () => {
     const doc = docFrom(tokens);
     expect(validateTokens(doc)).toEqual([]);
     expect(checkRoles(doc)).toEqual([]);
+  });
+
+  test('a [data-variant="default"] block is the default, not a second variant called "default"', () => {
+    const withDefault = css + '\n[data-variant="default"] { --accent: #b91c1c }';
+    const occ2 = collectOccurrences([{ path: "a.css", abs: "", lang: "css", text: withDefault }], null, () => false, () => true);
+    const { tokens } = buildDraft(occ2);
+    const t = tokens as any;
+    expect(t.$extensions["dev.motif"].variants).toEqual([{ id: "default", label: "Default", default: true }, { id: "men", label: "Men" }]);
+    expect(Object.keys(t.color["action-primary"].$extensions["dev.motif"].variants)).toEqual(["men"]);
+    expect(checkVariants(docFrom(tokens)).filter((f) => f.severity === "error")).toEqual([]);
   });
 
   test("without variant blocks nothing about variants is drafted", () => {
