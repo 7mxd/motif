@@ -49,7 +49,11 @@ export const FLUTTER: NativeStack = {
 
   wiring(root, app, file) {
     if (usesTheme(root, app)) return null;
-    const target = importFor(root, file) ?? file;
-    return `Next: import ${target} and set theme: MotifTheme.light(), darkTheme: MotifTheme.dark() on your MaterialApp.`;
+    const target = importFor(root, file);
+    if (target) return `Next: import ${target} and set theme: MotifTheme.light(), darkTheme: MotifTheme.dark() on your MaterialApp.`;
+    return (
+      `Next: import motif_theme.dart (${file}) in your app's code and set theme: MotifTheme.light(), darkTheme: MotifTheme.dark() on your MaterialApp. ` +
+      "It can be imported as package: only from inside a package's lib/ folder (with a name: in its pubspec.yaml): if it isn't, set themeDir in design/motif.json to a folder under your app's lib/ and run motif tokens again."
+    );
   },
 };

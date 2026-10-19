@@ -5,31 +5,27 @@ import { num } from "../../generate/css-values";
 import { TS_HEADER, type GeneratedFile } from "../../generate/header";
 import type { Theme, ThemeFont, ThemeSet, ThemeShadowLayer } from "../../generate/theme";
 import { stackFamilies, themeFonts } from "../../generate/theme-fonts";
-import { camelCase, dartIdentifier, RESERVED } from "../naming";
+import { dartIdentifier, RESERVED } from "../naming";
 
 export const THEME_FILE = "motif_theme.dart";
 
 /** dart format's line width. */
 const WIDTH = 80;
 
-/**
- * A Dart expression: plain text, or a call or literal whose arguments split one per line when it doesn't fit,
- * optionally followed by a chained call (`.copyWith(…)`).
- */
+/** A Dart expression: plain text, or a call or literal whose arguments split one per line when it doesn't fit. */
 type Expr = string | Call;
 interface Call {
   head: string;
   args: Expr[];
   close: string;
-  then?: Call;
 }
 
 const call = (head: string, args: Expr[], close = ")"): Call => ({ head, args, close });
 
 const flat = (e: Expr): string =>
-  typeof e === "string" ? e : `${e.head}${e.args.map(flat).join(", ")}${e.close}${e.then ? flat(e.then) : ""}`;
+  typeof e === "string" ? e : `${e.head}${e.args.map(flat).join(", ")}${e.close}`;
 
-/** The expression as dart format (Dart 3.7 and later) lays it out, after `prefix` at `indent` spaces, ending with `suffix`. */
+/** The expression as dart format (language 3.8 and later) lays it out, after `prefix` at `indent` spaces, ending with `suffix`. */
 function render(e: Expr, indent: number, prefix = "", suffix = ""): string[] {
   const pad = " ".repeat(indent);
   const one = `${pad}${prefix}${flat(e)}${suffix}`;
@@ -40,11 +36,7 @@ function render(e: Expr, indent: number, prefix = "", suffix = ""): string[] {
     return named ? [`${pad}${named[1]}:`, `${pad}    ${named[2]}${suffix}`] : [one];
   }
   if (e.args.length === 0) return [one];
-  const args = (c: Call) => c.args.flatMap((a) => render(a, indent + 2, "", ","));
-  if (e.then) {
-    return [`${pad}${prefix}${e.head}`, ...args(e), `${pad}${e.close}${e.then.head}`, ...args(e.then), `${pad}${e.then.close}${suffix}`];
-  }
-  return [`${pad}${prefix}${e.head}`, ...args(e), `${pad}${e.close}${suffix}`];
+  return [`${pad}${prefix}${e.head}`, ...e.args.flatMap((a) => render(a, indent + 2, "", ",")), `${pad}${e.close}${suffix}`];
 }
 
 /** `0xAARRGGBB`, from the colour's hex and alpha. */
@@ -56,10 +48,14 @@ export function dartColor(c: DtcgColor): string {
 /** Names MotifColors already uses for its own members. */
 const COLOR_MEMBERS = new Set(["light", "dark", "of", "copyWith", "lerp", "type", "hashCode", "runtimeType", "toString", "noSuchMethod"]);
 
-/** A role name as a Dart member: camelCase, a letter in front of a leading digit, and never a keyword. */
-function member(name: string, lead: string, taken: Set<string> = new Set()): string {
-  let id = camelCase(name).replace(/[^A-Za-z0-9_]/g, "_");
-  if (/^[0-9]/.test(id)) id = `${lead}${id}`;
+/**
+ * A role name as a lowerCamelCase Dart member: words joined (on-action-primary → onActionPrimary), "p" for a point
+ * between digits (0-5 → 0p5), a letter in front of a leading digit, and never a keyword.
+ */
+export function member(name: string, lead: string, taken: Set<string> = new Set()): string {
+  const words = name.replace(/(\d)[-_](?=\d)/g, "$1p").split(/[^A-Za-z0-9]+/).filter(Boolean);
+  let id = words.map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1))).join("");
+  if (id === "" || /^[0-9]/.test(id)) id = `${lead}${id}`;
   return RESERVED.dart.has(id) || taken.has(id) ? `${id}Value` : id;
 }
 const colorField = (name: string) => member(name, "c", COLOR_MEMBERS);
@@ -131,7 +127,7 @@ function colorsBlock(set: ThemeSet): string[] {
     "  @override",
     "  MotifColors lerp(MotifColors? other, double t) {",
     "    if (other == null) return this;",
-    ...render(call("MotifColors(", fields.map((f) => `${f}: Color.lerp(${f}, other.${f}, t)!`)), 4, "return ", ";"),
+    ...render(call("MotifColors(", fields.map((f) => call(`${f}: Color.lerp(`, [f, `other.${f}`, "t"], ")!"))), 4, "return ", ";"),
     "  }",
     "}",
   ];
@@ -165,21 +161,48 @@ function textStyle(font: ThemeFont, google: Set<string>, googleFonts: boolean): 
   props.push("leadingDistribution: TextLeadingDistribution.even");
 
   const [first, ...companions] = families;
-  // The companion's family name at the role's weight, loaded by google_fonts.
-  const weight = font.weight === 400 ? [] : [`fontWeight: ${fontWeight(font.weight)}`];
-  const fallback: Expr[] = companions.map((f) => (viaGoogle(f) ? call("GoogleFonts.getFont(", [dartString(f), ...weight], ").fontFamily!") : dartString(f)));
-  const fallbackArg = fallback.length > 0 ? call("fontFamilyFallback: [", fallback, "]") : null;
+  // A companion's family name at the role's weight, through google_fonts when it has the font.
+  const weight = font.weight === 400 ? [] : [fontWeight(font.weight)];
+  const fallback: Expr[] = companions.map((f) => (viaGoogle(f) ? call("_family(", [dartString(f), ...weight]) : dartString(f)));
 
   if (first && viaGoogle(first)) {
-    const style = call("textStyle: const TextStyle(", props);
-    const font = call("GoogleFonts.getFont(", [dartString(first), style]);
-    // google_fonts sets its own fallback list, so the companion is added after it.
-    return fallbackArg ? { ...font, then: call(".copyWith(", [fallbackArg]) } : font;
+    // google_fonts sets its own fallback list, so _font adds the companions after it.
+    return call("_font(", [dartString(first), call("const TextStyle(", props), ...(fallback.length > 0 ? [call("[", fallback, "]")] : [])]);
   }
   const allConst = fallback.every((f) => typeof f === "string");
-  const args: Expr[] = [...(first ? [`fontFamily: ${dartString(first)}`] : []), ...(fallbackArg ? [fallbackArg] : []), ...props];
+  const fallbackArg = fallback.length > 0 ? [call("fontFamilyFallback: [", fallback, "]")] : [];
+  const args: Expr[] = [...(first ? [`fontFamily: ${dartString(first)}`] : []), ...fallbackArg, ...props];
   return call(`${allConst ? "const " : ""}TextStyle(`, args);
 }
+
+/** A family through google_fonts (which loads it), or by plain name when google_fonts doesn't have it. */
+const FONT_HELPER = [
+  "  /// The family through google_fonts, which loads it, or by its plain name",
+  "  /// when google_fonts doesn't have it (a font the app bundles itself).",
+  "  static TextStyle _font(",
+  "    String family,",
+  "    TextStyle style, [",
+  "    List<String>? fallback,",
+  "  ]) {",
+  "    final font = GoogleFonts.asMap().containsKey(family)",
+  "        ? GoogleFonts.getFont(family, textStyle: style)",
+  "        : style.copyWith(fontFamily: family);",
+  "    return fallback == null",
+  "        ? font",
+  "        : font.copyWith(fontFamilyFallback: fallback);",
+  "  }",
+];
+
+/** A fallback family's name, loaded through google_fonts when it has the font. */
+const FAMILY_HELPER = [
+  "  /// A fallback family's name: google_fonts' name for a font it has (which",
+  "  /// loads it), or the plain family name.",
+  "  static String _family(String family, [FontWeight weight = FontWeight.w400]) {",
+  "    return GoogleFonts.asMap().containsKey(family)",
+  "        ? GoogleFonts.getFont(family, fontWeight: weight).fontFamily!",
+  "        : family;",
+  "  }",
+];
 
 const TEXT_THEME: [string, string][] = [
   ["displayLarge", "display"], ["displayMedium", "display"], ["displaySmall", "display"],
@@ -268,7 +291,9 @@ export function generateFlutter(set: ThemeSet, opts: { googleFonts: boolean }): 
   const t = set.base;
   const google = new Set(themeFonts(t).filter((f) => f.source === "google" || f.source === "bundled").map((f) => f.family.toLowerCase()));
   const styles = t.fonts.map((f) => ({ font: f, style: textStyle(f, google, opts.googleFonts) }));
-  const usesGoogleFonts = styles.some((s) => flat(s.style).includes("GoogleFonts."));
+  const usesFont = styles.some((s) => flat(s.style).includes("_font("));
+  const usesFamily = styles.some((s) => flat(s.style).includes("_family("));
+  const usesGoogleFonts = usesFont || usesFamily;
 
   const lines = [
     TS_HEADER,
@@ -314,7 +339,11 @@ export function generateFlutter(set: ThemeSet, opts: { googleFonts: boolean }): 
     ...constants(
       ["The guide's type roles: size, weight, line height and letter spacing.", "They carry no colour, so the theme's text colour applies."],
       "MotifText",
-      styles.flatMap(({ font, style }, i) => [...(i > 0 ? [""] : []), ...render(style, 2, `static TextStyle get ${member(font.name, "t")} => `, ";")]),
+      [
+        ...styles.flatMap(({ font, style }, i) => [...(i > 0 ? [""] : []), ...render(style, 2, `static TextStyle get ${member(font.name, "t")} => `, ";")]),
+        ...(usesFont ? ["", ...FONT_HELPER] : []),
+        ...(usesFamily ? ["", ...FAMILY_HELPER] : []),
+      ],
     ),
     ...themeBlock(set),
     "",

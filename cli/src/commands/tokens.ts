@@ -317,7 +317,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     if (note && !notes.includes(note)) notes.push(note);
   }
   for (const c of copied.filter((r) => r.status === "skipped")) {
-    notes.push(`${copies.find((d) => d.to === c.path)!.from} doesn't exist, so it wasn't copied to ${c.path}.`);
+    notes.push(`${copies.find((d) => d.to === c.path)!.from} doesn't exist, so it wasn't copied to ${c.path}. Add the file, or fix its path in design/tokens.json's fonts list.`);
   }
   for (const l of links) {
     if (blockedPaths.has(l.path) || linkedFromPages(l.dir)) continue;

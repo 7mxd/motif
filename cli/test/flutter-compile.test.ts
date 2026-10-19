@@ -24,7 +24,10 @@ class Example extends StatelessWidget {
     return AnimatedContainer(
       duration: MotifMotion.duration(context, MotifDurations.base),
       curve: MotifCurves.standard,
-      padding: const EdgeInsets.all(MotifSpace.s4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: MotifSpace.s4,
+        vertical: MotifSpace.s0p5,
+      ),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(MotifRadius.md),
@@ -62,7 +65,14 @@ describe("the generated Dart", () => {
       expect(online.out).toContain("Got dependencies");
     }
     mkdirSync(join(dir, "lib/design"), { recursive: true });
-    const [variants] = generateFlutter(buildThemeSet(docFrom(withCompanion(partnerTokens()))), { googleFonts: true });
+    // Two variants; a companion at two weights through _family; a family google_fonts may not have (Satoshi) through
+    // _font; a space role with a point in its name.
+    const tokens = withCompanion(partnerTokens());
+    tokens.font.heading.$value.fontFamily = ["Satoshi", "Readex Pro"];
+    tokens.space["0-5"] = { $value: { value: 2, unit: "px" } };
+    const [variants] = generateFlutter(buildThemeSet(docFrom(tokens)), { googleFonts: true });
+    expect(variants!.content).toContain("'Satoshi',");
+    expect(variants!.content).toContain("static const double s0p5 = 2;");
     writeFileSync(join(dir, "lib/design/motif_theme.dart"), variants!.content);
     writeFileSync(join(dir, "lib/design/usage.dart"), USAGE);
     // The other shape: no variants, and plain family names.

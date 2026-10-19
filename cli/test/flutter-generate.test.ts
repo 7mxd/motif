@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { springPhysics } from "../src/contract/spring";
 import { TS_HEADER } from "../src/generate/header";
 import { buildThemeSet } from "../src/generate/theme";
-import { generateFlutter } from "../src/stacks/flutter/generate";
+import { generateFlutter, member } from "../src/stacks/flutter/generate";
 import { docFrom, partnerTokens, validTokens, withCompanion } from "./helpers";
 
 const dartFor = (tokens: any, googleFonts = true) => {
@@ -81,8 +81,14 @@ describe("generateFlutter, the test guide (no variants)", () => {
 
   test("type: one getter per role, with no colour, mapped onto the text theme", () => {
     expect(dart).toContain("static TextStyle get body =>");
-    expect(dart).toContain("GoogleFonts.getFont(");
-    expect(dart).toContain("'Inter',");
+    expect(dart).toContain("static TextStyle get body => _font(\n    'Inter',\n    const TextStyle(");
+    // One guarded helper loads a family through google_fonts only when it has it.
+    expect(dart).toContain("static TextStyle _font(");
+    expect(dart).toContain("GoogleFonts.asMap().containsKey(family)");
+    expect(dart).toContain(": style.copyWith(fontFamily: family);");
+    expect(dart).not.toContain("GoogleFonts.getFont('");
+    // No companion, so no fallback helper (an unused one is a lint warning).
+    expect(dart).not.toContain("_family(");
     expect(dart).toContain("fontWeight: FontWeight.w600,");
     expect(dart).toContain("height: 1.3,");
     expect(dart).not.toMatch(/TextStyle\([^)]*color:/);
@@ -111,6 +117,19 @@ describe("generateFlutter, the test guide (no variants)", () => {
   });
 });
 
+describe("generateFlutter, names", () => {
+  test("role names become lint-clean lowerCamelCase members", () => {
+    expect(member("0-5", "s")).toBe("s0p5");
+    expect(member("2xl", "r")).toBe("r2xl");
+    expect(member("on-action-primary", "c")).toBe("onActionPrimary");
+    expect(member("surface_raised", "c")).toBe("surfaceRaised");
+    expect(member("default", "c")).toBe("defaultValue");
+    const t = validTokens();
+    t.space["0-5"] = { $value: { value: 2, unit: "px" } };
+    expect(dartFor(t)).toContain("static const double s0p5 = 2;");
+  });
+});
+
 describe("generateFlutter, two variants", () => {
   const dart = dartFor(partnerTokens());
 
@@ -136,10 +155,26 @@ describe("generateFlutter, an Arabic companion", () => {
   test("with google_fonts, both families load through it", () => {
     const dart = dartFor(withCompanion(validTokens()));
     expect(dart).toContain("import 'package:google_fonts/google_fonts.dart';");
-    expect(dart).toContain("static TextStyle get body => GoogleFonts.getFont(\n    'Onest',");
-    // google_fonts sets its own fallback list, so the companion goes on after it.
-    expect(dart).toContain("  ).copyWith(\n    fontFamilyFallback:");
-    expect(dart).toContain("fontFamilyFallback: [GoogleFonts.getFont('Readex Pro').fontFamily!]");
+    expect(dart).toContain("static TextStyle get body => _font(\n    'Onest',");
+    // _font adds the companion after google_fonts has set its own fallback list.
+    expect(dart).toContain("    [_family('Readex Pro')],\n  );");
+    expect(dart).toContain(": font.copyWith(fontFamilyFallback: fallback);");
+    expect(dart).toContain("static String _family(String family, [FontWeight weight = FontWeight.w400]) {");
+    expect(dart).toContain("? GoogleFonts.getFont(family, fontWeight: weight).fontFamily!\n        : family;");
+  });
+
+  test("a bold role asks for the companion's bold face", () => {
+    const t = withCompanion(validTokens());
+    t.font.heading.$value.fontFamily = ["Onest", "Readex Pro"];
+    expect(dartFor(t)).toContain("[_family('Readex Pro', FontWeight.w600)],");
+  });
+
+  test("a family google_fonts may not know goes through the guarded helper, never straight to getFont", () => {
+    const t = validTokens();
+    t.font.body.$value.fontFamily = ["Satoshi", "sans-serif"];
+    const dart = dartFor(t);
+    expect(dart).toContain("static TextStyle get body => _font(\n    'Satoshi',");
+    expect(dart).not.toContain("getFont('Satoshi'");
   });
 
   test("without google_fonts, both are plain family names", () => {

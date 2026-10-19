@@ -170,8 +170,11 @@ class MotifColors extends ThemeExtension<MotifColors> {
       actionPrimary: Color.lerp(actionPrimary, other.actionPrimary, t)!,
       onActionPrimary: Color.lerp(onActionPrimary, other.onActionPrimary, t)!,
       actionSecondary: Color.lerp(actionSecondary, other.actionSecondary, t)!,
-      onActionSecondary:
-          Color.lerp(onActionSecondary, other.onActionSecondary, t)!,
+      onActionSecondary: Color.lerp(
+        onActionSecondary,
+        other.onActionSecondary,
+        t,
+      )!,
       focus: Color.lerp(focus, other.focus, t)!,
       success: Color.lerp(success, other.success, t)!,
       onSuccess: Color.lerp(onSuccess, other.onSuccess, t)!,
@@ -270,9 +273,9 @@ abstract final class MotifMotion {
 /// The guide's type roles: size, weight, line height and letter spacing.
 /// They carry no colour, so the theme's text colour applies.
 abstract final class MotifText {
-  static TextStyle get display => GoogleFonts.getFont(
+  static TextStyle get display => _font(
     'Inter',
-    textStyle: const TextStyle(
+    const TextStyle(
       fontSize: 40,
       fontWeight: FontWeight.w700,
       height: 1.1,
@@ -280,9 +283,9 @@ abstract final class MotifText {
     ),
   );
 
-  static TextStyle get title => GoogleFonts.getFont(
+  static TextStyle get title => _font(
     'Inter',
-    textStyle: const TextStyle(
+    const TextStyle(
       fontSize: 28,
       fontWeight: FontWeight.w700,
       height: 1.2,
@@ -290,9 +293,9 @@ abstract final class MotifText {
     ),
   );
 
-  static TextStyle get heading => GoogleFonts.getFont(
+  static TextStyle get heading => _font(
     'Inter',
-    textStyle: const TextStyle(
+    const TextStyle(
       fontSize: 20,
       fontWeight: FontWeight.w600,
       height: 1.3,
@@ -300,9 +303,9 @@ abstract final class MotifText {
     ),
   );
 
-  static TextStyle get body => GoogleFonts.getFont(
+  static TextStyle get body => _font(
     'Inter',
-    textStyle: const TextStyle(
+    const TextStyle(
       fontSize: 16,
       fontWeight: FontWeight.w400,
       height: 1.5,
@@ -310,9 +313,9 @@ abstract final class MotifText {
     ),
   );
 
-  static TextStyle get label => GoogleFonts.getFont(
+  static TextStyle get label => _font(
     'Inter',
-    textStyle: const TextStyle(
+    const TextStyle(
       fontSize: 14,
       fontWeight: FontWeight.w500,
       height: 1.4,
@@ -320,15 +323,30 @@ abstract final class MotifText {
     ),
   );
 
-  static TextStyle get caption => GoogleFonts.getFont(
+  static TextStyle get caption => _font(
     'Inter',
-    textStyle: const TextStyle(
+    const TextStyle(
       fontSize: 12,
       fontWeight: FontWeight.w400,
       height: 1.4,
       leadingDistribution: TextLeadingDistribution.even,
     ),
   );
+
+  /// The family through google_fonts, which loads it, or by its plain name
+  /// when google_fonts doesn't have it (a font the app bundles itself).
+  static TextStyle _font(
+    String family,
+    TextStyle style, [
+    List<String>? fallback,
+  ]) {
+    final font = GoogleFonts.asMap().containsKey(family)
+        ? GoogleFonts.getFont(family, textStyle: style)
+        : style.copyWith(fontFamily: family);
+    return fallback == null
+        ? font
+        : font.copyWith(fontFamilyFallback: fallback);
+  }
 }
 
 /// Material themes built from the guide, for your MaterialApp:

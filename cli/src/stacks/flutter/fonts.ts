@@ -52,6 +52,37 @@ function pubspecText(dir: string): string {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * The file name each font file gets in the app's font folder: its own name, or, when files from different folders
+ * share a name, the name with as many of its folder names in front as it takes to tell them apart
+ * (design/fonts/a/Brand.ttf and design/fonts/b/Brand.ttf become a-Brand.ttf and b-Brand.ttf).
+ */
+export function assetNames(paths: string[]): Map<string, string> {
+  const unique = [...new Set(paths.map(posix))];
+  const names = new Map<string, string>();
+  const groups = new Map<string, string[]>();
+  for (const p of unique) {
+    const key = basename(p).toLowerCase();
+    groups.set(key, [...(groups.get(key) ?? []), p]);
+  }
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      names.set(group[0]!, basename(group[0]!));
+      continue;
+    }
+    const folders = group.map((p) => p.split("/").slice(0, -1));
+    const depth = Math.max(...folders.map((f) => f.length));
+    for (let k = 1; k <= depth; k++) {
+      const named = group.map((p, i) => [...folders[i]!.slice(-k), basename(p)].join("-"));
+      if (new Set(named.map((n) => n.toLowerCase())).size === group.length || k === depth) {
+        group.forEach((p, i) => names.set(p, named[i]!));
+        break;
+      }
+    }
+  }
+  return names;
+}
+
 /** Project fonts copied into the app with the pubspec block to add, and whether google_fonts can load the rest. */
 export function flutterFonts(theme: Theme, root: string, app: AppInfo, themeDir: string): FlutterFonts {
   const uses = themeFonts(theme);
@@ -60,6 +91,8 @@ export function flutterFonts(theme: Theme, root: string, app: AppInfo, themeDir:
   const appDir = resolve(root, app.path);
   const pubspec = pubspecText(appDir);
   const blocks: string[] = [];
+  const outside = theme.projectFonts.flatMap((f) => f.files.map((file) => file.path)).filter((p) => FLUTTER_FONT.test(p) && !inside(appDir, resolve(root, p)));
+  const names = assetNames(outside);
 
   for (const use of uses.filter((u) => u.source === "project")) {
     const font = theme.projectFonts.find((f) => f.family.toLowerCase() === use.family.toLowerCase());
@@ -72,8 +105,8 @@ export function flutterFonts(theme: Theme, root: string, app: AppInfo, themeDir:
     const assets = files.map((f) => {
       const abs = resolve(root, f.path);
       if (inside(appDir, abs)) return { ...f, asset: posix(relative(appDir, abs)) };
-      const asset = `${FONT_ASSETS}/${basename(f.path)}`;
-      copies.push({ from: posix(f.path), to: prefixPath(app.path, asset) });
+      const asset = `${FONT_ASSETS}/${names.get(posix(f.path))}`;
+      if (!copies.some((c) => c.from === posix(f.path))) copies.push({ from: posix(f.path), to: prefixPath(app.path, asset) });
       return { ...f, asset };
     });
     // Already registered in pubspec.yaml: nothing to add.

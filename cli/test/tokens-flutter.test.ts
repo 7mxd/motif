@@ -39,7 +39,7 @@ describe("motif tokens for a Flutter app", () => {
     expect(statuses(r)).toEqual({ "lib/design/motif_theme.dart": "created", "design/motif.json": "created" });
     const dart = readFileSync(join(root, "lib/design/motif_theme.dart"), "utf8");
     expect(dart.startsWith(TS_HEADER + "\n")).toBe(true);
-    expect(dart).toContain("GoogleFonts.getFont(");
+    expect(dart).toContain("static TextStyle get body => _font(");
     expect(notes(r)).toContain(WIRING);
     expect(notes(r)).not.toContain("coming soon");
     expect(existsSync(join(root, "design/generated"))).toBe(false);
@@ -130,6 +130,60 @@ describe("motif tokens for a Flutter app", () => {
     const r = await runTokens(root, ctx);
     expect(Object.keys(statuses(r)).some((p) => p.startsWith("assets/"))).toBe(false);
     expect(notes(r)).toContain("        - asset: design/fonts/BrandSans-Regular.ttf");
+  });
+
+  test("font files with the same name from different folders get different names in the app", async () => {
+    const t = validTokens();
+    t.$extensions["dev.motif"].fonts = [{
+      family: "Brand Sans",
+      files: [
+        { path: "design/fonts/regular/Brand.ttf", weight: 400, style: "normal" },
+        { path: "design/fonts/bold/Brand.ttf", weight: 700, style: "normal" },
+      ],
+    }];
+    t.font.body.$value.fontFamily = ["Brand Sans", "sans-serif"];
+    const root = makeProject({
+      "design/tokens.json": JSON.stringify(t),
+      "design/fonts/regular/Brand.ttf": "regular",
+      "design/fonts/bold/Brand.ttf": "bold",
+      "app/pubspec.yaml": pubspec("shop"),
+      "app/lib/main.dart": "void main() {}\n",
+    });
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)["app/assets/fonts/regular-Brand.ttf"]).toBe("created");
+    expect(statuses(r)["app/assets/fonts/bold-Brand.ttf"]).toBe("created");
+    expect(readFileSync(join(root, "app/assets/fonts/bold-Brand.ttf"), "utf8")).toBe("bold");
+    expect(notes(r)).toContain("        - asset: assets/fonts/regular-Brand.ttf\n        - asset: assets/fonts/bold-Brand.ttf\n          weight: 700");
+  });
+
+  test("a font file that isn't there is skipped, with what to do", async () => {
+    const root = makeProject({
+      "design/tokens.json": brandTokens(["design/fonts/BrandSans-Regular.ttf"]),
+      "app/pubspec.yaml": pubspec("shop"),
+      "app/lib/main.dart": "void main() {}\n",
+    });
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)["app/assets/fonts/BrandSans-Regular.ttf"]).toBe("skipped");
+    expect(notes(r)).toContain(
+      "design/fonts/BrandSans-Regular.ttf doesn't exist, so it wasn't copied to app/assets/fonts/BrandSans-Regular.ttf. Add the file, or fix its path in design/tokens.json's fonts list.",
+    );
+  });
+
+  test("a theme folder outside a package's lib/ gets a wiring note without a package: import", async () => {
+    const root = makeProject({
+      "design/tokens.json": TOKENS,
+      "design/motif.json": JSON.stringify({ motifContract: 1, apps: [{ path: "app", stack: "flutter", themeDir: "design/flutter" }], ignore: [] }),
+      "app/pubspec.yaml": pubspec("shop"),
+      "app/lib/main.dart": "void main() {}\n",
+    });
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)["design/flutter/motif_theme.dart"]).toBe("created");
+    const wiring = (r.data.notes as string[]).find((n) => n.startsWith("Next:"))!;
+    expect(wiring).toContain("Next: import motif_theme.dart (design/flutter/motif_theme.dart) in your app's code");
+    expect(wiring).toContain("set theme: MotifTheme.light(), darkTheme: MotifTheme.dark() on your MaterialApp.");
+    expect(wiring).toContain("package: only from inside a package's lib/ folder");
+    expect(wiring).not.toContain("package:shop");
+    expect(wiring).not.toMatch(/import package:/);
   });
 
   test("a project font with only WOFF2 files gets a note", async () => {
