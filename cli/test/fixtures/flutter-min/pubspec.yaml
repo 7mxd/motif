@@ -1,0 +1,21 @@
+name: flutter_min
+description: A minimal Flutter app for Motif's tests.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  go_router: ^18.1.0
+  google_fonts: ^8.2.1
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

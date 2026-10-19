@@ -50,3 +50,35 @@ export function hexColor(hex: string) {
   const n = (i: number) => Number((parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(4));
   return { colorSpace: "srgb", components: [n(1), n(3), n(5)], hex };
 }
+
+/**
+ * The fixture tokens with two variants, default (the default) and partner, whose surface differs light and dark.
+ * The id "default" is a Dart keyword, so it becomes defaultVariant in Dart.
+ */
+export function partnerTokens(): any {
+  const t = validTokens();
+  t.$extensions = { ...(t.$extensions ?? {}), "dev.motif": { ...(t.$extensions?.["dev.motif"] ?? {}), variants: [{ id: "default", label: "Default", default: true }, { id: "partner", label: "Partner" }] } };
+  t.color.surface.$extensions = { "dev.motif": { ...t.color.surface.$extensions["dev.motif"], variants: { partner: { value: hexColor("#FFF7ED"), dark: hexColor("#1C1917") } } } };
+  return t;
+}
+
+/** Tokens whose body font is Onest with Readex Pro as its Arabic companion. */
+export function withCompanion(t: any): any {
+  t.font.body.$value.fontFamily = ["Onest", "Readex Pro", "sans-serif"];
+  return t;
+}
+
+let flutterFound: boolean | undefined;
+
+/** True when the flutter command runs here. It runs flutter --version once and remembers the answer. */
+export function hasFlutter(): boolean {
+  if (flutterFound === undefined) {
+    const path = Bun.which("flutter");
+    try {
+      flutterFound = path !== null && Bun.spawnSync([path, "--version"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+    } catch {
+      flutterFound = false;
+    }
+  }
+  return flutterFound;
+}

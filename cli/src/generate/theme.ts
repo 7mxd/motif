@@ -3,7 +3,7 @@ import { readVariants, variantView } from "../contract/variants";
 import { resolveMode, resolveToken } from "../contract/resolve";
 import type { TokenDocument } from "../contract/types";
 import { durationToMs, validateValue, type DtcgColor, type DtcgDuration } from "../contract/values";
-import { cssDimension, cssFontFamily, cssShadow, dimensionPx, fontWeightNumber, type DtcgDimension } from "./css-values";
+import { cssDimension, cssFontFamily, cssShadow, dimensionPx, fontWeightNumber, shadowLayers, type DtcgDimension } from "./css-values";
 
 export interface ThemeColor {
   name: string;
@@ -27,11 +27,22 @@ export interface ThemeFont {
   letterSpacing?: string;
 }
 
+/** One layer of a shadow, in pixels. */
+export interface ThemeShadowLayer {
+  color: DtcgColor;
+  x: number;
+  y: number;
+  blur: number;
+  spread: number;
+  inset: boolean;
+}
+
 export interface Theme {
   colors: ThemeColor[];
   space: ThemeSize[];
   radius: ThemeSize[];
-  shadows: { name: string; css: string }[];
+  /** Each shadow as CSS, and its layers in pixels for stacks that draw them themselves. */
+  shadows: { name: string; css: string; layers: ThemeShadowLayer[] }[];
   fonts: ThemeFont[];
   durations: { name: string; ms: number }[];
   easings: { name: string; points: [number, number, number, number] }[];
@@ -84,7 +95,18 @@ export function buildTheme(doc: TokenDocument): Theme {
         break;
       }
       case "shadow:shadow":
-        theme.shadows.push({ name, css: cssShadow(r.value) });
+        theme.shadows.push({
+          name,
+          css: cssShadow(r.value),
+          layers: shadowLayers(r.value).map((l) => ({
+            color: l.color,
+            x: dimensionPx(l.offsetX),
+            y: dimensionPx(l.offsetY),
+            blur: dimensionPx(l.blur),
+            spread: dimensionPx(l.spread),
+            inset: l.inset === true,
+          })),
+        });
         break;
       case "font:typography": {
         const t = r.value as Typography;

@@ -16,6 +16,7 @@ import { themeFonts } from "../generate/theme-fonts";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
 import { motifCss } from "../generate/motif-css";
+import { nativeStack } from "../stacks/native";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
 import { TOKENS_JSON } from "./validate";
 
@@ -41,6 +42,23 @@ export function writeGenerated(root: string, files: GeneratedFile[]): { path: st
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, f.content);
     return { path: f.path, status: "created" as const };
+  });
+}
+
+/**
+ * Copy files into the project (a native app's fonts). An identical file is left as it is; a different one is never
+ * overwritten.
+ */
+function copyFiles(root: string, copies: { from: string; to: string }[]): { path: string; status: FileStatus }[] {
+  return copies.map((c) => {
+    const from = join(root, c.from);
+    const to = join(root, c.to);
+    if (!existsSync(from)) return { path: c.to, status: "skipped" as const };
+    const bytes = readFileSync(from);
+    if (existsSync(to)) return { path: c.to, status: readFileSync(to).equals(bytes) ? ("unchanged" as const) : ("protected" as const) };
+    mkdirSync(dirname(to), { recursive: true });
+    writeFileSync(to, bytes);
+    return { path: c.to, status: "created" as const };
   });
 }
 
@@ -230,10 +248,21 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   let needsFallback = false;
   let needsFlat = false;
   const links: { dir: string; path: string }[] = [];
+  const copies: { from: string; to: string }[] = [];
+  const wiring: { app: AppInfo; path: string; note: (root: string, app: AppInfo, file: string) => string | null }[] = [];
 
   for (const app of apps) {
     const appDir = join(cwd, app.path);
-    if (app.stack === "react-web") {
+    const native = nativeStack(app.stack);
+    if (native?.generate) {
+      const out = native.generate(set, { root: cwd, app, themeDir: native.themeDir(cwd, app) });
+      // Apps that share one theme folder write the theme once.
+      for (const f of out.files) if (!files.some((g) => g.path === f.path)) files.push(f);
+      for (const c of out.copies) if (!copies.some((d) => d.to === c.to)) copies.push(c);
+      for (const n of out.notes) if (!notes.includes(n)) notes.push(n);
+      const wire = native.wiring?.bind(native);
+      if (wire) for (const f of out.files) wiring.push({ app, path: f.path, note: wire });
+    } else if (app.stack === "react-web") {
       const srcDir = app.srcDir ?? chooseSrcDir(appDir);
       const tailwind = detectTailwind(appDir);
       srcDirs.set(app.path, srcDir);
@@ -270,6 +299,8 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   else if (needsFlat) files.push(flatTokensFile(theme, set.variants));
 
   const results = writeGenerated(cwd, files);
+  const copied = copyFiles(cwd, copies);
+  results.push(...copied);
   const settingsStatus = updateSettings(cwd, detected, srcDirs, notes);
   if (settingsStatus) results.push({ path: "design/motif.json", status: settingsStatus });
 
@@ -279,6 +310,14 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     notes.push(e.tailwind
       ? `Next: in your main CSS file, add an @import for ${e.path} right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.`
       : `Next: load ${e.path} once: @import it from your main CSS file, or import it in your app's entry file.`);
+  }
+  for (const w of wiring) {
+    if (blockedPaths.has(w.path)) continue;
+    const note = w.note(cwd, w.app, w.path);
+    if (note && !notes.includes(note)) notes.push(note);
+  }
+  for (const c of copied.filter((r) => r.status === "skipped")) {
+    notes.push(`${copies.find((d) => d.to === c.path)!.from} doesn't exist, so it wasn't copied to ${c.path}.`);
   }
   for (const l of links) {
     if (blockedPaths.has(l.path) || linkedFromPages(l.dir)) continue;
@@ -293,7 +332,12 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     ...(fonts.length > 0
       ? [`Theme fonts: ${fonts.map((f) => `${f.family} ${f.weights.join(" · ")}`).join(", ")}. Your app needs to load them (your stack's Motif guide shows how).`]
       : []),
-    ...blocked.map((b) => `${b.path} already exists and wasn't made by Motif, so it was left alone (and files that depend on it were skipped). Rename or remove it, then run motif tokens again.`),
+    ...blocked.map((b) => {
+      const copy = copies.find((c) => c.to === b.path);
+      return copy
+        ? `${b.path} already exists and differs from ${copy.from}, so it was left alone. Replace it with ${copy.from} if the guide's file is the one to use.`
+        : `${b.path} already exists and wasn't made by Motif, so it was left alone (and files that depend on it were skipped). Rename or remove it, then run motif tokens again.`;
+    }),
     ...notes.map((n) => `• ${n}`),
   ];
   return {

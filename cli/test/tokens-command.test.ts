@@ -21,6 +21,8 @@ const app = (extra: Record<string, string> = {}, tailwind = true) => makeProject
   ...extra,
 });
 const ctx = (app?: string) => ({ positionals: [], app });
+/** An app whose stack has no adapter yet (Flutter has had one since 2E). */
+const COMPOSE_GRADLE = 'dependencies { implementation("androidx.compose.ui:ui:1.7.0") }\n';
 const statuses = (r: any) => Object.fromEntries((r.data.files as any[]).map((f) => [f.path, f.status]));
 
 describe("runTokens", () => {
@@ -78,12 +80,12 @@ describe("runTokens", () => {
   });
 
   test("a stack without an adapter gets plain CSS variables and flat JSON", async () => {
-    const root = makeProject({ "pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n", "design/tokens.json": TOKENS });
+    const root = makeProject({ "build.gradle.kts": COMPOSE_GRADLE, "design/tokens.json": TOKENS });
     const r = await runTokens(root, ctx());
     expect(r.exitCode).toBe(0);
     expect(existsSync(join(root, "design/generated/motif.css"))).toBe(true);
     expect(existsSync(join(root, "design/generated/tokens.flat.json"))).toBe(true);
-    expect((r.data.notes as string[]).join("\n")).toContain("Flutter support is coming soon");
+    expect((r.data.notes as string[]).join("\n")).toContain("Jetpack Compose support is coming soon");
   });
 
   test("broken theme values → exit 1 and nothing written", async () => {
@@ -212,13 +214,13 @@ describe("motif tokens on a plain web site at the project's root (backlog)", () 
       "package.json": reactPkg(), "src/main.tsx": "", "src/index.css": '@import "tailwindcss";\n',
       "design/tokens.json": JSON.stringify(twoVariantTokens()),
     });
-    const flutter = makeProject({ "pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n", "design/tokens.json": JSON.stringify(twoVariantTokens()) });
+    const native = makeProject({ "build.gradle.kts": COMPOSE_GRADLE, "design/tokens.json": JSON.stringify(twoVariantTokens()) });
     const r = await runTokens(root, ctx());
     expect(r.exitCode).toBe(0);
     expect(readFileSync(join(root, "src/styles/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
-    await runTokens(flutter, ctx());
-    expect(JSON.parse(readFileSync(join(flutter, "design/generated/tokens.flat.json"), "utf8")).variants.men["color.surface"].light).toBe("#123456");
-    expect(readFileSync(join(flutter, "design/generated/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
+    await runTokens(native, ctx());
+    expect(JSON.parse(readFileSync(join(native, "design/generated/tokens.flat.json"), "utf8")).variants.men["color.surface"].light).toBe("#123456");
+    expect(readFileSync(join(native, "design/generated/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
   });
 
   test("--stack preview carries the variants too", async () => {

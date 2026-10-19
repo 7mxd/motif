@@ -111,8 +111,9 @@ describe("naming and the registry", () => {
     expect(dartIdentifier("women")).toBe("women");
     expect(dartIdentifier("dark-blue-2")).toBe("darkBlue2");
   });
-  test("no native stack is registered yet", () => {
-    expect(nativeStack("flutter")).toBeNull();
+  test("Flutter is the only native stack registered so far", () => {
+    expect(nativeStack("flutter")?.id).toBe("flutter");
+    expect(nativeStack("swiftui")).toBeNull();
     expect(nativeStack(null)).toBeNull();
   });
 });

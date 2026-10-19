@@ -50,7 +50,7 @@ export function cssCubicBezier(p: number[]): string {
   return `cubic-bezier(${p.map(num).join(", ")})`;
 }
 
-interface ShadowLayer {
+export interface ShadowLayer {
   color: DtcgColor;
   offsetX: DtcgDimension;
   offsetY: DtcgDimension;
@@ -59,8 +59,13 @@ interface ShadowLayer {
   inset?: boolean;
 }
 
+/** A shadow's layers (one, or a list), as the guide stores them. */
+export function shadowLayers(v: unknown): ShadowLayer[] {
+  return (Array.isArray(v) ? v : [v]) as ShadowLayer[];
+}
+
 export function cssShadow(v: unknown): string {
-  const layers = (Array.isArray(v) ? v : [v]) as ShadowLayer[];
+  const layers = shadowLayers(v);
   return layers
     .map((l) => `${l.inset ? "inset " : ""}${cssDimension(l.offsetX)} ${cssDimension(l.offsetY)} ${cssDimension(l.blur)} ${cssDimension(l.spread)} ${cssColor(l.color)}`)
     .join(", ");
