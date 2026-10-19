@@ -49,6 +49,7 @@ describe("buildThemeSet", () => {
   test("the default variant is the base; the others carry their own values", () => {
     const set = buildThemeSet(docFrom(twoVariantTokens()));
     expect(set.defaultId).toBe("women");
+    expect(set.defaultLabel).toBe("Women");
     expect(set.variants.map((v) => v.id)).toEqual(["men"]);
     expect(set.variants[0]!.label).toBe("Men");
     expect(set.variants[0]!.theme.colors.find((c) => c.name === "surface")!.light.hex).toBe("#123456");
@@ -57,6 +58,7 @@ describe("buildThemeSet", () => {
   test("no variants block: no variants, and the base is today's theme", () => {
     const set = buildThemeSet(docFrom(validTokens()));
     expect(set.defaultId).toBeNull();
+    expect(set.defaultLabel).toBeNull();
     expect(set.variants).toEqual([]);
     expect(set.base).toEqual(theme);
   });

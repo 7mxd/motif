@@ -123,6 +123,8 @@ export interface ThemeVariant {
 export interface ThemeSet {
   base: Theme;
   defaultId: string | null;
+  /** The default variant's label, for stacks that name every variant in code (null without variants). */
+  defaultLabel: string | null;
   /** The non-default variants only. */
   variants: ThemeVariant[];
 }
@@ -133,6 +135,7 @@ export function buildThemeSet(doc: TokenDocument): ThemeSet {
   return {
     base: buildTheme(doc),
     defaultId,
+    defaultLabel: variants.find((v) => v.id === defaultId)?.label ?? null,
     variants: variants.filter((v) => v.id !== defaultId).map((v) => ({ id: v.id, label: v.label, theme: buildTheme(variantView(doc, v.id)) })),
   };
 }
