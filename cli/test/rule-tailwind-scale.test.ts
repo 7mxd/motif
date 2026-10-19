@@ -75,4 +75,20 @@ describe("scanTailwindScale: from the backlog", () => {
     expect(violations("animate-spin ease-linear duration-700")).toEqual([]);
     expect(violations("transition ease-linear")).toEqual([["raw-motion", "easing", "linear"]]);
   });
+
+  test("the spinner is seen across the strings of one cn() call, on one line or several (deferred review)", () => {
+    const found = (text: string) => scanTailwindScale(file(text), scale).filter((h) => h.violation).map((h) => h.text);
+    expect(found('<Loader className={cn("size-4", "animate-spin ease-linear duration-700")} />')).toEqual([]);
+    expect(found('<Loader className={cn("animate-spin", "ease-linear duration-700")} />')).toEqual([]);
+    expect(found('<Loader className={cn(\n  "animate-spin",\n  "ease-linear duration-700",\n)} />')).toEqual([]);
+    // Another element's classes on the line are another list.
+    expect(found('<i className="animate-spin" /><b className="ease-linear" />')).toEqual(["ease-linear"]);
+  });
+
+  test("a transition's timings next to a spinner are still checked (deferred review)", () => {
+    expect(violations("animate-pulse transition-colors duration-200 ease-linear")).toEqual([
+      ["raw-motion", "duration", "200ms"],
+      ["raw-motion", "easing", "linear"],
+    ]);
+  });
 });

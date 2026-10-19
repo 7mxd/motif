@@ -19,16 +19,55 @@ const FONT = new RegExp(`${CLASS_PREFIX}font-(sans|serif|mono)(?![\\w-])`, "g");
 const list = (prefix: string, keys: Set<string> | undefined) => [...(keys ?? [])].map((k) => `${prefix}${k}`).join(", ");
 /** Something that keeps moving (a spinner, a pulsing dot): linear easing and its own duration are what it needs. */
 const CONTINUOUS = /(?<![\w-])animate-(?:spin|ping|pulse|bounce)(?![\w-])/;
+/** A transition on the same element: the timings are its, not the spinner's (transition-none is no transition). */
+const TRANSITION = /(?<![\w-])transition(?:(?![\w-])|-(?!none(?![\w-])))/;
+/** How far a call's other strings are looked for, either way: cn(…) over a few lines. */
+const CALL_REACH = 400;
 
-/** The class list a match sits in: the quoted string around it on its line, or the whole segment (@apply). */
+/** The call or array a class string is passed in, cn("a", "b") or ["a", "b"]: from its "(" or "[" to the matching end. */
+function callAround(text: string, from: number, to: number): string | null {
+  let depth = 0;
+  let open = -1;
+  for (let i = from - 1; i >= Math.max(0, from - CALL_REACH); i--) {
+    const ch = text[i]!;
+    if (ch === ")" || ch === "]") depth++;
+    else if (ch === "(" || ch === "[") {
+      if (depth === 0) {
+        open = i;
+        break;
+      }
+      depth--;
+    } else if ("{};<>".includes(ch)) return null;
+  }
+  if (open === -1) return null;
+  depth = 0;
+  for (let i = to; i < Math.min(text.length, to + CALL_REACH); i++) {
+    const ch = text[i]!;
+    if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") {
+      if (depth === 0) return text.slice(open + 1, i);
+      depth--;
+    }
+  }
+  return null;
+}
+
+/**
+ * The class list a match sits in: the quoted string around it on its line with the other strings of the call it's in
+ * (cn("animate-spin", "duration-700")), or the whole segment (@apply).
+ */
 function classListAt(text: string, index: number): string {
   const lineStart = text.lastIndexOf("\n", index - 1) + 1;
   const lineEnd = text.indexOf("\n", index) === -1 ? text.length : text.indexOf("\n", index);
   const q = /(["'`])[^"'`]*$/.exec(text.slice(lineStart, index));
   if (!q) return text.slice(lineStart, lineEnd);
   const close = text.indexOf(q[1]!, index);
-  return text.slice(lineStart + q.index + 1, close === -1 || close > lineEnd ? lineEnd : close);
+  const end = close === -1 || close > lineEnd ? lineEnd : close;
+  return callAround(text, lineStart + q.index, end) ?? text.slice(lineStart + q.index + 1, end);
 }
+
+/** A spinner's own timing: linear easing and a duration on something that keeps moving, with no transition beside it. */
+const isContinuous = (classes: string) => CONTINUOUS.test(classes) && !TRANSITION.test(classes);
 
 export function scanTailwindScale(source: SourceFile, scale: Scale | null): Hit[] {
   // The text sizes to offer: the mono role is for code, not for prose.
@@ -59,11 +98,11 @@ export function scanTailwindScale(source: SourceFile, scale: Scale | null): Hit[
       push(base + m.index!, m[0], "off-scale", "shadow", m[1]!, offScale(scale?.shadowKeys, m[1]!), `Shadow ${m[0]} isn't one of your shadow roles.`, `Use ${list("shadow-", scale?.shadowKeys)}.`);
     }
     for (const m of seg.text.matchAll(TIMING)) {
-      const continuous = CONTINUOUS.test(classListAt(seg.text, m.index!));
+      const continuous = isContinuous(classListAt(seg.text, m.index!));
       push(base + m.index!, m[0], "raw-motion", "duration", `${m[2]}ms`, !continuous, `Hard-coded animation timing ${m[0]}.`, `Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "${motionImport}".`);
     }
     for (const m of seg.text.matchAll(EASE)) {
-      const continuous = m[1] === "linear" && CONTINUOUS.test(classListAt(seg.text, m.index!));
+      const continuous = m[1] === "linear" && isContinuous(classListAt(seg.text, m.index!));
       push(base + m.index!, m[0], "raw-motion", "easing", m[1]!, !continuous && (scale ? !scale.easeKeys.has(m[1]!) : true), `Default easing ${m[0]}.`, `Use ${list("ease-", scale?.easeKeys) || "ease-standard"}.`);
     }
     for (const m of seg.text.matchAll(FONT)) {
