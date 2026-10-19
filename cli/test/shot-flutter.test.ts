@@ -235,8 +235,8 @@ describe("motif shot on a Flutter app: what it refuses", () => {
     const { deps, calls } = fakes((o) => ({ routes: o.screens.map((s) => ({ route: s, url: s, status: 200, shots: [join(o.outDir, `${screenSlug(s)}.mobile.png`)] })) }));
     for (const [name, text] of [
       ["_Hidden", "--screen _Hidden: it's private to its file (its name starts with _), so Motif can't open it. Make it public, or capture it through its route with --routes."],
-      ["Cart", "--screen Cart: it isn't a widget (it extends ChangeNotifier). Give a screen's widget class, one that extends StatelessWidget or StatefulWidget."],
-      ["Plain", "--screen Plain: it isn't a widget. Give a screen's widget class, one that extends StatelessWidget or StatefulWidget."],
+      ["Cart", "--screen Cart: it isn't a widget (it extends ChangeNotifier). Give a screen's widget class, one that extends StatelessWidget or StatefulWidget, or capture the screen through its route with --routes."],
+      ["Plain", "--screen Plain: it isn't a widget. Give a screen's widget class, one that extends StatelessWidget or StatefulWidget, or capture the screen through its route with --routes."],
       ["Order", "--screen Order: Motif opens a screen with no arguments (Order()), and its constructor has required arguments. Give it a constructor that needs none, or capture it through its route with --routes."],
       ["Nope", "--screen Nope: there's no class Nope in the app's lib/ folder."],
     ]) {

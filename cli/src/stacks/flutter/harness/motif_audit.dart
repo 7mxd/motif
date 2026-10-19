@@ -151,9 +151,10 @@ Issue? _textContrast(RenderBox box, InlineSpan text, TextScaler scaler, Pixels p
   if (style == null) return null;
   final alpha = style.color.a * _opacity(box);
   if (alpha < 0.02) return null;
-  final bg = _background(pixels, rect, dpr, style.color);
-  if (bg == null) return null;
-  final fg = Color.lerp(bg, style.color.withValues(alpha: 1), alpha)!;
+  final drawn = _drawn(pixels, rect, dpr, style.color, alpha);
+  if (drawn == null) return null;
+  final fg = drawn.fg;
+  final bg = drawn.bg;
   final ratio = _ratio(fg, bg);
   // WCAG's large text: 18 pt (24 px), or 14 pt (about 18.66 px) in bold, as axe-core judges it on the web.
   final large = style.size >= 24 || (style.size >= 18.66 && style.weight.value >= 700);
@@ -173,32 +174,90 @@ Issue? _textContrast(RenderBox box, InlineSpan text, TextScaler scaler, Pixels p
   };
 }
 
-/// The colour most common under the text, in physical pixels, leaving out the text's own colour.
-Color? _background(Pixels pixels, Rect rect, double dpr, Color text) {
+/// A text's background and its colour as drawn on it.
+class _Drawn {
+  _Drawn(this.bg, this.fg);
+  final Color bg;
+  final Color fg;
+}
+
+/// How far apart two colours may be (in 0–255 RGB, straight-line distance) and still count as one: rounding, and the
+/// anti-aliasing of a glyph's edge, which lies on the line between the background and the text's colour.
+const double _tolerance = 6;
+
+/// The share of the pixels under a text (its glyphs and their edges left out) that one colour must cover to be its
+/// background. Under a photo or a gradient no colour does, and a ratio would be a guess: such text is left out, as
+/// axe-core leaves it "incomplete" on the web.
+const double _backgroundShare = 0.5;
+
+/// The background under a text, in the screenshot's own pixels, and the text's colour blended on it ([alpha] is the
+/// text's own alpha times its Opacity ancestors'); null when no one colour is clearly the background.
+///
+/// The text's pixels are those on the line from the background to its blended colour (glyphs, and their anti-aliased
+/// edges), so text drawn at an alpha doesn't compete with the background however faint it is. The background is the
+/// candidate among the most common colours that explains the most pixels that way.
+_Drawn? _drawn(Pixels pixels, Rect rect, double dpr, Color text, double alpha) {
   final left = math.max(0, (rect.left * dpr).floor());
   final top = math.max(0, (rect.top * dpr).floor());
   final right = math.min(pixels.width, (rect.right * dpr).ceil());
   final bottom = math.min(pixels.height, (rect.bottom * dpr).ceil());
-  final own = text.toARGB32() | 0xFF000000;
   final counts = <int, int>{};
   for (var y = top; y < bottom; y++) {
     for (var x = left; x < right; x++) {
       final c = pixels.argb(x, y) | 0xFF000000;
-      if (_near(c, own)) continue;
       counts[c] = (counts[c] ?? 0) + 1;
     }
   }
   if (counts.isEmpty) return null;
-  var best = counts.entries.first;
-  for (final e in counts.entries) {
-    if (e.value > best.value) best = e;
+  final total = counts.values.fold<int>(0, (a, b) => a + b);
+  final common = counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+  final opaque = text.withValues(alpha: 1);
+  _Drawn? best;
+  var bestBackground = 0;
+  var bestText = 0;
+  for (final candidate in common.take(3)) {
+    final bg = Color(candidate.key);
+    final fg = Color.lerp(bg, opaque, alpha)!;
+    var background = 0;
+    var glyphs = 0;
+    for (final e in common) {
+      final c = Color(e.key);
+      if (_distance(c, bg) <= _tolerance) {
+        background += e.value;
+      } else if (_toSegment(c, bg, fg) <= _tolerance) {
+        glyphs += e.value;
+      }
+    }
+    if (best == null || background + glyphs > bestBackground + bestText) {
+      best = _Drawn(bg, fg);
+      bestBackground = background;
+      bestText = glyphs;
+    }
   }
-  return Color(best.key);
+  final rest = total - bestText;
+  if (best == null || rest <= 0 || bestBackground / rest < _backgroundShare) return null;
+  return best;
 }
 
-bool _near(int a, int b) {
-  int d(int shift) => (((a >> shift) & 0xFF) - ((b >> shift) & 0xFF)).abs();
-  return d(16) + d(8) + d(0) <= 24;
+List<double> _rgb(Color c) => [c.r * 255, c.g * 255, c.b * 255];
+
+double _distance(Color a, Color b) {
+  final p = _rgb(a);
+  final q = _rgb(b);
+  return math.sqrt(math.pow(p[0] - q[0], 2) + math.pow(p[1] - q[1], 2) + math.pow(p[2] - q[2], 2));
+}
+
+/// How far a colour is from the line between two others (a blend of them).
+double _toSegment(Color c, Color from, Color to) {
+  final p = _rgb(c);
+  final a = _rgb(from);
+  final b = _rgb(to);
+  final v = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  final length = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+  if (length == 0) return _distance(c, from);
+  final t = (((p[0] - a[0]) * v[0] + (p[1] - a[1]) * v[1] + (p[2] - a[2]) * v[2]) / length).clamp(0.0, 1.0);
+  final x = [a[0] + t * v[0] - p[0], a[1] + t * v[1] - p[1], a[2] + t * v[2] - p[2]];
+  return math.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
 }
 
 /// WCAG's contrast ratio, cut to two decimals as axe-core does.
@@ -317,8 +376,10 @@ List<Issue> _tappables(RenderView view, {required bool names, required bool targ
         : Rect.fromLTRB(shown.left / dpr, shown.top / dpr, shown.right / dpr, shown.bottom / dpr);
     final element = owner == null ? null : _creator(owner);
     final subject = element == null ? null : _subject(element, rect, tappable: true);
-    final name = [data.label, data.tooltip, data.value, data.hint].firstWhere((s) => s.trim().isNotEmpty, orElse: () => '');
     final kind = _kind(data, subject?.widget);
+    // A field's hint (its placeholder) names it, as axe-core accepts a placeholder; a button's hint doesn't.
+    final name = [data.label, data.tooltip, data.value, if (kind == 'field') data.hint]
+        .firstWhere((s) => s.trim().isNotEmpty, orElse: () => '');
     final described = {
       'selector': subject == null ? '' : _selector(subject, name),
       'label': _short(name),

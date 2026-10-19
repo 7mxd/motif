@@ -233,6 +233,40 @@ class AuditScreen extends StatelessWidget {
               style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 14),
             ),
             const SizedBox(height: 16),
+            // Too faint: dark text at 40% opacity.
+            const Opacity(
+              opacity: 0.4,
+              child: Text(
+                'Delivery times are estimates',
+                style: TextStyle(color: Color(0xFF111111), fontSize: 14),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Large bold text needs 3:1, which this grey has (it would fail 4.5:1).
+            const Text(
+              'Fresh today',
+              style: TextStyle(
+                color: Color(0xFF949494),
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // White text on a gradient from blue to yellow: no one colour is its background, and any one of them
+            // alone would make it fail.
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF60A5FA), Color(0xFFFDE047)],
+                ),
+              ),
+              child: const Text(
+                'Summer sale on every shelf',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ),
+            const SizedBox(height: 16),
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: SizedBox(

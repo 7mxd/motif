@@ -211,7 +211,7 @@ export function findScreen(appDir: string, pkg: string, name: string): { import:
   if (!decl) return { error: `--screen ${name}: there's no class ${name} in the app's lib/ folder.` };
   if (/\b(abstract|sealed|interface)\b/.test(decl.head)) return { error: `--screen ${name}: it's an abstract class, so Motif can't make one. Give a widget class it can make with ${name}().` };
   if (!extendsWidget(appDir, decl)) {
-    return { error: `--screen ${name}: it isn't a widget${decl.base ? ` (it extends ${decl.base})` : ""}. Give a screen's widget class, one that extends StatelessWidget or StatefulWidget.` };
+    return { error: `--screen ${name}: it isn't a widget${decl.base ? ` (it extends ${decl.base})` : ""}. Give a screen's widget class, one that extends StatelessWidget or StatefulWidget, or capture the screen through its route with --routes.` };
   }
   const why = decl.body !== null ? needsArguments(name, decl.body) : null;
   if (why) {

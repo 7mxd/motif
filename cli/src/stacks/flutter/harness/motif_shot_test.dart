@@ -43,7 +43,7 @@ const Duration _scriptLimit = Duration(seconds: 15);
 
 const String _setupFile = 'design/states/setup.dart';
 
-/// Moves a test's fake time on once a stuck state script has been left behind (see _keepGoing).
+/// Flushes the fake-async work of a test that runs a state script, until that test ends (see _runState).
 Timer? _kicker;
 
 void main() {
@@ -125,6 +125,16 @@ void main() {
           }
         } finally {
           semantics?.dispose();
+          // A state left behind may still wait on a timer in fake time, which flutter_test would report as "A Timer is
+          // still pending" and fail the test with. The screenshot is taken; ten minutes of the app's clock let such
+          // timers fire (what the script then does fails quietly: its errors are its own, already reported once).
+          if (run.abandoned) {
+            try {
+              await tester.pump(const Duration(minutes: 10));
+            } catch (_) {
+              // The script left something that can't run on.
+            }
+          }
         }
       });
       if (run.captured) screen.shots.add(file);
@@ -171,6 +181,9 @@ class _Run {
 
   /// The state script running, once it has started: what goes wrong from then on is the state's.
   String? state;
+
+  /// The state script was still running at its time limit and was left behind.
+  bool abandoned = false;
 
   void error(Object e) {
     final text = _describe(e);
@@ -333,8 +346,16 @@ Future<List<Issue>> _capture(
   final state = shot['state'] as String?;
   if (state != null) {
     run.state = state;
-    final failed = await _runState(tester, state);
-    if (failed != null) run.error(failed);
+    final failed = await _runState(tester, state, run);
+    if (failed != null) {
+      run.error(failed);
+      if (_describe(failed).contains('pumpAndSettle timed out')) {
+        notes.add(
+          'State "$state" waited in pumpAndSettle for a screen that keeps animating. '
+          'Use tester.pump(const Duration(...)) instead of pumpAndSettle on screens that keep animating.',
+        );
+      }
+    }
     await _settle(tester, null);
   }
 
@@ -373,8 +394,16 @@ Future<List<Issue>> _capture(
 
 /// Runs a state script on the screen as it is; returns what it threw, or that it was still running after
 /// [_scriptLimit] of real time, or null. A script runs in the test's fake time, which moves only when it pumps: one
-/// waiting on that clock (Future.delayed without a pump), or on something that never comes, is left behind.
-Future<Object?> _runState(WidgetTester tester, String name) async {
+/// waiting on that clock (Future.delayed without a pump), or on something that never comes, is left behind
+/// ([_Run.abandoned]).
+///
+/// The test body here runs in flutter_test's fake-async zone, whose work (microtasks) only runs when something flushes
+/// it: flutter_test does while the test waits on runAsync, and not otherwise. Motif can't wait with runAsync itself, as
+/// a script that calls runAsync at the same time would fail ("Reentrant call to runAsync() denied"). So a timer outside
+/// the fake zone checks the clock and flushes that work every 5 ms, until the test ends. It flushes only, never moves
+/// fake time on (that would make the rest of the screenshot run inside that move, where the next pump fails with
+/// "Cannot elapse until previous elapse is complete").
+Future<Object?> _runState(WidgetTester tester, String name, _Run run) {
   final finished = Completer<Object?>();
   Future<void>.sync(() => hooks.runState(name, tester)).then(
     (_) {
@@ -384,23 +413,7 @@ Future<Object?> _runState(WidgetTester tester, String name) async {
       if (!finished.isCompleted) finished.complete(e);
     },
   );
-  final watchdog = Zone.root.createTimer(_scriptLimit, () {
-    if (finished.isCompleted) return;
-    finished.complete(
-      _Stop('it was still running after ${_scriptLimit.inSeconds} seconds (time passes in a state only when it pumps)'),
-    );
-    _keepGoing(tester);
-  });
-  try {
-    return await finished.future;
-  } finally {
-    watchdog.cancel();
-  }
-}
-
-/// flutter_test moves a test's fake time on only while the test waits for real work (runAsync). Once a stuck state
-/// script has been left behind, nothing would, so Motif does it until the test ends.
-void _keepGoing(WidgetTester tester) {
+  final clock = Stopwatch()..start();
   final binding = tester.binding;
   _kicker?.cancel();
   _kicker = Zone.root.createPeriodicTimer(const Duration(milliseconds: 5), (timer) {
@@ -408,12 +421,19 @@ void _keepGoing(WidgetTester tester) {
       timer.cancel();
       return;
     }
+    if (!finished.isCompleted && clock.elapsed >= _scriptLimit) {
+      run.abandoned = true;
+      finished.complete(
+        _Stop('it was still running after ${_scriptLimit.inSeconds} seconds (time passes in a state only when it pumps)'),
+      );
+    }
     try {
-      binding.delayed(Duration.zero);
+      binding.asyncBarrier();
     } catch (_) {
-      // Fake time was moving already.
+      // The flush happened; what complained after it is a guarded call the script left open, reported by the test.
     }
   });
+  return finished.future;
 }
 
 String _path(String location) {

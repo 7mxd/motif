@@ -124,15 +124,21 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     type Place = { selector: string; scheme?: string; variant?: string };
     const findings = review.findings as { category: string; severity: string; summary: string; location: Place; locations?: Place[]; shot: string }[];
     const of = (category: string) => findings.filter((f) => f.category === category);
-    // Nothing else on the screen is a problem: the AppBar's title, in the theme's colours, passes.
-    expect(findings).toHaveLength(4);
+    // Nothing else on the screen is a problem: the AppBar's title in the theme's colours, "Fresh today" (#949494 is
+    // 3.03:1, enough for large bold text, which needs 3:1), and the text on a gradient (no one colour is its background,
+    // so it isn't judged, as axe leaves such text "incomplete").
+    expect(findings).toHaveLength(5);
+    expect(JSON.stringify(findings)).not.toContain("Fresh today");
+    expect(JSON.stringify(findings)).not.toContain("Summer sale");
 
-    const caption = of("contrast")[0]!;
+    const [caption, faint] = of("contrast");
     expect(caption).toMatchObject({ severity: "critical", summary: 'Text "Prices include tax" is hard to read in light and dark mode (2.32:1, needs 4.5:1).' });
-    expect(caption.location.selector).toBe('AuditScreen > Scaffold > ListView > Text("Prices include tax")');
-    expect([caption.location, ...(caption.locations ?? [])].map((l) => `${l.scheme} ${l.variant ?? "default"}`)).toEqual([
+    expect(caption!.location.selector).toBe('AuditScreen > Scaffold > ListView > Text("Prices include tax")');
+    expect([caption!.location, ...(caption!.locations ?? [])].map((l) => `${l.scheme} ${l.variant ?? "default"}`)).toEqual([
       "light default", "light partner", "dark default", "dark partner",
     ]);
+    // #111111 at 40% opacity is drawn #a0a0a0 on white.
+    expect(faint).toMatchObject({ severity: "critical", summary: 'Text "Delivery times are estimates" is hard to read in light and dark mode (2.62:1, needs 4.5:1).' });
 
     const small = of("target-size");
     expect(small.map((f) => f.summary)).toEqual(["A button is 32×32 px on a phone; 44×44 px is easier to tap."]);
@@ -171,6 +177,38 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     }
   }, 600_000);
 
+  test.skipIf(!flutter)("a state still waiting after 15 s is left behind: its screenshot and audit are taken, and so are the run's others; a pumpAndSettle that times out gets a note (skipped without Flutter)", async () => {
+    mkdirSync(join(app, "design", "states"), { recursive: true });
+    writeFileSync(join(app, "design", "states", "stuck.dart"), STUCK);
+    writeFileSync(join(app, "design", "states", "settle.dart"), SETTLE);
+    try {
+      const r = await shot({ routes: "/audit", sizes: "390", variant: "default", audit: true, state: ["design/states/stuck.dart", "design/states/settle.dart"] });
+      expect(r.exitCode).toBe(1);
+      expect(r.data.shots).toEqual([
+        "design/shots/audit.mobile.png", "design/shots/audit@stuck.mobile.png", "design/shots/audit@settle.mobile.png",
+        "design/shots/audit.mobile.dark.png", "design/shots/audit@stuck.mobile.dark.png", "design/shots/audit@settle.mobile.dark.png",
+      ]);
+      for (const name of (r.data.shots as string[]).map((s) => basename(s))) expect(pngSize(png(name))).toEqual({ width: 780, height: 1688 });
+      const route = routesOf(r.data)[0] as { pageErrors?: string[]; auditError?: string };
+      expect(route.pageErrors).toEqual([
+        'State "stuck": it was still running after 15 seconds (time passes in a state only when it pumps)',
+        'State "settle": pumpAndSettle timed out',
+      ]);
+      expect(route.auditError).toBeUndefined();
+      expect(r.text).not.toContain("Audit incomplete");
+      expect(r.data.notes).toContain(
+        'State "settle" waited in pumpAndSettle for a screen that keeps animating. Use tester.pump(const Duration(...)) instead of pumpAndSettle on screens that keep animating.',
+      );
+      // The 390 checks ran on the stuck state's screenshot too, motion (two more seconds of pumping) included.
+      const issues = JSON.parse(readFileSync(join(app, RESULT_FILE), "utf8")).issues as { file: string; rule: string }[];
+      expect(issues.filter((i) => i.file === "audit@stuck.mobile.png").map((i) => i.rule).sort()).toEqual([
+        "color-contrast", "color-contrast", "motion", "name", "target-mobile",
+      ]);
+    } finally {
+      rmSync(join(app, "design", "states"), { recursive: true, force: true });
+    }
+  }, 600_000);
+
   test.skipIf(!flutter)("a setup script that doesn't finish within 15 s is the screen's error, not a silent start without it (skipped without Flutter)", async () => {
     mkdirSync(join(app, "design", "states"), { recursive: true });
     writeFileSync(join(app, "design", "states", "setup.dart"), SLOW_SETUP);
@@ -199,7 +237,21 @@ Future<void> motifState(WidgetTester tester) async {
   throw StateError('The cart is empty.');
 }
 `;
-const SLOW_SETUP = `import 'package:flutter/widgets.dart';
+/** Waits on the test's clock without pumping: it never finishes by itself. */
+const STUCK = `import 'package:flutter_test/flutter_test.dart';
+
+Future<void> motifState(WidgetTester tester) async {
+  await Future<void>.delayed(const Duration(seconds: 30));
+}
+`;
+/** pumpAndSettle on a screen that keeps animating (the turning icon): it times out. */
+const SETTLE = `import 'package:flutter_test/flutter_test.dart';
+
+Future<void> motifState(WidgetTester tester) async {
+  await tester.pumpAndSettle();
+}
+`;
+const SLOW_SETUP =`import 'package:flutter/widgets.dart';
 
 Future<Widget?> motifSetup({required String variant, required Locale locale, required Brightness brightness}) async {
   await Future<void>.delayed(const Duration(seconds: 30));
