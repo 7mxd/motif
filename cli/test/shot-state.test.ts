@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { readStates, runShot, type ShotDeps } from "../src/commands/shot";
 import { toFindings, type AuditIssue } from "../src/shot/audit";
 import { findBrowser } from "../src/detect/browser";
-import { captureScreens, stateExpression, type CaptureOptions } from "../src/shot/capture";
+import { captureScreens, stateExpression, VIEWPORTS, type CaptureOptions } from "../src/shot/capture";
 import { startStaticServer } from "../src/shot/static-server";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
@@ -104,6 +104,34 @@ describe("state scripts in a real browser (final review)", () => {
       expect(errors).toContain('State "dialog": The page opened a dialog ("Delete this card?")');
       expect(errors).toContain('State "loop"');
       expect(errors).not.toContain("stuck in a loop");
+    } finally {
+      site.stop();
+    }
+  }, 120_000);
+});
+
+describe("errors in a state, reported once", () => {
+  const browser = findBrowser();
+  test.skipIf(!browser)("the page's own late error, thrown while a state's script runs, isn't the state's too", async () => {
+    // The page throws a moment after loading: during the plain screenshot's wait, and during the state's script.
+    const root = makeProject({
+      "index.html": `<!doctype html><button id="go" onclick="setTimeout(() => { throw new Error('Click boom') }, 10)">Go</button>
+        <script>setTimeout(() => { throw new Error("Page boom") }, 600)</script>`,
+    });
+    const site = startStaticServer(root);
+    try {
+      const r = await captureScreens({
+        browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir: join(root, "shots"), settleMs: 800, viewports: [VIEWPORTS[0]!],
+        states: [
+          { name: "awaited", script: 'await new Promise((r) => setTimeout(r, 1000)); throw new Error("Script boom");' },
+          { name: "clicked", script: 'document.getElementById("go").click(); await new Promise((r) => setTimeout(r, 1000));' },
+        ],
+      });
+      const errors = r.routes[0]!.pageErrors ?? [];
+      expect(errors.filter((e) => e.includes("Page boom"))).toEqual(["Error: Page boom"]);
+      // What the state's own script threw or set off is still the state's.
+      expect(errors.filter((e) => e.includes("Script boom"))).toEqual([expect.stringMatching(/^State "awaited": /)]);
+      expect(errors.filter((e) => e.includes("Click boom"))).toEqual([expect.stringMatching(/^State "clicked": /)]);
     } finally {
       site.stop();
     }
