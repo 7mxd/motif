@@ -1,0 +1,89 @@
+import { afterAll, describe, expect, test } from "bun:test";
+import { join } from "node:path";
+import { detectApps } from "../src/detect/stacks";
+import { importFor, isFlutterApp, isFlutterPackage, packageName, dependsOn } from "../src/stacks/flutter/project";
+import { nativeStack } from "../src/stacks/native";
+import { dartIdentifier } from "../src/stacks/naming";
+import { makeProject } from "./project";
+import { cleanupTempDirs } from "./tmp";
+
+afterAll(cleanupTempDirs);
+
+const pubspec = (name: string) => `name: ${name}\ndependencies:\n  flutter:\n    sdk: flutter\n  provider: ^6.0.0\ndev_dependencies:\n  lints: ^3.0.0\n`;
+
+const tree = () => makeProject({
+  "package.json": JSON.stringify({ workspaces: ["dashboard"] }),
+  "pnpm-workspace.yaml": "packages:\n  - dashboard\n",
+  "dashboard/package.json": JSON.stringify({ dependencies: { react: "18", vite: "5" } }),
+  "mobile/customer/pubspec.yaml": pubspec("customer"),
+  "mobile/customer/lib/main.dart": "void main() {}\n",
+  "mobile/admin/pubspec.yaml": pubspec("admin"),
+  "mobile/admin/lib/main.dart": "void main() {}\n",
+  "mobile/packages/core/pubspec.yaml": pubspec("core"),
+  "mobile/packages/core/lib/core.dart": "library core;\n",
+  "mobile/react-native/package.json": JSON.stringify({ dependencies: { expo: "51", "react-native": "0.74" } }),
+  "mobile/landing/index.html": "<html></html>",
+});
+
+describe("Flutter apps inside a monorepo", () => {
+  test("finds apps one folder deeper, but not packages or plain web", () => {
+    const { apps } = detectApps(tree());
+    expect(apps.map((a) => a.path)).toEqual(["dashboard", "mobile/admin", "mobile/customer", "mobile/react-native"]);
+    expect(apps.map((a) => a.stack)).toEqual(["react-web", "flutter", "flutter", "react-native"]);
+  });
+
+  test("tells apps from packages and reads the pubspec", () => {
+    const root = tree();
+    expect(isFlutterApp(join(root, "mobile/customer"))).toBe(true);
+    expect(isFlutterPackage(join(root, "mobile/customer"))).toBe(false);
+    expect(isFlutterPackage(join(root, "mobile/packages/core"))).toBe(true);
+    expect(isFlutterApp(join(root, "mobile/packages/core"))).toBe(false);
+    expect(packageName(join(root, "mobile/packages/core"))).toBe("core");
+    expect(packageName(join(root, "dashboard"))).toBeNull();
+    expect(dependsOn(join(root, "mobile/customer"), "provider")).toBe(true);
+    expect(dependsOn(join(root, "mobile/customer"), "lints")).toBe(true);
+    expect(dependsOn(join(root, "mobile/customer"), "riverpod")).toBe(false);
+  });
+
+  test("importFor uses the nearest pubspec above the file", () => {
+    const root = tree();
+    expect(importFor(root, "mobile/packages/core/lib/design/motif_theme.dart")).toBe("package:core/design/motif_theme.dart");
+    expect(importFor(root, "mobile/customer/lib/a/b.dart")).toBe("package:customer/a/b.dart");
+    expect(importFor(root, "dashboard/lib/x.dart")).toBeNull();
+    expect(importFor(root, "mobile/customer/test/x.dart")).toBeNull();
+  });
+});
+
+describe("a theme folder per app", () => {
+  const withSettings = (themeDir: unknown) => makeProject({
+    "pubspec.yaml": pubspec("shop"),
+    "lib/main.dart": "void main() {}\n",
+    "mobile/packages/core/lib/design/.keep": "",
+    "design/motif.json": JSON.stringify({ motifContract: 1, apps: [{ path: ".", stack: "flutter", themeDir }], ignore: [] }),
+  });
+
+  test("keeps a folder inside the project", () => {
+    const { apps, findings } = detectApps(withSettings("mobile/packages/core/lib/design"));
+    expect(apps[0]!.themeDir).toBe("mobile/packages/core/lib/design");
+    expect(findings).toEqual([]);
+  });
+
+  test("rejects a folder outside the project", () => {
+    const { findings } = detectApps(withSettings("../x"));
+    expect(findings.map((f) => f.code)).toEqual(["bad-settings"]);
+    expect(findings[0]!.message).toContain("must be a folder inside this project");
+  });
+});
+
+describe("naming and the registry", () => {
+  test("dartIdentifier camel-cases and avoids reserved words", () => {
+    expect(dartIdentifier("partner-store")).toBe("partnerStore");
+    expect(dartIdentifier("default")).toBe("defaultVariant");
+    expect(dartIdentifier("women")).toBe("women");
+    expect(dartIdentifier("dark-blue-2")).toBe("darkBlue2");
+  });
+  test("no native stack is registered yet", () => {
+    expect(nativeStack("flutter")).toBeNull();
+    expect(nativeStack(null)).toBeNull();
+  });
+});

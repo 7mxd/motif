@@ -127,3 +127,21 @@ describe("role entries", () => {
     expect(f).toMatchObject({ severity: "warning", path: "radius.md", message: '"radius.md" (men) has a dark value, but only colours have one. It\'s ignored.' });
   });
 });
+
+describe("variant block shape and identifier clashes", () => {
+  test("a variants block that is not a list is bad-variants", () => {
+    expect(codes(withVariants({}))).toContain("bad-variants");
+  });
+  test("an entry that is not an object is bad-variants", () => {
+    expect(codes(withVariants([DECL[0], "men"]))).toContain("bad-variants");
+  });
+  test("two ids with the same camelCase form clash, naming both", () => {
+    const f = checkVariants(withVariants([{ id: "a-1", label: "A", default: true }, { id: "a1", label: "B" }])).find((x) => x.code === "variant-id-clash");
+    expect(f?.severity).toBe("error");
+    expect(f?.message).toContain('"a-1"');
+    expect(f?.message).toContain('"a1"');
+  });
+  test("distinct ids do not clash", () => {
+    expect(codes(withVariants(DECL, { men: COLOR_MEN }))).not.toContain("variant-id-clash");
+  });
+});

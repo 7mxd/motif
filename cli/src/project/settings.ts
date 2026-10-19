@@ -8,6 +8,8 @@ export interface AppSetting {
   path: string;
   stack: string;
   srcDir?: string;
+  /** Where the theme code goes, relative to the project root. */
+  themeDir?: string;
 }
 
 export interface MotifSettings {

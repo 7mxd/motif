@@ -3,7 +3,7 @@ import { extname, join } from "node:path";
 import ignore from "ignore";
 import { stripBom } from "../text";
 
-export type Lang = "css" | "script" | "markup";
+export type Lang = "css" | "script" | "markup" | "dart";
 
 export interface SourceFile {
   /** Relative to the project root, forward slashes. */
@@ -15,7 +15,7 @@ export interface SourceFile {
   dark?: [number, number][];
 }
 
-const LANGS: Record<string, Lang> = {
+export const WEB_LANGS: Record<string, Lang> = {
   ".css": "css", ".scss": "css", ".sass": "css", ".less": "css",
   ".ts": "script", ".tsx": "script", ".js": "script", ".jsx": "script", ".mjs": "script", ".cjs": "script",
   ".html": "markup", ".htm": "markup", ".mdx": "markup",
@@ -26,6 +26,12 @@ export const DEFAULT_IGNORES = [
   "*.test.*", "*.spec.*", "*.stories.*", "*.config.*", "*.min.*", "*.d.ts",
   // Dot-folders (.storybook, .vscode, …) and the project's own design/ folder (previews, reports).
   ".*/", "/design/",
+];
+
+/** Flutter's build output, tests, and generated Dart: never the team's own code. */
+export const FLUTTER_IGNORES = [
+  ".dart_tool/", "build/", "test/", "integration_test/", "*.g.dart", "*.freezed.dart", "*.mocks.dart", "*.gr.dart",
+  "lib/generated/", "lib/l10n/app_localizations*.dart",
 ];
 
 export const MAX_FILE_BYTES = 512 * 1024;
@@ -54,8 +60,9 @@ export function matchesPaths(rel: string, wanted: string[]): boolean {
   return w.length === 0 || w.some((p) => rel === p || rel.startsWith(p + "/"));
 }
 
-export function listSourceFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
-  const rootIgnore = ignore().add(DEFAULT_IGNORES).add(readGitignore(root)).add(opts.ignore ?? []);
+export function listSourceFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[]; langs?: Record<string, Lang>; extraIgnores?: string[] } = {}): SourceFile[] {
+  const langs = opts.langs ?? WEB_LANGS;
+  const rootIgnore = ignore().add(DEFAULT_IGNORES).add(readGitignore(root)).add(opts.ignore ?? []).add(opts.extraIgnores ?? []);
   const app = toPosix(appPath) || ".";
   const appDir = join(root, app);
   const appIgnore = app === "." ? null : ignore().add(readGitignore(appDir));
@@ -86,7 +93,7 @@ export function listSourceFiles(root: string, appPath: string, opts: { paths?: s
         if (dirWanted(relPath)) visit(abs, relPath);
         continue;
       }
-      const lang = LANGS[extname(name).toLowerCase()];
+      const lang = langs[extname(name).toLowerCase()];
       if (!lang || st.size > MAX_FILE_BYTES) continue;
       if (rootIgnore.ignores(relPath) || appIgnore?.ignores(appRelative(relPath))) continue;
       if (!fileWanted(relPath)) continue;

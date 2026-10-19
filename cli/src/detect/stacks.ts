@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import { homedir } from "node:os";
 import { isAbsolute, join, parse, resolve } from "node:path";
 import type { Finding } from "../findings";
+import { isFlutterPackage } from "../stacks/flutter/project";
 import { savedAsUtf16, stripBom, UTF16_MESSAGE } from "../text";
 
 export const STACK_IDS = ["react-web", "vue", "svelte", "angular", "react-native", "flutter", "swiftui", "compose", "plain-web"] as const;
@@ -223,7 +224,16 @@ function readSettings(root: string): { apps: AppInfo[] | null; findings: Finding
       findings.push(bad(`design/motif.json says the pages of "${path}" are in "${srcDir}", but there's no such folder.`));
       srcDir = undefined;
     }
-    apps.push({ path, stack, source: "motif.json" as const, ...(srcDir !== undefined ? { srcDir } : {}) });
+    let themeDir: string | undefined;
+    if (a?.themeDir !== undefined) {
+      const t = typeof a.themeDir === "string" ? rel(a.themeDir).replace(/\/+$/, "") : "";
+      if (t === "" || t === "." || isAbsolute(t) || /^[A-Za-z]:/.test(t) || t.split("/").includes("..")) {
+        findings.push(bad(`design/motif.json: the themeDir for "${path}" must be a folder inside this project, like "lib/design".`));
+      } else {
+        themeDir = t;
+      }
+    }
+    apps.push({ path, stack, source: "motif.json" as const, ...(srcDir !== undefined ? { srcDir } : {}), ...(themeDir !== undefined ? { themeDir } : {}) });
   }
   // With none left, Motif finds the apps itself.
   return { apps: apps.length > 0 ? apps : null, findings };
@@ -234,6 +244,8 @@ export interface AppInfo {
   stack: StackId | null;
   source: "motif.json" | "detected";
   srcDir?: string;
+  /** Where the theme code goes, relative to the project root (from design/motif.json). */
+  themeDir?: string;
 }
 
 const detected = (root: string, path: string, stack: StackId | null): AppInfo => ({
@@ -307,7 +319,30 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
       if (!isDir(abs)) continue;
       const stack = detectStack(abs);
       if (stack === "plain-web" && NOT_SITES.has(name)) continue;
-      if (stack || isUnrecognisedReactApp(abs)) apps.push(detected(root, rel(relPath), stack));
+      if (stack || isUnrecognisedReactApp(abs)) {
+        apps.push(detected(root, rel(relPath), stack));
+      } else if (!base && name !== "apps" && name !== "packages") {
+        nested(relPath);
+      }
+    }
+  };
+  // One folder further (mobile/customer, mobile/admin), for stacks other than plain web only, and never for shared
+  // Flutter packages. (Folders at the first level keep being listed as before, with or without a lib/main.dart.)
+  const nested = (dir: string) => {
+    let entries: string[];
+    try {
+      entries = readdirSync(join(root, dir)).sort();
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      if (name.startsWith(".") || SKIP_DIRS.has(name)) continue;
+      const relPath = `${dir}/${name}`;
+      const abs = join(root, relPath);
+      if (!isDir(abs)) continue;
+      const stack = detectStack(abs);
+      if (!stack || stack === "plain-web" || (stack === "flutter" && isFlutterPackage(abs))) continue;
+      apps.push(detected(root, rel(relPath), stack));
     }
   };
   scan("");

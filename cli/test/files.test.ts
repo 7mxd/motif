@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { listSourceFiles } from "../src/check/files";
+import { FLUTTER_IGNORES, listSourceFiles } from "../src/check/files";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -75,5 +75,20 @@ describe("listSourceFiles: what counts as source", () => {
   test("dot-folders and the project's design/ folder are skipped", () => {
     const root = makeProject({ "src/App.tsx": "x", ".storybook/preview.tsx": "x", "design/previews/a.html": "x", "src/design/Card.tsx": "x" });
     expect(paths(listSourceFiles(root, "."))).toEqual(["src/App.tsx", "src/design/Card.tsx"]);
+  });
+});
+
+describe("listSourceFiles for Dart", () => {
+  const files = {
+    "lib/a.dart": "x", "lib/a.g.dart": "x", "test/a_test.dart": "x", ".dart_tool/x.dart": "x", "lib/b.ts": "x",
+  };
+  test("lists Dart sources with the Flutter ignores, and skips generated ones", () => {
+    const root = makeProject(files);
+    const found = listSourceFiles(root, ".", { langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES });
+    expect(paths(found)).toEqual(["lib/a.dart"]);
+    expect(found[0]!.lang).toBe("dart");
+  });
+  test("without langs, Dart files are not listed (today's behaviour)", () => {
+    expect(paths(listSourceFiles(makeProject(files), "."))).toEqual(["lib/b.ts"]);
   });
 });

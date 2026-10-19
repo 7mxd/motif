@@ -1,4 +1,5 @@
 import type { Finding } from "../findings";
+import { camelCase } from "../stacks/naming";
 import { resolveValue } from "./resolve";
 import { MOTIF_EXT, type FlatToken, type TokenDocument } from "./types";
 import { validateValue } from "./values";
@@ -83,11 +84,16 @@ export function variantView(doc: TokenDocument, id: string): TokenDocument {
 
 /** Format problems with the variants block and the roles' variant entries. */
 export function checkVariants(doc: TokenDocument): Finding[] {
-  const list = declared(doc);
-  if (!list) return [];
   const findings: Finding[] = [];
   const add = (code: string, message: string, extra: Partial<Finding> = {}, severity: Finding["severity"] = "error") =>
     findings.push({ code, severity, message, file: doc.file, ...extra });
+  const ext = doc.rootExtensions?.[MOTIF_EXT];
+  const raw = isObj(ext) ? ext.variants : undefined;
+  if (Array.isArray(raw) ? raw.some((d) => !isObj(d)) : raw !== undefined) {
+    add("bad-variants", 'The "variants" block must be a list of variants, each with an id and a label.');
+  }
+  const list = declared(doc);
+  if (!list) return findings;
 
   const ids = new Set<string>();
   const repeated = new Set<string>();
@@ -107,6 +113,14 @@ export function checkVariants(doc: TokenDocument): Finding[] {
     }
     ids.add(d.id);
   });
+  const byName = new Map<string, string>();
+  for (const id of ids) {
+    if (!ID.test(id)) continue;
+    const name = camelCase(id);
+    const other = byName.get(name);
+    if (other !== undefined) add("variant-id-clash", `The variant ids "${other}" and "${id}" both become "${name}" in app code. Rename one so they differ.`);
+    else byName.set(name, id);
+  }
   const defaults = list.filter((d) => d.default === true);
   if (defaults.length === 0) add("no-default-variant", 'No variant is marked as the default. Mark exactly one with "default": true.');
   if (defaults.length > 1) add("several-default-variants", "More than one variant is marked as the default. Only one can be.");
