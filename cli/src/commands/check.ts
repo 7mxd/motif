@@ -8,10 +8,9 @@ import { ADAPTERS_AVAILABLE, detectApps, STACK_LABELS } from "../detect/stacks";
 import { buildThemeSet } from "../generate/theme";
 import { appLabel, noSuchApp, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
-import { andList } from "../stacks/flutter/fonts";
 import { checkableNativeStacks, nativeStack } from "../stacks/native";
 import { TOKENS_JSON } from "./validate";
-import { plural } from "../text";
+import { andList, plural } from "../text";
 
 
 /** Past this many problems, the text groups them; --json always lists each one and the groups. */
@@ -135,7 +134,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
     return {
       command: "check",
       exitCode: 2,
-      text: `None of these paths contain files motif check reads (.css, .ts, .tsx, .js, .jsx, .html, …), or they're ignored: ${ctx.positionals.join(", ")}.`,
+      text: `None of these paths contain files motif check reads (${supported.some((a) => nativeStack(a.stack)) ? ".dart, " : ""}.css, .ts, .tsx, .js, .jsx, .html, …), or they're ignored: ${ctx.positionals.join(", ")}.`,
       data: { error: "nothing-to-check" },
     };
   }

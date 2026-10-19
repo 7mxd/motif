@@ -122,8 +122,9 @@ export function checkApp(
 ): AppCheck {
   const native = nativeStack(app.stack);
   if (native?.scan) {
-    const set = opts.set ?? { base: theme, defaultId: null, defaultLabel: null, variants: opts.variants ?? [] };
-    return checkNativeApp(root, app, native, native.scan, set, opts);
+    // A native stack writes theme code for every variant, named from the default's id: only the whole ThemeSet has it.
+    if (!opts.set) throw new Error(`checkApp needs the ThemeSet (opts.set) to check ${app.path} (${app.stack}).`);
+    return checkNativeApp(root, app, native, native.scan, opts.set, opts);
   }
   const appDir = join(root, app.path);
   const plain = app.stack === "plain-web";

@@ -90,10 +90,19 @@ describe("motif check on a Flutter app", () => {
 
   test("many problems are grouped with the closest generated member", async () => {
     const lines = Array.from({ length: 26 }, (_, i) => `final c${i} = Container(color: Color(0xFF4B5563));`);
-    const r = await check(await flutterApp({ "lib/many.dart": [...lines, "final p = EdgeInsets.all(13);", ""].join("\n") }));
+    const r = await check(await flutterApp({ "lib/many.dart": [...lines, "final p = EdgeInsets.all(13);", "final o = Container(color: Color(0xFFFF00AA));", ""].join("\n") }));
     expect(r.text).toContain("26× Color(0xFF4B5563)");
     expect(r.text).toContain("Closest: MotifColors.of(context).textSecondary.");
     expect(r.text).toContain("Closest: MotifSpace.s3 (12px).");
+    // An off-brand colour has no role close to it: the plain fix, not a misleading "closest".
+    expect(r.text).toContain("1× Color(0xFFFF00AA)  Raw colour Color(0xFFFF00AA). Use MotifColors.of(context).<role>. At lib/many.dart:28.");
+  });
+
+  test("paths with no Dart files: the message names .dart", async () => {
+    const root = await flutterApp({ "assets/notes.txt": "hi\n" });
+    const r = await runCheck(root, { positionals: ["assets"] });
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toBe("None of these paths contain files motif check reads (.dart, .css, .ts, .tsx, .js, .jsx, .html, …), or they're ignored: assets.");
   });
 
   test("names the stacks it reads when it can't read an app", async () => {

@@ -53,6 +53,12 @@ describe("runCheck", () => {
     expect(r.text).toStartWith("✓ No design problems found in 2 files.");
   });
 
+  test("paths with nothing to read: the web message is unchanged (no .dart)", async () => {
+    const r = await runCheck(project({ "assets/notes.txt": "hi\n" }), ctx("assets"));
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toBe("None of these paths contain files motif check reads (.css, .ts, .tsx, .js, .jsx, .html, …), or they're ignored: assets.");
+  });
+
   test("paths narrow the scan", async () => {
     const r = await runCheck(project({ "src/App.tsx": APP, "src/Clean.tsx": CLEAN }), ctx("src/Clean.tsx"));
     expect(r.exitCode).toBe(0);

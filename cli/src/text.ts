@@ -31,3 +31,8 @@ export const UTF16_MESSAGE = "This file is saved as UTF-16, not UTF-8 (Windows P
 
 /** "1 file", "3 files". */
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** "A", "A and B", "A, B and C". */
+export function andList(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}

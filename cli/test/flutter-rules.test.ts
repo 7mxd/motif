@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SourceFile } from "../src/check/files";
 import { buildScale } from "../src/check/scale";
+import { suggestRole } from "../src/check/suggest";
 import type { Hit } from "../src/check/types";
 import { buildTheme } from "../src/generate/theme";
 import { FLUTTER } from "../src/stacks/flutter";
@@ -89,6 +90,14 @@ describe("raw-color in Dart", () => {
     expect(scan("// Colors.red\n/* Color(0xFF000000) */\nfinal a = 1;")).toEqual([]);
     expect(scan("Container(color: Colors.transparent)")).toEqual([]);
     expect(scan("Container(color: MotifColors.of(context).surface)")).toEqual([]);
+    expect(scan("/// Uses Colors.red and Color(0xFF000000).\nfinal a = 1;")).toEqual([]);
+    expect(scan("final s = r'Color(0xFF000000) Colors.red';")).toEqual([]);
+    expect(scan("final s = '''\nColors.red\nContainer(color: Color(0xFF000000))\n''';")).toEqual([]);
+  });
+
+  test("digit separators: Color(0xFF_3B_82_F6)", () => {
+    const src = "Container(color: Color(0xFF_3B_82_F6))";
+    expect(pick(one(src))).toMatchObject({ ...at(src, "Color(0x"), text: "Color(0xFF_3B_82_F6)", value: "#3b82f6", context: "background" });
   });
 });
 
@@ -184,6 +193,23 @@ describe("raw-motion in Dart", () => {
     expect(scan("x(duration: MotifDurations.base)")).toEqual([]);
   });
 
+  test("how long a message stays up isn't motion: SnackBar, MaterialBanner and Tooltip durations, and timing names", () => {
+    expect(scan("SnackBar(content: Text('Saved'), duration: const Duration(seconds: 3))")).toEqual([]);
+    expect(scan("MaterialBanner(content: x, actions: [], duration: Duration(seconds: 5))")).toEqual([]);
+    expect(scan("Tooltip(message: 'a', duration: Duration(seconds: 2), waitDuration: Duration(milliseconds: 500), showDuration: Duration(seconds: 3), exitDuration: Duration(milliseconds: 100))")).toEqual([]);
+    for (const name of ["debounceDuration", "cacheDuration", "timeoutDuration", "pollDuration", "refreshDuration", "autoplayDuration", "pauseDuration", "delayDuration"]) {
+      expect(scan(`x(${name}: Duration(milliseconds: 300))`)).toEqual([]);
+    }
+    // Other widgets' duration: and animation names stay read.
+    expect(scan("AnimatedSwitcher(duration: Duration(milliseconds: 300), child: x)").map((h) => h.value)).toEqual(["300ms"]);
+  });
+
+  test("a duration chosen in a condition is read on its typed side", () => {
+    const src = "AnimatedOpacity(duration: reduce ? Duration.zero : Duration(milliseconds: 300), opacity: 1)";
+    expect(pick(one(src))).toMatchObject({ ...at(src, "Duration(milliseconds"), text: "Duration(milliseconds: 300)", value: "300ms", violation: true });
+    expect(scan("x(duration: fast ? const Duration(milliseconds: 300) : MotifDurations.base)").map((h) => h.value)).toEqual(["300ms"]);
+  });
+
   test("easing: Curves.<name> (not linear) and Cubic(", () => {
     const src = "x(curve: Curves.easeInOut)";
     expect(pick(one(src))).toEqual({ rule: "raw-motion", ...at(src, "Curves"), kind: "easing", text: "Curves.easeInOut", violation: true, value: "Curves.easeInOut" });
@@ -227,6 +253,23 @@ describe("Dart fixes", () => {
     expect(FLUTTER.role!("space", "0-5")).toBe("MotifSpace.s0p5");
     expect(FLUTTER.role!("radius", "md")).toBe("MotifRadius.md");
     expect(FLUTTER.role!("font-size", "body")).toBe("MotifText.body");
+  });
+});
+
+describe("the closest colour role (grouped output)", () => {
+  const theme = buildTheme(docFrom(validTokens()));
+  const closest = (src: string) => suggestRole(one(src), theme, { role: FLUTTER.role! });
+  test("a colour that reads as a role's colour gets that role, even a near miss", () => {
+    expect(closest("Text('a', style: TextStyle(color: Color(0xFF4B5563)))")).toBe("MotifColors.of(context).textSecondary");
+    expect(closest("Text('a', style: TextStyle(color: Color(0xFF4A5462)))")).toBe("MotifColors.of(context).textSecondary");
+  });
+  test("an off-brand colour gets none (the plain fix is shown), nor a named colour with no value", () => {
+    expect(closest("Container(color: Color(0xFFFF00AA))")).toBeUndefined();
+    expect(closest("Container(color: Color(0xFF3B82F6))")).toBeUndefined();
+    expect(closest("Container(color: Colors.blue)")).toBeUndefined();
+  });
+  test("sizes get the nearest generated member", () => {
+    expect(suggestRole(one("EdgeInsets.all(13)"), theme, { role: FLUTTER.role! })).toBe("MotifSpace.s3 (12px)");
   });
 });
 

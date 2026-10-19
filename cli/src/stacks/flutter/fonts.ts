@@ -5,7 +5,7 @@ import type { AppInfo } from "../../detect/stacks";
 import type { Theme } from "../../generate/theme";
 import { themeFonts } from "../../generate/theme-fonts";
 import { prefixPath } from "../../project/apps";
-import { stripBom } from "../../text";
+import { andList, stripBom } from "../../text";
 import { dependsOn } from "./project";
 
 /** Where project font files go inside an app, when they aren't in it already. */
@@ -26,11 +26,6 @@ const inside = (dir: string, abs: string) => {
   const rel = relative(dir, abs);
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 };
-
-/** "A", "A and B", "A, B and C". */
-export function andList(items: string[]): string {
-  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-}
 
 /** The folder of the package that holds the theme folder (its nearest pubspec.yaml), root-relative; the app's otherwise. */
 export function packageOf(root: string, app: AppInfo, themeDir: string): string {

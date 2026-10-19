@@ -57,7 +57,9 @@ export function dartRole(kind: ValueKind, name: string): string {
   }
 }
 
-const NUMBER = /^-?\d+(?:\.\d+)?$/;
+/** A number literal; Dart allows digit separators (1_000). */
+const NUMBER = /^-?\d[\d_]*(?:\.\d[\d_]*)?$/;
+const num = (literal: string) => Number(literal.replace(/_/g, ""));
 const OPENERS = "([{";
 const CLOSERS = ")]}";
 
@@ -168,7 +170,7 @@ const cssHex = (a: number, r: number, g: number, b: number) => `#${hex2(r)}${hex
 
 /** The colour a Color.fromARGB / fromRGBO / from call makes, when all its arguments are numbers. */
 function colorFromArgs(kind: string, args: Arg[]): string | undefined {
-  const nums = args.map((a) => (NUMBER.test(a.value) ? Number(a.value) : Number.NaN));
+  const nums = args.map((a) => (NUMBER.test(a.value) ? num(a.value) : Number.NaN));
   if (nums.some((n) => Number.isNaN(n))) return undefined;
   if (kind === "fromARGB" && nums.length === 4) return cssHex(nums[0]!, nums[1]!, nums[2]!, nums[3]!);
   if (kind === "fromRGBO" && nums.length === 4) return cssHex(nums[3]! * 255, nums[0]!, nums[1]!, nums[2]!);
@@ -181,19 +183,37 @@ function colorFromArgs(kind: string, args: Arg[]): string | undefined {
   return undefined;
 }
 
-const COLOR_HEX = /(?<![\w$])Color\s*\(\s*0[xX]([0-9a-fA-F]{1,8})\s*\)/g;
+// Dart digit separators are allowed: Color(0xFF_3B_82_F6).
+const COLOR_HEX = /(?<![\w$])Color\s*\(\s*0[xX]([0-9a-fA-F][0-9a-fA-F_]*)\s*\)/g;
 const COLOR_CALL = /(?<![\w$])Color\.(fromARGB|fromRGBO|from)\s*\(/g;
 const NAMED_COLOR = /(?<![\w$])(Colors|CupertinoColors)\.([A-Za-z_$][\w$]*)(?:\.(shade\d+))?/g;
 const SPACE_CALL = /(?<![\w$])(?:EdgeInsets\.(?:all|symmetric|only|fromLTRB)|EdgeInsetsDirectional\.(?:only|fromSTEB)|Gap)\s*\(/g;
 const SIZED_BOX = /(?<![\w$.])SizedBox\s*\(/g;
-const SPACING_ARG = /(?<![\w$.])(?:spacing|runSpacing|mainAxisSpacing|crossAxisSpacing)\s*:\s*(-?\d+(?:\.\d+)?)(?=\s*[,)\]}])/g;
+const SPACING_ARG = /(?<![\w$.])(?:spacing|runSpacing|mainAxisSpacing|crossAxisSpacing)\s*:\s*(-?\d[\d_]*(?:\.\d[\d_]*)?)(?=\s*[,)\]}])/g;
 const RADIUS_CALL = /(?<![\w$])(?:BorderRadius|BorderRadiusDirectional|Radius)\.circular\s*\(/g;
-const FONT_SIZE = /(?<![\w$.])fontSize\s*:\s*(-?\d+(?:\.\d+)?)(?=\s*[,)\]}])/g;
+const FONT_SIZE = /(?<![\w$.])fontSize\s*:\s*(-?\d[\d_]*(?:\.\d[\d_]*)?)(?=\s*[,)\]}])/g;
 const FONT_FAMILY = /(?<![\w$.])fontFamily\s*:\s*r?(?=['"])/g;
 const FONT_FALLBACK = /(?<![\w$.])fontFamilyFallback\s*:\s*(?:const\s+)?(?:<\s*String\s*>\s*)?\[/g;
 const GOOGLE_FONT = /(?<![\w$])GoogleFonts\.([A-Za-z_$][\w$]*)\s*\(/g;
 const NOT_A_FAMILY = new Set(["config", "asMap", "pendingFonts", "getTextTheme"]);
-const DURATION_ARG = /(?<![\w$.])[A-Za-z_$]*uration\s*:\s*(?:const\s+)?Duration\s*\(/g;
+const DURATION_CALL = /(?<![\w$.])Duration\s*\(/g;
+/** Named arguments ending in "uration" that time something other than an animation. */
+const NOT_MOTION_DURATIONS = new Set([
+  "waitDuration", "showDuration", "exitDuration", "debounceDuration", "cacheDuration", "timeoutDuration",
+  "pollDuration", "refreshDuration", "autoplayDuration", "pauseDuration", "delayDuration",
+]);
+/** Widgets whose duration: is how long they stay up, not an animation. */
+const DISPLAY_TIMERS = new Set(["SnackBar", "MaterialBanner", "Tooltip"]);
+/** A named argument's value up to this Duration: the Duration itself, or one side of a choice (reduce ? Duration.zero : …). */
+const DURATION_ARG = /^\s*([A-Za-z_$][\w$]*uration)\s*:(?:\s*|[^,]*[?:]\s*)(?:const\s+)?$/;
+
+/** True when the Duration at `index` is the value of an animation's duration argument (duration:, reverseDuration:, …). */
+function animationDuration(text: string, index: number): boolean {
+  const { argStart, open } = enclosing(text, index);
+  const name = text.slice(argStart, index).match(DURATION_ARG)?.[1];
+  if (!name || NOT_MOTION_DURATIONS.has(name)) return false;
+  return !(name === "duration" && DISPLAY_TIMERS.has(callee(text, open)));
+}
 const DURATION_UNITS: Record<string, number> = { microseconds: 0.001, milliseconds: 1, seconds: 1000, minutes: 60000 };
 const CURVE = /(?<![\w$])Curves\.([A-Za-z_$][\w$]*)/g;
 const CUBIC = /(?<![\w$.])Cubic\s*\(/g;
@@ -249,7 +269,9 @@ export function scanDart(source: SourceFile, scale: Scale | null): Hit[] {
   const color = (index: number, literal: string, value: string | undefined) =>
     push(index, { rule: "raw-color", kind: "color", text: literal, ...(value ? { value } : {}), context: colorContext(text, index), violation: true, message: `Raw colour ${literal}.` });
   for (const m of text.matchAll(COLOR_HEX)) {
-    const v = m[1]!.padStart(8, "0").toLowerCase();
+    const digits = m[1]!.replace(/_/g, "");
+    if (digits.length > 8) continue;
+    const v = digits.padStart(8, "0").toLowerCase();
     color(m.index!, m[0], cssHex(Number.parseInt(v.slice(0, 2), 16), Number.parseInt(v.slice(2, 4), 16), Number.parseInt(v.slice(4, 6), 16), Number.parseInt(v.slice(6, 8), 16)));
   }
   for (const m of text.matchAll(COLOR_CALL)) {
@@ -266,7 +288,7 @@ export function scanDart(source: SourceFile, scale: Scale | null): Hit[] {
 
   // ---------- sizes ----------
   const size = (index: number, literal: string, kind: "space" | "radius" | "font-size", number: string) => {
-    const px = Math.abs(Number(number));
+    const px = Math.abs(num(number));
     const set = kind === "space" ? scale?.spacePx : kind === "radius" ? scale?.radiusPx : scale?.fontSizePx;
     const onScale = px === 0 || (set?.has(px) ?? false);
     push(index, { rule: "off-scale", kind, text: literal, value: `${px}px`, violation: scale ? !onScale : false, message: sizeMessage[kind](px) });
@@ -330,9 +352,10 @@ export function scanDart(source: SourceFile, scale: Scale | null): Hit[] {
   }
 
   // ---------- motion ----------
-  for (const m of text.matchAll(DURATION_ARG)) {
-    // Only a Duration given as an animation's duration: timers and timeouts aren't motion.
-    const start = m.index! + m[0].lastIndexOf("Duration");
+  for (const m of text.matchAll(DURATION_CALL)) {
+    // Only a Duration given as an animation's duration: timers, timeouts and how long a message stays up aren't motion.
+    const start = m.index!;
+    if (!animationDuration(text, start)) continue;
     const call = callArgs(text, m.index! + m[0].length - 1);
     if (!call || call.args.length === 0) continue;
     let ms = 0;
@@ -340,7 +363,7 @@ export function scanDart(source: SourceFile, scale: Scale | null): Hit[] {
     for (const a of call.args) {
       const unit = a.name ? DURATION_UNITS[a.name] : undefined;
       if (unit === undefined || !NUMBER.test(a.value)) readable = false;
-      else ms += Number(a.value) * unit;
+      else ms += num(a.value) * unit;
     }
     if (!readable) continue;
     const onScale = ms === 0 || (scale?.durationMs.has(ms) ?? false);

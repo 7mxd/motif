@@ -26,7 +26,10 @@ export function parseColor(value: string): Color | undefined {
   return parse(value.replace(/_/g, " "));
 }
 
-export function clusterColors(samples: Sample[], threshold = 0.03): { clusters: ColorCluster[]; unparsed: Sample[] } {
+/** Colours closer than this (Euclidean distance in OKLab) read as the same colour. */
+export const SAME_COLOR = 0.03;
+
+export function clusterColors(samples: Sample[], threshold = SAME_COLOR): { clusters: ColorCluster[]; unparsed: Sample[] } {
   const sorted = [...samples].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
   const groups: { rep: Color; members: Sample[] }[] = [];
   const unparsed: Sample[] = [];

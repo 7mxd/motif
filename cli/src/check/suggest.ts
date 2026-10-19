@@ -1,6 +1,6 @@
 // The closest role for a size that isn't on the guide's scale: what motif check suggests when it groups repeats.
 import { differenceEuclidean, formatHex } from "culori";
-import { parseColor } from "../extract/cluster";
+import { parseColor, SAME_COLOR } from "../extract/cluster";
 import { cssColor } from "../generate/css-values";
 import type { Theme, ThemeVariant } from "../generate/theme";
 import type { Hit, ValueKind } from "./types";
@@ -83,7 +83,7 @@ const FITS: Record<string, RegExp> = { text: /^(?:text|on)-/, background: /^(?:b
 
 /**
  * For a native stack, whose code names roles itself (role(kind, name) → MotifSpace.s4): the nearest size roles, as for CSS,
- * and the nearest colour role to a typed colour (in light or dark mode).
+ * and the colour role a typed colour matches (in light or dark mode), when it's within SAME_COLOR of one.
  */
 function nativeSuggestion(hit: Hit, theme: Theme, role: (kind: ValueKind, name: string) => string): string | undefined {
   const px = Number.parseFloat(hit.value ?? "");
@@ -105,6 +105,8 @@ function nativeSuggestion(hit: Hit, theme: Theme, role: (kind: ValueKind, name: 
     );
     if (scored.length === 0) return undefined;
     const best = Math.min(...scored.map((s) => s.d));
+    // Only a colour that reads as a role's colour gets that role: an off-brand colour has no "closest", just the fix.
+    if (best > SAME_COLOR) return undefined;
     const closest = scored.filter((s) => s.d - best < 1e-9);
     const fits = FITS[hit.context ?? ""];
     const chosen = closest.find((s) => fits?.test(s.name)) ?? closest[0]!;
