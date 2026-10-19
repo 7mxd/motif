@@ -1,4 +1,5 @@
-import { FLUTTER_IGNORES, listSourceFiles } from "../../check/files";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+import { FLUTTER_IGNORES, listSourceFiles, type SourceFile } from "../../check/files";
 import { maskComments } from "../../check/mask";
 import type { AppInfo } from "../../detect/stacks";
 import { isMotifGenerated } from "../../generate/header";
@@ -9,7 +10,7 @@ import { andList } from "../../text";
 import { collectFlutter } from "./extract";
 import { flutterFonts } from "./fonts";
 import { generateFlutter } from "./generate";
-import { importFor } from "./project";
+import { importFor, pathDependencies } from "./project";
 import { dartFix, dartReducedMotion, dartRole, scanDart } from "./rules";
 
 /** What else a variant changes besides colours, in plain words. */
@@ -61,6 +62,31 @@ export const FLUTTER: NativeStack = {
   },
 
   sourceFiles: (root, app, { ignore }) => listSourceFiles(root, app.path, { ignore, langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES }),
+
+  // The packages the app's pubspec.yaml takes from a folder (core: path: ../packages/core): their lib/ Dart files, one
+  // level only. A folder outside the project isn't read.
+  sharedFiles(root, app, { ignore }) {
+    const top = resolve(root);
+    const appDir = resolve(root, app.path);
+    const files: SourceFile[] = [];
+    const read: string[] = [];
+    const notes: string[] = [];
+    for (const dep of pathDependencies(appDir)) {
+      const dir = resolve(appDir, dep.path);
+      const rel = relative(top, dir);
+      if (rel.startsWith("..") || isAbsolute(rel)) {
+        notes.push(`The ${dep.name} package (${dep.path}) is outside the project, so its theme code wasn't read.`);
+        continue;
+      }
+      if (dir === appDir) continue;
+      const own = listSourceFiles(root, prefixPath(rel.split(sep).join("/") || ".", "lib"), { ignore, langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES });
+      if (own.length === 0) continue;
+      files.push(...own);
+      read.push(`${dep.name} (${rel.split(sep).join("/")})`);
+    }
+    if (read.length > 0) notes.push(`The theme code of the shared ${read.length === 1 ? "package" : "packages"} ${andList(read)} was read too.`);
+    return { files, notes };
+  },
   scan: scanDart,
   // Motif's own file defines MotifMotion and reads disableAnimations: only the app's code says whether it respects reduce motion.
   appWide: (files) => dartReducedMotion(files),

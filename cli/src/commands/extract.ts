@@ -80,15 +80,23 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   }
   // Native apps (Flutter): each stack reads all its apps' own files (not Motif's) together. With a web app as well, the
   // values found in both are put together into one draft.
-  const nativeFiles = new Map<NativeStack, SourceFile[]>();
+  // Their shared packages (a Flutter path: dependency) add their theme code, not their widgets.
+  const nativeFiles = new Map<NativeStack, { own: SourceFile[]; shared: Map<string, SourceFile>; notes: string[] }>();
   for (const a of supported) {
     const stack = native(a);
     if (!stack) continue;
-    const own = (stack.sourceFiles?.(cwd, a, { ignore }) ?? []).filter((f) => !isMotifGenerated(f.path, f.text));
-    nativeFiles.set(stack, [...(nativeFiles.get(stack) ?? []), ...own]);
+    const entry = nativeFiles.get(stack) ?? { own: [] as SourceFile[], shared: new Map<string, SourceFile>(), notes: [] as string[] };
+    entry.own.push(...(stack.sourceFiles?.(cwd, a, { ignore }) ?? []).filter((f) => !isMotifGenerated(f.path, f.text)));
+    const shared = stack.sharedFiles?.(cwd, a, { ignore });
+    for (const f of shared?.files ?? []) if (!isMotifGenerated(f.path, f.text)) entry.shared.set(f.path, f);
+    for (const n of shared?.notes ?? []) if (!entry.notes.includes(n)) entry.notes.push(n);
+    nativeFiles.set(stack, entry);
   }
-  for (const [stack, own] of nativeFiles) parts.push(stack.collect!(own));
-  const files = [...webFiles, ...[...nativeFiles.values()].flat()];
+  for (const [stack, { own, shared, notes }] of nativeFiles) {
+    const occ = stack.collect!(own, [...shared.values()]);
+    parts.push(notes.length > 0 ? { ...occ, notes: [...notes, ...(occ.notes ?? [])] } : occ);
+  }
+  const files = [...webFiles, ...[...nativeFiles.values()].flatMap((e) => [...e.own, ...e.shared.values()])];
   const occ = mergeOccurrences(parts);
   const { tokens, report } = buildDraft(occ);
 

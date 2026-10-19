@@ -62,6 +62,21 @@ function kebab(name: string): string {
 const words = (name: string) => kebab(name).split("-").filter(Boolean);
 const title = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
 
+/**
+ * True when a declaration at `index` is a palette's: a top-level one, or a static member of a class (mixin, extension)
+ * body, not a variable inside a function or method.
+ */
+function declarationLevel(code: string, index: number, isStatic: boolean): boolean {
+  const open: number[] = [];
+  for (let i = 0; i < index; i++) {
+    if (code[i] === "{") open.push(i);
+    else if (code[i] === "}") open.pop();
+  }
+  if (open.length === 0) return !isStatic;
+  if (open.length !== 1 || !isStatic) return false;
+  return /(?:^|[\s;}])(?:class|mixin|extension|enum)\b[^{};]*$/.test(code.slice(0, open[0]));
+}
+
 /** The index just past the brace that closes the one at `open` (on masked text). */
 function closingBrace(text: string, open: number): number {
   let depth = 0;
@@ -74,6 +89,10 @@ function closingBrace(text: string, open: number): number {
 
 interface DartFile {
   source: SourceFile;
+  /** A file of a package the app depends on: its theme counts, but its widgets aren't the app's. */
+  shared: boolean;
+  /** Where ThemeData(…) calls are: a shared package's theme settings, which count as the app's. */
+  themeData: [number, number][];
   /** Comments and string contents blanked: the code alone, at the file's own positions. */
   code: string;
   lineOf: (index: number) => number;
@@ -83,7 +102,7 @@ interface DartFile {
   hitIndex: (hit: { line: number; column: number }) => number;
 }
 
-function readFile(source: SourceFile): DartFile {
+function readFile(source: SourceFile, shared: boolean): DartFile {
   const code = maskStrings(maskComments(source.text, "dart"), "dart");
   const starts = [0];
   for (let i = 0; i < code.length; i++) if (code.charCodeAt(i) === 10) starts.push(i + 1);
@@ -93,7 +112,14 @@ function readFile(source: SourceFile): DartFile {
   const hits = scanDart(source, null);
   const colorAt = new Map<number, string>();
   for (const h of hits) if (h.kind === "color" && h.value) colorAt.set(hitIndex(h), h.value);
-  return { source, code, lineOf, colorAt, hits, hitIndex };
+  const themeData: [number, number][] = [];
+  if (shared) {
+    for (const m of code.matchAll(/(?<![\w$.])ThemeData(?:\.\w+)?\s*\(/g)) {
+      const call = callArgs(code, m.index! + m[0].length - 1);
+      if (call) themeData.push([m.index!, call.close + 1]);
+    }
+  }
+  return { source, shared, themeData, code, lineOf, colorAt, hits, hitIndex };
 }
 
 interface PaletteClass {
@@ -132,9 +158,14 @@ function pairInstances(instances: Instance[]): {
   }
   pairs.sort((a, b) => Math.min(a.light.order, a.dark.order) - Math.min(b.light.order, b.dark.order));
   const unpaired = instances.filter((i) => !paired.has(i));
-  // The pair without a suffix; else an unpaired light palette without one; else the first pair; else the first palette.
-  let defaultPair: { light?: Instance; dark?: Instance } | undefined = pairs.find((p) => p.light.key === "");
-  defaultPair ??= unpaired.find((i) => !i.dark && i.key === "") ? { light: unpaired.find((i) => !i.dark && i.key === "") } : undefined;
+  // The pair without a suffix (or one called Default: lightDefault/darkDefault); else an unpaired light palette like that;
+  // else the first pair; else the first palette.
+  let defaultPair: { light?: Instance; dark?: Instance } | undefined;
+  for (const key of ["", "default"]) {
+    defaultPair ??= pairs.find((p) => p.light.key === key);
+    const single = unpaired.find((i) => !i.dark && i.key === key);
+    defaultPair ??= single ? { light: single } : undefined;
+  }
   defaultPair ??= pairs[0];
   defaultPair ??= instances[0] ? (instances[0].dark ? { dark: instances[0] } : { light: instances[0] }) : undefined;
   const isDefault = (i: Instance) => defaultPair?.light === i || defaultPair?.dark === i;
@@ -152,8 +183,9 @@ function pairInstances(instances: Instance[]): {
   ].sort((a, b) => a.order - b.order);
   for (const e of entries) {
     const one = (e.light ?? e.dark)!;
-    const id = one.key || kebab(one.name);
-    add(id, one.label || words(one.name).map(title).join(" "), e.light, e.dark);
+    // A palette called Default that isn't the default one keeps an id of its own (the guide's default is "default").
+    if (one.key === "default") add("default-variant", "Default variant", e.light, e.dark);
+    else add(one.key || kebab(one.name), one.label || words(one.name).map(title).join(" "), e.light, e.dark);
   }
   return { defaultPair, variants, unpaired: unpaired.filter((i) => !isDefault(i)) };
 }
@@ -195,8 +227,12 @@ function pubspecFonts(files: SourceFile[]): { family: string; path: string }[] {
  * pair as light and dark, the other pairs as design variants), its ColorScheme as Motif's role variables, and the
  * colours, sizes, fonts and motion its widgets use.
  */
-export function collectFlutter(files: SourceFile[]): Occurrences {
-  const dart = files.filter((f) => f.lang === "dart").map(readFile);
+export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): Occurrences {
+  const own = new Set(files.map((f) => f.path));
+  const dart = [
+    ...files.filter((f) => f.lang === "dart").map((f) => readFile(f, false)),
+    ...shared.filter((f) => f.lang === "dart" && !own.has(f.path)).map((f) => readFile(f, true)),
+  ];
   type Bucket = "colors" | "space" | "radius" | "fontSize" | "fontFamily" | "duration" | "easing";
   const buckets: Record<Bucket, Map<string, Sample>> = {
     colors: new Map(), space: new Map(), radius: new Map(), fontSize: new Map(), fontFamily: new Map(), duration: new Map(), easing: new Map(),
@@ -262,23 +298,27 @@ export function collectFlutter(files: SourceFile[]): Occurrences {
   for (const c of classes) {
     const instances: Instance[] = [];
     const ctor = escape(c.name);
-    const decl = new RegExp(`(?<![\\w$.])(?:static\\s+)?(?:const|final)\\s+(?:${ctor}\\s+)?(${IDENT})\\s*=\\s*(?:const\\s+)?${ctor}\\s*\\(`, "g");
+    const decl = new RegExp(`(?<![\\w$.])(static\\s+)?(?:const|final)\\s+(?:${ctor}\\s+)?(${IDENT})\\s*=\\s*(?:const\\s+)?${ctor}\\s*\\(`, "g");
     for (const file of dart) {
       for (const m of file.code.matchAll(decl)) {
         const open = m.index! + m[0].length - 1;
         const call = callArgs(file.code, open);
         if (!call) continue;
         define(file, [m.index!, call.close + 1]);
+        // A palette is declared at the top level or as a class's static member, not as a local inside a function.
+        if (!declarationLevel(file.code, m.index!, Boolean(m[1]))) continue;
         const colors: Record<string, string> = {};
         for (const a of call.args) {
           if (!a.name || !c.fields.includes(a.name)) continue;
           const value = colorOf(file, a.value, a.valueStart);
           if (value) colors[a.name] = value;
         }
-        const name = m[1]!;
-        const dark = /dark/i.test(name);
-        const rest = name.replace(dark ? /dark/i : /light/i, "");
-        const own = words(rest).filter((w) => !GENERIC_WORDS.has(w));
+        const name = m[2]!;
+        // light and dark count only as words of the name (lightMale, dark_male), not inside one (highlight, darkened).
+        const parts = words(name);
+        const half = parts.includes("dark") ? "dark" : parts.includes("light") ? "light" : undefined;
+        const dark = half === "dark";
+        const own = parts.filter((w, i) => i !== parts.indexOf(half ?? "") && !GENERIC_WORDS.has(w));
         instances.push({ name, file, at: m.index!, order: instances.length, colors, dark, key: own.join("-"), label: own.map(title).join(" ") });
       }
     }
@@ -364,6 +404,8 @@ export function collectFlutter(files: SourceFile[]): Occurrences {
       for (const m of file.code.matchAll(ref)) {
         const name = fieldVar.get(m[1]!);
         if (!name || insideClass(file, m.index!) || inRanges(m.index!, defs)) continue;
+        // A shared package's widgets aren't the app's; its ThemeData is.
+        if (file.shared && !inRanges(m.index!, file.themeData)) continue;
         const context = colorContext(file.code, m.index!);
         if (context === "other") continue;
         const own = (variableUses[name] ??= {});
@@ -384,7 +426,10 @@ export function collectFlutter(files: SourceFile[]): Occurrences {
   for (const file of dart) {
     const defs = definitions.get(file) ?? [];
     for (const hit of file.hits) {
-      if (inRanges(file.hitIndex(hit), defs)) continue;
+      const index = file.hitIndex(hit);
+      if (inRanges(index, defs)) continue;
+      // From a shared package: its fonts and its ThemeData's values, not its widgets'.
+      if (file.shared && hit.kind !== "font-family" && !inRanges(index, file.themeData)) continue;
       const example = `${hit.file}:${hit.line}`;
       switch (hit.kind) {
         case "color":
@@ -415,7 +460,7 @@ export function collectFlutter(files: SourceFile[]): Occurrences {
       }
     }
   }
-  for (const { family, path } of pubspecFonts(files)) add("fontFamily", family, path);
+  for (const { family, path } of pubspecFonts([...files, ...shared])) add("fontFamily", family, path);
 
   const sorted = (m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
   return {

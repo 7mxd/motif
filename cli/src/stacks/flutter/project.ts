@@ -69,6 +69,41 @@ export function dependsOn(dir: string, pkg: string): boolean {
   return false;
 }
 
+/** The packages a pubspec.yaml's dependencies take from a folder (core: path: ../packages/core), as written. */
+export function pathDependencies(dir: string): { name: string; path: string }[] {
+  const text = pubspec(dir);
+  if (text === null) return [];
+  const out: { name: string; path: string }[] = [];
+  let inDeps = false;
+  let indent: number | null = null;
+  let current: string | null = null;
+  /** How far the current package's own keys (path:, git:, version:) are indented; a git: dependency's path: is deeper. */
+  let childIndent: number | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*(#.*)?$/.test(line)) continue;
+    if (/^\S/.test(line)) {
+      inDeps = /^dependencies:\s*(#.*)?$/.test(line);
+      indent = null;
+      current = null;
+      continue;
+    }
+    if (!inDeps) continue;
+    const lead = line.length - line.trimStart().length;
+    const key = line.match(/^\s+([A-Za-z0-9_]+)\s*:\s*(.*?)\s*(#.*)?$/);
+    if (!key) continue;
+    indent ??= lead;
+    if (lead === indent) {
+      current = key[1]!;
+      childIndent = null;
+      continue;
+    }
+    if (!current || lead < indent) continue;
+    childIndent ??= lead;
+    if (lead === childIndent && key[1] === "path" && key[2]) out.push({ name: current, path: key[2].replace(/^["']|["']$/g, "") });
+  }
+  return out;
+}
+
 /** The font families a pubspec.yaml bundles (flutter: fonts: - family: Name). */
 export function fontFamilies(text: string): string[] {
   const families: string[] = [];

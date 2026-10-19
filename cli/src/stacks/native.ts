@@ -39,7 +39,13 @@ export interface NativeStack {
   fix?(hit: Hit): string;
   /** A theme role as the stack's code names it, for "Closest:" suggestions (text-secondary → MotifColors.of(context).textSecondary). */
   role?(kind: ValueKind, name: string): string;
-  collect?(files: SourceFile[]): Occurrences;
+  /**
+   * Files of the packages an app takes from a folder in the project (a Flutter path: dependency), whose theme code the
+   * app uses; and notes on what was read or skipped.
+   */
+  sharedFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): { files: SourceFile[]; notes: string[] };
+  /** What the app's own files (and its shared packages' theme code) say about its design, for motif extract. */
+  collect?(files: SourceFile[], shared?: SourceFile[]): Occurrences;
   shoot?(opts: NativeShotOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }>;
   doctor?(deps: DoctorDeps): DoctorItem[];
 }

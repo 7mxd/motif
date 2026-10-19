@@ -631,13 +631,18 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const ownUses = occ.variableUses ?? {};
   const candidates = (follow ? (occ.roleNames ?? []) : []).map((name) => ({ name, cluster: clusterOf(lightOf(name)) })).filter((x) => x.cluster);
   const named: Record<string, ColorCluster> = {};
+  /** The variable whose name gave a role its colour. */
+  const namedVar: Record<string, string> = {};
   for (const entry of ROLE_NAMES) {
     const best = candidates
       .map((x) => ({ ...x, score: nameScore(x.name, entry) }))
       // The role's own name is enough; a word like "muted" also needs that variable itself used that way.
       .filter((x) => x.score >= 0 && (x.score === 0 || !entry.usedAs || entry.usedAs.some((k) => (ownUses[x.name]?.[k] ?? 0) > 0)))
       .sort((a, b) => a.score - b.score)[0];
-    if (best) named[entry.role] = best.cluster!;
+    if (best) {
+      named[entry.role] = best.cluster!;
+      namedVar[entry.role] = best.name;
+    }
   }
   // Colours only ever listed in scripts (the card colours people pick from) aren't the theme's actions or statuses.
   const isData = (c: ColorCluster) => used(c, "data") >= c.count;
@@ -647,7 +652,12 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   chosen.background = named.background ?? backgrounds.find((c) => used(c, "page") > 0 && c.c < 0.04) ?? backgrounds.find((c) => c.c < 0.04) ?? backgrounds[0];
   // Text must be readable on the background: white text used on buttons isn't the main text colour, whatever its name.
   const readableOn = (c: ColorCluster) => !chosen.background || wcagContrast(c.hex, chosen.background.hex) >= 3;
-  for (const role of ["text-primary", "text-secondary"]) if (named[role] && !readableOn(named[role]!)) delete named[role];
+  for (const role of ["text-primary", "text-secondary"]) {
+    if (named[role] && !readableOn(named[role]!)) {
+      delete named[role];
+      delete namedVar[role];
+    }
+  }
   const readable = text.filter(readableOn);
   const textPick = (readable.length > 0 ? readable : text).filter((c) => c !== named["text-secondary"]);
   chosen["text-primary"] = named["text-primary"] ?? textPick[0] ?? named["text-secondary"];
@@ -699,6 +709,45 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const hexOf = (name: string) => (primitives[name] as { $value: { hex: string } }).$value.hex;
   primitives.white = { $value: srgbColor(WHITE) };
   primitives.ink = { $value: srgbColor(INK) };
+  const addPrimitive = (name: string, hex: string) => {
+    let n = name;
+    for (let k = 2; primitives[n] && hexOf(n) !== hex; k++) n = `${name}-${k}`;
+    primitives[n] ??= { $value: srgbColor(hex) };
+    return n;
+  };
+
+  // A role whose colour a variable gave (by its name, directly or through an alias) takes its dark and variant values from
+  // that same variable: the first in the alias chain to set each one, up to the variable that sets the light value.
+  const variableByName = new Map((occ.variables ?? []).map((v) => [v.name, v]));
+  const chainOf = (name: string): Variable[] => {
+    const chain: Variable[] = [];
+    let n: string | undefined = name;
+    for (let depth = 0; depth < 8 && n; depth++) {
+      const v = variableByName.get(n);
+      if (v) chain.push(v);
+      if (v?.light) break;
+      n = aliases[n] === n ? undefined : aliases[n];
+    }
+    return chain;
+  };
+  const chainLight = (chain: Variable[]) => chain.find((v) => v.light)?.light;
+  const chainDark = (chain: Variable[]) => chain.find((v) => v.dark)?.dark;
+  const chainVariant = (chain: Variable[], id: string) => ({
+    light: chain.find((v) => v.variants?.[id]?.light)?.variants![id]!.light,
+    dark: chain.find((v) => v.variants?.[id]?.dark)?.variants![id]!.dark,
+  });
+  /** The variable chain a role's colour came from, when a variable's name chose it. */
+  const sourceOf = (role: string): Variable[] | undefined => {
+    const name = chosen[role] && chosen[role] === named[role] ? namedVar[role] : undefined;
+    const chain = name ? chainOf(name) : [];
+    return chain.length > 0 ? chain : undefined;
+  };
+  /** A text colour on a role's fill the app names itself (--on-action-primary, or ColorScheme's onPrimary). */
+  const onSource = (role: string): Variable[] | undefined => {
+    if (!follow) return undefined;
+    const chain = chainOf(`--on-${role}`);
+    return solidHex(chainLight(chain)) ? chain : undefined;
+  };
 
   const base: Record<string, string> = {};
   for (const role of BASE_ROLES) {
@@ -715,7 +764,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     wcagContrast(hexOf(textName), hexOf(fillName)) >= 4.5 ? textName : onColor(hexOf(fillName)) === WHITE ? "white" : "ink";
   base["on-action-secondary"] = secondaryFill ? onFill(base["text-primary"]!, base["action-secondary"]!) : base["text-primary"]!;
   for (const role of ["action-primary", "success", "warning", "danger", "info"]) {
-    base[`on-${role}`] = onColor(hexOf(base[role]!)) === WHITE ? "white" : "ink";
+    const own = onSource(role);
+    base[`on-${role}`] = own ? addPrimitive(`on-${role}`, solidHex(chainLight(own))!) : onColor(hexOf(base[role]!)) === WHITE ? "white" : "ink";
   }
   roles["color.surface-raised"] = roles["color.surface"]!;
   roles["color.focus"] = roles["color.action-primary"]!;
@@ -724,15 +774,21 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     Boolean(cluster && solidHex(value) && cluster.members.some((m) => solidHex(m.value) === solidHex(value)));
   const darkBase: Record<string, string> = {};
   for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
-    const candidates = (occ.variables ?? []).filter((x) => solidHex(x.dark) && inCluster(chosen[role], x.light));
-    const entry = follow ? ROLE_NAMES.find((e) => e.role === role) : undefined;
-    const v =
-      (entry && candidates.find((x) => nameScore(x.name, entry) >= 0)) ??
-      candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ??
-      candidates[0];
-    if (!v) continue;
+    const source = sourceOf(role);
+    let darkValue: string | undefined;
+    if (source) darkValue = solidHex(chainDark(source));
+    else {
+      const candidates = (occ.variables ?? []).filter((x) => solidHex(x.dark) && inCluster(chosen[role], x.light));
+      const entry = follow ? ROLE_NAMES.find((e) => e.role === role) : undefined;
+      const v =
+        (entry && candidates.find((x) => nameScore(x.name, entry) >= 0)) ??
+        candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ??
+        candidates[0];
+      darkValue = v ? solidHex(v.dark) : undefined;
+    }
+    if (!darkValue) continue;
     // Roles that share a colour group (a grey-50 page and its white cards) can have different dark values.
-    const value = srgbColor(solidHex(v.dark)!);
+    const value = srgbColor(darkValue);
     const shared = `${chosen[role]!.id}-dark`;
     const taken = (primitives[shared] as { $value?: { hex?: string } } | undefined)?.$value?.hex;
     const name = taken && taken !== value.hex ? `${chosen[role]!.id}-${role}-dark` : shared;
@@ -747,7 +803,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     darkBase["on-action-secondary"] = onFill(darkBase["text-primary"] ?? base["text-primary"]!, darkBase["action-secondary"] ?? base["action-secondary"]!);
   } else if (darkBase["text-primary"]) darkBase["on-action-secondary"] = darkBase["text-primary"];
   for (const role of ["action-primary", "success", "warning", "danger", "info"]) {
-    if (darkBase[role]) darkBase[`on-${role}`] = onColor(hexOf(darkBase[role]!)) === WHITE ? "white" : "ink";
+    const own = onSource(role);
+    const ownDark = own ? solidHex(chainDark(own)) : undefined;
+    // The app's own text colour on the fill keeps its light value in dark mode when it sets no other.
+    if (own) darkBase[`on-${role}`] = ownDark ? addPrimitive(`on-${role}-dark`, ownDark) : base[`on-${role}`]!;
+    else if (darkBase[role]) darkBase[`on-${role}`] = onColor(hexOf(darkBase[role]!)) === WHITE ? "white" : "ink";
   }
 
   // Design variants: the colours blocks like [data-variant="men"] { … } give variables that match a role. The :root palette is
@@ -755,14 +815,31 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   // [data-variant="default"] is that default, so it isn't drafted as a variant of its own.
   const variantIds = [...new Set((occ.variables ?? []).flatMap((v) => Object.keys(v.variants ?? {})))].filter((id) => id !== "default");
   const variantRoles: Record<string, Record<string, { value: string; dark: string }>> = {};
-  const addPrimitive = (name: string, hex: string) => {
-    let n = name;
-    for (let k = 2; primitives[n] && hexOf(n) !== hex; k++) n = `${name}-${k}`;
-    primitives[n] ??= { $value: srgbColor(hex) };
-    return n;
+  /**
+   * A role's variant values from the variable chain its colour came from. A value the same as the variable's own default
+   * one is the default role's value exactly (the cluster's colour), so a palette that keeps a colour keeps the role's.
+   */
+  const fromChain = (role: string, chain: Variable[], prefix: string) => {
+    const light = solidHex(chainLight(chain));
+    const dark = solidHex(chainDark(chain)) ?? light;
+    const defaultDark = darkBase[role] ?? base[role]!;
+    for (const id of variantIds) {
+      const own = chainVariant(chain, id);
+      const lightHex = solidHex(own.light);
+      const darkHex = solidHex(own.dark);
+      if (!lightHex && !darkHex) continue;
+      const value = !lightHex || lightHex === light ? base[role]! : addPrimitive(`${prefix}-${id}`, lightHex);
+      const darkName = !darkHex ? (lightHex ? value : defaultDark) : darkHex === dark ? defaultDark : addPrimitive(`${prefix}-${id}-dark`, darkHex);
+      (variantRoles[role] ??= {})[id] = { value, dark: darkName };
+    }
   };
   if (variantIds.length > 0) {
     for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
+      const source = sourceOf(role);
+      if (source) {
+        fromChain(role, source, chosen[role]!.id);
+        continue;
+      }
       const candidates = (occ.variables ?? []).filter((x) => x.variants && inCluster(chosen[role], x.light));
       const entry = follow ? ROLE_NAMES.find((e) => e.role === role) : undefined;
       const v = (entry && candidates.find((x) => nameScore(x.name, entry) >= 0)) ?? candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ?? candidates[0];
@@ -780,6 +857,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     const follows: [string, string][] = [["surface-raised", "surface"], ["focus", "action-primary"], ["text-inverse", "background"]];
     for (const [role, source] of follows) if (variantRoles[source]) variantRoles[role] = variantRoles[source]!;
     for (const role of ["action-primary", "success", "warning", "danger", "info"]) {
+      const own = onSource(role);
+      if (own) {
+        fromChain(`on-${role}`, own, `on-${role}`);
+        continue;
+      }
       if (!variantRoles[role]) continue;
       const on = (name: string) => (onColor(hexOf(name)) === WHITE ? "white" : "ink");
       variantRoles[`on-${role}`] = Object.fromEntries(Object.entries(variantRoles[role]!).map(([id, x]) => [id, { value: on(x.value), dark: on(x.dark) }]));
@@ -908,6 +990,14 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     notes.push(`Your CSS sets ${variables.length} colour ${variables.length === 1 ? "variable" : "variables"}; design/extract-report.json shows the role each matches, so you can define them from Motif's (--bg: var(--motif-color-background)).`);
   }
   notes.push(...(occ.notes ?? []));
+  // A role whose colour group stands for a see-through colour (a hairline at 8%) is drafted solid: say so.
+  for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
+    const value = chosen[role]?.members[0]?.value;
+    const alpha = value ? parseColor(value)?.alpha : undefined;
+    if (value && alpha !== undefined && alpha < 1) {
+      notes.push(`${role} comes from a see-through colour (${value}), drafted as solid ${chosen[role]!.hex}; check it.`);
+    }
+  }
   if (defaulted.length) notes.push(`No colour was found for ${defaulted.join(", ")}, so Motif used defaults.`);
   if (code !== undefined) {
     const which = GENERIC.has(code.toLowerCase()) ? "The system's monospace fonts" : code;
