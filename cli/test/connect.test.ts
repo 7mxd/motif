@@ -36,6 +36,7 @@ function fakes(over: Partial<ConnectDeps> & { connected?: ConfiguredSource[]; cl
     },
     ask: async () => "",
     configured: () => connected,
+    servers: () => [],
     home: "/home/dev",
     platform: "linux",
     vars: {},
@@ -265,6 +266,7 @@ describe("motif connect: every agent (Part 3)", () => {
         return answer;
       },
       configured: () => [],
+      servers: () => [],
       home,
       platform: "linux",
       vars: {},
@@ -523,6 +525,50 @@ describe("motif connect: every agent (Part 3)", () => {
     expect(warnings[0]).toMatch(/dotfiles[\\/]cursor[\\/]mcp\.json, which now holds your key/);
   });
 
+  test("another product's server already named motion is kept, and Motion is added under its second name (deferred minor)", async () => {
+    // usemotion.com's server, also called "motion", in Claude Code's and Cursor's settings; Gemini has none.
+    const theirs = { type: "http", url: "https://mcp.usemotion.com/mcp" };
+    const s = setup(["claude", "cursor", "gemini"], {
+      servers: () => [
+        { agent: "claude", name: "motion", def: theirs, where: "~/.claude.json" },
+        { agent: "cursor", name: "motion", def: theirs, where: "~/.cursor/mcp.json" },
+      ],
+    });
+    writeFileSync(join(s.home, ".cursor", "mcp.json"), `{\n  "mcpServers": {\n    "motion": ${JSON.stringify(theirs)}\n  }\n}\n`);
+    const r = await runConnect(".", ctx("motion"), s.deps);
+    expect(r.exitCode).toBe(0);
+    expect(s.agentRuns()).toEqual([
+      { cli: "claude", args: ["mcp", "add", "--transport", "http", "--scope", "user", "motion-dev", "https://mcp.motion.dev"] },
+      { cli: "gemini", args: ["mcp", "add", "--scope", "user", "--transport", "http", "motion", "https://mcp.motion.dev"] },
+    ]);
+    expect(json(join(s.home, ".cursor", "mcp.json"))).toEqual({ mcpServers: { motion: theirs, "motion-dev": { url: "https://mcp.motion.dev" } } });
+    expect(r.text).toContain(`✓ Claude Code: added Motion for all your projects, as "motion-dev" (you already have a server called "motion" that isn't Motion's).`);
+    expect(r.text).toContain(`✓ Cursor: added Motion for all your projects, as "motion-dev"`);
+    expect(r.text).toContain("✓ Gemini CLI: added Motion for all your projects.");
+    expect((r.data.agents as { agent: string; server?: string }[]).map((a) => `${a.agent}:${a.server}`)).toEqual(["claude:motion-dev", "cursor:motion-dev", "gemini:motion"]);
+  });
+
+  test("every source has a second server name, and when both are taken nothing is overwritten (deferred minor)", async () => {
+    const { SOURCES } = await import("../src/sources/catalog");
+    for (const src of SOURCES) {
+      expect(src.connect.fallback).toMatch(/^[a-z0-9-]+$/);
+      expect(src.connect.fallback).not.toBe(src.connect.name);
+    }
+    const other = { url: "https://example.com/mcp" };
+    const s = setup(["claude"], {
+      servers: () => [
+        { agent: "claude", name: "21st", def: other, where: "~/.claude.json" },
+        { agent: "claude", name: "21st-dev", def: other, where: "~/.claude.json" },
+      ],
+    });
+    const r = await runConnect(".", ctx("21st"), s.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain(`✗ Claude Code: couldn't add it: it already has servers called "21st" and "21st-dev" that aren't 21st.dev's, so nothing was changed`);
+    expect(s.agentRuns()).toEqual([]);
+    // No agent took the key, so none was asked for.
+    expect(s.calls.prompts).toBe(0);
+  });
+
   test("an agent whose command can't be started is reported, and the others are still set up (final review)", async () => {
     const s = setup(["claude", "cursor", "gemini"]);
     const run = s.deps.run;
@@ -589,6 +635,7 @@ describe("turning motif connect off for unattended runs (review of batch F)", ()
       readSecret: async () => "k",
       ask: async () => "",
       configured: () => [],
+      servers: () => [],
       home,
       platform: "linux",
       vars: { MOTIF_NO_CONNECT: "1" },
