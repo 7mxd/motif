@@ -5,3 +5,4 @@ skill/bin/motif text eol=lf
 *.cmd text eol=crlf
 *.woff2 binary
 cli/vendor/** -text
+cli/test/fixtures/generated-baseline/** -text
