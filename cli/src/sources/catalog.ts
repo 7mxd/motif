@@ -17,6 +17,8 @@ export interface SourceInfo {
   connect: {
     /** The server name to register. */
     name: string;
+    /** The name used instead when an agent already has another server called name (usemotion.com's "motion"). */
+    fallback: string;
     url: string;
     /** none: open; oauth: sign in inside the agent; key: a key in a header. */
     auth: "none" | "oauth" | "key";
@@ -36,7 +38,7 @@ export const SOURCES: SourceInfo[] = [
     configPattern: /mcp\.motion\.dev/i,
     tools: ["search-motion-docs"],
     note: "Motion+ subscribers can also add Motion's source and transition tools with npx motion-ai.",
-    connect: { name: "motion", url: "https://mcp.motion.dev", auth: "none" },
+    connect: { name: "motion", fallback: "motion-dev", url: "https://mcp.motion.dev", auth: "none" },
     docs: "https://motion.dev/docs/ai-kit",
   },
   {
@@ -50,7 +52,7 @@ export const SOURCES: SourceInfo[] = [
       "refero_get_screen_image", "refero_search_flows", "refero_get_flow", "refero_search_site", "refero_search_app",
     ],
     note: "Up to 8,000 tool calls a month on paid plans.",
-    connect: { name: "refero", url: "https://api.refero.design/mcp", auth: "oauth" },
+    connect: { name: "refero", fallback: "refero-design", url: "https://api.refero.design/mcp", auth: "oauth" },
     docs: "https://doc.refero.design/mcp/getting-started",
   },
   {
@@ -61,7 +63,7 @@ export const SOURCES: SourceInfo[] = [
     configPattern: /21st\.dev\/api\/mcp/i,
     tools: ["search", "get_component", "get_inspiration", "search_logo"],
     note: "The free key allows unlimited search and 2 code copies a day.",
-    connect: { name: "21st", url: "https://21st.dev/api/mcp", auth: "key", keyHeader: "x-api-key" },
+    connect: { name: "21st", fallback: "21st-dev", url: "https://21st.dev/api/mcp", auth: "key", keyHeader: "x-api-key" },
     docs: "https://21st.dev/mcp.md",
   },
   {
@@ -72,7 +74,7 @@ export const SOURCES: SourceInfo[] = [
     configPattern: /60fps/i,
     tools: ["60fps_search_shots", "60fps_list_filters", "60fps_get_shot", "60fps_get_motion_breakdown", "60fps_get_motion_code", "60fps_get_related_shots"],
     note: "iOS shots only; code comes as SwiftUI.",
-    connect: { name: "60fps", url: "https://mcp.60fps.design/mcp", auth: "oauth" },
+    connect: { name: "60fps", fallback: "60fps-design", url: "https://mcp.60fps.design/mcp", auth: "oauth" },
     docs: "https://60fps.design/mcp",
   },
 ];

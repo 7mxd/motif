@@ -7,7 +7,7 @@ import {
   type AgentEnv, type AgentInfo,
 } from "../agents/catalog";
 import { addJsonServer, addTomlServer, linkTarget, type Edited } from "../agents/edit";
-import { findConfiguredSources, type ConfiguredSource } from "../detect/sources";
+import { findConfiguredSources, readAgentServers, type AgentServer, type ConfiguredSource } from "../detect/sources";
 import { windowsExe } from "../system";
 import { SOURCES, sourceById, type SourceInfo } from "../sources/catalog";
 
@@ -21,6 +21,8 @@ export interface ConnectDeps {
   /** Reads a line the developer types in their own terminal (shown as typed): which agents to set up. Null when the input ends. */
   ask: (prompt: string) => Promise<string | null>;
   configured: () => ConfiguredSource[];
+  /** Every MCP server already in each agent's settings, whatever it is. */
+  servers: () => AgentServer[];
   home: string;
   platform: NodeJS.Platform;
   /** Environment variables (agents' settings folders follow some, e.g. CODEX_HOME). */
@@ -115,6 +117,7 @@ function defaultDeps(cwd: string): ConnectDeps {
     readSecret,
     ask: readLine,
     configured: () => findConfiguredSources(cwd, home, defaultAgentEnv()),
+    servers: () => readAgentServers(cwd, defaultAgentEnv()).servers,
     home,
     platform: process.platform,
     vars: process.env,
@@ -264,6 +267,11 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   // Agents that already have the source are reported as such, and need no key.
   const configured = deps.configured();
   const has = (agent: AgentInfo) => configured.find((c) => c.id === source.id && c.agent === agent.id);
+  // Another product's server may already have the source's name (usemotion.com's "motion"): it's kept, and the source
+  // goes in under its second name. Undefined when the agent has both names already.
+  const servers = deps.servers();
+  const nameFor = (agent: AgentInfo) =>
+    [source.connect.name, source.connect.fallback].find((n) => !servers.some((s) => s.agent === agent.id && s.name === n));
 
   let chosen: AgentInfo[];
   // Named with --agent but not on this computer: nothing is written for them (a settings folder would make them look installed).
@@ -294,14 +302,14 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   }
 
   let secret = "";
-  if (source.connect.auth === "key" && chosen.some((a) => !has(a) && !missing.includes(a))) {
+  if (source.connect.auth === "key" && chosen.some((a) => !has(a) && !missing.includes(a) && nameFor(a))) {
     if (!deps.interactive) return needsTerminal(source, deps, agentFlag);
     const key = await deps.readSecret(`Paste your ${source.label} key (get one at ${source.docs}); it won't be shown: `);
     if (!key) return fail("No key entered. Nothing changed.", { error: "no-key" });
     if (!KEY.test(key)) return fail(`That doesn't look like a ${source.label} key (keys are at least 8 letters, digits or - _ . ~ + / =). Nothing changed.`, { error: "bad-key" });
     secret = key;
   }
-  const server: ServerSpec = { name: source.connect.name, url: source.connect.url, ...(secret ? { headers: { [source.connect.keyHeader!]: secret } } : {}) };
+  const headers = secret ? { headers: { [source.connect.keyHeader!]: secret } } : {};
   const hide = (text: string) => (secret ? text.replaceAll(secret, "<your key>") : text);
 
   const results: AgentResult[] = [];
@@ -315,21 +323,29 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
       results.push({ agent, status: "failed", output: `Motif didn't find it on this computer (${agent.notFound(env)})` });
       continue;
     }
+    const name = nameFor(agent);
+    if (!name) {
+      const output = `it already has servers called "${source.connect.name}" and "${source.connect.fallback}" that aren't ${source.label}'s, so nothing was changed`;
+      results.push({ agent, status: "failed", output });
+      continue;
+    }
     // One agent going wrong in a way nobody foresaw is that agent's failure; the others are still set up and reported.
     let r: AddResult;
     try {
-      r = await addTo(agent, server, deps, env);
+      r = await addTo(agent, { name, url: source.connect.url, ...headers }, deps, env);
     } catch (e) {
       r = { ok: false, output: e instanceof Error ? e.message : String(e), keyFiles: [] };
     }
-    results.push(r.ok ? { agent, status: "added", keyFiles: r.keyFiles } : { agent, status: "failed", output: hide(r.output) });
+    results.push(r.ok ? { agent, status: "added", server: name, keyFiles: r.keyFiles } : { agent, status: "failed", output: hide(r.output) });
   }
 
   const ok = results.filter((r) => r.status !== "failed");
   const failed = results.filter((r) => r.status === "failed");
   const lines: string[] = note ? [note] : [];
   for (const r of results) {
-    if (r.status === "added") lines.push(`✓ ${r.agent.label}: added ${source.label} for all your projects.`);
+    if (r.status === "added" && r.server !== source.connect.name) {
+      lines.push(`✓ ${r.agent.label}: added ${source.label} for all your projects, as "${r.server}" (you already have a server called "${source.connect.name}" that isn't ${source.label}'s).`);
+    } else if (r.status === "added") lines.push(`✓ ${r.agent.label}: added ${source.label} for all your projects.`);
     else if (r.status === "already") lines.push(`✓ ${r.agent.label}: already connected (server "${r.server}" in ${r.where}).`);
     else lines.push(`✗ ${r.agent.label}: couldn't add it: ${r.output}`);
   }
@@ -375,7 +391,9 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
 
   const data: Record<string, unknown> = {
     source: source.id,
-    agents: results.map((r) => ({ agent: r.agent.id, status: r.status, ...(r.where ? { where: r.where } : {}), ...(r.output ? { output: r.output } : {}) })),
+    agents: results.map((r) => ({
+      agent: r.agent.id, status: r.status, ...(r.server ? { server: r.server } : {}), ...(r.where ? { where: r.where } : {}), ...(r.output ? { output: r.output } : {}),
+    })),
   };
   if (failed.length > 0) Object.assign(data, { error: ok.length === 0 ? "agent-failed" : "some-agents-failed", output: failed[0]!.output, config });
   return { command: "connect", exitCode: failed.length === 0 ? 0 : ok.length > 0 ? 1 : 2, text: lines.join("\n"), data };
