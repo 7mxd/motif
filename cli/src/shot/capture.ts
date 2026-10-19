@@ -122,6 +122,8 @@ export interface CaptureOptions {
   stateTimeoutMs?: number;
   /** Some of the sizes (--sizes); all five when not given. */
   viewports?: Viewport[];
+  /** Design variants to capture besides the default (always captured): each page again with data-variant set on <html>. */
+  variants?: string[];
 }
 
 export function routeSlug(route: string): string {
@@ -138,8 +140,9 @@ export function routeUrl(base: string, route: string): string {
   return url.toString();
 }
 
-export function shotName(slug: string, viewport: string, scheme: Scheme): string {
-  return `${slug}.${viewport}${scheme === "dark" ? ".dark" : ""}.png`;
+/** index.mobile.png; in a variant, index+men.mobile.png (after the state: index@sent+men.mobile.dark.png). */
+export function shotName(slug: string, viewport: string, scheme: Scheme, variant?: string): string {
+  return `${slug}${variant ? `+${variant}` : ""}.${viewport}${scheme === "dark" ? ".dark" : ""}.png`;
 }
 
 // The Next.js dev badge isn't part of the app.
@@ -225,74 +228,80 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
               { name: "prefers-color-scheme", value: scheme },
               { name: "prefers-reduced-motion", value: "reduce" },
             ];
-            for (const state of [undefined, ...(opts.states ?? [])]) {
-              const tag = (message: string) => (state ? `State "${state.name}": ${message}` : message);
-              // An error the page threw on its own (already reported, untagged, from the plain screenshot) isn't the
-              // state's when it lands while the state's script runs: it's reported once.
-              const tagNew = (messages: string[]) => messages.map((m) => (result.pageErrors?.includes(m) ? m : tag(m)));
-              // Each screenshot starts as a first visit, in a tab of its own: nothing an earlier page or state stored
-              // (a theme choice, a dismissed banner, a cookie) changes it.
-              const page = await browser.newPage({ isolated: true });
-              try {
-                await page.setViewport(viewport.width, viewport.height, viewport.scale, viewport.mobile);
-                await page.emulateMedia(media);
+            for (const variant of [undefined, ...(opts.variants ?? [])]) {
+              for (const state of [undefined, ...(opts.states ?? [])]) {
+                const tag = (message: string) => (state ? `State "${state.name}": ${message}` : message);
+                // An error the page threw on its own (already reported, untagged, from the plain screenshot) isn't the
+                // state's when it lands while the state's script runs: it's reported once.
+                const tagNew = (messages: string[]) => messages.map((m) => (result.pageErrors?.includes(m) ? m : tag(m)));
+                // Each screenshot starts as a first visit, in a tab of its own: nothing an earlier page or state stored
+                // (a theme choice, a dismissed banner, a cookie) changes it.
+                const page = await browser.newPage({ isolated: true });
                 try {
-                  await page.goto(url, stuck ? Math.min(timeoutMs, 2000) : timeoutMs);
-                  // It loaded this time: later screenshots wait for it in full again.
-                  stuck = false;
-                } catch (e) {
-                  if (!(e instanceof LoadTimeout)) throw e;
-                  result.loading = `It hadn't finished loading after ${Math.round(timeoutMs / 1000)} s; the screenshots show it as it was.`;
-                  stuck = true;
-                }
-                // Fonts are ready only once the page has loaded: a page that never does waits a moment, not forever.
-                await page.evaluate(`Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 1000 : 5000}))]).then(() => true)`);
-                // What a stuck page is loading never arrives, so it isn't waited for.
-                if (!stuck) await page.waitForQuiet(300, 5000);
-                // What the page threw as it loaded is the page's own error, the same in every state: not tagged.
-                const loadErrors = page.takeErrors();
-                addErrors(loadErrors);
-                if (state) {
+                  await page.setViewport(viewport.width, viewport.height, viewport.scale, viewport.mobile);
+                  await page.emulateMedia(media);
                   try {
-                    await page.evaluate(stateExpression(state.script, stateTimeoutMs), { timeoutMs: stateTimeoutMs });
+                    await page.goto(url, stuck ? Math.min(timeoutMs, 2000) : timeoutMs);
+                    // It loaded this time: later screenshots wait for it in full again.
+                    stuck = false;
                   } catch (e) {
-                    addErrors([tag(e instanceof Error ? e.message : String(e))]);
+                    if (!(e instanceof LoadTimeout)) throw e;
+                    result.loading = `It hadn't finished loading after ${Math.round(timeoutMs / 1000)} s; the screenshots show it as it was.`;
+                    stuck = true;
                   }
-                  // What the script set off (a form sent, a list fetched) is waited for too.
+                  // Fonts are ready only once the page has loaded: a page that never does waits a moment, not forever.
+                  await page.evaluate(`Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 1000 : 5000}))]).then(() => true)`);
+                  // What a stuck page is loading never arrives, so it isn't waited for.
                   if (!stuck) await page.waitForQuiet(300, 5000);
-                }
-                await Bun.sleep(settleMs);
-                const thrown = page.takeErrors();
-                if (thrown.length > 0 || loadErrors.length > 0) {
-                  addErrors(tagNew(thrown));
-                } else {
-                  // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.
-                  await page.evaluate(HIDE_DEV_BADGES);
-                }
-                const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
-                if (fullHeight > MAX_HEIGHT) result.cropped = true;
-                // Where the page was scrolled to (a state can scroll something into view): comparisons frame that screen.
-                const top = Math.round(await page.evaluate<number>("scrollY"));
-                const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.file ?? viewport.name, scheme));
-                const png = await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) });
-                const screen: Screen = { width: viewport.width, top, height: viewport.height };
-                writeFileSync(file, addPngText(png, SCREEN_KEY, JSON.stringify(screen)));
-                result.shots.push(file);
-                if (opts.audit) {
-                  try {
-                    const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
-                    for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, size: viewport.file ?? viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}) });
-                  } catch (e) {
-                    result.auditError = e instanceof Error ? e.message : String(e);
+                  // What the page threw as it loaded is the page's own error, the same in every state: not tagged.
+                  const loadErrors = page.takeErrors();
+                  addErrors(loadErrors);
+                  if (variant) {
+                    // The variant is chosen on <html>, after load and before any state runs; its fonts may differ.
+                    await page.evaluate(`document.documentElement.dataset.variant = ${JSON.stringify(variant)}; Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 500 : 2000}))]).then(() => true)`);
                   }
+                  if (state) {
+                    try {
+                      await page.evaluate(stateExpression(state.script, stateTimeoutMs), { timeoutMs: stateTimeoutMs });
+                    } catch (e) {
+                      addErrors([tag(e instanceof Error ? e.message : String(e))]);
+                    }
+                    // What the script set off (a form sent, a list fetched) is waited for too.
+                    if (!stuck) await page.waitForQuiet(300, 5000);
+                  }
+                  await Bun.sleep(settleMs);
+                  const thrown = page.takeErrors();
+                  if (thrown.length > 0 || loadErrors.length > 0) {
+                    addErrors(tagNew(thrown));
+                  } else {
+                    // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.
+                    await page.evaluate(HIDE_DEV_BADGES);
+                  }
+                  const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
+                  if (fullHeight > MAX_HEIGHT) result.cropped = true;
+                  // Where the page was scrolled to (a state can scroll something into view): comparisons frame that screen.
+                  const top = Math.round(await page.evaluate<number>("scrollY"));
+                  const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.file ?? viewport.name, scheme, variant));
+                  const png = await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) });
+                  const screen: Screen = { width: viewport.width, top, height: viewport.height };
+                  writeFileSync(file, addPngText(png, SCREEN_KEY, JSON.stringify(screen)));
+                  result.shots.push(file);
+                  if (opts.audit) {
+                    try {
+                      const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
+                      for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, size: viewport.file ?? viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}), ...(variant ? { variant } : {}) });
+                    } catch (e) {
+                      result.auditError = e instanceof Error ? e.message : String(e);
+                    }
+                  }
+                } catch (e) {
+                  // A plain page that fails stops its route, as before. A state that leaves the page unusable costs only
+                  // its own screenshot: the rest go on, each in its own tab anyway.
+                  if (!state) throw e;
+                  addErrors([...tagNew(page.takeErrors()), tag(`Motif couldn't capture this state: ${e instanceof Error ? e.message : String(e)}`)]);
+                } finally {
+                  await page.close().catch(() => undefined);
                 }
-              } catch (e) {
-                // A plain page that fails stops its route, as before. A state that leaves the page unusable costs only
-                // its own screenshot: the rest go on, each in its own tab anyway.
-                if (!state) throw e;
-                addErrors([...tagNew(page.takeErrors()), tag(`Motif couldn't capture this state: ${e instanceof Error ? e.message : String(e)}`)]);
-              } finally {
-                await page.close().catch(() => undefined);
               }
             }
           }

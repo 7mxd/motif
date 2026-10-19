@@ -9,6 +9,10 @@ export interface ComparePair {
   after: string;
   /** Where the side-by-side image goes. */
   out: string;
+  /** The design variant of the screenshot (none for the default). */
+  variant?: string;
+  /** Set when the variant had nothing of its own to compare with, so the default's was used. */
+  fallback?: boolean;
 }
 
 export interface Comparison extends ComparePair {
@@ -22,13 +26,27 @@ export interface Comparison extends ComparePair {
   moved?: boolean;
 }
 
-/** Pairs this run's screenshots with a saved set by file name; screenshots the set doesn't have are "added". */
+/** The design variant a name carries before its size or .dark: index@sent+men.mobile.png, home+men.dark.png → "men". */
+const VARIANT = /\+([a-z][a-z0-9-]*)(?=(\.[a-z0-9-]+)*\.png$)/;
+const variantOf = (file: string): string | undefined => basename(file).match(VARIANT)?.[1];
+/** The same name without its variant (index+men.mobile.png → index.mobile.png). */
+const withoutVariant = (file: string) => file.replace(VARIANT, "");
+/** The same name in a variant (home.dark.png → home+men.dark.png), after any state. */
+const inVariant = (file: string, variant: string) => file.replace(/((?:\.[a-z0-9-]+)*\.png)$/, `+${variant}$1`);
+
+/**
+ * Pairs this run's screenshots with a saved set by file name; screenshots the set doesn't have are "added". A variant's
+ * screenshot the set has none of is paired with the default's, marked as a fallback.
+ */
 export function pairWithSet(shots: string[], setDir: string, compareDir: string): { pairs: ComparePair[]; added: string[] } {
   const pairs: ComparePair[] = [];
   const added: string[] = [];
   for (const after of shots) {
     const before = join(setDir, basename(after));
-    if (existsSync(before)) pairs.push({ before, after, out: join(compareDir, basename(after)) });
+    const variant = variantOf(after);
+    const dflt = variant ? join(setDir, withoutVariant(basename(after))) : before;
+    if (existsSync(before)) pairs.push({ before, after, out: join(compareDir, basename(after)), ...(variant ? { variant } : {}) });
+    else if (variant && existsSync(dflt)) pairs.push({ before: dflt, after, out: join(compareDir, basename(after)), variant, fallback: true });
     else added.push(after);
   }
   return { pairs, added };
@@ -58,9 +76,9 @@ export function mockupFrames(mockup: string, alsoIn: string[] = []): string[] {
   const name = basename(mockup, extname(mockup));
   const others = new Set(filesIn(dirname(mockup)).filter((f) => f.endsWith(".html")).map((f) => basename(f, ".html")));
   others.delete(name);
-  const frame = new RegExp(`^${escapeRegExp(name)}(-\\d+|@[A-Za-z0-9][A-Za-z0-9-]*)?(\\.dark)?\\.png$`);
+  const frame = new RegExp(`^${escapeRegExp(name)}(-\\d+|@[A-Za-z0-9][A-Za-z0-9-]*)?(\\+[a-z][a-z0-9-]*)?(\\.dark)?\\.png$`);
   for (const dir of [dirname(mockup), ...alsoIn]) {
-    const found = filesIn(dir).filter((f) => frame.test(f) && !others.has(f.replace(/(\.dark)?\.png$/, "")));
+    const found = filesIn(dir).filter((f) => frame.test(f) && !others.has(f.replace(/(\+[a-z][a-z0-9-]*)?(\.dark)?\.png$/, "")));
     if (found.length > 0) return found.sort().map((f) => join(dir, f));
   }
   return [];
@@ -68,40 +86,51 @@ export function mockupFrames(mockup: string, alsoIn: string[] = []): string[] {
 
 /** The state a mockup frame shows (home@saved.png → "saved"), or "" for the page as it opens. */
 function frameState(frame: string): string {
-  return basename(frame).match(/@([A-Za-z0-9][A-Za-z0-9-]*)(\.dark)?\.png$/)?.[1] ?? "";
+  return basename(frame).match(/@([A-Za-z0-9][A-Za-z0-9-]*)(\+[a-z][a-z0-9-]*)?(\.dark)?\.png$/)?.[1] ?? "";
 }
 
-/** The screenshot that matches a frame: the same state (none for a plain frame), viewport and scheme. */
-function shotFor(frame: string, shots: string[]): string | undefined {
+/** The screenshot that matches a frame: the same state (none for a plain frame), viewport, scheme and variant. */
+function shotFor(frame: string, shots: string[], variant: string | undefined = variantOf(frame)): string | undefined {
   const dark = frame.endsWith(".dark.png");
   const viewport = pngSize(new Uint8Array(readFileSync(frame))).width <= 1000 ? "mobile" : "desktop";
   const state = frameState(frame);
   const ending = `.${viewport}${dark ? ".dark" : ""}.png`;
   return shots.find((s) => {
     const file = basename(s);
-    if (!file.endsWith(ending)) return false;
-    const slug = file.slice(0, -ending.length);
+    if (!file.endsWith(ending) || variantOf(s) !== variant) return false;
+    const slug = withoutVariant(file.slice(0, -ending.length) + ".png").slice(0, -".png".length);
     return state ? slug.endsWith(`@${state}`) : !slug.includes("@");
   });
 }
 
 /**
  * Pairs each mockup frame with this run's screenshot for the same viewport and scheme (phone frames ↔ mobile, wider
- * frames ↔ desktop) and the same state: a frame of a state (home@saved.png) with that state's screenshot, a plain
- * frame with the page as it opens.
+ * frames ↔ desktop), the same state (a frame of a state, home@saved.png, with that state's screenshot, a plain frame
+ * with the page as it opens) and the same variant (home+men.png ↔ index+men.mobile.png). A variant's screenshot whose
+ * frame the mockup lacks is paired with the default's frame, marked as a fallback.
  */
 export function pairWithMockup(frames: string[], shots: string[], compareDir: string): ComparePair[] {
   const pairs: ComparePair[] = [];
+  const variants = [...new Set(shots.map(variantOf).filter((v): v is string => Boolean(v)))];
   for (const frame of frames) {
+    const variant = variantOf(frame);
     const after = shotFor(frame, shots);
-    if (after) pairs.push({ before: frame, after, out: join(compareDir, basename(frame)) });
+    if (after) pairs.push({ before: frame, after, out: join(compareDir, basename(frame)), ...(variant ? { variant } : {}) });
+    if (variant) continue;
+    for (const v of variants) {
+      if (frames.includes(inVariant(frame, v))) continue;
+      const own = shotFor(frame, shots, v);
+      if (own) pairs.push({ before: frame, after: own, out: join(compareDir, basename(inVariant(frame, v))), variant: v, fallback: true });
+    }
   }
   return pairs;
 }
 
 /** The states the mockup has frames of that this run didn't capture (no --state for them), each named once. */
 export function missingStateFrames(frames: string[], shots: string[]): string[] {
-  return [...new Set(frames.filter((f) => frameState(f) && !shotFor(f, shots)).map(frameState))];
+  // A frame in a variant this run didn't capture isn't missing a state: the whole variant wasn't asked for.
+  const captured = new Set(shots.map(variantOf));
+  return [...new Set(frames.filter((f) => frameState(f) && captured.has(variantOf(f)) && !shotFor(f, shots)).map(frameState))];
 }
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);

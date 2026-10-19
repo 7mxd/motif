@@ -1,9 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { launchBrowser } from "../src/browser/cdp";
 import { addPngText, pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
+import { shotName } from "../src/shot/capture";
 import { comparePage, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -246,5 +247,80 @@ describe.skipIf(!browser)("renderComparisons (needs Chrome, Edge or Chromium)", 
 
   test("nothing to compare is not an error", async () => {
     expect(await renderComparisons({ browserPath: browser!.path, labels: ["Before", "Now"], measure: true, pairs: [] })).toEqual([]);
+  });
+});
+
+describe("variants", () => {
+  test("screenshot names add +<variant> after the state, before the size and .dark", () => {
+    expect(shotName("index", "mobile", "light")).toBe("index.mobile.png");
+    expect(shotName("index", "mobile", "light", "men")).toBe("index+men.mobile.png");
+    expect(shotName("index@sent", "mobile", "dark", "men")).toBe("index@sent+men.mobile.dark.png");
+    expect(shotName("index@sent", "mobile-430", "dark")).toBe("index@sent.mobile-430.dark.png");
+  });
+
+  test("a mockup's PNGs include its variants'", () => {
+    const dir = tempDir("motif-mockup-");
+    for (const f of ["home.png", "home.dark.png", "home+men.png", "home+men.dark.png", "home@saved+men.png", "other+men.png"]) writeFileSync(join(dir, f), "x");
+    expect(mockupFrames(join(dir, "home.html")).map((f) => f.slice(dir.length + 1))).toEqual(["home+men.dark.png", "home+men.png", "home.dark.png", "home.png", "home@saved+men.png"]);
+    expect(mockupFrames(join(dir, "home+men.png")).map((f) => f.slice(dir.length + 1))).toEqual(["home+men.dark.png", "home+men.png"]);
+  });
+
+  const setup = () => {
+    const dir = tempDir("motif-mockup-");
+    for (const f of ["home.png", "home.dark.png", "home+men.png", "home+men.dark.png"]) writeFileSync(join(dir, f), pngHeader(820, 1728));
+    const shots = ["index.mobile.png", "index.mobile.dark.png", "index+men.mobile.png", "index+men.mobile.dark.png"].map((f) => join(dir, "shots", f));
+    return { dir, shots, frames: mockupFrames(join(dir, "home.html")) };
+  };
+  const names = (dir: string, pairs: { before: string; after: string }[]) => pairs.map((p) => [p.before.slice(dir.length + 1), p.after.slice(dir.length + 1)]);
+
+  test("a variant's shot pairs with the variant's mockup PNG, the default's with the default's", () => {
+    const { dir, shots, frames } = setup();
+    const pairs = pairWithMockup(frames, shots, join(dir, "compare"));
+    expect(names(dir, pairs)).toEqual([
+      ["home+men.dark.png", join("shots", "index+men.mobile.dark.png")],
+      ["home+men.png", join("shots", "index+men.mobile.png")],
+      ["home.dark.png", join("shots", "index.mobile.dark.png")],
+      ["home.png", join("shots", "index.mobile.png")],
+    ]);
+    expect(pairs.some((p) => p.fallback)).toBe(false);
+  });
+
+  test("a variant with no mockup PNG falls back to the default's, marked", () => {
+    const { dir, shots } = setup();
+    const frames = [join(dir, "home.png"), join(dir, "home.dark.png")];
+    const pairs = pairWithMockup(frames, shots, join(dir, "compare"));
+    expect(names(dir, pairs)).toEqual([
+      ["home.png", join("shots", "index.mobile.png")],
+      ["home.png", join("shots", "index+men.mobile.png")],
+      ["home.dark.png", join("shots", "index.mobile.dark.png")],
+      ["home.dark.png", join("shots", "index+men.mobile.dark.png")],
+    ]);
+    expect(pairs.filter((p) => p.fallback).map((p) => p.variant)).toEqual(["men", "men"]);
+    expect(pairs.map((p) => basename(p.out))).toEqual(["home.png", "home+men.png", "home.dark.png", "home+men.dark.png"]);
+  });
+
+  test("a state frame in a variant this run didn't capture isn't called missing", () => {
+    const { dir, shots } = setup();
+    const frames = [join(dir, "home@saved+men.png"), join(dir, "home@saved.png")];
+    for (const f of frames) writeFileSync(f, pngHeader(820, 1728));
+    const plain = shots.filter((s) => !s.includes("+"));
+    expect(missingStateFrames(frames, plain)).toEqual(["saved"]);
+    expect(missingStateFrames([frames[0]!], plain)).toEqual([]);
+    expect(missingStateFrames([frames[0]!], shots)).toEqual(["saved"]);
+  });
+
+  test("a saved set: variant shots pair by name, else with the default's", () => {
+    const dir = tempDir("motif-pairs-");
+    mkdirSync(join(dir, "before"));
+    for (const f of ["index.mobile.png", "settings+men.mobile.png"]) writeFileSync(join(dir, "before", f), "x");
+    const shots = ["index.mobile.png", "index+men.mobile.png", "settings+men.mobile.png"].map((f) => join(dir, f));
+    const { pairs, added } = pairWithSet(shots, join(dir, "before"), join(dir, "compare"));
+    expect(names(dir, pairs)).toEqual([
+      [join("before", "index.mobile.png"), "index.mobile.png"],
+      [join("before", "index.mobile.png"), "index+men.mobile.png"],
+      [join("before", "settings+men.mobile.png"), "settings+men.mobile.png"],
+    ]);
+    expect(pairs.map((p) => p.fallback ?? false)).toEqual([false, true, false]);
+    expect(added).toEqual([]);
   });
 });

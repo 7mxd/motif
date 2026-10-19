@@ -2,10 +2,11 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseRoutes, runShot, type ShotDeps } from "../src/commands/shot";
-import type { AuditIssue } from "../src/shot/audit";
+import { toFindings, type AuditIssue } from "../src/shot/audit";
 import type { CaptureOptions, RouteResult } from "../src/shot/capture";
 import type { ComparePair } from "../src/shot/compare";
 import { devCommand } from "../src/shot/devserver";
+import { twoVariantTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -466,5 +467,122 @@ describe("motif shot: from the backlog", () => {
     const r2 = await runShot(before(), ctx({ url: "http://localhost:3000", against: "before" }), grown.deps);
     expect(r2.text).toContain("index.mobile.png  8% different: from 600 px down, 30 px taller");
     expect((r2.data.comparisons as { taller?: number; from?: number; moved?: boolean }[])[0]).toMatchObject({ taller: 30, from: 600, moved: false });
+  });
+});
+
+describe("motif shot --variant", () => {
+  const URL_ = "http://localhost:3000";
+  const withVariants = (extra: Record<string, string> = {}) => makeProject({ "design/tokens.json": JSON.stringify(twoVariantTokens()), ...extra });
+  const last = (file: string) => file.split(/[\\/]/).pop();
+  /** The page's screenshots in the default and in each variant the run asked for. */
+  const perVariant = (o: CaptureOptions): RouteResult[] =>
+    o.routes.map((route) => ({
+      route,
+      url: `${o.baseUrl}${route}`,
+      status: 200,
+      shots: [undefined, ...(o.variants ?? [])].map((v) => join(o.outDir, `${route === "/" ? "index" : route.slice(1)}${v ? `+${v}` : ""}.mobile.png`)),
+    }));
+
+  test("one variant: the default is captured too, and the variant's shots carry its name", async () => {
+    const f = fakes({ results: perVariant });
+    const r = await runShot(withVariants(), ctx({ url: URL_, variant: "men" }), f.deps);
+    expect(r.exitCode).toBe(0);
+    expect(f.calls.captured[0]!.variants).toEqual(["men"]);
+    expect(r.data.shots).toEqual(["design/shots/index.mobile.png", "design/shots/index+men.mobile.png"]);
+  });
+
+  test("all: every variant but the default; the default by name: no variant at all", async () => {
+    const all = fakes();
+    await runShot(withVariants(), ctx({ url: URL_, variant: "all" }), all.deps);
+    expect(all.calls.captured[0]!.variants).toEqual(["men"]);
+    const dflt = fakes();
+    const r = await runShot(withVariants(), ctx({ url: URL_, variant: "women" }), dflt.deps);
+    expect(r.exitCode).toBe(0);
+    expect(dflt.calls.captured[0]!.variants ?? []).toEqual([]);
+  });
+
+  test("an unknown variant lists the ones there are, and starts nothing", async () => {
+    const f = fakes();
+    const r = await runShot(withVariants(NEXT_APP), ctx({ variant: "nope" }), f.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.data).toMatchObject({ error: "no-such-variant", variant: "nope", variants: ["women", "men"] });
+    expect(r.text).toContain('This design guide has no variant called "nope". Variants: women (the default), men.');
+    expect(f.calls.captured).toEqual([]);
+    expect(f.calls.started).toEqual([]);
+  });
+
+  test("a guide without variants says so, and so does a project without a guide", async () => {
+    for (const files of [{ "design/tokens.json": JSON.stringify(validTokens()) } as Record<string, string>, {}]) {
+      const f = fakes();
+      const r = await runShot(makeProject({ ...NEXT_APP, ...files }), ctx({ variant: "men" }), f.deps);
+      expect(r.exitCode).toBe(2);
+      expect(r.data).toMatchObject({ error: "no-such-variant", variants: [] });
+      expect(r.text).toContain("This design guide has no variants.");
+      expect(f.calls.captured).toEqual([]);
+    }
+  });
+
+  test("--audit alone covers every variant; without variants, as before", async () => {
+    const f = fakes();
+    await runShot(withVariants(), ctx({ url: URL_, audit: true }), f.deps);
+    expect(f.calls.captured[0]!.variants).toEqual(["men"]);
+    const plain = fakes();
+    await runShot(makeProject({ "design/tokens.json": JSON.stringify(validTokens()) }), ctx({ url: URL_, audit: true }), plain.deps);
+    expect(plain.calls.captured[0]!.variants).toBeUndefined();
+    const none = fakes();
+    await runShot(makeProject({}), ctx({ url: URL_, audit: true }), none.deps);
+    expect(none.calls.captured[0]!.variants).toBeUndefined();
+  });
+
+  test("--audit with --variant covers just that variant (and the default)", async () => {
+    const f = fakes();
+    await runShot(withVariants(), ctx({ url: URL_, audit: true, variant: "women" }), f.deps);
+    expect(f.calls.captured[0]!.variants ?? []).toEqual([]);
+  });
+
+  test("a finding in a variant says which; the same problem in both is one finding", () => {
+    const issue: AuditIssue = {
+      rule: "color-contrast", selector: "p", label: "Hi", kind: "element", ratio: 2, expected: 4.5, fg: "#aaaaaa", bg: "#ffffff",
+      route: "/", viewport: "mobile", size: "mobile", scheme: "light", shot: "a.png",
+    };
+    const found = toFindings([issue, { ...issue, variant: "men", shot: "b.png" }]);
+    expect(found).toHaveLength(1);
+    expect(found[0]!.location).not.toHaveProperty("variant");
+    expect(found[0]!.locations).toEqual([expect.objectContaining({ screen: "/", variant: "men" })]);
+    const onlyMen = toFindings([{ ...issue, variant: "men" }]);
+    expect(onlyMen[0]!.location).toMatchObject({ variant: "men" });
+    expect(onlyMen[0]!.summary).toContain("in the men variant");
+    // A problem that isn't about colour is one place whichever variant it was seen in.
+    const tap: AuditIssue = { ...issue, rule: "target-size", ratio: undefined, width: 10, height: 10 };
+    expect(toFindings([tap, { ...tap, variant: "men" }])[0]!.locations).toBeUndefined();
+  });
+
+  test("--against a mockup: each variant with its own mockup PNGs, else the default's, said plainly", async () => {
+    const root = withVariants({ "design/previews/settings.html": "<p>mockup</p>" });
+    for (const f of ["settings.png", "settings.dark.png", "settings+men.png"]) writeFileSync(join(root, "design/previews", f), pngHeader(820, 1728));
+    const f = fakes({
+      results: (o) => [{ route: "/settings", url: URL_, status: 200, shots: ["settings", "settings+men"].flatMap((n) => ["", ".dark"].map((d) => join(o.outDir, `${n}.mobile${d}.png`))) }],
+    });
+    const r = await runShot(root, ctx({ url: URL_, routes: "/settings", variant: "men", against: "design/previews/settings.html" }), f.deps);
+    expect(r.exitCode).toBe(0);
+    const pairs = f.calls.compared[0]!.pairs.map((p) => [last(p.before), last(p.after)]);
+    expect(pairs).toEqual([
+      ["settings+men.png", "settings+men.mobile.png"],
+      ["settings.dark.png", "settings.mobile.dark.png"],
+      ["settings.dark.png", "settings+men.mobile.dark.png"],
+      ["settings.png", "settings.mobile.png"],
+    ]);
+    expect(r.text).toContain("were compared with the mockup's default PNGs, because the mockup has none in that variant");
+  });
+
+  test("--against a saved set: a variant the set lacks is compared with the set's default, and says so", async () => {
+    const root = withVariants({ "design/shots/before/index.mobile.png": "old", "design/shots/before/.motif-set": "" });
+    const f = fakes({ results: perVariant });
+    const r = await runShot(root, ctx({ url: URL_, variant: "men", against: "before" }), f.deps);
+    expect(f.calls.compared[0]!.pairs.map((p) => [last(p.before), last(p.after)])).toEqual([
+      ["index.mobile.png", "index.mobile.png"],
+      ["index.mobile.png", "index+men.mobile.png"],
+    ]);
+    expect(r.text).toContain('The "before" set has no screenshots in the men variant, so those were compared with its default ones.');
   });
 });

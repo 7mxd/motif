@@ -1,6 +1,8 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
+import { loadTokenDocument } from "../contract/load";
+import { readVariants } from "../contract/variants";
 import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { noSuchApp, selectApps } from "../project/apps";
@@ -153,6 +155,28 @@ export function readStates(cwd: string, value: unknown): StateScript[] | { error
   return states;
 }
 
+/** The design guide's variants (the default first), read from design/tokens.json; none when it declares none. */
+function guideVariants(cwd: string): string[] {
+  const path = join(cwd, "design", "tokens.json");
+  if (!existsSync(path)) return [];
+  const { doc } = loadTokenDocument(path, readFileSync(path, "utf8"));
+  const { variants, defaultId } = doc ? readVariants(doc) : { variants: [], defaultId: null };
+  return defaultId ? variants.map((v) => v.id) : [];
+}
+
+/** What --variant asks for: the variants to capture besides the default, or the refusal. */
+function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): { variants: string[] } | { error: CommandResult } {
+  const ids = guideVariants(cwd);
+  // An audit with no --variant checks what people see in every variant.
+  if (flag === undefined) return { variants: audit ? ids.slice(1) : [] };
+  if (ids.length === 0) return { error: usage("This design guide has no variants.", { error: "no-such-variant", variant: flag, variants: [] }) };
+  if (flag !== "all" && !ids.includes(flag)) {
+    const list = ids.map((id, n) => (n === 0 ? `${id} (the default)` : id)).join(", ");
+    return { error: usage(`This design guide has no variant called "${flag}". Variants: ${list}.`, { error: "no-such-variant", variant: flag, variants: ids }) };
+  }
+  return { variants: flag === "all" ? ids.slice(1) : flag === ids[0] ? [] : [flag] };
+}
+
 export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = defaultDeps): Promise<CommandResult> {
   const flags = ctx.flags ?? {};
   const givenUrl = typeof flags.url === "string" ? flags.url : undefined;
@@ -168,6 +192,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if ("error" in sizes) return usage(sizes.error, { error: "usage" });
     viewports = sizes;
   }
+  const chosen = chooseVariants(cwd, typeof flags.variant === "string" ? flags.variant : undefined, audit);
+  if ("error" in chosen) return chosen.error;
+  const variants = chosen.variants;
   const browser = deps.findBrowser();
   if (!browser) {
     if (deps.browserOff?.()) {
@@ -258,7 +285,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if (typeof flags.out !== "string" && !existsSync(ignore)) {
       writeFileSync(ignore, "# Screenshots of the running app (motif shot). Not committed.\n*\n");
     }
-    captured = await deps.capture({ browserPath: browser.path, baseUrl, routes, outDir, audit, states, ...(viewports ? { viewports } : {}) });
+    captured = await deps.capture({ browserPath: browser.path, baseUrl, routes, outDir, audit, states, ...(viewports ? { viewports } : {}), ...(variants.length > 0 ? { variants } : {}) });
   } catch (e) {
     return usage(`Couldn't take screenshots: ${message(e)}`, { error: "capture-failed" });
   } finally {
@@ -271,7 +298,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const width = Math.max(...captured.routes.map((r) => r.route.length));
   const lines = [
     shots.length > 0
-      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? "page" : "pages"} (${describeSizes(viewports)}, light and dark) in ${projectPath(cwd, outDir)}/`
+      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? "page" : "pages"} (${describeSizes(viewports)}, light and dark${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
       : "✗ No screenshots were taken.",
     ...captured.routes.map((r) => routeLine(r, width)),
   ];
@@ -296,7 +323,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
     else if (incomplete.length === 0) lines.push(`✓ Audit: no contrast, tap-target or reduced-motion problems found (${auditFile}).`);
     for (const f of findings.slice(0, 15)) {
-      const where = `${f.location.screen}${f.location.state ? ` in "${f.location.state}"` : ""} (${f.location.viewport}${f.location.scheme ? `, ${f.location.scheme}` : ""})`;
+      const where = `${f.location.screen}${f.location.state ? ` in "${f.location.state}"` : ""} (${f.location.viewport}${f.location.scheme ? `, ${f.location.scheme}` : ""}${f.location.variant ? `, ${f.location.variant} variant` : ""})`;
       lines.push(`  ${f.severity.padEnd(8)} ${where} ${f.summary}`);
     }
     if (findings.length > 15) lines.push(`  …and ${findings.length - 15} more in ${auditFile}.`);
@@ -338,6 +365,15 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     } catch (e) {
       compareError = message(e);
       notes.push(`Couldn't make the side-by-side images: ${compareError}`);
+    }
+    // Variants that had nothing of their own to compare with, said once each.
+    const fellBack = [...new Set(comparisons.filter((c) => c.fallback && c.variant).map((c) => c.variant!))];
+    for (const v of fellBack) {
+      notes.push(
+        against.kind === "set"
+          ? `The "${against.name}" set has no screenshots in the ${v} variant, so those were compared with its default ones.`
+          : `Screenshots in the ${v} variant were compared with the mockup's default PNGs, because the mockup has none in that variant (motif preview ${projectPath(cwd, against.file)} --png-only --variant ${v} makes them).`,
+      );
     }
     const where = projectPath(cwd, compareDir);
     if (against.kind === "set") {
@@ -400,6 +436,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
               before: projectPath(cwd, c.before),
               after: projectPath(cwd, c.after),
               image: projectPath(cwd, c.out),
+              ...(c.variant ? { variant: c.variant } : {}),
+              ...(c.fallback ? { fallback: true } : {}),
               ...(c.changed !== undefined ? { changed: c.changed } : {}),
               ...(c.from !== undefined ? { from: c.from } : {}),
               ...(c.taller !== undefined ? { taller: c.taller, moved: c.moved } : {}),

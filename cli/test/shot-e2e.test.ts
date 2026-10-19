@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
+import { captureScreens, VIEWPORTS } from "../src/shot/capture";
+import { startStaticServer } from "../src/shot/static-server";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -93,4 +95,34 @@ describe.skipIf(!browser || !bun)("compiled motif shot (needs Chrome, Edge or Ch
     expect(changed["settings.mobile.png"]).toBe(0);
     expect(existsSync(join(root, "design/shots/compare/before/index.mobile.png"))).toBe(true);
   }, 240_000);
+});
+
+describe.skipIf(!browser)("captureScreens in a design variant (needs Chrome, Edge or Chromium)", () => {
+  test("data-variant is set after load and before a state script; names carry +<variant>; the audit sees the variant's colours", async () => {
+    const root = makeProject({
+      "index.html":
+        '<!doctype html><style>p { color: #111111 } html[data-variant="men"] p { color: #dddddd } body { background: #ffffff; margin: 0 }</style><p id="t">Hello there</p><script>document.title = "" + document.documentElement.dataset.variant</script>',
+    });
+    const site = startStaticServer(root);
+    try {
+      const outDir = join(root, "shots");
+      const r = await captureScreens({
+        browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir, settleMs: 50, audit: true, viewports: VIEWPORTS.filter((v) => v.width === 390),
+        variants: ["men"],
+        // The state script sees the variant already set.
+        states: [{ name: "seen", script: 'document.getElementById("t").textContent = "variant:" + document.documentElement.dataset.variant;' }],
+      });
+      const files = r.routes[0]!.shots.map((s) => s.slice(outDir.length + 1).replace(/\\/g, "/")).sort();
+      expect(files).toEqual([
+        "index+men.mobile.dark.png", "index+men.mobile.png", "index.mobile.dark.png", "index.mobile.png",
+        "index@seen+men.mobile.dark.png", "index@seen+men.mobile.png", "index@seen.mobile.dark.png", "index@seen.mobile.png",
+      ]);
+      expect(r.issues.length).toBeGreaterThan(0);
+      const contrast = r.issues.filter((i) => i.rule === "color-contrast");
+      expect(contrast.every((i) => i.variant === "men")).toBe(true);
+      expect(contrast.some((i) => i.shot.includes("index+men."))).toBe(true);
+    } finally {
+      site.stop();
+    }
+  }, 120_000);
 });

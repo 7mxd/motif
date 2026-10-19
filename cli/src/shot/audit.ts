@@ -30,6 +30,8 @@ export interface AuditIssue extends RawIssue {
   shot: string;
   /** The state script the page was in, if any. */
   state?: string;
+  /** The design variant it was seen in; none for the default. */
+  variant?: string;
 }
 
 export type Severity = "critical" | "major" | "minor";
@@ -42,6 +44,8 @@ export interface Place {
   viewport: "mobile" | "tablet" | "desktop";
   scheme?: Scheme;
   state?: string;
+  /** The design variant, when it isn't the default. */
+  variant?: string;
 }
 
 export interface ReviewFinding {
@@ -279,7 +283,8 @@ const groupKey = (i: AuditIssue) =>
         // just the one button on that page.
         `${i.rule}|${i.selector}|${i.kind}|${i.label ?? ""}`;
 // A colour problem seen in light and in dark is two places; anything else is one place in either scheme.
-const placeKey = (i: AuditIssue) => `${i.route}|${i.state ?? ""}|${i.selector}${i.rule === "color-contrast" ? `|${i.scheme}` : ""}`;
+// Colours differ by variant, so a colour problem in each variant is a place of its own.
+const placeKey = (i: AuditIssue) => `${i.route}|${i.state ?? ""}|${i.selector}${i.rule === "color-contrast" ? `|${i.scheme}|${i.variant ?? ""}` : ""}`;
 
 const placeOf = (i: AuditIssue, withScheme: boolean): Place => ({
   screen: i.route,
@@ -287,6 +292,7 @@ const placeOf = (i: AuditIssue, withScheme: boolean): Place => ({
   viewport: i.size === "tablet" ? "tablet" : i.viewport,
   ...(withScheme ? { scheme: i.scheme } : {}),
   ...(i.state ? { state: i.state } : {}),
+  ...(i.variant ? { variant: i.variant } : {}),
 });
 
 /** Findings in the review format: repeats grouped (each with its places), worst first, numbered F-001, F-002… */
@@ -309,7 +315,10 @@ export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
     const labels = [...new Set(places.map((i) => i.label).filter(Boolean))].slice(0, 2).map((l) => `"${l}"`);
     // The same colours failing in both schemes (a badge with fixed colours) say so.
     const schemes = new Set(group.map((i) => i.scheme));
-    const mode = schemes.size > 1 ? "light and dark mode" : `${lead.scheme} mode`;
+    // A colour problem seen only in one variant says which.
+    const variants = new Set(group.map((i) => i.variant ?? ""));
+    const where = lead.rule === "color-contrast" && variants.size === 1 && lead.variant ? ` in the ${lead.variant} variant` : "";
+    const mode = (schemes.size > 1 ? "light and dark mode" : `${lead.scheme} mode`) + where;
     const summary =
       lead.rule === "color-contrast" && texts.size > 1 && lead.fg && lead.bg
         ? `${texts.size} texts are hard to read in ${mode}: ${lead.fg} on ${lead.bg} (${lead.ratio}:1, needs ${lead.expected ?? 4.5}:1)${labels.length ? `, such as ${labels.join(" and ")}` : ""}.`
