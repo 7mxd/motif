@@ -242,6 +242,33 @@ body { @apply bg-bg text-ink; }
     expect(hex("border")).toBe("#FEE685");
   });
 
+  test("a shadcn theme's surface is its card colour, not the muted fill", async () => {
+    const css = `@import "tailwindcss";
+:root {
+  --background: oklch(1 0 0); --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0); --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0); --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.21 0.006 285.885); --primary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.967 0.001 286.375); --muted-foreground: oklch(0.552 0.016 285.938);
+  --border: oklch(0.92 0.004 286.32);
+}
+.dark {
+  --background: oklch(0.141 0.005 285.823); --foreground: oklch(0.985 0 0);
+  --card: oklch(0.21 0.006 285.885); --popover: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.274 0.006 286.033); --muted-foreground: oklch(0.705 0.015 286.067);
+}
+@theme inline {
+  --color-background: var(--background); --color-foreground: var(--foreground); --color-card: var(--card);
+  --color-popover: var(--popover); --color-primary: var(--primary); --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground); --color-border: var(--border);
+}
+@layer base { body { @apply bg-background text-foreground; } }
+`;
+    const app = `export const App = () => <main>${many(3, '<div className="bg-card text-card-foreground border border-border">x</div>')}${many(8, '<span className="bg-muted text-muted-foreground">y</span>')}</main>;\n`;
+    const hex = await draft({ "src/index.css": css, "src/App.tsx": app });
+    expect([hex("surface"), hex("surface", "dark")]).toEqual([hex("background"), "#18181B"]);
+  });
+
   test("on a dark page, cards a step lighter are its surface", async () => {
     const hex = await draft(
       { "src/index.css": '@import "tailwindcss";\nbody { background: #09090b; }\n', "src/App.tsx": `export const App = () => <main>${many(8, '<div className="bg-zinc-800 text-zinc-100">x</div>')}</main>;\n` },

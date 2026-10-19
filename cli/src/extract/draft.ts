@@ -217,7 +217,8 @@ const ROLE_NAMES: { role: string; words: string[]; exact: boolean; usedAs?: stri
   { role: "text-secondary", words: ["muted", "subtle", "subdued", "dim", "faint", "meta", "hint"], exact: false, usedAs: ["text"] },
   { role: "text-primary", words: ["text", "fg", "foreground", "ink", "body-text", "copy"], exact: true, usedAs: ["text"] },
   { role: "background", words: ["bg", "background", "page", "canvas", "backdrop"], exact: true, usedAs: ["background"] },
-  { role: "surface", words: ["surface", "panel", "sheet", "raised"], exact: true, usedAs: ["background"] },
+  // shadcn's card and popover are its surfaces; its muted is a subtle fill (tabs, skeletons), not one.
+  { role: "surface", words: ["surface", "panel", "sheet", "raised", "card", "popover"], exact: true, usedAs: ["background"] },
   { role: "border", words: ["border", "hairline", "divider", "separator", "line", "rule"], exact: true, usedAs: ["border"] },
   { role: "action-primary", words: ["primary", "brand", "cta", "action"], exact: true, usedAs: ["action", "background"] },
   { role: "danger", words: ["danger", "error", "destructive", "negative"], exact: true },
