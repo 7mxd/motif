@@ -81,6 +81,14 @@ describe("Claude Code's own install and settings folder (backlog)", () => {
     expect(agentById("claude")!.found(env({ home }))).toBe(true);
     expect(paths("claude", env({ vars: { CLAUDE_CONFIG_DIR: join("/h", "cfg") } }))[0]![0]).toBe("~/cfg/.claude.json");
   });
+
+  test("a CLAUDE_CONFIG_DIR only in ~/.claude/settings.json's env doesn't move its settings, as it doesn't for Claude Code (deferred minor)", () => {
+    // Claude Code 2.1.301, in a throwaway home with only this set: `claude mcp add --scope user` still wrote ~/.claude.json.
+    const home = tempDir("motif-agents-home-");
+    mkdirSync(join(home, ".claude"));
+    writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({ env: { CLAUDE_CONFIG_DIR: join(home, "cfg") } }));
+    expect(agentById("claude")!.settings(env({ home }), join("/p"))[0]!.path).toBe(join(home, ".claude.json"));
+  });
 });
 
 describe("Claude Code installed but not on PATH (review of batch C3)", () => {
