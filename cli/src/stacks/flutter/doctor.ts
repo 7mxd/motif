@@ -3,6 +3,8 @@ import type { DoctorDeps, DoctorItem } from "../../commands/doctor";
 /** The oldest Flutter whose theme API Motif's generated code uses. */
 const MIN: [number, number, number] = [3, 27, 0];
 const LABEL = "Flutter SDK";
+/** Where to get Flutter, as the end of a sentence. */
+export const FLUTTER_INSTALL = "install it from https://docs.flutter.dev/get-started/install";
 
 function parts(v: string): [number, number, number] {
   const m = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(v.trim());
@@ -21,7 +23,7 @@ export function flutterDoctor(deps: DoctorDeps): DoctorItem[] {
     id: "flutter",
     status: "needed",
     label: LABEL,
-    detail: "Flutter isn't installed. Theme code, checks and drafts work without it; screenshots need it: install it from https://docs.flutter.dev/get-started/install.",
+    detail: `Flutter isn't installed. Theme code, checks and drafts work without it; screenshots need it: ${FLUTTER_INSTALL}.`,
   };
   const path = deps.which("flutter");
   if (!path || !deps.run) return [missing];

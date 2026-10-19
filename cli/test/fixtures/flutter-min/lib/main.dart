@@ -1,16 +1,32 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'design/motif_theme.dart';
 import 'l10n/app_localizations.dart';
 
-void main() => runApp(const MinApp());
+/// Whether someone has signed in, read from storage before the app starts.
+bool signedIn = false;
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  signedIn = prefs.getBool('signedIn') ?? false;
+  runApp(const MinApp());
+}
 
 final router = GoRouter(
+  // Your items need someone signed in: anyone else goes to the sign-in screen.
+  redirect: (context, state) =>
+      !signedIn && state.matchedLocation == '/home' ? '/sign-in' : null,
   routes: [
     GoRoute(
       path: '/',
-      builder: (context, state) => const HomeScreen(),
+      builder: (context, state) => const WelcomeScreen(),
       routes: [
         GoRoute(
           path: 'settings',
@@ -18,15 +34,17 @@ final router = GoRouter(
         ),
       ],
     ),
+    GoRoute(path: '/home', builder: (context, state) => const ItemsScreen()),
+    GoRoute(
+      path: '/sign-in',
+      builder: (context, state) => const SignInScreen(),
+    ),
   ],
 );
 
-/// Latin text in Onest from google_fonts; Arabic falls back to the bundled Noto Naskh Arabic.
-ThemeData appTheme(Brightness brightness) {
-  final base = ThemeData(
-    colorSchemeSeed: const Color(0xFF0F766E),
-    brightness: brightness,
-  );
+/// The guide's theme (in its design variant), with Latin text in Onest from google_fonts and Arabic in the bundled
+/// Noto Naskh Arabic.
+ThemeData appTheme(ThemeData base) {
   return base.copyWith(
     textTheme: GoogleFonts.onestTextTheme(
       base.textTheme,
@@ -44,14 +62,14 @@ class MinApp extends StatelessWidget {
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      theme: appTheme(Brightness.light),
-      darkTheme: appTheme(Brightness.dark),
+      theme: appTheme(MotifTheme.light()),
+      darkTheme: appTheme(MotifTheme.dark()),
     );
   }
 }
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+class WelcomeScreen extends StatelessWidget {
+  const WelcomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -71,10 +89,95 @@ class HomeScreen extends StatelessWidget {
             icon: const Icon(Icons.settings),
             label: Text(l10n.openSettings),
           ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: () => context.go('/home'),
+            child: Text(l10n.homeOpenItems),
+          ),
           const SizedBox(height: 24),
           // Plain Material text, not from google_fonts: Roboto, the default on Android.
           const Text('Flutter 1.0', style: TextStyle(fontFamily: 'Roboto')),
         ],
+      ),
+    );
+  }
+}
+
+/// The signed-in screen: a list fetched from the app's API.
+class ItemsScreen extends StatefulWidget {
+  const ItemsScreen({super.key});
+
+  @override
+  State<ItemsScreen> createState() => _ItemsScreenState();
+}
+
+class _ItemsScreenState extends State<ItemsScreen> {
+  late final Future<List<String>> _items = _load();
+
+  static Future<List<String>> _load() async {
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(
+        Uri.parse('https://api.example.com/items'),
+      );
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode != 200) return const [];
+      return [
+        for (final item in jsonDecode(body) as List)
+          (item as Map<String, dynamic>)['title'] as String,
+      ];
+    } finally {
+      client.close();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.itemsTitle)),
+      body: FutureBuilder<List<String>>(
+        future: _items,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final items = snapshot.data!;
+          if (items.isEmpty) return Center(child: Text(l10n.itemsEmpty));
+          return ListView(
+            children: [
+              for (final title in items)
+                ListTile(
+                  leading: const Icon(Icons.inventory_2_outlined),
+                  title: Text(title),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class SignInScreen extends StatelessWidget {
+  const SignInScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.signInTitle)),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(l10n.signInBody),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: () {}, child: Text(l10n.signInButton)),
+          ],
+        ),
       ),
     );
   }

@@ -5,8 +5,10 @@ import {
   bundledFonts,
   googleFontFiles,
   GRACE_MS,
+  flutterTail,
   HARNESS_TEST,
   isFontFile,
+  RESULT_FILE,
   runHarness,
   sdkFonts,
   type FetchLike,
@@ -96,6 +98,21 @@ describe("googleFontFiles", () => {
       expect(fetch.urls).toEqual([]);
     }
     expect(existsSync(join(home, "fonts"))).toBe(false);
+  });
+
+  test("never trusts a cached list that names a file outside the family's folder", async () => {
+    const home = tempDir("motif-fonts-");
+    const dir = join(home, "fonts", "google", "Onest");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(home, "fonts", "secret.ttf"), TTF);
+    for (const file of ["../secret.ttf", "..\\secret.ttf", "/etc/passwd", "sub/regular.ttf", "files.json"]) {
+      writeFileSync(join(dir, "files.json"), JSON.stringify([{ weight: 400, italic: false, file }]));
+      const fetch = fakeFetch((url) => (url.includes("googleapis") ? new Response(CSS) : new Response(TTF)));
+      const r = await googleFontFiles("Onest", home, { fetch });
+      // The list is ignored and the family downloaded again, into plain names.
+      expect(fetch.urls.length).toBeGreaterThan(0);
+      expect(r.fonts.flatMap((f) => f.files).every((f) => f.startsWith(dir))).toBe(true);
+    }
   });
 
   test("turns a network failure or a slow answer into a note", async () => {
@@ -217,7 +234,8 @@ await Bun.sleep(60000);
   test("clears the last run's result and screenshots before it starts", async () => {
     const { app, outDir } = fakeApp();
     mkdirSync(outDir, { recursive: true });
-    writeFileSync(join(outDir, "result.json"), JSON.stringify({ shots: [{ file: "home.mobile.png" }] }));
+    mkdirSync(join(app, ".motif", "shot"), { recursive: true });
+    writeFileSync(join(app, RESULT_FILE), JSON.stringify({ shots: [{ file: "home.mobile.png" }] }));
     writeFileSync(join(outDir, "home.mobile.png"), "old");
     const failing = join(app, "fail.ts");
     writeFileSync(failing, `console.error("Compilation failed"); process.exit(1);`);
@@ -226,8 +244,24 @@ await Bun.sleep(60000);
     expect(r.timedOut).toBe(false);
     expect(r.output).toContain("Compilation failed");
     expect(r.shots).toEqual([]);
-    expect(existsSync(join(outDir, "result.json"))).toBe(false);
+    expect(existsSync(join(app, RESULT_FILE))).toBe(false);
     expect(existsSync(join(outDir, "home.mobile.png"))).toBe(false);
     expect(existsSync(join(app, HARNESS_TEST))).toBe(false);
   }, 30_000);
+});
+
+describe("flutterTail", () => {
+  test("keeps Flutter's last lines without google_fonts' noise", () => {
+    const output = [
+      "00:01 +0: loading",
+      "Error: google_fonts was unable to load font Onest-Regular because the following exception occurred:",
+      "Exception: GoogleFonts.config.allowRuntimeFetching is false but font Onest-Regular was not found in the application assets.",
+      "There is likely something wrong with your test. Please see https://github.com/flutter/packages/blob/main/packages/google_fonts/example/test for examples of how to test with google_fonts.",
+      "If troubleshooting doesn't solve the problem, please file an issue at https://github.com/flutter/flutter/issues/new/choose.",
+      "",
+      "lib/main.dart:3:1: Error: Expected ';' after this.",
+    ].join("\n");
+    expect(flutterTail(output)).toBe("00:01 +0: loading\nlib/main.dart:3:1: Error: Expected ';' after this.");
+    expect(flutterTail(Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n")).split("\n")).toHaveLength(20);
+  });
 });

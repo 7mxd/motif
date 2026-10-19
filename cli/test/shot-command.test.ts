@@ -97,9 +97,10 @@ describe("motif shot: what it needs", () => {
     const none = await runShot(makeProject({}), ctx(), fakes().deps);
     expect(none.exitCode).toBe(2);
     expect(none.text).toContain("--url");
-    const flutter = await runShot(makeProject({ "pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n" }), ctx(), fakes().deps);
+    // A Flutter app is drawn from its code (shot-flutter.test.ts); this one can't be yet: it lacks flutter_test.
+    const flutter = await runShot(makeProject({ "pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n" }), ctx(), { ...fakes().deps, which: () => "/fake/flutter" });
     expect(flutter.exitCode).toBe(2);
-    expect(flutter.text).toContain("Flutter");
+    expect(flutter.data.error).toBe("needs-flutter-test");
     const two = await runShot(makeProject({ "web/package.json": NEXT_PKG, "admin/package.json": NEXT_PKG }), ctx(), fakes().deps);
     expect(two.exitCode).toBe(2);
     expect(two.text).toContain("--app");

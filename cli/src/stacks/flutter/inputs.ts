@@ -1,0 +1,167 @@
+// What a developer gives motif shot for a Flutter app, read and checked before the run: design/states/setup.dart,
+// design/states/http.json and --screen widgets.
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
+import { maskComments, maskStrings } from "../../check/mask";
+import { libDartFiles } from "./routes";
+
+export const SETUP_FILE = "design/states/setup.dart";
+export const HTTP_FILE = "design/states/http.json";
+const SETUP_SIGNATURE =
+  "Future<Widget?> motifSetup({required String variant, required Locale locale, required Brightness brightness}) async";
+
+/** An import of a file outside the app's packages, from the harness in <app>/.motif/shot/. */
+export function importFrom(appDir: string, file: string): string {
+  const rel = relative(join(appDir, ".motif", "shot"), file);
+  return isAbsolute(rel) ? pathToFileURL(file).href : rel.split(sep).join("/");
+}
+
+/** design/states/setup.dart's import for the harness, null when there's none; an error when it lacks motifSetup. */
+export function readSetup(root: string, appDir: string): string | null | { error: string } {
+  const file = join(root, SETUP_FILE);
+  if (!existsSync(file)) return null;
+  const text = maskComments(readFileSync(file, "utf8"), "dart");
+  if (!/\bmotifSetup\s*\(/.test(text)) return { error: `${SETUP_FILE} must define ${SETUP_SIGNATURE}.` };
+  return importFrom(appDir, file);
+}
+
+export interface HttpRoute {
+  method: string;
+  /** "/items" for a request to any host, or a whole address in url. */
+  path: string | null;
+  url: string | null;
+  /** The answer's body (absolute path); none for an empty one. */
+  file: string | null;
+  status: number;
+}
+
+const KEY = /^(GET|POST|PUT|PATCH|DELETE|HEAD) (\/\S*|https?:\/\/\S+)$/;
+
+/**
+ * design/states/http.json: "GET /path" or "GET https://host/path" → a file under design/ ("fixtures/items.json"), or
+ * { "file": …, "status": 201 }. Nothing when there's no file.
+ */
+export function readHttpFixtures(root: string): HttpRoute[] | { error: string } {
+  const path = join(root, HTTP_FILE);
+  if (!existsSync(path)) return [];
+  let table: unknown;
+  try {
+    table = JSON.parse(readFileSync(path, "utf8").replace(/^﻿/, ""));
+  } catch (e) {
+    return { error: `${HTTP_FILE} isn't valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (!table || typeof table !== "object" || Array.isArray(table)) {
+    return { error: `${HTTP_FILE} maps requests to answers, like { "GET /items": "fixtures/items.json" }.` };
+  }
+  const design = resolve(root, "design");
+  const routes: HttpRoute[] = [];
+  for (const [key, value] of Object.entries(table)) {
+    const m = KEY.exec(key.trim());
+    if (!m) return { error: `${HTTP_FILE}: "${key}" should be a method and a path or address, like "GET /items" or "GET https://api.example.com/items".` };
+    const answer = typeof value === "string" ? { file: value } : value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+    if (!answer) return { error: `${HTTP_FILE}: "${key}" should name a file under design/, or be { "file": …, "status": … }.` };
+    const status = answer.status === undefined ? 200 : answer.status;
+    if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599) {
+      return { error: `${HTTP_FILE}: "${key}" has a status that isn't an HTTP status code (100 to 599).` };
+    }
+    let file: string | null = null;
+    if (answer.file !== undefined) {
+      if (typeof answer.file !== "string" || answer.file.trim() === "") return { error: `${HTTP_FILE}: "${key}" has a file that isn't a path.` };
+      const given = answer.file.replace(/\\/g, "/");
+      const abs = given.startsWith("design/") ? resolve(root, given) : resolve(design, given);
+      const inside = relative(design, abs);
+      if (inside.startsWith("..") || isAbsolute(inside)) return { error: `${HTTP_FILE}: "${key}" answers with ${answer.file}, which isn't under design/.` };
+      if (!existsSync(abs) || !statSync(abs).isFile()) return { error: `${HTTP_FILE}: "${key}" answers with ${answer.file}, which doesn't exist (paths are under design/).` };
+      file = abs;
+    }
+    const target = m[2]!;
+    routes.push({ method: m[1]!, path: target.startsWith("/") ? target : null, url: target.startsWith("/") ? null : target, file, status });
+  }
+  return routes;
+}
+
+/** SignInScreen → sign-in-screen: a --screen's name in screenshot file names. */
+export function screenSlug(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
+    .toLowerCase();
+}
+
+/** The text between the bracket at open and its match (masked text, so brackets in strings don't count). */
+function enclosed(text: string, open: number): { inner: string; end: number } | null {
+  const pairs: Record<string, string> = { "{": "}", "(": ")", "[": "]" };
+  const stack: string[] = [];
+  for (let i = open; i < text.length; i++) {
+    const c = text[i]!;
+    if (pairs[c]) stack.push(pairs[c]!);
+    else if (c === stack[stack.length - 1]) {
+      stack.pop();
+      if (stack.length === 0) return { inner: text.slice(open + 1, i), end: i };
+    }
+  }
+  return null;
+}
+
+/** Why a class can't be made with no arguments (Name()), or null when it can. */
+function needsArguments(name: string, body: string): string | null {
+  // Constructors are at the class body's own level: an unnamed one (Name(…), const Name(…), factory Name(…)) or named ones.
+  let depth = 0;
+  const unnamed: string[] = [];
+  let named = false;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]!;
+    if (c === "{") depth++;
+    else if (c === "}") depth--;
+    if (depth !== 0 || !body.startsWith(name, i) || /[\w$.]/.test(body[i - 1] ?? " ")) continue;
+    const after = body.slice(i + name.length);
+    if (/^\.\w+\s*\(/.test(after)) named = true;
+    const paren = /^\s*\(/.exec(after);
+    if (!paren) continue;
+    const params = enclosed(body, i + name.length + paren[0].length - 1);
+    if (params) unnamed.push(params.inner);
+  }
+  if (unnamed.length === 0) return named ? "it has only named constructors" : null;
+  const params = unnamed[0]!;
+  let positional = "";
+  let optional = "";
+  for (let i = 0; i < params.length; i++) {
+    if (params[i] === "{" || params[i] === "[") {
+      const group = enclosed(params, i);
+      if (!group) break;
+      optional += group.inner;
+      i = group.end;
+    } else positional += params[i];
+  }
+  if (positional.replace(/,/g, "").trim() !== "") return "its constructor takes arguments";
+  if (/\brequired\b/.test(optional)) return "its constructor has required arguments";
+  return null;
+}
+
+/**
+ * The --screen widget's import (the app's file that defines the class, as package:<pkg>/…), or why Motif can't open it:
+ * it must be in the app's lib/ and need no arguments.
+ */
+export function findScreen(appDir: string, pkg: string, name: string): { import: string } | { error: string } {
+  if (!/^[A-Za-z_$][\w$]*$/.test(name)) return { error: `--screen takes a widget's class name, like --screen SettingsScreen; "${name}" isn't one.` };
+  for (const file of libDartFiles(appDir)) {
+    const text = readFileSync(file, "utf8");
+    if (!text.includes(name)) continue;
+    const code = maskStrings(maskComments(text, "dart"), "dart");
+    const decl = new RegExp(`(^|[^\\w$])(abstract\\s+|sealed\\s+|base\\s+|final\\s+|interface\\s+)*class\\s+${name.replace(/\$/g, "\\$")}(?![\\w$])`).exec(code);
+    if (!decl) continue;
+    if (/\b(abstract|sealed|interface)\b/.test(decl[0])) return { error: `--screen ${name}: it's an abstract class, so Motif can't make one. Give a widget class it can make with ${name}().` };
+    const open = code.indexOf("{", decl.index + decl[0].length);
+    const body = open >= 0 ? enclosed(code, open) : null;
+    const why = body ? needsArguments(name, body.inner) : null;
+    if (why) {
+      return {
+        error: `--screen ${name}: Motif opens a screen with no arguments (${name}()), and ${why}. Give it a constructor that needs none, or capture it through its route with --routes.`,
+      };
+    }
+    const rel = relative(join(appDir, "lib"), file).split(sep).join("/");
+    return { import: `package:${pkg}/${rel}` };
+  }
+  return { error: `--screen ${name}: there's no class ${name} in the app's lib/ folder.` };
+}

@@ -1,15 +1,21 @@
-// The spike's runner for the Flutter screenshot harness (decision 0007): writes the harness into <app>/.motif/shot/,
-// gathers real fonts, runs flutter test, and always removes the generated files. Task 9 builds `motif shot` on it.
+// The runner for the Flutter screenshot harness (decision 0007): writes the harness and its per-app hooks into
+// <app>/.motif/shot/, gathers real fonts, runs flutter test, and always removes the generated files.
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { onExit } from "../../cleanup";
 import { motifHome } from "../../home";
 import { killTree } from "../../shot/devserver";
 import { stripBom } from "../../text";
+import httpSource from "./harness/motif_http.dart" with { type: "text" };
 import harnessSource from "./harness/motif_shot_test.dart" with { type: "text" };
+import { defaultHooks, HOOKS_FILE, hooksSource } from "./hooks";
 import { packageName } from "./project";
 
 export const HARNESS_TEST = ".motif/shot/motif_shot_test.dart";
+/** The harness's in-memory HTTP, next to it; the same in every run too. */
+export const HARNESS_HTTP = ".motif/shot/motif_http.dart";
+/** Where the harness writes what it did; cleared before every run. */
+export const RESULT_FILE = ".motif/shot/result.json";
 
 /** How long Motif waits for a stopped run's output and exit before giving up on them. */
 export const GRACE_MS = 3000;
@@ -17,14 +23,23 @@ export const GRACE_MS = 3000;
 export interface FlutterShot {
   /** The PNG's file name in outDir. */
   file: string;
-  route: string;
+  /** The screen it belongs to in the result: its route, or its widget's class name. Its route when not set. */
+  target?: string;
+  /** A route to open; a --screen widget sets screen instead. */
+  route?: string;
+  screen?: string;
   width: number;
   height: number;
   dpr: number;
   safeTop?: number;
   safeBottom?: number;
   dark: boolean;
+  /** en_US, or a language alone (ar). */
   locale: string;
+  rtl?: boolean;
+  /** The variant as the generated theme's MotifVariant names it (Dart), and as the guide does. */
+  variant?: string;
+  variantId?: string;
 }
 
 export interface FontEntry {
@@ -52,6 +67,10 @@ export interface HarnessRun {
   /** Replaces [flutter, "test"]; tests use it to stand in for Flutter. */
   command?: string[];
   fetch?: FetchLike;
+  /** motif_hooks.dart: the app's imports; the app's main and the packages it depends on when not given. */
+  hooks?: string;
+  /** More options for the harness, written into config.json next to the shots and fonts. */
+  config?: Record<string, unknown>;
 }
 
 export interface HarnessResult {
@@ -59,12 +78,34 @@ export interface HarnessResult {
   timedOut: boolean;
   output: string;
   shots: { file: string; error?: string }[];
+  /** result.json as the harness wrote it; null when it wrote none, or one that can't be read. */
+  result: Record<string, unknown> | null;
+  /** Why result.json couldn't be read, when it exists but is cut short. */
+  problem?: string;
   notes: string[];
 }
 
-/** The harness source with the app's package in place of motif_app. */
-export function harnessFor(pkg: string): string {
-  return harnessSource.replace("import 'package:motif_app/main.dart'", `import 'package:${pkg}/main.dart'`);
+/** The harness source: the same in every run, so flutter test reuses its compiled test. */
+export const HARNESS_SOURCE: string = harnessSource;
+
+/** What google_fonts prints for every family it may not fetch, although Motif loaded it: noise in Flutter's output. */
+const GOOGLE_FONTS_NOISE =
+  /google_fonts was unable to load font|GoogleFonts\.config\.allowRuntimeFetching is false|There is likely something wrong with your test|examples of how to test with google_fonts|If troubleshooting doesn't solve the problem, please file an issue/;
+
+/** The last lines of Flutter's output, without google_fonts' noise or blank lines. */
+export function flutterTail(output: string, lines = 20): string {
+  return output
+    .split(/\r?\n/)
+    .filter((l) => l.trim() !== "" && !GOOGLE_FONTS_NOISE.test(l))
+    .slice(-lines)
+    .join("\n");
+}
+
+/** The environment for flutter test: its listener talks to 127.0.0.1, which must never go through a proxy. */
+export function withNoProxy(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const given = (env.NO_PROXY ?? env.no_proxy ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const list = [...new Set([...given, "127.0.0.1", "localhost"])].join(",");
+  return { ...env, NO_PROXY: list, no_proxy: list };
 }
 
 /** The fonts a pubspec.yaml bundles: each family with its asset paths, as written. */
@@ -172,10 +213,15 @@ interface CachedFace {
   file: string;
 }
 
+/** A face file's name in the cache: a plain file name, never a path out of the family's folder. */
+const FACE_FILE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,40}\.ttf$/;
+
 function readCache(dir: string): CachedFace[] | null {
   try {
     const faces = JSON.parse(readFileSync(join(dir, "files.json"), "utf8")) as CachedFace[];
-    return Array.isArray(faces) && faces.length > 0 && faces.every((f) => existsSync(join(dir, f.file))) ? faces : null;
+    const sound = (f: CachedFace) =>
+      typeof f?.file === "string" && FACE_FILE.test(f.file) && basename(f.file) === f.file && Number.isInteger(f.weight) && typeof f.italic === "boolean";
+    return Array.isArray(faces) && faces.length > 0 && faces.every((f) => sound(f) && existsSync(join(dir, f.file))) ? faces : null;
   } catch {
     return null;
   }
@@ -287,19 +333,24 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
   mkdirSync(run.outDir, { recursive: true });
   writeFileSync(join(motifDir, ".gitignore"), "*\n");
   const testFile = join(run.appDir, HARNESS_TEST);
+  const hooksFile = join(run.appDir, HOOKS_FILE);
+  const httpFile = join(run.appDir, HARNESS_HTTP);
   const configFile = join(shotDir, "config.json");
   // A run that fails before writing anything mustn't return the last run's screenshots.
-  const resultPath = join(run.outDir, "result.json");
+  const resultPath = join(run.appDir, RESULT_FILE);
   for (const old of [resultPath, ...run.shots.map((s) => join(run.outDir, s.file))]) rmSync(old, { force: true });
 
   let cancelExitHook = () => {};
   let timer: Timer | undefined;
   try {
-    writeFileSync(testFile, harnessFor(pkg));
-    writeFileSync(configFile, JSON.stringify({ outDir: resolve(run.outDir), fonts, shots: run.shots }));
+    writeFileSync(testFile, HARNESS_SOURCE);
+    writeFileSync(httpFile, httpSource);
+    writeFileSync(hooksFile, run.hooks ?? hooksSource(defaultHooks(run.appDir, pkg)));
+    writeFileSync(configFile, JSON.stringify({ ...run.config, outDir: resolve(run.outDir), resultPath, fonts, shots: run.shots }));
     const command = run.command ?? [flutter, "test"];
-    const proc = Bun.spawn([...command, HARNESS_TEST, `--dart-define=MOTIF_SHOT_CONFIG=${configFile}`], {
+    const proc = Bun.spawn([...command, HARNESS_TEST, "--reporter", "expanded", `--dart-define=MOTIF_SHOT_CONFIG=${configFile}`], {
       cwd: run.appDir,
+      env: withNoProxy(process.env),
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
@@ -321,12 +372,26 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
     await within(Promise.all([out.done, err.done]), GRACE_MS);
     out.cancel();
     err.cancel();
-    const shots = existsSync(resultPath) ? JSON.parse(readFileSync(resultPath, "utf8")).shots : [];
-    return { code, timedOut, output: `${out.text()}\n${err.text()}`, shots, notes };
+    let result: Record<string, unknown> | null = null;
+    let problem: string | undefined;
+    if (existsSync(resultPath)) {
+      try {
+        const parsed = JSON.parse(readFileSync(resultPath, "utf8"));
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) result = parsed;
+        else problem = "The harness's result file isn't what Motif expects.";
+      } catch {
+        // A run stopped while writing it leaves it cut short.
+        problem = "The harness's result file is cut short; the run may have been stopped while writing it.";
+      }
+    }
+    const shots = Array.isArray(result?.shots) ? (result.shots as HarnessResult["shots"]) : [];
+    return { code, timedOut, output: `${out.text()}\n${err.text()}`, shots, result, ...(problem ? { problem } : {}), notes };
   } finally {
     clearTimeout(timer);
     cancelExitHook();
     rmSync(testFile, { force: true });
+    rmSync(hooksFile, { force: true });
+    rmSync(httpFile, { force: true });
     rmSync(configFile, { force: true });
   }
 }

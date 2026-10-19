@@ -12,6 +12,8 @@ import { flutterFonts } from "./fonts";
 import { generateFlutter } from "./generate";
 import { importFor, pathDependencies } from "./project";
 import { dartFix, dartReducedMotion, dartRole, scanDart } from "./rules";
+import { discoverFlutterRoutes } from "./routes";
+import { FLUTTER_VARIANT_HOW, flutterShotRefusal, flutterTimeLimit, shootFlutter } from "./shot";
 
 /** What else a variant changes besides colours, in plain words. */
 function otherChanges(base: Theme, variant: Theme): string[] {
@@ -93,4 +95,16 @@ export const FLUTTER: NativeStack = {
   fix: dartFix,
   role: dartRole,
   collect: collectFlutter,
+
+  // Screens drawn by flutter test through Motif's harness (decision 0007). google_fonts families are looked for in the
+  // shared packages' code too.
+  shoot: (opts) =>
+    shootFlutter(opts, {
+      themeDir: FLUTTER.themeDir(opts.root, opts.app),
+      sharedCode: () => FLUTTER.sharedFiles!(opts.root, opts.app, {}).files.map((f) => f.text),
+    }),
+  shotRefusal: (root, app, which) => flutterShotRefusal(resolve(root, app.path), app.path, which("flutter")),
+  shotTimeLimit: flutterTimeLimit,
+  variantHow: FLUTTER_VARIANT_HOW,
+  routes: discoverFlutterRoutes,
 };

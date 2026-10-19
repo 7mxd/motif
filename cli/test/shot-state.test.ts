@@ -15,8 +15,8 @@ describe("state scripts", () => {
   test("are read from files, repeated or as a comma list, and named by their file", () => {
     const root = makeProject({ "design/states/editor.js": "open();", "design/states/Result.js": "save();" });
     expect(readStates(root, ["design/states/editor.js", "design/states/Result.js"])).toEqual([
-      { name: "editor", script: "open();" },
-      { name: "result", script: "save();" },
+      { name: "editor", script: "open();", file: join(root, "design/states/editor.js") },
+      { name: "result", script: "save();", file: join(root, "design/states/Result.js") },
     ]);
     expect(readStates(root, "design/states/editor.js,design/states/Result.js")).toHaveLength(2);
     expect(readStates(root, undefined)).toEqual([]);

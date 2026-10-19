@@ -8,12 +8,15 @@ import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detec
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { noSuchApp, selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
-import { captureScreens, describeSizes, MAX_HEIGHT, parseSizes, type RouteResult, type StateScript, type Viewport } from "../shot/capture";
+import {
+  captureScreens, describeSizes, MAX_HEIGHT, NATIVE_DESKTOP, NATIVE_VIEWPORTS, parseSizes, type RouteResult, type StateScript, type Viewport,
+} from "../shot/capture";
 import {
   identicalVariantNotes, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison,
 } from "../shot/compare";
 import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { startStaticServer, type StaticServer } from "../shot/static-server";
+import { nativeStack, type NativeStack } from "../stacks/native";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
 import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes";
 
@@ -27,6 +30,10 @@ export interface ShotDeps {
   today: () => string;
   /** True when MOTIF_BROWSER=none turns the browser off. */
   browserOff?: () => boolean;
+  /** Finds a command (flutter) on the PATH. */
+  which?: (cmd: string) => string | null;
+  /** Stands in for a native stack's shoot in tests. */
+  shoot?: NativeStack["shoot"];
 }
 
 const MAX_ROUTES = 12;
@@ -104,6 +111,7 @@ export function parseRoutes(value: string, env: Record<string, string | undefine
 
 /** Where a page ended up: its own route, or the path it redirected to (a sign-in page, say). */
 function landedOn(r: RouteResult): string {
+  if (r.landedOn) return r.landedOn;
   if (!r.finalUrl) return r.route;
   const from = new URL(r.url).pathname.replace(/\/+$/, "");
   const to = new URL(r.finalUrl).pathname.replace(/\/+$/, "");
@@ -112,7 +120,7 @@ function landedOn(r: RouteResult): string {
 
 function routeLine(r: RouteResult, width: number): string {
   const what = rendered(r)
-    ? `${r.shots.length} screenshots${r.finalUrl ? ` (went to ${new URL(r.finalUrl).pathname})` : ""}${r.cropped ? ` (cropped at ${MAX_HEIGHT} px)` : ""}`
+    ? `${r.shots.length} screenshots${r.landedOn ? ` (went to ${r.landedOn})` : r.finalUrl ? ` (went to ${new URL(r.finalUrl).pathname})` : ""}${r.cropped ? ` (cropped at ${MAX_HEIGHT} px)` : ""}`
     : r.loading && !r.error && !r.pageErrors?.length
       ? `✗ ${r.loading}`
       : `✗ ${r.error ?? (r.pageErrors?.length ? `the page threw an error: ${r.pageErrors[0]}` : `HTTP ${r.status}`)}${r.shots.length > 0 ? " (the screenshots show what it looked like)" : ""}`;
@@ -153,7 +161,7 @@ export function readStates(cwd: string, value: unknown): StateScript[] | { error
       return { error: `--state: "${basename(abs)}" names the screenshots, so use letters, digits and dashes (like editor.js).` };
     }
     if (states.some((s) => s.name === name)) return { error: `--state: two scripts are named "${name}"; rename one.` };
-    states.push({ name, script: readFileSync(abs, "utf8") });
+    states.push({ name, script: readFileSync(abs, "utf8"), file: abs });
   }
   return states;
 }
@@ -206,25 +214,16 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   }
   const states = readStates(cwd, flags.state);
   if ("error" in states) return usage(states.error, { error: "usage" });
-  let viewports: Viewport[] | undefined;
-  if (typeof flags.sizes === "string") {
-    const sizes = parseSizes(flags.sizes);
-    if ("error" in sizes) return usage(sizes.error, { error: "usage" });
-    viewports = sizes;
-  }
+  const screens = (Array.isArray(flags.screen) ? flags.screen : typeof flags.screen === "string" ? [flags.screen] : [])
+    .flatMap((v) => String(v).split(","))
+    .map((v) => v.trim())
+    .filter(Boolean);
   const rtlFlag = readRtl(flags.rtl);
   if (typeof rtlFlag === "object") return usage(rtlFlag.error, { error: "usage" });
   const rtl = rtlFlag;
   const chosen = chooseVariants(cwd, typeof flags.variant === "string" ? flags.variant : undefined, audit);
   if ("error" in chosen) return chosen.error;
   const variants = chosen.variants;
-  const browser = deps.findBrowser();
-  if (!browser) {
-    if (deps.browserOff?.()) {
-      return usage(`${BROWSER_OFF}, so Motif can't take screenshots. Unset MOTIF_BROWSER to use Chrome or Edge.`, { error: "browser-off", status: "browser_off" });
-    }
-    return usage(`No Chrome or Edge found, so Motif can't take screenshots. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
-  }
 
   const { apps: detected, findings: settingProblems } = detectApps(cwd);
   const selected = selectApps(detected, ctx.app);
@@ -232,7 +231,49 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     return usage(noSuchApp(ctx.app, detected), { error: "no-such-app" });
   }
   const app: AppInfo | undefined = selected.length === 1 ? selected[0] : undefined;
-  if (!givenUrl) {
+  // A native app is drawn from its code by its own stack (Flutter: flutter test), without a browser or a dev server.
+  const native = app ? nativeStack(app.stack) : null;
+  const shoot = native?.shoot ? (deps.shoot ?? native.shoot.bind(native)) : undefined;
+  if (shoot && native && app) {
+    const label = app.stack ? STACK_LABELS[app.stack] : "These";
+    if (givenUrl !== undefined) return usage(`${label} apps are screenshotted from their code, not a URL; drop --url.`, { error: "usage" });
+    if (audit) return usage(`--audit doesn't check ${label} screens yet; run motif shot without it to take the screenshots.`, { error: "usage" });
+    for (const s of states) {
+      if (s.file?.endsWith(".dart")) continue;
+      const base = basename(s.file ?? s.name);
+      return usage(
+        /\.(m?js|ts)$/i.test(base)
+          ? `--state: ${base} is a browser script; a ${label} app's states are Dart files, like design/states/${s.name}.dart.`
+          : `--state: ${base} isn't a Dart file; a ${label} app's states are Dart files, like design/states/${s.name}.dart.`,
+        { error: "usage" },
+      );
+    }
+    const refusal = native.shotRefusal?.(cwd, app, deps.which ?? ((cmd) => Bun.which(cmd)));
+    if (refusal) return usage(refusal.text, { error: refusal.error });
+  } else if (screens.length > 0) {
+    return usage("--screen opens a Flutter widget by its class name; this app isn't a Flutter app. Use --routes for its pages.", { error: "usage" });
+  }
+  let viewports: Viewport[] | undefined;
+  if (typeof flags.sizes === "string") {
+    const sizes = parseSizes(flags.sizes, shoot ? [...NATIVE_VIEWPORTS, NATIVE_DESKTOP] : undefined);
+    if ("error" in sizes) return usage(sizes.error, { error: "usage" });
+    viewports = sizes;
+  }
+  const findBrowserOrRefuse = (): BrowserInfo | CommandResult => {
+    const found = deps.findBrowser();
+    if (found) return found;
+    if (deps.browserOff?.()) {
+      return usage(`${BROWSER_OFF}, so Motif can't take screenshots. Unset MOTIF_BROWSER to use Chrome or Edge.`, { error: "browser-off", status: "browser_off" });
+    }
+    return usage(`No Chrome or Edge found, so Motif can't take screenshots. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
+  };
+  let browser: BrowserInfo | undefined;
+  if (!shoot) {
+    const found = findBrowserOrRefuse();
+    if ("command" in found) return found;
+    browser = found;
+  }
+  if (!givenUrl && !shoot) {
     if (selected.length === 0) {
       return usage("No app found in this folder. Run this inside your app's folder, or pass a running app's address with --url.", { error: "no-app" });
     }
@@ -248,12 +289,16 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const discovery: RouteDiscovery =
     typeof flags.routes === "string"
       ? { routes: parseRoutes(flags.routes), skipped: [] }
-      : app?.stack === "react-web"
+      : shoot
+        ? screens.length > 0
+          ? { routes: [], skipped: [] }
+          : (native?.routes?.(appDir) ?? { routes: ["/"], skipped: [] })
+        : app?.stack === "react-web"
         ? discoverRoutes(appDir)
         : siteFolderPath
           ? discoverPlainRoutes(siteFolderPath)
           : { routes: ["/"], skipped: [] };
-  if (discovery.routes.length === 0) return usage("--routes needs at least one page, like --routes /,/settings.", { error: "usage" });
+  if (discovery.routes.length === 0 && screens.length === 0) return usage("--routes needs at least one page, like --routes /,/settings.", { error: "usage" });
   const filePath = discovery.routes.find((r) => /^\/[A-Za-z]:[\\/]/.test(r));
   if (filePath) {
     return usage(
@@ -281,13 +326,21 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       { error: "usage" },
     );
   }
-  const against = typeof flags.against === "string" ? resolveAgainst(cwd, outDir, flags.against, routes.length) : undefined;
+  const against = typeof flags.against === "string" ? resolveAgainst(cwd, outDir, flags.against, routes.length + screens.length) : undefined;
   if (against && "error" in against) return usage(against.error, { error: "usage" });
+  // A native app needs the browser only to put screenshots side by side.
+  if (against && shoot) {
+    const found = findBrowserOrRefuse();
+    if ("command" in found) return found;
+    browser = found;
+  }
 
   let server: DevServer | undefined;
   let site: StaticServer | undefined;
   let baseUrl = givenUrl;
-  if (!baseUrl && siteFolderPath) {
+  if (shoot) {
+    // Drawn from the app's code: nothing to serve.
+  } else if (!baseUrl && siteFolderPath) {
     site = deps.serveStatic(siteFolderPath);
     baseUrl = site.url;
   } else if (!baseUrl) {
@@ -308,10 +361,19 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if (typeof flags.out !== "string" && !existsSync(ignore)) {
       writeFileSync(ignore, "# Screenshots of the running app (motif shot). Not committed.\n*\n");
     }
-    captured = await deps.capture({
-      browserPath: browser.path, baseUrl, routes, outDir, audit, states,
-      ...(viewports ? { viewports } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
-    });
+    if (shoot && app) {
+      const sizes = viewports ?? NATIVE_VIEWPORTS;
+      const count = (routes.length + screens.length) * sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1);
+      const timeoutMs = native?.shotTimeLimit?.(count) ?? 240_000 + 3_000 * count;
+      const drawn = await shoot({ root: cwd, app, routes, screens, outDir, viewports: sizes, variants, ...(rtl ? { rtl } : {}), states, audit, timeoutMs });
+      notes.push(...drawn.notes);
+      captured = { routes: drawn.routes, issues: drawn.issues };
+    } else {
+      captured = await deps.capture({
+        browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })),
+        ...(viewports ? { viewports } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
+      });
+    }
   } catch (e) {
     return usage(`Couldn't take screenshots: ${message(e)}`, { error: "capture-failed" });
   } finally {
@@ -324,14 +386,14 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const width = Math.max(...captured.routes.map((r) => r.route.length));
   const lines = [
     shots.length > 0
-      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? "page" : "pages"} (${describeSizes(viewports)}, light and dark${rtl ? `, right to left in ${rtl}` : ""}${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
+      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? (shoot ? "screen" : "page") : shoot ? "screens" : "pages"} (${describeSizes(viewports ?? (shoot ? NATIVE_VIEWPORTS : undefined))}, light and dark${rtl ? `, right to left in ${rtl}` : ""}${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
       : "✗ No screenshots were taken.",
     ...captured.routes.map((r) => routeLine(r, width)),
   ];
   for (const r of captured.routes.filter((r) => r.rtlForced)) {
     notes.push(`${r.route} doesn't switch to right to left by itself for ${rtl}; Motif set dir="rtl" to show it.`);
   }
-  notes.push(...identicalVariantNotes(captured.routes.flatMap((r) => r.shots), WEB_VARIANT_HOW));
+  notes.push(...identicalVariantNotes(captured.routes.flatMap((r) => r.shots), native?.variantHow ?? WEB_VARIANT_HOW));
 
   let findings: ReviewFinding[] = [];
   let auditFile: string | undefined;
@@ -389,7 +451,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     try {
       comparisons = await deps.compare({
-        browserPath: browser.path,
+        browserPath: browser!.path,
         pairs,
         labels: against.kind === "set" ? [against.name === "before" ? "Before" : `Before ("${against.name}")`, "Now"] : ["Mockup", "The app now"],
         measure: against.kind === "set",
@@ -451,6 +513,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         route: r.route,
         status: r.status,
         ...(r.finalUrl ? { finalUrl: r.finalUrl } : {}),
+        ...(r.landedOn ? { landedOn: r.landedOn } : {}),
         ...(r.error ? { error: r.error } : {}),
         ...(r.cropped ? { cropped: true } : {}),
         ...(r.loading ? { loading: r.loading } : {}),

@@ -30,26 +30,40 @@ export const VIEWPORTS: Viewport[] = [
   { name: "mobile", file: "tablet", width: 768, height: 1024, scale: 2, mobile: true },
   { name: "desktop", width: 1440, height: 900, scale: 1, mobile: false },
 ];
+/**
+ * A native app's screens (decision 0007) are drawn at the whole screen of each device, not a browser's visible part:
+ * 360×800, 390×844 and 430×932 phones and a 768×1024 tablet, all at twice the pixels. They are the default.
+ */
+export const NATIVE_VIEWPORTS: Viewport[] = [
+  { name: "mobile", file: "mobile-360", width: 360, height: 800, scale: 2, mobile: true },
+  { name: "mobile", width: 390, height: 844, scale: 2, mobile: true },
+  { name: "mobile", file: "mobile-430", width: 430, height: 932, scale: 2, mobile: true },
+  { name: "mobile", file: "tablet", width: 768, height: 1024, scale: 2, mobile: true },
+];
+/** A native app's desktop size, drawn only when --sizes asks for it. */
+export const NATIVE_DESKTOP: Viewport = { name: "desktop", width: 1440, height: 900, scale: 1, mobile: false };
+
 /** The sizes --sizes accepts: each width, and names for groups of them. */
 const SIZE_NAMES: Record<string, number[]> = { phones: [360, 390, 430], phone: [390], mobile: [390], tablet: [768], desktop: [1440] };
 
-/** --sizes 390,1440 or --sizes phones,desktop: some of the five sizes, for a quick run. */
-export function parseSizes(value: string): Viewport[] | { error: string } {
+/** --sizes 390,1440 or --sizes phones,desktop: some of the sizes in the list (the web's five by default), for a quick run. */
+export function parseSizes(value: string, list: Viewport[] = VIEWPORTS): Viewport[] | { error: string } {
   const widths = new Set<number>();
   for (const part of value.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean)) {
-    const named = SIZE_NAMES[part] ?? VIEWPORTS.filter((v) => String(v.width) === part || v.file === part).map((v) => v.width);
+    const named = SIZE_NAMES[part] ?? list.filter((v) => String(v.width) === part || v.file === part).map((v) => v.width);
     if (named.length === 0) {
-      return { error: `--sizes: "${part}" isn't one of the sizes. Use widths (${VIEWPORTS.map((v) => v.width).join(", ")}) or names (phones, mobile, tablet, desktop), like --sizes 390,1440.` };
+      return { error: `--sizes: "${part}" isn't one of the sizes. Use widths (${list.map((v) => v.width).join(", ")}) or names (phones, mobile, tablet, desktop), like --sizes 390,1440.` };
     }
     for (const w of named) widths.add(w);
   }
   if (widths.size === 0) return { error: "--sizes needs at least one size, like --sizes 390,1440." };
-  return VIEWPORTS.filter((v) => widths.has(v.width));
+  return list.filter((v) => widths.has(v.width));
 }
 
-/** How a run's sizes read in a sentence: all five, or their widths. */
+/** How a run's sizes read in a sentence: all five, the four native ones, or their widths. */
 export function describeSizes(viewports: Viewport[] = VIEWPORTS): string {
   if (viewports.length === VIEWPORTS.length) return "three phone sizes, a tablet and a desktop";
+  if (viewports.length === NATIVE_VIEWPORTS.length && viewports.every((v, i) => v === NATIVE_VIEWPORTS[i])) return "three phone sizes and a tablet";
   const widths = viewports.map((v) => String(v.width));
   return `${widths.length > 1 ? `${widths.slice(0, -1).join(", ")} and ${widths.at(-1)}` : widths[0]} px wide`;
 }
@@ -81,6 +95,8 @@ export function screenOf(png: Uint8Array): Screen | undefined {
 export interface StateScript {
   name: string;
   script: string;
+  /** The script's absolute path (a native app's state is a file its tests import). */
+  file?: string;
 }
 
 /** The script as an async function in the page; one still running after timeoutMs is stopped and reported. */
@@ -107,6 +123,8 @@ export interface RouteResult {
   auditError?: string;
   /** Set when the page didn't turn right to left by itself in the --rtl language, so Motif set dir="rtl" on <html>. */
   rtlForced?: boolean;
+  /** A native app's screen that redirected (to a sign-in screen, say): the route it was drawn at. */
+  landedOn?: string;
 }
 
 export interface CaptureOptions {

@@ -8,5 +8,11 @@
   "settingsTitle": "Settings",
   "settingsNotifications": "Notifications",
   "settingsLanguage": "Language",
-  "settingsLanguageValue": "English"
+  "settingsLanguageValue": "English",
+  "homeOpenItems": "Your items",
+  "itemsTitle": "Items",
+  "itemsEmpty": "Nothing to show",
+  "signInTitle": "Sign in",
+  "signInBody": "Sign in to see your items.",
+  "signInButton": "Continue"
 }

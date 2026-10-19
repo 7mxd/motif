@@ -8,5 +8,11 @@
   "settingsTitle": "الإعدادات",
   "settingsNotifications": "الإشعارات",
   "settingsLanguage": "اللغة",
-  "settingsLanguageValue": "العربية"
+  "settingsLanguageValue": "العربية",
+  "homeOpenItems": "أصنافك",
+  "itemsTitle": "الأصناف",
+  "itemsEmpty": "لا شيء لعرضه",
+  "signInTitle": "تسجيل الدخول",
+  "signInBody": "سجّل الدخول لترى أصنافك.",
+  "signInButton": "متابعة"
 }

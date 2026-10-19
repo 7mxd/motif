@@ -56,6 +56,7 @@ Shot options:
   --variant <id|all>  Also capture one design variant (index+men.mobile.png), or all of them; --audit alone covers every variant
   --sizes <list>    Only some sizes, for a quick run: widths (360, 390, 430, 768, 1440) or phones, tablet, desktop
   --rtl [<lang>]    Also capture each page right to left (index.mobile.rtl.png), in this language (default: ar)
+  --screen <Widget> Flutter: also capture this widget, opened on the app's navigator (sign-in-screen.mobile.png); repeat for more
 
 Tokens options:
   --stack preview   Write only the CSS mockups use (design/previews/motif.css)
@@ -137,6 +138,7 @@ export async function main(argv: string[]): Promise<number> {
         save: { type: "string" },
         against: { type: "string" },
         state: { type: "string", multiple: true },
+        screen: { type: "string", multiple: true },
         sizes: { type: "string" },
         tokens: { type: "string" },
         agent: { type: "string" },
@@ -191,6 +193,7 @@ export async function main(argv: string[]): Promise<number> {
         save: values.save,
         against: values.against,
         state: values.state,
+        screen: values.screen,
         sizes: values.sizes,
         rtl,
         tokens: values.tokens,
