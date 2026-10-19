@@ -48,7 +48,11 @@ export function shown(e: AgentEnv, path: string): string {
 }
 
 export const codexHome = (e: AgentEnv) => e.vars.CODEX_HOME || join(e.home, ".codex");
-/** CLAUDE_CONFIG_DIR as Claude Code reads it, a relative one from the home folder (where Motif runs claude); undefined when unset. */
+/**
+ * CLAUDE_CONFIG_DIR as Claude Code reads it, a relative one from the home folder (where Motif runs claude); undefined when
+ * unset. Only the environment's: set in ~/.claude/settings.json's env instead, it doesn't move Claude Code's ~/.claude.json
+ * (checked with Claude Code 2.1.301), so it doesn't move Motif's reading of it either.
+ */
 const claudeConfigDir = (e: AgentEnv) => {
   const v = e.vars.CLAUDE_CONFIG_DIR;
   return v ? (isAbsolute(v) ? v : resolve(e.home, v)) : undefined;
