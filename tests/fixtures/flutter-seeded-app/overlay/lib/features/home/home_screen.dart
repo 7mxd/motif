@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../data/catalogue.dart';
 import '../../design/motif_theme.dart';
@@ -25,7 +26,9 @@ class HomeScreen extends ConsumerWidget {
         children: [
           Text(
             l10n.homeGreeting,
-            style: MotifText.title.copyWith(color: colors.textPrimary),
+            style: GoogleFonts.lora(
+              textStyle: MotifText.title.copyWith(color: colors.textPrimary),
+            ),
           ),
           const SizedBox(height: MotifSpace.s2),
           Text(

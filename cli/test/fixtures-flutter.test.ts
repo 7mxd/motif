@@ -123,8 +123,9 @@ describe("the Flutter contract app (Maktaba)", () => {
 });
 
 describe("the Flutter seeded app's list of planted problems", () => {
-  test("has the brief's problems: at least 8 exact ones and 4 that need judgement", () => {
-    expect(issues.filter((i) => i.kind === "exact").length).toBeGreaterThanOrEqual(8);
+  test("has the brief's problems: at least 10 exact ones (so a review that finds 9 still makes 90%) and 4 that need judgement", () => {
+    expect(issues.filter((i) => i.kind === "exact").length).toBeGreaterThanOrEqual(10);
+    expect(new Set(byDetector("check").map((i) => i.rule))).toEqual(new Set(["raw-color", "off-scale", "raw-motion", "raw-font", "generated-edited"]));
     expect(issues.filter((i) => i.kind === "judgement").length).toBeGreaterThanOrEqual(4);
     const anchors = issues.map((i) => i.anchor ?? "");
     for (const a of ["Color(0xFF", "EdgeInsets.all(18)", "BorderRadius.circular(12)", "fontSize: 15", "Curves.easeIn", "EdgeInsets.only(left:"]) {
@@ -200,10 +201,13 @@ describe("the assembled Flutter seeded app", () => {
     }
   });
 
-  test("nothing else is wrong on purpose: the small button and the refresh button work, and the generated theme is untouched", () => {
+  test("nothing else is wrong on purpose: the small button and the refresh button work, and the generated theme's one hand edit is radius md", () => {
     expect(at("lib/features/home/home_screen.dart")).toContain("tooltip: l10n.homeSeeAll,");
     expect(at("lib/features/books/books_screen.dart")).toContain("onPressed: () => ref.invalidate(booksProvider),");
-    expect(at("lib/design/motif_theme.dart")).toBe(read("lib/design/motif_theme.dart"));
+    const seeded = at("lib/design/motif_theme.dart").split("\n");
+    const original = read("lib/design/motif_theme.dart").split("\n");
+    expect(seeded.length).toBe(original.length);
+    expect(seeded.flatMap((line, i) => (line === original[i] ? [] : [[original[i], line]]))).toEqual([["  static const double md = 6;", "  static const double md = 8;"]]);
   });
 });
 
