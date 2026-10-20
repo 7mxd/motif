@@ -38,10 +38,10 @@ export const FLUTTER_IGNORES = [
 ];
 
 /** The defaults for Dart: as for the web, but a build/ folder is ignored only at the app's top (FLUTTER_IGNORES). */
+const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/");
+
 /** An Expo app's native folders, build and export output, and tests: never the team's own code. */
 export const RN_IGNORES = ["/ios/", "/android/", "/.expo/", "/dist/", "/web-build/", "/.motif/", "expo-env.d.ts", "*.test.*", "__tests__/"];
-
-const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/");
 
 export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_LENGTH = 3000;
