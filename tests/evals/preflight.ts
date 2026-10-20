@@ -2,7 +2,7 @@
 // Node.js for the apps, a browser for the cases that need one, and Flutter for the Flutter cases. Nothing is downloaded or installed for the developer.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { FLUTTER_INSTALL } from "../../cli/src/stacks/flutter/doctor";
+import { FLUTTER_INSTALL, FLUTTER_MIN, olderThanFlutterMin } from "../../cli/src/stacks/flutter/doctor";
 import { CASES, isFlutter, needsBrowser as caseNeedsBrowser } from "./cases";
 import { resolveClaude, sessionEnv } from "./claude";
 import { tail, type Run } from "./tools";
@@ -24,9 +24,6 @@ export interface PreflightDeps {
   claudeOverride?: string;
 }
 
-/** The oldest Flutter whose theme API Motif's generated code uses (as motif doctor says). */
-const FLUTTER_MIN = [3, 27] as const;
-
 /** Flutter's version from flutter --version --machine (an "upgrade available" banner may come first), or null. */
 async function flutterVersion(d: PreflightDeps, cwd: string): Promise<string | null> {
   const exe = d.which("flutter");
@@ -44,12 +41,11 @@ async function flutterVersion(d: PreflightDeps, cwd: string): Promise<string | n
 /** Why the Flutter cases can't run here, naming the cases that can; nothing when Flutter 3.27 or later is on the PATH. */
 async function flutterProblem(d: PreflightDeps, cwd: string): Promise<string | null> {
   const version = await flutterVersion(d, cwd);
-  const [major = 0, minor = 0] = (version ?? "").split(".").map((n) => parseInt(n, 10) || 0);
-  if (version && (major > FLUTTER_MIN[0] || (major === FLUTTER_MIN[0] && minor >= FLUTTER_MIN[1]))) return null;
+  if (version && !olderThanFlutterMin(version)) return null;
   const flutterCases = CASES.filter(isFlutter).map((c) => c.id);
   const others = CASES.filter((c) => !isFlutter(c)).map((c) => c.id);
   const found = version ? `This is Flutter ${version}; run flutter upgrade, or ${FLUTTER_INSTALL}` : `Flutter wasn't found on the PATH (or didn't say its version): ${FLUTTER_INSTALL}`;
-  return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN.join(".")} or later. ${found}, then run this again. Or run the other cases without it: --cases ${others.join(",")}`;
+  return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN} or later. ${found}, then run this again. Or run the other cases without it: --cases ${others.join(",")}`;
 }
 
 export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false): Promise<Ready | { error: string }> {

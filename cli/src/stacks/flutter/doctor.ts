@@ -1,7 +1,9 @@
 import type { DoctorDeps, DoctorItem } from "../../commands/doctor";
 
-/** The oldest Flutter whose theme API Motif's generated code uses. */
+/** The oldest Flutter whose theme API Motif's generated code uses (motif doctor and the evals' preflight). */
 const MIN: [number, number, number] = [3, 27, 0];
+/** The oldest Flutter, as people write it. */
+export const FLUTTER_MIN = "3.27";
 const LABEL = "Flutter SDK";
 /** Where to get Flutter, as the end of a sentence. */
 export const FLUTTER_INSTALL = "install it from https://docs.flutter.dev/get-started/install";
@@ -11,7 +13,8 @@ function parts(v: string): [number, number, number] {
   return m ? [Number(m[1]), Number(m[2] ?? 0), Number(m[3] ?? 0)] : [0, 0, 0];
 }
 
-function olderThanMin(v: string): boolean {
+/** True when a Flutter version ("3.24.5") is older than the one Motif's theme code needs. */
+export function olderThanFlutterMin(v: string): boolean {
   const p = parts(v);
   for (let i = 0; i < 3; i++) if (p[i] !== MIN[i]) return p[i]! < MIN[i]!;
   return false;
@@ -42,8 +45,8 @@ export function flutterDoctor(deps: DoctorDeps): DoctorItem[] {
   if (!version) {
     return [{ id: "flutter", status: "optional", label: LABEL, detail: "Found Flutter, but couldn't read its version. Run flutter --version to check it works." }];
   }
-  if (olderThanMin(version)) {
-    return [{ id: "flutter", status: "needed", label: LABEL, detail: `Flutter ${version} is older than 3.27, which Motif's theme code needs. Run flutter upgrade.` }];
+  if (olderThanFlutterMin(version)) {
+    return [{ id: "flutter", status: "needed", label: LABEL, detail: `Flutter ${version} is older than ${FLUTTER_MIN}, which Motif's theme code needs. Run flutter upgrade.` }];
   }
   const dart = typeof info.dartSdkVersion === "string" ? info.dartSdkVersion.trim().split(/\s+/)[0] : "";
   return [{ id: "flutter", status: "ok", label: LABEL, detail: dart ? `Flutter ${version} (Dart ${dart}).` : `Flutter ${version}.` }];

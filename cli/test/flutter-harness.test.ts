@@ -14,6 +14,8 @@ import {
   sdkFonts,
   type FetchLike,
 } from "../src/stacks/flutter/harness";
+import { FLUTTER_MIN, olderThanFlutterMin } from "../src/stacks/flutter/doctor";
+import { fontAssets } from "../src/stacks/flutter/project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -322,4 +324,23 @@ await runHarness({ appDir: ${JSON.stringify(app)}, outDir: ${JSON.stringify(join
     expect(existsSync(join(app, "started"))).toBe(true);
     expect(readdirSync(join(app, ".motif", "shot"))).toEqual([]);
   }, 30_000);
+});
+
+describe("final review: one pubspec font reader and one Flutter version floor (Minor #9)", () => {
+  test("the harness's fonts are the families motif extract reads, with the same files", () => {
+    const app = tempDir("motif-app-");
+    mkdirSync(join(app, "fonts"), { recursive: true });
+    for (const f of ["Brand.ttf", "Brand-Bold.ttf", "Naskh.ttf"]) writeFileSync(join(app, "fonts", f), "x");
+    const pubspec = `name: fake_app\nflutter:\n  uses-material-design: true\n  fonts:\n    - family: "Brand" # the brand face\n      fonts:\n        - asset: 'fonts/Brand.ttf'\n        - asset: fonts/Brand-Bold.ttf\n          weight: 700\n    - family: Naskh\n      fonts:\n        - asset: fonts/Naskh.ttf\n`;
+    expect(fontAssets(pubspec).map((f) => [f.family, f.files.map((x) => x.asset)])).toEqual([["Brand", ["fonts/Brand.ttf", "fonts/Brand-Bold.ttf"]], ["Naskh", ["fonts/Naskh.ttf"]]]);
+    expect(bundledFonts(app, pubspec).fonts).toEqual([
+      { family: "Brand", files: [join(app, "fonts", "Brand.ttf"), join(app, "fonts", "Brand-Bold.ttf")] },
+      { family: "Naskh", files: [join(app, "fonts", "Naskh.ttf")] },
+    ]);
+  });
+
+  test("motif doctor and the evals' preflight share the floor: 3.27", () => {
+    expect(FLUTTER_MIN).toBe("3.27");
+    expect(["3.26.9", "3.27.0", "3.44.8", "4.0.0", "3.100.0", "2.99.0"].map(olderThanFlutterMin)).toEqual([true, false, false, false, false, true]);
+  });
 });

@@ -10,7 +10,7 @@ import auditSource from "./harness/motif_audit.dart" with { type: "text" };
 import httpSource from "./harness/motif_http.dart" with { type: "text" };
 import harnessSource from "./harness/motif_shot_test.dart" with { type: "text" };
 import { defaultHooks, HOOKS_FILE, hooksSource } from "./hooks";
-import { packageName } from "./project";
+import { fontAssets, packageName } from "./project";
 import { familyScripts } from "./scripts";
 
 export const HARNESS_TEST = ".motif/shot/motif_shot_test.dart";
@@ -125,44 +125,13 @@ export function withNoProxy(env: Record<string, string | undefined>): Record<str
   return { ...env, NO_PROXY: list, no_proxy: list };
 }
 
-/** The fonts a pubspec.yaml bundles: each family with its asset paths, as written. */
-export function pubspecFontAssets(text: string): FontEntry[] {
-  const out: FontEntry[] = [];
-  let inFlutter = false;
-  let inFonts = false;
-  let fontsIndent = 0;
-  for (const line of text.split(/\r?\n/)) {
-    if (/^\s*(#.*)?$/.test(line)) continue;
-    const indent = line.length - line.trimStart().length;
-    if (indent === 0) {
-      inFlutter = /^flutter:\s*(#.*)?$/.test(line);
-      inFonts = false;
-      continue;
-    }
-    if (!inFlutter) continue;
-    const key = line.match(/^(\s+)fonts:\s*(#.*)?$/);
-    if (key && !inFonts) {
-      inFonts = true;
-      fontsIndent = key[1]!.length;
-      continue;
-    }
-    if (inFonts && indent <= fontsIndent && !line.trimStart().startsWith("-")) inFonts = false;
-    if (!inFonts) continue;
-    const family = line.match(/^\s*-?\s*family:\s*["']?([^"'#]+?)["']?\s*(#.*)?$/)?.[1];
-    if (family) out.push({ family: family.trim(), files: [] });
-    const asset = line.match(/^\s*-?\s*asset:\s*["']?([^"'#]+?)["']?\s*(#.*)?$/)?.[1];
-    if (asset && out.length > 0) out[out.length - 1]!.files.push(asset.trim());
-  }
-  return out;
-}
-
 /** The app's pubspec fonts as absolute paths; a listed file that's missing is left out with a note. */
 export function bundledFonts(appDir: string, pubspec: string): FontsFound {
   const notes: string[] = [];
   const fonts: FontEntry[] = [];
-  for (const font of pubspecFontAssets(pubspec)) {
+  for (const font of fontAssets(pubspec)) {
     const files: string[] = [];
-    for (const asset of font.files) {
+    for (const { asset } of font.files) {
       const path = resolve(appDir, asset);
       if (existsSync(path)) files.push(path);
       else notes.push(`pubspec.yaml lists the font file ${asset} (${font.family}), which doesn't exist, so it isn't in the screenshots.`);
