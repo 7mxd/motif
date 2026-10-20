@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { realpathSync } from "node:fs";
+import { join, posix, win32 } from "node:path";
 import type { DoctorDeps, DoctorItem } from "../../commands/doctor";
 import type { AppInfo } from "../../detect/stacks";
 import { diskFiles, type DoctorFiles } from "../../project/disk";
@@ -16,13 +17,17 @@ function bundledJdk(deps: DoctorDeps): string {
   return "/opt/android-studio/jbr";
 }
 
-/** The java programs to try, best first: the PATH's, JAVA_HOME's, Android Studio's. */
+/**
+ * The java programs to try, best first, as gradlew picks: JAVA_HOME's, then the PATH's, then Android Studio's (which
+ * gradlew doesn't know, but which most Android developers have).
+ */
 function javaCandidates(deps: DoctorDeps): string[] {
   const exe = deps.platform === "win32" ? "java.exe" : "java";
   const onPath = deps.which("java");
-  const out: string[] = onPath ? [onPath] : [];
+  const out: string[] = [];
   const home = deps.vars?.JAVA_HOME;
   if (home) out.push(at(deps, home, "bin", exe));
+  if (onPath) out.push(onPath);
   out.push(at(deps, bundledJdk(deps), "bin", exe));
   return out.filter((p, i) => out.indexOf(p) === i && (p === onPath || files(deps).exists(p)));
 }
@@ -37,19 +42,65 @@ function javaVersion(text: string): { version: string; major: number } | null {
   return { version, major: nums[0] === 1 ? (nums[1] ?? 1) : nums[0]! };
 }
 
-/** The first java that runs, with what it said; without a way to run programs, the first one found. */
-function runnableJava(deps: DoctorDeps): { path: string; output: string } | null {
-  for (const path of javaCandidates(deps)) {
-    if (!deps.run) return { path, output: "" };
-    const r = deps.run([path, "-version"]);
-    if (r.code === 0) return { path, output: `${r.stderr ?? ""}\n${r.stdout}` };
-  }
-  return null;
+interface FoundJava {
+  path: string;
+  /** What java -version printed; empty without a way to run programs. */
+  output: string;
+  major: number | null;
 }
 
-/** The java program Motif would use: on the PATH, else JAVA_HOME's, else Android Studio's; null when there is none. */
+/**
+ * The java Motif uses for Gradle: the first candidate that runs and is JDK 17 or newer (chosen); failing that, the
+ * first that runs at all (first), for doctor to say what's wrong with it. Without a way to run programs, the first one
+ * found.
+ */
+function chooseJava(deps: DoctorDeps): { chosen: FoundJava | null; first: FoundJava | null } {
+  let first: FoundJava | null = null;
+  for (const path of javaCandidates(deps)) {
+    if (!deps.run) return { chosen: null, first: { path, output: "", major: null } };
+    const r = deps.run([path, "-version"]);
+    if (r.code !== 0) continue;
+    const output = `${r.stderr ?? ""}\n${r.stdout}`;
+    const found = { path, output, major: javaVersion(output)?.major ?? null };
+    first ??= found;
+    if (found.major !== null && found.major >= JDK_MIN) return { chosen: found, first };
+  }
+  return { chosen: null, first };
+}
+
+/**
+ * The java program Motif would use: JAVA_HOME's, the PATH's or Android Studio's, the first that is JDK 17 or newer,
+ * else the first that runs; null when there is none.
+ */
 export function findJava(deps: DoctorDeps): string | null {
-  return runnableJava(deps)?.path ?? null;
+  const { chosen, first } = chooseJava(deps);
+  return chosen?.path ?? first?.path ?? null;
+}
+
+/**
+ * The JDK a Gradle run uses (its java and its home, for JAVA_HOME), or why there is none that can build Android: doctor's
+ * own words. The home is what the JVM reports as java.home, so a launcher such as /usr/bin/java or Oracle's javapath
+ * gives the real JDK folder.
+ */
+export function gradleJava(deps: DoctorDeps): { java: string; javaHome: string } | { problem: string } {
+  const { chosen } = chooseJava(deps);
+  if (!chosen) return { problem: jdkItem(deps).detail };
+  const r = deps.run?.([chosen.path, "-XshowSettings:properties", "-version"]);
+  const said = r && r.code === 0 ? `${r.stderr ?? ""}\n${r.stdout}` : "";
+  const reported = /^\s*java\.home = (.+?)\s*$/m.exec(said)?.[1];
+  return { java: chosen.path, javaHome: reported ?? realHome(chosen.path, deps.platform) };
+}
+
+/** <jdk>/bin/java's <jdk>, with links followed (paths in the given system's form). */
+function realHome(java: string, platform: NodeJS.Platform): string {
+  let path = java;
+  try {
+    path = realpathSync(java);
+  } catch {
+    // Not on this disk (a test's fake): the path as given.
+  }
+  const { dirname } = platform === "win32" ? win32 : posix;
+  return dirname(dirname(path));
 }
 
 /** An escaped Java properties value (C\:\\Users\\Dev\\Sdk) as the path it means. */
@@ -96,7 +147,8 @@ function platformsOf(sdk: string, deps: DoctorDeps): number[] {
 
 function jdkItem(deps: DoctorDeps): DoctorItem {
   const label = "JDK";
-  const found = runnableJava(deps);
+  const { chosen, first } = chooseJava(deps);
+  const found = chosen ?? first;
   if (!found) {
     return {
       id: "jdk",

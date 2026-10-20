@@ -8,6 +8,36 @@
 
 def motifModuleDir = initscript.sourceFile.parentFile.parentFile.parentFile.canonicalFile
 
+// Robolectric downloads its Android jar itself, from Maven Central, outside Gradle's repositories and proxy settings.
+// What the developer gave Gradle is passed on to it: robolectric.dependency.* and robolectric.offline system properties
+// (systemProp.… in gradle.properties: a mirror, a proxy, a local folder); else Gradle's own HTTPS proxy
+// (systemProp.https.proxyHost and proxyPort); else the HTTPS_PROXY environment variable.
+def robolectricDownload = [:]
+System.properties.each { key, value ->
+    def name = key.toString()
+    if (name.startsWith("robolectric.dependency.") || name == "robolectric.offline") robolectricDownload[name] = value.toString()
+}
+if (!robolectricDownload["robolectric.dependency.proxy.host"]) {
+    def host = System.getProperty("https.proxyHost")
+    def port = System.getProperty("https.proxyPort") ?: "443"
+    if (!host) {
+        def proxy = System.getenv("HTTPS_PROXY") ?: System.getenv("https_proxy")
+        if (proxy) {
+            try {
+                def uri = new URI(proxy.contains("://") ? proxy : "http://" + proxy)
+                host = uri.host
+                port = uri.port > 0 ? uri.port.toString() : (uri.scheme == "https" ? "443" : "80")
+            } catch (URISyntaxException ignored) {
+                // Not a URL: Robolectric goes direct.
+            }
+        }
+    }
+    if (host) {
+        robolectricDownload["robolectric.dependency.proxy.host"] = host
+        robolectricDownload["robolectric.dependency.proxy.port"] = port
+    }
+}
+
 allprojects { project ->
     if (project.projectDir.canonicalFile != motifModuleDir) return
     project.pluginManager.withPlugin("com.android.application") {
@@ -31,6 +61,7 @@ allprojects { project ->
             test.systemProperty "motif.shot.config", new File(shotDir, "config.json").absolutePath
             test.systemProperty "robolectric.graphicsMode", "NATIVE"
             test.systemProperty "robolectric.pixelCopyRenderMode", "hardware"
+            test.systemProperties robolectricDownload
             // Every run draws again: the options change while the sources don't.
             test.outputs.upToDateWhen { false }
             test.outputs.cacheIf { false }

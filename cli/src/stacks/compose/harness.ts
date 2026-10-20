@@ -108,16 +108,45 @@ export function removeHarness(moduleDir: string): void {
 }
 
 /**
- * The Gradle run, from the project's root: its wrapper's jar started with java directly, not gradlew.bat, which breaks
- * on a path with "&" in it (it sets DIRNAME=%~dp0 unquoted). Every path in it is relative to the root.
+ * JVM options as gradlew passes them from JAVA_OPTS and GRADLE_OPTS: split at spaces, with "…" or '…' keeping a value
+ * that has spaces in one piece (-Dname="a b" is one option; the quotes themselves are dropped).
  */
-export function gradleCommand(java: string, projectDir: string, moduleDir: string): string[] {
+export function splitJvmOptions(text: string | undefined): string[] {
+  const args: string[] = [];
+  let current: string | null = null;
+  let quote: string | null = null;
+  for (const c of text ?? "") {
+    if (quote) {
+      if (c === quote) quote = null;
+      else current += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+      current ??= "";
+    } else if (/\s/.test(c)) {
+      if (current !== null) args.push(current);
+      current = null;
+    } else {
+      current = (current ?? "") + c;
+    }
+  }
+  if (current !== null) args.push(current);
+  return args;
+}
+
+/**
+ * The Gradle run, from the project's root: its wrapper's jar started with java directly, not gradlew.bat, which breaks
+ * on a path with "&" in it (it sets DIRNAME=%~dp0 unquoted). The client JVM gets what gradlew gives it: -Xmx64m -Xms64m,
+ * then JAVA_OPTS and GRADLE_OPTS from the environment. Every path in it is relative to the root.
+ */
+export function gradleCommand(java: string, projectDir: string, moduleDir: string, env: Record<string, string | undefined> = process.env): string[] {
   const rel = relative(projectDir, moduleDir).split("\\").join("/");
   const module = rel === "" ? "" : `:${rel.split("/").join(":")}`;
   return [
     java,
     "-Xmx64m",
     "-Xms64m",
+    ...splitJvmOptions(env.JAVA_OPTS),
+    ...splitJvmOptions(env.GRADLE_OPTS),
     "-Dorg.gradle.appname=gradlew",
     "-classpath",
     "gradle/wrapper/gradle-wrapper.jar",
@@ -131,16 +160,32 @@ export function gradleCommand(java: string, projectDir: string, moduleDir: strin
   ];
 }
 
+/**
+ * What Gradle's plain console shows when Robolectric can't download its Android jar (decision 0008, captured with the
+ * download pointed at a closed port): the test class fails in Robolectric's own fetch, before the harness runs.
+ *   MotifShotTest > classMethod FAILED
+ *       java.lang.AssertionError at MavenArtifactFetcher.java:130
+ *           Caused by: java.util.concurrent.ExecutionException at AbstractFuture.java:168
+ *               Caused by: java.net.ConnectException at null:-2
+ * The test report has the message: "Failed to fetch maven artifact org.robolectric:android-all-instrumented:…".
+ * Task 9 turns it into the offline message.
+ */
+export const ROBOLECTRIC_DOWNLOAD_FAILED = /AssertionError at MavenArtifactFetcher\.java|Failed to fetch maven artifact/;
+
 export interface HarnessRun {
   /** The Gradle project's root (where gradle/wrapper/ is). */
   projectDir: string;
   /** The app module's folder (the one with com.android.application). */
   moduleDir: string;
+  /** The JDK from gradleJava (doctor): its java, and its home for JAVA_HOME. */
   java: string;
+  javaHome: string;
   /** The Android SDK, for a project with no local.properties (given to Gradle as ANDROID_HOME). */
   sdk?: string;
   config: HarnessConfig;
   timeoutMs: number;
+  /** The environment Gradle starts from; process.env when not given. */
+  env?: Record<string, string | undefined>;
 }
 
 export interface HarnessResult {
@@ -149,6 +194,35 @@ export interface HarnessResult {
   output: string;
   /** result.json as the harness wrote it; null when it wrote none, or one that can't be read. */
   result: Record<string, unknown> | null;
+}
+
+/** Reads a stream into text as it arrives (the last 50,000 characters); cancel() stops reading. */
+function collect(stream: ReadableStream<Uint8Array>): { text: () => string; done: Promise<void>; cancel: () => void } {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  const done = (async () => {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text = (text + decoder.decode(value, { stream: true })).slice(-50_000);
+      }
+    } catch {
+      // Cancelled.
+    }
+  })();
+  return { text: () => text, done, cancel: () => void reader.cancel().catch(() => {}) };
+}
+
+/** The promise's value, or null if it takes longer than ms. */
+async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: Timer | undefined;
+  try {
+    return await Promise.race([promise, new Promise<null>((r) => (timer = setTimeout(() => r(null), ms)))]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Runs the harness and returns what Gradle said; the files it wrote are always removed. */
@@ -163,11 +237,12 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
   let timer: Timer | undefined;
   try {
     writeHarness(run.moduleDir, run.config);
-    const env: Record<string, string | undefined> = { ...process.env };
-    // Gradle and the Android plugin look for the JDK and the SDK there when the project doesn't say.
-    env.JAVA_HOME ||= dirname(dirname(run.java));
+    const base = run.env ?? process.env;
+    // The JDK the client runs on is the one the daemon and the Android plugin use too; the SDK goes in when the project
+    // doesn't say (no local.properties).
+    const env: Record<string, string | undefined> = { ...base, JAVA_HOME: run.javaHome };
     if (run.sdk) env.ANDROID_HOME ||= run.sdk;
-    const proc = Bun.spawn(gradleCommand(run.java, run.projectDir, run.moduleDir), {
+    const proc = Bun.spawn(gradleCommand(run.java, run.projectDir, run.moduleDir, base), {
       cwd: run.projectDir,
       env,
       stdin: "ignore",
@@ -181,8 +256,8 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
       killTree(proc.pid, true);
       removeHarness(run.moduleDir);
     });
-    const out = new Response(proc.stdout).text();
-    const err = new Response(proc.stderr).text();
+    const out = collect(proc.stdout);
+    const err = collect(proc.stderr);
     const timedOut = await new Promise<boolean>((done) => {
       timer = setTimeout(() => done(true), run.timeoutMs);
       void proc.exited.then(() => done(false));
@@ -190,8 +265,11 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
     // A stopped client makes the Gradle daemon cancel the build (and its test JVM); the daemon itself stays for the
     // next run unless this client started it.
     if (timedOut) killTree(proc.pid, true);
-    const grace = <T>(p: Promise<T>) => Promise.race([p, Bun.sleep(GRACE_MS).then(() => null)]);
-    const code = await grace(proc.exited);
+    const code = await within(proc.exited, GRACE_MS);
+    // A process left holding the pipes (one the kill missed) mustn't keep the run waiting: what arrived is kept.
+    await within(Promise.all([out.done, err.done]), GRACE_MS);
+    out.cancel();
+    err.cancel();
     let result: Record<string, unknown> | null = null;
     try {
       const parsed = JSON.parse(readFileSync(resultPath, "utf8"));
@@ -199,7 +277,7 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
     } catch {
       // None written, or cut short: Task 9 tells these apart.
     }
-    return { code, timedOut, output: `${await out}\n${await err}`, result };
+    return { code, timedOut, output: `${out.text()}\n${err.text()}`, result };
   } finally {
     clearTimeout(timer);
     cancelExitHook();
