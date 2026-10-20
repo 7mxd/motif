@@ -56,7 +56,7 @@ Wrap each `@Preview` in `MotifTheme { … }` too, so previews and Motif's screen
 
 Once `MainActivity` and every preview use `MotifTheme`, nothing uses the template's `ui/theme/` folder (`Color.kt`, `Theme.kt`, `Type.kt`), and it can be deleted. Until then `motif check` reports its colours, with a line saying the file is the app's own palette. Keep `res/values/themes.xml`: it is the window's theme the manifest names, not Compose's.
 
-Material composables (buttons, fields, cards, app bars, dialogs, the navigation bar) then take their colours, type and corners from the theme. `MotifTheme` fills every colour of Material's scheme from the guide's roles, so no Material component shows Material's own purple:
+Material composables (buttons, fields, cards, app bars, dialogs, the navigation bar) then take their colours, type and corners from the theme. `MotifTheme` fills every colour of Material 3 1.3's scheme from the guide's roles (the fixed colours later versions add aren't filled), so no Material component shows Material's own purple:
 
 | Material's colours | The guide's role |
 |---|---|
@@ -75,7 +75,7 @@ Material composables (buttons, fields, cards, app bars, dialogs, the navigation 
 | `outline`, `outlineVariant` | `border` |
 | `scrim` | black (behind dialogs and sheets) |
 
-So a `FloatingActionButton` is `actionPrimary` with `onActionPrimary` on it, and the navigation bar's indicator, a `FilledTonalButton` and a selected `FilterChip` are `actionSecondary` with `onActionSecondary`. A role the guide doesn't have leaves its colours at Material's defaults. The guide's other roles (`focus`, `success`, `warning`, `info`) are only in `MotifTheme.colors`. Corners: Material's `small` shapes use `MotifRadius.sm`, `medium` `MotifRadius.md`, `large` and `extraLarge` `MotifRadius.lg`.
+So a `FloatingActionButton` is `actionPrimary` with `onActionPrimary` on it, and the navigation bar's indicator, a `FilledTonalButton` and a selected `FilterChip` are `actionSecondary` with `onActionSecondary`. A role the guide doesn't have leaves its colours at Material's defaults. The guide's other roles (`focus`, `success`, `warning`, `info`) are only in `MotifTheme.colors`. Corners: Material's `extraSmall` and `small` shapes use `MotifRadius.sm`, `medium` `MotifRadius.md`, `large` and `extraLarge` `MotifRadius.lg`.
 
 ## Reading theme values in composables
 
@@ -127,7 +127,7 @@ Such a role is read with the locale, so it can only be read inside a composable:
 
 `MotifType` loads the theme's fonts for you:
 
-- **Google Fonts** (the usual case): through Compose's downloadable fonts, which need the `androidx.compose.ui:ui-text-google-fonts` library. When the app module doesn't depend on it, `motif tokens` prints the exact lines to add (to `gradle/libs.versions.toml` when the app has a version catalogue, and to `app/build.gradle.kts`; the Compose BOM sets the version), and writes a file that compiles in the meantime, with the system font in their place. Add them, sync, and run `motif tokens` again. Google Play services downloads each font the first time the app shows it; until it arrives, and on a phone without Play services, the system font stands in.
+- **Google Fonts** (the usual case): through Compose's downloadable fonts, which need the `androidx.compose.ui:ui-text-google-fonts` library. When the app module doesn't depend on it, `motif tokens` prints the exact lines to add (to `gradle/libs.versions.toml` when the app has a version catalogue, and to `app/build.gradle.kts`; the Compose BOM sets the version), and writes a file that compiles in the meantime, with the system font in their place. Don't edit the build files yourself: show the developer the exact lines (for `gradle/libs.versions.toml` and the module's `dependencies`) and wait for their go-ahead, or ask them to add them and sync in Android Studio. Once they're added and synced, run `motif tokens` again. Google Play services downloads each font the first time the app shows it; until it arrives, and on a phone without Play services, the system font stands in.
 - **The certificates:** downloadable fonts check Google Play services' certificates, so `motif tokens` writes them to `res/values/motif_font_certs.xml`. An app that already has its own (a `font_certs.xml` defining `com_google_android_gms_fonts_certs`) gets none from Motif. If the app adds its own later, `motif tokens` says to delete `motif_font_certs.xml`: Android won't build an app that defines them twice.
 - **Project fonts** (files in the guide's font files): `motif tokens` copies `.ttf` and `.otf` files into the module's `res/font` under resource names (lower case, with underscores), and the theme loads them as `R.font.<name>`. Android can't use WOFF2; the guide needs a `.ttf` or `.otf` of the family.
 - **An Arabic companion** loads the same way as the first font, and is used by locale as above.

@@ -73,7 +73,7 @@ fun AppButton(
     val colors = MotifTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
-    // A spinner never stops, so with Remove animations on the button shows its label instead.
+    // With Remove animations on, a spinner freezes on one frame and reads as stuck, so the button shows its label.
     val spinner = loading && !MotifMotion.reduced()
     Button(
         onClick = onClick,
@@ -85,7 +85,7 @@ fun AppButton(
             containerColor = colors.actionPrimary,
             contentColor = colors.onActionPrimary,
             disabledContainerColor = if (loading) colors.actionPrimary else colors.actionSecondary,
-            disabledContentColor = if (loading) colors.onActionPrimary else colors.textSecondary,
+            disabledContentColor = if (loading) colors.onActionPrimary else colors.onActionSecondary,
         ),
         border = if (focused) BorderStroke(2.dp, colors.focus) else null,
         contentPadding = PaddingValues(horizontal = MotifSpace.s6),
@@ -107,7 +107,7 @@ fun AppButton(
 }
 ```
 
-The disabled look is `actionSecondary` with `textSecondary`, as the guide pairs them, so a disabled button stays readable.
+The disabled look is `onActionSecondary` on `actionSecondary`, a pair the guide checks for contrast, so a disabled button stays readable.
 
 ## Names and touch targets
 

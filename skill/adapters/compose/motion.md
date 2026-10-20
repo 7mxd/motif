@@ -12,7 +12,7 @@ How to use the design guide's motion roles with Compose's animation API, the com
 | `MotifEasing.` | `standard`, `enter`, `exit` | `CubicBezierEasing` |
 | `MotifSprings.` | `snappy()`, `smooth()`, `bouncy()` | `SpringSpec<T>` |
 
-Use a duration with an easing (`tween`) for a change between two values, and a spring for movement that follows a finger or should feel physical. Never type `tween(300)`, `FastOutSlowInEasing`, a `CubicBezierEasing(…)` or `spring(dampingRatio = …)`: `motif check` reports them as `raw-motion`.
+Use a duration with an easing (`tween`) for a change between two values, and a spring for movement that follows a finger or should feel physical. Never type `tween(300)`, `FastOutSlowInEasing`, a `CubicBezierEasing(…)` or `spring(dampingRatio = …)`: `motif check` reports them as `raw-motion` (a typed duration only when it isn't one of the guide's, but use the role anyway).
 
 Every duration goes through `MotifMotion.duration(…)`, which is zero when Remove animations is on:
 
