@@ -151,3 +151,18 @@ describe("test D on Flutter", () => {
     expect(failing(gradeD({ ...rest, typecheck: { code: 3, command: "flutter analyze" } }))).toEqual(["typecheck"]);
   });
 });
+
+describe("test B on React Native", () => {
+  const okRn: BFacts = {
+    route: "/orders", pageExists: true, check: { violations: 0, exceptions: 0, warnings: 0 }, validate: { errors: 0, warnings: 0, missingSections: [] },
+    typecheck: { code: 0, command: "tsc" }, render: { route: "/orders", status: 200, pageErrors: 0 }, newComponents: [], recorded: [],
+  };
+  test("tsc stands for the type check and the page is drawn through the web target; there's no build", () => {
+    const g = gradeB({ ...okRn, newComponents: ["OrderCard"], screens: ["OrdersScreen"], screenParts: ["Group"] });
+    expect(g.pass).toBe(true);
+    expect(g.criteria.map((c) => c.id)).toEqual(["feature", "check", "exceptions", "validate", "typecheck", "renders", "components"]);
+    expect(g.criteria.find((c) => c.id === "typecheck")!.detail).toBe("The type check (tsc) passed.");
+    expect(failing(gradeB({ ...okRn, typecheck: { code: 2, command: "tsc" } }))).toEqual(["typecheck"]);
+    expect(failing(gradeB({ ...okRn, render: { route: "/orders", status: 200, pageErrors: 2 } }))).toEqual(["renders"]);
+  });
+});
