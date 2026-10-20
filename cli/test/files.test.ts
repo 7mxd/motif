@@ -116,6 +116,20 @@ describe("final review: Flutter's ignores are anchored to the app or package (Mi
     expect(paths(listDartFiles(nested, "mobile/customer"))).toEqual(["mobile/customer/lib/features/build/a.dart", "mobile/customer/lib/features/test/b.dart"]);
   });
 
+  test("a package inside the app (example/, packages/*) has its own build/, test/ and generated code ignored too", () => {
+    const pubspec = "name: x\n";
+    const root = makeProject({
+      "pubspec.yaml": pubspec, "lib/a.dart": "x",
+      "example/pubspec.yaml": pubspec, "example/lib/main.dart": "x", "example/test/widget_test.dart": "x",
+      "example/integration_test/app_test.dart": "x", "example/build/x.dart": "x", "example/.dart_tool/x.dart": "x",
+      "packages/ui/pubspec.yaml": pubspec, "packages/ui/lib/button.dart": "x", "packages/ui/test/button_test.dart": "x",
+      "packages/ui/lib/generated/intl.dart": "x", "packages/ui/lib/l10n/app_localizations_en.dart": "x",
+      // A folder named test with no pubspec beside it is ordinary code.
+      "tool/test/helper.dart": "x",
+    });
+    expect(paths(listDartFiles(root, "."))).toEqual(["example/lib/main.dart", "lib/a.dart", "packages/ui/lib/button.dart", "tool/test/helper.dart"]);
+  });
+
   test("web apps keep ignoring every build/ folder, as before", () => {
     expect(paths(listSourceFiles(makeProject({ "src/build/a.ts": "x", "src/b.ts": "x" }), "."))).toEqual(["src/b.ts"]);
   });

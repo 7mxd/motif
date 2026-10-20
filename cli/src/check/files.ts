@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import ignore from "ignore";
 import { stripBom } from "../text";
@@ -66,15 +66,32 @@ export function matchesPaths(rel: string, wanted: string[]): boolean {
   return w.length === 0 || w.some((p) => rel === p || rel.startsWith(p + "/"));
 }
 
-/** A Flutter app's or package's Dart files, without its build output, tests and generated code. */
+/**
+ * A Flutter app's or package's Dart files, without its build output, tests and generated code, nor those of a package
+ * inside it (an example/ app, packages/*).
+ */
 export function listDartFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
-  return listSourceFiles(root, appPath, { ...opts, langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES, defaults: DART_DEFAULT_IGNORES });
+  return listSourceFiles(root, appPath, {
+    ...opts,
+    langs: { ".dart": "dart" },
+    extraIgnores: FLUTTER_IGNORES,
+    defaults: DART_DEFAULT_IGNORES,
+    packageMarker: "pubspec.yaml",
+  });
 }
 
 export function listSourceFiles(
   root: string,
   appPath: string,
-  opts: { paths?: string[]; ignore?: string[]; langs?: Record<string, Lang>; extraIgnores?: string[]; defaults?: string[] } = {},
+  opts: {
+    paths?: string[];
+    ignore?: string[];
+    langs?: Record<string, Lang>;
+    extraIgnores?: string[];
+    defaults?: string[];
+    /** A file that makes its folder a package of its own, whose paths extraIgnores also match from (pubspec.yaml). */
+    packageMarker?: string;
+  } = {},
 ): SourceFile[] {
   const langs = opts.langs ?? WEB_LANGS;
   const rootIgnore = ignore().add(opts.defaults ?? DEFAULT_IGNORES).add(readGitignore(root)).add(opts.ignore ?? []).add(opts.extraIgnores ?? []);
@@ -85,9 +102,12 @@ export function listSourceFiles(
   const dirWanted = (rel: string) => wanted.length === 0 || wanted.some((w) => w === rel || w.startsWith(rel + "/") || rel.startsWith(w + "/"));
   const fileWanted = (rel: string) => wanted.length === 0 || wanted.some((w) => rel === w || rel.startsWith(w + "/"));
   const appRelative = (rel: string) => (app === "." ? rel : rel.slice(app.length + 1));
+  const pkgIgnore = opts.packageMarker ? ignore().add(opts.extraIgnores ?? []) : null;
+  // The innermost package below the app's own folder that rel is in, and the path inside it.
+  const inPackage = (pkg: string | null, rel: string) => (pkg === null ? null : rel.slice(pkg.length + 1));
 
   const out: SourceFile[] = [];
-  const visit = (absDir: string, rel: string) => {
+  const visit = (absDir: string, rel: string, pkg: string | null) => {
     let entries: string[];
     try {
       entries = readdirSync(absDir).sort();
@@ -105,18 +125,23 @@ export function listSourceFiles(
       }
       if (st.isDirectory()) {
         if (rootIgnore.ignores(relPath + "/") || appIgnore?.ignores(appRelative(relPath) + "/")) continue;
-        if (dirWanted(relPath)) visit(abs, relPath);
+        const inner = inPackage(pkg, relPath);
+        if (inner !== null && pkgIgnore?.ignores(inner + "/")) continue;
+        const isPackage = pkgIgnore !== null && existsSync(join(abs, opts.packageMarker!));
+        if (dirWanted(relPath)) visit(abs, relPath, isPackage ? relPath : pkg);
         continue;
       }
       const lang = langs[extname(name).toLowerCase()];
       if (!lang || st.size > MAX_FILE_BYTES) continue;
       if (rootIgnore.ignores(relPath) || appIgnore?.ignores(appRelative(relPath))) continue;
+      const inner = inPackage(pkg, relPath);
+      if (inner !== null && pkgIgnore?.ignores(inner)) continue;
       if (!fileWanted(relPath)) continue;
       const text = stripBom(readFileSync(abs, "utf8"));
       if (looksBundled(text)) continue;
       out.push({ path: relPath, abs, text, lang });
     }
   };
-  visit(appDir, app === "." ? "" : app);
+  visit(appDir, app === "." ? "" : app, null);
   return out;
 }
