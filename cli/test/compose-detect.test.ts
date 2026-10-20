@@ -95,3 +95,25 @@ describe("composeModule", () => {
     expect(packageFolder("com.example.rafiq")).toBe("com/example/rafiq");
   });
 });
+
+describe("an Android Studio template root", () => {
+  test("its `apply false` plugins don't make the root a Compose app", () => {
+    const root = makeProject({
+      "settings.gradle.kts": 'rootProject.name = "Rafiq"\ninclude(":app")\n',
+      "build.gradle.kts":
+        "// Top-level build file where you can add configuration options common to all sub-projects/modules.\n" +
+        "plugins {\n    alias(libs.plugins.android.application) apply false\n    alias(libs.plugins.kotlin.android) apply false\n    alias(libs.plugins.kotlin.compose) apply false\n}\n",
+      // The app takes its plugins from a convention plugin the detector can't read.
+      "app/build.gradle.kts": 'plugins {\n    id("rafiq.android.app")\n}\nandroid { namespace = "com.example.rafiq" }\n',
+    });
+    expect(composeModule(root)).toBeNull();
+    expect(detectApps(root).apps).toEqual([]);
+  });
+
+  test("a real plugin line beside `apply false` ones still counts", () => {
+    const root = makeProject({
+      "build.gradle.kts": "plugins {\n    alias(libs.plugins.android.application)\n    alias(libs.plugins.kotlin.compose)\n    alias(libs.plugins.hilt) apply false\n}\n",
+    });
+    expect(composeModule(root)).not.toBeNull();
+  });
+});

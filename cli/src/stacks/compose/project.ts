@@ -13,7 +13,8 @@ function read(path: string): string | null {
 /** A Gradle build file's text without its comments, or null when the folder has none. */
 function buildFile(dir: string): string | null {
   const text = read(join(dir, "build.gradle.kts")) ?? read(join(dir, "build.gradle"));
-  return text === null ? null : stripComments(text);
+  // A root file's `alias(...) apply false` lines only make plugins available to its modules; they aren't the root's own.
+  return text === null ? null : stripComments(text).replace(/^.*\bapply\s+false\b.*$/gm, "");
 }
 
 function stripComments(text: string): string {
