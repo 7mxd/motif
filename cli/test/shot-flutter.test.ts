@@ -169,7 +169,7 @@ describe("motif shot on a Flutter app", () => {
     expect(r.data.shots).toEqual(["design/shots/settings.mobile.png"]);
     const web = await runShot(makeProject({ "package.json": NEXT_PKG, "app/page.tsx": "" }), ctx({ screen: "Settings" }), fakes().deps);
     expect(web.exitCode).toBe(2);
-    expect(web.text).toBe("--screen opens a Flutter widget by its class name; this app isn't a Flutter app. Use --routes for its pages.");
+    expect(web.text).toBe("--screen opens a Flutter widget by its class name, or a Jetpack Compose @Preview function by its name; this app is neither. Use --routes for its pages.");
   });
 
   test("an audit of routes and --screen widgets names both in audit.json's scope (plan 2F, Task 15)", async () => {

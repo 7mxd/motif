@@ -265,7 +265,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     const problem = native.shotInputsProblem?.(cwd, app, { screens, states });
     if (problem) return usage(problem, { error: "usage" });
   } else if (screens.length > 0) {
-    return usage("--screen opens a Flutter widget by its class name; this app isn't a Flutter app. Use --routes for its pages.", { error: "usage" });
+    return usage("--screen opens a Flutter widget by its class name, or a Jetpack Compose @Preview function by its name; this app is neither. Use --routes for its pages.", { error: "usage" });
   }
   let viewports: Viewport[] | undefined;
   if (typeof flags.sizes === "string") {
