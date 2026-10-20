@@ -10,6 +10,8 @@ Fixtures and evaluations for Motif. Nothing here ships to users: skill installs 
 - **`fixtures/plain-seeded-site/`** — the same site with 18 planted problems, listed in its `seeded-issues.json`, and without the state scripts (a review writes its own). Test C's `c-plain` reviews a copy. Its [README](fixtures/plain-seeded-site/README.md) describes every problem.
 - **`fixtures/flutter-contract-app/`** — Maktaba, a neighbourhood library app in Flutter (Material 3, go_router, Riverpod, `shared_preferences`, an HTTP catalogue client), in English and Arabic: a design guide from the Minimal starting style with a Kids' corner variant (colours only) and Readex Pro for Arabic, the generated theme (`lib/design/motif_theme.dart`), and four screens plus a book's page (`/`, `/books`, `/books/:id`, `/loans`, `/sign-in`). `design/states/setup.dart` signs screenshots in, and `design/states/http.json` answers the catalogue from `design/fixtures/`. CI checks it with `motif validate`, `motif check` and `motif tokens`, and where Flutter is installed with `flutter analyze` and `motif shot --audit` in both variants, light and dark, left to right and right to left (`cli/test/fixtures-flutter.test.ts`). Test B's Flutter cases add features to copies of it.
 - **`fixtures/flutter-seeded-app/`** — Maktaba with 16 planted problems (10 exact, 6 that need judgement), listed in its `seeded-issues.json`. Test C's Flutter case reviews a copy. Its [README](fixtures/flutter-seeded-app/README.md) describes every problem.
+- **`fixtures/rn-contract-app/`** — Dukkan, a corner shop's ordering app in React Native with Expo (SDK 58, Expo Router, in-memory data), in English and Arabic: a design guide from the Minimal starting style with a Night market variant (colours only) and Readex Pro for Arabic, the generated theme (`design/motif-theme.tsx`), the components the React Native guide's starter set needs, and three screens plus a product's page (`/`, `/basket`, `/sign-in`, `/products/[id]`). It has no orders or favourites screen: test B's Expo cases add them. `package.json` and `package-lock.json` are committed, never `node_modules/`. CI checks it with `motif validate` and `motif check`, and where Node and npm are found it installs a copy and checks it with `motif tokens`, `motif check`, `npx tsc --noEmit` and, with a browser, `motif shot --audit` through Expo's web target in both variants, light and dark, left to right and right to left (`cli/test/fixtures-rn.test.ts`).
+- **`fixtures/rn-seeded-app/`** — Dukkan with 14 planted problems (10 exact, 4 that need judgement), listed in its `seeded-issues.json`. Test C's Expo case reviews a copy. Its [README](fixtures/rn-seeded-app/README.md) describes every problem.
 - **`fixtures/briefs/`** — four briefs for test D's new apps: three web apps (Stride, Ledgerly, Bloom) and Sahm, a Flutter app in English and Arabic.
 - **`fixtures/assemble.ts`** — builds a working copy of any of these fixtures in an empty folder:
 
@@ -20,9 +22,11 @@ Fixtures and evaluations for Motif. Nothing here ships to users: skill installs 
   bun tests/fixtures/assemble.ts plain-seeded-site <empty folder>
   bun tests/fixtures/assemble.ts flutter-contract-app <empty folder>
   bun tests/fixtures/assemble.ts flutter-seeded-app <empty folder>
+  bun tests/fixtures/assemble.ts rn-contract-app <empty folder>
+  bun tests/fixtures/assemble.ts rn-seeded-app <empty folder>
   ```
 
-  Then run `npm install` in a React app's folder to build or run it, or `flutter pub get` in a Flutter app's; a plain site needs nothing installed.
+  Then run `npm install` in a React app's folder to build or run it (`npm ci` in an Expo app's, then `npx expo start --web`), or `flutter pub get` in a Flutter app's; a plain site needs nothing installed.
 
 ## Evals
 

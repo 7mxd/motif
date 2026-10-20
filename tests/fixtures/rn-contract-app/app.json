@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "Dukkan",
+    "slug": "dukkan",
+    "version": "1.0.0",
+    "scheme": "dukkan",
+    "userInterfaceStyle": "automatic",
+    "web": { "bundler": "metro", "output": "single" },
+    "plugins": ["expo-router", "expo-font"]
+  }
+}
