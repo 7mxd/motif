@@ -1,5 +1,6 @@
 // The closest role for a size that isn't on the guide's scale: what motif check suggests when it groups repeats.
 import { differenceEuclidean, formatHex } from "culori";
+import { FULL_RADIUS_PX } from "../contract/defaults";
 import { parseColor, SAME_COLOR } from "../extract/cluster";
 import { cssColor } from "../generate/css-values";
 import type { Theme, ThemeVariant } from "../generate/theme";
@@ -14,13 +15,13 @@ const RADIUS_PX_3: Record<string, number> = { sm: 2, md: 6, lg: 8, xl: 12, "2xl"
 const CLASS = /^-?[a-z][a-z-]*-(?:\[[^\]]+\]|[\w.]+)$/;
 
 /**
- * The radius roles a corner size is nearest to: the guide's full role for a pill (a corner of 100px or more, past every
- * finite role, as 999 or 9999 is), else the one or two nearest finite ones.
+ * The radius roles a corner size is nearest to: the guide's full role for a pill (a corner at extract's full cut-off,
+ * 999px, or at the full role's own size when that is smaller), else the one or two nearest other ones.
  */
 function nearestRadius<T extends { name: string; px: number }>(radius: T[], px: number): T[] {
-  const finite = radius.filter((r) => r.px < 9999 && (r.px > 0 || px === 0));
   const full = radius.find((r) => r.name === "full") ?? radius.find((r) => r.px >= 9999);
-  if (full && px >= 100 && finite.every((r) => px > r.px)) return [full];
+  if (full && px >= Math.min(FULL_RADIUS_PX, full.px)) return [full];
+  const finite = radius.filter((r) => r !== full && r.px < 9999 && (r.px > 0 || px === 0));
   return nearest(finite, px, (r) => r.px);
 }
 

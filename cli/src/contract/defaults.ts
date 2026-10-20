@@ -28,6 +28,9 @@ export const isMonospace = (family: string) =>
   /(?:^|[\s"'-]|sf)mono(?:space)?(?![a-z])|\b(?:fira|cascadia|source) code\b|\b(?:consolas|menlo|monaco|courier|inconsolata|lucida console|monaspace|monolisa|iosevka|pragmata)/i.test(family);
 
 export const px = (value: number) => ({ value, unit: "px" });
+
+/** A corner this size or larger is a pill, the radius role full: extract leaves it out of the finite roles. */
+export const FULL_RADIUS_PX = 999;
 export const ms = (value: number) => ({ value, unit: "ms" });
 
 export function srgbColor(hex: string) {

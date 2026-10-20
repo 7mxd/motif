@@ -17,8 +17,11 @@ function closingBrace(text: string, open: number): number {
   return text.length;
 }
 
-/** Where a file defines colours for a theme: ThemeExtension classes and their instances, ColorSchemes, colour-constant classes. */
-function paletteRanges(code: string): [number, number][] {
+/**
+ * Where a file defines colours for a theme: ThemeExtension classes and their instances, ColorSchemes with two or more
+ * typed colours (a seed alone isn't a palette), colour-constant classes. `colors` are the typed colours' places.
+ */
+function paletteRanges(code: string, colors: number[]): [number, number][] {
   const ranges: [number, number][] = [];
   const call = (open: number, from: number) => {
     const c = callArgs(code, open);
@@ -38,22 +41,26 @@ function paletteRanges(code: string): [number, number][] {
       for (const i of code.matchAll(new RegExp(`(?<![\\w$.])${name}\\s*\\(`, "g"))) call(i.index! + i[0].length - 1, i.index!);
     }
   }
-  for (const m of code.matchAll(/(?<![\w$.])ColorScheme(?:\.\w+)?\s*\(/g)) call(m.index! + m[0].length - 1, m.index!);
+  for (const m of code.matchAll(/(?<![\w$.])ColorScheme(?:\.\w+)?\s*\(/g)) {
+    const c = callArgs(code, m.index! + m[0].length - 1);
+    if (c && colors.filter((i) => i >= m.index! && i <= c.close).length >= 2) ranges.push([m.index!, c.close + 1]);
+  }
   return ranges;
 }
 
-/** True when most of a file's typed colours (at least one) are in its palette definitions. */
+/** The app's entry point: a file with main() or runApp is never a palette, whatever theme it builds (flutter create's main.dart). */
+const ENTRY = /(?<![\w$.])(?:main\s*\([^)]*\)\s*(?:async\s*)?(?:\{|=>)|runApp\s*\()/;
+
+/** True when most of a file's typed colours (at least one) are in its palette definitions, and it isn't the app's entry. */
 export function dartPaletteFile(file: SourceFile, hits: Hit[]): boolean {
   const colors = hits.filter((h) => h.file === file.path && h.kind === "color");
   if (colors.length === 0) return false;
   const code = maskStrings(maskComments(file.text, "dart"), "dart");
-  const ranges = paletteRanges(code);
-  if (ranges.length === 0) return false;
+  if (ENTRY.test(code)) return false;
   const starts = [0];
   for (let i = 0; i < code.length; i++) if (code.charCodeAt(i) === 10) starts.push(i + 1);
-  const inside = colors.filter((h) => {
-    const index = starts[h.line - 1]! + h.column - 1;
-    return ranges.some(([a, b]) => index >= a && index < b);
-  });
-  return inside.length * 2 >= colors.length;
+  const places = colors.map((h) => starts[h.line - 1]! + h.column - 1);
+  const ranges = paletteRanges(code, places);
+  const inside = places.filter((index) => ranges.some(([a, b]) => index >= a && index < b));
+  return inside.length > 0 && inside.length * 2 >= colors.length;
 }

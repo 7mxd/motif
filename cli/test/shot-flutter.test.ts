@@ -723,3 +723,14 @@ final router = GoRouter(routes: [
     expect(calls[0]!.routes).toEqual(["/page2", "/auth/phone", "/"]);
   });
 });
+
+describe("wave B review fixes: the left-out note says only what the app has (review #7)", () => {
+  test("an app without sign-in pages: / first, then the rest", async () => {
+    const pages = Array.from({ length: 14 }, (_, i) => `GoRoute(path: '/page${i + 1}', builder: (c, s) => const Text('${i + 1}'))`);
+    const router = `import 'package:flutter/material.dart';\nimport 'package:go_router/go_router.dart';\n\nfinal router = GoRouter(routes: [\n  ${pages.join(",\n  ")},\n]);\n`;
+    const { deps } = fakes();
+    const r = await runShot(makeProject({ "pubspec.yaml": PUBSPEC, "lib/main.dart": router }), ctx(), deps);
+    expect(r.text).toContain("Captured 12 of 15 pages: / first, then the rest in the order your code lists them.");
+    expect(r.text).not.toContain("sign-in pages");
+  });
+});

@@ -207,3 +207,58 @@ class Brand {
     expect(r.data.palettes).toEqual(["lib/theme/app_colors.dart", "lib/theme/brand.dart"]);
   });
 });
+
+describe("wave B review fixes: check", () => {
+  // flutter create's lib/main.dart: its one typed colour is the seed of ColorScheme.fromSeed.
+  const TEMPLATE = `import 'package:flutter/material.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Flutter Demo',
+      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
+      home: const Text('Hello'),
+    );
+  }
+}
+`;
+  const HINT = "is your own theme's palette";
+
+  test("the flutter create template's main.dart isn't a palette: its colour is flagged, with no hint (review #1)", async () => {
+    const root = makeProject({ "pubspec.yaml": PUBSPEC, "design/tokens.json": TOKENS, "lib/main.dart": TEMPLATE });
+    expect((await runTokens(root, { positionals: [] })).exitCode).toBe(0);
+    const r = await check(root);
+    expect((r.data.violations as any[]).map((h) => h.text)).toContain("Colors.deepPurple");
+    expect(r.text).not.toContain(HINT);
+    expect(r.data.palettes).toBeUndefined();
+  });
+
+  test("a file with main() or runApp is never a palette, even with a full ColorScheme in it (review #1)", async () => {
+    const scheme = "ColorScheme.light(primary: Color(0xFF4338CA), surface: Color(0xFFFFFFFF), onSurface: Color(0xFF111827))";
+    const app = await flutterApp({
+      "lib/main.dart": `import 'package:flutter/material.dart';\n\nvoid main() => runApp(MaterialApp(theme: ThemeData(colorScheme: ${scheme})));\n`,
+      "lib/scheme.dart": `import 'package:flutter/material.dart';\n\nconst scheme = ${scheme};\n`,
+      "lib/seed.dart": `import 'package:flutter/material.dart';\n\nfinal seeded = ColorScheme.fromSeed(seedColor: Color(0xFF4338CA));\n`,
+    });
+    const r = await check(app);
+    expect(r.data.palettes).toEqual(["lib/scheme.dart"]);
+  });
+
+  test("a corner at or past the full cut-off (999 px) suggests full; a 120 px one keeps the nearest finite role (review #5)", async () => {
+    const lines = [
+      ...Array.from({ length: 13 }, (_, i) => `final a${i} = BorderRadius.circular(120);`),
+      ...Array.from({ length: 13 }, (_, i) => `final b${i} = BorderRadius.circular(999);`),
+    ];
+    const r = await check(await flutterApp({ "lib/r.dart": [...lines, ""].join("\n") }));
+    const line = (text: string) => r.text.split(/\r?\n/).find((l) => l.startsWith(`  13× ${text} `)) ?? "";
+    expect(line("999")).toContain("Closest: MotifRadius.full (9999px).");
+    expect(line("120")).toContain("Closest: MotifRadius.lg (16px).");
+  });
+});

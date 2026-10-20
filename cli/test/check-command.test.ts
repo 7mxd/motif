@@ -256,3 +256,18 @@ describe("runCheck groups (Task 15 wave B, #7)", () => {
     expect(r.text).toContain("Closest: var(--motif-radius-full) (9999px).");
   });
 });
+
+describe("wave B review fixes: the full corner's cut-off (review #5)", () => {
+  test("a guide whose full role is under 999 px gets full from its own size up; a 120 px corner keeps the nearest finite role", async () => {
+    const tokens = JSON.parse(TOKENS);
+    tokens.radius.full.$value.value = 500;
+    const css = [
+      ...Array.from({ length: 13 }, (_, i) => `.a${i} { border-radius: 600px; }`),
+      ...Array.from({ length: 13 }, (_, i) => `.b${i} { border-radius: 120px; }`),
+    ].join("\n");
+    const r = await runCheck(project({ "design/tokens.json": JSON.stringify(tokens), "src/a.css": css }), ctx());
+    const line = (text: string) => r.text.split(/\r?\n/).find((l) => l.startsWith(`  13× ${text} `)) ?? "";
+    expect(line("600px")).toContain("Closest: var(--motif-radius-full) (500px).");
+    expect(line("120px")).toContain("Closest: var(--motif-radius-lg) (16px).");
+  });
+});

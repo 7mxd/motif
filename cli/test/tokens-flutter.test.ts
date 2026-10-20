@@ -238,7 +238,7 @@ describe("motif tokens: variants in the wiring note, and a guide git ignores (Ta
     const r = await runTokens(root, ctx);
     expect(r.exitCode).toBe(0);
     expect(notes(r)).toContain(
-      "Your .gitignore ignores design/ (line 3 of .gitignore), so design/tokens.json, lib/design/motif_theme.dart and design/motif.json won't be committed. Add !design/ on a line below it, or narrow the rule.",
+      "Your .gitignore ignores design/ (line 3 of .gitignore), so design/tokens.json, lib/design/motif_theme.dart and design/motif.json won't be committed. Add !design/ on a line below it (git can't let a file back in while its folder is ignored), or narrow the rule.",
     );
     expect(notes(r)).not.toContain("DESIGN.md won't");
   });
@@ -250,5 +250,24 @@ describe("motif tokens: variants in the wiring note, and a guide git ignores (Ta
     git(tracked, "init", "-q");
     git(tracked, "add", "-f", "DESIGN.md");
     expect(notes(await runTokens(tracked, ctx))).not.toContain("won't be committed");
+  });
+});
+
+describe("wave B review fixes: git advice (review #6)", () => {
+  const git = (root: string, ...args: string[]) => Bun.spawnSync(["git", "-C", root, ...args], { stdout: "pipe", stderr: "pipe" });
+
+  test("a rule that ignores a folder is negated as a folder rule: a file can't be let back in under an ignored folder", async () => {
+    const root = flutterApp({ ".gitignore": "**/design/\n", "DESIGN.md": "# Design\n" });
+    git(root, "init", "-q");
+    const n = notes(await runTokens(root, ctx));
+    expect(n).toContain("Your .gitignore ignores **/design/ (line 1 of .gitignore), so design/tokens.json, lib/design/motif_theme.dart and design/motif.json won't be committed.");
+    expect(n).toContain("Add !**/design/ on a line below it (git can't let a file back in while its folder is ignored), or narrow the rule.");
+    expect(n).not.toContain("!design/tokens.json");
+  });
+
+  test("a rule that ignores the files themselves is answered file by file", async () => {
+    const root = flutterApp({ ".gitignore": "*.md\n", "DESIGN.md": "# Design\n" });
+    git(root, "init", "-q");
+    expect(notes(await runTokens(root, ctx))).toContain("Your .gitignore ignores *.md (line 1 of .gitignore), so DESIGN.md won't be committed. Add !DESIGN.md on a line below it, or narrow the rule.");
   });
 });

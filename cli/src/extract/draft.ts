@@ -8,7 +8,7 @@ import { scanFile } from "../check/run";
 import { colorContext, CSS_COLOR_LITERAL, CSS_DECLARATION, isPageSelector } from "../check/rules/colors";
 import type { Hit } from "../check/types";
 import { locator } from "../text";
-import { FONT_ROLES, MONO_ROLE, MONO_STACK, SPACE_SCALE, defaultShadows, isMonospace, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
+import { FONT_ROLES, FULL_RADIUS_PX, MONO_ROLE, MONO_STACK, SPACE_SCALE, defaultShadows, isMonospace, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { clusterColors, parseColor, type ColorCluster, type Sample } from "./cluster";
 import type { TailwindDefaults } from "./tailwind-theme";
 
@@ -690,14 +690,21 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   /** Roles drafted from a see-through palette field laid over the background: role → the field. */
   const flattened = new Map<string, string>();
   const takenIds = new Set([...clusters.map((c) => c.id), "white", "ink"]);
-  /** A colour group of one palette field's colour, named after the field. */
-  const ownCluster = (name: string, hex: string): ColorCluster => {
+  /** The group a field's own colour stands in for: it counts as that group wherever a chosen group is left out. */
+  const origin = new Map<ColorCluster, ColorCluster>();
+  /** Whether two groups are one: the same, or one stands in for the other (or both for a third). */
+  const same = (a: ColorCluster | undefined, b: ColorCluster | undefined) =>
+    Boolean(a && b && (a === b || origin.get(a) === b || origin.get(b) === a || (origin.has(a) && origin.get(a) === origin.get(b))));
+  /** A colour group of one palette field's colour, named after the field, standing in for the group it came from. */
+  const ownCluster = (name: string, hex: string, from?: ColorCluster): ColorCluster => {
     const base = name.replace(/^--/, "");
     let id = base;
     for (let k = 2; takenIds.has(id); k++) id = `${base}-${k}`;
     takenIds.add(id);
     const lch = toOklch(parseColor(hex)!);
-    return { id, hex, count: 0, contexts: {}, members: [{ value: hex.toLowerCase(), count: 0, contexts: {}, examples: [] }], l: lch.l ?? 0, c: lch.c ?? 0, h: lch.h ?? 0 };
+    const made = { id, hex, count: 0, contexts: {}, members: [{ value: hex.toLowerCase(), count: 0, contexts: {}, examples: [] }], l: lch.l ?? 0, c: lch.c ?? 0, h: lch.h ?? 0 };
+    if (from) origin.set(made, from);
+    return made;
   };
   const finalName = (name: string) => {
     let n = name;
@@ -710,7 +717,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
       const field = finalName(namedVar[role]!);
       const hex = solidHex(lightOf(field));
       if (!hex || hex === named[role]!.hex) continue;
-      if (!own.has(`${field}|${hex}`)) own.set(`${field}|${hex}`, ownCluster(field, hex));
+      if (!own.has(`${field}|${hex}`)) own.set(`${field}|${hex}`, ownCluster(field, hex, named[role]));
       named[role] = own.get(`${field}|${hex}`)!;
     }
   }
@@ -728,7 +735,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
         .filter((x) => x.rank >= 0 && x.hex && finalName(x.name) !== page)
         .sort((a, b) => a.rank - b.rank)[0];
       if (card) {
-        named.surface = ownCluster(card.name, card.hex!);
+        named.surface = ownCluster(card.name, card.hex!, clusterOf(card.hex));
         namedVar.surface = card.name;
       }
     }
@@ -754,12 +761,13 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     if (named[role] && !readableOn(named[role]!)) {
       delete named[role];
       delete namedVar[role];
+      flattened.delete(role);
     }
   }
   const readable = text.filter(readableOn);
-  const textPick = (readable.length > 0 ? readable : text).filter((c) => c !== named["text-secondary"]);
+  const textPick = (readable.length > 0 ? readable : text).filter((c) => !same(c, named["text-secondary"]));
   chosen["text-primary"] = named["text-primary"] ?? textPick[0] ?? named["text-secondary"];
-  chosen["text-secondary"] = named["text-secondary"] ?? textPick.find((c) => c !== chosen["text-primary"]) ?? chosen["text-primary"];
+  chosen["text-secondary"] = named["text-secondary"] ?? textPick.find((c) => !same(c, chosen["text-primary"])) ?? chosen["text-primary"];
   // A surface sits close to the page (cards on it), not a mid-grey used for a dot or a chip, and is tinted no more than
   // the page is (an error badge's pale red isn't a surface).
   // On a dark page, surfaces step further from it (zinc-800 cards on zinc-950 are 1.33:1). A warm paper tone (cream cards
@@ -770,21 +778,21 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const nearPage = (c: ColorCluster) => !bg || (wcagContrast(c.hex, bg.hex) < nearLimit && (c.c <= Math.max(0.012, bg.c * 2) || paper(c)));
   // The border role is the neutral line between things; a coloured one is usually a focus or an active state. Never the
   // page's own colour (a white ring around avatars), which would draw no line at all.
-  const visible = (c: ColorCluster) => !bg || (c !== bg && wcagContrast(c.hex, bg.hex) >= 1.1);
-  chosen.border = named.border ?? borders.find((c) => c.c < 0.04 && visible(c)) ?? borders.find((c) => c !== bg) ?? borders[0];
+  const visible = (c: ColorCluster) => !bg || (!same(c, bg) && wcagContrast(c.hex, bg.hex) >= 1.1);
+  chosen.border = named.border ?? borders.find((c) => c.c < 0.04 && visible(c)) ?? borders.find((c) => !same(c, bg)) ?? borders[0];
   // A card the colour of its own outline would lose its edge: the lines' colour isn't a surface.
   chosen.surface =
-    named.surface ?? backgrounds.find((c) => c !== chosen.background && c !== chosen.border && c.c < 0.04 && nearPage(c)) ?? chosen.background;
+    named.surface ?? backgrounds.find((c) => !same(c, chosen.background) && !same(c, chosen.border) && c.c < 0.04 && nearPage(c)) ?? chosen.background;
   const saturated = clusters.filter((c) => c.c >= 0.08 && !isData(c));
   // Buttons' fills say which colour is the main action, saturated or not (black pill buttons), but not a fill that is
   // the page or a card again (a reset giving buttons the surface colour).
   const pageLike = (c: ColorCluster) =>
-    c === chosen.background || c === chosen.surface || (chosen.background !== undefined && wcagContrast(c.hex, chosen.background.hex) < 1.5);
+    same(c, chosen.background) || same(c, chosen.surface) || (chosen.background !== undefined && wcagContrast(c.hex, chosen.background.hex) < 1.5);
   chosen["action-primary"] = named["action-primary"] ?? by("action").find((c) => !isData(c) && !pageLike(c)) ?? saturated[0];
-  const secondaryFill = by("action-secondary").find((c) => !isData(c) && c !== chosen["action-primary"]);
-  const remaining = saturated.filter((c) => c !== chosen["action-primary"]);
+  const secondaryFill = by("action-secondary").find((c) => !isData(c) && !same(c, chosen["action-primary"]));
+  const remaining = saturated.filter((c) => !same(c, chosen["action-primary"]));
   for (const [role, [hue, width]] of Object.entries(STATUS)) {
-    chosen[role] = named[role] ?? remaining.find((c) => hueDistance(c.h, hue) <= width && !Object.values(chosen).includes(c));
+    chosen[role] = named[role] ?? remaining.find((c) => hueDistance(c.h, hue) <= width && !Object.values(chosen).some((x) => same(x, c)));
   }
 
   // Primitive colours: one per cluster used, plus defaults, white and ink.
@@ -1013,7 +1021,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   });
 
   // Radius.
-  const radiusValues = [...new Set(occ.radius.map(pxOf).filter((v) => v > 0 && v < 999))].sort((a, b) => a - b);
+  const radiusValues = [...new Set(occ.radius.map(pxOf).filter((v) => v > 0 && v < FULL_RADIUS_PX))].sort((a, b) => a - b);
   let sm = 4, md = 8, lg = 16;
   if (radiusValues.length === 1) [sm, md, lg] = [Math.max(2, Math.round(radiusValues[0]! / 2)), radiusValues[0]!, radiusValues[0]! * 2];
   else if (radiusValues.length === 2) [sm, md, lg] = [radiusValues[0]!, radiusValues[1]!, Math.round(radiusValues[1]! * 1.5)];

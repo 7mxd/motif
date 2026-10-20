@@ -41,6 +41,13 @@ export function ignoredByGit(root: string, paths: string[], run: Runner = spawnR
   return out;
 }
 
+/** Whether a rule's last part (a glob: *, ?, [abc]) matches a file's own name. */
+function matchesName(pattern: string, name: string): boolean {
+  const last = pattern.replace(/\/+$/, "").split("/").pop() ?? "";
+  const glob = last.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*+/g, "[^/]*").replace(/\?/g, "[^/]");
+  return new RegExp(`^${glob}$`).test(name);
+}
+
 /** One line per rule: what it ignores, where it is, and how to let the files in. */
 export function ignoredNotes(found: IgnoredPath[]): string[] {
   const rules = new Map<string, IgnoredPath[]>();
@@ -52,8 +59,10 @@ export function ignoredNotes(found: IgnoredPath[]): string[] {
     const { source, line, pattern } = all[0]!;
     const paths = all.map((f) => f.path);
     const who = basename(source) === ".gitignore" ? `Your ${basename(source)} ignores` : "Git ignores";
-    // A folder that is ignored can't have files let back in one by one: the rule itself is negated.
-    const negate = /[*?[]/.test(pattern) ? andList(paths.map((p) => `!${p}`)) : `!${pattern}`;
-    return `${who} ${pattern} (line ${line} of ${source}), so ${andList(paths)} won't be committed. Add ${negate} on a line below it, or narrow the rule.`;
+    // A rule that ignores a folder above the files can't be undone file by file (git doesn't look inside an ignored folder):
+    // the folder rule itself is negated. A rule that matches the files themselves (*.md) is answered file by file.
+    const folder = pattern.endsWith("/") || paths.some((p) => !matchesName(pattern, basename(p)));
+    const fix = folder ? `!${pattern} on a line below it (git can't let a file back in while its folder is ignored)` : `${andList(paths.map((p) => `!${p}`))} on a line below it`;
+    return `${who} ${pattern} (line ${line} of ${source}), so ${andList(paths)} won't be committed. Add ${fix}, or narrow the rule.`;
   });
 }

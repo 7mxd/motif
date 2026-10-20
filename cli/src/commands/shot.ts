@@ -332,9 +332,11 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (all.length > routes.length) {
     const left = all.slice(MAX_ROUTES);
     const named = left.length > LEFT_OUT_NAMED + 1 ? `${left.slice(0, LEFT_OUT_NAMED).join(", ")} and ${left.length - LEFT_OUT_NAMED} more` : andList(left);
+    // Only what the app has comes first: its sign-in pages, its / page.
+    const first = [...(all.some((r) => SIGN_IN.test(r)) ? ["sign-in pages"] : []), ...(all.includes("/") ? ["/"] : [])];
     notes.push(
-      reordered
-        ? `Captured ${MAX_ROUTES} of ${all.length} pages: sign-in pages and / first, then the rest in the order your code lists them. Left out: ${named}. Choose others with --routes.`
+      reordered && first.length > 0
+        ? `Captured ${MAX_ROUTES} of ${all.length} pages: ${andList(first)} first, then the rest in the order your code lists them. Left out: ${named}. Choose others with --routes.`
         : `Captured the first ${MAX_ROUTES} of ${all.length} pages. Left out: ${named}. Choose others with --routes.`,
     );
   }

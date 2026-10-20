@@ -723,3 +723,75 @@ Widget screen(AppColors c) => Column(children: [
     expect(checkVariants(doc).filter((f) => f.severity === "error")).toEqual([]);
   });
 });
+
+describe("wave B review fixes: the draft", () => {
+  test("a locale ternary's 'ar' branch is the companion, even with the Latin font first in pubspec.yaml (review #2)", () => {
+    const root = makeProject({
+      "pubspec.yaml": `${PUBSPEC}\nflutter:\n  fonts:\n    - family: Inter\n      fonts:\n        - asset: assets/fonts/Inter-Regular.ttf\n    - family: Cairo\n      fonts:\n        - asset: assets/fonts/Cairo-Regular.ttf\n`,
+      "lib/main.dart": "void main() {}\n",
+      "lib/theme.dart": `import 'package:flutter/material.dart';\n\nThemeData build(Locale locale) => ThemeData(fontFamily: locale.languageCode == 'ar' ? 'Cairo' : 'Inter');\n`,
+    });
+    const occ = collect(root);
+    expect(occ.companion).toBe("Cairo");
+    expect((buildDraft(occ).tokens as any).primitive.font.sans.$value).toEqual(["Inter", "Cairo", "system-ui", "sans-serif"]);
+  });
+
+  test("the reversed test (languageCode != 'ar') picks the other branch, and the main family is never the companion (review #2)", () => {
+    const root = makeProject({
+      "pubspec.yaml": `${PUBSPEC}\nflutter:\n  fonts:\n    - family: Inter\n      fonts:\n        - asset: assets/fonts/Inter-Regular.ttf\n    - family: Cairo\n      fonts:\n        - asset: assets/fonts/Cairo-Regular.ttf\n`,
+      "lib/main.dart": "void main() {}\n",
+      "lib/theme.dart": `import 'package:flutter/material.dart';\n\nThemeData build(Locale locale) => ThemeData(fontFamily: locale.languageCode != 'ar' ? 'Inter' : 'Cairo');\n`,
+    });
+    expect(collect(root).companion).toBe("Cairo");
+    // A file that only checks the locale and names the app's main family doesn't make that family the companion.
+    const main = makeProject({
+      "pubspec.yaml": `${PUBSPEC}\nflutter:\n  fonts:\n    - family: Inter\n      fonts:\n        - asset: assets/fonts/Inter-Regular.ttf\n`,
+      "lib/main.dart": "void main() {}\n",
+      "lib/theme.dart": `import 'package:flutter/material.dart';\n\nfinal rtl = Intl.defaultLocale == 'ar';\nThemeData build(Locale locale) => ThemeData(fontFamily: 'Inter', textTheme: TextTheme(bodyMedium: TextStyle(fontFamily: 'Inter', fontSize: locale.languageCode == 'ar' ? 15 : 14)));\n`,
+    });
+    expect(collect(main).companion).toBeUndefined();
+  });
+
+  test("a role colour taken from its field still keeps that colour's group out of the status roles (review #3)", () => {
+    const buttons = Array.from({ length: 10 }, () => "  ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF24C760)), onPressed: null, child: null),").join("\n");
+    const root = makeProject({
+      "pubspec.yaml": PUBSPEC,
+      "lib/main.dart": "void main() {}\n",
+      "lib/theme.dart": `import 'package:flutter/material.dart';\n\nfinal theme = ThemeData(colorScheme: const ColorScheme.light(primary: Color(0xFF22C55E), surface: Color(0xFFFFFFFF), onSurface: Color(0xFF111111)));\n`,
+      "lib/w.dart": `import 'package:flutter/material.dart';\n\nWidget w() => Column(children: [\n${buttons}\n  Container(color: const Color(0xFFFFFFFF)),\n]);\n`,
+    });
+    const t = buildDraft(collect(root)).tokens as any;
+    expect(hexOf(t, t.color["action-primary"].$value)).toBe("#22C55E");
+    expect(hexOf(t, t.color.success.$value)).not.toBe("#24C760");
+    expect(hexOf(t, t.color.success.$value)).not.toBe("#22C55E");
+  });
+
+  test("muted text too faint to read isn't text-secondary, in any mode or note (review #4)", () => {
+    const root = makeProject({
+      "pubspec.yaml": PUBSPEC,
+      "lib/main.dart": "void main() {}\n",
+      "lib/colors.dart": `import 'package:flutter/material.dart';
+
+class AppColors extends ThemeExtension<AppColors> {
+  const AppColors({required this.bg, required this.text, required this.textMuted});
+  final Color bg;
+  final Color text;
+  final Color textMuted;
+  static const light = AppColors(bg: Color(0xFFFFFFFF), text: Color(0xFF111111), textMuted: Color(0x22111111));
+  static const dark = AppColors(bg: Color(0xFF000000), text: Color(0xFFEEEEEE), textMuted: Color(0x22EEEEEE));
+}
+`,
+      "lib/w.dart": `import 'package:flutter/material.dart';
+import 'colors.dart';
+
+Widget w(AppColors c) => Container(color: c.bg, child: Column(children: [Text('a', style: TextStyle(color: c.text)), Text('b', style: TextStyle(color: c.textMuted))]));
+`,
+    });
+    const { tokens, report } = buildDraft(collect(root));
+    const t = tokens as any;
+    expect(report.notes.join("\n")).not.toContain("comes from --text-muted");
+    const ts = t.color["text-secondary"];
+    // Not the faint text laid over the dark page (#202020), left over from the role it lost.
+    expect(hexOf(t, ts.$extensions["dev.motif"].modes.dark)).not.toBe("#202020");
+  });
+});

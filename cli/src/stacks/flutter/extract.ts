@@ -7,11 +7,13 @@ import { inRanges, maskComments, maskStrings } from "../../check/mask";
 import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
+import { isMonospace } from "../../contract/defaults";
 import { locator, stripBom } from "../../text";
 import { fontAssets } from "./project";
 import { callArgs, colorContext, namedArgument, scanDart } from "./rules";
 
 const MAX_EXAMPLES = 5;
+const sortedSamples = (m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 
 /** Flutter's named cubic curves, with the control points from Flutter's curves.dart. */
 const CURVES: Record<string, number[]> = {
@@ -284,19 +286,38 @@ function textThemeRoles(files: DartFile[]): Occurrences["typeRoles"] {
 /** A locale check for a right-to-left language with its own script: languageCode == 'ar' (or 'fa', 'ur'). */
 const RTL_LOCALE = /languageCode\s*==\s*(["'])(?:ar|fa|ur)\1|(["'])(?:ar|fa|ur)\2\s*==\s*[\w$.?!()]*languageCode/;
 
+/** A locale test's two branches: languageCode == 'ar' ? 'Cairo' : 'Inter' (either side of the test, == or !=). */
+const LOCALE_TERNARY = [
+  /languageCode\s*(?<op>==|!=)\s*["'](?:ar|fa|ur)["']\s*\?\s*["'](?<first>[^"'\n]+)["']\s*:\s*["'](?<second>[^"'\n]+)["']/g,
+  /["'](?:ar|fa|ur)["']\s*(?<op>==|!=)\s*[\w$.?!()]*languageCode\s*\?\s*["'](?<first>[^"'\n]+)["']\s*:\s*["'](?<second>[^"'\n]+)["']/g,
+];
+const FALLBACK_LIST = /\bfontFamilyFallback\s*:\s*(?:const\s*)?(?:<String>\s*)?\[([^\]]*)\]/g;
+
 /**
- * A family the app bundles that its theme picks for another script: named in a file that checks for Arabic
- * (locale.languageCode == 'ar' choosing a text theme in it), or listed in a fontFamilyFallback.
+ * A family the app bundles that its theme picks for another script, never its main family: the 'ar' branch of a locale
+ * test that chooses between two families; else one listed in a fontFamilyFallback; else one named in a file that checks
+ * for Arabic (locale.languageCode == 'ar' choosing a text theme in it). `main` is the family the app uses most.
  */
-function companionFamily(files: DartFile[], bundled: string[]): string | undefined {
+function companionFamily(files: DartFile[], bundled: string[], main: string | undefined): string | undefined {
   const texts = files.map((f) => maskComments(f.source.text, "dart"));
-  const quoted = (family: string) => new RegExp(`(["'])${family.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\1`);
-  for (const family of bundled) {
-    const q = quoted(family);
-    const fallback = texts.some((t) => [...t.matchAll(/\bfontFamilyFallback\s*:\s*(?:const\s*)?(?:<String>\s*)?\[([^\]]*)\]/g)].some((m) => q.test(m[1]!)));
-    if (fallback || texts.some((t) => RTL_LOCALE.test(t) && q.test(t))) return family;
+  const known = new Map(bundled.map((b) => [b.toLowerCase(), b]));
+  const arabic = new Set<string>();
+  const latin = new Set<string>();
+  for (const t of texts) {
+    for (const re of LOCALE_TERNARY) {
+      for (const m of t.matchAll(re)) {
+        const { op, first, second } = m.groups!;
+        arabic.add((op === "==" ? first : second)!.toLowerCase());
+        latin.add((op === "==" ? second : first)!.toLowerCase());
+      }
+    }
   }
-  return undefined;
+  const pick = [...arabic].find((f) => known.has(f) && !latin.has(f));
+  if (pick) return known.get(pick);
+  const quoted = (family: string) => new RegExp(`(["'])${family.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\1`);
+  const candidates = bundled.filter((f) => !latin.has(f.toLowerCase()) && f.toLowerCase() !== main?.toLowerCase());
+  const listed = candidates.find((family) => texts.some((t) => [...t.matchAll(FALLBACK_LIST)].some((m) => quoted(family).test(m[1]!))));
+  return listed ?? candidates.find((family) => texts.some((t) => RTL_LOCALE.test(t) && quoted(family).test(t)));
 }
 
 /**
@@ -540,14 +561,16 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
   const bundled = pubspecFonts([...files, ...shared]);
   for (const { family, path } of bundled) add("fontFamily", family, path);
   const typeRoles = textThemeRoles(dart);
-  const companion = companionFamily(dart, [...new Set(bundled.map((b) => b.family))]);
+  // The family the app uses most (not a code font) is its main one, never the companion.
+  const main = sortedSamples(buckets.fontFamily).find((f) => !isMonospace(f.value) && !/^(?:system-ui|sans-serif|serif|monospace)$/i.test(f.value))?.value;
+  const companion = companionFamily(dart, [...new Set(bundled.map((b) => b.family))], main);
   const projectFonts = bundled
     .filter((b) => b.family === companion)
     .map((b) => ({ family: b.family, files: b.files.filter((f) => /\.(ttf|otf)$/i.test(f.path)) }))
     .filter((b) => b.files.length > 0)
     .slice(0, 1);
 
-  const sorted = (m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+  const sorted = sortedSamples;
   return {
     colors: sorted(buckets.colors), space: sorted(buckets.space), radius: sorted(buckets.radius), fontSize: sorted(buckets.fontSize),
     fontFamily: sorted(buckets.fontFamily), duration: sorted(buckets.duration), easing: sorted(buckets.easing), unresolved: [],

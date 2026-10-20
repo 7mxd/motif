@@ -216,7 +216,7 @@ describe("runDoctor: a guide git ignores (Task 15 wave B, #10)", () => {
       id: "git",
       status: "needed",
       label: "Design guide in git",
-      detail: "Your .gitignore ignores design/ (line 2 of .gitignore), so design/tokens.json won't be committed. Add !design/ on a line below it, or narrow the rule.",
+      detail: "Your .gitignore ignores design/ (line 2 of .gitignore), so design/tokens.json won't be committed. Add !design/ on a line below it (git can't let a file back in while its folder is ignored), or narrow the rule.",
     });
   });
 
