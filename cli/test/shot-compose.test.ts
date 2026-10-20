@@ -518,6 +518,18 @@ BUILD FAILED in 16s`;
     );
   });
 
+  test("a test task that finds no sources says so plainly, with the likely cause (final review)", async () => {
+    const root = makeProject(COMPOSE_APP);
+    const output = "> Task :app:compileDemoDebugUnitTestKotlin NO-SOURCE\n> Task :app:testDemoDebugUnitTest NO-SOURCE\n> Task :app:motifShots UP-TO-DATE\n\nBUILD SUCCESSFUL in 41s\n";
+    const { run } = fakeRun(() => ({ code: 0, output }));
+    const error = await shootCompose(options(root), base(root, run)).catch((e: Error) => e.message);
+    expect(error).toBe(
+      "Gradle found no test sources for Motif's harness (:app:testDemoDebugUnitTest NO-SOURCE), so nothing was drawn: the module's unit tests didn't take in .motif/shot/src, " +
+        "most likely because its build sets the test source folders itself or turns unit tests off for that variant. Tell Motif's maintainers how the module's tests are set up (its android { sourceSets } and testOptions). " +
+        `The last lines it printed:\n${output.trim().replace("\n\n", "\n")}`,
+    );
+  });
+
   test("a failing run leaves only .motif/.gitignore: the test, the hooks, the init script and the options are removed", async () => {
     const root = makeProject(COMPOSE_APP);
     const app = join(root, "app");

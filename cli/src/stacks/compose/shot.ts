@@ -68,6 +68,16 @@ function jdkTooNewText(classVersion: number, javaHome: string): string {
   );
 }
 
+/** A test task with no compiled tests: Gradle skips it, says NO-SOURCE, and the build succeeds having drawn nothing. */
+const NO_SOURCE = /> Task (\S+UnitTest) NO-SOURCE/;
+
+function noSourceText(task: string): string {
+  return (
+    `Gradle found no test sources for Motif's harness (${task} NO-SOURCE), so nothing was drawn: the module's unit tests didn't take in .motif/shot/src, ` +
+    "most likely because its build sets the test source folders itself or turns unit tests off for that variant. Tell Motif's maintainers how the module's tests are set up (its android { sourceSets } and testOptions)."
+  );
+}
+
 export const SETUP_FILE = "design/states/Setup.kt";
 const SETUP_SIGNATURE = "fun motifSetup(variant: String, locale: Locale, dark: Boolean)";
 const STATE_SIGNATURE = "fun motifState(rule: ComposeContentTestRule)";
@@ -515,7 +525,10 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
     }
     const tooNew = !result.timedOut ? JDK_TOO_NEW.exec(result.output) : null;
     if (tooNew) throw new Error(jdkTooNewText(Number(tooNew[1]), jdk.javaHome));
-    const why = result.problem ?? (result.timedOut ? `Gradle didn't finish within ${seconds} s.` : "Gradle stopped before drawing any screen.");
+    const noSource = !result.timedOut ? NO_SOURCE.exec(result.output)?.[1] : undefined;
+    const why =
+      result.problem ??
+      (result.timedOut ? `Gradle didn't finish within ${seconds} s.` : noSource ? noSourceText(noSource) : "Gradle stopped before drawing any screen.");
     const tail = gradleTail(result.output);
     throw new Error(tail ? `${why} The last lines it printed:\n${tail}` : why);
   }
