@@ -13,7 +13,7 @@ export interface RawIssue {
   /** Its visible text or accessible name, shortened. */
   label: string;
   /** "icon": an icon's glyph (Flutter's audit), judged as a mark at 3:1. */
-  kind: "link" | "button" | "field" | "image" | "icon" | "element";
+  kind: "link" | "button" | "field" | "image" | "icon" | "element" | "tab" | "switch" | "checkbox" | "radio button" | "menu item" | "option";
   /** An icon's name or code point (Icons.star, U+F01D4), when kind is "icon". */
   icon?: string;
   ratio?: number;
@@ -213,8 +213,10 @@ function installAudit(): boolean {
         if (!shown(el) || named(el)) continue;
         const glyph = glyphOf(el);
         // A Pressable is a button to whoever taps it; an icon-font glyph on a real button is an icon that axe took for text.
-        const button = roleless(el) || (!glyph && el.matches(tappable));
-        out.push({ rule: "name", ...describe(el), ...(button ? { kind: "button" as const } : glyph ? { kind: "icon" as const, icon: glyph } : {}) });
+        // The control's own kind when its role says it (a tab bar's icons are tabs).
+        const ROLE_KINDS: Record<string, RawIssue["kind"]> = { tab: "tab", switch: "switch", checkbox: "checkbox", radio: "radio button", menuitem: "menu item", option: "option" };
+        const own = el.matches(tappable) ? ROLE_KINDS[el.getAttribute("role") ?? ""] : undefined;
+        out.push({ rule: "name", ...describe(el), ...(roleless(el) ? { kind: "button" as const } : glyph ? { kind: "icon" as const, icon: glyph } : own ? { kind: own } : {}) });
       }
       return out;
     },

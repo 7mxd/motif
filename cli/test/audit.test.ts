@@ -314,7 +314,7 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
       "accessibility #icon: The button has no name a screen reader can say.",
       "accessibility #plus: The button has no name a screen reader can say.",
       "accessibility #glyph: The icon has no name a screen reader can say.",
-      "accessibility #tab: The button has no name a screen reader can say.",
+      "accessibility #tab: The tab has no name a screen reader can say.",
       "target-size #glyph: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
       "target-size #icon: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
       "target-size #plus: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
