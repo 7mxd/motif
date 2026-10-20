@@ -4,8 +4,8 @@ How to build components in an Expo app the Motif way: where they live, how to wr
 
 ## Where components live
 
-- `components/`: components used by more than one feature. One exported component per file, named after it in PascalCase (`AppButton.tsx` holds `AppButton`). Expo's starter already has this folder, with `ThemedText` and `ThemedView` that the provider replaces ([theme code](tokens.md#wiring-it-in)).
-- `features/<feature>/components/`: components that belong to one feature (`features/orders/components/OrderRow.tsx`). Move one to `components/` the moment a second feature needs it.
+- `components/`: components used by more than one feature. One exported component per file, named the way the app names its files (the current starter uses kebab-case: `app-button.tsx` holds `AppButton`; older ones PascalCase). Expo's starter already has this folder (under `src/` today), with `ThemedText` and `ThemedView` that the provider replaces ([theme code](tokens.md#wiring-it-in)).
+- `features/<feature>/components/`: components that belong to one feature (`features/orders/components/order-row.tsx`). Move one to `components/` the moment a second feature needs it.
 - `app/` (or `src/app/`): the routes. A route file holds the screen and imports components; it exports nothing else a second place needs.
 - In a monorepo, shared components live in the shared package ([README](README.md)).
 
@@ -25,9 +25,9 @@ A component handles all of these that apply:
 | State | In React Native | Notes |
 |---|---|---|
 | Default | | |
-| Hovered | `hovered` in `Pressable`'s style callback (web and desktop only) | Never the only way to see something. |
+| Hovered | `onHoverIn` and `onHoverOut` with state (web and desktop only; the style callback's type has only `pressed`) | Never the only way to see something. |
 | Pressed | `pressed` in `Pressable`'s style callback, `android_ripple` on Android | Show it in the first frame of the touch. |
-| Focused | `onFocus` and `onBlur` | Keyboards, switch control, and the web. A visible ring in the `focus` role. |
+| Focused | `onFocus` and `onBlur` | Keyboards on the web and Android. A visible ring in the `focus` role; iOS reports focus less reliably, so never depend on it. |
 | Disabled | `disabled`, and `accessibilityState={{ disabled }}` | Still readable; say why in nearby text when it isn't obvious. |
 | Loading | (your own flag) | Keep the size and the name; ignore taps; `accessibilityState={{ busy }}`. |
 | Error | `accessibilityState` and text | Text and an icon, not colour alone. |
@@ -68,7 +68,7 @@ export function AppButton({ label, onPress, disabled = false, loading = false }:
         styles.button,
         {
           backgroundColor: disabled ? colors.actionSecondary : colors.actionPrimary,
-          borderColor: focused ? colors.focus : colors.actionPrimary,
+          borderColor: focused ? colors.focus : disabled ? colors.actionSecondary : colors.actionPrimary,
           opacity: pressed ? 0.88 : 1,
         },
       ]}
@@ -111,7 +111,7 @@ The pressed look is a typed opacity, which is fine here: it dims a theme colour 
 
 ## Names and tap areas
 
-Every control has a name a screen reader can say. Text inside a `Pressable` is its name once `accessibilityRole` is set. A control with only an icon needs an `accessibilityLabel`, and a role so the reader says what it is. React Native has no minimum size, so make the tap area 44 by 44 points: pad the control, or add `hitSlop`, which widens the area that counts as a tap without changing how it looks:
+Every control has a name a screen reader can say. Text inside a `Pressable` is its name once `accessibilityRole` is set. A control with only an icon needs an `accessibilityLabel`, and a role so the reader says what it is. React Native has no minimum size, so make the box 44 by 44 points: a minimum width and height, or padding. `hitSlop` widens the area that counts as a tap on a phone without changing the box, which is what `motif shot --audit` measures, so use it on top of the size, not instead of it:
 
 ```tsx
 import { Ionicons } from "@expo/vector-icons";
@@ -218,7 +218,7 @@ For a new app, build these, each with the states above and the props its screens
 | Component | Starts from | Notes |
 |---|---|---|
 | `Button` | `Pressable` | One component with `kind` (primary, secondary, quiet) and `loading`; the example above. |
-| `IconButton` | `Pressable` with an icon | An `accessibilityLabel` is its name; 44 points with `hitSlop`. |
+| `IconButton` | `Pressable` with an icon | An `accessibilityLabel` is its name; A 44 point box; `hitSlop` adds to it. |
 | `Field` | `TextInput` | Label, helper, error; a password field also shows a toggle with a label. |
 | `Checkbox` | `Pressable` with `accessibilityRole="checkbox"` | The row is the tap area, not the box; `accessibilityState={{ checked }}`. |
 | `Switch` | `Switch` in a `Pressable` row | Same, with the label at the start (right in right to left); `trackColor` from roles. |

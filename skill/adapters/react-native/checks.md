@@ -17,7 +17,7 @@ A colour typed into a style.
 
 - Example: `"#8a8a8a"`, `"rgba(0, 0, 0, 0.5)"`, `"white"`, `"hsl(210, 50%, 40%)"`. (`"transparent"` is fine.)
 - Fix: the colour role it stands for, `colors.<role>` from `useMotifTheme()`. Each finding names the nearest role.
-- The starter's `constants/Colors.ts` (an exported object of light and dark colours) is the app's own palette, so its colours are flagged too, and `motif check` adds one line for the file: `<file> is your own theme's palette: once the app uses Motif's theme, remove it, or list its folder under "ignore" in design/motif.json.` Don't rewrite the palette with Motif's roles: move the components to `useMotifTheme()`, then delete it ([theme code](tokens.md#wiring-it-in)).
+- The starter's palette file (`src/constants/theme.ts` today, `constants/Colors.ts` before SDK 54: an exported object of light and dark colours) is the app's own palette, so its colours are flagged too, and `motif check` adds one line for the file: `<file> is your own theme's palette: once the app uses Motif's theme, remove it, or list its folder under "ignore" in design/motif.json.` Don't rewrite the palette with Motif's roles: move the components to `useMotifTheme()`, then delete it, after moving whatever else lives in `theme.ts` ([theme code](tokens.md#wiring-it-in)).
 
 ```tsx
 import { Text, View } from "react-native";
@@ -104,7 +104,7 @@ export function Dot({ on }: { on: boolean }) {
 
 The app animates (`useSharedValue`, `withTiming`, `withSpring`, `Animated`, `entering=`, `LayoutAnimation`), but nothing in its own code respects the "reduce motion" setting. Motif's theme file reads it itself, so only the app's own files count.
 
-- Fix: read `useMotifTheme().reducedMotion` (or Reanimated's `useReducedMotion()`), and skip or shorten the animation when it is on. Reanimated's `ReduceMotion.System`, its default, also satisfies the check. For core `Animated`, `AccessibilityInfo.isReduceMotionEnabled()` ([motion](motion.md#reduced-motion)). One use anywhere in the app's code satisfies the check; the audit below looks at each screen.
+- Fix: read `useMotifTheme().reducedMotion` (or Reanimated's `useReducedMotion()`), and skip or shorten the animation when it is on. Reanimated's `ReduceMotion.System` satisfies the check only when it is written out in the app's code (the default isn't a mention). For core `Animated`, `AccessibilityInfo.isReduceMotionEnabled()` ([motion](motion.md#reduced-motion)). One use anywhere in the app's code satisfies the check; the audit below looks at each screen.
 
 ```tsx
 import { useEffect } from "react";

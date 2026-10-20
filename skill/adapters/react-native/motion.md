@@ -40,7 +40,7 @@ export function FadeSwap({ visible, children }: { visible: boolean; children: Re
 
 **A value changing** (size, colour, opacity, position): a shared value moved with `withTiming(` and `duration.fast` or `duration.base` with `easing.standard`, as above.
 
-**Something entering or leaving**: Reanimated's layout animations, `entering=` and `exiting=`, with `easing.enter` for what arrives and `easing.exit` for what goes:
+**Something entering or leaving**: Reanimated's layout animations, `entering=` and `exiting=`, with `duration.base` for what arrives and `duration.fast` for what goes. A layout animation's `.easing(…)` takes a plain easing function, and the theme's `easing.<role>` is a factory that Reanimated 3.16 and 3.17 reject in the type-check (3.19 and 4 accept it), so on the floor leave the curve to the animation's default, or write the move yourself with `withTiming(` and `easing.enter` as above:
 
 ```tsx
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
@@ -51,8 +51,8 @@ export function SavedNote() {
   const { colors, type, reducedMotion } = useMotifTheme();
   return (
     <Animated.Text
-      entering={reducedMotion ? undefined : FadeIn.duration(duration.base).easing(easing.enter)}
-      exiting={reducedMotion ? undefined : FadeOut.duration(duration.fast).easing(easing.exit)}
+      entering={reducedMotion ? undefined : FadeIn.duration(duration.base)}
+      exiting={reducedMotion ? undefined : FadeOut.duration(duration.fast)}
       style={[type.label, { color: colors.textPrimary }]}
     >
       Saved
