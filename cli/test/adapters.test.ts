@@ -305,16 +305,23 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web and Flutter have every area done; the stacks still to come have none", () => {
-    for (const stack of ["React web", "Plain web", "Flutter"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
-    for (const stack of ["Jetpack Compose", "SwiftUI", "React Native (Expo)", "Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
+  test("React web, plain web, Flutter and React Native have every area done; the stacks still to come have none", () => {
+    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+    for (const stack of ["Jetpack Compose", "SwiftUI", "Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }
   });
 
-  test("Flutter's proof names every area, and every file it links to exists", () => {
-    const proof = parity.slice(parity.indexOf("## Flutter"));
-    for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
+  test("Flutter's and React Native's proofs name every area, and every file they link to exists", () => {
+    const section = (heading: string) => {
+      const start = parity.indexOf(heading);
+      expect(start).toBeGreaterThan(-1);
+      const next = parity.indexOf("\n## ", start + 1);
+      return next === -1 ? parity.slice(start) : parity.slice(start, next);
+    };
+    for (const proof of [section("## Flutter: the tests that show it"), section("## React Native (Expo): the tests that show it")]) {
+      for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
+    }
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");

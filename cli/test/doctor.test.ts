@@ -62,6 +62,12 @@ describe("runDoctor", () => {
     expect(item(r.data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for Flutter." });
   });
 
+  test("an Expo app has full support (2G Task 13)", async () => {
+    const dir = makeProject({ "package.json": JSON.stringify({ dependencies: { expo: "~54.0.1", "react-native": "0.81.5" } }) });
+    const r = await runDoctor(dir, deps());
+    expect(item(r.data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for React Native (Expo)." });
+  });
+
   test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
     const dir = tempDir("motif-vue-");
     writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { vue: "^3" } }));
@@ -260,7 +266,7 @@ describe("runDoctor: a guide git ignores (Task 15 wave B, #10)", () => {
       expect(await rnItem(dir)).toMatchObject({ status: "ok", detail: "Expo SDK 54, with the web target's packages." });
     });
 
-    test("a bare React Native app says it isn't supported, and the app line stays 'coming soon'", async () => {
+    test("a bare React Native app says it isn't supported, and the app line doesn't claim full support", async () => {
       const r = await runDoctor(expoApp({ "react-native": "0.74" }), deps());
       const items = r.data.items as DoctorItem[];
       expect(item(items, "expo-web")).toBeUndefined();
@@ -268,7 +274,10 @@ describe("runDoctor: a guide git ignores (Task 15 wave B, #10)", () => {
         status: "optional",
         detail: "React Native without Expo isn't supported: Motif supports Expo apps (spec non-goal). Theme code, checks and drafts still work; screenshots need Expo's web target.",
       });
-      expect(item(items, "app:.")!.detail).toContain("Full support is coming soon");
+      expect(item(items, "app:.")).toMatchObject({
+        status: "optional",
+        detail: "React Native without Expo detected. Full support is for Expo apps; theme code, checks and drafts still work.",
+      });
     });
   });
 });

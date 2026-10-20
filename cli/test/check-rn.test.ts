@@ -58,6 +58,12 @@ const check = (root: string) => runCheck(root, { positionals: [] });
 const where = (r: any) => (r.data.violations as any[]).map((h) => `${h.rule} ${h.file}:${h.line}:${h.column}`);
 
 describe("motif check on an Expo app", () => {
+  test("an Expo app without a guide is sent to motif extract, which reads it (2G Task 13)", async () => {
+    const r = await check(makeProject({ "package.json": pkg(), "app/_layout.tsx": "export default function Layout() { return null; }\n" }));
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("Draft one from your code with motif extract");
+  });
+
   test("reports colours, sizes and fonts with the theme's fixes, and honours a reasoned motif-ok", async () => {
     const r = await check(await expoApp({ "app/index.tsx": HOME }));
     expect(r.exitCode).toBe(1);

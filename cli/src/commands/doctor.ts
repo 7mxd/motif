@@ -9,6 +9,7 @@ import { SOURCES } from "../sources/catalog";
 import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, siteDir, STACK_LABELS } from "../detect/stacks";
 import { ignoredByGit, ignoredNotes } from "../project/git";
 import { nativeStack } from "../stacks/native";
+import { isExpoApp } from "../stacks/react-native/project";
 import { VERSION } from "../version";
 import { runValidate } from "./validate";
 
@@ -75,6 +76,9 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
     const label = `App (${app.path === "." ? "this folder" : app.path})`;
     if (!app.stack) {
       push(`app:${app.path}`, "needed", label, "Motif couldn't tell which framework this app uses. Add it to design/motif.json.");
+    } else if (app.stack === "react-native" && !isExpoApp(join(cwd, app.path))) {
+      // A non-goal: the react-native item below says what still works.
+      push(`app:${app.path}`, "optional", label, "React Native without Expo detected. Full support is for Expo apps; theme code, checks and drafts still work.");
     } else if (ADAPTERS_AVAILABLE.includes(app.stack)) {
       const site = app.stack === "plain-web" ? siteDir(cwd, app) : null;
       const where = site === null ? "" : `; its pages are in ${site === "." ? "this folder" : `${site}/`}`;

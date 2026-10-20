@@ -54,12 +54,13 @@ describe("the READMEs", () => {
     }
   });
 
-  test("the README's preview note lists the stacks the release has, says Flutter arrives in v0.5.0, and links the parity checklist (Ruling W)", () => {
+  test("the README's preview note lists the stacks the release has, says Flutter and React Native arrive in v0.5.0, and links the parity checklist (Ruling W)", () => {
     const readme = readFileSync(join(REPO, "README.md"), "utf8");
     const note = readme.slice(readme.indexOf("**Preview"), readme.indexOf("\n", readme.indexOf("**Preview")));
-    expect(note).toContain("for React web apps and plain web sites. Flutter apps arrive in v0.5.0 ([what each stack gets](docs/parity.md)).");
+    expect(note).toContain("for React web apps and plain web sites. Flutter and React Native (Expo) apps arrive in v0.5.0 ([what each stack gets](docs/parity.md)).");
     expect(readme).toContain("Full support in v0.4.2: React web apps and plain web sites");
-    expect(readme).not.toMatch(/Full support today[^\n]*Flutter/);
+    expect(readme).not.toMatch(/Full support today[^\n]*(Flutter|React Native)/);
+    expect(readme).toContain("React Native apps made with Expo (SDK 52 or later), also inside a monorepo, arrive in v0.5.0");
   });
 
   test("the README's motif connect row says it sets sources up in the agents you choose (Part 3)", () => {
