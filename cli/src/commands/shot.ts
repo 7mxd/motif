@@ -231,16 +231,20 @@ function guideVariants(cwd: string): { ids: string[]; broken: boolean } {
   return { ids: defaultId ? variants.map((v) => v.id) : [], broken: findings.some((f) => f.severity === "error") };
 }
 
-/** What --variant asks for: the variants to capture besides the default, or the refusal. */
-function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): { variants: string[] } | { error: CommandResult } {
+/**
+ * What --variant asks for: the variants to capture besides the default, or the refusal; and the default's id when the
+ * guide has variants that validate, which the default's screenshots set too.
+ */
+function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): { variants: string[]; defaultId?: string } | { error: CommandResult } {
   const { ids, broken } = guideVariants(cwd);
   const refuse = (r: VariantRefusal): { error: CommandResult } => ({ error: { command: "shot", ...r } });
   // An audit with no --variant checks what people see in every variant.
   if (broken && (flag !== undefined || audit)) return refuse(brokenVariants(flag));
-  if (flag === undefined) return { variants: audit ? ids.slice(1) : [] };
+  const defaultId = !broken && ids.length > 0 ? { defaultId: ids[0]! } : {};
+  if (flag === undefined) return { variants: audit ? ids.slice(1) : [], ...defaultId };
   const refusal = variantRefusal("This design guide", flag, ids);
   if (refusal) return refuse(refusal);
-  return { variants: flag === "all" ? ids.slice(1) : flag === ids[0] ? [] : [flag] };
+  return { variants: flag === "all" ? ids.slice(1) : flag === ids[0] ? [] : [flag], ...defaultId };
 }
 
 export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = defaultDeps): Promise<CommandResult> {
@@ -266,6 +270,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const chosen = chooseVariants(cwd, typeof flags.variant === "string" ? flags.variant : undefined, audit);
   if ("error" in chosen) return chosen.error;
   const variants = chosen.variants;
+  const defaultVariant = chosen.defaultId;
 
   const { apps: detected, findings: settingProblems } = detectApps(cwd);
   const selected = selectApps(detected, ctx.app);
@@ -449,6 +454,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })),
         ...(rn ? { motionWidth: RN_MOTION_SIZE.width } : {}),
         ...(viewports ?? (rn ? NATIVE_VIEWPORTS : undefined) ? { viewports: viewports ?? NATIVE_VIEWPORTS } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
+        ...(defaultVariant ? { defaultVariant } : {}),
       });
     }
   } catch (e) {

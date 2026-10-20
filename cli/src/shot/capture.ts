@@ -147,6 +147,12 @@ export interface CaptureOptions {
   /** Design variants to capture besides the default (always captured): each page again with data-variant set on <html>. */
   variants?: string[];
   /**
+   * The default variant's id, when the guide has variants: the default's screenshots set data-variant to it too, so an
+   * app that passes its own variant to its theme (a React Native MotifProvider) is still drawn in the default. Motif's
+   * web CSS has no rule for that id, so a web page looks the same.
+   */
+  defaultVariant?: string;
+  /**
    * Also capture each page right to left, in this language (a BCP 47 primary tag such as "ar"): the page loads in that
    * locale, and gets dir="rtl" from Motif when it doesn't turn right to left by itself.
    */
@@ -294,9 +300,10 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                     await page.evaluate(`(() => { const html = document.documentElement; html.dir = "rtl"; html.lang = ${JSON.stringify(lang)}; return true; })()`);
                     result.rtlForced = true;
                   }
-                  if (variant) {
+                  const chosen = variant ?? opts.defaultVariant;
+                  if (chosen) {
                     // The variant is chosen on <html>, after load and before any state runs; its fonts may differ.
-                    await page.evaluate(`document.documentElement.dataset.variant = ${JSON.stringify(variant)}; Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 500 : 2000}))]).then(() => true)`);
+                    await page.evaluate(`document.documentElement.dataset.variant = ${JSON.stringify(chosen)}; Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 500 : 2000}))]).then(() => true)`);
                   }
                   if (state) {
                     try {

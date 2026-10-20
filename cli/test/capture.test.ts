@@ -4,6 +4,13 @@ import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 import { captureScreens, routeSlug, routeUrl, shotName, stateExpression } from "../src/shot/capture";
+import { generateFallback } from "../src/generate/fallback";
+import { motifCss } from "../src/generate/motif-css";
+import { buildThemeSet } from "../src/generate/theme";
+import { startStaticServer } from "../src/shot/static-server";
+import { generateReactWeb } from "../src/stacks/react-web/generate";
+import { docFrom, twoVariantTokens } from "./helpers";
+import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 import { selfSignedCert } from "./tls";
 
@@ -167,4 +174,65 @@ describe.skipIf(!browser)("a page's own errors and its states (backlog)", () => 
     });
     expect(routes[0]!.pageErrors).toEqual(["Error: boom: data is undefined"]);
   }, 60_000);
+});
+
+// Plan 2G, Task 7 (the 2E lesson): an app that passes its own variant to its theme is still drawn in the guide's default
+// for the default's screenshots, because those set data-variant to the default's id too.
+describe.skipIf(!browser)("the default variant's attribute (needs Chrome, Edge or Chromium)", () => {
+  const PHONE = [{ name: "mobile" as const, width: 390, height: 844, scale: 2, mobile: true }];
+  /** A page whose theme follows data-variant when it names a variant, else the app's own choice ("men"), as Motif's React Native provider does. */
+  const OWN_CHOICE = `<!doctype html><html><head><style>body { margin: 0 } #t { height: 200px }</style></head><body><div id="t">Hello</div><script>
+    const colours = { women: "#b91c1c", men: "#0e5c4d" };
+    const paint = () => { const id = document.documentElement.dataset.variant; document.getElementById("t").style.background = colours[id in colours ? id : "men"]; };
+    paint();
+    new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-variant"] });
+  </script></body></html>`;
+
+  test("the default's shots set data-variant to the default's id: an app's own variant doesn't take them over; names are unchanged", async () => {
+    const root = makeProject({ "index.html": OWN_CHOICE });
+    const site = startStaticServer(root);
+    try {
+      const out = join(root, "shots");
+      const r = await captureScreens({ browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir: out, settleMs: 50, viewports: PHONE, variants: ["men"], defaultVariant: "women" });
+      expect(r.routes[0]!.shots.map((s) => s.slice(out.length + 1)).sort()).toEqual(["index+men.mobile.dark.png", "index+men.mobile.png", "index.mobile.dark.png", "index.mobile.png"]);
+      expect(readFileSync(join(out, "index.mobile.png")).equals(readFileSync(join(out, "index+men.mobile.png")))).toBe(false);
+
+      // Without it (as before), the app's own choice is what the default's shots show.
+      const before = join(root, "before");
+      await captureScreens({ browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir: before, settleMs: 50, viewports: PHONE, variants: ["men"] });
+      expect(readFileSync(join(before, "index.mobile.png")).equals(readFileSync(join(before, "index+men.mobile.png")))).toBe(true);
+    } finally {
+      site.stop();
+    }
+  }, 120_000);
+
+  test("a page styled by Motif's web CSS looks the same with the default's id set: it has no rule for it", async () => {
+    const set = buildThemeSet(docFrom(twoVariantTokens()));
+    const css = motifCss(set.base, set.variants);
+    const page = `<!doctype html><html><head><style>${css}\nbody { margin: 0; background: var(--motif-color-background); } .card { margin: 24px; height: 120px; background: var(--motif-color-surface); border: 2px solid var(--motif-color-border); border-radius: var(--motif-radius-md); }</style></head><body><div class="card"></div></body></html>`;
+    const root = makeProject({ "index.html": page });
+    const site = startStaticServer(root);
+    try {
+      const withId = join(root, "with"), without = join(root, "without");
+      await captureScreens({ browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir: withId, settleMs: 50, viewports: PHONE, variants: ["men"], defaultVariant: "women" });
+      await captureScreens({ browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir: without, settleMs: 50, viewports: PHONE, variants: ["men"] });
+      for (const name of ["index.mobile.png", "index.mobile.dark.png"]) expect(readFileSync(join(withId, name)).equals(readFileSync(join(without, name)))).toBe(true);
+      // And the variant does differ, so the page does follow data-variant.
+      expect(readFileSync(join(withId, "index.mobile.png")).equals(readFileSync(join(withId, "index+men.mobile.png")))).toBe(false);
+    } finally {
+      site.stop();
+    }
+  }, 120_000);
+});
+
+describe("the web's generated CSS has no rule for the default variant's id", () => {
+  test("React web (every Tailwind setup) and plain web", () => {
+    const set = buildThemeSet(docFrom(twoVariantTokens()));
+    const files = [
+      ...(["v4", "v3", "none"] as const).flatMap((tailwind) => generateReactWeb(set.base, { srcDir: "src", tailwind }, set.variants)),
+      ...generateFallback(set.base, set.variants),
+    ];
+    expect(files.some((f) => f.content.includes('data-variant="men"'))).toBe(true);
+    for (const f of files) expect(f.content).not.toContain('data-variant="women"');
+  });
 });
