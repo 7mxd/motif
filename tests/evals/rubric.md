@@ -1,6 +1,6 @@
 # Test C grading rubric
 
-You grade a design review of the web app named above. Some problems were planted in the app on purpose; the review's findings are JSON objects with a severity, a category, a location (a file and line, a screen route, or both) and a one-line summary. Read the app's code, its `design/` folder and the screenshots in `design/shots/` whenever a claim needs checking. Don't change anything.
+You grade a design review of the app named above. Some problems were planted in the app on purpose; the review's findings are JSON objects with a severity, a category, a location (a file and line, a screen route, or both) and a one-line summary. Read the app's code, its `design/` folder and the screenshots in `design/shots/` whenever a claim needs checking. Don't change anything.
 
 ## Part A — does a finding describe a planted problem?
 

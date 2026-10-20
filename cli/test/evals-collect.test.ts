@@ -360,6 +360,46 @@ describe("new components on Flutter, from the session's diff", () => {
     expect(flutterComponents(diff)).toEqual({ newComponents: ["QueuePlace"], screens: ["ReserveScreen"], screenParts: [] });
   });
 
+  test("only a GoRoute's or ShellRoute's builder shows a page: a widget a LayoutBuilder or FutureBuilder returns still counts", () => {
+    const diff = [
+      newFile("lib/features/search/search_screen.dart", [
+        "class SearchScreen extends StatelessWidget {}",
+        "class WideResults extends StatelessWidget {}",
+        "class LoadedResults extends StatelessWidget {}",
+        "class Pulse extends StatelessWidget {}",
+        "Widget body() => LayoutBuilder(",
+        "  builder: (context, constraints) => const WideResults(),",
+        ");",
+        "Widget later() => FutureBuilder(future: f, builder: (context, snapshot) => LoadedResults(snapshot: snapshot));",
+        "Widget pulse() => AnimatedBuilder(animation: a, builder: (context, child) {",
+        "  return Pulse(child: child);",
+        "});",
+      ].join("\n")),
+      edit("lib/app.dart", [], ["          GoRoute(path: '/search', builder: (context, state) => const SearchScreen()),"]),
+    ].join("\n");
+    expect(flutterComponents(diff)).toEqual({ newComponents: ["WideResults", "LoadedResults", "Pulse"], screens: ["SearchScreen"], screenParts: [] });
+  });
+
+  test("a route builder with a block body shows its page too, and so does a ShellRoute's pageBuilder", () => {
+    const diff = [
+      newFile("lib/features/reserve/reserve_screen.dart", "class ReserveScreen extends ConsumerWidget {}\nclass ReserveShell extends StatelessWidget {}"),
+      edit("lib/app.dart", [], [
+        "          GoRoute(",
+        "            path: '/reserve',",
+        "            builder: (context, state) {",
+        "              final id = state.uri.queryParameters['book'];",
+        "              return ReserveScreen(bookId: id);",
+        "            },",
+        "          ),",
+        "      ShellRoute(",
+        "        pageBuilder: (context, state, child) => NoTransitionPage(child: ReserveShell(child: child)),",
+        "        routes: [],",
+        "      ),",
+      ]),
+    ].join("\n");
+    expect(flutterComponents(diff)).toEqual({ newComponents: [], screens: ["ReserveScreen", "ReserveShell"], screenParts: [] });
+  });
+
   test("componentFacts uses the Flutter rule for a Flutter case, and the guide's lines for what's recorded", () => {
     const diff = [
       newFile("lib/widgets/queue_badge.dart", "class QueueBadge extends StatelessWidget {}"),
@@ -405,6 +445,17 @@ describe("test B on Flutter", () => {
     } finally {
       outputs.shot = saved;
     }
+  });
+
+  test("when flutter pub get fails, the type check fails and says why, even if flutter analyze passes", async () => {
+    const ws = await prepareWorkspace(byId("b-flutter-search"), join(tempDir("motif-col-"), "bf3"), run);
+    const brokenPub: Run = async (cmd, cwd, t, env) =>
+      cmd.join(" ") === "flutter pub get" ? { code: 1, stdout: "", stderr: "Because maktaba depends on nope, version solving failed.", timedOut: false } : run(cmd, cwd, t, env);
+    const out = join(ws.dir, "results");
+    const f = await collectB(byId("b-flutter-search"), ws, { run: brokenPub, motif, judge: noJudge }, out);
+    expect(f.typecheck).toMatchObject({ code: 1, command: "flutter analyze", detail: "flutter pub get failed (see pub-get.log), so the type check couldn't run properly." });
+    expect(readFileSync(join(out, "pub-get.log"), "utf8")).toContain("version solving failed");
+    expect(existsSync(join(out, "analyze.log"))).toBe(true);
   });
 
   test("no page at the feature's route: /books/:id isn't /reserve", async () => {

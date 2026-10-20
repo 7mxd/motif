@@ -60,4 +60,13 @@ describe("where the app is (review of batch F)", () => {
     expect(p).toContain("/work/c-review/app");
     expect(p).toContain("a path starting with / is relative to it too");
   });
+
+  test("names the kind of app the review was of: a web app by default, a Flutter app for a Flutter case", () => {
+    expect(judgePrompt({ issues: [], unmatched: [] }, "R", "/work/c-review/app")).toContain("a design review of the web app in /work/c-review/app");
+    const flutter = judgePrompt({ issues: [], unmatched: [] }, "R", "/work/c-flutter/app", "Flutter app");
+    expect(flutter).toContain("a design review of the Flutter app in /work/c-flutter/app");
+    expect(flutter).not.toContain("web app");
+    expect(judgePrompt({ issues: [], unmatched: [] }, "R", undefined, "Flutter app")).toContain("the Flutter app in this folder");
+    expect(readFileSync(RUBRIC, "utf8")).not.toContain("web app");
+  });
 });

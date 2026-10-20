@@ -127,6 +127,12 @@ describe("test B on Flutter", () => {
     expect(failing(gradeB({ ...okFlutter, render: { route: "/search", status: 0, pageErrors: 1 } }))).toEqual(["renders"]);
     expect(failing(gradeB({ ...okFlutter, pageExists: false }))).toEqual(["feature"]);
   });
+  test("a type check that couldn't run properly says why", () => {
+    const g = gradeB({ ...okFlutter, typecheck: { code: 1, command: "flutter analyze", detail: "flutter pub get failed (see pub-get.log), so the type check couldn't run properly." } });
+    expect(failing(g)).toEqual(["typecheck"]);
+    expect(g.criteria.find((c) => c.id === "typecheck")!.detail).toBe("flutter pub get failed (see pub-get.log), so the type check couldn't run properly.");
+  });
+
   test("the screen a route shows isn't a new component, and the details say so", () => {
     const g = gradeB({ ...okFlutter, newComponents: ["ResultTile"], screens: ["SearchScreen"], screenParts: ["_EmptyQuery"] });
     expect(g.pass).toBe(true);

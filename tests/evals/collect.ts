@@ -7,6 +7,7 @@ import { REQUIRED_SECTIONS } from "../../cli/src/contract/design-md";
 import { discoverRoutes } from "../../cli/src/stacks/react-web/routes";
 import { detectApps, siteDir } from "../../cli/src/detect/stacks";
 import { discoverPlainRoutes } from "../../cli/src/stacks/plain-web/routes";
+import { maskComments, maskStrings } from "../../cli/src/check/mask";
 import { discoverFlutterRoutes } from "../../cli/src/stacks/flutter/routes";
 import { isFlutter, isPlain, type EvalCase } from "./cases";
 import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
@@ -45,13 +46,17 @@ async function buildAndTypecheck(dir: string, k: Collectors, out: string): Promi
 
 /**
  * A Flutter app's type check: its packages got again (the session may have added some, and flutter pub get also writes
- * the translations), then flutter analyze, where infos don't fail it but warnings and errors do.
+ * the translations), then flutter analyze, where infos don't fail it but warnings and errors do. When the packages
+ * can't be got, the type check fails and says so: analyzing without them proves nothing.
  */
 async function flutterAnalyze(dir: string, k: Collectors, out: string): Promise<CmdFacts> {
   const pub = await k.run(["flutter", "pub", "get"], dir, 900_000);
   save(out, "pub-get.log", `${pub.stdout}\n${pub.stderr}`);
   const analyze = await k.run(["flutter", "analyze", "--no-fatal-infos"], dir, 900_000);
   save(out, "analyze.log", `${analyze.stdout}\n${analyze.stderr}`);
+  if (pub.code !== 0 || pub.timedOut) {
+    return { code: pub.code || 1, timedOut: pub.timedOut, command: "flutter analyze", detail: "flutter pub get failed (see pub-get.log), so the type check couldn't run properly." };
+  }
   return { code: analyze.code, timedOut: analyze.timedOut, command: "flutter analyze" };
 }
 
@@ -65,7 +70,8 @@ const ROUTE_FILES = new Set(["page", "layout", "loading", "error", "global-error
 const isComponentFile = (path: string) =>
   /^src\/.+\.(tsx|jsx)$/.test(path) && !/\.(test|spec|stories|d)\.(tsx|jsx)$/.test(path) && !ROUTE_FILES.has(basename(path, extname(path)));
 
-interface DiffFile { path: string; isNew: boolean; deleted: boolean; added: string[]; removed: string[]; text: string }
+/** A file in a diff; `after` is its hunks as they read after the change (context and added lines). */
+interface DiffFile { path: string; isNew: boolean; deleted: boolean; added: string[]; removed: string[]; after: string[]; text: string }
 
 /** A diff's files: whether each is new, and the lines it adds and removes, line endings dropped. */
 function diffFiles(diff: string): DiffFile[] {
@@ -76,7 +82,7 @@ function diffFiles(diff: string): DiffFile[] {
     const line = raw.replace(/\r$/, "");
     const head = /^diff --git a\/.+? b\/(.+)$/.exec(line);
     if (head) {
-      file = { path: head[1]!, isNew: false, deleted: false, added: [], removed: [], text: line };
+      file = { path: head[1]!, isNew: false, deleted: false, added: [], removed: [], after: [], text: line };
       files.push(file);
       inHunk = false;
       continue;
@@ -87,8 +93,12 @@ function diffFiles(diff: string): DiffFile[] {
       if (line.startsWith("new file mode")) file.isNew = true;
       if (line.startsWith("deleted file mode")) file.deleted = true;
       if (line.startsWith("@@")) inHunk = true;
-    } else if (line.startsWith("+")) file.added.push(line.slice(1));
-    else if (line.startsWith("-")) file.removed.push(line.slice(1));
+    } else if (line.startsWith("+")) {
+      file.added.push(line.slice(1));
+      file.after.push(line.slice(1));
+    } else if (line.startsWith("-")) file.removed.push(line.slice(1));
+    else if (line.startsWith(" ")) file.after.push(line.slice(1));
+    else if (line.startsWith("@@")) file.after.push("");
   }
   return files;
 }
@@ -158,15 +168,72 @@ const WIDGET_BASES = ["StatelessWidget", "StatefulWidget", "ConsumerWidget", "Co
 const WIDGET_CLASS = new RegExp(`\\bclass\\s+(\\w+)(?:\\s*<[^{]*?>)?\\s+extends\\s+(?:${WIDGET_BASES.join("|")})\\b`, "g");
 const widgetClasses = (text: string) => [...text.matchAll(WIDGET_CLASS)].map((m) => m[1]!);
 
+const OPENS = "([{";
+const CLOSES = ")]}";
+
+/** Where the bracket at `open` closes in masked code (its end when it never does). */
+function closeOf(s: string, open: number): number {
+  let depth = 0;
+  for (let j = open; j < s.length; j++) {
+    if (OPENS.includes(s[j]!)) depth++;
+    else if (CLOSES.includes(s[j]!) && --depth === 0) return j;
+  }
+  return s.length;
+}
+
+/** Where a named argument's value ends: the next comma at its own depth, or the end of the argument list. */
+function valueEnd(s: string, from: number, end: number): number {
+  let depth = 0;
+  for (let j = from; j < end; j++) {
+    if (OPENS.includes(s[j]!)) depth++;
+    else if (CLOSES.includes(s[j]!)) depth--;
+    else if (s[j] === "," && depth === 0) return j;
+  }
+  return end;
+}
+
 /**
- * The widgets a go_router route shows: what a builder: (context, state) => … makes, or the child of the page a
- * pageBuilder makes. A widget drawn by an item builder or a Builder isn't one.
+ * The widget a route's builder returns: what follows its => or each return in its block; for a pageBuilder, the
+ * child of the page it makes.
+ */
+function shownBy(value: string, page: boolean): string[] {
+  const head = /^\s*\([^)]*\)\s*(=>|\{)/.exec(value);
+  if (!head) return [];
+  const body = value.slice(head[0].length);
+  const results = head[1] === "=>" ? [body] : [...body.matchAll(/\breturn\b/g)].map((m) => body.slice(m.index! + m[0].length));
+  return results.flatMap((r) => {
+    const m = page ? /^[^;]*?\bchild\s*:\s*(?:const\s+)?([A-Z]\w*)\s*\(/.exec(r) : /^\s*(?:const\s+)?([A-Z]\w*)\s*\(/.exec(r);
+    return m ? [m[1]!] : [];
+  });
+}
+
+/**
+ * The widgets a go_router route shows: what a GoRoute's builder or pageBuilder returns, or a ShellRoute's pageBuilder
+ * (its builder, like Maktaba's AppShell, makes the app's navigation, a component). Builders of other widgets
+ * (LayoutBuilder, FutureBuilder, AnimatedBuilder, an item builder) show no page. Read from the session's view of the
+ * changed code (its added lines and their context), with comments and strings masked.
  */
 function routedWidgets(text: string): Set<string> {
+  const s = maskStrings(maskComments(text, "dart"), "dart");
   const names = new Set<string>();
-  for (const m of text.matchAll(/\b(builder|pageBuilder)\s*:\s*\(\s*\w+\s*,\s*\w+\s*\)\s*(?:=>|\{\s*return)\s*(?:const\s+)?([A-Z]\w*)\s*\(/g)) {
-    const child = m[1] === "pageBuilder" ? /^[^;]*?\bchild\s*:\s*(?:const\s+)?([A-Z]\w*)\s*\(/.exec(text.slice(m.index! + m[0].length))?.[1] : undefined;
-    names.add(child ?? m[2]!);
+  for (const call of s.matchAll(/\b(GoRoute|ShellRoute)\s*\(/g)) {
+    const open = call.index! + call[0].length - 1;
+    const close = closeOf(s, open);
+    let depth = 0;
+    for (let j = open; j < close; j++) {
+      const c = s[j]!;
+      if (OPENS.includes(c)) depth++;
+      else if (CLOSES.includes(c)) depth--;
+      else if (depth === 1 && /[a-z]/.test(c) && !/[\w$]/.test(s[j - 1] ?? "")) {
+        // One of the route's own named arguments.
+        const key = /^(builder|pageBuilder)\s*:/.exec(s.slice(j, j + 20));
+        if (!key || (call[1] === "ShellRoute" && key[1] !== "pageBuilder")) continue;
+        const from = j + key[0].length;
+        const to = valueEnd(s, from, close);
+        for (const name of shownBy(s.slice(from, to), key[1] === "pageBuilder")) names.add(name);
+        j = to - 1;
+      }
+    }
   }
   return names;
 }
@@ -189,7 +256,8 @@ export function flutterComponents(diff: string): FlutterComponents {
   const all = diffFiles(diff);
   const removed = new Set(all.flatMap((f) => widgetClasses(f.removed.join("\n"))));
   const kept = all.filter((f) => !f.deleted);
-  const routed = routedWidgets(kept.map((f) => reallyAdded(f).join("\n")).join("\n"));
+  // A changed route comes with its context lines, so its GoRoute( is there even when the session changed only its builder.
+  const routed = new Set(kept.flatMap((f) => [...routedWidgets(f.after.join("\n"))]));
   const found: FlutterComponents = { newComponents: [], screens: [], screenParts: [] };
   const seen = new Set<string>();
   for (const f of kept) {

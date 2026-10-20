@@ -5,14 +5,18 @@ export interface Grade { pass: boolean; criteria: Criterion[]; metrics: Record<s
 
 export type CheckFacts = { violations: number; exceptions: number; warnings: number } | { error: string };
 export type ValidateFacts = { errors: number; warnings: number; missingSections: string[] } | { error: string };
-/** A command's exit; `command`, when given, is named in the details (flutter analyze, as Flutter's type check). */
-export interface CmdFacts { code: number; timedOut?: boolean; command?: string }
+/**
+ * A command's exit; `command`, when given, is named in the details (flutter analyze, as Flutter's type check), and
+ * `detail` replaces them when the command couldn't run properly (its packages couldn't be got, say).
+ */
+export interface CmdFacts { code: number; timedOut?: boolean; command?: string; detail?: string }
 
 const MAX_EXCEPTIONS = 2;
 
 const grade = (criteria: Criterion[], metrics: Grade["metrics"] = {}): Grade => ({ pass: criteria.every((c) => c.pass), criteria, metrics });
 const pct = (n: number, of: number) => (of === 0 ? 0 : Math.round((n / of) * 1000) / 10);
 const ran = (c: CmdFacts, name: string) => {
+  if (c.detail) return c.detail;
   const what = c.command ? `${name} (${c.command})` : name;
   return c.code === 0 ? `${what} passed.` : c.timedOut ? `${what} ran out of time.` : `${what} failed (exit code ${c.code}).`;
 };

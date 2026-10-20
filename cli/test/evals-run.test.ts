@@ -234,6 +234,20 @@ describe("the eval runner", () => {
     expect(h.lines.join("\n")).toContain("superpowers");
   });
 
+  test("the grader is told what kind of app was reviewed", async () => {
+    for (const [id, kind] of [["c-review", "web app"], ["c-flutter", "Flutter app"]] as const) {
+      const h = harness({
+        collect: async (_c, ws, _out, judge) => {
+          await judge({ issues: [], unmatched: [] }, ws.app);
+          return PASS;
+        },
+      });
+      await runEvals(["--cases", id, "--work", h.work], h.deps, h.where);
+      const judgeSpec = h.calls.session.find((s) => s.args.includes("--json-schema"))!;
+      expect(judgeSpec.prompt).toContain(`a design review of the ${kind} in `);
+    }
+  });
+
   test("a session that failed part-way (an API error) isn't graded, and --resume runs it again", async () => {
     let n = 0;
     const h = harness({
