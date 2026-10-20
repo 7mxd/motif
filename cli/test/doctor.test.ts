@@ -266,18 +266,17 @@ describe("runDoctor: a guide git ignores (Task 15 wave B, #10)", () => {
       expect(await rnItem(dir)).toMatchObject({ status: "ok", detail: "Expo SDK 54, with the web target's packages." });
     });
 
-    test("a bare React Native app says it isn't supported, and the app line doesn't claim full support", async () => {
+    test("a bare React Native app is told once, in plain words, what works without Expo; the app line doesn't claim full support", async () => {
       const r = await runDoctor(expoApp({ "react-native": "0.74" }), deps());
       const items = r.data.items as DoctorItem[];
       expect(item(items, "expo-web")).toBeUndefined();
-      expect(item(items, "react-native")).toMatchObject({
-        status: "optional",
-        detail: "React Native without Expo isn't supported: Motif supports Expo apps (spec non-goal). Theme code, checks and drafts still work; screenshots need Expo's web target.",
-      });
+      expect(item(items, "react-native")).toBeUndefined();
       expect(item(items, "app:.")).toMatchObject({
         status: "optional",
-        detail: "React Native without Expo detected. Full support is for Expo apps; theme code, checks and drafts still work.",
+        detail: "React Native without Expo detected. Motif fully supports Expo apps; here theme code, checks and drafts work, and for screenshots, run the app on react-native-web and pass its address to motif shot --url.",
       });
+      expect(r.text.match(/without Expo/g)).toHaveLength(1);
+      expect(r.text).not.toContain("non-goal");
     });
   });
 });

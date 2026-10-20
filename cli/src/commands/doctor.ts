@@ -77,8 +77,13 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
     if (!app.stack) {
       push(`app:${app.path}`, "needed", label, "Motif couldn't tell which framework this app uses. Add it to design/motif.json.");
     } else if (app.stack === "react-native" && !isExpoApp(join(cwd, app.path))) {
-      // A non-goal: the react-native item below says what still works.
-      push(`app:${app.path}`, "optional", label, "React Native without Expo detected. Full support is for Expo apps; theme code, checks and drafts still work.");
+      // Motif supports Expo apps; what still works on a bare one is said here, once.
+      push(
+        `app:${app.path}`,
+        "optional",
+        label,
+        "React Native without Expo detected. Motif fully supports Expo apps; here theme code, checks and drafts work, and for screenshots, run the app on react-native-web and pass its address to motif shot --url.",
+      );
     } else if (ADAPTERS_AVAILABLE.includes(app.stack)) {
       const site = app.stack === "plain-web" ? siteDir(cwd, app) : null;
       const where = site === null ? "" : `; its pages are in ${site === "." ? "this folder" : `${site}/`}`;
