@@ -177,6 +177,23 @@ function installAudit(): boolean {
       .slice(0, 40);
   const describe = (el: Element) => ({ selector: path(el), label: label(el), kind: kind(el) });
 
+  /**
+   * The turning view of React Native's ActivityIndicator as react-native-web draws it: the only child of a
+   * role="progressbar" with aria-valuemin 0, aria-valuemax 1 and no aria-valuenow, turned by a CSS animation from its
+   * class (no transform of the app's in its style), around an svg of two circles. It's the platform's own spinner, which
+   * shows that something is loading: the app has no setting to slow or stop it under reduce motion (iOS keeps it turning),
+   * so it isn't the app's motion. An app's own bar or shimmer with accessibilityRole="progressbar" (Animated, Reanimated)
+   * is the app's, and still counts; so does a web page's spinner, which the page draws and can stop.
+   */
+  const activityIndicator = (e: Element) => {
+    const bar = e.parentElement;
+    if (!bar?.matches("[role='progressbar'][aria-valuemin='0'][aria-valuemax='1']:not([aria-valuenow])") || bar.children.length !== 1) return false;
+    if (/transform|translate|rotate|scale|left|top/i.test(e.getAttribute("style") ?? "")) return false;
+    if (!e.getAnimations().some((a) => "animationName" in a)) return false;
+    const svg = e.children.length === 1 ? e.firstElementChild : null;
+    return svg?.tagName.toLowerCase() === "svg" && svg.children.length === 2 && [...svg.children].every((c) => c.tagName.toLowerCase() === "circle");
+  };
+
   const api: AuditApi = {
     async axe(rules, naming) {
       const result = await axe.run(document, { runOnly: { type: "rule", values: rules }, resultTypes: ["violations"] });
@@ -280,10 +297,7 @@ function installAudit(): boolean {
         if (before[i] !== after[i]) moving.add(e);
       });
       return [...moving]
-        // React Native's ActivityIndicator (role="progressbar" on the web) is the platform's own spinner, which shows that
-        // something is loading: the app has no setting to slow or stop it under reduce motion (iOS keeps it turning), so it
-        // isn't the app's motion. Web pages draw their own spinners and can stop them, so on the web a spinner still counts.
-        .filter((e) => !(reactNative && e.closest("[role='progressbar']")))
+        .filter((e) => !(reactNative && activityIndicator(e)))
         .filter((e) => e.isConnected && e.getBoundingClientRect().width > 0)
         .map((e) => ({ rule: "motion" as const, ...describe(e) }));
     },

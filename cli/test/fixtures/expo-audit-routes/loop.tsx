@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Animated, Text, View } from "react-native";
 
-// React Native's own Animated, looping, with no check for reduced motion: the common case.
+// React Native's own Animated, looping, with no check for reduced motion: the common case. It's the app's own progress
+// bar (accessibilityRole="progressbar"), which the app can stop, unlike ActivityIndicator's spinner.
 export default function Loop() {
   const x = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -12,7 +13,9 @@ export default function Loop() {
   return (
     <View style={{ flex: 1, backgroundColor: "#ffffff", padding: 24, paddingTop: 64, gap: 16 }}>
       <Text style={{ color: "#111111", fontSize: 24 }}>Loop</Text>
-      <Animated.View style={{ width: 40, height: 40, backgroundColor: "#0a5", borderRadius: 8, transform: [{ translateX: x }] }} />
+      <View accessibilityRole="progressbar" accessibilityLabel="Syncing">
+        <Animated.View style={{ width: 40, height: 40, backgroundColor: "#0a5", borderRadius: 8, transform: [{ translateX: x }] }} />
+      </View>
     </View>
   );
 }
