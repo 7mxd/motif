@@ -87,7 +87,8 @@ function parseObject(m: string, o: string, open: number): Obj {
       }
     }
     if (key === undefined) {
-      i = valueEnd(m, i);
+      // Always move on, even when a stray ")" or "]" is what valueEnd stopped at.
+      i = Math.max(valueEnd(m, i), i + 1);
       continue;
     }
     skipSpace();

@@ -138,3 +138,12 @@ describe("motif extract on an Expo app", () => {
     expect(r.text).not.toContain("Dart");
   });
 });
+
+describe("a half-written object", () => {
+  test("does not hang extract", () => {
+    const dir = makeProject({ "package.json": PKG, "constants/Colors.ts": "export const Colors = { light: { text: '#111' ), ] }\n" });
+    const started = Date.now();
+    collect(dir);
+    expect(Date.now() - started).toBeLessThan(2000);
+  }, 5000);
+});
