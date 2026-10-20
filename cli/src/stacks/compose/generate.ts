@@ -264,25 +264,38 @@ function shadows(layers: ThemeShadowLayer[]): Expr[] {
 }
 
 /**
- * Each scheme colour and the role it comes from: Flutter's mapping, plus background and onBackground, which Compose's
- * scheme still has.
+ * Each of Material 3's scheme colours (as of 1.3) and the role it comes from: Flutter's mapping, plus background and
+ * onBackground, which Compose's scheme still has, and every other slot, so no component shows Material's baseline
+ * purple. The scrim (null) stays black: it dims the screen behind a sheet or dialog, and isn't a brand colour.
  */
-const SCHEME: [string, string][] = [
+const SCHEME: [string, string | null][] = [
   ["primary", "action-primary"], ["onPrimary", "on-action-primary"],
+  ["primaryContainer", "surface-raised"], ["onPrimaryContainer", "text-primary"],
+  ["inversePrimary", "action-primary"],
   ["secondary", "action-secondary"], ["onSecondary", "on-action-secondary"],
-  ["error", "danger"], ["onError", "on-danger"],
+  ["secondaryContainer", "action-secondary"], ["onSecondaryContainer", "on-action-secondary"],
+  ["tertiary", "action-secondary"], ["onTertiary", "on-action-secondary"],
+  ["tertiaryContainer", "surface-raised"], ["onTertiaryContainer", "text-primary"],
   ["background", "background"], ["onBackground", "text-primary"],
-  ["surface", "surface"], ["onSurface", "text-primary"], ["onSurfaceVariant", "text-secondary"],
-  ["surfaceContainerLow", "background"], ["surfaceContainer", "surface"],
-  ["surfaceContainerHigh", "surface-raised"], ["surfaceContainerHighest", "surface-raised"],
-  ["outline", "border"], ["outlineVariant", "border"],
-  ["inverseSurface", "text-primary"], ["inverseOnSurface", "text-inverse"],
+  ["surface", "surface"], ["onSurface", "text-primary"],
+  ["surfaceVariant", "surface-raised"], ["onSurfaceVariant", "text-secondary"],
   ["surfaceTint", "surface"],
+  ["inverseSurface", "text-primary"], ["inverseOnSurface", "text-inverse"],
+  ["error", "danger"], ["onError", "on-danger"],
+  ["errorContainer", "danger"], ["onErrorContainer", "on-danger"],
+  ["outline", "border"], ["outlineVariant", "border"],
+  ["scrim", null],
+  ["surfaceBright", "surface"], ["surfaceDim", "background"],
+  ["surfaceContainerLowest", "background"], ["surfaceContainerLow", "background"],
+  ["surfaceContainer", "surface"],
+  ["surfaceContainerHigh", "surface-raised"], ["surfaceContainerHighest", "surface-raised"],
 ];
 
 function schemeBlock(t: Theme): string[] {
   const has = new Set(t.colors.map((c) => c.name));
-  const args = SCHEME.filter(([, role]) => has.has(role)).map(([key, role]) => `${key} = colors.${colorField(role)}`);
+  const args = SCHEME.filter(([, role]) => role === null || has.has(role)).map(([key, role]) =>
+    `${key} = ${role === null ? "Color.Black" : `colors.${colorField(role)}`}`,
+  );
   return [
     "",
     "/** Material's colours, from the guide's roles only: never dynamic colour. */",
@@ -295,18 +308,17 @@ function schemeBlock(t: Theme): string[] {
   ];
 }
 
-function typographyBlock(t: Theme, roles: { font: ThemeFont; companion: string | null }[], arabic: boolean): string[] {
+/**
+ * Material's type scale, read from MotifType: a role with an Arabic companion picks it by locale there, so
+ * MaterialTheme.typography and MotifType always agree. Reading those roles makes the function composable.
+ */
+function typographyBlock(t: Theme, arabic: boolean): string[] {
   const own = new Map(t.fonts.map((f) => [f.name, f]));
   const scale = typeScale(t.fonts);
   const slots = TYPE_SLOTS.filter(([, role]) => own.has(role));
   const used = [...new Set(slots.map(([, role]) => role))];
-  const local = (role: string) => kotlinMember(role, "t", new Set(["arabic"]));
-  const locals = used.map((role) => {
-    const name = kotlinMember(role, "t");
-    const hasCompanion = roles.some((r) => r.font.name === role && r.companion);
-    const value = hasCompanion ? `if (arabic) MotifType.${name}Arabic else MotifType.${name}` : `MotifType.${name}`;
-    return `    val ${local(role)} = ${value}`;
-  });
+  const local = (role: string) => kotlinMember(role, "t");
+  const locals = used.map((role) => `    val ${local(role)} = MotifType.${kotlinMember(role, "t")}`);
   const args = slots.map(([slot, role, materialPx]) => {
     const font = own.get(role)!;
     const px = slotSize(materialPx, font.sizePx, scale);
@@ -316,7 +328,8 @@ function typographyBlock(t: Theme, roles: { font: ThemeFont; companion: string |
   return [
     "",
     ...kdoc(["Material's type scale on the guide's roles: each slot steps down on the guide's own sizes."]),
-    `private fun motifTypography(${arabic ? "arabic: Boolean" : ""}): Typography {`,
+    ...(arabic ? ["@Composable", "@ReadOnlyComposable"] : []),
+    "private fun motifTypography(): Typography {",
     ...locals,
     ...render(call("Typography(", args, ")", true), 4, "return "),
     "}",
@@ -367,11 +380,10 @@ function themeBlock(set: ThemeSet, arabic: boolean): string[] {
     "    content: @Composable () -> Unit,",
     ") {",
     ...pick,
-    ...(arabic ? ["    val arabic = localeLanguage() in ARABIC_SCRIPT"] : []),
     "    CompositionLocalProvider(LocalMotifColors provides colors) {",
     "        MaterialTheme(",
     "            colorScheme = motifColorScheme(colors, darkTheme),",
-    `            typography = motifTypography(${arabic ? "arabic" : ""}),`,
+    "            typography = motifTypography(),",
     "            shapes = MotifShapes,",
     "            content = content,",
     "        )",
@@ -395,17 +407,18 @@ const LOCALE_BLOCK = [
   "/** Languages written in Arabic script: their text takes the type roles' Arabic companion. */",
   `private val ARABIC_SCRIPT = setOf(${ARABIC_SCRIPT.map((l) => `"${l}"`).join(", ")})`,
   "",
-  "/** The language of the app's locale (in a preview, the one it sets). */",
+  "/** True when the app's language (in a preview, the one it sets) is written in Arabic script. */",
   "@Composable",
   "@ReadOnlyComposable",
-  "private fun localeLanguage(): String {",
+  "private fun arabicScript(): Boolean {",
   "    val configuration = LocalConfiguration.current",
-  "    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {",
+  "    val language = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {",
   "        configuration.locales[0].language",
   "    } else {",
   '        @Suppress("DEPRECATION")',
   "        configuration.locale.language",
   "    }",
+  "    return language in ARABIC_SCRIPT",
   "}",
 ];
 
@@ -524,15 +537,38 @@ export function generateCompose(set: ThemeSet, opts: ComposeOptions): GeneratedF
     ]),
     ...fontsBlock(plan.members, google),
     ...object(
-      ["The guide's type roles: size, weight, line height and letter spacing.", "They carry no colour, so the theme's text colour applies."],
+      [
+        "The guide's type roles: size, weight, line height and letter spacing.",
+        "They carry no colour, so the theme's text colour applies.",
+        ...(arabic
+          ? [
+              "",
+              "A role with an Arabic companion is read in a composable, and uses the companion when the app's",
+              "language is written in Arabic script, as MaterialTheme.typography does. Its Latin and Arabic",
+              "styles choose one font whatever the language.",
+            ]
+          : []),
+      ],
       "MotifType",
       plan.roles.flatMap(({ font, family, companion }, i) => {
         const name = kotlinMember(font.name, "t");
+        const style = (member: string, fontFamily: string, doc: string[] = []) => [
+          ...doc,
+          `    val ${member}: TextStyle`,
+          ...render(textStyle(font, fontFamily), 8, "get() = "),
+        ];
+        if (!companion) return [...(i > 0 ? [""] : []), ...style(name, family)];
         return [
           ...(i > 0 ? [""] : []),
+          ...kdoc([`In the Arabic companion when the app's language is written in Arabic script.`], INDENT),
           `    val ${name}: TextStyle`,
-          ...render(textStyle(font, family), 8, "get() = "),
-          ...(companion ? ["", `    val ${name}Arabic: TextStyle`, ...render(textStyle(font, companion), 8, "get() = ")] : []),
+          "        @Composable",
+          "        @ReadOnlyComposable",
+          `        get() = if (arabicScript()) ${name}Arabic else ${name}Latin`,
+          "",
+          ...style(`${name}Latin`, family, kdoc(["In the role's first font, whatever the language."], INDENT)),
+          "",
+          ...style(`${name}Arabic`, companion, kdoc(["In the role's Arabic companion, whatever the language."], INDENT)),
         ];
       }),
     ),
@@ -541,7 +577,7 @@ export function generateCompose(set: ThemeSet, opts: ComposeOptions): GeneratedF
     "private val EvenLeading =",
     "    LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)",
     ...schemeBlock(t),
-    ...typographyBlock(t, plan.roles, arabic),
+    ...typographyBlock(t, arabic),
     ...shapesBlock(t),
     ...(arabic ? LOCALE_BLOCK : []),
     ...themeBlock(set, arabic),

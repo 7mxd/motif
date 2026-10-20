@@ -26,6 +26,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+
+/** A role without an Arabic companion is a plain value, so it can be read outside composables. */
+val HeadingStyle: TextStyle = MotifType.heading
 
 @Composable
 fun Example(open: Boolean) {
@@ -44,7 +48,10 @@ fun Example(open: Boolean) {
             .background(colors.surface, RoundedCornerShape(MotifRadius.full))
             .padding(horizontal = width, vertical = height),
     ) {
+        // body has an Arabic companion: in a composable, MotifType.body follows the locale.
         Text("Hi", style = MotifType.body.copy(color = colors.textPrimary))
+        Text("Latin", style = MotifType.bodyLatin)
+        Text("Heading", style = HeadingStyle)
         Text("\\u0645\\u0631\\u062D\\u0628\\u0627", style = MotifType.bodyArabic)
         Text("\${MotifMotion.reduced()}", style = MaterialTheme.typography.labelSmall)
         Text("Ok", fontFamily = MotifFonts.readexPro, color = LocalMotifColors.current.actionPrimary)
@@ -111,6 +118,11 @@ describe("the generated Kotlin", () => {
     });
     expect(theme!.content).toContain("enum class MotifVariant { Default, Partner }");
     expect(theme!.content).toContain("val bodyArabic: TextStyle");
+    expect(theme!.content).toContain("get() = if (arabicScript()) bodyArabic else bodyLatin");
+    // Every slot of Material 3 1.3's scheme, so the floor's compiler checks each name.
+    expect(theme!.content).toContain("tertiaryContainer = colors.surfaceRaised,");
+    expect(theme!.content).toContain("surfaceContainerLowest = colors.background,");
+    expect(theme!.content).toContain("scrim = Color.Black,");
     expect(theme!.content).toContain("import androidx.compose.ui.text.font.Font\n");
     expect(theme!.content).toContain("import androidx.compose.ui.text.googlefonts.Font\n");
     expect(theme!.content).toContain("Font(R.font.brand_sans, FontWeight.W400),");

@@ -87,7 +87,24 @@ describe("generateCompose, the test guide (no variants)", () => {
       "inverseSurface = colors.textPrimary,",
       "inverseOnSurface = colors.textInverse,",
       "surfaceTint = colors.surface,",
-    ]) expect(kt.split(line).length).toBe(3); // once in each scheme
+      // Every other slot too, so no component falls back to Material's baseline purple.
+      "primaryContainer = colors.surfaceRaised,",
+      "onPrimaryContainer = colors.textPrimary,",
+      "inversePrimary = colors.actionPrimary,",
+      "secondaryContainer = colors.actionSecondary,",
+      "onSecondaryContainer = colors.onActionSecondary,",
+      "tertiary = colors.actionSecondary,",
+      "onTertiary = colors.onActionSecondary,",
+      "tertiaryContainer = colors.surfaceRaised,",
+      "onTertiaryContainer = colors.textPrimary,",
+      "errorContainer = colors.danger,",
+      "onErrorContainer = colors.onDanger,",
+      "surfaceVariant = colors.surfaceRaised,",
+      "surfaceBright = colors.surface,",
+      "surfaceDim = colors.background,",
+      "surfaceContainerLowest = colors.background,",
+      "scrim = Color.Black,",
+    ]) expect(kt.split(`            ${line}\n`).length).toBe(3); // once in each scheme, on its own line
   });
 
   test("sizes and shadows", () => {
@@ -231,14 +248,37 @@ describe("generateCompose, an Arabic companion", () => {
   t.font.display.$value.fontFamily = ["Onest", "Readex Pro", "sans-serif"];
   const kt = kotlinFor(t);
 
-  test("roles with a companion get an Arabic style, used in Arabic-script locales", () => {
+  test("roles with a companion get a Latin and an Arabic style, and the role itself picks one by locale", () => {
+    expect(kt).toContain("    val display: TextStyle\n        @Composable\n        @ReadOnlyComposable\n        get() = if (arabicScript()) displayArabic else displayLatin\n");
+    expect(kt).toContain("    val displayLatin: TextStyle\n        get() = TextStyle(\n            fontFamily = MotifFonts.onest,");
     expect(kt).toContain("    val displayArabic: TextStyle\n        get() = TextStyle(\n            fontFamily = MotifFonts.readexPro,");
+    expect(kt).toContain("    val body: TextStyle\n        @Composable\n        @ReadOnlyComposable\n        get() = if (arabicScript()) bodyArabic else bodyLatin\n");
     expect(kt).toContain("    val bodyArabic: TextStyle\n");
+    // A role without a companion stays a plain value, usable outside composables.
+    expect(kt).toContain("    val title: TextStyle\n        get() = TextStyle(\n");
     expect(kt).not.toContain("titleArabic");
+    expect(kt).not.toContain("titleLatin");
     expect(kt).toContain('private val ARABIC_SCRIPT = setOf("ar", "fa", "ur", "ps", "ckb", "sd", "ug")');
-    expect(kt).toContain("typography = motifTypography(arabic),");
-    expect(kt).toContain("val display = if (arabic) MotifType.displayArabic else MotifType.display");
-    expect(kt).toContain("val title = MotifType.title\n");
+    expect(kt).toContain("@Composable\n@ReadOnlyComposable\nprivate fun arabicScript(): Boolean {");
+    expect(kt).toContain("configuration.locales[0].language");
+  });
+
+  test("Material's type comes from the same roles, so MaterialTheme.typography and MotifType agree", () => {
+    expect(kt).toContain("@Composable\n@ReadOnlyComposable\nprivate fun motifTypography(): Typography {");
+    expect(kt).toContain("    val display = MotifType.display\n");
+    expect(kt).toContain("    val body = MotifType.body\n");
+    expect(kt).toContain("    val title = MotifType.title\n");
+    expect(kt).toContain("typography = motifTypography(),");
+    expect(kt).not.toContain("if (arabic)");
+    expect(kt).not.toContain("localeLanguage");
+  });
+
+  test("no line is longer than 100 characters", () => {
+    for (const line of kt.split("\n")) expect(line.length).toBeLessThanOrEqual(100);
+  });
+
+  test("the whole file", () => {
+    expect(kt).toMatchSnapshot();
   });
 
   test("the companion is loaded at the weights its roles use", () => {
