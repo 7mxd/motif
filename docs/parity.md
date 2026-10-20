@@ -24,7 +24,7 @@ A stack is supported when the developer gets the whole of Motif on it, not part 
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | React web | done | done | done | done | done | done | done | done | done | done | done |
 | Plain web | done | done | done | done | done | done | done | done | done | done | done |
-| Flutter | done | done | done | done | done | done | done | done | done | pending the four eval runs | done |
+| Flutter | done | done | done | done | done | done | done | done | done | done | done |
 | Jetpack Compose | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | SwiftUI | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | React Native (Expo) | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
@@ -36,9 +36,8 @@ React web and plain web were finished in Part 1 and plan 2A; right-to-left scree
 
 ## Flutter: the tests that show it
 
-Flutter was built in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Every area is done except Evals, which waits until the four eval runs are recorded. Its code is in the CLI, so `motif doctor` built from source already treats it as supported; the README and the release notes list it from v0.5.0, once its row is complete and these release gates are passed:
+Flutter was built in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Every area is done. Its code is in the CLI, so `motif doctor` built from source already treats it as supported; the README and the release notes list it from v0.5.0, once its row is complete and these release gates are passed:
 
-- The four Flutter eval runs pass and are recorded (the Evals area).
 - The Flutter job in CI passes on the pull request.
 - The owner runs an app's generated theme on an iPhone (plan 2E, Task 15): a release step, not an area.
 
@@ -55,5 +54,5 @@ Tests marked "needs Flutter" run in CI's Flutter job and skip, saying so, where 
 | Screenshots | Routes from go_router and named routes: [flutter-routes.test.ts](../cli/test/flutter-routes.test.ts). The four native sizes, `--sizes`, `--screen`, variants, `--rtl`, `.dart` states, `setup.dart` and `http.json`: [shot-flutter.test.ts](../cli/test/shot-flutter.test.ts). Drawn for real by `flutter test` (needs Flutter): [flutter-render.test.ts](../cli/test/flutter-render.test.ts), [flutter-shot-e2e.test.ts](../cli/test/flutter-shot-e2e.test.ts). Fonts loaded for the pictures: [flutter-harness.test.ts](../cli/test/flutter-harness.test.ts). How Flutter is drawn: [decision 0007](decisions/0007-flutter-rendering.md). |
 | Audit | Contrast, tap targets, unnamed controls and reduced motion in `audit.json`: [shot-flutter.test.ts](../cli/test/shot-flutter.test.ts) ("the audit and states on a Flutter app"), and found as rendered (needs Flutter): [flutter-shot-e2e.test.ts](../cli/test/flutter-shot-e2e.test.ts). |
 | Skill | The Flutter guide's six files and their Dart examples, which pass `motif check`: [adapters.test.ts](../cli/test/adapters.test.ts). The modes on Flutter: [skill-modes.test.ts](../cli/test/skill-modes.test.ts). |
-| Evals | Maktaba and its seeded copy: [fixtures-flutter.test.ts](../cli/test/fixtures-flutter.test.ts). The four cases (two features, the seeded review, Sahm from a brief): [evals-cases.test.ts](../cli/test/evals-cases.test.ts). The release's tests check the fixtures and the cases' definitions; the eval runs themselves (an agent working each case) are run by hand, not by the release. Pending until the four runs are recorded. |
+| Evals | Maktaba and its seeded copy: [fixtures-flutter.test.ts](../cli/test/fixtures-flutter.test.ts). The four cases (two features, the seeded review, Sahm from a brief): [evals-cases.test.ts](../cli/test/evals-cases.test.ts). The release's tests check the fixtures and the cases' definitions; the eval runs themselves (an agent working each case) are run by hand, not by the release. Recorded in eval run 20261020-090551 on commit f8fc998 (2026-10-20): all four Flutter cases passed, b-flutter-reserve, b-flutter-search, c-flutter (exact problems 9 of 10, judgement 6 of 6, no false critical or major findings) and d-sahm. The run predates the final review's fix wave (commits after f8fc998). |
 | Agents | The package for other agents carries the whole skill, the Flutter guide with it: [agents-package.test.ts](../cli/test/agents-package.test.ts), [plugin.test.ts](../cli/test/plugin.test.ts). |

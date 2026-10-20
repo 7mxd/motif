@@ -239,10 +239,8 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web and plain web have every area done, Flutter every one but its eval runs; the stacks still to come have none", () => {
-    for (const stack of ["React web", "Plain web"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
-    // Task 15 wave B: Flutter's Evals stay pending until the four eval runs are recorded.
-    expect(row("Flutter")!.slice(1)).toEqual(AREAS.map((a) => (a === "Evals" ? "pending the four eval runs" : "done")));
+  test("React web, plain web and Flutter have every area done; the stacks still to come have none", () => {
+    for (const stack of ["React web", "Plain web", "Flutter"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
     for (const stack of ["Jetpack Compose", "SwiftUI", "React Native (Expo)", "Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }

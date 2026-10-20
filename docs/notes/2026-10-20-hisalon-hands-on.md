@@ -185,4 +185,4 @@ None of them blocked a step, so none was fixed during the test. Task 15's follow
 ## Not covered
 
 - Running the generated theme on the developer's iPhone through the Mac mini (Step 5 item 6): the developer's step.
-- The eval cases (Step 6): run separately.
+- The eval cases (Step 6): the Flutter result is in [docs/parity.md](../parity.md) (the Flutter Evals row, eval run 20261020-090551).
