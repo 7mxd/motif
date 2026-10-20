@@ -3,6 +3,7 @@
 import { basename } from "node:path";
 import { listKotlinFiles } from "../../check/files";
 import { maskComments, maskStrings } from "../../check/mask";
+import { SIGN_IN, signInFirst } from "../../shot/capture";
 import { andList } from "../../text";
 import { UNREAD_ROUTES_NOTE } from "../flutter/routes";
 import type { RouteDiscovery } from "../react-web/routes";
@@ -57,16 +58,21 @@ function splitArgs(args: string): string[] {
   return out;
 }
 
-/** The annotations in front of the declaration at index: on its own line, and on the lines above that start with @ or continue one. */
-function headAnnotations(s: string, index: number): string[] {
+/**
+ * The annotations in front of the declaration at index: on its own line, and on the lines above that start with @ or
+ * continue one. A line that held only a comment (blank in the masked text s, not in the file as written) is passed over.
+ */
+function headAnnotations(s: string, index: number, raw?: string): string[] {
   const lineStart = s.lastIndexOf("\n", index - 1) + 1;
   const lines = s.slice(0, lineStart).split("\n");
   lines.pop();
+  const rawLines = raw?.slice(0, lineStart).split("\n");
   const kept = [s.slice(lineStart, index)];
   let depth = 0;
   for (let k = lines.length - 1; k >= 0; k--) {
     const line = lines[k]!;
     const t = line.trim();
+    if (depth === 0 && t === "" && rawLines?.[k]?.trim()) continue;
     const delta = (line.match(/\)/g)?.length ?? 0) - (line.match(/\(/g)?.length ?? 0);
     if (depth > 0) {
       kept.push(line);
@@ -99,6 +105,8 @@ function depths(s: string): Uint16Array {
 
 interface Source {
   file: string;
+  /** The file as written. */
+  text: string;
   code: string;
   masked: string;
 }
@@ -178,7 +186,7 @@ function listSources(moduleDir: string): Source[] {
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
     .map((f) => {
       const code = maskComments(f.text, "kotlin");
-      return { file: f.path, code, masked: maskStrings(code, "kotlin") };
+      return { file: f.path, text: f.text, code, masked: maskStrings(code, "kotlin") };
     });
 }
 
@@ -186,7 +194,7 @@ function listSources(moduleDir: string): Source[] {
 function findPreviews(sources: Source[]): { previews: Preview[]; skipped: Preview[] } {
   const multi = new Set<string>(BUILT_IN);
   const heads = sources.flatMap((src) =>
-    [...src.masked.matchAll(/\bannotation\s+class\s+([A-Za-z_]\w*)/g)].map((m) => ({ name: m[1]!, head: headAnnotations(src.masked, m.index) })),
+    [...src.masked.matchAll(/\bannotation\s+class\s+([A-Za-z_]\w*)/g)].map((m) => ({ name: m[1]!, head: headAnnotations(src.masked, m.index, src.text) })),
   );
   for (let changed = true; changed; ) {
     changed = false;
@@ -199,7 +207,7 @@ function findPreviews(sources: Source[]): { previews: Preview[]; skipped: Previe
   }
   const previews: Preview[] = [];
   const skipped: Preview[] = [];
-  for (const { file, code, masked: s } of sources) {
+  for (const { file, text, code, masked: s } of sources) {
     const depth = depths(s);
     const pkg = /^\s*package\s+([\w.]+)/m.exec(s)?.[1];
     const jvm = /@file\s*:\s*JvmName\s*\(\s*"([^"]+)"\s*\)/.exec(code)?.[1];
@@ -207,7 +215,7 @@ function findPreviews(sources: Source[]): { previews: Preview[]; skipped: Previe
     const cls = jvm ?? `${stem.charAt(0).toUpperCase()}${stem.slice(1)}Kt`;
     for (const m of s.matchAll(/\bfun\s+(?:<[^>]*>\s*)?([A-Za-z_]\w*)\s*\(/g)) {
       if (depth[m.index]! !== 0) continue;
-      const names = headAnnotations(s, m.index);
+      const names = headAnnotations(s, m.index, text);
       if (!names.includes("Composable") || !names.some((a) => a === "Preview" || multi.has(a))) continue;
       const open = m.index + m[0].length - 1;
       const params = s.slice(open + 1, balanced(s, open).inner[1]).trim();
@@ -217,6 +225,12 @@ function findPreviews(sources: Source[]): { previews: Preview[]; skipped: Previe
     }
   }
   return { previews, skipped };
+}
+
+/** A route as Motif writes it: with a leading /, without a trailing one. */
+function routeOf(value: string): string {
+  const route = value.startsWith("/") ? value : `/${value}`;
+  return route.length > 1 ? route.replace(/\/+$/, "") : route;
 }
 
 /** The Compose app's previews and Navigation Compose routes. Routes are written with a leading / (the launcher is /). */
@@ -233,10 +247,12 @@ export function discoverComposeScreens(moduleDir: string): ComposeScreens {
     } else if (v.kind === "type") {
       (typeSafeUsable(v.name, sources) ? found : skippedRoutes).add(`@${v.name}`);
     } else {
-      const route = v.value.startsWith("/") ? v.value : `/${v.value}`;
-      (route.includes("{") ? skippedRoutes : found).add(route.length > 1 ? route.replace(/\/+$/, "") : route);
+      const route = routeOf(v.value);
+      (route.includes("{") ? skippedRoutes : found).add(route);
     }
   };
+  // Each NavHost's start destination: with one NavHost it is what the launcher shows, so it is / and not a route of its own.
+  const starts: Value[] = [];
   for (const { code, masked: s } of sources) {
     if (!/\b(?:composable|dialog|navigation|NavHost)\b/.test(s)) continue;
     for (const m of s.matchAll(/\b(composable|navigation|NavHost)\s*(<[^>(]*>)?\s*\(/g)) {
@@ -249,10 +265,18 @@ export function discoverComposeScreens(moduleDir: string): ComposeScreens {
         const route = argument(args, "route", 1);
         if (route !== null && route !== "null") add(valueOf(route, constants));
         add(valueOf(argument(args, "startDestination", 0), constants));
-      } else add(valueOf(argument(args, "startDestination", 1), constants));
+      } else {
+        const start = valueOf(argument(args, "startDestination", 1), constants);
+        starts.push(start);
+        add(start);
+      }
     }
     // composable<Profile> { … }
     for (const m of s.matchAll(/\bcomposable\s*<\s*([A-Za-z_][\w.]*)\s*>/g)) add({ kind: "type", name: m[1]!.split(".").pop()! });
+  }
+  if (starts.length === 1 && starts[0]!.kind !== "unread") {
+    const start = starts[0]!;
+    found.delete(start.kind === "type" ? `@${start.name}` : routeOf(start.value));
   }
   const { previews, skipped } = findPreviews(sources);
   const routes = [...found];
@@ -288,21 +312,50 @@ export function composeScreenProblem(moduleDir: string, screens: string[]): stri
   return null;
 }
 
-/** A page people meet before signing in, as shot.ts reads it. */
-const SIGN_IN = /^\/(?:sign-?in|log-?in|auth|welcome|onboarding)(?:\/|$)/i;
+/** How many screens a run takes when the developer doesn't choose (as on the web). */
+export const MAX_SCREENS = 12;
+
+/** A preview as a run names it: its function's name, or its full name when two previews share one. */
+function runName(previews: Preview[], p: Preview): string {
+  return previews.filter((q) => q.name === p.name).length > 1 ? p.fqn : p.name;
+}
 
 /** What a run takes without --routes or --screen: sign-in first, then /, the other routes, then every preview, at most max. */
 export function composeRunList(
   found: Pick<ComposeScreens, "routes" | "previews">,
-  max = 12,
+  max = MAX_SCREENS,
 ): { routes: string[]; previews: Preview[]; leftOut: string[] } {
-  const signIn = found.routes.filter((r) => SIGN_IN.test(r));
-  const ordered = [...signIn, ...found.routes.filter((r) => r === "/"), ...found.routes.filter((r) => !signIn.includes(r) && r !== "/")];
-  const all = [...ordered.map((name) => ({ name, preview: null as Preview | null })), ...found.previews.map((p) => ({ name: p.name, preview: p as Preview | null }))];
+  const all = [
+    ...signInFirst(found.routes).map((name) => ({ name, preview: null as Preview | null })),
+    ...found.previews.map((p) => ({ name: runName(found.previews, p), preview: p as Preview | null })),
+  ];
   const kept = all.slice(0, max);
   return {
     routes: kept.filter((k) => !k.preview).map((k) => k.name),
     previews: kept.flatMap((k) => (k.preview ? [k.preview] : [])),
     leftOut: all.slice(max).map((k) => k.name),
   };
+}
+
+/** How many of the screens left out the note names before it counts the rest. */
+const LEFT_OUT_NAMED = 5;
+
+/**
+ * COMPOSE.routes: the screens a run takes without --routes or --screen (the routes, and the previews as screens), with
+ * a note when the cap leaves some out.
+ */
+export function composeRoutes(moduleDir: string): ComposeScreens & { screens: string[] } {
+  const found = discoverComposeScreens(moduleDir);
+  const run = composeRunList(found);
+  const notes = [...(found.notes ?? [])];
+  if (run.leftOut.length > 0) {
+    const left = run.leftOut;
+    const list = left.length > LEFT_OUT_NAMED + 1 ? `${left.slice(0, LEFT_OUT_NAMED).join(", ")} and ${left.length - LEFT_OUT_NAMED} more` : andList(left);
+    const first = [...(found.routes.some((r) => SIGN_IN.test(r)) ? ["sign-in pages"] : []), "/"];
+    notes.push(
+      `Captured ${MAX_SCREENS} of ${found.routes.length + found.previews.length} screens: ${andList(first)} first, then the other routes, then the previews. ` +
+        `Left out: ${list}. Choose others with --routes or --screen.`,
+    );
+  }
+  return { ...found, routes: run.routes, screens: run.previews.map((p) => runName(found.previews, p)), ...(notes.length > 0 ? { notes } : {}) };
 }

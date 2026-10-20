@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import type { AppInfo } from "../../detect/stacks";
+import { prefixPath } from "../../project/apps";
 import { stripBom } from "../../text";
 import { RESERVED } from "../naming";
 
@@ -54,6 +56,18 @@ export function moduleBuild(dir: string): { name: string; text: string } | null 
     if (text !== null) return { name, text: stripComments(text) };
   }
   return null;
+}
+
+/**
+ * Where an app's theme code goes, relative to the project root (themeDir from motif.json wins):
+ * <module>/<sourceRoot>/<namespace path>/ui/motif, so the theme sits in the app's own package.
+ */
+export function composeThemeDir(root: string, app: AppInfo): string {
+  if (app.themeDir) return app.themeDir;
+  const mod = composeModule(join(root, app.path));
+  const sourceRoot = mod?.sourceRoot ?? "src/main/java";
+  const pkg = mod?.namespace ? `${packageFolder(mod.namespace)}/` : "";
+  return prefixPath(app.path, `${sourceRoot}/${pkg}ui/motif`);
 }
 
 /** The Gradle project root a module belongs to: the module's folder or the nearest one above it with a settings file. */

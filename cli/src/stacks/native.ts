@@ -22,6 +22,10 @@ export interface NativeShotOptions {
   states: StateScript[];
   audit: boolean;
   timeoutMs: number;
+  /** Shows a line to the person waiting, before the run's result (the first run's downloads). */
+  progress?: (line: string) => void;
+  /** How the stack finds its toolchain (Compose's JDK and Android SDK), as motif doctor does. */
+  doctor?: DoctorDeps;
 }
 
 /** What a native stack (Flutter, and later SwiftUI and Compose) adds to Motif. Each stack fills in the parts it supports. */
@@ -58,7 +62,7 @@ export interface NativeStack {
   collect?(files: SourceFile[], shared?: SourceFile[]): Occurrences;
   shoot?(opts: NativeShotOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }>;
   /** Why shoot can't run for this app on this computer (a missing SDK or package), with what to do; null when it can. */
-  shotRefusal?(root: string, app: AppInfo, which: (cmd: string) => string | null): { error: string; text: string } | null;
+  shotRefusal?(root: string, app: AppInfo, which: (cmd: string) => string | null, doctor?: DoctorDeps): { error: string; text: string } | null;
   /** What's wrong with what shoot is given (--screen widgets, --state scripts, setup files), before anything is written. */
   shotInputsProblem?(root: string, app: AppInfo, given: { screens: string[]; states: StateScript[] }): string | null;
   /** The size the reduced-motion check runs at, for the note when --sizes leaves it out (the desktop's on the web). */
@@ -67,8 +71,11 @@ export interface NativeStack {
   shotTimeLimit?(shots: number): number;
   /** How the stack sets a design variant, for the note when a variant looks exactly like the default. */
   variantHow?: string;
-  /** The pages of the app, for motif shot without --routes. */
-  routes?(appDir: string): { routes: string[]; skipped: string[] };
+  /**
+   * The pages of the app, for motif shot without --routes; screens are what a run also takes by default (Compose's
+   * previews), and notes what the developer should know about how they were found.
+   */
+  routes?(appDir: string): { routes: string[]; skipped: string[]; notes?: string[]; screens?: string[] };
   /** The toolchain items for this stack, given the project root and this stack's apps in it. */
   doctor?(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[];
 }

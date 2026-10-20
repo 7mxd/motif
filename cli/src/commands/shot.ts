@@ -4,12 +4,13 @@ import type { CommandResult, RunContext } from "../cli/output";
 import { loadTokenDocument } from "../contract/load";
 import { readVariants } from "../contract/variants";
 import { brokenVariants, variantRefusal, type VariantRefusal } from "./variant-flag";
+import { defaultDoctorDeps, type DoctorDeps } from "./doctor";
 import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { noSuchApp, selectApps } from "../project/apps";
 import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
 import {
-  captureScreens, describeSizes, MAX_HEIGHT, NATIVE_DESKTOP, NATIVE_VIEWPORTS, parseSizes, type RouteResult, type StateScript, type Viewport,
+  captureScreens, describeSizes, MAX_HEIGHT, NATIVE_DESKTOP, NATIVE_VIEWPORTS, parseSizes, SIGN_IN, signInFirst, type RouteResult, type StateScript, type Viewport,
 } from "../shot/capture";
 import {
   identicalVariantNotes, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison,
@@ -33,6 +34,8 @@ export interface ShotDeps {
   browserOff?: () => boolean;
   /** Finds a command (flutter) on the PATH. */
   which?: (cmd: string) => string | null;
+  /** How a native stack finds its toolchain (Compose's JDK and Android SDK); motif doctor's own when not given. */
+  doctor?: () => DoctorDeps;
   /** Stands in for a native stack's shoot in tests. */
   shoot?: NativeStack["shoot"];
 }
@@ -40,15 +43,7 @@ export interface ShotDeps {
 const MAX_ROUTES = 12;
 /** How many of the pages left out the note names before it counts the rest. */
 const LEFT_OUT_NAMED = 5;
-/** A page people meet before signing in: /sign-in, /login, /auth/…, /welcome, /onboarding. */
-const SIGN_IN = /^\/(?:sign-?in|log-?in|auth|welcome|onboarding)(?:\/|$)/i;
-
-/** Sign-in pages first, then /, then the rest, each in the order given. */
-export function signInFirst(routes: string[]): string[] {
-  const signIn = routes.filter((r) => SIGN_IN.test(r));
-  const home = routes.filter((r) => r === "/");
-  return [...signIn, ...home, ...routes.filter((r) => !signIn.includes(r) && r !== "/")];
-}
+export { signInFirst };
 const INSTALL_HINT = '"motif browser install" downloads a private headless copy (about 120 MB to download, about 300 MB on disk) that only Motif uses.';
 
 function today(): string {
@@ -264,7 +259,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         { error: "usage" },
       );
     }
-    const refusal = native.shotRefusal?.(cwd, app, deps.which ?? ((cmd) => Bun.which(cmd)));
+    const refusal = native.shotRefusal?.(cwd, app, deps.which ?? ((cmd) => Bun.which(cmd)), (deps.doctor ?? defaultDoctorDeps)());
     if (refusal) return usage(refusal.text, { error: refusal.error });
     // A widget or a state script that can't be used is a usage error, found before anything is written.
     const problem = native.shotInputsProblem?.(cwd, app, { screens, states });
@@ -309,7 +304,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const appDir = app ? join(cwd, app.path) : cwd;
   const siteFolderPath = app?.stack === "plain-web" ? join(appDir, siteDir(cwd, app)) : undefined;
 
-  const discovery: RouteDiscovery =
+  const discovery: RouteDiscovery & { screens?: string[] } =
     typeof flags.routes === "string"
       ? { routes: parseRoutes(flags.routes), skipped: [] }
       : shoot
@@ -321,7 +316,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         : siteFolderPath
           ? discoverPlainRoutes(siteFolderPath)
           : { routes: ["/"], skipped: [] };
-  if (discovery.routes.length === 0 && screens.length === 0) return usage("--routes needs at least one page, like --routes /,/settings.", { error: "usage" });
+  // A native stack's own screens a run takes by default (Compose's previews), when none are named.
+  const runScreens = screens.length > 0 ? screens : (discovery.screens ?? []);
+  if (discovery.routes.length === 0 && runScreens.length === 0) return usage("--routes needs at least one page, like --routes /,/settings.", { error: "usage" });
   const filePath = discovery.routes.find((r) => /^\/[A-Za-z]:[\\/]/.test(r));
   if (filePath) {
     return usage(
@@ -361,7 +358,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       { error: "usage" },
     );
   }
-  const against = typeof flags.against === "string" ? resolveAgainst(cwd, outDir, flags.against, routes.length + screens.length) : undefined;
+  const against = typeof flags.against === "string" ? resolveAgainst(cwd, outDir, flags.against, routes.length + runScreens.length) : undefined;
   if (against && "error" in against) return usage(against.error, { error: "usage" });
   // A native app needs the browser only to put screenshots side by side.
   if (against && shoot) {
@@ -398,9 +395,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     if (shoot && app) {
       const sizes = viewports ?? NATIVE_VIEWPORTS;
-      const count = (routes.length + screens.length) * sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1);
+      const count = (routes.length + runScreens.length) * sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1);
       const timeoutMs = native?.shotTimeLimit?.(count) ?? 240_000 + 3_000 * count;
-      const drawn = await shoot({ root: cwd, app, routes, screens, outDir, viewports: sizes, variants, ...(rtl ? { rtl } : {}), states, audit, timeoutMs });
+      const drawn = await shoot({
+        root: cwd, app, routes, screens: runScreens, outDir, viewports: sizes, variants, ...(rtl ? { rtl } : {}), states, audit, timeoutMs,
+        ...(ctx.progress ? { progress: ctx.progress } : {}), doctor: (deps.doctor ?? defaultDoctorDeps)(),
+      });
       notes.push(...drawn.notes);
       captured = { routes: drawn.routes, issues: drawn.issues };
     } else {

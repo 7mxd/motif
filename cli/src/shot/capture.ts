@@ -30,6 +30,17 @@ export const VIEWPORTS: Viewport[] = [
   { name: "mobile", file: "tablet", width: 768, height: 1024, scale: 2, mobile: true },
   { name: "desktop", width: 1440, height: 900, scale: 1, mobile: false },
 ];
+
+/** A page people meet before signing in: /sign-in, /login, /auth/…, /welcome, /onboarding. */
+export const SIGN_IN = /^\/(?:sign-?in|log-?in|auth|welcome|onboarding)(?:\/|$)/i;
+
+/** Sign-in pages first, then /, then the rest, each in the order given. */
+export function signInFirst(routes: string[]): string[] {
+  const signIn = routes.filter((r) => SIGN_IN.test(r));
+  const home = routes.filter((r) => r === "/");
+  return [...signIn, ...home, ...routes.filter((r) => !signIn.includes(r) && r !== "/")];
+}
+
 /**
  * A native app's screens (decision 0007) are drawn at the whole screen of each device, not a browser's visible part:
  * 360×800, 390×844 and 430×932 phones and a 768×1024 tablet, all at twice the pixels. They are the default.

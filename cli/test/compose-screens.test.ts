@@ -38,7 +38,8 @@ fun AppNav(nav: NavHostController) {
 `,
     });
     const r = discoverComposeScreens(dir);
-    expect(r.routes).toEqual(["/", "/home", "/sign-in", "/settings", "/a", "/b"]);
+    // The NavHost's start destination is what the launcher shows: it is /, not /home next to it.
+    expect(r.routes).toEqual(["/", "/sign-in", "/settings", "/a", "/b"]);
     expect(r.skipped).toEqual(["/detail/{id}"]);
   });
 
@@ -56,7 +57,8 @@ fun G(nav: NavHostController) = NavHost(nav, startDestination = Profile) {
 `,
     });
     const r = discoverComposeScreens(dir);
-    expect(r.routes).toEqual(["/", "@Profile", "@Item"]);
+    // Profile is the start destination, so it is /.
+    expect(r.routes).toEqual(["/", "@Item"]);
     expect(r.skipped).toEqual(["@Detail"]);
   });
 
@@ -95,6 +97,35 @@ package com.x.ui
       "com.x.ui.Previews.OtherPreview",
     ]);
     expect(r.previews.find((p) => p.name === "HomeScreenPreview")?.file).toContain("HomeScreen.kt");
+  });
+
+  test("several NavHosts: each one's start destination stays a route, since Motif can't tell which is the app's root", () => {
+    const dir = app({
+      "Nav.kt": `package com.x
+fun Root(nav: NavHostController) = NavHost(nav, startDestination = "home") { composable("home") { }; composable("tabs") { Tabs() } }
+fun Tabs(nav: NavHostController) = NavHost(nav, startDestination = "feed") { composable("feed") { }; composable("saved") { } }
+`,
+    });
+    expect(discoverComposeScreens(dir).routes).toEqual(["/", "/home", "/tabs", "/feed", "/saved"]);
+  });
+
+  test("a comment between a preview's annotations keeps it", () => {
+    const dir = app({
+      "P.kt": `package com.x
+@Preview
+// The settings screen, on its own.
+@Composable
+fun SettingsPreview() {}
+
+@Preview(name = "tall") /* a phone */
+/**
+ * KDoc between them.
+ */
+@Composable
+private fun TallPreview() {}
+`,
+    });
+    expect(discoverComposeScreens(dir).previews.map((p) => p.name)).toEqual(["SettingsPreview", "TallPreview"]);
   });
 
   test("multipreview annotation classes, built-in ones, and @PreviewParameter", () => {

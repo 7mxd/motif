@@ -11,14 +11,14 @@ const gradle = (namespace: string) =>
   `plugins {\n  alias(libs.plugins.android.application)\n  alias(libs.plugins.kotlin.compose)\n}\nandroid { namespace = "${namespace}" }\n`;
 
 describe("the Compose stack", () => {
-  test("is registered, with theme code (Task 4), check (Task 5) and nothing it doesn't have yet", () => {
+  test("is registered, with theme code (Task 4), check (Task 5) and screenshots (Task 9)", () => {
     expect(nativeStack("compose")).toBe(COMPOSE);
     expect(COMPOSE.extensions).toEqual([".kt"]);
     expect(COMPOSE.generate).toBeDefined();
     expect(COMPOSE.wiring).toBeDefined();
     expect(COMPOSE.scan).toBeDefined();
     expect(COMPOSE.collect).toBeDefined();
-    for (const absent of ["shoot", "routes"] as const) expect(COMPOSE[absent]).toBeUndefined();
+    for (const shot of ["shoot", "routes", "shotRefusal", "shotInputsProblem", "shotTimeLimit"] as const) expect(COMPOSE[shot]).toBeDefined();
   });
 
   test("theme code goes in the app's own package, under ui/motif", () => {

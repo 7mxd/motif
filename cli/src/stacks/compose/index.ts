@@ -12,9 +12,11 @@ import { composeDoctor } from "./doctor";
 import { composeFonts } from "./fonts";
 import { generateCompose, THEME_FILE } from "./generate";
 import { composePaletteFile } from "./palette";
-import { composeModule, folderPackage, packageFolder } from "./project";
+import { composeModule, composeThemeDir, folderPackage } from "./project";
 import { collectCompose } from "./extract";
 import { composeFix, composeReducedMotion, composeRole, scanKotlin } from "./rules";
+import { composeRoutes } from "./screens";
+import { COMPOSE_MOTION, COMPOSE_VARIANT_HOW, composeInputsProblem, composeShotRefusal, composeTimeLimit, shootCompose } from "./shot";
 
 /** The package the theme file declares: its folder's below the source folder, or the module's own ui.motif outside one. */
 function themePackage(root: string, app: AppInfo, themeDir: string): string {
@@ -47,14 +49,7 @@ export const COMPOSE: NativeStack = {
   id: "compose",
   extensions: [".kt"],
 
-  // <module>/<sourceRoot>/<namespace path>/ui/motif, so the theme sits in the app's own package.
-  themeDir(root, app) {
-    if (app.themeDir) return app.themeDir;
-    const mod = composeModule(join(root, app.path));
-    const sourceRoot = mod?.sourceRoot ?? "src/main/java";
-    const pkg = mod?.namespace ? `${packageFolder(mod.namespace)}/` : "";
-    return prefixPath(app.path, `${sourceRoot}/${pkg}ui/motif`);
-  },
+  themeDir: composeThemeDir,
 
   generate(set: ThemeSet, { root, app, themeDir }) {
     const mod = composeModule(join(root, app.path));
@@ -99,4 +94,14 @@ export const COMPOSE: NativeStack = {
   paletteFile: composePaletteFile,
   role: composeRole,
   doctor: composeDoctor,
+
+  // Screens drawn by Robolectric in a unit test Motif adds to the app's Gradle build for one run (decision 0008).
+  stateFiles: { extension: ".kt", language: "Kotlin" },
+  shoot: (opts) => shootCompose(opts, { themeDir: composeThemeDir(opts.root, opts.app), ...(opts.doctor ? { doctor: opts.doctor } : {}) }),
+  shotRefusal: (root, app, _which, doctor) => (doctor ? composeShotRefusal(root, app, doctor) : null),
+  shotInputsProblem: composeInputsProblem,
+  motionSize: COMPOSE_MOTION,
+  shotTimeLimit: composeTimeLimit,
+  variantHow: COMPOSE_VARIANT_HOW,
+  routes: composeRoutes,
 };
