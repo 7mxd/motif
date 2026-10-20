@@ -162,6 +162,9 @@ describe("generateReactNative, a companion", () => {
   test("Arabic styles apply when the layout is right-to-left or the language is Arabic-script", () => {
     expect(ts).toContain("Intl.DateTimeFormat().resolvedOptions().locale");
     expect(ts).toContain("I18nManager.isRTL");
+    // react-native-web has no I18nManager.isRTL: a dir="rtl" or Arabic lang on <html> counts.
+    expect(ts).toContain('root.dir === "rtl" || isRtlLanguage(root.lang)');
+    expect(ts).toContain('import { I18nManager, Platform, useColorScheme, type TextStyle } from "react-native";');
     expect(ts).toContain('["ar", "fa", "ur", "ps", "ckb", "sd", "ug"]');
     expect(ts).toContain("typeArabic");
   });
@@ -216,6 +219,18 @@ describe("generateReactNative, Google packages", () => {
     expect(ts).not.toContain("Inter_600SemiBold");
     expect(ts).toContain('heading: { fontFamily: "Inter_700Bold",');
     expect(ts).toContain('label: { fontFamily: "Inter_400Regular",');
+  });
+
+  test("a package that can't be found gives only its regular face", () => {
+    const ts = tsFor(validTokens(), { unresolved: new Set(["@expo-google-fonts/inter"]) });
+    expect(ts).not.toContain("Inter_700Bold");
+    expect(ts).toContain('heading: { fontFamily: "Inter_400Regular",');
+    expect(ts).toContain('import { Inter_400Regular } from "@expo-google-fonts/inter";');
+  });
+
+  test("a package file with no face of the family listed is unknown, not empty", () => {
+    const faces = new Map([["@expo-google-fonts/inter", new Set(["Other_400Regular"])]]);
+    expect(tsFor(validTokens(), { faces })).toContain('heading: { fontFamily: "Inter_600SemiBold",');
   });
 
   test("letter spacing is in pixels", () => {

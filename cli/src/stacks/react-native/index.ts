@@ -37,9 +37,9 @@ function importPath(root: string, app: AppInfo, file: string): string {
   const rel = relative(appDir, resolve(root, file)).replace(/\\/g, "/");
   const bare = rel.slice(0, rel.length - extname(rel).length);
   const base = aliasBase(appDir);
-  if (base === null) return bare;
+  if (base === null) return `./${bare}`;
   if (base === "") return `@/${bare}`;
-  return bare.startsWith(`${base}/`) ? `@/${bare.slice(base.length + 1)}` : bare;
+  return bare.startsWith(`${base}/`) ? `@/${bare.slice(base.length + 1)}` : `./${bare}`;
 }
 
 /** How to choose a design variant in the provider, for the wiring note; nothing when the guide has none. */

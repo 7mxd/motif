@@ -25,6 +25,8 @@ export interface RnOptions {
   projectFonts: RnProjectFont[];
   /** The face names (Onest_400Regular) each installed package exports, to pick the nearest weight; unknown means every weight exists. */
   faces?: Map<string, Set<string>>;
+  /** Packages the app lists but Node can't find: only their regular face, which every package ships, is used. */
+  unresolved?: Set<string>;
 }
 
 const WEIGHT_NAMES: Record<number, string> = {
@@ -122,10 +124,9 @@ class Resolver {
       const prefix = family.replace(/[^A-Za-z0-9]/g, "");
       const exports = this.opts.faces?.get(pkg);
       const all = Object.keys(WEIGHT_NAMES).map(Number);
-      const have = exports ? all.filter((w) => exports.has(`${prefix}_${w}${WEIGHT_NAMES[w]}`)) : all;
-      if (have.length === 0) {
-        return { kind: "plain", family, note: `${family}: ${pkg} has no regular faces Motif knows. It uses the system font.` };
-      }
+      const listed = exports ? all.filter((w) => exports.has(`${prefix}_${w}${WEIGHT_NAMES[w]}`)) : [];
+      // No face of this family listed means the file isn't one Motif can read: every weight is assumed, as when it's not read at all.
+      const have = this.opts.unresolved?.has(pkg) ? [400] : listed.length > 0 ? listed : all;
       const w = nearest(roundWeight(weight), have);
       return { kind: "face", key: `${prefix}_${w}${WEIGHT_NAMES[w]}`, google: { pkg }, weight: w };
     }
@@ -210,7 +211,7 @@ export function generateReactNative(set: ThemeSet, opts: RnOptions): GeneratedFi
     ...projectFaces.map((f) => `  ${str(f.key)}: require(${str(f.require!)}),`),
   ];
 
-  const reactNative = ["I18nManager", ...(variants ? ["Platform"] : []), "useColorScheme", "type TextStyle"].filter((n) => n !== "I18nManager" || arabic.length > 0);
+  const reactNative = ["I18nManager", ...(variants || arabic.length > 0 ? ["Platform"] : []), "useColorScheme", "type TextStyle"].filter((n) => n !== "I18nManager" || arabic.length > 0);
 
   const lines: string[] = [
     TS_HEADER,
@@ -351,11 +352,17 @@ export function generateReactNative(set: ThemeSet, opts: RnOptions): GeneratedFi
       'const RTL_LANGUAGES = ["ar", "fa", "ur", "ps", "ckb", "sd", "ug"];',
       "const arabicType: typeof type = { ...type, ...typeArabic };",
       "",
+      "const isRtlLanguage = (tag: string) => RTL_LANGUAGES.includes(tag.split(\"-\")[0]!.toLowerCase());",
+      "",
       "function readsRtl(): boolean {",
       "  if (I18nManager.isRTL) return true;",
+      "  // react-native-web has no I18nManager.isRTL: a right-to-left page says so on <html>.",
+      '  if (Platform.OS === "web" && typeof document !== "undefined") {',
+      "    const root = document.documentElement;",
+      '    if (root.dir === "rtl" || isRtlLanguage(root.lang)) return true;',
+      "  }",
       "  try {",
-      '    const language = Intl.DateTimeFormat().resolvedOptions().locale.split("-")[0]!.toLowerCase();',
-      "    return RTL_LANGUAGES.includes(language);",
+      "    return isRtlLanguage(Intl.DateTimeFormat().resolvedOptions().locale);",
       "  } catch {",
       "    return false;",
       "  }",

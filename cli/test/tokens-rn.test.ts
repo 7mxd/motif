@@ -98,7 +98,7 @@ describe("motif tokens for an Expo app", () => {
     const root = makeProject({ "package.json": pkg(), "app/_layout.tsx": "export default null;\n", "design/tokens.json": TOKENS });
     const r = await runTokens(root, ctx);
     expect(statuses(r)["design/motif-theme.tsx"]).toBe("created");
-    expect(notes(r)).toContain("(import from design/motif-theme)");
+    expect(notes(r)).toContain("(import from ./design/motif-theme)");
   });
 
   test("a guide with variants says how to choose one", async () => {
@@ -132,6 +132,45 @@ describe("motif tokens for an Expo app", () => {
     t.font.body.$value.fontFamily = ["Brand Sans", "sans-serif"];
     return JSON.stringify(t);
   };
+
+  test("weights come from a package hoisted to a parent folder's node_modules", async () => {
+    const root = makeProject({
+      "design/tokens.json": TOKENS,
+      "node_modules/@expo-google-fonts/inter/index.d.ts": "export * from './useFonts';\nexport declare const Inter_400Regular: number;\nexport declare const Inter_700Bold: number;\n",
+      "apps/mobile/package.json": pkg(),
+      "apps/mobile/src/app/_layout.tsx": "export default null;\n",
+    });
+    const r = await runTokens(root, ctx);
+    const ts = readFileSync(join(root, "apps/mobile/src/design/motif-theme.tsx"), "utf8");
+    expect(ts).toContain('heading: { fontFamily: "Inter_700Bold",');
+    expect(ts).not.toContain("Inter_600SemiBold");
+    expect(notes(r)).not.toContain("isn't installed");
+  });
+
+  test("a package in package.json that isn't installed gives only its 400 face, and a note", async () => {
+    const root = starter();
+    const r = await runTokens(root, ctx);
+    const ts = readFileSync(join(root, "src/design/motif-theme.tsx"), "utf8");
+    expect(ts).toContain('import { Inter_400Regular } from "@expo-google-fonts/inter";');
+    expect(ts).not.toContain("Inter_700Bold");
+    expect(notes(r)).toContain("@expo-google-fonts/inter is in package.json but isn't installed");
+    expect(notes(r)).toContain("run motif tokens again to use its other weights");
+  });
+
+  test("worklets are suggested only when reanimated is missing too", async () => {
+    const root = starter({ "package.json": pkg({ "react-native-worklets": "0.13.0" }).replace('"react-native-reanimated":"4.7.1",', "") });
+    const text = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    delete text.dependencies["react-native-reanimated"];
+    delete text.dependencies["react-native-worklets"];
+    writeFileSync(join(root, "package.json"), JSON.stringify(text));
+    expect(notes(await runTokens(root, ctx))).toContain("react-native-reanimated react-native-worklets");
+    text.dependencies["react-native-reanimated"] = "4.7.1";
+    delete text.dependencies["expo-font"];
+    writeFileSync(join(root, "package.json"), JSON.stringify(text));
+    const r = await runTokens(root, ctx);
+    expect(notes(r)).toContain("npx expo install expo-font");
+    expect(notes(r)).not.toContain("react-native-worklets");
+  });
 
   test("a project font's .ttf files are copied into the app", async () => {
     const root = makeProject({
