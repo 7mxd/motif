@@ -237,7 +237,7 @@ describe("each stack job and its heavy tests agree on its name", () => {
         const job = wf.slice(at).split(/\n  \w[\w-]*:\n/)[1] ?? "";
         expect(job).toContain(`MOTIF_STACK_JOB: ${stack}\n`);
         const run = job.split("\n").find((l) => l.includes("bun test")) ?? "";
-        const globs = run.split(/\s+/).filter((w) => w.startsWith("test/")).map((g) => new RegExp(`^${g.replace(/\./g, "\.").replace(/\*/g, ".*")}$`));
+        const globs = run.split(/\s+/).filter((w) => w.startsWith("test/")).map((g) => new RegExp(`^${g.replace(/\./g, "\\.").replace(/\*/g, ".*")}$`));
         for (const f of files) expect([name, f, globs.some((g) => g.test(`test/${f}.test.ts`))]).toEqual([name, f, true]);
       }
     });
