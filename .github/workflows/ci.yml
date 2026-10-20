@@ -46,7 +46,7 @@ jobs:
           cache: true
       # Roboto and the Material icons come from the SDK's material_fonts folder, which a cached SDK can be missing.
       - name: Flutter's fonts
-        run: flutter precache --no-android --no-ios
+        run: flutter precache --force --no-android --no-ios --no-web --no-linux && ls "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts" | head -3
       - name: Install
         working-directory: cli
         run: bun install --frozen-lockfile
@@ -70,7 +70,7 @@ jobs:
           flutter-version: 3.27.4
           cache: true
       - name: Flutter's fonts
-        run: flutter precache --no-android --no-ios
+        run: flutter precache --force --no-android --no-ios --no-web --no-linux && ls "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts" | head -3
       - name: Install
         working-directory: cli
         run: bun install --frozen-lockfile
