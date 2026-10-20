@@ -99,6 +99,17 @@ package com.x.ui
     expect(r.previews.find((p) => p.name === "HomeScreenPreview")?.file).toContain("HomeScreen.kt");
   });
 
+  test("previews under src/screenshotTest (the screenshot-testing plugin's) and other test folders aren't screens", () => {
+    const dir = makeProject({
+      "build.gradle.kts": GRADLE,
+      [`${SRC}/Home.kt`]: "package com.x\n@Preview @Composable fun HomePreview() {}\n",
+      "src/screenshotTest/kotlin/com/x/Shots.kt": "package com.x\n@Preview @Composable fun HomeShot() {}\n",
+      "src/testDemo/kotlin/com/x/DemoTest.kt": "package com.x\n@Preview @Composable fun DemoTestPreview() {}\n",
+      "src/sharedTest/kotlin/com/x/Shared.kt": "package com.x\n@Preview @Composable fun SharedPreview() {}\n",
+    });
+    expect(discoverComposeScreens(dir).previews.map((p) => p.name)).toEqual(["HomePreview"]);
+  });
+
   test("several NavHosts: each one's start destination stays a route, since Motif can't tell which is the app's root", () => {
     const dir = app({
       "Nav.kt": `package com.x

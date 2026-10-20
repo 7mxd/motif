@@ -42,9 +42,12 @@ const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/");
 
 /**
  * A Compose app module's build output, tests and Gradle scripts: never the team's own code. Matched from the module
- * (and from each module inside it), so a feature folder named build or test under src/main is still read.
+ * (and from each module inside it), so a feature folder named build or test under src/main is still read. Every test
+ * source set is left out: unit and instrumented tests with their build types and flavours (src/testDemoDebug,
+ * src/androidTestDemo), test fixtures, a shared test folder, and the screenshot-testing plugin's src/screenshotTest,
+ * whose previews aren't the app's screens.
  */
-export const COMPOSE_IGNORES = ["/build/", "/.gradle/", "/.motif/", "src/test/", "src/androidTest/", "src/testDebug/", "src/testRelease/", "*.kts"];
+export const COMPOSE_IGNORES = ["/build/", "/.gradle/", "/.motif/", "src/test*/", "src/androidTest*/", "src/screenshotTest*/", "src/sharedTest/", "*.kts"];
 
 export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_LENGTH = 3000;

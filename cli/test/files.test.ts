@@ -150,4 +150,14 @@ describe("listKotlinFiles", () => {
     ]);
     expect(listKotlinFiles(root, "app")[0]!.lang).toBe("kotlin");
   });
+
+  test("leaves out every test source set: a flavour's (src/testDemo, src/androidTestDemo), screenshotTest and sharedTest", () => {
+    const root = makeProject({
+      "app/build.gradle.kts": "x", "app/src/main/java/com/example/Main.kt": "x", "app/src/demo/java/com/example/Demo.kt": "x",
+      "app/src/testDemo/java/DemoTest.kt": "x", "app/src/testDemoDebug/java/DemoDebugTest.kt": "x",
+      "app/src/androidTestDemo/java/DemoUiTest.kt": "x", "app/src/screenshotTest/kotlin/Shots.kt": "x",
+      "app/src/screenshotTestDebug/kotlin/DebugShots.kt": "x", "app/src/sharedTest/java/Shared.kt": "x", "app/src/testFixtures/java/Fake.kt": "x",
+    });
+    expect(paths(listKotlinFiles(root, "app"))).toEqual(["app/src/demo/java/com/example/Demo.kt", "app/src/main/java/com/example/Main.kt"]);
+  });
 });
