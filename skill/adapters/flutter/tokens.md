@@ -44,7 +44,7 @@ class App extends StatelessWidget {
 }
 ```
 
-`themeMode` stays `ThemeMode.system` (the default), so the app follows the phone's light or dark setting. Material widgets (buttons, fields, app bars, dialogs) then take their colours, shapes and text from the theme with no more work. `MotifTheme` fills the `ColorScheme` from the guide's roles and the `TextTheme` from `MotifText`; the colours Material has no slot for come from `MotifColors`.
+`themeMode` stays `ThemeMode.system` (the default), so the app follows the phone's light or dark setting. Material widgets (buttons, fields, app bars, dialogs) then take their colours, shapes and text from the theme with no more work. `MotifTheme` fills the `ColorScheme` from the guide's roles and the `TextTheme` from `MotifText`; the colours Material has no slot for come from `MotifColors`. The text slots step down as Material's do: `titleLarge` is `heading`, while `titleMedium` and `titleSmall` keep its weight at the guide's smaller sizes (16 and 14 px on a typical scale), and the body and label slots work the same way.
 
 ## Reading theme values in widgets
 

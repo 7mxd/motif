@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { springPhysics } from "../src/contract/spring";
 import { TS_HEADER } from "../src/generate/header";
 import { buildThemeSet } from "../src/generate/theme";
-import { generateFlutter, member } from "../src/stacks/flutter/generate";
+import { generateFlutter, member, slotSize } from "../src/stacks/flutter/generate";
 import { docFrom, partnerTokens, validTokens, withCompanion } from "./helpers";
 
 const dartFor = (tokens: any, googleFonts = true) => {
@@ -92,17 +92,34 @@ describe("generateFlutter, the test guide (no variants)", () => {
     expect(dart).toContain("fontWeight: FontWeight.w600,");
     expect(dart).toContain("height: 1.3,");
     expect(dart).not.toMatch(/TextStyle\([^)]*color:/);
+    // The slots step down as Material's do, on the guide's own sizes (40, 28, 20, 16, 14, 12 px here): a title slot
+    // never grows to the heading role's size, which made an app's small titles and labels too big.
     for (const line of [
       "displayLarge: MotifText.display,",
-      "headlineSmall: MotifText.title,",
-      "titleMedium: MotifText.heading,",
+      "displaySmall: MotifText.display,",
+      "headlineLarge: MotifText.title,",
+      "headlineSmall: MotifText.title.copyWith(fontSize: 20),",
+      "titleLarge: MotifText.heading,",
+      "titleMedium: MotifText.heading.copyWith(fontSize: 16),",
+      "titleSmall: MotifText.heading.copyWith(fontSize: 14),",
       "bodyLarge: MotifText.body,",
-      "bodyMedium: MotifText.body,",
+      "bodyMedium: MotifText.body.copyWith(fontSize: 14),",
       "bodySmall: MotifText.caption,",
       "labelLarge: MotifText.label,",
-      "labelMedium: MotifText.label,",
-      "labelSmall: MotifText.caption,",
+      "labelMedium: MotifText.label.copyWith(fontSize: 12),",
+      "labelSmall: MotifText.label.copyWith(fontSize: 12),",
     ]) expect(dart).toContain(line);
+  });
+
+  test("a slot's size: the guide's closest to Material's, never above its role, ties to the smaller", () => {
+    const scale = [32, 24, 20, 16, 14, 12];
+    expect(slotSize(16, 20, scale)).toBe(16);
+    expect(slotSize(14, 20, scale)).toBe(14);
+    expect(slotSize(22, 20, scale)).toBe(20);
+    expect(slotSize(57, 32, scale)).toBe(32);
+    expect(slotSize(11, 14, scale)).toBe(12);
+    expect(slotSize(15, 20, scale)).toBe(14);
+    expect(slotSize(12, 10, scale)).toBe(10);
   });
 
   test("without variants there is no variant enum, parameter or override", () => {

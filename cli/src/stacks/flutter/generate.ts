@@ -205,13 +205,36 @@ const FAMILY_HELPER = [
   "  }",
 ];
 
-const TEXT_THEME: [string, string][] = [
-  ["displayLarge", "display"], ["displayMedium", "display"], ["displaySmall", "display"],
-  ["headlineLarge", "title"], ["headlineMedium", "title"], ["headlineSmall", "title"],
-  ["titleLarge", "heading"], ["titleMedium", "heading"], ["titleSmall", "heading"],
-  ["bodyLarge", "body"], ["bodyMedium", "body"], ["bodySmall", "caption"],
-  ["labelLarge", "label"], ["labelMedium", "label"], ["labelSmall", "caption"],
+/**
+ * Each TextTheme slot: the type role it takes its font, weight and line height from, and Material 3's default size for
+ * it. Apps rely on the slots stepping down (titleSmall is smaller than titleLarge), so a slot's size is the guide's
+ * size closest to Material's, never bigger than its role's own.
+ */
+const TEXT_THEME: [string, string, number][] = [
+  ["displayLarge", "display", 57], ["displayMedium", "display", 45], ["displaySmall", "display", 36],
+  ["headlineLarge", "title", 32], ["headlineMedium", "title", 28], ["headlineSmall", "title", 24],
+  ["titleLarge", "heading", 22], ["titleMedium", "heading", 16], ["titleSmall", "heading", 14],
+  ["bodyLarge", "body", 16], ["bodyMedium", "body", 14], ["bodySmall", "caption", 12],
+  ["labelLarge", "label", 14], ["labelMedium", "label", 12], ["labelSmall", "label", 11],
 ];
+
+/** The guide's size closest to Material's for a slot, no bigger than the role's own (ties go to the smaller). */
+export function slotSize(materialPx: number, rolePx: number, scale: number[]): number {
+  const fits = scale.filter((px) => px <= rolePx);
+  if (fits.length === 0) return rolePx;
+  return fits.reduce((best, px) => {
+    const d = Math.abs(px - materialPx) - Math.abs(best - materialPx);
+    return d < 0 || (d === 0 && px < best) ? px : best;
+  });
+}
+
+function textThemeSlot(slot: string, role: string, materialPx: number, fonts: ThemeFont[]): string {
+  const own = fonts.find((f) => f.name === role)!;
+  const scale = [...new Set(fonts.filter((f) => f.name !== "mono").map((f) => f.sizePx))];
+  const px = slotSize(materialPx, own.sizePx, scale);
+  const style = `MotifText.${member(role, "t")}`;
+  return px === own.sizePx ? `${slot}: ${style}` : `${slot}: ${style}.copyWith(fontSize: ${num(px)})`;
+}
 
 const SCHEME: [string, string][] = [
   ["primary", "action-primary"], ["onPrimary", "on-action-primary"],
@@ -235,7 +258,7 @@ function themeBlock(set: ThemeSet): string[] {
   ]);
   const textTheme = call(
     "textTheme: TextTheme(",
-    TEXT_THEME.filter(([, role]) => fonts.has(role)).map(([key, role]) => `${key}: MotifText.${member(role, "t")}`),
+    TEXT_THEME.filter(([, role]) => fonts.has(role)).map(([key, role, px]) => textThemeSlot(key, role, px, t.fonts)),
   );
   const theme = call("ThemeData(", [
     "useMaterial3: true",
