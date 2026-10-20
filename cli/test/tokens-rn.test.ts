@@ -61,6 +61,27 @@ describe("motif tokens for an Expo app", () => {
     expect(JSON.parse(readFileSync(join(root, "design/motif.json"), "utf8")).apps).toEqual([{ path: ".", stack: "react-native" }]);
   });
 
+  test("an app without Expo Router is told to wrap its root component, App.tsx (hands-on)", async () => {
+    const root = makeProject({
+      "package.json": JSON.stringify({ name: "salon", main: "index.ts", dependencies: { expo: "~54.0.0", react: "19.1.0", "react-native": "0.81.5", "react-native-reanimated": "~4.1.1", "react-native-worklets": "0.5.1", "expo-font": "~14.0.11" } }),
+      "app.json": JSON.stringify({ expo: { name: "salon" } }),
+      "tsconfig.json": JSON.stringify({ compilerOptions: { strict: true, paths: { "@/*": ["./src/*"] } } }),
+      "index.ts": `import { registerRootComponent } from "expo";
+import App from "./App";
+registerRootComponent(App);
+`,
+      "App.tsx": `export default function App() { return null; }
+`,
+      "src/screens/home.tsx": `export function Home() { return null; }
+`,
+      "design/tokens.json": TOKENS,
+    });
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(notes(r)).toContain("Next: wrap your root component (App.tsx) in <MotifProvider> (import from @/design/motif-theme), load motifFonts");
+    expect(notes(r)).not.toContain("root layout");
+  });
+
   test("the app's package.json, app.json and tsconfig.json are never touched", async () => {
     const root = starter();
     const files = ["package.json", "app.json", "tsconfig.json"];

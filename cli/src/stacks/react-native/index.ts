@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 import { listRnFiles } from "../../check/files";
 import { maskComments } from "../../check/mask";
@@ -14,7 +14,7 @@ import { rnDoctor } from "./doctor";
 import { collectReactNative } from "./extract";
 import { rnFonts } from "./fonts";
 import { generateReactNative } from "./generate";
-import { declared, srcRoot } from "./project";
+import { declared, srcRoot, usesExpoRouter } from "./project";
 import { discoverExpoRoutes } from "./routes";
 import { rnFix, rnPaletteFile, rnReducedMotion, rnRole, scanReactNative } from "./rules";
 
@@ -58,6 +58,13 @@ function variantWiring(set: ThemeSet): string {
   );
 }
 
+/** What to wrap in MotifProvider: Expo Router's root layout, or the component an app without it registers (App.tsx). */
+function rootComponent(appDir: string): string {
+  if (usesExpoRouter(appDir)) return "your root layout";
+  const app = [".tsx", ".jsx", ".ts", ".js"].map((ext) => `App${ext}`).find((f) => existsSync(join(appDir, f)) || existsSync(join(appDir, "src", f)));
+  return app ? `your root component (${existsSync(join(appDir, app)) ? app : `src/${app}`})` : "your root component";
+}
+
 /** How a design variant is set in Expo apps, for the note when a variant looks exactly like the default. */
 export const RN_VARIANT_HOW = "MotifProvider, which follows data-variant on the web";
 /** Expo apps are drawn at phone sizes only, so the reduced-motion check runs at a phone. */
@@ -97,7 +104,7 @@ export const REACT_NATIVE: NativeStack = {
   wiring(root, app, file, set) {
     if (usesTheme(root, app)) return null;
     return (
-      `Next: wrap your root layout in <MotifProvider> (import from ${importPath(root, app, file)}), ` +
+      `Next: wrap ${rootComponent(resolve(root, app.path))} in <MotifProvider> (import from ${importPath(root, app, file)}), ` +
       "load motifFonts with useFonts from expo-font before rendering, and read colours with useMotifTheme()." +
       (set ? variantWiring(set) : "")
     );
