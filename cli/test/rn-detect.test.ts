@@ -56,7 +56,7 @@ describe("Expo apps", () => {
 });
 
 describe("the React Native stack", () => {
-  test("is registered with theme folder and extensions, and writes theme code and checks styles, but extracts and shoots nothing yet", () => {
+  test("is registered with theme folder and extensions, and writes theme code and checks styles, extracts and finds routes, but shoots nothing yet", () => {
     const rn = nativeStack("react-native")!;
     expect(rn.extensions).toEqual([".ts", ".tsx", ".js", ".jsx"]);
     expect(rn.themeDir(join("x"), { path: ".", stack: "react-native" } as never)).toBe("design");
@@ -64,7 +64,8 @@ describe("the React Native stack", () => {
     expect(rn.scan).toBeDefined();
     expect(rn.generate).toBeDefined();
     expect(rn.wiring).toBeDefined();
-    expect(rn.collect).toBeUndefined();
+    expect(rn.collect).toBeDefined();
+    expect(rn.routes).toBeDefined();
     expect(rn.shoot).toBeUndefined();
   });
 });

@@ -14,6 +14,7 @@ import { collectReactNative } from "./extract";
 import { rnFonts } from "./fonts";
 import { generateReactNative } from "./generate";
 import { declared, srcRoot } from "./project";
+import { discoverExpoRoutes } from "./routes";
 import { rnFix, rnPaletteFile, rnReducedMotion, rnRole, scanReactNative } from "./rules";
 
 /** True when the app's own code (not Motif's file, and not a comment) uses MotifProvider. */
@@ -96,6 +97,8 @@ export const REACT_NATIVE: NativeStack = {
   role: rnRole,
 
   collect: collectReactNative,
+
+  routes: discoverExpoRoutes,
 
   doctor: rnDoctor,
 };
