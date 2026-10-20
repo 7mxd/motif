@@ -31,7 +31,7 @@ export interface NativeStack {
   /** Theme code (root-relative files), files to copy into the app (root-relative), and notes for the developer. */
   generate?(set: ThemeSet, ctx: { root: string; app: AppInfo; themeDir: string }): { files: GeneratedFile[]; copies: { from: string; to: string }[]; notes: string[] };
   /** The one step that puts the theme file (root-relative) to use, or null when the app already uses it. */
-  wiring?(root: string, app: AppInfo, file: string): string | null;
+  wiring?(root: string, app: AppInfo, file: string, set?: ThemeSet): string | null;
   sourceFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
   scan?(file: SourceFile, scale: Scale): Hit[];
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];

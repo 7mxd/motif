@@ -7,6 +7,7 @@ import { AGENTS, shown, type AgentEnv } from "../agents/catalog";
 import { readAgentServers, sourcesIn } from "../detect/sources";
 import { SOURCES } from "../sources/catalog";
 import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, siteDir, STACK_LABELS } from "../detect/stacks";
+import { ignoredByGit, ignoredNotes } from "../project/git";
 import { flutterDoctor } from "../stacks/flutter/doctor";
 import { VERSION } from "../version";
 import { runValidate } from "./validate";
@@ -105,6 +106,9 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
       const errors = (v.data.summary as { errors: number }).errors;
       push("guide", "needed", "Design guide", `Has ${errors} ${errors === 1 ? "problem" : "problems"}. Run "motif validate" to see them.`);
     }
+    // A .gitignore rule meant for something else (design/ for Figma exports) would keep the guide out of every commit.
+    const ignored = deps.run ? ignoredNotes(ignoredByGit(cwd, ["design/tokens.json", "DESIGN.md"], deps.run)) : [];
+    if (ignored.length > 0) push("git", "needed", "Design guide in git", ignored.join(" "));
   }
 
   const agentEnv: AgentEnv = { home: deps.home, platform: deps.platform, vars: deps.vars ?? {}, which: deps.which };

@@ -200,3 +200,30 @@ describe("runDoctor in a home folder (review of batch C1)", () => {
     expect(item(items, "settings")).toBeUndefined();
   });
 });
+
+describe("runDoctor: a guide git ignores (Task 15 wave B, #10)", () => {
+  const run = (cmd: string[]) => {
+    const r = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore" });
+    return { code: r.exitCode ?? 1, stdout: r.stdout.toString() };
+  };
+
+  test("a guide inside an ignored folder is flagged, with the rule's line and the fix", async () => {
+    const dir = copyFixture();
+    writeFileSync(join(dir, ".gitignore"), "node_modules/\ndesign/\n");
+    expect(run(["git", "-C", dir, "init", "-q"]).code).toBe(0);
+    const r = await runDoctor(dir, deps({ run }));
+    expect(item(r.data.items as DoctorItem[], "git")).toEqual({
+      id: "git",
+      status: "needed",
+      label: "Design guide in git",
+      detail: "Your .gitignore ignores design/ (line 2 of .gitignore), so design/tokens.json won't be committed. Add !design/ on a line below it, or narrow the rule.",
+    });
+  });
+
+  test("nothing ignored, or not a repository: no git item", async () => {
+    const dir = copyFixture();
+    expect(item((await runDoctor(dir, deps({ run }))).data.items as DoctorItem[], "git")).toBeUndefined();
+    run(["git", "-C", dir, "init", "-q"]);
+    expect(item((await runDoctor(dir, deps({ run }))).data.items as DoctorItem[], "git")).toBeUndefined();
+  });
+});

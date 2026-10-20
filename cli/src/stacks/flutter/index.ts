@@ -12,6 +12,7 @@ import { flutterFonts } from "./fonts";
 import { generateFlutter } from "./generate";
 import { dartPaletteFile } from "./palette";
 import { importFor, pathDependencies } from "./project";
+import { dartIdentifier } from "../naming";
 import { dartFix, dartReducedMotion, dartRole, scanDart } from "./rules";
 import { discoverFlutterRoutes } from "./routes";
 import { FLUTTER_VARIANT_HOW, flutterShotRefusal, flutterTimeLimit, MOTION_WIDTH, readShotInputs, shootFlutter } from "./shot";
@@ -27,6 +28,18 @@ function otherChanges(base: Theme, variant: Theme): string[] {
     ["motion", (t) => [t.durations, t.easings, t.springs]],
   ];
   return groups.filter(([, pick]) => !same(pick(base), pick(variant))).map(([name]) => name);
+}
+
+/** How to choose a design variant in the theme, for the wiring note; nothing when the guide has none. */
+function variantWiring(set: ThemeSet): string {
+  if (set.variants.length === 0 || !set.defaultId) return "";
+  const id = (v: string) => `MotifVariant.${dartIdentifier(v)}`;
+  const def = id(set.defaultId);
+  return (
+    ` Your guide has design variants (${andList([set.defaultLabel ?? set.defaultId, ...set.variants.map((v) => v.label)])}): ` +
+    `MotifTheme.light(variant: ${def}) and MotifTheme.dark(variant: ${def}) choose one (${andList([def, ...set.variants.map((v) => id(v.id))])}; ${def} when you pass none). ` +
+    "To switch at runtime, keep the chosen MotifVariant in your app's state (a provider or a ValueNotifier) and build MaterialApp's theme and darkTheme from it."
+  );
 }
 
 /** True when the app's own Dart code (not Motif's file, and not a comment) uses MotifTheme. */
@@ -54,12 +67,13 @@ export const FLUTTER: NativeStack = {
     return { files, copies: fonts.copies, notes };
   },
 
-  wiring(root, app, file) {
+  wiring(root, app, file, set) {
     if (usesTheme(root, app)) return null;
     const target = importFor(root, file);
-    if (target) return `Next: import ${target} and set theme: MotifTheme.light(), darkTheme: MotifTheme.dark() on your MaterialApp.`;
+    const variants = set ? variantWiring(set) : "";
+    if (target) return `Next: import ${target} and set theme: MotifTheme.light(), darkTheme: MotifTheme.dark() on your MaterialApp.${variants}`;
     return (
-      `Next: import motif_theme.dart (${file}) in your app's code and set theme: MotifTheme.light(), darkTheme: MotifTheme.dark() on your MaterialApp. ` +
+      `Next: import motif_theme.dart (${file}) in your app's code and set theme: MotifTheme.light(), darkTheme: MotifTheme.dark() on your MaterialApp.${variants} ` +
       "It can be imported as package: only from inside a package's lib/ folder (with a name: in its pubspec.yaml): if it isn't, set themeDir in design/motif.json to a folder under your app's lib/ and run motif tokens again."
     );
   },

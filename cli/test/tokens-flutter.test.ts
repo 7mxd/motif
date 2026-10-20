@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runTokens } from "../src/commands/tokens";
 import { TS_HEADER } from "../src/generate/header";
-import { validTokens } from "./helpers";
+import { twoVariantTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -213,5 +213,42 @@ describe("motif tokens for a Flutter app", () => {
     expect(statuses(r)["lib/design/motif_theme.dart"]).toBe("protected");
     expect(readFileSync(join(root, "lib/design/motif_theme.dart"), "utf8")).toBe(mine);
     expect(notes(r)).not.toContain("Next: import");
+  });
+});
+
+describe("motif tokens: variants in the wiring note, and a guide git ignores (Task 15 wave B, #8 and #10)", () => {
+  test("with design variants, the wiring note says how to choose one, and how to switch at runtime", async () => {
+    const r = await runTokens(flutterApp({ "design/tokens.json": JSON.stringify(twoVariantTokens()) }), ctx);
+    expect(r.exitCode).toBe(0);
+    expect(notes(r)).toContain(WIRING);
+    expect(notes(r)).toContain("MotifTheme.light(variant: MotifVariant.women) and MotifTheme.dark(variant: MotifVariant.women)");
+    expect(notes(r)).toContain("MotifVariant.men");
+    expect(notes(r)).toContain("at runtime");
+  });
+
+  test("without variants, the note doesn't mention them", async () => {
+    expect(notes(await runTokens(flutterApp(), ctx))).not.toContain("variant:");
+  });
+
+  const git = (root: string, ...args: string[]) => Bun.spawnSync(["git", "-C", root, ...args], { stdout: "pipe", stderr: "pipe" });
+
+  test("a .gitignore that ignores design/ is named, with its line and the fix", async () => {
+    const root = flutterApp({ ".gitignore": "build/\n# Figma exports\ndesign/\n", "DESIGN.md": "# Design\n" });
+    expect(git(root, "init", "-q").exitCode).toBe(0);
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(notes(r)).toContain(
+      "Your .gitignore ignores design/ (line 3 of .gitignore), so design/tokens.json, lib/design/motif_theme.dart and design/motif.json won't be committed. Add !design/ on a line below it, or narrow the rule.",
+    );
+    expect(notes(r)).not.toContain("DESIGN.md won't");
+  });
+
+  test("a file git already tracks, or no repository at all, gives no message", async () => {
+    const plain = flutterApp({ ".gitignore": "design/\n" });
+    expect(notes(await runTokens(plain, ctx))).not.toContain("won't be committed");
+    const tracked = flutterApp({ ".gitignore": "*.md\n", "DESIGN.md": "# Design\n" });
+    git(tracked, "init", "-q");
+    git(tracked, "add", "-f", "DESIGN.md");
+    expect(notes(await runTokens(tracked, ctx))).not.toContain("won't be committed");
   });
 });

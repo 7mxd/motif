@@ -11,9 +11,10 @@ import { formatFindings, type Finding } from "../findings";
 import { flatTokensFile, generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
 import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
-import { buildThemeSet } from "../generate/theme";
+import { buildThemeSet, type ThemeSet } from "../generate/theme";
 import { themeFonts } from "../generate/theme-fonts";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
+import { ignoredByGit, ignoredNotes } from "../project/git";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
 import { motifCss } from "../generate/motif-css";
 import { nativeStack } from "../stacks/native";
@@ -249,7 +250,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   let needsFlat = false;
   const links: { dir: string; path: string }[] = [];
   const copies: { from: string; to: string }[] = [];
-  const wiring: { app: AppInfo; path: string; note: (root: string, app: AppInfo, file: string) => string | null }[] = [];
+  const wiring: { app: AppInfo; path: string; note: (root: string, app: AppInfo, file: string, set: ThemeSet) => string | null }[] = [];
 
   for (const app of apps) {
     const appDir = join(cwd, app.path);
@@ -313,7 +314,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   }
   for (const w of wiring) {
     if (blockedPaths.has(w.path)) continue;
-    const note = w.note(cwd, w.app, w.path);
+    const note = w.note(cwd, w.app, w.path, set);
     if (note && !notes.includes(note)) notes.push(note);
   }
   for (const c of copied.filter((r) => r.status === "skipped")) {
@@ -323,6 +324,9 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     if (blockedPaths.has(l.path) || linkedFromPages(l.dir)) continue;
     notes.push(`Next: link ${l.path} in each page's <head>, before your own styles: <link rel="stylesheet" href="motif.css"> (write the path relative to the page).`);
   }
+  // The guide and the theme code belong in the repository: a .gitignore rule meant for something else would keep them out.
+  const kept = ["design/tokens.json", ...(existsSync(join(cwd, "DESIGN.md")) ? ["DESIGN.md"] : []), ...results.filter((r) => r.status !== "skipped" && r.status !== "protected").map((r) => r.path)];
+  notes.push(...ignoredNotes(ignoredByGit(cwd, [...new Set(kept)])));
 
   const blocked = results.filter((r) => r.status === "protected");
   const allSame = results.length > 0 && results.every((r) => r.status === "unchanged");
