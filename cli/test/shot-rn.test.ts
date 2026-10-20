@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runShot, type ShotDeps } from "../src/commands/shot";
+import type { AuditIssue } from "../src/shot/audit";
 import type { CaptureOptions, RouteResult } from "../src/shot/capture";
 import { NATIVE_VIEWPORTS } from "../src/shot/capture";
 import { RN_START_TIMEOUT_MS } from "../src/stacks/react-native";
@@ -318,6 +319,40 @@ describe("an app Expo can't build or run on the web", () => {
       server.stop(true);
     }
   }, 30_000);
+
+  test("--audit leaves out a screen that threw as it loaded: its screenshots show Expo's error overlay, not the app", async () => {
+    const issue = (route: string): AuditIssue => ({
+      rule: "color-contrast", selector: "p", label: "Uncaught Error", kind: "element", ratio: 2.3, expected: 4.5, fg: "#aaaaaa", bg: "#ffffff",
+      route, viewport: "mobile", size: "mobile", scheme: "light", shot: "x.png",
+    });
+    const { deps } = fakes();
+    const crashed: ShotDeps = {
+      ...deps,
+      capture: async (o) => {
+        const out = await deps.capture(o);
+        out.routes[0]!.pageErrors = ["TypeError: ExpoSecureStore.default.getValueWithKeySync is not a function"];
+        // A state's own error (tagged) doesn't mean the screen threw as it loaded.
+        out.routes[1]!.pageErrors = ['State "open": boom'];
+        return { routes: out.routes, issues: [issue("/"), issue("/settings")] };
+      },
+    };
+    const r = await runShot(makeProject(EXPO_APP), ctx({ audit: true }), crashed);
+    expect(r.text).toContain("✗ Audit incomplete: / threw as it loaded, so its screenshots show Expo's error overlay, not the app; it wasn't audited.");
+    expect(r.text).toContain("critical /settings (mobile, light)");
+    expect(r.text).not.toContain("critical / (mobile");
+    // Nothing found elsewhere isn't a clean audit.
+    const quiet: ShotDeps = {
+      ...deps,
+      capture: async (o) => {
+        const out = await deps.capture(o);
+        out.routes[0]!.pageErrors = ["TypeError: x is not a function"];
+        return { routes: out.routes, issues: [issue("/")] };
+      },
+    };
+    const r2 = await runShot(makeProject(EXPO_APP), ctx({ audit: true }), quiet);
+    expect(r2.text).toContain("✗ Audit incomplete: / threw as it loaded");
+    expect(r2.text).not.toContain("✓ Audit");
+  });
 
   test("the errors Expo's web target throws for native-only code name what to stub (as the spike saw them)", () => {
     const appDir = makeProject({ ...EXPO_APP, "package.json": PKG({ ...WEB, "expo-secure-store": "~58.0.2" }) });

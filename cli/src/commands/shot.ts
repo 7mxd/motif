@@ -507,7 +507,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (audit) {
     // A page that redirected (to a sign-in page, say) was audited as the page it landed on.
     const landed = new Map(captured.routes.map((r) => [r.route, landedOn(r)]));
-    findings = toFindings(captured.issues.map((i) => ({ ...i, route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
+    // An Expo screen that threw as it loaded is covered by Expo's error overlay: auditing it would judge the overlay.
+    const overlaid = rn ? captured.routes.filter((r) => r.pageErrors?.some((e) => !e.startsWith('State "'))).map((r) => r.route) : [];
+    findings = toFindings(captured.issues.filter((i) => !overlaid.includes(i.route)).map((i) => ({ ...i, route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
     const redirected = captured.routes.filter((r) => landedOn(r) !== r.route);
     if (redirected.length > 0) {
       notes.push(`Pages that redirected were audited as the page they landed on: ${redirected.map((r) => `${r.route} → ${landedOn(r)}`).join(", ")}.`);
@@ -519,8 +521,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     if (incomplete.length > 0) {
       lines.push(`✗ Audit incomplete: it couldn't finish on ${incomplete.map((r) => `${r.route} (${r.auditError})`).join(", ")}.`);
     }
+    if (overlaid.length > 0) {
+      const one = overlaid.length === 1;
+      lines.push(`✗ Audit incomplete: ${andList(overlaid)} threw as ${one ? "it" : "they"} loaded, so ${one ? "its" : "their"} screenshots show Expo's error overlay, not the app; ${one ? "it wasn't" : "they weren't"} audited.`);
+    }
     if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
-    else if (incomplete.length === 0) lines.push(`✓ Audit: no contrast, tap-target${motionRan ? " or reduced-motion" : ""} problems found, and no controls without a name (${auditFile}).`);
+    else if (incomplete.length === 0 && overlaid.length === 0) lines.push(`✓ Audit: no contrast, tap-target${motionRan ? " or reduced-motion" : ""} problems found, and no controls without a name (${auditFile}).`);
     for (const f of findings.slice(0, 15)) {
       const l = f.location;
       const where = `${l.screen}${l.state ? ` in "${l.state}"` : ""} (${l.viewport}${l.scheme ? `, ${l.scheme}` : ""}${l.variant ? `, ${l.variant} variant` : ""}${l.rtl ? ", right to left" : ""})`;
