@@ -132,10 +132,12 @@ List<Rect> _undrawnImages(RenderView view, Set<String> blankImages) {
 }
 
 /// True when something is drawn over a text: a hit test at three points along its middle line (a quarter, half and
-/// three quarters across) reaches something that paints (a box with a colour, an image, other text, a blur) before it
-/// reaches the text or a box the text is in. What only takes taps (an InkWell over a card) doesn't count. Hit tests go
-/// from the top down, the reverse of painting, so the first thing hit is what is drawn on top. Text that takes no hits
-/// (under an IgnorePointer) can't be told apart this way, and is judged as before.
+/// three quarters across) reaches something else before it reaches the text or a box the text is in, and that branch
+/// paints there (a box with a colour, an image, other text, a blur). Hit tests go from the top down, the reverse of
+/// painting, so what is hit first is drawn on top. A hit test enters only the topmost child at each level, so the whole
+/// branch it went into is looked through, not only the path: a glass tab bar paints its blur and tint in a layer under
+/// the buttons that take the taps. A branch that only takes taps (an InkWell laid over a card) doesn't count. Text that
+/// takes no hits (under an IgnorePointer) can't be told apart this way, and is judged as before.
 bool _covered(RenderView view, RenderBox box, Rect rect) {
   final mine = <RenderObject>{};
   for (RenderObject? p = box; p != null; p = p.parent) {
@@ -143,16 +145,38 @@ bool _covered(RenderView view, RenderBox box, Rect rect) {
     mine.add(p);
   }
   for (final across in const [0.25, 0.5, 0.75]) {
+    final point = Offset(rect.left + rect.width * across, rect.center.dy);
     final result = HitTestResult();
-    view.hitTest(result, position: Offset(rect.left + rect.width * across, rect.center.dy));
+    view.hitTest(result, position: point);
+    RenderObject? branch;
     for (final entry in result.path) {
       final target = entry.target;
       if (target is! RenderObject) continue;
       if (mine.contains(target)) break;
-      if (_paints(target)) return true;
+      branch = target;
     }
+    if (branch != null && _paintsAt(branch, point)) return true;
   }
   return false;
+}
+
+/// True when something in [root]'s subtree that is drawn paints over [point].
+bool _paintsAt(RenderObject root, Offset point) {
+  var found = false;
+  void visit(RenderObject o) {
+    if (found) return;
+    if (o is RenderBox && o.hasSize && _paints(o)) {
+      final shown = _visibleRect(o);
+      if (shown != null && shown.contains(point)) {
+        found = true;
+        return;
+      }
+    }
+    o.visitChildren(visit);
+  }
+
+  visit(root);
+  return found;
 }
 
 /// True for render objects that draw something over what's under them.

@@ -259,6 +259,7 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
       // drew blank.
       expect(byLabel("Open caption")).toHaveLength(1);
       expect(byLabel("Covered caption")).toEqual([]);
+      expect(byLabel("Glass caption")).toEqual([]);
       expect(byLabel("Photo caption")).toEqual([]);
       // Text inside a tappable card is text; a lone separator isn't judged.
       expect(byLabel("Manama").map((i) => i.kind)).toEqual(["element"]);
@@ -351,6 +352,31 @@ class HandsOnScreen extends StatelessWidget {
             ),
             const Positioned(left: 16, bottom: 120, child: Text('Covered caption', style: pale)),
             const Positioned(left: 0, right: 0, bottom: 100, height: 60, child: ColoredBox(color: Color(0xFFEEEEEE))),
+            const Positioned(left: 16, bottom: 220, child: Text('Glass caption', style: pale)),
+            // A bar like a glass tab bar: its tint is a layer under the tabs, which take the taps and paint nothing.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 200,
+              height: 60,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const ColoredBox(color: Color(0xFFEEEEEE)),
+                  Row(
+                    children: [
+                      for (var i = 0; i < 3; i++)
+                        Expanded(
+                          child: Semantics(
+                            label: 'Tab $i',
+                            child: GestureDetector(onTap: () {}, behavior: HitTestBehavior.opaque, child: const SizedBox.expand()),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
     );
