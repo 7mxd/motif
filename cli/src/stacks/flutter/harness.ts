@@ -241,8 +241,9 @@ function readCache(dir: string): CachedFace[] | null {
 /**
  * A Google Fonts family's static TTFs, one per weight and style it has, fetched once from the CSS2 API (which serves
  * TTF to a client that doesn't claim WOFF2 support) into <home>/fonts/google/<Family>/. Each file is registered under
- * google_fonts' own name for it (Onest_700) and all of them under the plain family, which google_fonts lists as the
- * fallback. A family that can't be had gives a note instead, and the screenshots go on without it.
+ * google_fonts' own name for it (Onest_700; ReadexPro_700 for Readex Pro, without the spaces) and all of them under the
+ * plain family, with and without its spaces, which google_fonts lists as the fallback. A family that can't be had gives
+ * a note instead, and the screenshots go on without it.
  */
 export async function googleFontFiles(
   family: string,
@@ -287,10 +288,14 @@ export async function googleFontFiles(
       return skipped(`Couldn't download the font ${family} from Google Fonts (${why}).`);
     }
   }
+  // google_fonts names a family without its spaces (Readex Pro is ReadexPro_regular, with ReadexPro as its fallback).
+  const name = family.replace(/ /g, "");
+  const all = faces.map((f) => join(dir, f.file));
   return {
     fonts: [
-      ...faces.map((f) => ({ family: `${family}_${googleVariant(f.weight, f.italic)}`, files: [join(dir, f.file)] })),
-      { family, files: faces.map((f) => join(dir, f.file)) },
+      ...faces.map((f) => ({ family: `${name}_${googleVariant(f.weight, f.italic)}`, files: [join(dir, f.file)] })),
+      { family, files: all },
+      ...(name !== family ? [{ family: name, files: all }] : []),
     ],
     notes: [],
   };

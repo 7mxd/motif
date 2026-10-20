@@ -70,6 +70,15 @@ describe("googleFontFiles", () => {
     expect(offline.urls).toEqual([]);
   });
 
+  test("a family with spaces is registered as google_fonts names it, without the spaces, and under its plain name both ways", async () => {
+    const home = tempDir("motif-fonts-");
+    const fetch = fakeFetch((url) => (url.includes("googleapis") ? new Response(CSS) : new Response(TTF)));
+    const r = await googleFontFiles("Readex Pro", home, { fetch });
+    expect(r.fonts.map((f) => f.family)).toEqual(["ReadexPro_regular", "ReadexPro_700italic", "Readex Pro", "ReadexPro"]);
+    expect(r.fonts[3]!.files).toEqual(r.fonts[2]!.files);
+    expect(existsSync(join(home, "fonts", "google", "Readex Pro", "files.json"))).toBe(true);
+  });
+
   test("refuses a download that isn't a font, and caches nothing", async () => {
     const home = tempDir("motif-fonts-");
     const fetch = fakeFetch((url) => (url.includes("googleapis") ? new Response(CSS) : new Response("<html>blocked</html>")));
