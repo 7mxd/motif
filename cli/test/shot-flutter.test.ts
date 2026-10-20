@@ -734,3 +734,80 @@ describe("wave B review fixes: the left-out note says only what the app has (rev
     expect(r.text).not.toContain("sign-in pages");
   });
 });
+
+describe("final review: each Flutter app of a monorepo has its own setup (Important #1)", () => {
+  const pubspec = (name: string) => PUBSPEC.replace("name: shop", `name: ${name}`);
+  const setup = (pkg: string) =>
+    `import 'package:flutter/widgets.dart';\nimport 'package:${pkg}/main.dart';\n\nFuture<Widget?> motifSetup({required String variant, required Locale locale, required Brightness brightness}) async => null;\n`;
+  const monorepo = (extra: Record<string, string> = {}) =>
+    makeProject({
+      "mobile/customer/pubspec.yaml": pubspec("customer"),
+      "mobile/customer/lib/main.dart": MAIN,
+      "mobile/customer/design/states/setup.dart": setup("customer"),
+      "mobile/admin/pubspec.yaml": pubspec("admin"),
+      "mobile/admin/lib/main.dart": MAIN,
+      ...extra,
+    });
+  const fakeRun = () => {
+    const given: HarnessRun[] = [];
+    const run = async (r: HarnessRun): Promise<HarnessResult> => {
+      given.push(r);
+      return { code: 0, timedOut: false, output: "", shots: [], notes: [], result: { screens: [], issues: [], notes: [] } };
+    };
+    return { given, run };
+  };
+  const app = (path: string) => ({ path, stack: "flutter" as const, source: "detected" as const });
+
+  test("an app's own design/states/setup.dart and http.json come first, and a note says so", async () => {
+    const root = monorepo({
+      "design/states/setup.dart": setup("customer"),
+      "mobile/admin/design/states/setup.dart": setup("admin"),
+      "mobile/admin/design/states/http.json": JSON.stringify({ "GET /items": "fixtures/items.json" }),
+      "mobile/admin/design/fixtures/items.json": "[]",
+    });
+    const { given, run } = fakeRun();
+    const out = await shootFlutter(options(root, { app: app("mobile/admin"), routes: ["/"] }), { themeDir: "mobile/admin/lib/design", run });
+    expect(given[0]!.hooks).toContain("import '../../design/states/setup.dart' as setup;");
+    expect(given[0]!.hooks).not.toContain("package:customer");
+    expect(given[0]!.config).toMatchObject({
+      setupFile: "mobile/admin/design/states/setup.dart",
+      http: [{ method: "GET", path: "/items", url: null, file: join(root, "mobile/admin/design/fixtures/items.json"), status: 200 }],
+    });
+    expect(out.notes).toEqual(["This app used its own mobile/admin/design/states/setup.dart and mobile/admin/design/states/http.json, not the project's design/states/setup.dart."]);
+  });
+
+  test("each app runs with its own setup, which imports its own package", async () => {
+    const root = monorepo({ "mobile/admin/design/states/setup.dart": setup("admin") });
+    for (const [path, pkg] of [["mobile/customer", "customer"], ["mobile/admin", "admin"]] as const) {
+      const { given, run } = fakeRun();
+      const out = await shootFlutter(options(root, { app: app(path), routes: ["/"] }), { themeDir: `${path}/lib/design`, run });
+      expect(given[0]!.hooks).toContain("import '../../design/states/setup.dart' as setup;");
+      expect(given[0]!.hooks).toContain(`import 'package:${pkg}/main.dart' as app;`);
+      expect(given[0]!.config).toMatchObject({ setupFile: `${path}/design/states/setup.dart` });
+      expect(out.notes).toEqual([`This app used its own ${path}/design/states/setup.dart.`]);
+    }
+  });
+
+  test("an app without its own uses the project's, with no note; requests nothing answered name the file the app reads", async () => {
+    const root = monorepo({ "design/states/setup.dart": setup("admin"), "mobile/customer/design/states/http.json": "{}" });
+    const { given, run } = fakeRun();
+    const out = await shootFlutter(options(root, { app: app("mobile/admin"), routes: ["/"] }), { themeDir: "mobile/admin/lib/design", run });
+    expect(given[0]!.hooks).toContain("import '../../../../design/states/setup.dart' as setup;");
+    expect(given[0]!.config).toMatchObject({ setupFile: "design/states/setup.dart", http: [] });
+    expect(out.notes).toEqual([]);
+    expect(screenNotes([{ route: "/", unanswered: ["GET https://x.test/a"] }], "mobile/customer/design/states/http.json")).toEqual([
+      "Requests nothing answered on /: GET https://x.test/a. Add them to mobile/customer/design/states/http.json.",
+    ]);
+  });
+
+  test("a broken setup names the app's own file, before anything is written", async () => {
+    const root = monorepo({ "mobile/admin/design/states/setup.dart": "void main() {}\n", "design/states/setup.dart": setup("admin") });
+    const r = await runShot(root, { positionals: [], flags: { routes: "/" }, app: "mobile/admin" }, fakes().deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toBe(
+      "mobile/admin/design/states/setup.dart must define Future<Widget?> motifSetup({required String variant, required Locale locale, required Brightness brightness}) async.",
+    );
+    const http = makeProject({ "a/design/states/http.json": JSON.stringify({ "GET /x": "../../secrets.json" }), "a/secrets.json": "{}" });
+    expect(readHttpFixtures(http, join(http, "a"))).toEqual({ error: 'a/design/states/http.json: "GET /x" answers with ../../secrets.json, which isn\'t under design/.' });
+  });
+});

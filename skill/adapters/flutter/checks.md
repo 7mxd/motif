@@ -211,6 +211,8 @@ Future<Widget?> motifSetup({required String variant, required Locale locale, req
 
 It has 15 seconds. Because every screenshot in a run shares the app's global objects (a router, a singleton), reset any of yours here.
 
+In a project with several apps, give each app its own: `motif shot --app mobile/admin` uses `mobile/admin/design/states/setup.dart` when it exists, and the project's `design/states/setup.dart` otherwise, and says which it used. The same goes for `http.json` below (its files then sit under the app's own `design/` folder). `--state` scripts are used from the path you give.
+
 ### Fake network answers
 
 An app's network requests never leave the test. `design/states/http.json` says what to answer, keyed by method and path (any host) or by a whole address, with a file under `design/` and, if it isn't 200, a status:

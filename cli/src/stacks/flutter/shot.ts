@@ -2,7 +2,7 @@
 // size, light and dark, in every design variant, and right to left, after an optional setup script, with the app's
 // HTTP requests answered from fixtures.
 import { existsSync, readFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { loadTokenDocument } from "../../contract/load";
 import { readVariants } from "../../contract/variants";
 import type { AppInfo } from "../../detect/stacks";
@@ -16,7 +16,7 @@ import { googleFamilies, resolvedPackages, type ResolvedPackage } from "./google
 import { flutterSdk, flutterTail, runHarness, type AuditCheck, type FetchLike, type FlutterShot, type HarnessResult, type HarnessRun } from "./harness";
 import { hooksSource, mainFile } from "./hooks";
 import { iconName, sdkIconNames } from "./icons";
-import { findScreen, HTTP_FILE, readHttpFixtures, readSetup, readState, screenSlug, type HttpRoute } from "./inputs";
+import { findScreen, HTTP_FILE, readHttpFixtures, readSetup, readState, screenSlug, statesFile, type HttpRoute, type StatesFile } from "./inputs";
 import { dependsOn, importFor, packageName } from "./project";
 import { libDartFiles } from "./routes";
 import { FLUTTER_INSTALL } from "./doctor";
@@ -171,8 +171,11 @@ export function planShots(opts: NativeShotOptions, targets: Target[]): FlutterSh
 /** google_fonts' Family_700 is the family Onest's weight 700: notes name the family. */
 const familyName = (f: string) => f.replace(/_(regular|italic|[1-9]00(italic)?)$/, "");
 
-/** Notes from what the screens collected: requests nothing answered, images drawn blank, fonts and fallback fonts drawn as boxes. */
-export function screenNotes(screens: RawScreen[]): string[] {
+/**
+ * Notes from what the screens collected: requests nothing answered, images drawn blank, fonts and fallback fonts drawn
+ * as boxes. httpFile is the http.json the run read (the app's own in a monorepo).
+ */
+export function screenNotes(screens: RawScreen[], httpFile = HTTP_FILE): string[] {
   const notes: string[] = [];
   const texts = (n: number) => (n === 1 ? "1 text" : `${n} texts`);
   for (const s of screens) {
@@ -182,8 +185,8 @@ export function screenNotes(screens: RawScreen[]): string[] {
       ...(s.overImages ? [`${texts(s.overImages)} over an image the screenshot doesn't show`] : []),
     ];
     if (skipped.length) notes.push(`Contrast on ${s.route} wasn't judged for ${andList(skipped)}: check them by eye.`);
-    if (s.unanswered?.length) notes.push(`Requests nothing answered on ${s.route}: ${s.unanswered.join(", ")}. Add them to ${HTTP_FILE}.`);
-    if (s.blankImages?.length) notes.push(`Images nothing answered on ${s.route} were drawn blank: ${s.blankImages.join(", ")}. Add them to ${HTTP_FILE} to show them.`);
+    if (s.unanswered?.length) notes.push(`Requests nothing answered on ${s.route}: ${s.unanswered.join(", ")}. Add them to ${httpFile}.`);
+    if (s.blankImages?.length) notes.push(`Images nothing answered on ${s.route} were drawn blank: ${s.blankImages.join(", ")}. Add them to ${httpFile} to show them.`);
   }
   const fonts = new Map<string, string[]>();
   for (const s of screens) {
@@ -213,6 +216,7 @@ export function mapResult(
   timedOut: { seconds: number } | null,
   /** Flutter's icons by font and code point (sdkIconNames), read only when an issue is about an icon. */
   iconNames?: () => Map<string, string>,
+  httpFile = HTTP_FILE,
 ): { routes: RouteResult[]; issues: AuditIssue[]; notes: string[] } {
   const screens = (Array.isArray(result.screens) ? result.screens : []) as RawScreen[];
   const routes = targets.map((t): RouteResult => {
@@ -244,16 +248,26 @@ export function mapResult(
       ...(fix ? { fix } : {}),
     };
   });
-  const notes = [...(Array.isArray(result.notes) ? (result.notes as string[]) : []), ...screenNotes(screens)];
+  const notes = [...(Array.isArray(result.notes) ? (result.notes as string[]) : []), ...screenNotes(screens, httpFile)];
   return { routes, issues, notes };
+}
+
+/** Which design/states files a monorepo's app used: its own, which take the place of the project's. */
+function ownFilesNote(root: string, files: (StatesFile | null | undefined)[]): string[] {
+  const own = files.filter((f): f is StatesFile => Boolean(f?.own));
+  if (own.length === 0) return [];
+  const shared = own.map((f) => `design/states/${basename(f.file)}`).filter((f) => existsSync(join(root, f)));
+  return [`This app used its own ${andList(own.map((f) => f.shown))}${shared.length > 0 ? `, not the project's ${andList(shared)}` : ""}.`];
 }
 
 interface ShotInputs {
   pkg: string;
   screens: { name: string; import: string }[];
   states: { name: string; import: string }[];
-  setup: string | null;
+  setup: { import: string; file: StatesFile } | null;
   http: HttpRoute[];
+  /** The http.json the run reads, if any. */
+  httpFile: StatesFile | null;
 }
 
 /**
@@ -276,10 +290,10 @@ export function readShotInputs(root: string, appDir: string, given: { screens: s
     states.push(found);
   }
   const setup = readSetup(root, appDir);
-  if (setup && typeof setup === "object") return setup;
-  const http = readHttpFixtures(root);
+  if (setup && "error" in setup) return setup;
+  const http = readHttpFixtures(root, appDir);
   if ("error" in http) return http;
-  return { pkg, screens, states, setup, http };
+  return { pkg, screens, states, setup, http, httpFile: statesFile(root, appDir, "http.json") };
 }
 
 /** FLUTTER.shoot: writes the harness, runs flutter test, reads what it drew, and always removes the harness. */
@@ -288,7 +302,7 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
   const appDir = resolve(root, opts.app.path);
   const inputs = readShotInputs(root, appDir, opts);
   if ("error" in inputs) throw new Error(inputs.error);
-  const { pkg, screens, states, setup, http } = inputs;
+  const { pkg, screens, states, setup, http, httpFile } = inputs;
   const packages = resolvedPackages(appDir);
 
   const used = new Set<string>();
@@ -314,7 +328,7 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
     googleFonts: uses(appDir, packages, "google_fonts"),
     sharedPreferences: uses(appDir, packages, "shared_preferences"),
     ...(theme ? { theme } : {}),
-    ...(setup ? { setup } : {}),
+    ...(setup ? { setup: setup.import } : {}),
     screens,
     states,
   });
@@ -339,6 +353,7 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
       packageInfo: { appName: pkg, packageName: pkg, version, buildNumber: build, buildSignature: "", installerStore: null },
       connectivityList: !connectivity || Number(connectivity.split(".")[0]) >= 6,
       http,
+      ...(setup ? { setupFile: setup.file.shown } : {}),
     },
     ...(deps.flutter ? { flutter: deps.flutter } : {}),
     ...(deps.home ? { home: deps.home } : {}),
@@ -358,6 +373,7 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
     result.result,
     result.timedOut ? { seconds: Math.round(opts.timeoutMs / 1000) } : null,
     flutter ? () => sdkIconNames(flutterSdk(flutter)) : undefined,
+    httpFile?.shown,
   );
-  return { ...mapped, notes: [...result.notes, ...mapped.notes] };
+  return { ...mapped, notes: [...ownFilesNote(root, [setup?.file, httpFile]), ...result.notes, ...mapped.notes] };
 }

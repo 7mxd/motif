@@ -569,3 +569,43 @@ describe("motif shot on a Flutter app without go_router or google_fonts", () => 
     }
   }, 600_000);
 });
+
+describe("motif shot on two Flutter apps in one project (final review, Important #1)", () => {
+  test.skipIf(!flutter)("each app runs its own design/states/setup.dart, which imports its own package; the project's is used by neither (skipped without Flutter)", async () => {
+    const root = tempDir("motif flutter monorepo ");
+    const flutterCmd = Bun.which("flutter")!;
+    const setup = (pkg: string) => `import 'package:flutter/material.dart';
+import 'package:${pkg}/main.dart';
+
+Future<Widget?> motifSetup({required String variant, required Locale locale, required Brightness brightness}) async =>
+    const MaterialApp(home: Home());
+`;
+    // The project's own setup imports the first app: compiled into the second, it would fail.
+    mkdirSync(join(root, "design", "states"), { recursive: true });
+    writeFileSync(join(root, "design", "states", "setup.dart"), setup("customer"));
+    for (const pkg of ["customer", "admin"]) {
+      const dir = join(root, "mobile", pkg);
+      mkdirSync(join(dir, "lib"), { recursive: true });
+      mkdirSync(join(dir, "design", "states"), { recursive: true });
+      writeFileSync(join(dir, "pubspec.yaml"), PLAIN_PUBSPEC.replace("name: plain_app", `name: ${pkg}`));
+      writeFileSync(join(dir, "lib", "main.dart"), PLAIN_MAIN.replace("Plain home", `${pkg} home`));
+      writeFileSync(join(dir, "design", "states", "setup.dart"), setup(pkg));
+      if (Bun.spawnSync([flutterCmd, "pub", "get", "--offline"], { cwd: dir, stdout: "pipe", stderr: "pipe" }).exitCode !== 0) {
+        expect(Bun.spawnSync([flutterCmd, "pub", "get"], { cwd: dir, stdout: "pipe", stderr: "pipe" }).exitCode).toBe(0);
+      }
+    }
+    process.env.MOTIF_DEBUG = "1";
+    try {
+      for (const pkg of ["customer", "admin"]) {
+        const r = await runShot(root, { positionals: [], flags: { routes: "/", sizes: "390" }, app: `mobile/${pkg}` });
+        if (r.exitCode !== 0) console.log(r.text);
+        expect(r.exitCode).toBe(0);
+        expect(r.data.notes).toContain(`This app used its own mobile/${pkg}/design/states/setup.dart, not the project's design/states/setup.dart.`);
+        const screens = JSON.parse(readFileSync(join(root, "mobile", pkg, RESULT_FILE), "utf8")).screens as { route: string; texts: string[] }[];
+        expect(screens[0]!.texts).toContain(`${pkg} home`);
+      }
+    } finally {
+      delete process.env.MOTIF_DEBUG;
+    }
+  }, 600_000);
+});

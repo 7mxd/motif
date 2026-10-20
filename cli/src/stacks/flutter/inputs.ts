@@ -1,7 +1,7 @@
 // What a developer gives motif shot for a Flutter app, read and checked before the run: design/states/setup.dart,
 // design/states/http.json, --state scripts and --screen widgets.
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { maskComments, maskStrings } from "../../check/mask";
 import type { StateScript } from "../../shot/capture";
@@ -18,13 +18,39 @@ export function importFrom(appDir: string, file: string): string {
   return isAbsolute(rel) ? pathToFileURL(file).href : rel.split(sep).join("/");
 }
 
-/** design/states/setup.dart's import for the harness, null when there's none; an error when it lacks motifSetup. */
-export function readSetup(root: string, appDir: string): string | null | { error: string } {
-  const file = join(root, SETUP_FILE);
-  if (!existsSync(file)) return null;
-  const text = maskComments(readFileSync(file, "utf8"), "dart");
-  if (!/\bmotifSetup\s*\(/.test(text)) return { error: `${SETUP_FILE} must define ${SETUP_SIGNATURE}.` };
-  return importFrom(appDir, file);
+/** A file under design/states/ as a run uses it: where it is, and how Motif names it (root-relative). */
+export interface StatesFile {
+  file: string;
+  shown: string;
+  /** True when it's the app's own (<app>/design/states/…), in a project whose root has the shared one. */
+  own: boolean;
+}
+
+/**
+ * design/states/<name> for an app: the app's own (<app>/design/states/<name>) when it has one, so each app of a
+ * monorepo can set itself up; else the project's. Null when neither exists.
+ */
+export function statesFile(root: string, appDir: string, name: string): StatesFile | null {
+  const top = resolve(root);
+  const app = resolve(appDir);
+  if (app !== top) {
+    const own = join(app, "design", "states", name);
+    if (existsSync(own)) return { file: own, shown: relative(top, own).split(sep).join("/"), own: true };
+  }
+  const shared = join(top, "design", "states", name);
+  return existsSync(shared) ? { file: shared, shown: `design/states/${name}`, own: false } : null;
+}
+
+/**
+ * The setup script's import for the harness (the app's own design/states/setup.dart, else the project's) and which
+ * file it is; null when there's none; an error when it lacks motifSetup.
+ */
+export function readSetup(root: string, appDir: string): { import: string; file: StatesFile } | null | { error: string } {
+  const found = statesFile(root, appDir, "setup.dart");
+  if (!found) return null;
+  const text = maskComments(readFileSync(found.file, "utf8"), "dart");
+  if (!/\bmotifSetup\s*\(/.test(text)) return { error: `${found.shown} must define ${SETUP_SIGNATURE}.` };
+  return { import: importFrom(appDir, found.file), file: found };
 }
 
 export const STATE_SIGNATURE = "Future<void> motifState(WidgetTester tester) async";
@@ -52,40 +78,44 @@ export interface HttpRoute {
 const KEY = /^(GET|POST|PUT|PATCH|DELETE|HEAD) (\/\S*|https?:\/\/\S+)$/;
 
 /**
- * design/states/http.json: "GET /path" or "GET https://host/path" → a file under design/ ("fixtures/items.json"), or
- * { "file": …, "status": 201 }. Nothing when there's no file.
+ * design/states/http.json (the app's own, else the project's): "GET /path" or "GET https://host/path" → a file under
+ * the design/ folder next to it ("fixtures/items.json"), or { "file": …, "status": 201 }. Nothing when there's no file.
  */
-export function readHttpFixtures(root: string): HttpRoute[] | { error: string } {
-  const path = join(root, HTTP_FILE);
-  if (!existsSync(path)) return [];
+export function readHttpFixtures(root: string, appDir: string = root): HttpRoute[] | { error: string } {
+  const found = statesFile(root, appDir, "http.json");
+  if (!found) return [];
+  const shown = found.shown;
+  const path = found.file;
   let table: unknown;
   try {
     table = JSON.parse(readFileSync(path, "utf8").replace(/^﻿/, ""));
   } catch (e) {
-    return { error: `${HTTP_FILE} isn't valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+    return { error: `${shown} isn't valid JSON: ${e instanceof Error ? e.message : String(e)}` };
   }
   if (!table || typeof table !== "object" || Array.isArray(table)) {
-    return { error: `${HTTP_FILE} maps requests to answers, like { "GET /items": "fixtures/items.json" }.` };
+    return { error: `${shown} maps requests to answers, like { "GET /items": "fixtures/items.json" }.` };
   }
-  const design = resolve(root, "design");
+  // The design/ folder the table is in: the app's own, or the project's.
+  const base = dirname(dirname(dirname(path)));
+  const design = resolve(base, "design");
   const routes: HttpRoute[] = [];
   for (const [key, value] of Object.entries(table)) {
     const m = KEY.exec(key.trim());
-    if (!m) return { error: `${HTTP_FILE}: "${key}" should be a method and a path or address, like "GET /items" or "GET https://api.example.com/items".` };
+    if (!m) return { error: `${shown}: "${key}" should be a method and a path or address, like "GET /items" or "GET https://api.example.com/items".` };
     const answer = typeof value === "string" ? { file: value } : value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-    if (!answer) return { error: `${HTTP_FILE}: "${key}" should name a file under design/, or be { "file": …, "status": … }.` };
+    if (!answer) return { error: `${shown}: "${key}" should name a file under design/, or be { "file": …, "status": … }.` };
     const status = answer.status === undefined ? 200 : answer.status;
     if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599) {
-      return { error: `${HTTP_FILE}: "${key}" has a status that isn't an HTTP status code (100 to 599).` };
+      return { error: `${shown}: "${key}" has a status that isn't an HTTP status code (100 to 599).` };
     }
     let file: string | null = null;
     if (answer.file !== undefined) {
-      if (typeof answer.file !== "string" || answer.file.trim() === "") return { error: `${HTTP_FILE}: "${key}" has a file that isn't a path.` };
+      if (typeof answer.file !== "string" || answer.file.trim() === "") return { error: `${shown}: "${key}" has a file that isn't a path.` };
       const given = answer.file.replace(/\\/g, "/");
-      const abs = given.startsWith("design/") ? resolve(root, given) : resolve(design, given);
+      const abs = given.startsWith("design/") ? resolve(base, given) : resolve(design, given);
       const inside = relative(design, abs);
-      if (inside.startsWith("..") || isAbsolute(inside)) return { error: `${HTTP_FILE}: "${key}" answers with ${answer.file}, which isn't under design/.` };
-      if (!existsSync(abs) || !statSync(abs).isFile()) return { error: `${HTTP_FILE}: "${key}" answers with ${answer.file}, which doesn't exist (paths are under design/).` };
+      if (inside.startsWith("..") || isAbsolute(inside)) return { error: `${shown}: "${key}" answers with ${answer.file}, which isn't under design/.` };
+      if (!existsSync(abs) || !statSync(abs).isFile()) return { error: `${shown}: "${key}" answers with ${answer.file}, which doesn't exist (paths are under design/).` };
       file = abs;
     }
     const target = m[2]!;

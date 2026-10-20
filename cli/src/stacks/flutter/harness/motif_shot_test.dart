@@ -2,11 +2,11 @@
 // <app>/.motif/shot/ with motif_hooks.dart next to it (the app's imports and the calls that depend on them), runs
 // `flutter test .motif/shot/motif_shot_test.dart`, and deletes both files when the run ends.
 //
-// The run's options come from the JSON file named by --dart-define=MOTIF_SHOT_CONFIG=<path>:
+// The run's options come from the JSON file named by --dart-define=MOTIF_SHOT_CONFIG=<path> (relative to the app):
 //   { "outDir": "<abs>", "resultPath": "<abs>", "debug": false, "defaultVariant": "default",
-//     "fonts": [{ "family": "Onest_700", "files": ["<abs>.ttf"] }],
+//     "fonts": [{ "family": "Onest_700", "files": ["<abs>.ttf"], "scripts": ["arabic"] }],
 //     "plugins": ["flutter_secure_storage", …], "packageInfo": { "appName": …, "version": … }, "connectivityList": true,
-//     "http": [{ "method": "GET", "path": "/items", "url": null, "file": "<abs>", "status": 200 }],
+//     "http": [{ "method": "GET", "path": "/items", "url": null, "file": "<abs>", "status": 200 }], "setupFile": "design/states/setup.dart",
 //     "shots": [{ "file": "home+partner.mobile.rtl.png", "target": "/home", "route": "/home", "screen": null,
 //                 "width": 390, "height": 844, "dpr": 2, "safeTop": 47, "safeBottom": 34, "dark": false,
 //                 "locale": "ar", "rtl": true, "variant": "partner", "variantId": "partner", "size": "mobile",
@@ -42,7 +42,8 @@ const int _maxPumps = 50;
 /// How long a state script or design/states/setup.dart may run: 15 s, as a state script on the web.
 const Duration _scriptLimit = Duration(seconds: 15);
 
-const String _setupFile = 'design/states/setup.dart';
+/// The setup script, as Motif names it (config "setupFile": an app's own in a monorepo, mobile/customer/design/states/setup.dart).
+String _setupFile = 'design/states/setup.dart';
 
 /// Flushes the fake-async work of a test that runs a state script, until that test ends (see _runState).
 Timer? _kicker;
@@ -52,6 +53,7 @@ void main() {
   // Screenshots show the app as people see it, without the DEBUG ribbon.
   WidgetsApp.debugAllowBannerOverride = false;
   final config = jsonDecode(File(_configPath).readAsStringSync()) as Map<String, dynamic>;
+  _setupFile = config['setupFile'] as String? ?? _setupFile;
   final outDir = config['outDir'] as String;
   final debug = config['debug'] == true;
   final screens = <String, _Screen>{};
@@ -215,7 +217,7 @@ class _Stop implements Exception {
 String _describe(Object e) {
   final missing = RegExp(r'No implementation found for method (\S+) on channel (\S+)').firstMatch('$e');
   if (e is MissingPluginException || missing != null) {
-    return '${_plugin(missing?.group(2) ?? '')} needs a phone; stub it in design/states/setup.dart.';
+    return '${_plugin(missing?.group(2) ?? '')} needs a phone; stub it in $_setupFile.';
   }
   final text = e is FlutterErrorDetails ? e.exceptionAsString() : '$e';
   return text.split('\n').where((l) => l.trim().isNotEmpty).take(3).join(' ').trim();
