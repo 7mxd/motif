@@ -866,3 +866,28 @@ describe("final review: routes Motif can't read are named in the run's notes (Mi
     expect(r.data.notes).toEqual(["Only / was found; routes written as constants or with TypedGoRoute aren't read — name the screens with --routes."]);
   });
 });
+
+describe("final review: --save then --against on a Flutter app (Minor #12)", () => {
+  test("the second run pairs each screenshot with the saved one, and needs the browser only for that", async () => {
+    const root = makeProject(FLUTTER_APP);
+    const { deps } = fakes();
+    const browser = { path: "/fake/chrome", name: "Chrome" } as const;
+    const saved = await runShot(root, ctx({ routes: "/", save: "before" }), deps);
+    expect(saved.exitCode).toBe(0);
+    expect(existsSync(join(root, "design", "shots", "before", "index.mobile.png"))).toBe(true);
+    const given: Parameters<ShotDeps["compare"]>[0][] = [];
+    const r = await runShot(root, ctx({ routes: "/", against: "before" }), {
+      ...deps,
+      findBrowser: () => browser as never,
+      compare: async (o) => {
+        given.push(o);
+        return o.pairs.map((p) => ({ ...p, changed: 0 }));
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    const shots = join(root, "design", "shots");
+    expect(given[0]!.browserPath).toBe("/fake/chrome");
+    expect(given[0]!.pairs).toEqual([{ before: join(shots, "before", "index.mobile.png"), after: join(shots, "index.mobile.png"), out: join(shots, "compare", "before", "index.mobile.png") }]);
+    expect(r.text).toContain('Compared with "before": 0 changed, 1 with no visible change');
+  });
+});

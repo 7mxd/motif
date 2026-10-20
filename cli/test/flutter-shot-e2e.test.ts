@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { basename, join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { runShot } from "../src/commands/shot";
+import { findBrowser } from "../src/detect/browser";
 import { HARNESS_AUDIT, HARNESS_HTTP, HARNESS_TEST, RESULT_FILE } from "../src/stacks/flutter/harness";
 import { HOOKS_FILE } from "../src/stacks/flutter/hooks";
 import { FIXTURES, hasFlutter } from "./helpers";
@@ -12,6 +13,8 @@ import { cleanupTempDirs, tempDir } from "./tmp";
 // flutter-min, which has a sign-in redirect on /home, a partner variant through the generated MotifTheme, and a list
 // fetched over HTTP; flutter test reuses its compiled harness from one run to the next.
 const flutter = hasFlutter();
+// --against puts the pictures side by side in Chrome or Edge.
+const browser = findBrowser() !== null;
 let app = "";
 const saved = { home: process.env.MOTIF_HOME, debug: process.env.MOTIF_DEBUG };
 
@@ -118,6 +121,18 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     expect(r.data.shots).toEqual(["design/shots/index.mobile.png", "design/shots/index.mobile.rtl.png", "design/shots/index.mobile.dark.png", "design/shots/index.mobile.rtl.dark.png"]);
     expect(r.data.notes).toContain("This app doesn't offer he (supportedLocales), so its RTL screenshots show it left to right.");
     expect(JSON.stringify(r.data.notes ?? [])).not.toContain("draws as boxes");
+  }, 600_000);
+
+  test.skipIf(!flutter || !browser)("--save then --against: the second run pairs each screenshot with the saved one, side by side (skipped without Flutter or a browser)", async () => {
+    const saved = await shot({ routes: "/", sizes: "390", variant: "default", save: "before" });
+    if (saved.exitCode !== 0) console.log(saved.text);
+    expect(saved.exitCode).toBe(0);
+    expect(existsSync(join(app, "design", "shots", "before", "index.mobile.png"))).toBe(true);
+    const r = await shot({ routes: "/", sizes: "390", variant: "default", against: "before" });
+    if (r.exitCode !== 0) console.log(r.text);
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toContain('Compared with "before": 0 changed, 2 with no visible change (side by side in design/shots/compare/before/)');
+    for (const name of ["index.mobile.png", "index.mobile.dark.png"]) expect(existsSync(join(app, "design", "shots", "compare", "before", name))).toBe(true);
   }, 600_000);
 
   test.skipIf(!flutter)("--audit finds /audit's pale caption, its small icon button with no name, and its icon that keeps turning (skipped without Flutter)", async () => {
