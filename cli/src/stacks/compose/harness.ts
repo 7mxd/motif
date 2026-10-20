@@ -347,10 +347,10 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
   try {
     writeHarness(run.moduleDir, run.config, run.sources);
     const base = run.env ?? process.env;
-    // The JDK the client runs on is the one the daemon and the Android plugin use too; the SDK goes in when the project
-    // doesn't say (no local.properties).
+    // The JDK the client runs on is the one the daemon and the Android plugin use too. The SDK doctor found goes in as
+    // ANDROID_HOME, replacing one that points nowhere; a project's local.properties still wins in the Android plugin.
     const env: Record<string, string | undefined> = { ...base, JAVA_HOME: run.javaHome };
-    if (run.sdk) env.ANDROID_HOME ||= run.sdk;
+    if (run.sdk) env.ANDROID_HOME = run.sdk;
     const proc = Bun.spawn(gradleCommand(run.java, run.projectDir, run.moduleDir, base), {
       cwd: run.projectDir,
       env,
