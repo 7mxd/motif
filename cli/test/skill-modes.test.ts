@@ -338,3 +338,36 @@ describe("Flutter in the skill and the modes", () => {
     for (const s of ["## A finished guide", "right-to-left", "the toolchain", "state scripts"]) expect(template).toContain(s);
   });
 });
+
+describe("Jetpack Compose in the skill and the modes", () => {
+  test("SKILL.md sends Compose apps to their guide, and the toolchain row names the JDK and the Android SDK", () => {
+    const skill = read("SKILL.md");
+    for (const s of ["(adapters/compose/README.md)", "Jetpack Compose", "a JDK and the Android SDK for Compose apps"]) expect(skill).toContain(s);
+  });
+
+  test("init offers Compose, starts it from Android Studio's Empty Activity template, and offers to write the template's files", () => {
+    const init = read("modes/init.md");
+    for (const s of ["an Android app in Jetpack Compose", "(../adapters/compose/README.md)", "Empty Activity", "no command-line starter", "write the template's files"]) {
+      expect(init).toContain(s);
+    }
+  });
+
+  test("feature lists a Compose app's composables from its guide", () => {
+    const feature = read("modes/feature.md");
+    for (const s of ["(../adapters/compose/components.md)", "ui/components/"]) expect(feature).toContain(s);
+  });
+
+  test("review links Compose's checks and state files, which are Kotlin", () => {
+    const review = read("modes/review.md");
+    for (const s of ["(../adapters/compose/checks.md)", "(../adapters/compose/checks.md#screens-behind-a-form-or-a-click)", "`.kt` for a Compose app", "--rtl"]) {
+      expect(review).toContain(s);
+    }
+  });
+
+  test("variants: switching a Compose app's variant from its state, and what Compose varies", () => {
+    const variants = read("knowledge/variants.md");
+    for (const s of ["MotifTheme(variant = MotifVariant.", "rememberSaveable", "StateFlow", "(../adapters/compose/tokens.md#switching-variants)"]) {
+      expect(variants).toContain(s);
+    }
+  });
+});

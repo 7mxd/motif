@@ -194,3 +194,23 @@ describe("the guides: from the backlog", () => {
     expect(review).toContain("leave --state out if there are none");
   });
 });
+
+describe("the Compose guide matches the tool", () => {
+  const read = (p: string) => readFileSync(join(SKILL, p), "utf8").replace(/\r\n/g, "\n");
+
+  test("its words for a missing Android SDK, the setup and a state are the tool's own", async () => {
+    const { NO_ANDROID_SDK } = await import("../src/stacks/compose/doctor");
+    const { COMPOSE_FIRST_RUN, SETUP_FILE } = await import("../src/stacks/compose/shot");
+    expect(read("adapters/compose/README.md")).toContain(NO_ANDROID_SDK);
+    const checks = read("adapters/compose/checks.md");
+    expect(checks).toContain(SETUP_FILE);
+    expect(checks).toContain(COMPOSE_FIRST_RUN);
+  });
+
+  test("every Compose guide file stays under the line limit and links only to files that exist", () => {
+    for (const f of files.filter((f) => f.startsWith("adapters/compose/"))) {
+      expect(lintSkillMarkdown(f, readFileSync(join(SKILL, f), "utf8"), opts)).toEqual([]);
+    }
+    expect(files.filter((f) => f.startsWith("adapters/compose/")).length).toBe(6);
+  });
+});

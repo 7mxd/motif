@@ -9,6 +9,8 @@ import { buildScale } from "../src/check/scale";
 import { buildTheme } from "../src/generate/theme";
 import { exceptionFor } from "../src/check/exceptions";
 import { dartReducedMotion, scanDart } from "../src/stacks/flutter/rules";
+import { composeReducedMotion, scanKotlin } from "../src/stacks/compose/rules";
+import { NO_ANDROID_SDK } from "../src/stacks/compose/doctor";
 import { docFrom, validTokens } from "./helpers";
 
 const ADAPTERS = join(import.meta.dir, "../../skill/adapters");
@@ -217,6 +219,82 @@ describe("the Flutter guide", () => {
         const source = { path, abs: path, text: code, lang: "dart" as const };
         const lines = code.split("\n");
         const hits = [...scanDart(source, scale), ...dartReducedMotion([source])].filter((h) => h.violation && !("reason" in (exceptionFor(lines, h.line) ?? {})));
+        expect(hits.map((h) => `${path}: ${h.rule} ${h.text}`)).toEqual([]);
+      }
+    }
+  });
+});
+
+describe("the Compose guide", () => {
+  const has = (file: string, strings: string[]) => {
+    const text = read(`compose/${file}`);
+    for (const s of strings) expect([file, s, text.includes(s)]).toEqual([file, s, true]);
+  };
+
+  test("has exactly the template's files", () => {
+    expect(readdirSync(join(ADAPTERS, "compose")).sort()).toEqual(GUIDE_FILES);
+  });
+
+  test("README: the Empty Activity starter, the build commands, doctor's lines, the floors, the theme folder and monorepos", () => {
+    has("README.md", [
+      "Empty Activity", "./gradlew", "compileDebugKotlin", "design/motif.json", "themeDir",
+      "`JDK`", "JDK 17.0.12.", "`Android SDK`", "(platforms 35, 36)", "No JDK found", "https://adoptium.net", "is older than 17", NO_ANDROID_SDK,
+      "Kotlin 2.0", "Compose UI 1.9", "Material 3 1.3", "Android Gradle Plugin 8.6", "Gradle 8.7", "JDK 17", "`compileSdk` 35",
+      "## Monorepos", "one guide for the web dashboard and the Android app", "platform notes", "--app",
+    ]);
+    // Compose UI 1.9 refuses AGP 8.5 (decision 0008), so the guide never offers it.
+    expect(read("compose/README.md")).not.toContain("8.5");
+  });
+
+  test("tokens.md: wiring MotifTheme in, reading it in composables, fonts, the Arabic companion and switching variants", () => {
+    has("tokens.md", [
+      "MotifTheme(", "MotifTheme.colors.", "MotifType.", "MotifSpace.", "MotifRadius.", "Modifier.motifShadow(", "res/font", "ui-text-google-fonts", "motif_font_certs.xml",
+      "Arabic companion", "MaterialTheme.typography", "ui/theme", "can be deleted",
+      "## Switching variants", "MotifTheme(variant = MotifVariant.", "rememberSaveable", "StateFlow", "MotifTheme.debugVariantOverride", "colours only",
+    ]);
+  });
+
+  test("components.md: where composables live, hoisted state, every state, names and touch targets", () => {
+    has("components.md", [
+      "ui/components/", "ui/<feature>/", "stateless", "hoist", "interactionSource", "collectIsPressedAsState", "collectIsFocusedAsState", "enabled = false",
+      "Modifier.semantics {", "contentDescription", "Modifier.minimumInteractiveComponentSize()",
+    ]);
+    for (const c of ["Button", "IconButton", "Field", "Checkbox", "Switch", "Card", "ListItem", "TopBar", "TabBar", "Sheet", "Dialog", "Toast", "Skeleton", "EmptyState", "ErrorState", "Avatar", "Badge"]) {
+      expect(read("compose/components.md")).toContain(`\`${c}\``);
+    }
+  });
+
+  test("motion.md: the roles in Compose's animation API, springs, and reduced motion", () => {
+    has("motion.md", ["MotifEasing.", "MotifDurations.", "MotifSprings.", "animate*AsState", "MotifMotion.duration(", "MotifMotion.reduced()", "Remove animations"]);
+  });
+
+  test("platform.md: right to left, Material 3 on Android, edge to edge, languages", () => {
+    has("platform.md", [
+      "LayoutDirection.Rtl", "start =", "end =", "Icons.AutoMirrored", "material-icons-core", "Material 3 on Android", "enableEdgeToEdge()", "WindowInsets", "values-ar", "DESIGN.md",
+    ]);
+  });
+
+  test("checks.md: every rule, the audit, the setup and state files, and the screenshot flags", () => {
+    const checks = read("compose/checks.md");
+    for (const id of RULE_IDS.filter((r) => !r.startsWith("tailwind") && r !== "primitive-use")) expect(checks).toContain(`## \`${id}\``);
+    has("checks.md", [
+      "## Contrast", "## Target size", "## Names", "## Reduced motion", "// motif-ok:",
+      "design/states/Setup.kt", "package dev.motif.states", "fun motifSetup(variant: String, locale: Locale, dark: Boolean)",
+      "package dev.motif.states.sent", "fun motifState(rule: ComposeContentTestRule)", "--screen", "@Preview", "--rtl", "--state",
+    ]);
+  });
+
+  test("the Kotlin examples pass motif check as they are", () => {
+    const scale = buildScale(buildTheme(docFrom(validTokens())), "app/src/main/java/com/example/app/ui/motif");
+    for (const file of GUIDE_FILES) {
+      const text = read(`compose/${file}`);
+      const blocks = [...text.matchAll(/```kotlin\n([\s\S]*?)```/g)].map((m) => m[1]!);
+      if (file !== "README.md") expect([file, blocks.length > 0]).toEqual([file, true]);
+      for (const [i, code] of blocks.entries()) {
+        const path = `${file}-example-${i + 1}.kt`;
+        const source = { path, abs: path, text: code, lang: "kotlin" as const };
+        const lines = code.split("\n");
+        const hits = [...scanKotlin(source, scale), ...composeReducedMotion([source])].filter((h) => h.violation && !("reason" in (exceptionFor(lines, h.line) ?? {})));
         expect(hits.map((h) => `${path}: ${h.rule} ${h.text}`)).toEqual([]);
       }
     }
