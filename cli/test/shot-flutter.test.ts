@@ -172,6 +172,19 @@ describe("motif shot on a Flutter app", () => {
     expect(web.text).toBe("--screen opens a Flutter widget by its class name; this app isn't a Flutter app. Use --routes for its pages.");
   });
 
+  test("an audit of routes and --screen widgets names both in audit.json's scope (plan 2F, Task 15)", async () => {
+    const root = makeProject(FLUTTER_APP);
+    const { deps } = fakes((o) => ({
+      routes: [...o.routes, ...o.screens].map((s) => ({ route: s, url: s, status: 200, shots: [join(o.outDir, `${s === "/" ? "index" : screenSlug(s)}.mobile.png`)] })),
+    }));
+    const r = await runShot(root, ctx({ routes: "/", screen: ["Settings"], audit: true }), deps);
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8")).scope).toBe("screens: /, Settings");
+    // A run of widgets alone used to say "screens: " with nothing after it.
+    await runShot(root, ctx({ screen: ["Settings"], audit: true }), deps);
+    expect(JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8")).scope).toBe("screens: Settings");
+  });
+
   test("a screen that redirected is reported where it landed, and the identical-variant note says how Flutter switches", async () => {
     const root = makeProject({ ...FLUTTER_APP, "design/tokens.json": JSON.stringify(partnerTokens()) });
     const { deps } = fakes((o) => {
