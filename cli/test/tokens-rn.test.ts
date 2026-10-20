@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { runCheck } from "../src/commands/check";
 import { runTokens } from "../src/commands/tokens";
 import { TS_HEADER } from "../src/generate/header";
 import { partnerTokens, validTokens } from "./helpers";
@@ -155,6 +156,38 @@ describe("motif tokens for an Expo app", () => {
     expect(ts).not.toContain("Inter_700Bold");
     expect(notes(r)).toContain("@expo-google-fonts/inter is in package.json but isn't installed");
     expect(notes(r)).toContain("run motif tokens again to use its other weights");
+  });
+
+  const INTER_DTS =
+    "export * from './useFonts';\nexport declare const Inter_400Regular: number;\nexport declare const Inter_500Medium: number;\nexport declare const Inter_600SemiBold: number;\nexport declare const Inter_700Bold: number;\n";
+
+  test("before the packages are installed, the faces Motif's theme file already imports are kept: tokens is up to date and check sees no edit", async () => {
+    const root = starter({ "node_modules/@expo-google-fonts/inter/index.d.ts": INTER_DTS });
+    await runTokens(root, ctx);
+    const path = join(root, "src/design/motif-theme.tsx");
+    const installed = readFileSync(path, "utf8");
+    expect(installed).toContain('heading: { fontFamily: "Inter_600SemiBold",');
+    // A fresh clone: the theme is committed, node_modules isn't.
+    rmSync(join(root, "node_modules"), { recursive: true });
+    const r = await runTokens(root, ctx);
+    expect(new Set(Object.values(statuses(r)))).toEqual(new Set(["unchanged"]));
+    expect(readFileSync(path, "utf8")).toBe(installed);
+    expect(notes(r)).not.toContain("isn't installed");
+    expect((await runCheck(root, ctx)).data.warnings).toEqual([]);
+    // A hand edit is still one.
+    writeFileSync(path, installed.replace("  md: 8,", "  md: 6,"));
+    expect((await runCheck(root, ctx)).data.warnings).toEqual([expect.objectContaining({ rule: "generated-edited", file: "src/design/motif-theme.tsx", line: 1 })]);
+  });
+
+  test("a theme file without Motif's header, or one that imports nothing from the package, isn't trusted for its faces", async () => {
+    const root = starter({ "src/design/motif-theme.tsx": 'import { Inter_700Bold } from "@expo-google-fonts/inter";\nexport const mine = 1;\n' });
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)["src/design/motif-theme.tsx"]).toBe("protected");
+    expect(notes(r)).toContain("@expo-google-fonts/inter is in package.json but isn't installed");
+    const other = starter({ "src/design/motif-theme.tsx": `${TS_HEADER}\nimport { Onest_700Bold } from "@expo-google-fonts/onest";\n` });
+    const again = await runTokens(other, ctx);
+    expect(notes(again)).toContain("@expo-google-fonts/inter is in package.json but isn't installed");
+    expect(readFileSync(join(other, "src/design/motif-theme.tsx"), "utf8")).toContain('import { Inter_400Regular } from "@expo-google-fonts/inter";');
   });
 
   test("a package file Motif can't read gives only the 400 face, and a note naming the package", async () => {

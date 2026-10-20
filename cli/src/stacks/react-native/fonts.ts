@@ -3,12 +3,13 @@
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { AppInfo } from "../../detect/stacks";
+import { isMotifGenerated } from "../../generate/header";
 import type { Theme } from "../../generate/theme";
 import { themeFonts } from "../../generate/theme-fonts";
 import { prefixPath } from "../../project/apps";
 import { assetNames, FONT_ASSETS } from "../flutter/fonts";
 import { declared, expoSdk } from "./project";
-import type { RnOptions } from "./generate";
+import { THEME_FILE, type RnOptions } from "./generate";
 
 const RN_FONT = /\.(ttf|otf)$/i;
 
@@ -45,6 +46,27 @@ function exportedFaces(appDir: string, pkg: string): Set<string> | "missing" | "
     }
     if (dirname(dir) === dir) return "missing";
   }
+}
+
+/**
+ * The faces of a package that Motif's own theme file already imports (import { Onest_400Regular, … } from "<pkg>"), or
+ * null when there is no such file, it isn't Motif's (no header), or it imports nothing from the package. Before the app's
+ * packages are installed, these keep the theme as it was written with them, so motif check doesn't call it edited and
+ * motif tokens doesn't cut it down to the regular face.
+ */
+function facesFromTheme(themeFile: string, pkg: string): Set<string> | null {
+  let text: string;
+  try {
+    text = readFileSync(themeFile, "utf8");
+  } catch {
+    return null;
+  }
+  if (!isMotifGenerated(themeFile, text)) return null;
+  const quoted = pkg.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  const m = new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*["']${quoted}["']`).exec(text);
+  if (!m) return null;
+  const names = m[1]!.split(",").map((n) => n.trim()).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n));
+  return names.length > 0 ? new Set(names) : null;
 }
 
 /** The path to require a file with, from the theme folder: relative, and starting with ./ or ../ . */
@@ -98,7 +120,9 @@ export function rnFonts(theme: Theme, root: string, app: AppInfo, themeDir: stri
     googlePackages.set(use.family, pkg);
     const have = exportedFaces(appDir, pkg);
     const prefix = use.family.replace(/[^A-Za-z0-9]/g, "");
-    if (have === "missing") unresolved.add(pkg);
+    const written = have === "missing" ? facesFromTheme(resolve(fromDir, THEME_FILE), pkg) : null;
+    if (written && [...written].some((f) => f.startsWith(`${prefix}_`))) faces.set(pkg, written);
+    else if (have === "missing") unresolved.add(pkg);
     else if (have === "unknown" || ![...have].some((f) => f.startsWith(`${prefix}_`))) {
       unresolved.add(pkg);
       unreadable.add(pkg);

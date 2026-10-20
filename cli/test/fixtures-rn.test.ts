@@ -55,15 +55,25 @@ describe("the Expo contract app (Dukkan)", () => {
     expect(r.data.summary).toMatchObject({ errors: 0, warnings: 0, contrastChecks: tokens.$extensions["dev.motif"].pairs.length * 4 });
   });
 
-  test("its code follows the design guide: no violations or exceptions", async () => {
-    const r = await runCheck(APP, { positionals: [] });
-    expect(r.data.summary).toMatchObject({ violations: 0, exceptions: 0 });
+  // A copy as git keeps it, without node_modules: a fresh clone, CI's checkout, an eval's workspace before npm ci. The theme
+  // names the font faces its packages export; before they're installed, Motif takes them from the theme file it wrote.
+  const fresh = join(tempDir("motif-dukkan-"), "app");
+  assemble("rn-contract-app", fresh);
+
+  test("its code follows the design guide before npm ci: no violations, exceptions or warnings", async () => {
+    expect(existsSync(join(fresh, "node_modules"))).toBe(false);
+    const r = await runCheck(fresh, { positionals: [] });
+    expect(r.data.summary).toMatchObject({ violations: 0, exceptions: 0, warnings: 0 });
     expect(r.exitCode).toBe(0);
-    // The theme file names the font faces its packages export, read from node_modules. Before npm install, motif check
-    // can't know them, so it reports the generated file as changed; the installed copy below is checked with no warnings.
-    const installed = existsSync(join(APP, "node_modules", "@expo-google-fonts", "readex-pro"));
-    const warnings = r.data.warnings as { rule: string; file: string }[];
-    expect(warnings.filter((w) => installed || w.rule !== "generated-edited" || w.file !== "design/motif-theme.tsx")).toEqual([]);
+  });
+
+  test("its generated theme is the one motif tokens writes, before npm ci too: up to date, with no weight cut to the regular face", async () => {
+    const r = await runTokens(fresh, { positionals: [] });
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toContain("up to date");
+    expect(new Set((r.data.files as { status: string }[]).map((f) => f.status))).toEqual(new Set(["unchanged"]));
+    expect(JSON.stringify(r.data.notes ?? [])).not.toContain("isn't installed");
+    expect(readFileSync(join(fresh, "design/motif-theme.tsx"), "utf8").replace(/\r\n/g, "\n")).toBe(read("design/motif-theme.tsx"));
   });
 
   test("the guide declares a default look and the night market, colours only, with Readex Pro for Arabic", () => {
@@ -279,6 +289,13 @@ describe("Dukkan and its seeded copy, installed, type-checked and drawn through 
     const r = await runCheck(copies["rn-contract-app"]!, { positionals: [] });
     expect(r.data.summary).toMatchObject({ violations: 0, exceptions: 0, warnings: 0 });
     expect(r.exitCode).toBe(0);
+  }, 120_000);
+
+  test.skipIf(!hasNode)("the seeded copy, installed, has the same check problems as before npm ci: the planted ones and nothing else (skipped without Node and npm)", async () => {
+    const r = await runCheck(copies["rn-seeded-app"]!, { positionals: [] });
+    const found = [...(r.data.violations as { rule: string; file: string; line: number }[]), ...(r.data.warnings as { rule: string; file: string; line: number }[])]
+      .map((h) => `${h.rule} ${h.file}:${h.line}`).sort();
+    expect(found).toEqual(byDetector("check").map((i) => `${i.rule} ${i.location.file}:${i.location.line}`).sort());
   }, 120_000);
 
   test.skipIf(!hasNode)("npx tsc --noEmit finds no errors in Dukkan or its seeded copy (skipped without Node and npm)", () => {
