@@ -4,6 +4,9 @@ import type { DoctorDeps, DoctorItem } from "../../commands/doctor";
 import type { AppInfo } from "../../detect/stacks";
 import { diskFiles, type DoctorFiles } from "../../project/disk";
 
+/** What doctor and motif shot say when there's no Android SDK. */
+export const NO_ANDROID_SDK = "No Android SDK found. Screenshots need it: install Android Studio, or set ANDROID_HOME to an SDK folder.";
+
 /** The oldest JDK Android's build runs on. */
 const JDK_MIN = 17;
 
@@ -171,7 +174,7 @@ function sdkItem(root: string, apps: AppInfo[], deps: DoctorDeps): DoctorItem {
     if (sdk) break;
   }
   if (!sdk) {
-    return { id: "android-sdk", status: "needed", label, detail: "No Android SDK found. Screenshots need it: install Android Studio, or set ANDROID_HOME to an SDK folder." };
+    return { id: "android-sdk", status: "needed", label, detail: NO_ANDROID_SDK };
   }
   const levels = platformsOf(sdk, deps);
   if (levels.length === 0) {

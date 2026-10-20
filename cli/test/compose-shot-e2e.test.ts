@@ -5,10 +5,10 @@ import { pngSize } from "../src/browser/png";
 import { runShot } from "../src/commands/shot";
 import { runTokens } from "../src/commands/tokens";
 import { NATIVE_VIEWPORTS } from "../src/shot/capture";
-import { CONFIG_FILE, HARNESS_SRC, INIT_SCRIPT } from "../src/stacks/compose/harness";
+import { CONFIG_FILE, HARNESS_SRC, INIT_SCRIPT, RESULT_FILE } from "../src/stacks/compose/harness";
 import { shootCompose } from "../src/stacks/compose/shot";
 import { FIXTURES, hasAndroid, hexColor, partnerTokens } from "./helpers";
-import { pixel } from "./png-pixels";
+import { decodePng, pixel } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 // Needs a JDK and the Android SDK (bun's skipIf takes no reason, so each name says it). The tests share one copy of
@@ -17,7 +17,7 @@ import { cleanupTempDirs, tempDir } from "./tmp";
 const android = hasAndroid();
 let root = "";
 let app = "";
-const saved = { home: process.env.MOTIF_HOME };
+const saved = { home: process.env.MOTIF_HOME, debug: process.env.MOTIF_DEBUG };
 const MAIN = "app/src/main/java/dev/motif/composemin/MainActivity.kt";
 
 beforeAll(async () => {
@@ -37,8 +37,9 @@ beforeAll(async () => {
   process.env.MOTIF_HOME = join(import.meta.dir, ".tmp", "compose-home");
   const made = await runTokens(root, { positionals: [], flags: {} });
   if (made.exitCode !== 0) throw new Error(made.text);
-  // The app wraps its screens in MotifTheme and asks for the partner variant itself.
+  // The app wraps its screens in MotifTheme and asks for the partner variant itself, and has a route with a value.
   const main = readFileSync(join(root, MAIN), "utf8")
+    .replace('        composable("settings") {', '        composable("detail/{id}") { entry -> Text("Detail ${entry.arguments?.getString("id")}") }\n        composable("settings") {')
     .replace("import dev.motif.composemin.ui.theme.ComposeMinTheme", "import dev.motif.composemin.ui.theme.ComposeMinTheme\nimport dev.motif.composemin.ui.motif.MotifTheme\nimport dev.motif.composemin.ui.motif.MotifVariant")
     .replace("            ComposeMinTheme {\n                App()\n            }", "            MotifTheme(variant = MotifVariant.Partner) {\n                App()\n            }");
   expect(main).toContain("MotifTheme(variant = MotifVariant.Partner)");
@@ -46,10 +47,22 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(() => {
-  if (saved.home === undefined) delete process.env.MOTIF_HOME;
-  else process.env.MOTIF_HOME = saved.home;
+  for (const [key, value] of [["MOTIF_HOME", saved.home], ["MOTIF_DEBUG", saved.debug]] as const) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   cleanupTempDirs();
 });
+
+/** How many pixels in a box differ from the box's top-left one (the background there): text drawn in it. */
+function ink(png: Buffer, x0: number, x1: number, y0: number, y1: number): number {
+  const { width, rgba } = decodePng(png);
+  const at = (x: number, y: number) => rgba.subarray((y * width + x) * 4, (y * width + x) * 4 + 3).join(",");
+  const background = at(x0, y0);
+  let n = 0;
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (at(x, y) !== background) n++;
+  return n;
+}
 
 const shot = (flags: Record<string, string | boolean | string[]>) => runShot(root, { positionals: [], flags });
 const png = (name: string) => readFileSync(join(root, "design", "shots", name));
@@ -76,11 +89,13 @@ async function withFiles(files: Record<string, string>, body: () => Promise<void
 
 describe("motif shot on compose-min, drawn by Robolectric", () => {
   test.skipIf(!android)("/ and /settings at 390 in light and dark, every variant and right to left; the app's own variant doesn't decide the default's look (skipped without a JDK and the Android SDK)", async () => {
-    const r = await shot({ routes: "/,/settings", sizes: "390", variant: "all", rtl: true });
+    // MOTIF_DEBUG keeps result.json, with the texts each screen showed.
+    process.env.MOTIF_DEBUG = "1";
+    const r = await shot({ routes: "/,/settings,/detail/5", sizes: "390", variant: "all", rtl: true }).finally(() => delete process.env.MOTIF_DEBUG);
     if (r.exitCode !== 0) console.log(r.text);
     expect(r.exitCode).toBe(0);
     expect(r.data.shots).toEqual(
-      ["index", "settings"].flatMap((s) => [
+      ["index", "settings", "detail-5"].flatMap((s) => [
         `design/shots/${s}.mobile.png`, `design/shots/${s}.mobile.rtl.png`, `design/shots/${s}+partner.mobile.png`, `design/shots/${s}+partner.mobile.rtl.png`,
         `design/shots/${s}.mobile.dark.png`, `design/shots/${s}.mobile.rtl.dark.png`, `design/shots/${s}+partner.mobile.dark.png`, `design/shots/${s}+partner.mobile.rtl.dark.png`,
       ]),
@@ -94,8 +109,17 @@ describe("motif shot on compose-min, drawn by Robolectric", () => {
     expect(same("index.mobile.dark.png", "index+partner.mobile.dark.png")).toBe(false);
     expect(pixel(png("index+partner.mobile.png"), 20, 1600)).toEqual([0xfd, 0xe6, 0x8a, 255]);
     expect(pixel(png("index.mobile.png"), 20, 1600)).not.toEqual([0xfd, 0xe6, 0x8a, 255]);
-    // Arabic strings, laid out right to left.
-    expect(same("index.mobile.png", "index.mobile.rtl.png")).toBe(false);
+    // A route with a value, matched against detail/{id}, landed with its value.
+    const result = JSON.parse(readFileSync(join(app, RESULT_FILE), "utf8")) as { screens: { route: string; texts: string[] }[] };
+    const texts = (route: string) => result.screens.find((s) => s.route === route)!.texts;
+    expect(texts("/detail/5")).toContain("Detail 5");
+    expect(same("index.mobile.png", "detail-5.mobile.png")).toBe(false);
+    // Arabic strings (values-ar), laid out right to left: the title (the column is as wide as its widest line) has ink at the right of its row and none at the left.
+    expect(texts("/")).toContain("أهلا بك");
+    expect(texts("/")).toContain("Welcome home");
+    expect(ink(png("index.mobile.rtl.png"), 380, 540, 140, 210)).toBeGreaterThan(200);
+    expect(ink(png("index.mobile.rtl.png"), 48, 300, 140, 210)).toBe(0);
+    expect(ink(png("index.mobile.png"), 48, 300, 140, 210)).toBeGreaterThan(200);
     const notes = JSON.stringify(r.data.notes ?? []);
     expect(notes).not.toContain("looks exactly like the default");
     expect(notes).not.toContain("doesn't offer");
@@ -111,6 +135,64 @@ describe("motif shot on compose-min, drawn by Robolectric", () => {
     expect(r.data.shots).toEqual(["design/shots/home.mobile.png", "design/shots/home.mobile.rtl.png", "design/shots/home.mobile.dark.png", "design/shots/home.mobile.rtl.dark.png"]);
     expect(same("home.mobile.png", "home.mobile.rtl.png")).toBe(false);
     expect(r.data.notes).toContain("This app doesn't offer he (it has no res/values-he folder), so its RTL screenshots show its default strings, laid out right to left.");
+    // What the harness wrote is gone, result.json too; only .motif/.gitignore stays.
+    expect(existsSync(join(app, RESULT_FILE))).toBe(false);
+    expect(readFileSync(join(app, ".motif/.gitignore"), "utf8")).toBe("*\n");
+  }, 1_200_000);
+
+  test.skipIf(!android)("each screen starts the Application again: Koin is stopped between screens; one that can't start twice gets its own note; a variant the theme lacks fails only its shots (skipped without a JDK and the Android SDK)", async () => {
+    // Koin's GlobalContext, as the harness reaches it: an object with stopKoin().
+    const koin = `package org.koin.core.context
+
+object GlobalContext {
+    var started = false
+    fun stopKoin() {
+        started = false
+    }
+}
+`;
+    const app = (check: string) => `package dev.motif.composemin
+
+import android.app.Application
+import org.koin.core.context.GlobalContext
+
+class StartedApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+${check}
+    }
+
+    companion object {
+        var startedOnce = false
+    }
+}
+`;
+    const manifest = readFileSync(join(root, "app/src/main/AndroidManifest.xml"), "utf8").replace("<application", '<application\n        android:name=".StartedApp"');
+    // The guide gains a variant the generated theme doesn't have yet (motif tokens not run again).
+    const tokens = JSON.parse(readFileSync(join(root, "design/tokens.json"), "utf8"));
+    tokens.$extensions["dev.motif"].variants.push({ id: "extra", label: "Extra" });
+    const files = {
+      "app/src/main/AndroidManifest.xml": manifest,
+      "app/src/main/java/org/koin/core/context/GlobalContext.kt": koin,
+      "design/tokens.json": JSON.stringify(tokens, null, 2),
+    };
+    const koinApp = '        check(!GlobalContext.started) { "A Koin Application has already been started" }\n        GlobalContext.started = true';
+    await withFiles({ ...files, "app/src/main/java/dev/motif/composemin/StartedApp.kt": app(koinApp) }, async () => {
+      const r = await shot({ routes: "/,/settings", sizes: "390", variant: "all" });
+      const routes = routesOf(r.data);
+      expect(routes.map((x) => [x.route, x.status, x.shots.length])).toEqual([["/", 200, 4], ["/settings", 200, 4]]);
+      expect(routes[0]!.pageErrors).toEqual(["The theme code has no Extra variant (MotifVariant), so its screenshots weren't taken. Run motif tokens again, then motif shot."]);
+      expect(r.data.shots).toContain("design/shots/settings+partner.mobile.dark.png");
+      expect(JSON.stringify(r.data.notes ?? [])).not.toContain("Application class");
+    });
+    const twice = '        check(!startedOnce) { "Started twice" }\n        startedOnce = true';
+    await withFiles({ ...files, "app/src/main/java/dev/motif/composemin/StartedApp.kt": app(twice) }, async () => {
+      const r = await shot({ routes: "/,/settings", sizes: "390", variant: "default" });
+      expect(routesOf(r.data).map((x) => [x.route, x.status])).toEqual([["/", 200], ["/settings", 200]]);
+      expect(JSON.stringify(r.data.notes)).toContain(
+        "The app's Application class started for the first screen, then failed when Robolectric started it again for the next one (IllegalStateException: Started twice)",
+      );
+    });
   }, 1_200_000);
 
   test.skipIf(!android)("design/states/Setup.kt seeds a signed-in flag, and / reaches the signed-in screen (skipped without a JDK and the Android SDK)", async () => {

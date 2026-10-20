@@ -409,6 +409,35 @@ describe("shootCompose", () => {
     );
   });
 
+  test("an Application that started for the first screen and failed when started again gets its own note", async () => {
+    const root = makeProject(COMPOSE_APP);
+    const report = join(root, "app/build/test-results/testDebugUnitTest/TEST-dev.motif.shot.MotifShotTest.xml");
+    mkdirSync(dirname(report), { recursive: true });
+    writeFileSync(
+      report,
+      `<testsuite>\n  <testcase name="a_shots[0]" classname="dev.motif.shot.MotifShotTest" time="1"/>\n  <testcase name="a_shots[1]" classname="dev.motif.shot.MotifShotTest" time="1">\n    <failure message="org.koin.core.error.KoinAppAlreadyStartedException: A Koin Application has already been started" type="x">…</failure>\n  </testcase>\n</testsuite>\n`,
+    );
+    const { run } = fakeRun(() => ({ code: 1, result: { screens: [], plainApplication: true, applicationStarted: true } }));
+    const got = await shootCompose(options(root, { routes: ["/", "/settings"] }), base(root, run));
+    expect(got.notes).toContain(
+      "The app's Application class started for the first screen, then failed when Robolectric started it again for the next one (KoinAppAlreadyStartedException: A Koin Application has already been started), " +
+        "so Motif drew the later screens with a plain Application in its place. Robolectric starts the Application once for each screen, in the same JVM, where what it started before is still started. " +
+        "Motif stops Koin between screens; anything else the Application starts once for the whole app (WorkManager.initialize, say) needs a check that it hasn't started already.",
+    );
+  });
+
+  test("a route with a value in it, as --routes gives it, is planned as written", async () => {
+    const root = makeProject({
+      ...COMPOSE_APP,
+      "app/src/main/java/com/x/Nav.kt": 'package com.x\nfun G(nav: NavHostController) = NavHost(nav, startDestination = "home") { composable("home") { }; composable("detail/{id}") { } }\n',
+    });
+    const skipped = await runShot(root, ctx({ sizes: "390" }), fakes().deps);
+    expect(skipped.data.notes).toContain("Skipped pages that need values in their address: /detail/{id}. Add real ones with --routes.");
+    const { runs, run } = fakeRun(() => ({ result: { screens: [] } }));
+    await shootCompose(options(root, { routes: ["/detail/5"], viewports: [NATIVE_VIEWPORTS[1]!] }), base(root, run));
+    expect(runs[0]!.config.shots[0]).toMatchObject({ file: "detail-5.mobile.png", target: "/detail/5", route: "/detail/5" });
+  });
+
   test("the first run says it downloads Robolectric's Android libraries, before it starts and in its notes", async () => {
     const root = makeProject(COMPOSE_APP);
     const { run } = fakeRun(() => ({ result: { screens: [] } }));
@@ -442,6 +471,10 @@ describe("shootCompose", () => {
       const { run } = fakeRun(() => ({ code: 1, output }));
       await expect(shootCompose(options(root), base(root, run))).rejects.toThrow(COMPOSE_OFFLINE);
     }
+    // The line that said so comes along, since a dependency that doesn't exist online fails the same way.
+    const { run } = fakeRun(() => ({ code: 1, output: offline[0]! }));
+    const error = await shootCompose(options(root), base(root, run)).catch((e: Error) => e.message);
+    expect(error).toBe(`${COMPOSE_OFFLINE} (Gradle said: > Could not resolve all files for configuration ':app:debugUnitTestRuntimeClasspath'.)`);
     expect(COMPOSE_OFFLINE).toBe("Gradle couldn't download what the screenshots need. Connect to the internet for the first run; later runs work offline.");
   });
 

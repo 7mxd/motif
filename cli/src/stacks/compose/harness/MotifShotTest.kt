@@ -42,6 +42,8 @@ import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.CompositionGroup
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -54,6 +56,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.After
 import org.junit.FixMethodOrder
 import org.junit.Rule
 import org.junit.Test
@@ -66,6 +69,8 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.Collections
 import java.util.Locale
 import java.util.WeakHashMap
@@ -96,6 +101,9 @@ class MotifShotTest(private val index: Int) {
     /** A shot that couldn't be taken, in words for the developer. */
     private class ShotError(message: String, cause: Throwable? = null) : Exception(message, cause)
 
+    /** A shot that couldn't be taken, though the screen's other shots can be (a variant the theme doesn't have). */
+    private class ShotSkipped(message: String) : Exception(message)
+
     private val config by lazy { JSONObject(File(System.getProperty("motif.shot.config")!!).readText()) }
     private val target by lazy { targets()[index] }
     private val resultFile by lazy { File(config.getString("resultPath")) }
@@ -106,6 +114,23 @@ class MotifShotTest(private val index: Int) {
     /** The screen's shots, with the app's own Application. */
     @Test
     fun a_shots() = shots(plainApplication = false)
+
+    /**
+     * Robolectric starts the Application again for each screen, in the same JVM, so what it starts once for the whole
+     * process stays started: Koin's global context is stopped here, when the app has Koin, so the next screen's
+     * startKoin works. (WorkManager has no way to stop; an app that initialises it in onCreate must check first.)
+     */
+    @After
+    fun stopContainers() {
+        try {
+            val koin = Class.forName("org.koin.core.context.GlobalContext")
+            koin.getMethod("stopKoin").invoke(koin.getField("INSTANCE").get(null))
+        } catch (e: ReflectiveOperationException) {
+            // No Koin in this app.
+        } catch (e: LinkageError) {
+            // No Koin in this app.
+        }
+    }
 
     /**
      * The screen's shots with a plain Application, when the app's own couldn't start in a test (a_shots failed before
@@ -158,6 +183,9 @@ class MotifShotTest(private val index: Int) {
                 if (soft != null) errors.add(soft)
                 notes.addAll(shotNotes)
                 shots.put(JSONObject().put("file", file))
+            } catch (t: ShotSkipped) {
+                errors.add(t.message!!)
+                shots.put(JSONObject().put("file", file).put("error", t.message!!))
             } catch (t: Throwable) {
                 val error = if (t is ShotError) t.message!! else "$target couldn't be drawn: ${describe(t)}"
                 // The stack goes to Gradle's test report (build/test-results), for whoever debugs the harness.
@@ -170,13 +198,37 @@ class MotifShotTest(private val index: Int) {
         }
 
         val result = readResult()
-        result.getJSONArray("screens").put(JSONObject().put("route", target).put("shots", JSONArray(drawn)).put("errors", JSONArray(errors.toList())))
+        val screen = JSONObject().put("route", target).put("shots", JSONArray(drawn)).put("errors", JSONArray(errors.toList()))
+        if (config.optBoolean("debug")) screen.put("texts", JSONArray(texts.toList()))
+        result.getJSONArray("screens").put(screen)
         for (i in 0 until shots.length()) result.getJSONArray("shots").put(shots.get(i))
         for (i in 0 until timings.length()) result.getJSONArray("timings").put(timings.get(i))
         val all = result.getJSONArray("notes").let { n -> (0 until n.length()).map { n.getString(it) } }.toMutableSet()
         for (note in notes) if (all.add(note)) result.getJSONArray("notes").put(note)
-        if (plainApplication) result.put("plainApplication", true)
-        resultFile.writeText(result.toString())
+        if (plainApplication) result.put("plainApplication", true) else result.put("applicationStarted", true)
+        // Whole or not at all: Motif reads it once Gradle has finished, and a run stopped mid-write mustn't leave half.
+        val partial = File(resultFile.path + ".part")
+        partial.writeText(result.toString())
+        try {
+            Files.move(partial.toPath(), resultFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        } catch (e: java.io.IOException) {
+            Files.move(partial.toPath(), resultFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+
+    /** The texts the screen's shots showed, for Motif's own tests (config.debug). */
+    private val texts = linkedSetOf<String>()
+
+    private fun collectTexts() {
+        if (!config.optBoolean("debug")) return
+        try {
+            val withText = SemanticsMatcher("has text") { SemanticsProperties.Text in it.config }
+            for (node in compose.onAllNodes(withText, useUnmergedTree = true).fetchSemanticsNodes(atLeastOneRootRequired = false)) {
+                for (text in node.config[SemanticsProperties.Text]) texts.add(text.text)
+            }
+        } catch (t: Throwable) {
+            texts.add("(texts unreadable: ${describe(t)})")
+        }
     }
 
     /** The screen a shot belongs to: its target, else its route or its preview. */
@@ -239,11 +291,16 @@ class MotifShotTest(private val index: Int) {
      * gets there): its environment's exception handler, reached by reflection.
      */
     private fun throwUncaught() {
+        val missing: () -> Unit = {
+            notes.add(
+                "Motif couldn't reach the Compose test library's own record of a composition's exception, so a screen that throws may be reported one screenshot late. Tell Motif's maintainers which Compose version the app uses.",
+            )
+        }
         val environment = try {
             compose.javaClass.getDeclaredField("environment").apply { isAccessible = true }.get(compose)
         } catch (e: ReflectiveOperationException) {
-            return
-        } ?: return
+            return missing()
+        } ?: return missing()
         // The environment is an anonymous subclass: its fields and methods are its superclass's.
         val classes = generateSequence<Class<*>>(environment.javaClass) { it.superclass }.toList()
         fun method(name: String) = classes.firstNotNullOf { c -> c.declaredMethods.firstOrNull { it.name == name && it.parameterCount == 0 } }
@@ -260,9 +317,9 @@ class MotifShotTest(private val index: Int) {
             } catch (e: java.lang.reflect.InvocationTargetException) {
                 throw e.targetException
             } catch (e: ReflectiveOperationException) {
-                // Not in this version of Compose's test library.
+                missing()
             } catch (e: NoSuchElementException) {
-                // Not in this version of Compose's test library.
+                missing()
             }
         }
     }
@@ -317,6 +374,7 @@ class MotifShotTest(private val index: Int) {
                     throw ShotError("$target couldn't be drawn: ${describe(t)}.")
                 }
                 val soft = runState(shot, target)
+                collectTexts()
                 write(snapshot(controller.get()), png)
                 return soft
             } finally {
@@ -356,6 +414,7 @@ class MotifShotTest(private val index: Int) {
             applyInsets(opened.activity, shot)
             settleOrNote(target)
             val soft = runState(shot, target)
+            collectTexts()
             write(snapshot(opened.activity), png)
             return soft
         } finally {
@@ -463,10 +522,19 @@ class MotifShotTest(private val index: Int) {
         return out
     }
 
-    /** True when a destination's route is the one asked for: a string route as written, @Name by its class's simple name. */
-    private fun matches(destination: Any, route: String): Boolean {
+    /**
+     * True when a destination's route is the one asked for: a string route by its pattern, each {argument} standing for
+     * one segment (detail/{id} is /detail/5) and its query (?tab={tab}) left out on both sides; @Name by its class's
+     * simple name. With exact, a pattern with arguments matches nothing (its values can't be told from it).
+     */
+    private fun matches(destination: Any, route: String, exact: Boolean = false): Boolean {
         val own = routeOf(destination) ?: return false
-        if (!route.startsWith("@")) return own == route.removePrefix("/")
+        if (!route.startsWith("@")) {
+            val pattern = own.substringBefore('?')
+            if (exact && pattern.contains('{')) return false
+            val regex = Regex(pattern.split(Regex("\\{[^}/]*\\}")).joinToString("[^/]+") { Regex.escape(it) })
+            return regex.matches(route.removePrefix("/").substringBefore('?'))
+        }
         val head = own.substringBefore('?').substringBefore('/')
         val name = route.removePrefix("@")
         return head == name || head.endsWith(".$name") || head.endsWith("$$name")
@@ -496,7 +564,7 @@ class MotifShotTest(private val index: Int) {
      */
     private fun navigate(controller: Any, route: String) {
         val current = { controller.javaClass.getMethod("getCurrentDestination").invoke(controller) }
-        if (current()?.let { matches(it, route) } == true) return
+        if (current()?.let { matches(it, route, exact = true) } == true) return
         val destination = destinations(controller).firstOrNull { matches(it, route) }
             ?: throw ShotError("$route couldn't be opened: it isn't a destination of the app's navigation graph.")
         val methods = controller.javaClass.methods.filter { it.name == "navigate" && it.parameterTypes.size == 3 }
@@ -621,7 +689,12 @@ class MotifShotTest(private val index: Int) {
             val theme = Class.forName(themeClass)
             val instance = theme.getField("INSTANCE").get(null)
             val type = Class.forName(enumClass)
-            val value = if (variant.isEmpty()) null else type.enumConstants!!.first { (it as Enum<*>).name == variant }
+            val value = if (variant.isEmpty()) {
+                null
+            } else {
+                type.enumConstants!!.firstOrNull { (it as Enum<*>).name == variant }
+                    ?: throw ShotSkipped("The theme code has no $variant variant (MotifVariant), so its screenshots weren't taken. Run motif tokens again, then motif shot.")
+            }
             theme.getMethod("setDebugVariantOverride", type).invoke(instance, value)
         } catch (e: ReflectiveOperationException) {
             notes.add("Couldn't set $themeClass.debugVariantOverride (${e.javaClass.simpleName}), so the variants may all look the same. Run motif tokens again.")

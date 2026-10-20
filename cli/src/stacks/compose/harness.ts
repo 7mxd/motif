@@ -17,7 +17,7 @@ export const INIT_SCRIPT = ".motif/shot/init.gradle";
 export const CONFIG_FILE = ".motif/shot/config.json";
 /** The run's screens, one a line, next to the options: the harness runs one test for each. */
 export const TARGETS_FILE = ".motif/shot/targets.txt";
-/** Where the harness writes what it did; cleared before every run. */
+/** Where the harness writes what it did; deleted once read (kept with MOTIF_DEBUG), and before every run. */
 export const RESULT_FILE = ".motif/shot/result.json";
 export const TEST_CLASS = "dev.motif.shot.MotifShotTest";
 /** How long Motif waits for a stopped run's output and exit before giving up on them. */
@@ -84,6 +84,8 @@ export interface HarnessConfig {
   fontsClass?: string;
   /** Open routes with a deep link only, as when no NavController can be found (for tests of that way). */
   deepLinks?: boolean;
+  /** Collect each screen's texts into result.json, and keep it (MOTIF_DEBUG). */
+  debug?: boolean;
   /** How long a screen may take to settle, and a state to run, in ms. */
   settleMs?: number;
   stateMs?: number;
@@ -134,10 +136,10 @@ export function writeHarness(moduleDir: string, config: HarnessConfig, sources: 
   writeFileSync(join(moduleDir, TARGETS_FILE), targets.map((t) => `${t.replace(/[\r\n]+/g, " ")}\n`).join(""));
 }
 
-/** Removes the test sources, the init script and the options (and its list of screens); .motif/.gitignore and result.json stay. */
+/** Removes the test sources, the init script and the options (and its list of screens); .motif/.gitignore stays. */
 export function removeHarness(moduleDir: string): void {
   rmSync(join(moduleDir, HARNESS_SRC), { recursive: true, force: true });
-  for (const file of [INIT_SCRIPT, CONFIG_FILE, TARGETS_FILE]) rmSync(join(moduleDir, file), { force: true });
+  for (const file of [INIT_SCRIPT, CONFIG_FILE, TARGETS_FILE, `${RESULT_FILE}.part`]) rmSync(join(moduleDir, file), { force: true });
 }
 
 /**
@@ -343,6 +345,7 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
         // A run stopped while writing it leaves it cut short.
         problem = "The harness's result file is cut short; the run may have been stopped while writing it.";
       }
+      if (!run.config.debug) rmSync(resultPath, { force: true });
     }
     return { code, timedOut, output: `${out.text()}\n${err.text()}`, result, ...(problem ? { problem } : {}) };
   } finally {

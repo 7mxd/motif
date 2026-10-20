@@ -17,7 +17,7 @@ import { statesFile, type StatesFile } from "../flutter/inputs";
 import { auditChecks, MOTION_WIDTH } from "../flutter/shot";
 import { kotlinIdentifier, RESERVED } from "../naming";
 import type { NativeShotOptions } from "../native";
-import { findAndroidSdk, gradleJava } from "./doctor";
+import { findAndroidSdk, gradleJava, NO_ANDROID_SDK } from "./doctor";
 import { THEME_FILE } from "./generate";
 import {
   composeFont, HARNESS_SRC, ROBOLECTRIC_DOWNLOAD_FAILED, runHarness, type ComposeFont, type ComposeShot, type HarnessResult, type HarnessRun, type HarnessSource,
@@ -89,7 +89,7 @@ export function composeShotRefusal(root: string, app: AppInfo, doctor: DoctorDep
   const problems: string[] = [];
   const jdk = gradleJava(doctor);
   if ("problem" in jdk) problems.push(jdk.problem);
-  if (!findAndroidSdk(root, app, doctor)) problems.push("No Android SDK found. Screenshots need it: install Android Studio, or set ANDROID_HOME to an SDK folder.");
+  if (!findAndroidSdk(root, app, doctor)) problems.push(NO_ANDROID_SDK);
   if (problems.length > 0) return { error: "needs-android", text: toolchainText(problems) };
   const project = gradleRoot(resolve(root, app.path), root);
   if (!existsSync(join(project, "gradle", "wrapper", "gradle-wrapper.jar"))) {
@@ -347,8 +347,15 @@ function applicationFailure(moduleDir: string): string | null {
   return shortException(text).slice(0, 300);
 }
 
-function plainApplicationNote(moduleDir: string): string {
+function plainApplicationNote(moduleDir: string, startedOnce: boolean): string {
   const why = applicationFailure(moduleDir);
+  if (startedOnce) {
+    return (
+      `The app's Application class started for the first screen, then failed when Robolectric started it again for the next one${why ? ` (${why})` : ""}, ` +
+      "so Motif drew the later screens with a plain Application in its place. Robolectric starts the Application once for each screen, in the same JVM, where what it started before is still started. " +
+      "Motif stops Koin between screens; anything else the Application starts once for the whole app (WorkManager.initialize, say) needs a check that it hasn't started already."
+    );
+  }
   return (
     `The app's Application class couldn't start in a test${why ? ` (${why})` : ""}, so Motif drew the screens with a plain Application in its place: ` +
     "previews are drawn as they are, and screens that need what it sets up may not start. " +
@@ -445,6 +452,7 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
       ...(theme?.variants ? { variantClass: `${theme.pkg}.MotifTheme`, variantEnum: `${theme.pkg}.MotifVariant` } : {}),
       ...(theme?.fonts ? { fontsClass: `${theme.pkg}.MotifFonts` } : {}),
       ...(deps.deepLinks ? { deepLinks: true } : {}),
+      ...(process.env.MOTIF_DEBUG ? { debug: true } : {}),
       settleMs: SETTLE_MS,
       stateMs: STATE_MS,
     },
@@ -454,13 +462,17 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
 
   const seconds = Math.round(opts.timeoutMs / 1000);
   if (!result.result) {
-    if (!result.timedOut && (ROBOLECTRIC_DOWNLOAD_FAILED.test(result.output) || OFFLINE.test(result.output))) throw new Error(COMPOSE_OFFLINE);
+    if (!result.timedOut && (ROBOLECTRIC_DOWNLOAD_FAILED.test(result.output) || OFFLINE.test(result.output))) {
+      // The line that said so, since a dependency that doesn't exist online fails the same way.
+      const said = result.output.split(/\r?\n/).find((l) => ROBOLECTRIC_DOWNLOAD_FAILED.test(l) || OFFLINE.test(l))?.trim();
+      throw new Error(said ? `${COMPOSE_OFFLINE} (Gradle said: ${said})` : COMPOSE_OFFLINE);
+    }
     const why = result.problem ?? (result.timedOut ? `Gradle didn't finish within ${seconds} s.` : "Gradle stopped before drawing any screen.");
     const tail = gradleTail(result.output);
     throw new Error(tail ? `${why} The last lines it printed:\n${tail}` : why);
   }
   const mapped = mapComposeResult(targets, opts.outDir, result.result, result.timedOut ? { seconds } : null);
-  if (result.result.plainApplication === true) notes.push(plainApplicationNote(moduleDir));
+  if (result.result.plainApplication === true) notes.push(plainApplicationNote(moduleDir, result.result.applicationStarted === true));
   return { ...mapped, notes: [...notes, ...mapped.notes] };
 }
 
