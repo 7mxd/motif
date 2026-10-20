@@ -2,11 +2,11 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import { homedir } from "node:os";
 import { isAbsolute, join, parse, resolve } from "node:path";
 import type { Finding } from "../findings";
-import { badPackagePart, composeAppFolders, composeModule, composeModules } from "../stacks/compose/project";
+import { badPackagePart, composeAppFolders, composeModule, composeModules, multiplatformModule } from "../stacks/compose/project";
 import { isFlutterPackage } from "../stacks/flutter/project";
 import { savedAsUtf16, stripBom, UTF16_MESSAGE } from "../text";
 
-export const STACK_IDS = ["react-web", "vue", "svelte", "angular", "react-native", "flutter", "swiftui", "compose", "plain-web"] as const;
+export const STACK_IDS = ["react-web", "vue", "svelte", "angular", "react-native", "flutter", "swiftui", "compose", "compose-multiplatform", "plain-web"] as const;
 export type StackId = (typeof STACK_IDS)[number];
 
 export const STACK_LABELS: Record<StackId, string> = {
@@ -18,6 +18,7 @@ export const STACK_LABELS: Record<StackId, string> = {
   flutter: "Flutter",
   swiftui: "SwiftUI",
   compose: "Jetpack Compose",
+  "compose-multiplatform": "Compose Multiplatform",
   "plain-web": "Plain web (HTML and CSS)",
 };
 
@@ -260,9 +261,13 @@ export interface AppInfo {
   themeDir?: string;
 }
 
+/**
+ * An app as detected. A Compose module with the Kotlin Multiplatform plugin is Compose Multiplatform, which Motif doesn't
+ * support yet: its code is in src/commonMain, where theme code for Jetpack Compose wouldn't be compiled.
+ */
 const detected = (root: string, path: string, stack: StackId | null): AppInfo => ({
   path,
-  stack,
+  stack: stack === "compose" && multiplatformModule(join(root, path)) ? "compose-multiplatform" : stack,
   source: "detected",
   ...(stack === "plain-web" ? { srcDir: siteFolder(join(root, path)) ?? "." } : {}),
 });

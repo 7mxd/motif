@@ -1,7 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { detectApps, detectStack } from "../src/detect/stacks";
+import { defaultDoctorDeps, runDoctor, type DoctorItem } from "../src/commands/doctor";
+import { runTokens } from "../src/commands/tokens";
+import { detectApps, detectStack, STACK_LABELS } from "../src/detect/stacks";
 import { composeLibrary, composeModule, packageFolder } from "../src/stacks/compose/project";
+import { validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -40,6 +44,35 @@ describe("Compose apps inside a Gradle project", () => {
       "app/build.gradle.kts": app(),
     });
     expect(detectApps(root).apps.map((a) => a.path)).toEqual(["app"]);
+  });
+
+  test("a Compose Multiplatform module is Compose Multiplatform, which isn't supported yet: no theme in a folder KMP won't compile (final review)", async () => {
+    // The Kotlin Multiplatform wizard's composeApp: the Android application plugin and Compose, with its code in
+    // src/commonMain, where a theme under src/main/java wouldn't be compiled.
+    const kmp = `plugins {\n    alias(libs.plugins.kotlinMultiplatform)\n    alias(libs.plugins.androidApplication)\n    alias(libs.plugins.composeMultiplatform)\n    alias(libs.plugins.composeCompiler)\n}\nkotlin { androidTarget() }\nandroid { namespace = "com.example.kmp" }\n`;
+    const root = makeProject({
+      "settings.gradle.kts": 'rootProject.name = "Kmp"\ninclude(":composeApp")\n',
+      "build.gradle.kts": "plugins {\n    alias(libs.plugins.androidApplication) apply false\n    alias(libs.plugins.kotlinMultiplatform) apply false\n}\n",
+      "composeApp/build.gradle.kts": kmp,
+      "composeApp/src/commonMain/kotlin/App.kt": "@Composable fun App() {}\n",
+      "design/tokens.json": JSON.stringify(validTokens()),
+    });
+    expect(detectApps(root).apps.map((a) => [a.path, a.stack])).toEqual([["composeApp", "compose-multiplatform"]]);
+    expect(STACK_LABELS["compose-multiplatform"]).toBe("Compose Multiplatform");
+    const doctor = (await runDoctor(root, defaultDoctorDeps())).data.items as DoctorItem[];
+    expect(doctor.find((i) => i.id === "app:composeApp")).toMatchObject({
+      status: "optional",
+      detail: "Compose Multiplatform detected. Full support is coming soon; Motif will still help using general guidance.",
+    });
+    // No Kotlin theme is written where KMP wouldn't compile it.
+    const tokens = await runTokens(root, { positionals: [], flags: {} });
+    expect(existsSync(join(root, "composeApp/src/main"))).toBe(false);
+    expect(tokens.text).toContain("Compose Multiplatform support is coming soon.");
+    // A plain Kotlin Android plugin isn't multiplatform, and kotlin("multiplatform") is.
+    const groovy = makeProject({ "settings.gradle": "include ':shared'\n", "shared/build.gradle": "plugins {\n  id 'org.jetbrains.kotlin.multiplatform'\n  id 'com.android.application'\n  id 'org.jetbrains.compose'\n}\nandroid { buildFeatures { compose true } }\n" });
+    expect(detectApps(groovy).apps.map((a) => [a.path, a.stack])).toEqual([["shared", "compose-multiplatform"]]);
+    const dsl = makeProject({ "build.gradle.kts": 'plugins {\n    kotlin("multiplatform")\n    id("com.android.application")\n}\nandroid { buildFeatures { compose = true } }\n' });
+    expect(detectApps(dsl).apps.map((a) => [a.path, a.stack])).toEqual([[".", "compose-multiplatform"]]);
   });
 
   test("a single-module app without settings.gradle stays the root", () => {

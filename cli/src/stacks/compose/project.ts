@@ -44,6 +44,15 @@ export function composeModule(dir: string): { namespace: string | null; sourceRo
   return module(dir, APPLICATION);
 }
 
+/** The Kotlin Multiplatform plugin: kotlin("multiplatform"), org.jetbrains.kotlin.multiplatform, or a catalogue alias for it. */
+const MULTIPLATFORM = /org\.jetbrains\.kotlin\.multiplatform|\bkotlin\s*\(\s*["']multiplatform["']\s*\)|kotlin[._-]?multiplatform/i;
+
+/** A module built with Kotlin Multiplatform (Compose Multiplatform's composeApp, say). */
+export function multiplatformModule(dir: string): boolean {
+  const text = buildFile(dir);
+  return text !== null && MULTIPLATFORM.test(text);
+}
+
 /** A Compose Android library (a shared UI module): never an app of its own. */
 export function composeLibrary(dir: string): { namespace: string | null; sourceRoot: string } | null {
   return module(dir, LIBRARY);
