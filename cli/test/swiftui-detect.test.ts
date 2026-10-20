@@ -135,6 +135,26 @@ describe("which target is the app", () => {
     expect(swiftUIApp(root)).toMatchObject({ name: "Renamed", sourceRoot: "Brand" });
   });
 
+  test("when the project-named target has no SwiftUI folder, another app target's folder is used before guessing", () => {
+    const root = makeProject({
+      "Shop.xcodeproj/project.pbxproj": pbxprojOf([{ name: "Shop", sdk: "iphoneos" }, { name: "Storefront", sdk: "iphoneos" }]),
+      "Aaa/Helpers.swift": view,
+      "Storefront/StorefrontApp.swift": view,
+    });
+    expect(swiftUIApp(root)).toMatchObject({ name: "Storefront", sourceRoot: "Storefront" });
+  });
+
+  test("@main with an access modifier, an attribute or a line break before struct is still the entry point", () => {
+    for (const entry of ["@main public struct B: App {}", "@main\nstruct B: App {}", "@main @MainActor struct B: App {}", "@main final class B: App {}"]) {
+      const root = makeProject({
+        "Old.xcodeproj/project.pbxproj": pbxprojOf([{ name: "Renamed", sdk: "iphoneos" }]),
+        "Brand/BrandApp.swift": `import SwiftUI\n${entry}\n`,
+        "Aaa/Other.swift": "import SwiftUI\nstruct V: View {}\n",
+      });
+      expect([entry, swiftUIApp(root)?.sourceRoot]).toEqual([entry, "Brand"]);
+    }
+  });
+
   test("the Xcode 13-15 Multiplatform template: X (iOS) and X (macOS) with their code in Shared/", () => {
     const root = makeProject({
       "Pair.xcodeproj/project.pbxproj": pbxprojOf([
@@ -176,6 +196,13 @@ describe("SwiftUI apps in Swift packages", () => {
     const manifest = 'let package = Package(name: "T", targets: [.executableTarget(name: "T", path: "App/Code")])\n';
     const root = makeProject({ "Package.swift": manifest, "App/Code/Main.swift": view });
     expect(swiftUIApp(root)?.sourceRoot).toBe("App/Code");
+  });
+
+  test("an executable with a custom path and a test target that depends on it is still found", () => {
+    const manifest =
+      'let package = Package(name: "T", targets: [.executableTarget(name: "T", path: "App/"), .testTarget(name: "TTests", dependencies: [.target(name: "T")])])\n';
+    const root = makeProject({ "Package.swift": manifest, "App/Main.swift": view });
+    expect(swiftUIApp(root)?.sourceRoot).toBe("App");
   });
 
   test("a SwiftUI library beside a command-line tool is no SwiftUI app", () => {

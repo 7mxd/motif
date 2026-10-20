@@ -77,7 +77,7 @@ export function hasSwiftUIImport(dir: string): boolean {
 
 /** True when a Swift file in the folder is a SwiftUI app's entry point: @main struct X: App. */
 function hasAppEntry(dir: string): boolean {
-  return someSwiftFile(dir, (text) => /@main\s+(?:@\w+\s+)*(?:struct|final\s+class|class)\s+\w+\s*:\s*[^{]*\bApp\b/.test(text));
+  return someSwiftFile(dir, (text) => /@main\s+(?:(?:@\w+(?:\([^)]*\))?|public|internal|open|package|final|nonisolated)\s+)*(?:struct|class)\s+\w+\s*:\s*[^{]*\bApp\b/.test(text));
 }
 
 interface PbxObject {
@@ -172,25 +172,28 @@ function xcodeApp(dir: string, projectFolder: string): SwiftUIApp | null {
   const projectName = projectFolder.replace(/\.xcodeproj$/, "");
   const apps = targets.filter((t) => !/Tests?$/.test(named(t)));
   const settings = new Map(apps.map((t) => [t, targetSettings(objs, t)]));
-  // The target named like the project, else one for a phone, tablet or Mac (not the watch, TV or Vision Pro), else the first.
-  const target =
-    apps.find((t) => named(t).toLowerCase() === projectName.toLowerCase()) ??
-    apps.find((t) => !otherDevice(settings.get(t)!)) ??
-    apps[0];
-  if (!target) return null;
-  const name = named(target) || projectName;
-
-  // The target's folder: its name's, or the folder a file-system synchronized group (Xcode 16) gives it.
-  const candidates = [name];
-  for (const id of idsIn(target.own.match(/fileSystemSynchronizedGroups = \(([^)]*)\)/)?.[1])) {
-    const path = unquote(field(objs.get(id)?.own ?? "", "path") ?? "");
-    if (path && !candidates.includes(path)) candidates.push(path);
+  // The target named like the project, then those for a phone, tablet or Mac (not the watch, TV or Vision Pro), then the rest.
+  const rank = (t: PbxObject) => (named(t).toLowerCase() === projectName.toLowerCase() ? 0 : otherDevice(settings.get(t)!) ? 2 : 1);
+  const ordered = [...apps].sort((x, y) => rank(x) - rank(y));
+  if (ordered.length === 0) return null;
+  const folderOf = (t: PbxObject): string | undefined => {
+    // The target's folder: its name's, or the folder a file-system synchronized group (Xcode 16) gives it.
+    const candidates = [named(t) || projectName];
+    for (const id of idsIn(t.own.match(/fileSystemSynchronizedGroups = \(([^)]*)\)/)?.[1])) {
+      const path = unquote(field(objs.get(id)?.own ?? "", "path") ?? "");
+      if (path && !candidates.includes(path)) candidates.push(path);
+    }
+    return candidates.find((c) => isDir(join(dir, c)) && hasSwiftUIImport(join(dir, c)));
+  };
+  let target = ordered.find((t) => folderOf(t) !== undefined);
+  let folder = target ? folderOf(target) : undefined;
+  if (!target || folder === undefined) {
+    // A renamed target, or the Multiplatform template's "X (iOS)" with its code in Shared/: the folder beside the project with the app's entry point.
+    target = ordered[0]!;
+    folder = siblingFolders(dir, projectName).find((f) => hasAppEntry(join(dir, f)));
   }
-  let folder = candidates.find((c) => isDir(join(dir, c)) && hasSwiftUIImport(join(dir, c)));
-  // A renamed target, or the Multiplatform template's "X (iOS)" with its code in Shared/: the folder beside the project with the app's entry point.
-  folder ??= siblingFolders(dir, projectName).find((f) => hasAppEntry(join(dir, f)));
   if (folder === undefined) return null;
-  return { kind: "xcodeproj", name, project: projectFolder, platforms: settingsPlatforms(settings.get(target)!), sourceRoot: folder };
+  return { kind: "xcodeproj", name: named(target) || projectName, project: projectFolder, platforms: settingsPlatforms(settings.get(target)!), sourceRoot: folder };
 }
 
 /** A manifest's text without its comments. */
@@ -227,7 +230,9 @@ function packageApp(dir: string): SwiftUIApp | null {
     for (const c of calls(text, fn)) {
       const n = stringArg(c, "name");
       if (!n) continue;
-      paths.set(n, stringArg(c, "path"));
+      // A dependency written .target(name: "App") names a target without declaring it: it never replaces a declared path.
+      const path = stringArg(c, "path");
+      if (path !== undefined || !paths.has(n)) paths.set(n, path);
       if (fn === "executableTarget") executables.add(n);
     }
   }
