@@ -4,26 +4,28 @@ Tests B, C and D from the design spec (§13.2), run through **your own signed-in
 
 | Test | What it checks | Cases |
 |---|---|---|
-| B — consistency | Fresh sessions each add a feature to Larder (`fixtures/react-contract-app`), or a page to Kitepost (`fixtures/plain-contract-site`), and stay inside its design guide | `b-settings`, `b-search`, `b-profile`, `b-notifications`, `b-checkout`, `b-plain` |
-| C — review accuracy | Reviews of the seeded app (`fixtures/react-seeded-app`, 23 planted problems) and the seeded site (`fixtures/plain-seeded-site`, 18) find what was planted | `c-review`, `c-plain` |
-| D — zero accounts | A new app from each brief (`fixtures/briefs/`), plus B and C, all with no design sources connected | `d-stride`, `d-ledgerly`, `d-bloom` |
+| B — consistency | Fresh sessions each add a feature to Larder (`fixtures/react-contract-app`), a page to Kitepost (`fixtures/plain-contract-site`), or a feature to Maktaba, a Flutter app (`fixtures/flutter-contract-app`), and stay inside its design guide | `b-settings`, `b-search`, `b-profile`, `b-notifications`, `b-checkout`, `b-plain`, `b-flutter-reserve`, `b-flutter-search` |
+| C — review accuracy | Reviews of the seeded app (`fixtures/react-seeded-app`, 23 planted problems), the seeded site (`fixtures/plain-seeded-site`, 18) and the seeded Flutter app (`fixtures/flutter-seeded-app`, 14) find what was planted | `c-review`, `c-plain`, `c-flutter` |
+| D — zero accounts | A new app from each brief (`fixtures/briefs/`: three web apps and Sahm, a Flutter app in English and Arabic), plus B and C, all with no design sources connected | `d-stride`, `d-ledgerly`, `d-bloom`, `d-sahm` |
 
 ## Before you start
 
 - Claude Code, signed in with your Claude account: `claude auth status` shows `"authMethod": "claude.ai"`. The evals never use an API key.
 - Bun (this repository's tool), git, and Node.js 20.9 or later with npm.
-- Chrome or Edge for tests C and D. If you have neither, `motif browser install` downloads a private browser of about 120 MB (about 300 MB on disk); the runner never runs it for you.
-- Time and usage. Each case is a full Claude Code session: up to 90 minutes for B and C cases, 3 hours for D cases, plus installing and building the app. A full run is 11 sessions and uses a large share of your plan's usage, so you may prefer one test at a time.
+- Chrome or Edge for tests C and D on the web. If you have neither, `motif browser install` downloads a private browser of about 120 MB (about 300 MB on disk); the runner never runs it for you. The Flutter cases don't need one: Flutter draws their screens.
+- Flutter 3.27 or later on the `PATH` for the Flutter cases (`b-flutter-reserve`, `b-flutter-search`, `c-flutter`, `d-sahm`; [how to install it](https://docs.flutter.dev/get-started/install)). Without it, a run that includes them stops before starting and lists the other cases to run instead.
+- Time and usage. Each case is a full Claude Code session: up to 90 minutes for B and C cases on the web, 2 hours on Flutter (every screenshot builds the app), 3 hours for D cases, plus installing and building the app. A full run is 15 sessions and uses a large share of your plan's usage, so you may prefer one test at a time.
 
 ## Running
 
 From the repository root:
 
 ```bash
-bun tests/evals/run.ts --list                  # the 11 cases
+bun tests/evals/run.ts --list                  # the 15 cases
 bun tests/evals/run.ts --dry-run --tests B     # each prompt and the exact Claude Code command, without running anything
 bun tests/evals/run.ts --tests B               # one test
 bun tests/evals/run.ts --cases b-search,c-review
+bun tests/evals/run.ts --cases b-flutter-reserve,b-flutter-search,c-flutter,d-sahm   # the Flutter cases
 bun tests/evals/run.ts                         # everything
 ```
 
@@ -43,7 +45,7 @@ At the start of a run, the runner builds the motif tool and the Claude Code plug
 
 ## What each session gets
 
-- **A fresh folder** in `~/.motif-evals` (or `--work`): a copy of the fixture app with its packages installed (B, C), or an empty folder holding the brief as `brief.md` (D). Its temp folder (`TMP`, `TEMP`, `TMPDIR`) is in there too, so whatever a session writes to temp goes when the case's folder does; the grader gets one in its own folder.
+- **A fresh folder** in `~/.motif-evals` (or `--work`): a copy of the fixture app with its packages installed (B, C: `npm ci`, or `flutter pub get` for Maktaba), or an empty folder holding the brief as `brief.md` (D). Its temp folder (`TMP`, `TEMP`, `TMPDIR`) is in there too, so whatever a session writes to temp goes when the case's folder does; the grader gets one in its own folder.
 - **Your Claude account only.** `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the other-provider switches are left out of the session's environment, and a session that reports any API key stops the run.
 - **None of your setup.** `--setting-sources project,local` leaves out your own settings, hooks, plugins, skills and agents; `--strict-mcp-config` with an empty list leaves out every MCP server (that's test D's "zero accounts"); only Motif's plugin is loaded, from `dist/claude-code`. The session's first event is checked for all of this (an API key, MCP servers, other plugins, your own skills or agents, tools outside the allowed list), and the run stops if anything is off, or if that first event is missing. A run won't start while a `CLAUDE.md` that every session would read sits in or above the case folders (or in `~/.claude/`): move it aside, or choose another `--work` folder. The default folder is in your home folder, so a `~/CLAUDE.md` stops it too.
 - **Unattended, never bypassed.** `--permission-mode auto --permission-prompts none`: Claude Code's auto mode approves ordinary work and refuses risky actions, and nobody is asked. Refusals are listed in the report. If a session doesn't start in auto mode (some models don't support it), the run stops and says to choose another with `--model`. Sessions get only the tools a coding session needs (files, the shell, search, skills, subagents, their task list and the web); nothing that publishes pages, messages your other sessions, schedules work or leaves the folder. A session can't add MCP servers to your own coding agents: `motif connect` is turned off in its environment (`MOTIF_NO_CONNECT`), `claude mcp …` is denied, and after each session the runner compares your agents' MCP servers with what they were before (a session that changed them stops the run, naming what was added).
@@ -65,7 +67,7 @@ Ctrl+C works the same way. A case cut off mid-session, or one where Claude Code 
 Everything goes to `tests/evals/results/<run>/` (git-ignored; nothing is uploaded):
 
 - `report.md`: the verdict for each test and a table of criteria for each case; `report.json` and `run.json` hold the same for tools.
-- Per case: `session.jsonl` (every event of the session, to see exactly what Claude Code did), `diff.patch` (what it changed), `check.json`, `validate.json`, `build.log`, `typecheck.log`; for C, `review.json`, `review.md`, `audit.json`, `grading.json` and `judge.jsonl`; for D, the new app's `DESIGN.md`, `tokens.json`, `shot.json` and `shots/`.
+- Per case: `session.jsonl` (every event of the session, to see exactly what Claude Code did), `diff.patch` (what it changed), `check.json`, `validate.json`, `build.log`, `typecheck.log` (on Flutter, `pub-get.log` and `analyze.log` instead of the last two); for C, `review.json`, `review.md`, `audit.json`, `grading.json` and `judge.jsonl`; for D, the new app's `DESIGN.md`, `tokens.json`, `shot.json` and `shots/`.
 
 The dollar figure in the report is Claude Code's own estimate at API prices, to show scale; your plan covers the usage.
 
@@ -75,9 +77,11 @@ Exit codes: `0` every case passed, `1` some case failed or couldn't be graded, `
 
 **B** (every case): the feature's page exists; `motif check` finds no problems and no warnings, with at most 2 `motif-ok` exceptions; `motif validate` passes; the app builds and type-checks; at most one new component, unless the others are named, written as they are, in lines the session added to `DESIGN.md` (a recorded design guide change; a guide saved with other line endings isn't counted as rewritten). A new component is a new `.tsx` or `.jsx` file anywhere under `src/` that draws something and isn't a route file, test or story. A file in a route folder (`src/app/…`) built from the app's own components is part of that screen, and a file that draws nothing (state shared through a context) isn't UI: neither counts, and the report names them. A route file that reuses none of the app's components still counts. On Kitepost (`b-plain`), a plain web site with nothing to build, the new page must load in `motif shot` with no page errors instead of building and type-checking, and a new component is a new `Component:` line in its CSS (rewriting an existing one's line doesn't count).
 
-**C**: the review writes a report in the review format (`design/reviews/*.json`) and changes nothing outside `design/`. Findings are matched to `seeded-issues.json` by category and place, following the seeded fixture's grading rules ([the app](../fixtures/react-seeded-app/README.md#how-a-grader-reads-the-list), [the site](../fixtures/plain-seeded-site/README.md#how-a-grader-reads-the-list)); knock-on findings the list declares count as correct. Exact problems found at their file (or line) are matched by the runner alone; for judgement problems, and for exact problems a finding names only by screen, a model grader (one read-only Claude Code session, with [this rubric](rubric.md)) confirms which candidate findings describe each problem, and decides whether serious findings that match nothing are real or false. Pass: at least 90% of the exact problems (13 in the app, 11 in the site), at least 70% of the judgement problems (10 and 7), at most 10% of critical and major findings false.
+On Maktaba (`b-flutter-reserve`, `b-flutter-search`), the page exists when Motif's route discovery finds it among go_router's routes; `flutter analyze --no-fatal-infos` stands for the type check (infos don't fail it; warnings and errors do); there's no build, and instead the new page must be drawn by `motif shot --routes <route> --sizes 390` with no errors. A new component is a public class the session adds under `lib/` that extends `StatelessWidget`, `StatefulWidget`, `ConsumerWidget`, `ConsumerStatefulWidget` or `HookWidget` (or the other hook widgets). A private class (`_Name`) is part of a screen, and the widget a route shows (what a go_router `builder:` makes, or the child of a `pageBuilder:` page) is the page itself, as a React route file is: neither counts, and the report names them. Classes under `lib/design/` (Motif's theme code) and generated files never count, and a class the session moved from one file to another isn't new. The reserve flow is at `/reserve` rather than under `/books/`: go_router gives `/books/reserve` to the book page's `/books/:id` whenever the new route is listed after it.
 
-**D** (every brief): the new app (the folder with `DESIGN.md`) passes `motif validate` and `motif check` (at most 2 `motif-ok` exceptions); `DESIGN.md` has every section, each filled in; the app builds and type-checks; `/`, `/sign-in` and `/home` render in `motif shot` (status 200, no page errors). Test D passes when the three new apps pass and tests B and C pass, since every session runs with no MCP servers.
+**C**: the review writes a report in the review format (`design/reviews/*.json`) and changes nothing outside `design/`. Findings are matched to `seeded-issues.json` by category and place, following the seeded fixture's grading rules ([the app](../fixtures/react-seeded-app/README.md#how-a-grader-reads-the-list), [the site](../fixtures/plain-seeded-site/README.md#how-a-grader-reads-the-list), [the Flutter app](../fixtures/flutter-seeded-app/README.md#how-a-grader-reads-the-list)); knock-on findings the list declares count as correct. Exact problems found at their file (or line) are matched by the runner alone; for judgement problems, and for exact problems a finding names only by screen, a model grader (one read-only Claude Code session, with [this rubric](rubric.md)) confirms which candidate findings describe each problem, and decides whether serious findings that match nothing are real or false. Pass: at least 90% of the exact problems (13 in the app, 11 in the site, 8 in the Flutter app, so all 8 there), at least 70% of the judgement problems (10, 7 and 6), at most 10% of critical and major findings false.
+
+**D** (every brief): the new app (the folder with `DESIGN.md`) passes `motif validate` and `motif check` (at most 2 `motif-ok` exceptions); `DESIGN.md` has every section, each filled in; the app builds and type-checks; `/`, `/sign-in` and `/home` render in `motif shot` (status 200, no page errors). Sahm (`d-sahm`) is a Flutter app: after `flutter pub get`, `flutter analyze --no-fatal-infos` stands for the type check, there's no build, and the screens are drawn at 390 wide (`--sizes 390`). Test D passes when the new apps pass and tests B and C pass, since every session runs with no MCP servers.
 
 ## Tests of the runner
 

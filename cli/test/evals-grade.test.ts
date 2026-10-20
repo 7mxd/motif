@@ -109,3 +109,39 @@ describe("test B on a plain site", () => {
     expect(failing(gradeB({ ...okPlain, render: { error: "No Chrome or Edge found." } }))).toEqual(["renders"]);
   });
 });
+
+describe("test B on Flutter", () => {
+  const okFlutter: BFacts = {
+    route: "/search", pageExists: true, check: { violations: 0, exceptions: 0, warnings: 0 }, validate: { errors: 0, warnings: 0, missingSections: [] },
+    typecheck: { code: 0, command: "flutter analyze" }, render: { route: "/search", status: 200, pageErrors: 0 }, newComponents: [], recorded: [],
+  };
+  test("flutter analyze stands for the type check and the page is drawn by motif shot; there's no build", () => {
+    const g = gradeB(okFlutter);
+    expect(g.pass).toBe(true);
+    expect(g.criteria.map((c) => c.id)).toEqual(["feature", "check", "exceptions", "validate", "typecheck", "renders", "components"]);
+    expect(g.criteria.find((c) => c.id === "typecheck")!.detail).toBe("The type check (flutter analyze) passed.");
+  });
+  test("an analyzer problem, a screen Flutter couldn't draw, or a missing page fails it", () => {
+    expect(failing(gradeB({ ...okFlutter, typecheck: { code: 1, command: "flutter analyze" } }))).toEqual(["typecheck"]);
+    expect(gradeB({ ...okFlutter, typecheck: { code: 1, command: "flutter analyze" } }).criteria.find((c) => c.id === "typecheck")!.detail).toBe("The type check (flutter analyze) failed (exit code 1).");
+    expect(failing(gradeB({ ...okFlutter, render: { route: "/search", status: 0, pageErrors: 1 } }))).toEqual(["renders"]);
+    expect(failing(gradeB({ ...okFlutter, pageExists: false }))).toEqual(["feature"]);
+  });
+  test("the screen a route shows isn't a new component, and the details say so", () => {
+    const g = gradeB({ ...okFlutter, newComponents: ["ResultTile"], screens: ["SearchScreen"], screenParts: ["_EmptyQuery"] });
+    expect(g.pass).toBe(true);
+    expect(g.criteria.find((c) => c.id === "components")!.detail).toBe(
+      "New: ResultTile. The page a route shows, not counted: SearchScreen. Part of a screen, not counted: _EmptyQuery.",
+    );
+  });
+});
+
+describe("test D on Flutter", () => {
+  test("no build criterion: flutter analyze and the screens", () => {
+    const { build: _, ...rest } = okD;
+    const g = gradeD({ ...rest, typecheck: { code: 0, command: "flutter analyze" } });
+    expect(g.pass).toBe(true);
+    expect(g.criteria.map((c) => c.id)).toEqual(["app", "validate", "check", "exceptions", "sections", "typecheck", "screens"]);
+    expect(failing(gradeD({ ...rest, typecheck: { code: 3, command: "flutter analyze" } }))).toEqual(["typecheck"]);
+  });
+});

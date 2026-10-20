@@ -1,7 +1,9 @@
 // Checks before a run: Claude Code signed in with a Claude account (never an API key), this checkout's motif tool and plugin built,
-// Node.js for the apps, and a browser for the cases that need one. Nothing is downloaded or installed for the developer.
+// Node.js for the apps, a browser for the cases that need one, and Flutter for the Flutter cases. Nothing is downloaded or installed for the developer.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { FLUTTER_INSTALL } from "../../cli/src/stacks/flutter/doctor";
+import { CASES, isFlutter, needsBrowser as caseNeedsBrowser } from "./cases";
 import { resolveClaude, sessionEnv } from "./claude";
 import { tail, type Run } from "./tools";
 
@@ -22,7 +24,35 @@ export interface PreflightDeps {
   claudeOverride?: string;
 }
 
-export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDeps): Promise<Ready | { error: string }> {
+/** The oldest Flutter whose theme API Motif's generated code uses (as motif doctor says). */
+const FLUTTER_MIN = [3, 27] as const;
+
+/** Flutter's version from flutter --version --machine (an "upgrade available" banner may come first), or null. */
+async function flutterVersion(d: PreflightDeps, cwd: string): Promise<string | null> {
+  const exe = d.which("flutter");
+  if (!exe) return null;
+  const r = await d.run([exe, "--version", "--machine"], cwd, 300_000);
+  if (r.code !== 0) return null;
+  try {
+    const v = JSON.parse(r.stdout.slice(r.stdout.indexOf("{"))).frameworkVersion;
+    return typeof v === "string" && v ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Why the Flutter cases can't run here, naming the cases that can; nothing when Flutter 3.27 or later is on the PATH. */
+async function flutterProblem(d: PreflightDeps, cwd: string): Promise<string | null> {
+  const version = await flutterVersion(d, cwd);
+  const [major = 0, minor = 0] = (version ?? "").split(".").map((n) => parseInt(n, 10) || 0);
+  if (version && (major > FLUTTER_MIN[0] || (major === FLUTTER_MIN[0] && minor >= FLUTTER_MIN[1]))) return null;
+  const flutterCases = CASES.filter(isFlutter).map((c) => c.id);
+  const others = CASES.filter((c) => !isFlutter(c)).map((c) => c.id);
+  const found = version ? `This is Flutter ${version}; run flutter upgrade, or ${FLUTTER_INSTALL}` : `Flutter wasn't found on the PATH (or didn't say its version): ${FLUTTER_INSTALL}`;
+  return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN.join(".")} or later. ${found}, then run this again. Or run the other cases without it: --cases ${others.join(",")}`;
+}
+
+export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false): Promise<Ready | { error: string }> {
   const found = resolveClaude(d.claudeOverride ?? d.which("claude"));
   if ("error" in found) return found;
   const { env } = sessionEnv(d.env, p.motifBin);
@@ -38,6 +68,11 @@ export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDep
   }
   if (status?.loggedIn !== true || status.authMethod !== "claude.ai") {
     return { error: "The evals run on your Claude plan through Claude Code, never with an API key. Sign in with your Claude account (claude auth login), then run this again." };
+  }
+  // Before the builds, which take a while.
+  if (needsFlutter) {
+    const problem = await flutterProblem(d, p.repo);
+    if (problem) return { error: problem };
   }
 
   for (const [script, what] of [["build", "the motif tool"], ["plugin", "the Claude Code plugin"]] as const) {
@@ -63,7 +98,7 @@ export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDep
   }
   if (needsBrowser && !browser) {
     return {
-      error: "No Chrome or Edge was found. Test C's reviews check what the browser shows, and test D's apps and b-plain's page are checked in a browser. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder alone (--cases b-settings,b-search,b-profile,b-notifications,b-checkout) doesn't need one.",
+      error: `No Chrome or Edge was found. Test C's web reviews check what the browser shows, and test D's web apps and b-plain's page are checked in a browser. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter cases (--cases ${CASES.filter((c) => !caseNeedsBrowser(c)).map((c) => c.id).join(",")}) don't need one.`,
     };
   }
   return { claude: found.exe, claudeVersion: version.stdout.trim(), browser };

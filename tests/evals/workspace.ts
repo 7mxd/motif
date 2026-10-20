@@ -1,4 +1,4 @@
-// A case's folder: a fresh copy of the fixture app with its packages installed (B, C), or an empty folder holding the brief (D),
+// A case's folder: a fresh copy of the fixture app with its packages installed (B, C; npm ci, or flutter pub get), or an empty folder holding the brief (D),
 // plus git's record of how it started (a plain site installs nothing). The record lives beside the app, not in it, so nothing the session does can change it.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -71,10 +71,14 @@ export async function prepareWorkspace(c: EvalCase, dir: string, run: Run): Prom
     return ws;
   }
   assemble(c.fixture!, ws.app);
-  // A plain web site has no packages to install.
+  // A plain web site has no packages to install. A Flutter app gets its packages (which also writes its translations)
+  // before the session, so flutter analyze and motif shot work from the start.
   if (existsSync(join(ws.app, "package.json"))) {
     const install = await run(["npm", "ci", "--no-audit", "--no-fund"], ws.app, 900_000);
     if (install.code !== 0) throw new Error(`Installing the app's packages failed (npm ci):\n${tail(install)}`);
+  } else if (existsSync(join(ws.app, "pubspec.yaml"))) {
+    const pub = await run(["flutter", "pub", "get"], ws.app, 900_000);
+    if (pub.code !== 0) throw new Error(`Getting the app's packages failed (flutter pub get):\n${tail(pub)}`);
   }
   ws.baseline = await snapshot(ws, run);
   return ws;
@@ -87,6 +91,6 @@ export function findApp(dir: string): string | null {
     (n) => !n.startsWith(".") && n !== "node_modules" && statSync(join(dir, n)).isDirectory() && existsSync(join(dir, n, "DESIGN.md")),
   );
   if (withGuide.length === 1) return join(dir, withGuide[0]!);
-  const apps = withGuide.filter((n) => existsSync(join(dir, n, "package.json")));
+  const apps = withGuide.filter((n) => existsSync(join(dir, n, "package.json")) || existsSync(join(dir, n, "pubspec.yaml")));
   return apps.length === 1 ? join(dir, apps[0]!) : null;
 }

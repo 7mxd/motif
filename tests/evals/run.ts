@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
-import { CASES, needsBrowser, selectCases, type EvalCase } from "./cases";
+import { CASES, isFlutter, needsBrowser, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
@@ -36,7 +36,7 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
   --claude <path>        The Claude Code program to use`;
 
 export interface RunDeps {
-  preflight(needsBrowser: boolean, claude?: string): Promise<Ready | { error: string }>;
+  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean): Promise<Ready | { error: string }>;
   prepare(c: EvalCase, dir: string): Promise<Workspace>;
   session(spec: SessionSpec): Promise<SessionOutcome>;
   collect(c: EvalCase, ws: Workspace, out: string, judge: JudgeFn): Promise<Grade>;
@@ -86,7 +86,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 0;
   }
   if (o.list) {
-    for (const c of CASES) deps.log(`${c.id.padEnd(16)} ${c.test}  ${c.title}`);
+    for (const c of CASES) deps.log(`${c.id.padEnd(18)} ${c.test}  ${c.title}`);
     return 0;
   }
   if (typeof o.regrade === "string") return regrade(o.regrade, deps, where);
@@ -157,7 +157,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 0;
   }
 
-  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined);
+  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter));
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;
@@ -382,8 +382,8 @@ if (import.meta.main) {
   const code = await runEvals(
     process.argv.slice(2),
     {
-      preflight: (needsBrowser, claude) =>
-        preflight(p, needsBrowser, { which: (cmd) => Bun.which(cmd), run: runCmd, env: process.env, bun: process.execPath, ...(claude ? { claudeOverride: resolve(claude) } : {}) }),
+      preflight: (needsBrowser, claude, needsFlutter) =>
+        preflight(p, needsBrowser, { which: (cmd) => Bun.which(cmd), run: runCmd, env: process.env, bun: process.execPath, ...(claude ? { claudeOverride: resolve(claude) } : {}) }, needsFlutter),
       prepare: (c, dir) => prepareWorkspace(c, dir, runCmd),
       session: runSession,
       collect: (c, ws, out, judge) => collectAndGrade(c, ws, out, { run: runCmd, motif, judge }),

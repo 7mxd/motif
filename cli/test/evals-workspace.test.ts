@@ -67,6 +67,30 @@ describe("a case's folder", () => {
     expect(existsSync(join(seeded.app, "design/states"))).toBe(false);
   });
 
+  test("a Flutter app: a fresh copy, its packages got with flutter pub get, what that writes left out of the record", async () => {
+    const pubGets: string[][] = [];
+    const flutter: Run = async (cmd, cwd, t, env) => {
+      if (cmd[0] !== "flutter") return run(cmd, cwd, t, env);
+      pubGets.push(cmd);
+      mkdirSync(join(cwd, ".dart_tool"), { recursive: true });
+      writeFileSync(join(cwd, ".dart_tool/package_config.json"), "{}");
+      writeFileSync(join(cwd, "lib/l10n/app_localizations.dart"), "// generated\n");
+      return { code: 0, stdout: "", stderr: "", timedOut: false };
+    };
+    const before = npmCalls.length;
+    for (const id of ["b-flutter-reserve", "c-flutter"]) {
+      const ws = await prepareWorkspace(byId(id), join(tempDir("motif-ws-"), id), flutter);
+      expect(existsSync(join(ws.app, "pubspec.yaml"))).toBe(true);
+      expect(pubGets.at(-1)).toEqual(["flutter", "pub", "get"]);
+      expect(ws.baseline).toMatch(/^[0-9a-f]{40}$/);
+      writeFileSync(join(ws.app, ".dart_tool/package_config.json"), "{ }");
+      expect(await changes(ws, run)).toEqual([]);
+    }
+    expect(npmCalls.length).toBe(before);
+    const failing: Run = async (cmd, cwd, t) => (cmd[0] === "flutter" ? { code: 1, stdout: "", stderr: "Because maktaba depends on go_router, version solving failed.", timedOut: false } : runCmd(cmd, cwd, t));
+    await expect(prepareWorkspace(byId("b-flutter-search"), join(tempDir("motif-ws-"), "f"), failing)).rejects.toThrow("version solving failed");
+  });
+
   test("D: an empty folder holding the brief, nothing recorded", async () => {
     const ws = await prepareWorkspace(byId("d-stride"), join(tempDir("motif-ws-"), "d"), run);
     expect(readdirSync(ws.app)).toEqual(["brief.md"]);

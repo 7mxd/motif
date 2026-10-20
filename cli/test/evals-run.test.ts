@@ -83,6 +83,20 @@ describe("the eval runner", () => {
     }
   });
 
+  test("Flutter is required only when a chosen case is a Flutter one", async () => {
+    for (const [cases, needs] of [["b-search,c-plain", false], ["b-flutter-search", true], ["c-review,d-sahm", true]] as const) {
+      const seen: (boolean | undefined)[] = [];
+      const h = harness({
+        preflight: async (_browser, _claude, flutter) => {
+          seen.push(flutter);
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+        },
+      });
+      await runEvals(["--cases", cases], h.deps, h.where);
+      expect(seen).toEqual([needs]);
+    }
+  });
+
   test("--list names every case without starting anything", async () => {
     const h = harness();
     expect(await runEvals(["--list"], h.deps, h.where)).toBe(0);

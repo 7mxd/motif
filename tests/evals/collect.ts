@@ -1,4 +1,5 @@
-// Measures what a finished case left behind: the motif tool's checks, the build and the type check (or, on a plain site, the page in a browser), what the session changed,
+// Measures what a finished case left behind: the motif tool's checks, the build and the type check (on a plain site, the page in a browser; on Flutter,
+// flutter analyze and the page as Flutter draws it), what the session changed,
 // and for test C the review report, graded against the seeded list (match.ts) and by the model grader (judge.ts).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join, posix } from "node:path";
@@ -6,7 +7,8 @@ import { REQUIRED_SECTIONS } from "../../cli/src/contract/design-md";
 import { discoverRoutes } from "../../cli/src/stacks/react-web/routes";
 import { detectApps, siteDir } from "../../cli/src/detect/stacks";
 import { discoverPlainRoutes } from "../../cli/src/stacks/plain-web/routes";
-import { isPlain, type EvalCase } from "./cases";
+import { discoverFlutterRoutes } from "../../cli/src/stacks/flutter/routes";
+import { isFlutter, isPlain, type EvalCase } from "./cases";
 import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
 import { Paused, type JudgeFn, type JudgeInput, type JudgeVerdict } from "./judge";
 import { gradeExact, parseReport, type SeededIssue } from "./match";
@@ -40,6 +42,21 @@ async function buildAndTypecheck(dir: string, k: Collectors, out: string): Promi
   save(out, "typecheck.log", `${typecheck.stdout}\n${typecheck.stderr}`);
   return { build: { code: build.code, timedOut: build.timedOut }, typecheck: { code: typecheck.code, timedOut: typecheck.timedOut } };
 }
+
+/**
+ * A Flutter app's type check: its packages got again (the session may have added some, and flutter pub get also writes
+ * the translations), then flutter analyze, where infos don't fail it but warnings and errors do.
+ */
+async function flutterAnalyze(dir: string, k: Collectors, out: string): Promise<CmdFacts> {
+  const pub = await k.run(["flutter", "pub", "get"], dir, 900_000);
+  save(out, "pub-get.log", `${pub.stdout}\n${pub.stderr}`);
+  const analyze = await k.run(["flutter", "analyze", "--no-fatal-infos"], dir, 900_000);
+  save(out, "analyze.log", `${analyze.stdout}\n${analyze.stderr}`);
+  return { code: analyze.code, timedOut: analyze.timedOut, command: "flutter analyze" };
+}
+
+/** motif shot's sizes for a Flutter app: one phone, so each screen is drawn once per scheme rather than at every native size. */
+const FLUTTER_SIZES = ["--sizes", "390"];
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -136,6 +153,58 @@ export function reactComponents(diff: string): ReactComponents {
   return found;
 }
 
+/** The widget classes Flutter's components extend: plain Flutter, Riverpod and flutter_hooks. */
+const WIDGET_BASES = ["StatelessWidget", "StatefulWidget", "ConsumerWidget", "ConsumerStatefulWidget", "HookWidget", "StatefulHookWidget", "HookConsumerWidget", "StatefulHookConsumerWidget"];
+const WIDGET_CLASS = new RegExp(`\\bclass\\s+(\\w+)(?:\\s*<[^{]*?>)?\\s+extends\\s+(?:${WIDGET_BASES.join("|")})\\b`, "g");
+const widgetClasses = (text: string) => [...text.matchAll(WIDGET_CLASS)].map((m) => m[1]!);
+
+/**
+ * The widgets a go_router route shows: what a builder: (context, state) => … makes, or the child of the page a
+ * pageBuilder makes. A widget drawn by an item builder or a Builder isn't one.
+ */
+function routedWidgets(text: string): Set<string> {
+  const names = new Set<string>();
+  for (const m of text.matchAll(/\b(builder|pageBuilder)\s*:\s*\(\s*\w+\s*,\s*\w+\s*\)\s*(?:=>|\{\s*return)\s*(?:const\s+)?([A-Z]\w*)\s*\(/g)) {
+    const child = m[1] === "pageBuilder" ? /^[^;]*?\bchild\s*:\s*(?:const\s+)?([A-Z]\w*)\s*\(/.exec(text.slice(m.index! + m[0].length))?.[1] : undefined;
+    names.add(child ?? m[2]!);
+  }
+  return names;
+}
+
+export interface FlutterComponents {
+  /** New public widget classes under lib/: they count against the limit unless the design guide records them. */
+  newComponents: string[];
+  /** Widgets a route shows: the page itself, as a React route file is. */
+  screens: string[];
+  /** Private widget classes (_Name): a screen's or a component's own parts. */
+  screenParts: string[];
+}
+
+/**
+ * Flutter's new components, from the session's diff: public classes it adds under lib/ that extend a widget class,
+ * minus the pages routes show. lib/design/ (Motif's theme code) and generated files never count, and a class the
+ * diff also removes (moved or renamed in place) isn't new.
+ */
+export function flutterComponents(diff: string): FlutterComponents {
+  const all = diffFiles(diff);
+  const removed = new Set(all.flatMap((f) => widgetClasses(f.removed.join("\n"))));
+  const kept = all.filter((f) => !f.deleted);
+  const routed = routedWidgets(kept.map((f) => reallyAdded(f).join("\n")).join("\n"));
+  const found: FlutterComponents = { newComponents: [], screens: [], screenParts: [] };
+  const seen = new Set<string>();
+  for (const f of kept) {
+    if (!/^lib\/.+\.dart$/.test(f.path) || f.path.startsWith("lib/design/") || /\.(g|freezed)\.dart$/.test(f.path)) continue;
+    for (const name of widgetClasses(reallyAdded(f).join("\n"))) {
+      if (removed.has(name) || seen.has(name)) continue;
+      seen.add(name);
+      if (name.startsWith("_")) found.screenParts.push(name);
+      else if (routed.has(name)) found.screens.push(name);
+      else found.newComponents.push(name);
+    }
+  }
+  return found;
+}
+
 /** A plain site's new components, from the session's diff of its pages and stylesheets. */
 const plainComponents = (diff: string, existing: Set<string>) =>
   addedComponents(diffFiles(diff).filter((f) => !f.deleted && /\.(css|html?)$/i.test(f.path)).map((f) => f.text).join("\n"), existing);
@@ -158,8 +227,8 @@ export function fixtureComponents(fixture: string, root = join(import.meta.dir, 
 }
 
 /** A B case's new components, and which the design guide records, from the session's diff (also used by --regrade). */
-export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi"> {
-  const found = isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
+export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi" | "screens"> {
+  const found = isFlutter(c) ? flutterComponents(diff) : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
   return { ...found, recorded: recordedIn(diff, found.newComponents) };
 }
 
@@ -180,9 +249,9 @@ function plainSite(app: string): string {
   return site ? join(app, siteDir(app, site)) : app;
 }
 
-/** The feature's page in a browser: its status and how many errors it threw. */
-async function renderFacts(k: Collectors, app: string, route: string, out: string): Promise<ScreenFacts | { error: string }> {
-  const shot = await motifJson(k, ["shot", "--routes", route], app, out, "shot.json", 900_000);
+/** The feature's page as motif shot draws it (in a browser, or by Flutter): its status and how many errors it threw. */
+async function renderFacts(k: Collectors, app: string, route: string, out: string, extra: string[] = []): Promise<ScreenFacts | { error: string }> {
+  const shot = await motifJson(k, ["shot", "--routes", route, ...extra], app, out, "shot.json", 900_000);
   const r = Array.isArray(shot.json?.routes) ? shot.json.routes.find((x: any) => x.route === route) : undefined;
   if (!r) return { error: String(shot.json?.error ?? `${route} wasn't captured`) };
   return { route, status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 };
@@ -202,6 +271,13 @@ export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: s
     return {
       route, pageExists: discoverPlainRoutes(plainSite(ws.app)).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
       render: await renderFacts(k, ws.app, route, out), ...components,
+    };
+  }
+  if (isFlutter(c)) {
+    const typecheck = await flutterAnalyze(ws.app, k, out);
+    return {
+      route, pageExists: discoverFlutterRoutes(ws.app).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
+      typecheck, render: await renderFacts(k, ws.app, route, out, FLUTTER_SIZES), ...components,
     };
   }
   const { build, typecheck } = await buildAndTypecheck(ws.app, k, out);
@@ -322,21 +398,22 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
     return { app: null, validate: none, check: none, sections: { missing: [...REQUIRED_SECTIONS], empty: [] }, build: { code: 1 }, typecheck: { code: 1 }, screens: none, routes: c.routes };
   }
   for (const f of ["DESIGN.md", "design/tokens.json"]) if (existsSync(join(app, f))) copyFileSync(join(app, f), join(out, basename(f)));
-  if (!existsSync(join(app, "node_modules"))) {
+  const flutter = isFlutter(c);
+  if (!flutter && !existsSync(join(app, "node_modules"))) {
     const r = await k.run([packageManager(app), "install"], app, 900_000);
     save(out, "install.log", `${r.stdout}\n${r.stderr}`);
   }
   const validate = await motifJson(k, ["validate"], app, out, "validate.json");
   const check = await motifJson(k, ["check"], app, out, "check.json");
   const sections = designSections(existsSync(join(app, "DESIGN.md")) ? readFileSync(join(app, "DESIGN.md"), "utf8") : "");
-  const { build, typecheck } = await buildAndTypecheck(app, k, out);
-  const shot = await motifJson(k, ["shot", "--audit", "--routes", c.routes.join(",")], app, out, "shot.json", 900_000);
+  const { build, typecheck } = flutter ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) } : await buildAndTypecheck(app, k, out);
+  const shot = await motifJson(k, ["shot", "--audit", "--routes", c.routes.join(","), ...(flutter ? FLUTTER_SIZES : [])], app, out, "shot.json", 900_000);
   copyShots(app, shot.json, join(out, "shots"));
   const screens = Array.isArray(shot.json?.routes)
     ? shot.json.routes.map((r: any) => ({ route: String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))
     : { error: String(shot.json?.error ?? shot.output) };
   return {
-    app, validate: validateFacts(validate), check: checkFacts(check), sections, build, typecheck, screens, routes: c.routes,
+    app, validate: validateFacts(validate), check: checkFacts(check), sections, ...(build ? { build } : {}), typecheck, screens, routes: c.routes,
     ...(Array.isArray(shot.json?.findings) ? { auditFindings: shot.json.findings.length } : {}),
   };
 }

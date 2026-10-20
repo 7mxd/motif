@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
-import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, reactComponents, recordedIn } from "../../tests/evals/collect";
+import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, flutterComponents, reactComponents, recordedIn } from "../../tests/evals/collect";
 import { Paused, type JudgeFn } from "../../tests/evals/judge";
 import type { SeededIssue } from "../../tests/evals/match";
 import { runCmd, type MotifResult, type Run } from "../../tests/evals/tools";
@@ -322,5 +322,133 @@ describe("new components on a plain site (backlog)", () => {
       "+/* Component: Card — a group of related content, now with a footer */", "+/* Component: Stat — a number with a label */",
     ].join("\n");
     expect(componentFacts(plain, full).newComponents).toEqual(["Stat"]);
+  });
+});
+
+describe("new components on Flutter, from the session's diff", () => {
+  test("public widget classes under lib/ count; private ones are a screen's parts; the page a route shows, lib/design/, moved classes and tests don't count", () => {
+    const diff = [
+      newFile("lib/features/search/search_screen.dart", [
+        "class SearchScreen extends ConsumerStatefulWidget {",
+        "  const SearchScreen({super.key});",
+        "}",
+        "class _SearchScreenState extends ConsumerState<SearchScreen> {}",
+        "class _EmptyQuery extends StatelessWidget {",
+        "  const _EmptyQuery();",
+        "}",
+      ].join("\n")),
+      // dart format puts a long extends clause on its own line.
+      newFile("lib/widgets/result_tile.dart", "class ResultTile\n    extends StatelessWidget {\n  const ResultTile({super.key});\n}"),
+      newFile("lib/widgets/filters.dart", "class Filters extends HookWidget {}\nclass QueueCard extends ConsumerWidget {}\nclass SearchQuery extends Notifier<String> {}"),
+      newFile("lib/design/search_theme.dart", "class SearchSwatch extends StatelessWidget {}"),
+      newFile("test/search_test.dart", "class FakeTile extends StatelessWidget {}"),
+      edit("lib/widgets/book_row.dart", ["class BookRow extends StatefulWidget {"], []),
+      newFile("lib/widgets/rows/book_row.dart", "class BookRow extends StatefulWidget {}"),
+      edit("lib/app.dart", [], ["          GoRoute(", "            path: '/search',", "            builder: (context, state) => const SearchScreen(),", "          ),"]),
+    ].join("\n");
+    expect(flutterComponents(diff)).toEqual({ newComponents: ["ResultTile", "Filters", "QueueCard"], screens: ["SearchScreen"], screenParts: ["_EmptyQuery"] });
+  });
+
+  test("a page built through pageBuilder is a page too; a widget an item builder draws isn't", () => {
+    const diff = [
+      newFile("lib/features/reserve/reserve_screen.dart", "class ReserveScreen extends StatelessWidget {}\nclass QueuePlace extends StatelessWidget {}"),
+      edit("lib/app.dart", [], [
+        "GoRoute(path: '/reserve', pageBuilder: (context, state) => const NoTransitionPage(child: ReserveScreen())),",
+        "ListView.builder(itemBuilder: (context, index) => QueuePlace(index: index));",
+      ]),
+    ].join("\n");
+    expect(flutterComponents(diff)).toEqual({ newComponents: ["QueuePlace"], screens: ["ReserveScreen"], screenParts: [] });
+  });
+
+  test("componentFacts uses the Flutter rule for a Flutter case, and the guide's lines for what's recorded", () => {
+    const diff = [
+      newFile("lib/widgets/queue_badge.dart", "class QueueBadge extends StatelessWidget {}"),
+      newFile("lib/widgets/branch_picker.dart", "class BranchPicker extends StatelessWidget {}"),
+      edit("DESIGN.md", [], ["| QueueBadge | A place in the reservation queue | — | — |"]),
+    ].join("\n");
+    expect(componentFacts(byId("b-flutter-reserve"), diff)).toEqual({ newComponents: ["QueueBadge", "BranchPicker"], screens: [], screenParts: [], recorded: ["QueueBadge"] });
+  });
+});
+
+describe("test B on Flutter", () => {
+  test("the page (from go_router), flutter analyze for the type check, the page drawn at 390, new components; nothing built", async () => {
+    const ws = await prepareWorkspace(byId("b-flutter-search"), join(tempDir("motif-col-"), "bf"), run);
+    expect(commands.at(-1)).toEqual(["flutter", "pub", "get"]);
+    mkdirSync(join(ws.app, "lib/features/search"), { recursive: true });
+    writeFileSync(
+      join(ws.app, "lib/features/search/search_screen.dart"),
+      "import 'package:flutter/material.dart';\n\nclass SearchScreen extends StatelessWidget {\n  const SearchScreen({super.key});\n\n  @override\n  Widget build(BuildContext context) => const _NoResults();\n}\n\nclass _NoResults extends StatelessWidget {\n  const _NoResults();\n\n  @override\n  Widget build(BuildContext context) => const SizedBox();\n}\n",
+    );
+    const appDart = readFileSync(join(ws.app, "lib/app.dart"), "utf8").replace(/\r\n/g, "\n");
+    const routed = appDart.replace("          GoRoute(\n            path: '/loans',", "          GoRoute(\n            path: '/search',\n            builder: (context, state) => const SearchScreen(),\n          ),\n          GoRoute(\n            path: '/loans',");
+    expect(routed).not.toBe(appDart);
+    writeFileSync(join(ws.app, "lib/app.dart"), routed);
+    const saved = outputs.shot;
+    outputs.shot = { command: "shot", ok: true, exitCode: 0, shots: [], routes: [{ route: "/search", status: 200, shots: [] }] };
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    try {
+      const before = commands.length;
+      const out = join(ws.dir, "results");
+      const f = await collectB(byId("b-flutter-search"), ws, { run, motif: recording, judge: noJudge }, out);
+      expect(f).toMatchObject({
+        route: "/search", pageExists: true, typecheck: { code: 0, command: "flutter analyze" }, render: { route: "/search", status: 200, pageErrors: 0 },
+        newComponents: [], screens: ["SearchScreen"], screenParts: ["_NoResults"],
+      });
+      expect(f.build).toBeUndefined();
+      expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["flutter pub get", "flutter analyze --no-fatal-infos"]);
+      expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--routes", "/search", "--sizes", "390"]);
+      for (const file of ["check.json", "validate.json", "diff.patch", "pub-get.log", "analyze.log", "shot.json"]) expect(existsSync(join(out, file))).toBe(true);
+    } finally {
+      outputs.shot = saved;
+    }
+  });
+
+  test("no page at the feature's route: /books/:id isn't /reserve", async () => {
+    const ws = await prepareWorkspace(byId("b-flutter-reserve"), join(tempDir("motif-col-"), "bf2"), run);
+    expect((await collectB(byId("b-flutter-reserve"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"))).pageExists).toBe(false);
+  });
+});
+
+describe("test C on the Flutter seeded app", () => {
+  test("is graded against its own list", async () => {
+    const seededApp: SeededIssue[] = JSON.parse(readFileSync(join(REPO, "tests/fixtures/flutter-seeded-app/seeded-issues.json"), "utf8")).issues;
+    const ws = await prepareWorkspace(byId("c-flutter"), join(tempDir("motif-col-"), "cf"), run);
+    const f01 = seededApp.find((i) => i.id === "F-01")!;
+    mkdirSync(join(ws.app, "design/reviews"), { recursive: true });
+    writeFileSync(join(ws.app, "design/reviews/2026-10-20-whole-app.json"), JSON.stringify({ motifReview: 1, scope: "whole app", date: "2026-10-20", findings: [
+      { id: "F-001", severity: "major", category: f01.categories[0], source: "exact", location: f01.location, summary: f01.summary, fix: "Use the success role." },
+    ] }));
+    const f = await collectC(byId("c-flutter"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"));
+    expect(f.exact.found).toEqual(["F-01"]);
+    expect(f.exact.missed).toHaveLength(seededApp.filter((i) => i.kind === "exact").length - 1);
+    expect(f.changedCode).toEqual([]);
+  });
+});
+
+describe("test D on Flutter", () => {
+  test("gets the packages, runs flutter analyze and draws the starter screens at 390; nothing built", async () => {
+    const ws = await prepareWorkspace(byId("d-sahm"), join(tempDir("motif-col-"), "df"), run);
+    const app = join(ws.app, "sahm");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "DESIGN.md"), readFileSync(join(REPO, "tests/fixtures/flutter-contract-app/DESIGN.md"), "utf8"));
+    writeFileSync(join(app, "pubspec.yaml"), "name: sahm\n");
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    const before = commands.length;
+    const out = join(ws.dir, "results");
+    const f = await collectD(byId("d-sahm"), ws, { run, motif: recording, judge: noJudge }, out);
+    expect(f.app).toBe(app);
+    expect(f.build).toBeUndefined();
+    expect(f.typecheck).toEqual({ code: 0, timedOut: false, command: "flutter analyze" });
+    expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["flutter pub get", "flutter analyze --no-fatal-infos"]);
+    expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/,/sign-in,/home", "--sizes", "390"]);
+    for (const file of ["DESIGN.md", "validate.json", "check.json", "shot.json", "pub-get.log", "analyze.log"]) expect(existsSync(join(out, file))).toBe(true);
   });
 });

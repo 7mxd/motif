@@ -15,7 +15,7 @@ function verdictOf(state: RunState, cases: EvalCase[], test: TestId): TestVerdic
   return { test, status: "pass", detail: `All ${mine.length} cases passed.` };
 }
 
-/** Test D is B and C with no MCP servers (every session here has none; each is checked as it starts) plus the three new apps (spec §13.2). */
+/** Test D is B and C with no MCP servers (every session here has none; each is checked as it starts) plus the new apps (spec §13.2). */
 export function testVerdicts(state: RunState, cases: EvalCase[]): TestVerdict[] {
   const b = verdictOf(state, cases, "B");
   const c = verdictOf(state, cases, "C");
@@ -24,7 +24,7 @@ export function testVerdicts(state: RunState, cases: EvalCase[]): TestVerdict[] 
   if (apps.status === "fail") d = apps;
   else if (b.status === "fail" || c.status === "fail") d = { test: "D", status: "fail", detail: "Test D also needs B and C to pass with no design sources connected." };
   else if (apps.status === "incomplete" || b.status === "incomplete" || c.status === "incomplete") d = { test: "D", status: "incomplete", detail: `${apps.detail} Test D also needs B and C to pass.` };
-  else d = { test: "D", status: "pass", detail: "The three new apps passed, and B and C passed with no design sources connected." };
+  else d = { test: "D", status: "pass", detail: "The new apps passed, and B and C passed with no design sources connected." };
   return [b, c, d];
 }
 

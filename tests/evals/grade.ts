@@ -5,13 +5,17 @@ export interface Grade { pass: boolean; criteria: Criterion[]; metrics: Record<s
 
 export type CheckFacts = { violations: number; exceptions: number; warnings: number } | { error: string };
 export type ValidateFacts = { errors: number; warnings: number; missingSections: string[] } | { error: string };
-export interface CmdFacts { code: number; timedOut?: boolean }
+/** A command's exit; `command`, when given, is named in the details (flutter analyze, as Flutter's type check). */
+export interface CmdFacts { code: number; timedOut?: boolean; command?: string }
 
 const MAX_EXCEPTIONS = 2;
 
 const grade = (criteria: Criterion[], metrics: Grade["metrics"] = {}): Grade => ({ pass: criteria.every((c) => c.pass), criteria, metrics });
 const pct = (n: number, of: number) => (of === 0 ? 0 : Math.round((n / of) * 1000) / 10);
-const ran = (c: CmdFacts, what: string) => (c.code === 0 ? `${what} passed.` : c.timedOut ? `${what} ran out of time.` : `${what} failed (exit code ${c.code}).`);
+const ran = (c: CmdFacts, name: string) => {
+  const what = c.command ? `${name} (${c.command})` : name;
+  return c.code === 0 ? `${what} passed.` : c.timedOut ? `${what} ran out of time.` : `${what} failed (exit code ${c.code}).`;
+};
 const missedText = (missed: string[]) => (missed.length ? `; missed ${missed.join(", ")}` : "");
 
 function checkCriteria(check: CheckFacts): Criterion[] {
@@ -28,32 +32,37 @@ function validateCriterion(v: ValidateFacts): Criterion {
     : { id: "validate", label: "The design guide is valid", pass: v.errors === 0, detail: `${v.errors} problems, ${v.warnings} suggestions.` };
 }
 
-const buildCriteria = (build: CmdFacts, typecheck: CmdFacts): Criterion[] => [
-  { id: "build", label: "The app builds", pass: build.code === 0, detail: ran(build, "The build") },
+/** The build, when the stack has one (Flutter's checks need none), and the type check. */
+const buildCriteria = (build: CmdFacts | undefined, typecheck: CmdFacts): Criterion[] => [
+  ...(build ? [{ id: "build", label: "The app builds", pass: build.code === 0, detail: ran(build, "The build") }] : []),
   { id: "typecheck", label: "The app type-checks", pass: typecheck.code === 0, detail: ran(typecheck, "The type check") },
 ];
 
 export interface BFacts {
   route: string; pageExists: boolean; check: CheckFacts; validate: ValidateFacts;
-  /** React web: the build and the type check. */
+  /** React web: the build and the type check. Flutter: flutter analyze as the type check, and no build. */
   build?: CmdFacts; typecheck?: CmdFacts;
-  /** A plain site has nothing to build: its new page, as a browser loads it. */
+  /** A plain site and a Flutter app have nothing to build: their new page, as motif shot draws it. */
   render?: ScreenFacts | { error: string };
-  /** New components: React files under src/; a plain site's new "Component:" lines. */
+  /** New components: React files under src/; a plain site's new "Component:" lines; Flutter's public widget classes under lib/. */
   newComponents: string[];
   /** Those named in lines the session added to DESIGN.md (a recorded design guide change). */
   recorded: string[];
-  /** React web, not counted: files in a route folder built from the app's own components, and files that draw no UI. */
+  /** Not counted: React files in a route folder built from the app's own components, and Flutter's private widget classes. */
   screenParts?: string[];
+  /** React web, not counted: files that draw no UI. */
   notUi?: string[];
+  /** Flutter, not counted: the widget a route shows (the page itself, as a React route file is). */
+  screens?: string[];
 }
 
 /** At most one new component the design guide doesn't record; the details say which files didn't count, and why. */
-export function componentsCriterion(f: Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi">): Criterion {
+export function componentsCriterion(f: Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi" | "screens">): Criterion {
   const unrecorded = f.newComponents.filter((c) => !f.recorded.includes(c));
   const recorded = f.newComponents.filter((c) => f.recorded.includes(c));
   const counted = f.newComponents.length === 0 ? "No new components." : `New: ${f.newComponents.join(", ")}${recorded.length ? ` (recorded in DESIGN.md: ${recorded.join(", ")})` : ""}.`;
   const skipped = [
+    f.screens?.length ? ` The page a route shows, not counted: ${f.screens.join(", ")}.` : "",
     f.screenParts?.length ? ` Part of a screen, not counted: ${f.screenParts.join(", ")}.` : "",
     f.notUi?.length ? ` Not UI, not counted: ${f.notUi.join(", ")}.` : "",
   ].join("");
@@ -72,7 +81,9 @@ export function gradeB(f: BFacts): Grade {
     { id: "feature", label: `The feature's page exists (${f.route})`, pass: f.pageExists, detail: f.pageExists ? `${f.route} is a page of the app.` : `There's no page at ${f.route}.` },
     ...checkCriteria(f.check),
     validateCriterion(f.validate),
-    ...(f.build && f.typecheck ? buildCriteria(f.build, f.typecheck) : [renderCriterion(f.route, f.render)]),
+    // React web builds and type-checks; a plain site is loaded in a browser; Flutter is analyzed and drawn.
+    ...(f.typecheck ? buildCriteria(f.build, f.typecheck) : []),
+    ...(f.build ? [] : [renderCriterion(f.route, f.render)]),
     componentsCriterion(f),
   ], { newComponents: f.newComponents.length });
 }
@@ -110,7 +121,9 @@ export interface ScreenFacts { route: string; status: number; pageErrors: number
 
 export interface DFacts {
   app: string | null; validate: ValidateFacts; check: CheckFacts; sections: { missing: string[]; empty: string[] };
-  build: CmdFacts; typecheck: CmdFacts; screens: ScreenFacts[] | { error: string }; routes: string[]; auditFindings?: number;
+  /** React web's build; a Flutter app has none (flutter analyze is its type check). */
+  build?: CmdFacts;
+  typecheck: CmdFacts; screens: ScreenFacts[] | { error: string }; routes: string[]; auditFindings?: number;
 }
 
 export function gradeD(f: DFacts): Grade {
