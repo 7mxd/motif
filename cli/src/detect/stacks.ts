@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import { homedir } from "node:os";
 import { isAbsolute, join, parse, resolve } from "node:path";
 import type { Finding } from "../findings";
+import { composeAppFolders, composeModule, composeModules } from "../stacks/compose/project";
 import { isFlutterPackage } from "../stacks/flutter/project";
 import { savedAsUtf16, stripBom, UTF16_MESSAGE } from "../text";
 
@@ -139,6 +140,8 @@ export function detectStack(dir: string): StackId | null {
     const g = readText(join(dir, f));
     if (g && (g.includes("androidx.compose") || /compose\s*(=\s*)?true/.test(g))) return "compose";
   }
+
+  if (composeModule(dir) || composeModules(dir).length > 0) return "compose";
 
   let entries: string[] = [];
   try {
@@ -306,11 +309,23 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
   // A workspace root without app files of its own, whose hoisted dependencies only look like one app, is looked
   // through too.
   const workspace = isWorkspaceRoot(root) && !hasOwnAppFiles(root);
-  if (((rootStack && rootStack !== "plain-web") || isUnrecognisedReactApp(root)) && !workspace) {
+  // A Gradle project root lists its Compose modules (app), not itself; one with no app module is looked through.
+  const composeRoot = rootStack === "compose" && !workspace ? composeAppFolders(root) : null;
+  if (composeRoot && composeRoot.length > 0 && composeRoot[0] !== ".") {
+    return { apps: composeRoot.map((m) => detected(root, m, "compose")).sort((a, b) => a.path.localeCompare(b.path)), findings: settings.findings };
+  }
+  if (((rootStack && rootStack !== "plain-web") || isUnrecognisedReactApp(root)) && !workspace && composeRoot?.length !== 0) {
     return { apps: [detected(root, ".", rootStack)], findings: settings.findings };
   }
 
   const apps: AppInfo[] = [];
+  // A Gradle project lists its app modules (mobile/android/app), never its libraries. True when the folder is handled.
+  const addCompose = (relPath: string, abs: string): boolean => {
+    const folders = composeAppFolders(abs);
+    if (folders === null) return false;
+    for (const m of folders) apps.push(detected(root, rel(m === "." ? relPath : `${relPath}/${m}`), "compose"));
+    return true;
+  };
   const scan = (base: string) => {
     let entries: string[];
     try {
@@ -326,6 +341,7 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
       const stack = detectStack(abs);
       if (stack === "plain-web" && NOT_SITES.has(name)) continue;
       if (stack === "flutter" && isFlutterPackage(abs)) continue;
+      if (stack === "compose" && addCompose(relPath, abs)) continue;
       if (stack || isUnrecognisedReactApp(abs)) {
         apps.push(detected(root, rel(relPath), stack));
       } else if (!base && name !== "apps" && name !== "packages") {
@@ -349,6 +365,7 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
       if (!isDir(abs)) continue;
       const stack = detectStack(abs);
       if (!stack || !NESTED_STACKS.has(stack) || (stack === "flutter" && isFlutterPackage(abs))) continue;
+      if (stack === "compose" && addCompose(relPath, abs)) continue;
       apps.push(detected(root, rel(relPath), stack));
     }
   };

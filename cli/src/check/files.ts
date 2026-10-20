@@ -3,7 +3,7 @@ import { extname, join } from "node:path";
 import ignore from "ignore";
 import { stripBom } from "../text";
 
-export type Lang = "css" | "script" | "markup" | "dart";
+export type Lang = "css" | "script" | "markup" | "dart" | "kotlin";
 
 export interface SourceFile {
   /** Relative to the project root, forward slashes. */
@@ -39,6 +39,12 @@ export const FLUTTER_IGNORES = [
 
 /** The defaults for Dart: as for the web, but a build/ folder is ignored only at the app's top (FLUTTER_IGNORES). */
 const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/");
+
+/**
+ * A Compose app module's build output, tests and Gradle scripts: never the team's own code. Matched from the module
+ * (and from each module inside it), so a feature folder named build or test under src/main is still read.
+ */
+export const COMPOSE_IGNORES = ["/build/", "/.gradle/", "/.motif/", "src/test/", "src/androidTest/", "src/testDebug/", "src/testRelease/", "*.kts"];
 
 export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_LENGTH = 3000;
@@ -80,6 +86,17 @@ export function listDartFiles(root: string, appPath: string, opts: { paths?: str
   });
 }
 
+/** A Compose app module's Kotlin files, without its build output, tests and Gradle scripts, nor those of a module inside it. */
+export function listKotlinFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
+  return listSourceFiles(root, appPath, {
+    ...opts,
+    langs: { ".kt": "kotlin" },
+    extraIgnores: COMPOSE_IGNORES,
+    defaults: DART_DEFAULT_IGNORES,
+    packageMarker: ["build.gradle.kts", "build.gradle"],
+  });
+}
+
 export function listSourceFiles(
   root: string,
   appPath: string,
@@ -89,8 +106,8 @@ export function listSourceFiles(
     langs?: Record<string, Lang>;
     extraIgnores?: string[];
     defaults?: string[];
-    /** A file that makes its folder a package of its own, whose paths extraIgnores also match from (pubspec.yaml). */
-    packageMarker?: string;
+    /** A file that makes its folder a package of its own, whose paths extraIgnores also match from (pubspec.yaml, build.gradle.kts). */
+    packageMarker?: string | string[];
   } = {},
 ): SourceFile[] {
   const langs = opts.langs ?? WEB_LANGS;
@@ -102,6 +119,7 @@ export function listSourceFiles(
   const dirWanted = (rel: string) => wanted.length === 0 || wanted.some((w) => w === rel || w.startsWith(rel + "/") || rel.startsWith(w + "/"));
   const fileWanted = (rel: string) => wanted.length === 0 || wanted.some((w) => rel === w || rel.startsWith(w + "/"));
   const appRelative = (rel: string) => (app === "." ? rel : rel.slice(app.length + 1));
+  const markers = [opts.packageMarker ?? []].flat();
   const pkgIgnore = opts.packageMarker ? ignore().add(opts.extraIgnores ?? []) : null;
   // The innermost package below the app's own folder that rel is in, and the path inside it.
   const inPackage = (pkg: string | null, rel: string) => (pkg === null ? null : rel.slice(pkg.length + 1));
@@ -127,7 +145,7 @@ export function listSourceFiles(
         if (rootIgnore.ignores(relPath + "/") || appIgnore?.ignores(appRelative(relPath) + "/")) continue;
         const inner = inPackage(pkg, relPath);
         if (inner !== null && pkgIgnore?.ignores(inner + "/")) continue;
-        const isPackage = pkgIgnore !== null && existsSync(join(abs, opts.packageMarker!));
+        const isPackage = pkgIgnore !== null && markers.some((m) => existsSync(join(abs, m)));
         if (dirWanted(relPath)) visit(abs, relPath, isPackage ? relPath : pkg);
         continue;
       }

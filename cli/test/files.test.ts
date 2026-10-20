@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { FLUTTER_IGNORES, listDartFiles, listSourceFiles } from "../src/check/files";
+import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listSourceFiles } from "../src/check/files";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -132,5 +132,22 @@ describe("final review: Flutter's ignores are anchored to the app or package (Mi
 
   test("web apps keep ignoring every build/ folder, as before", () => {
     expect(paths(listSourceFiles(makeProject({ "src/build/a.ts": "x", "src/b.ts": "x" }), "."))).toEqual(["src/b.ts"]);
+  });
+});
+
+describe("listKotlinFiles", () => {
+  test("lists a module's Kotlin, not build output, tests, Gradle scripts or a module inside it's own folders", () => {
+    const root = makeProject({
+      "app/build.gradle.kts": "x", "app/src/main/java/com/example/MainActivity.kt": "x",
+      "app/src/main/java/com/example/build/BuildScreen.kt": "x", "app/src/main/kotlin/com/example/test/TestScreen.kt": "x",
+      "app/build/generated/Foo.kt": "x", "app/src/test/java/FooTest.kt": "x", "app/src/androidTest/java/BarTest.kt": "x",
+      "app/.motif/x.kt": "x", "app/settings.gradle.kts": "x",
+      "app/sub/build.gradle.kts": "x", "app/sub/src/main/kotlin/Sub.kt": "x", "app/sub/src/test/kotlin/SubTest.kt": "x", "app/sub/build/Gen.kt": "x",
+    });
+    expect(paths(listKotlinFiles(root, "app"))).toEqual([
+      "app/src/main/java/com/example/MainActivity.kt", "app/src/main/java/com/example/build/BuildScreen.kt",
+      "app/src/main/kotlin/com/example/test/TestScreen.kt", "app/sub/src/main/kotlin/Sub.kt",
+    ]);
+    expect(listKotlinFiles(root, "app")[0]!.lang).toBe("kotlin");
   });
 });

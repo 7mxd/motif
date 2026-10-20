@@ -1,5 +1,5 @@
 import type { Finding } from "../findings";
-import { camelCase, dartIdentifier } from "../stacks/naming";
+import { camelCase, dartIdentifier, kotlinIdentifier } from "../stacks/naming";
 import { resolveValue } from "./resolve";
 import { MOTIF_EXT, type FlatToken, type TokenDocument } from "./types";
 import { validateValue } from "./values";
@@ -113,8 +113,8 @@ export function checkVariants(doc: TokenDocument): Finding[] {
     }
     ids.add(d.id);
   });
-  // Two ids that become the same name in app code (a-1 and a1; default and default-variant for Dart).
-  const names = [camelCase, dartIdentifier];
+  // Two ids that become the same name in app code (a-1 and a1; default and default-variant for Dart; a-1 and a1 as UpperCamelCase for Compose).
+  const names = [camelCase, dartIdentifier, kotlinIdentifier];
   const taken = names.map(() => new Map<string, string>());
   const clashed = new Set<string>();
   for (const id of ids) {

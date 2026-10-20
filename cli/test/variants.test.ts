@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { docFrom, validTokens } from "./helpers";
 import { resolveMode } from "../src/contract/resolve";
+import { kotlinIdentifier } from "../src/stacks/naming";
 import { checkVariants, readVariants, variantView } from "../src/contract/variants";
 
 const DECL = [{ id: "women", label: "Women", default: true }, { id: "men", label: "Men" }];
@@ -147,5 +148,13 @@ describe("variant block shape and identifier clashes", () => {
   });
   test("distinct ids do not clash", () => {
     expect(codes(withVariants(DECL, { men: COLOR_MEN }))).not.toContain("variant-id-clash");
+  });
+});
+
+describe("kotlinIdentifier", () => {
+  test("UpperCamelCase", () => {
+    expect(kotlinIdentifier("partner-store")).toBe("PartnerStore");
+    expect(kotlinIdentifier("a1")).toBe("A1");
+    expect(kotlinIdentifier("dark-blue-2")).toBe("DarkBlue2");
   });
 });

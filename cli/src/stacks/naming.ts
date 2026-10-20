@@ -22,3 +22,9 @@ export function dartIdentifier(id: string): string {
 export function camelCase(id: string): string {
   return id.replace(/-+([a-z0-9])/g, (_, c: string) => c.toUpperCase()).replace(/-+$/, "");
 }
+
+/** "partner-store" becomes PartnerStore; a1 becomes A1. */
+export function kotlinIdentifier(id: string): string {
+  const name = camelCase(id);
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
