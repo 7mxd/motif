@@ -232,9 +232,9 @@ For a new app, build these, each with the states above and the options its scree
 | `Switch` | `Switch` in a `Row` with `Modifier.toggleable(role = Role.Switch)` | Same, with the label at the start. |
 | `Card` | `Card(onClick = …)` | Above; `surfaceRaised` with a border or a shadow, not both. |
 | `ListItem` | `ListItem` | Headline, supporting text, leading and trailing; the whole row taps. |
-| `TopBar` | `TopAppBar` | A back `IconButton` with `Icons.AutoMirrored.Filled.ArrowBack` ([platform](platform.md#right-to-left)); titles in `titleLarge`. |
-| `TabBar` | `NavigationBar` | Three to five destinations, each with an icon and a label. Set `NavigationBarItemDefaults.colors(indicatorColor = …)`. |
-| `Sidebar` | `NavigationRail` | For tablets; a phone uses the tab bar. Its indicator needs a colour too. |
+| `TopBar` | `TopAppBar` | A back `IconButton` with `Icons.AutoMirrored.Filled.ArrowBack` ([platform](platform.md#right-to-left)); titles in `MotifType.heading`. |
+| `TabBar` | `NavigationBar` | Three to five destinations, each with an icon and a label. The indicator is `actionSecondary`. |
+| `Sidebar` | `NavigationRail` | For tablets; a phone uses the tab bar. |
 | `Sheet` | `ModalBottomSheet` | Drag handle, insets, a close action. |
 | `Dialog` | `AlertDialog` | Buttons named by what they do ("Delete order"), not "OK". |
 | `Toast` | `Snackbar` in a `SnackbarHost` | Short, with an action when there is one to take; how long it stays up is not motion. |
@@ -244,7 +244,7 @@ For a new app, build these, each with the states above and the options its scree
 | `Avatar` | A `Box` clipped to `CircleShape` | Initials when there is no picture; the person's name as its description. |
 | `Badge` | `BadgedBox` and `Badge` | A count or a dot; its number is part of its owner's name. |
 
-A Material component whose colour comes from a slot the guide doesn't fill (the tab bar's and rail's indicator, `FloatingActionButton`, `FilledTonalButton`, a selected `FilterChip`) shows Material's purple until you pass a role ([theme code](tokens.md#wiring-it-in)): `NavigationBarItemDefaults.colors(indicatorColor = MotifTheme.colors.actionSecondary, selectedIconColor = MotifTheme.colors.onActionSecondary)`, `FloatingActionButton(containerColor = MotifTheme.colors.actionPrimary, …)`.
+Every Material colour comes from one of the guide's roles ([theme code](tokens.md#wiring-it-in)), so these need no colours of their own: the tab bar's and rail's indicator, a `FilledTonalButton` and a selected `FilterChip` are `actionSecondary` with `onActionSecondary` on them, and a `FloatingActionButton` is `actionPrimary` with `onActionPrimary`. Pass colours only where the design guide asks for something else, and then from `MotifTheme.colors`.
 
 ## A screen's states
 
@@ -267,7 +267,7 @@ fun OrdersBody(state: OrdersState, onRetry: () -> Unit, modifier: Modifier = Mod
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(Icons.Filled.Warning, contentDescription = null, tint = colors.danger)
-            Text("We couldn't load your orders.", style = MaterialTheme.typography.bodyLarge)
+            Text("We couldn't load your orders.", style = MotifType.body)
             AppButton(label = "Try again", onClick = onRetry)
         }
         OrdersState.Loading -> Column(
@@ -281,7 +281,7 @@ fun OrdersBody(state: OrdersState, onRetry: () -> Unit, modifier: Modifier = Mod
         }
         is OrdersState.Loaded -> if (state.orders.isEmpty()) {
             Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No orders yet.", style = MaterialTheme.typography.bodyLarge)
+                Text("No orders yet.", style = MotifType.body)
             }
         } else {
             LazyColumn(modifier, contentPadding = PaddingValues(MotifSpace.s4)) {

@@ -24,7 +24,7 @@ A colour typed into Kotlin.
 fun TaxNote() {
     val colors = MotifTheme.colors
     Surface(color = colors.surface) {
-        Text("Prices include tax", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+        Text("Prices include tax", style = MotifType.caption, color = colors.textSecondary)
     }
 }
 ```
@@ -34,7 +34,7 @@ fun TaxNote() {
 A spacing, corner or text size that isn't on the theme's scales. A number that is on a scale (`padding(16.dp)`) is seen but allowed, since the build stays correct; still prefer the role, so a change to the guide arrives everywhere.
 
 - Example: `Modifier.padding(13.dp)`, `PaddingValues(horizontal = 18.dp)`, `Arrangement.spacedBy(6.dp)`, `Spacer(Modifier.height(18.dp))`, `RoundedCornerShape(10.dp)`, `fontSize = 15.sp`.
-- Fix: the nearest step, `MotifSpace.s4`, `MotifRadius.md`, or a type role (`MaterialTheme.typography.bodyLarge`, `MotifType.body`). If the design truly needs a new step, propose a change to the design guide instead. Sizes that aren't spacing (`Modifier.size(40.dp)`, a border's width) aren't read.
+- Fix: the nearest step, `MotifSpace.s4`, `MotifRadius.md`, or a type role (`MotifType.body`). If the design truly needs a new step, propose a change to the design guide instead. Sizes that aren't spacing (`Modifier.size(40.dp)`, a border's width) aren't read.
 
 ```kotlin
 @Composable
@@ -44,7 +44,7 @@ fun ShippedNote() {
         verticalArrangement = Arrangement.spacedBy(MotifSpace.s2),
     ) {
         Box(Modifier.clip(RoundedCornerShape(MotifRadius.md))) {
-            Text("Order shipped", style = MaterialTheme.typography.bodyLarge)
+            Text("Order shipped", style = MotifType.body)
         }
         Spacer(Modifier.height(MotifSpace.s3))
     }
@@ -61,7 +61,7 @@ A font family typed into a composable.
 ```kotlin
 @Composable
 fun OrderNumber(number: String) {
-    Text(number, style = MaterialTheme.typography.labelLarge)
+    Text(number, style = MotifType.label)
 }
 ```
 
@@ -121,7 +121,7 @@ From `motif shot --audit`: text measured as drawn below 4.5:1 (3:1 for large tex
 fun DeliveryNote() {
     Text(
         "Delivery times are estimates",
-        style = MaterialTheme.typography.bodySmall,
+        style = MotifType.caption,
         color = MotifTheme.colors.textSecondary,
     )
 }

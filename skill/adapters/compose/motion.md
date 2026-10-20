@@ -47,7 +47,7 @@ fun SavedNote(visible: Boolean) {
         exit = fadeOut(tween(duration, easing = MotifEasing.exit)) +
             shrinkVertically(tween(duration, easing = MotifEasing.exit)),
     ) {
-        Text("Saved", style = MaterialTheme.typography.labelLarge)
+        Text("Saved", style = MotifType.label)
     }
 }
 ```

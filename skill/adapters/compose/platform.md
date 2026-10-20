@@ -70,8 +70,8 @@ fun TotalRow(amount: String) {
             .padding(start = MotifSpace.s4, end = MotifSpace.s2),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Total", style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Start, modifier = Modifier.weight(1f))
-        Text(amount, style = MaterialTheme.typography.bodyLarge)
+        Text("Total", style = MotifType.label, textAlign = TextAlign.Start, modifier = Modifier.weight(1f))
+        Text(amount, style = MotifType.body)
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
     }
 }
@@ -98,7 +98,6 @@ Text grows when people raise the phone's font size, up to 200 percent. Keep size
 ```kotlin
 @Composable
 fun AppShell(selected: Int, onSelected: (Int) -> Unit, content: @Composable () -> Unit) {
-    val colors = MotifTheme.colors
     val places = listOf("Home" to Icons.Filled.Home, "Settings" to Icons.Filled.Settings)
     BoxWithConstraints {
         if (maxWidth >= 600.dp) {
@@ -110,7 +109,6 @@ fun AppShell(selected: Int, onSelected: (Int) -> Unit, content: @Composable () -
                             onClick = { onSelected(index) },
                             icon = { Icon(icon, contentDescription = null) },
                             label = { Text(label) },
-                            colors = NavigationRailItemDefaults.colors(indicatorColor = colors.actionSecondary),
                         )
                     }
                 }
@@ -126,7 +124,6 @@ fun AppShell(selected: Int, onSelected: (Int) -> Unit, content: @Composable () -
                                 onClick = { onSelected(index) },
                                 icon = { Icon(icon, contentDescription = null) },
                                 label = { Text(label) },
-                                colors = NavigationBarItemDefaults.colors(indicatorColor = colors.actionSecondary),
                             )
                         }
                     }

@@ -13,7 +13,7 @@ One Kotlin file: `MotifTheme.kt` in `ui/motif/` under the app's package (`app/sr
 | `MotifSpace` | The spacing scale, in `Dp` | `MotifSpace.s4` (16.dp) |
 | `MotifRadius` | Corner sizes, in `Dp` | `RoundedCornerShape(MotifRadius.md)` |
 | `MotifShadows` | Shadows, as lists of `Shadow` | `Modifier.motifShadow(MotifShadows.md, shape)` |
-| `MotifType` | The type roles as `TextStyle`s, with the theme's fonts | `MotifType.body` |
+| `MotifType` | The type roles as `TextStyle`s, with the theme's fonts and their Arabic companion | `MotifType.body` |
 | `MotifFonts` | The theme's font families | Used by `MotifType`; rarely needed |
 | `MotifDurations`, `MotifEasing`, `MotifSprings` | The motion roles ([motion](motion.md)) | `MotifDurations.base` |
 | `MotifMotion` | Remove animations helpers | `MotifMotion.duration(MotifDurations.base)` |
@@ -56,18 +56,26 @@ Wrap each `@Preview` in `MotifTheme { … }` too, so previews and Motif's screen
 
 Once `MainActivity` and every preview use `MotifTheme`, nothing uses the template's `ui/theme/` folder (`Color.kt`, `Theme.kt`, `Type.kt`), and it can be deleted. Until then `motif check` reports its colours, with a line saying the file is the app's own palette. Keep `res/values/themes.xml`: it is the window's theme the manifest names, not Compose's.
 
-Material composables (buttons, fields, cards, app bars, dialogs) then take their colours, type and corners from the theme. `MotifTheme` fills Material's colour scheme from the guide's roles:
+Material composables (buttons, fields, cards, app bars, dialogs, the navigation bar) then take their colours, type and corners from the theme. `MotifTheme` fills every colour of Material's scheme from the guide's roles, so no Material component shows Material's own purple:
 
-| Material's colour | The guide's role |
+| Material's colours | The guide's role |
 |---|---|
-| `primary`, `onPrimary` | `actionPrimary`, `onActionPrimary` |
-| `secondary`, `onSecondary` | `actionSecondary`, `onActionSecondary` |
-| `error`, `onError` | `danger`, `onDanger` |
-| `background`, `surface`, `onSurface`, `onSurfaceVariant` | `background`, `surface`, `textPrimary`, `textSecondary` |
-| `surfaceContainer`, `surfaceContainerHigh`, `surfaceContainerHighest` | `surface`, `surfaceRaised`, `surfaceRaised` |
+| `primary`, `primaryContainer`, `inversePrimary` | `actionPrimary` |
+| `onPrimary`, `onPrimaryContainer` | `onActionPrimary` |
+| `secondary`, `secondaryContainer`, `tertiary` | `actionSecondary` |
+| `onSecondary`, `onSecondaryContainer`, `onTertiary` | `onActionSecondary` |
+| `tertiaryContainer`, `surfaceVariant`, `surfaceContainerHigh`, `surfaceContainerHighest` | `surfaceRaised` |
+| `onTertiaryContainer`, `onBackground`, `onSurface`, `inverseSurface` | `textPrimary` |
+| `onSurfaceVariant` | `textSecondary` |
+| `inverseOnSurface` | `textInverse` |
+| `background`, `surfaceDim`, `surfaceContainerLowest`, `surfaceContainerLow` | `background` |
+| `surface`, `surfaceBright`, `surfaceContainer`, `surfaceTint` | `surface` |
+| `error`, `errorContainer` | `danger` |
+| `onError`, `onErrorContainer` | `onDanger` |
 | `outline`, `outlineVariant` | `border` |
+| `scrim` | black (behind dialogs and sheets) |
 
-Material's other colours (`primaryContainer`, `secondaryContainer`, `tertiary` and the like) keep Material's own purple defaults, since the guide has no role for them. A few components use them: `FloatingActionButton`, `FilledTonalButton`, a selected `FilterChip`, and the indicator of `NavigationBar` and `NavigationRail`. Give those their colours from `MotifTheme.colors` ([components](components.md#the-starter-set)). The guide's other roles (`focus`, `success`, `warning`, `info`, `textInverse`) are only in `MotifTheme.colors`. Corners: Material's `small` shapes use `MotifRadius.sm`, `medium` `MotifRadius.md`, `large` and `extraLarge` `MotifRadius.lg`.
+So a `FloatingActionButton` is `actionPrimary` with `onActionPrimary` on it, and the navigation bar's indicator, a `FilledTonalButton` and a selected `FilterChip` are `actionSecondary` with `onActionSecondary`. A role the guide doesn't have leaves its colours at Material's defaults. The guide's other roles (`focus`, `success`, `warning`, `info`) are only in `MotifTheme.colors`. Corners: Material's `small` shapes use `MotifRadius.sm`, `medium` `MotifRadius.md`, `large` and `extraLarge` `MotifRadius.lg`.
 
 ## Reading theme values in composables
 
@@ -80,7 +88,7 @@ fun PriceTag(label: String, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(MotifRadius.md)
     Text(
         text = label,
-        style = MaterialTheme.typography.labelLarge,
+        style = MotifType.label,
         color = colors.textPrimary,
         modifier = modifier
             .motifShadow(MotifShadows.sm, shape)
@@ -94,11 +102,11 @@ fun PriceTag(label: String, modifier: Modifier = Modifier) {
 - Colours: only roles, paired as the guide pairs them (`textPrimary` on `surface`, `onActionPrimary` on `actionPrimary`). No `Color(0x…)`, `Color.White` or `MaterialTheme.colorScheme.tertiary`.
 - Sizes: `MotifSpace.sN` for padding, gaps and `Spacer`s; `MotifRadius` for corners. Sizes that aren't spacing (an avatar's 40.dp, a border's 1.dp) can stay numbers.
 - Shadows: `Modifier.motifShadow(MotifShadows.<role>, shape)` before the background, with the same shape. A card has a border or a shadow, not both.
-- Text: the role's Material slot, below, or `MotifType.<role>`. The roles carry no colour: pass `color =` when the default text colour isn't right, and never set `fontSize` or `fontFamily` yourself.
+- Text: `MotifType.<role>` (`display`, `title`, `heading`, `body`, `label`, `caption`, or whatever the guide names), which follows the Arabic companion ([below](#text-and-the-arabic-companion)). The roles carry no colour: pass `color =` when the default text colour isn't right, and never set `fontSize` or `fontFamily` yourself.
 
 ## Text and the Arabic companion
 
-Each Material type slot takes its font, weight and line height from one of the guide's roles. On a typical scale, the slot that is the role at its own size is:
+Set text with `MotifType.<role>`. Material's type slots are filled from the same roles, so `Text` with no style (`bodyLarge`) and Material components' own text match. On a typical scale, the slot that is the role at its own size is:
 
 | Role | `MotifType.` | `MaterialTheme.typography.` |
 |---|---|---|
@@ -111,7 +119,9 @@ Each Material type slot takes its font, weight and line height from one of the g
 
 The smaller slots (`titleMedium`, `bodyMedium`, `labelSmall`…) keep their role's font and weight at the guide's smaller sizes.
 
-When a role's font list has an **Arabic companion** (the second font), `motif tokens` also writes `MotifType.<role>Arabic` in it, and `MotifTheme` fills Material's slots with those whenever the app's locale is written in Arabic script (Arabic, Persian, Urdu and the like). So text styled through `MaterialTheme.typography`, and plain `Text` and Material components, switch fonts with the language by themselves. `MotifType.body` always uses the first font; Android then draws Arabic letters in a system font, not the companion. In an app that shows Arabic, style text through `MaterialTheme.typography`, or choose `MotifType.bodyArabic` yourself.
+When a role's font list has an **Arabic companion** (the second font), `MotifType.<role>` switches to it whenever the app's locale is written in Arabic script (Arabic, Persian, Urdu and the like), and so do Material's slots, which read the same roles. Text set with `MotifType.<role>`, plain `Text` and Material components all change fonts with the language by themselves.
+
+Such a role is read with the locale, so it can only be read inside a composable: `MotifType.body` in a `@Composable` function's body, not in a top-level `val` or a `ViewModel`. Outside one, use `MotifType.bodyLatin` (the first font, whatever the language) or `MotifType.bodyArabic` (the companion), which `motif tokens` also writes for each such role. A role without a companion is a plain value that works anywhere.
 
 ## Fonts
 
