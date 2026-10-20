@@ -295,8 +295,8 @@ private fun motifColorScheme(colors: MotifColors, darkTheme: Boolean): ColorSche
         darkColorScheme(
             primary = colors.actionPrimary,
             onPrimary = colors.onActionPrimary,
-            primaryContainer = colors.surfaceRaised,
-            onPrimaryContainer = colors.textPrimary,
+            primaryContainer = colors.actionPrimary,
+            onPrimaryContainer = colors.onActionPrimary,
             inversePrimary = colors.actionPrimary,
             secondary = colors.actionSecondary,
             onSecondary = colors.onActionSecondary,
@@ -334,8 +334,8 @@ private fun motifColorScheme(colors: MotifColors, darkTheme: Boolean): ColorSche
         lightColorScheme(
             primary = colors.actionPrimary,
             onPrimary = colors.onActionPrimary,
-            primaryContainer = colors.surfaceRaised,
-            onPrimaryContainer = colors.textPrimary,
+            primaryContainer = colors.actionPrimary,
+            onPrimaryContainer = colors.onActionPrimary,
             inversePrimary = colors.actionPrimary,
             secondary = colors.actionSecondary,
             onSecondary = colors.onActionSecondary,
@@ -799,8 +799,8 @@ private fun motifColorScheme(colors: MotifColors, darkTheme: Boolean): ColorSche
         darkColorScheme(
             primary = colors.actionPrimary,
             onPrimary = colors.onActionPrimary,
-            primaryContainer = colors.surfaceRaised,
-            onPrimaryContainer = colors.textPrimary,
+            primaryContainer = colors.actionPrimary,
+            onPrimaryContainer = colors.onActionPrimary,
             inversePrimary = colors.actionPrimary,
             secondary = colors.actionSecondary,
             onSecondary = colors.onActionSecondary,
@@ -838,8 +838,8 @@ private fun motifColorScheme(colors: MotifColors, darkTheme: Boolean): ColorSche
         lightColorScheme(
             primary = colors.actionPrimary,
             onPrimary = colors.onActionPrimary,
-            primaryContainer = colors.surfaceRaised,
-            onPrimaryContainer = colors.textPrimary,
+            primaryContainer = colors.actionPrimary,
+            onPrimaryContainer = colors.onActionPrimary,
             inversePrimary = colors.actionPrimary,
             secondary = colors.actionSecondary,
             onSecondary = colors.onActionSecondary,

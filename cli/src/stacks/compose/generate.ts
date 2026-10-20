@@ -270,7 +270,7 @@ function shadows(layers: ThemeShadowLayer[]): Expr[] {
  */
 const SCHEME: [string, string | null][] = [
   ["primary", "action-primary"], ["onPrimary", "on-action-primary"],
-  ["primaryContainer", "surface-raised"], ["onPrimaryContainer", "text-primary"],
+  ["primaryContainer", "action-primary"], ["onPrimaryContainer", "on-action-primary"],
   ["inversePrimary", "action-primary"],
   ["secondary", "action-secondary"], ["onSecondary", "on-action-secondary"],
   ["secondaryContainer", "action-secondary"], ["onSecondaryContainer", "on-action-secondary"],

@@ -88,8 +88,8 @@ describe("generateCompose, the test guide (no variants)", () => {
       "inverseOnSurface = colors.textInverse,",
       "surfaceTint = colors.surface,",
       // Every other slot too, so no component falls back to Material's baseline purple.
-      "primaryContainer = colors.surfaceRaised,",
-      "onPrimaryContainer = colors.textPrimary,",
+      "primaryContainer = colors.actionPrimary,",
+      "onPrimaryContainer = colors.onActionPrimary,",
       "inversePrimary = colors.actionPrimary,",
       "secondaryContainer = colors.actionSecondary,",
       "onSecondaryContainer = colors.onActionSecondary,",
