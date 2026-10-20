@@ -141,6 +141,37 @@ export const highlight = { bg: "#FFFF00", fg: "#000000" };\n`,
     expect((tokens as any).$extensions["dev.motif"].variants.map((v: any) => v.id)).toEqual(["default", "men"]);
   });
 
+  test("the palette's tint or accent is the action colour, over another colour the screens type more often (final review)", () => {
+    const actionOf = (files: Record<string, string>) => {
+      const { tokens } = buildDraft(project(files)) as { tokens: any };
+      const ref = (r: string) => tokens.primitive.color[r.slice("{primitive.color.".length, -1)].$value.hex;
+      const action = tokens.color["action-primary"];
+      return [ref(action.$value), ref(action.$extensions["dev.motif"].modes.dark)];
+    };
+    // Art the screens type more often than the brand colour.
+    const art = `import { View } from "react-native";
+export function Tiles() {
+  return <><View style={{ backgroundColor: "#d4a574" }} /><View style={{ backgroundColor: "#d4a574" }} /><View style={{ backgroundColor: "#d4a574" }} /></>;
+}\n`;
+    // The create-expo-app starter before SDK 54: constants/Colors.ts, with tint read for the tab bar.
+    const starter = `const tintColorLight = '#0a7ea4';
+const tintColorDark = '#fff';
+export const Colors = {
+  light: { text: '#11181C', background: '#fff', tint: tintColorLight, icon: '#687076', tabIconDefault: '#687076', tabIconSelected: tintColorLight },
+  dark: { text: '#ECEDEE', background: '#151718', tint: tintColorDark, icon: '#9BA1A6', tabIconDefault: '#9BA1A6', tabIconSelected: tintColorDark },
+};\n`;
+    const tabs = `import { Tabs } from "expo-router";
+import { Colors } from "@/constants/Colors";
+export default function TabLayout() {
+  return <Tabs screenOptions={{ tabBarActiveTintColor: Colors.light.tint }} />;
+}\n`;
+    expect(actionOf({ "constants/Colors.ts": starter, "app/(tabs)/_layout.tsx": tabs, "components/Tiles.tsx": art })).toEqual(["#0A7EA4", "#FFFFFF"]);
+    // HiSalon's shape: light and dark objects with an accent.
+    const palette = `export const light = { bg: "#F8FAF9", text: "#0F1F1B", accent: "#1F9F87" };
+export const dark = { bg: "#0F1413", text: "#F5F7F6", accent: "#5DCBB1" };\n`;
+    expect(actionOf({ "src/theme/colors.ts": palette, "src/components/Tiles.tsx": art })).toEqual(["#1F9F87", "#5DCBB1"]);
+  });
+
   test("commented-out palettes and objects that aren't colours are not read", () => {
     const occ = project({
       "theme/c.ts": `export const Colors = { light: { tint: '#4338ca' }, dark: { tint: '#818cf8' } };
