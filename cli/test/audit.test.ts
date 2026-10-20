@@ -55,6 +55,12 @@ describe("toFindings", () => {
     expect(findings[4]!.summary).toBe('The "Go" button is 32×32 px on a phone; 44×44 px is easier to tap.');
   });
 
+  test("a kind that starts with a vowel sound takes \"an\" (the final review of plan 2G)", () => {
+    const sized = (kind: AuditIssue["kind"], selector: string) => issue({ rule: "target-size", selector, kind, label: "", width: 16, height: 16 });
+    const summaries = toFindings([sized("option", "#o"), sized("image", "#i"), sized("menu item", "#m"), sized("switch", "#s")]).map((f) => f.summary.split(" is ")[0]);
+    expect(summaries.sort()).toEqual(["A menu item", "A switch", "An image", "An option"]);
+  });
+
   test("texts that fail with the same colours are one finding that lists every place (third eval run)", () => {
     // The third eval run's report copied 53 contrast findings, one per text and state, from a few causes.
     const faint = { fg: "#b2a79f", bg: "#ffffff", ratio: 2.2, expected: 4.5 };

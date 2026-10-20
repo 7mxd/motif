@@ -340,7 +340,8 @@ function subject(issue: RawIssue, textual: boolean): string {
     const which = issue.icon ? ` (${issue.icon})` : "";
     return issue.label ? `The "${issue.label}" icon${which}` : `An icon${which}`;
   }
-  if (issue.kind !== "element") return issue.label ? `The "${issue.label}" ${issue.kind}` : `A ${issue.kind}`;
+  // Every kind's name is spelled as it sounds: a vowel letter is a vowel sound ("an option", "an image").
+  if (issue.kind !== "element") return issue.label ? `The "${issue.label}" ${issue.kind}` : `${/^[aeiou]/.test(issue.kind) ? "An" : "A"} ${issue.kind}`;
   if (textual) return issue.label ? `Text "${issue.label}"` : "Some text";
   return issue.label ? `The "${issue.label}" element` : "An element";
 }
