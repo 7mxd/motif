@@ -523,7 +523,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     if (overlaid.length > 0) {
       const one = overlaid.length === 1;
-      lines.push(`✗ Audit incomplete: ${andList(overlaid)} threw as ${one ? "it" : "they"} loaded, so ${one ? "its" : "their"} screenshots show Expo's error overlay, not the app; ${one ? "it wasn't" : "they weren't"} audited.`);
+      lines.push(`✗ Audit incomplete: ${andList(overlaid)} threw an error as ${one ? "it" : "they"} loaded, so ${one ? "it isn't" : "they aren't"} audited (${one ? "its" : "their"} screenshots may show Expo's error overlay).`);
     }
     if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
     else if (incomplete.length === 0 && overlaid.length === 0) lines.push(`✓ Audit: no contrast, tap-target${motionRan ? " or reduced-motion" : ""} problems found, and no controls without a name (${auditFile}).`);

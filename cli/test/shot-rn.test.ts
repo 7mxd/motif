@@ -314,13 +314,15 @@ describe("an app Expo can't build or run on the web", () => {
       expect(await buildWebBundle(appDir, url, Date.now() + 10_000)).toEqual({ error: "SyntaxError: app/index.tsx: Unexpected token (3:4)" });
       // A bundle that isn't ready by the deadline stops the run, as a server that doesn't start does.
       reply = () => new Promise<Response>(() => {});
-      expect(await buildWebBundle(appDir, url, Date.now() + 500)).toEqual({ error: "Expo's web bundle wasn't ready within the start limit (300 s)." });
+      expect(await buildWebBundle(appDir, url, Date.now() + 500)).toEqual({
+        error: "Expo's web bundle wasn't ready within the start limit (300 s). Run npx expo start --web to see where Metro stops, or start the app yourself and pass its address with --url.",
+      });
     } finally {
       server.stop(true);
     }
   }, 30_000);
 
-  test("--audit leaves out a screen that threw as it loaded: its screenshots show Expo's error overlay, not the app", async () => {
+  test("--audit leaves out a screen that threw as it loaded, since its screenshots may show Expo's error overlay", async () => {
     const issue = (route: string): AuditIssue => ({
       rule: "color-contrast", selector: "p", label: "Uncaught Error", kind: "element", ratio: 2.3, expected: 4.5, fg: "#aaaaaa", bg: "#ffffff",
       route, viewport: "mobile", size: "mobile", scheme: "light", shot: "x.png",
@@ -337,7 +339,7 @@ describe("an app Expo can't build or run on the web", () => {
       },
     };
     const r = await runShot(makeProject(EXPO_APP), ctx({ audit: true }), crashed);
-    expect(r.text).toContain("✗ Audit incomplete: / threw as it loaded, so its screenshots show Expo's error overlay, not the app; it wasn't audited.");
+    expect(r.text).toContain("✗ Audit incomplete: / threw an error as it loaded, so it isn't audited (its screenshots may show Expo's error overlay).");
     expect(r.text).toContain("critical /settings (mobile, light)");
     expect(r.text).not.toContain("critical / (mobile");
     // Nothing found elsewhere isn't a clean audit.
@@ -350,7 +352,7 @@ describe("an app Expo can't build or run on the web", () => {
       },
     };
     const r2 = await runShot(makeProject(EXPO_APP), ctx({ audit: true }), quiet);
-    expect(r2.text).toContain("✗ Audit incomplete: / threw as it loaded");
+    expect(r2.text).toContain("✗ Audit incomplete: / threw an error as it loaded");
     expect(r2.text).not.toContain("✓ Audit");
   });
 

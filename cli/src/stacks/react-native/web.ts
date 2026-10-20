@@ -70,7 +70,7 @@ const timedOut = (e: unknown) => e instanceof Error && (e.name === "TimeoutError
  * doesn't answer, a server that renders on its own) is left to the screenshots.
  */
 export async function buildWebBundle(appDir: string, baseUrl: string, deadline: number): Promise<{ error?: string }> {
-  const late = { error: `Expo's web bundle wasn't ready within the start limit (${Math.round(RN_START_TIMEOUT_MS / 1000)} s).` };
+  const late = { error: `Expo's web bundle wasn't ready within the start limit (${Math.round(RN_START_TIMEOUT_MS / 1000)} s). Run npx expo start --web to see where Metro stops, or start the app yourself and pass its address with --url.` };
   const signal = () => AbortSignal.timeout(Math.max(1, deadline - Date.now()));
   let html: string;
   try {
