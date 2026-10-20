@@ -17,7 +17,8 @@ describe("the Compose stack", () => {
     expect(COMPOSE.generate).toBeDefined();
     expect(COMPOSE.wiring).toBeDefined();
     expect(COMPOSE.scan).toBeDefined();
-    for (const absent of ["collect", "shoot", "routes"] as const) expect(COMPOSE[absent]).toBeUndefined();
+    expect(COMPOSE.collect).toBeDefined();
+    for (const absent of ["shoot", "routes"] as const) expect(COMPOSE[absent]).toBeUndefined();
   });
 
   test("theme code goes in the app's own package, under ui/motif", () => {

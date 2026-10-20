@@ -51,7 +51,7 @@ const IDENT = "[A-Za-z_$][\\w$]*";
 const escape = (s: string) => s.replace(/[$]/g, "\\$");
 
 /** A Dart name in kebab case: textMuted → text-muted, HiSalonColors → hi-salon-colors. */
-function kebab(name: string): string {
+export function kebab(name: string): string {
   return name
     .replace(/^[_$]+/, "")
     .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
@@ -61,8 +61,8 @@ function kebab(name: string): string {
 }
 
 /** The words of a name: HighContrast → High, Contrast; high_contrast → high, contrast. */
-const words = (name: string) => kebab(name).split("-").filter(Boolean);
-const title = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+export const words = (name: string) => kebab(name).split("-").filter(Boolean);
+export const title = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
 
 /**
  * True when a declaration at `index` is a palette's: a top-level one, or a static member of a class (mixin, extension)
@@ -131,7 +131,7 @@ interface PaletteClass {
   body: [number, number];
 }
 
-interface Instance {
+interface Instance extends Paired {
   name: string;
   file: DartFile;
   /** Where it's declared in its file, and its place in the source order of all files. */
@@ -144,14 +144,23 @@ interface Instance {
   label: string;
 }
 
+/** What pairing palettes needs of each: where it comes in the source, which half it is, and the words that name it. */
+export interface Paired {
+  name: string;
+  order: number;
+  dark: boolean;
+  key: string;
+  label: string;
+}
+
 /** Pairs a palette's instances into light/dark halves, picks the default, and names the variants. */
-function pairInstances(instances: Instance[]): {
-  defaultPair: { light?: Instance; dark?: Instance } | undefined;
-  variants: { id: string; label: string; light?: Instance; dark?: Instance }[];
-  unpaired: Instance[];
+export function pairInstances<T extends Paired>(instances: T[]): {
+  defaultPair: { light?: T; dark?: T } | undefined;
+  variants: { id: string; label: string; light?: T; dark?: T }[];
+  unpaired: T[];
 } {
-  const pairs: { light: Instance; dark: Instance }[] = [];
-  const paired = new Set<Instance>();
+  const pairs: { light: T; dark: T }[] = [];
+  const paired = new Set<T>();
   for (const d of instances.filter((i) => i.dark)) {
     const light = instances.find((i) => !i.dark && !paired.has(i) && i.key === d.key);
     if (!light) continue;
@@ -162,7 +171,7 @@ function pairInstances(instances: Instance[]): {
   const unpaired = instances.filter((i) => !paired.has(i));
   // The pair without a suffix (or one called Default: lightDefault/darkDefault); else an unpaired light palette like that;
   // else the first pair; else the first palette.
-  let defaultPair: { light?: Instance; dark?: Instance } | undefined;
+  let defaultPair: { light?: T; dark?: T } | undefined;
   for (const key of ["", "default"]) {
     defaultPair ??= pairs.find((p) => p.light.key === key);
     const single = unpaired.find((i) => !i.dark && i.key === key);
@@ -170,9 +179,9 @@ function pairInstances(instances: Instance[]): {
   }
   defaultPair ??= pairs[0];
   defaultPair ??= instances[0] ? (instances[0].dark ? { dark: instances[0] } : { light: instances[0] }) : undefined;
-  const isDefault = (i: Instance) => defaultPair?.light === i || defaultPair?.dark === i;
-  const variants: { id: string; label: string; light?: Instance; dark?: Instance }[] = [];
-  const add = (id: string, label: string, light?: Instance, dark?: Instance) => {
+  const isDefault = (i: T) => defaultPair?.light === i || defaultPair?.dark === i;
+  const variants: { id: string; label: string; light?: T; dark?: T }[] = [];
+  const add = (id: string, label: string, light?: T, dark?: T) => {
     const own = variants.find((v) => v.id === id);
     if (own) {
       own.light ??= light;
@@ -234,7 +243,7 @@ function pubspecFonts(files: SourceFile[]): { family: string; path: string; file
 }
 
 /** A TextTheme's slots, by the Motif role each one is evidence for, in order of preference (the inverse of generate.ts's map). */
-const TEXT_SLOTS: [string, string[]][] = [
+export const TEXT_SLOTS: [string, string[]][] = [
   ["display", ["displayLarge", "displayMedium", "displaySmall"]],
   ["title", ["headlineLarge", "headlineMedium", "headlineSmall"]],
   ["heading", ["titleLarge", "titleMedium", "titleSmall"]],
@@ -242,7 +251,7 @@ const TEXT_SLOTS: [string, string[]][] = [
   ["label", ["labelLarge", "labelMedium"]],
   ["caption", ["bodySmall", "labelSmall"]],
 ];
-const SLOT_NAMES = new Set(TEXT_SLOTS.flatMap(([, slots]) => slots));
+export const SLOT_NAMES = new Set(TEXT_SLOTS.flatMap(([, slots]) => slots));
 const NAMED_WEIGHTS: Record<string, number> = { normal: 400, bold: 700 };
 
 /** A text style's size, weight and height, as written in a slot (TextStyle(fontSize: 14), GoogleFonts.onest(…), s(14, …)). */

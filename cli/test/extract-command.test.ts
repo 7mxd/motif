@@ -65,11 +65,11 @@ describe("runExtract", () => {
   });
 
   test("other stacks aren't supported yet, and nothing is written", async () => {
-    const root = makeProject({ "build.gradle.kts": 'dependencies { implementation("androidx.compose.ui:ui") }\n' });
+    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { vue: "3", vite: "5" } }), "src/App.vue": "<template></template>" });
     const r = await runExtract(root, ctx);
     expect(r.exitCode).toBe(2);
     expect(existsSync(join(root, "design/tokens.draft.json"))).toBe(false);
-    expect(r.text).toContain("Jetpack Compose");
+    expect(r.text).toContain("Vue / Nuxt");
   });
 
   test("white text on buttons doesn't become the main text colour", async () => {
@@ -101,9 +101,9 @@ describe("runExtract: follow-ups", () => {
   test("apps on other stacks are named as skipped", async () => {
     const root = makeProject({
       "apps/web/package.json": PKG, "apps/web/src/App.tsx": APP,
-      "apps/android/build.gradle.kts": 'dependencies { implementation("androidx.compose.ui:ui") }\n',
+      "apps/site/package.json": JSON.stringify({ dependencies: { vue: "3", vite: "5" } }), "apps/site/src/App.vue": "<template></template>",
     });
-    expect((await runExtract(root, ctx)).text).toContain("apps/android (Jetpack Compose)");
+    expect((await runExtract(root, ctx)).text).toContain("apps/site (Vue / Nuxt)");
   });
 });
 
@@ -301,12 +301,12 @@ body { @apply bg-bg text-ink; }
 });
 
 describe("final review: extract's refusal lists the stacks from the registry (Minor #10)", () => {
-  test("a Vue app: the same words as before, with Flutter named from its registration", async () => {
+  test("a Vue app: the same words as before, with Flutter and Compose named from their registrations", async () => {
     const root = makeProject({ "package.json": JSON.stringify({ dependencies: { vue: "3", vite: "5" } }), "src/App.vue": "<template></template>" });
     const r = await runExtract(root, { positionals: [], flags: {} });
     expect(r.exitCode).toBe(2);
     expect(r.text).toBe(
-      "motif extract works on React web apps and plain web sites, and on Flutter apps, in this version. Found: Your app (Vue / Nuxt). Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.",
+      "motif extract works on React web apps and plain web sites, and on Flutter apps and Jetpack Compose apps, in this version. Found: Your app (Vue / Nuxt). Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.",
     );
   });
 });
