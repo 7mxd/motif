@@ -87,6 +87,7 @@ export function rnFonts(theme: Theme, root: string, app: AppInfo, themeDir: stri
   const googlePackages = new Map<string, string>();
   const faces = new Map<string, Set<string>>();
   const unresolved = new Set<string>();
+  const unreadable = new Set<string>();
   const missing: string[] = [];
   for (const use of uses.filter((u) => u.source === "google" || u.source === "bundled")) {
     const pkg = googlePackage(use.family);
@@ -96,8 +97,12 @@ export function rnFonts(theme: Theme, root: string, app: AppInfo, themeDir: stri
     }
     googlePackages.set(use.family, pkg);
     const have = exportedFaces(appDir, pkg);
+    const prefix = use.family.replace(/[^A-Za-z0-9]/g, "");
     if (have === "missing") unresolved.add(pkg);
-    else if (have !== "unknown") faces.set(pkg, have);
+    else if (have === "unknown" || ![...have].some((f) => f.startsWith(`${prefix}_`))) {
+      unresolved.add(pkg);
+      unreadable.add(pkg);
+    } else faces.set(pkg, have);
   }
 
   const noReanimated = declared(appDir, "react-native-reanimated") === null;
@@ -113,6 +118,10 @@ export function rnFonts(theme: Theme, root: string, app: AppInfo, themeDir: stri
 npx expo install ${needed.join(" ")}`);
   }
   for (const pkg of unresolved) {
+    if (unreadable.has(pkg)) {
+      notes.push(`Motif couldn't read which weights ${pkg} has, so its roles use the regular face. Reinstall it, then run motif tokens again.`);
+      continue;
+    }
     notes.push(`${pkg} is in package.json but isn't installed, so the theme file uses only its regular (400) face. Install it and run motif tokens again to use its other weights.`);
   }
   return { copies, notes, googlePackages, projectFonts, faces, unresolved };

@@ -228,9 +228,11 @@ describe("generateReactNative, Google packages", () => {
     expect(ts).toContain('import { Inter_400Regular } from "@expo-google-fonts/inter";');
   });
 
-  test("a package file with no face of the family listed is unknown, not empty", () => {
+  test("a package file with no face of the family listed gives only the regular face", () => {
     const faces = new Map([["@expo-google-fonts/inter", new Set(["Other_400Regular"])]]);
-    expect(tsFor(validTokens(), { faces })).toContain('heading: { fontFamily: "Inter_600SemiBold",');
+    const ts = tsFor(validTokens(), { faces });
+    expect(ts).toContain('heading: { fontFamily: "Inter_400Regular",');
+    expect(ts).not.toContain("Inter_600SemiBold");
   });
 
   test("letter spacing is in pixels", () => {

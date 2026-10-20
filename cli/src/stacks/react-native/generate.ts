@@ -125,8 +125,8 @@ class Resolver {
       const exports = this.opts.faces?.get(pkg);
       const all = Object.keys(WEIGHT_NAMES).map(Number);
       const listed = exports ? all.filter((w) => exports.has(`${prefix}_${w}${WEIGHT_NAMES[w]}`)) : [];
-      // No face of this family listed means the file isn't one Motif can read: every weight is assumed, as when it's not read at all.
-      const have = this.opts.unresolved?.has(pkg) ? [400] : listed.length > 0 ? listed : all;
+      // A package that wasn't found, or whose file lists no face of this family, is not guessed at: only the regular face, which every package ships.
+      const have = this.opts.unresolved?.has(pkg) || (exports && listed.length === 0) ? [400] : exports ? listed : all;
       const w = nearest(roundWeight(weight), have);
       return { kind: "face", key: `${prefix}_${w}${WEIGHT_NAMES[w]}`, google: { pkg }, weight: w };
     }

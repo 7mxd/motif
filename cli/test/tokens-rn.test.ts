@@ -157,6 +157,15 @@ describe("motif tokens for an Expo app", () => {
     expect(notes(r)).toContain("run motif tokens again to use its other weights");
   });
 
+  test("a package file Motif can't read gives only the 400 face, and a note naming the package", async () => {
+    const root = starter({ "node_modules/@expo-google-fonts/inter/index.d.ts": "export {};\n" });
+    const r = await runTokens(root, ctx);
+    const ts = readFileSync(join(root, "src/design/motif-theme.tsx"), "utf8");
+    expect(ts).toContain('import { Inter_400Regular } from "@expo-google-fonts/inter";');
+    expect(ts).not.toContain("Inter_700Bold");
+    expect(notes(r)).toContain("Motif couldn't read which weights @expo-google-fonts/inter has, so its roles use the regular face.");
+  });
+
   test("worklets are suggested only when reanimated is missing too", async () => {
     const root = starter({ "package.json": pkg({ "react-native-worklets": "0.13.0" }).replace('"react-native-reanimated":"4.7.1",', "") });
     const text = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
