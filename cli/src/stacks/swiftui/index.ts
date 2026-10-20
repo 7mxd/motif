@@ -9,8 +9,10 @@ import { andList } from "../../text";
 import { swiftIdentifier } from "../naming";
 import type { NativeStack } from "../native";
 import { swiftUIDoctor } from "./doctor";
+import { scanSwift, swiftUIFix, swiftUIReducedMotion, swiftUIRole } from "./rules";
 import { swiftUIFonts } from "./fonts";
 import { generateSwiftUI, THEME_FILE } from "./generate";
+import { swiftUIPaletteFile } from "./palette";
 import { appEntryFile, buildsWholeFolder, swiftUIApp } from "./project";
 
 /** The app target's folder, root-relative. */
@@ -98,4 +100,10 @@ export const SWIFTUI: NativeStack = {
   },
 
   sourceFiles: (root, app, { ignore }) => listSwiftFiles(root, app.path, { ignore }),
+  scan: scanSwift,
+  // Motif's own file defines MotifMotion: only the app's code says whether it respects Reduce Motion.
+  appWide: (files) => swiftUIReducedMotion(files),
+  fix: swiftUIFix,
+  paletteFile: swiftUIPaletteFile,
+  role: swiftUIRole,
 };

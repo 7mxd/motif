@@ -87,12 +87,12 @@ describe("runCheck", () => {
     expect(r.text).toContain("Warnings:");
   });
 
-  test("only React web apps, plain web sites, Flutter apps and Jetpack Compose apps are checked in this version", async () => {
+  test("only React web apps, plain web sites, Flutter apps, Jetpack Compose apps and SwiftUI apps are checked in this version", async () => {
     const root = makeProject({ "package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "src/App.vue": "", "design/tokens.json": TOKENS });
     const r = await runCheck(root, ctx());
     expect(r.exitCode).toBe(2);
     expect(r.text).toContain("Vue / Nuxt");
-    expect(r.text).toContain("Flutter apps, Jetpack Compose apps, React Native (Expo) apps, React web apps and plain web sites");
+    expect(r.text).toContain("Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, React web apps and plain web sites");
   });
 
   test("no design guide → exit 2", async () => {
