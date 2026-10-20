@@ -80,7 +80,10 @@ void main() {
         any = true;
       }
       await loader.load();
-      if (any) loaded.add(family);
+      if (any) {
+        loaded.add(family);
+        _fontScripts[family] = (font['scripts'] as List? ?? const []).cast<String>().toSet();
+      }
     }
     // The app's requests are answered from design/states/http.json, never the network.
     HttpOverrides.global = MotifHttpOverrides(http);
@@ -158,6 +161,8 @@ class _Screen {
   final Set<String> blankImages = {};
   final Set<String> missingFonts = {};
   final Set<String> missingFallbacks = {};
+  /// Text in a script no font of its style has (script and family, tab-separated): drawn as boxes here.
+  final Set<String> noScriptFont = {};
   final Set<String> texts = {};
   final NotJudged notJudged = NotJudged();
   String? auditError;
@@ -172,6 +177,10 @@ class _Screen {
     'blankImages': blankImages.toList(),
     'missingFonts': missingFonts.toList(),
     'missingFallbacks': missingFallbacks.toList(),
+    if (noScriptFont.isNotEmpty)
+      'noScriptFont': [
+        for (final s in noScriptFont) {'script': s.split('\t').first, 'family': s.split('\t').last},
+      ],
     if (notJudged.covered.isNotEmpty) 'covered': notJudged.covered.length,
     if (notJudged.overImages.isNotEmpty) 'overImages': notJudged.overImages.length,
     if (auditError != null) 'auditError': auditError,
@@ -538,9 +547,45 @@ void _fallbacks(InlineSpan span, TextStyle? inherited, _Run run) {
     for (final family in style?.fontFamilyFallback ?? const <String>[]) {
       if (!run.loaded.contains(family)) run.screen.missingFallbacks.add(family);
     }
+    _scriptFonts(text, style, run);
   }
   for (final child in span.children ?? const <InlineSpan>[]) {
     _fallbacks(child, style, run);
+  }
+}
+
+/// The scripts a loaded font has letters for (from its cmap, read by Motif): arabic, hebrew, greek, cyrillic…
+final Map<String, Set<String>> _fontScripts = {};
+
+/// The code point ranges of the scripts Motif tells apart (the ids of scripts.ts).
+const Map<String, List<List<int>>> _scriptRanges = {
+  'arabic': [[0x0600, 0x06FF], [0x0750, 0x077F], [0x08A0, 0x08FF], [0xFB50, 0xFDFF], [0xFE70, 0xFEFF]],
+  'hebrew': [[0x0591, 0x05F4], [0xFB1D, 0xFB4F]],
+  'greek': [[0x0370, 0x03FF], [0x1F00, 0x1FFF]],
+  'cyrillic': [[0x0400, 0x052F]],
+  'devanagari': [[0x0900, 0x097F]],
+  'thai': [[0x0E00, 0x0E7F]],
+  'han': [[0x3400, 0x4DBF], [0x4E00, 0x9FFF]],
+  'kana': [[0x3040, 0x30FF]],
+  'hangul': [[0x1100, 0x11FF], [0xAC00, 0xD7AF]],
+};
+
+/// Text in a script that none of its style's families (the family and its fallbacks) has letters for, when they're
+/// all loaded: under flutter test there's no system font to fall back to, so it's drawn as boxes, where a phone would
+/// use one. A family Motif couldn't load is noted already, as boxes.
+void _scriptFonts(String text, TextStyle? style, _Run run) {
+  final family = style?.fontFamily;
+  final families = <String>[if (family != null) family, ...?style?.fontFamilyFallback];
+  if (families.isEmpty || families.any((f) => !run.loaded.contains(f))) return;
+  final scripts = <String>{};
+  for (final rune in text.runes) {
+    for (final entry in _scriptRanges.entries) {
+      if (entry.value.any((r) => rune >= r[0] && rune <= r[1])) scripts.add(entry.key);
+    }
+  }
+  for (final script in scripts) {
+    if (families.any((f) => _fontScripts[f]?.contains(script) ?? false)) continue;
+    run.screen.noScriptFont.add('$script\t${families.first}');
   }
 }
 

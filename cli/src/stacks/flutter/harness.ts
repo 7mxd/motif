@@ -11,6 +11,7 @@ import httpSource from "./harness/motif_http.dart" with { type: "text" };
 import harnessSource from "./harness/motif_shot_test.dart" with { type: "text" };
 import { defaultHooks, HOOKS_FILE, hooksSource } from "./hooks";
 import { packageName } from "./project";
+import { familyScripts } from "./scripts";
 
 export const HARNESS_TEST = ".motif/shot/motif_shot_test.dart";
 /** The harness's in-memory HTTP, next to it; the same in every run too. */
@@ -19,6 +20,11 @@ export const HARNESS_HTTP = ".motif/shot/motif_http.dart";
 export const HARNESS_AUDIT = ".motif/shot/motif_audit.dart";
 /** Where the harness writes what it did; cleared before every run. */
 export const RESULT_FILE = ".motif/shot/result.json";
+/**
+ * The run's options, relative to the app (flutter test runs there): an app path with "&" or "^" in it would be broken
+ * up by flutter.bat on Windows.
+ */
+export const CONFIG_FILE = ".motif/shot/config.json";
 
 /** How long Motif waits for a stopped run's output and exit before giving up on them. */
 export const GRACE_MS = 3000;
@@ -333,6 +339,11 @@ function collect(stream: ReadableStream<Uint8Array>): { text: () => string; done
   return { text: () => text, done, cancel: () => void reader.cancel().catch(() => {}) };
 }
 
+/** flutter test's arguments after the command, run from the app's folder: every path in them is relative to it. */
+export function harnessArgs(): string[] {
+  return [HARNESS_TEST, "--reporter", "expanded", `--dart-define=MOTIF_SHOT_CONFIG=${CONFIG_FILE}`];
+}
+
 /** Runs the harness for the shots and returns what Flutter said; the generated test and config are always removed. */
 export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
   const flutter = run.flutter ?? Bun.which("flutter");
@@ -343,7 +354,9 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
   const pubspec = stripBom(readFileSync(join(run.appDir, "pubspec.yaml"), "utf8"));
   const found = [sdkFonts(flutter), bundledFonts(run.appDir, pubspec)];
   for (const family of run.googleFonts) found.push(await googleFontFiles(family, home, { fetch: run.fetch }));
-  const fonts = found.flatMap((f) => f.fonts);
+  // Each family with the scripts its files have letters for, so the harness can tell text no loaded font draws.
+  const cache = new Map<string, string[]>();
+  const fonts = found.flatMap((f) => f.fonts).map((f) => ({ ...f, scripts: familyScripts(f.files, cache) }));
   const notes = found.flatMap((f) => f.notes);
 
   const motifDir = join(run.appDir, ".motif");
@@ -355,12 +368,16 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
   const hooksFile = join(run.appDir, HOOKS_FILE);
   const httpFile = join(run.appDir, HARNESS_HTTP);
   const auditFile = join(run.appDir, HARNESS_AUDIT);
-  const configFile = join(shotDir, "config.json");
+  const configFile = join(run.appDir, CONFIG_FILE);
   // A run that fails before writing anything mustn't return the last run's screenshots.
   const resultPath = join(run.appDir, RESULT_FILE);
   for (const old of [resultPath, ...run.shots.map((s) => join(run.outDir, s.file))]) rmSync(old, { force: true });
 
-  let cancelExitHook = () => {};
+  const removeHarness = () => {
+    for (const file of [testFile, hooksFile, httpFile, auditFile, configFile]) rmSync(file, { force: true });
+  };
+  // Ctrl+C or a closed console ends Motif without the finally below: the files go with the process tree.
+  let cancelExitHook = onExit(removeHarness);
   let timer: Timer | undefined;
   try {
     writeFileSync(testFile, HARNESS_SOURCE);
@@ -369,7 +386,7 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
     writeFileSync(hooksFile, run.hooks ?? hooksSource(defaultHooks(run.appDir, pkg)));
     writeFileSync(configFile, JSON.stringify({ ...run.config, outDir: resolve(run.outDir), resultPath, fonts, shots: run.shots }));
     const command = run.command ?? [flutter, "test"];
-    const proc = Bun.spawn([...command, HARNESS_TEST, "--reporter", "expanded", `--dart-define=MOTIF_SHOT_CONFIG=${configFile}`], {
+    const proc = Bun.spawn([...command, ...harnessArgs()], {
       cwd: run.appDir,
       env: withNoProxy(process.env),
       stdin: "ignore",
@@ -379,7 +396,11 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
       detached: process.platform !== "win32",
       windowsHide: true,
     });
-    cancelExitHook = onExit(() => killTree(proc.pid, true));
+    cancelExitHook();
+    cancelExitHook = onExit(() => {
+      killTree(proc.pid, true);
+      removeHarness();
+    });
     const out = collect(proc.stdout);
     const err = collect(proc.stderr);
     const timedOut = await new Promise<boolean>((done) => {
@@ -410,10 +431,6 @@ export async function runHarness(run: HarnessRun): Promise<HarnessResult> {
   } finally {
     clearTimeout(timer);
     cancelExitHook();
-    rmSync(testFile, { force: true });
-    rmSync(hooksFile, { force: true });
-    rmSync(httpFile, { force: true });
-    rmSync(auditFile, { force: true });
-    rmSync(configFile, { force: true });
+    removeHarness();
   }
 }

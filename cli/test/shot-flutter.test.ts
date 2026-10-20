@@ -8,6 +8,7 @@ import { googleFamilies, resolvedPackages } from "../src/stacks/flutter/google";
 import { HOOKS_FILE } from "../src/stacks/flutter/hooks";
 import { findScreen, readHttpFixtures, screenSlug } from "../src/stacks/flutter/inputs";
 import { FLUTTER_VARIANT_HOW, screenNotes, shootFlutter } from "../src/stacks/flutter/shot";
+import { fontFileScripts, scriptName } from "../src/stacks/flutter/scripts";
 import type { NativeShotOptions } from "../src/stacks/native";
 import { partnerTokens } from "./helpers";
 import { makeProject } from "./project";
@@ -809,5 +810,25 @@ describe("final review: each Flutter app of a monorepo has its own setup (Import
     );
     const http = makeProject({ "a/design/states/http.json": JSON.stringify({ "GET /x": "../../secrets.json" }), "a/secrets.json": "{}" });
     expect(readHttpFixtures(http, join(http, "a"))).toEqual({ error: 'a/design/states/http.json: "GET /x" answers with ../../secrets.json, which isn\'t under design/.' });
+  });
+});
+
+describe("final review: text no loaded font has letters for (Important #3, hands-on #12)", () => {
+  test("which scripts a font file has, from its cmap: Noto Naskh Arabic has Arabic; a file that isn't a font has none", () => {
+    const naskh = readFileSync(join(import.meta.dir, "fixtures", "flutter-min", "assets", "fonts", "NotoNaskhArabic.ttf"));
+    expect(fontFileScripts(naskh)).toEqual(["arabic"]);
+    expect(fontFileScripts(new Uint8Array([0, 1, 0, 0, 0, 0]))).toEqual([]);
+    expect(scriptName("arabic")).toBe("Arabic");
+  });
+
+  test("one note per script and family, naming its screens; google_fonts' Family_700 is the family", () => {
+    const notes = screenNotes([
+      { route: "/profile", noScriptFont: [{ script: "arabic", family: "Onest_regular" }, { script: "arabic", family: "Onest_700" }] },
+      { route: "/settings", noScriptFont: [{ script: "arabic", family: "Onest_regular" }, { script: "hebrew", family: "Roboto" }] },
+    ]);
+    expect(notes).toEqual([
+      "/profile and /settings: Arabic text in Onest has no Arabic font loaded, so it draws as boxes here (a phone would use a system font). Add an Arabic companion to the type role (fontFamilyFallback).",
+      "/settings: Hebrew text in Roboto has no Hebrew font loaded, so it draws as boxes here (a phone would use a system font). Add a Hebrew companion to the type role (fontFamilyFallback).",
+    ]);
   });
 });

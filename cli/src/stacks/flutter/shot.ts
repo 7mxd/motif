@@ -19,6 +19,7 @@ import { iconName, sdkIconNames } from "./icons";
 import { findScreen, HTTP_FILE, readHttpFixtures, readSetup, readState, screenSlug, statesFile, type HttpRoute, type StatesFile } from "./inputs";
 import { dependsOn, importFor, packageName } from "./project";
 import { libDartFiles } from "./routes";
+import { scriptName } from "./scripts";
 import { FLUTTER_INSTALL } from "./doctor";
 
 /** How Motif sets a design variant on a Flutter app, for the note when a variant looks exactly like the default. */
@@ -93,6 +94,8 @@ interface RawScreen {
   missingFonts?: string[];
   /** Fallback families (fontFamilyFallback) asked for by text beyond Latin that Motif didn't load. */
   missingFallbacks?: string[];
+  /** Text in a script that no family of its style (loaded, all of them) has letters for: boxes here. */
+  noScriptFont?: { script: string; family: string }[];
   texts?: string[];
   /** How many failing texts the contrast check left out: something is drawn over them, or they're over an image the screenshot doesn't show. */
   covered?: number;
@@ -203,6 +206,25 @@ export function screenNotes(screens: RawScreen[], httpFile = HTTP_FILE): string[
   for (const [family, routes] of fallbacks) {
     notes.push(
       `Text on ${andList(routes)} needs the fallback font ${family} for letters its main font lacks (Arabic, say), but Motif couldn't load it, so those letters are drawn as boxes (bundle it in pubspec.yaml, or see the font notes).`,
+    );
+  }
+  // Arabic in a Latin-only font with no Arabic fallback: a phone draws it with a system font, flutter test can't. One
+  // note per script and family, naming its screens.
+  const uncovered = new Map<string, { script: string; family: string; routes: string[] }>();
+  for (const s of screens) {
+    for (const { script, family } of s.noScriptFont ?? []) {
+      const name = familyName(family);
+      const key = `${script} ${name}`;
+      const entry = uncovered.get(key) ?? { script, family: name, routes: [] };
+      if (!entry.routes.includes(s.route)) entry.routes.push(s.route);
+      uncovered.set(key, entry);
+    }
+  }
+  for (const { script, family, routes } of uncovered.values()) {
+    const name = scriptName(script);
+    const a = /^[AEIOU]/.test(name) ? "an" : "a";
+    notes.push(
+      `${andList(routes)}: ${name} text in ${family} has no ${name} font loaded, so it draws as boxes here (a phone would use a system font). Add ${a} ${name} companion to the type role (fontFamilyFallback).`,
     );
   }
   return notes;

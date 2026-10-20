@@ -111,6 +111,15 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     expect(JSON.stringify(r.data.notes ?? [])).not.toContain("doesn't offer ar");
   }, 600_000);
 
+  test.skipIf(!flutter)("--rtl he on an app that offers only English and Arabic says so, and still takes the screenshots (skipped without Flutter)", async () => {
+    const r = await shot({ routes: "/", sizes: "390", rtl: "he", variant: "default" });
+    if (r.exitCode !== 0) console.log(r.text);
+    expect(r.exitCode).toBe(0);
+    expect(r.data.shots).toEqual(["design/shots/index.mobile.png", "design/shots/index.mobile.rtl.png", "design/shots/index.mobile.dark.png", "design/shots/index.mobile.rtl.dark.png"]);
+    expect(r.data.notes).toContain("This app doesn't offer he (supportedLocales), so its RTL screenshots show it left to right.");
+    expect(JSON.stringify(r.data.notes ?? [])).not.toContain("draws as boxes");
+  }, 600_000);
+
   test.skipIf(!flutter)("--audit finds /audit's pale caption, its small icon button with no name, and its icon that keeps turning (skipped without Flutter)", async () => {
     // An audit with no --variant checks every variant, as on the web.
     const r = await shot({ routes: "/audit", sizes: "390", audit: true });
@@ -161,6 +170,10 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
       const notes = (r.data.notes ?? []) as string[];
       expect(notes.filter((n) => n.includes("fallback font"))).toEqual([
         "Text on FallbackScreen needs the fallback font NoSuchArabic for letters its main font lacks (Arabic, say), but Motif couldn't load it, so those letters are drawn as boxes (bundle it in pubspec.yaml, or see the font notes).",
+      ]);
+      // Roboto has Cyrillic letters but no Arabic ones (final review, Important #3; hands-on #12).
+      expect(notes.filter((n) => n.includes("draws as boxes here"))).toEqual([
+        "FallbackScreen: Arabic text in Roboto has no Arabic font loaded, so it draws as boxes here (a phone would use a system font). Add an Arabic companion to the type role (fontFamilyFallback).",
       ]);
     } finally {
       rmSync(join(app, "lib", "fallback_screen.dart"), { force: true });
@@ -455,6 +468,9 @@ class FallbackScreen extends StatelessWidget {
           Text('مرحبا', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: ['NotoNaskhArabic'])),
           Text('أهلا', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: ['NoSuchArabic'])),
           Text('Hello', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: ['NoSuchLatin'])),
+          // A Latin-only font with no Arabic fallback: a phone would use a system font, flutter test draws boxes.
+          Text('العربية', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: [])),
+          Text('Русский', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: [])),
         ],
       ),
     );

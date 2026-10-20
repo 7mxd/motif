@@ -252,6 +252,8 @@ describe("Maktaba and its seeded copy, drawn by flutter test", () => {
     expect((r.data.shots as string[]).length).toBe(5 * 8);
     expect(JSON.stringify(r.data.notes ?? [])).not.toContain("Requests nothing answered");
     expect(JSON.stringify(r.data.notes ?? [])).not.toContain("drawn as boxes");
+    // Its Arabic text has its companion font in every style (final review, Important #3).
+    expect(JSON.stringify(r.data.notes ?? [])).not.toContain("draws as boxes");
     expect(r.data.findings).toEqual([]);
     expect(r.exitCode).toBe(0);
   }, 600_000);

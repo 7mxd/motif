@@ -1,12 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   bundledFonts,
   googleFontFiles,
   GRACE_MS,
   flutterTail,
   HARNESS_TEST,
+  harnessArgs,
   isFontFile,
   RESULT_FILE,
   runHarness,
@@ -273,4 +274,52 @@ describe("flutterTail", () => {
     expect(flutterTail(output)).toBe("00:01 +0: loading\nlib/main.dart:3:1: Error: Expected ';' after this.");
     expect(flutterTail(Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n")).split("\n")).toHaveLength(20);
   });
+});
+
+describe("final review: the harness's arguments, its fonts' scripts, and Ctrl+C (Minor #6, #7; Important #3)", () => {
+  const shot = { file: "home.mobile.png", route: "/", width: 390, height: 844, dpr: 2, dark: false, locale: "en" };
+  const arabic = resolve(import.meta.dir, "fixtures", "flutter-min", "assets", "fonts", "NotoNaskhArabic.ttf");
+
+  test("the config is passed relative to the app (flutter.bat breaks a path with & in it), and each font says which scripts it has", async () => {
+    const app = join(tempDir("motif-app-"), "Tom & Jerry");
+    mkdirSync(join(app, "fonts"), { recursive: true });
+    writeFileSync(join(app, "fonts", "Naskh.ttf"), readFileSync(arabic));
+    writeFileSync(join(app, "pubspec.yaml"), "name: fake_app\nflutter:\n  fonts:\n    - family: Naskh\n      fonts:\n        - asset: fonts/Naskh.ttf\n");
+    // A stand-in for flutter test: says what it was given, from where, and reads the config as the harness does.
+    const script = join(app, "..", "args.ts");
+    writeFileSync(
+      script,
+      `const config = JSON.parse(await Bun.file(process.argv.at(-1)!.split("=").slice(2).join("=")).text());
+await Bun.write(${JSON.stringify(join(app, "..", "seen.json"))}, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), fonts: config.fonts }));`,
+    );
+    const r = await runHarness({ appDir: app, outDir: join(app, "shots"), shots: [shot], googleFonts: [], timeoutMs: 20_000, flutter: join(app, "no-sdk", "bin", "flutter"), command: [process.execPath, script] });
+    if (r.code !== 0) console.log(r.output);
+    expect(r.code).toBe(0);
+    const seen = JSON.parse(readFileSync(join(app, "..", "seen.json"), "utf8"));
+    expect(harnessArgs()).toEqual([".motif/shot/motif_shot_test.dart", "--reporter", "expanded", "--dart-define=MOTIF_SHOT_CONFIG=.motif/shot/config.json"]);
+    expect(seen.args).toEqual(harnessArgs());
+    expect(resolve(seen.cwd)).toBe(resolve(app));
+    expect(seen.fonts).toEqual([{ family: "Naskh", files: [join(app, "fonts", "Naskh.ttf")], scripts: ["arabic"] }]);
+  }, 30_000);
+
+  test("Motif stopped mid-run (Ctrl+C) removes the harness, its hooks and its config, not only flutter test", async () => {
+    const app = tempDir("motif-app-");
+    writeFileSync(join(app, "pubspec.yaml"), "name: fake_app\n");
+    const slow = join(app, "slow.ts");
+    writeFileSync(slow, `await Bun.write(${JSON.stringify(join(app, "started"))}, "1"); await Bun.sleep(60000);`);
+    // Motif itself, stopped while flutter test runs: Ctrl+C ends it through process.exit, which runs the exit hooks.
+    const motif = join(app, "motif.ts");
+    const harness = resolve(import.meta.dir, "..", "src", "stacks", "flutter", "harness.ts");
+    writeFileSync(
+      motif,
+      `import { runHarness } from ${JSON.stringify(harness)};
+const started = ${JSON.stringify(join(app, "started"))};
+setInterval(() => { if (require("node:fs").existsSync(started)) process.exit(130); }, 100);
+await runHarness({ appDir: ${JSON.stringify(app)}, outDir: ${JSON.stringify(join(app, "shots"))}, shots: [${JSON.stringify(shot)}], googleFonts: [], timeoutMs: 60000, flutter: ${JSON.stringify(join(app, "no-sdk", "bin", "flutter"))}, command: [process.execPath, ${JSON.stringify(slow)}] });`,
+    );
+    const proc = Bun.spawn([process.execPath, motif], { stdout: "pipe", stderr: "pipe" });
+    expect(await proc.exited).toBe(130);
+    expect(existsSync(join(app, "started"))).toBe(true);
+    expect(readdirSync(join(app, ".motif", "shot"))).toEqual([]);
+  }, 30_000);
 });
