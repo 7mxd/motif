@@ -95,7 +95,7 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
   }
 
   // Each native stack's toolchain (Flutter's SDK), once however many of its apps there are.
-  for (const id of new Set(apps.map((a) => a.stack))) items.push(...(nativeStack(id)?.doctor?.(deps) ?? []));
+  for (const id of new Set(apps.map((a) => a.stack))) items.push(...(nativeStack(id)?.doctor?.(deps, { root: cwd, apps: apps.filter((a) => a.stack === id) }) ?? []));
 
   const hasGuide = existsSync(join(cwd, "DESIGN.md")) && existsSync(join(cwd, "design", "tokens.json"));
   if (!hasGuide) {

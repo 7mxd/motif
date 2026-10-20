@@ -8,6 +8,7 @@ import type { ThemeSet } from "../generate/theme";
 import type { AuditIssue } from "../shot/audit";
 import type { RouteResult, StateScript, Viewport } from "../shot/capture";
 import { FLUTTER } from "./flutter";
+import { REACT_NATIVE } from "./react-native";
 
 export interface NativeShotOptions {
   root: string;
@@ -68,10 +69,10 @@ export interface NativeStack {
   variantHow?: string;
   /** The pages of the app, for motif shot without --routes. */
   routes?(appDir: string): { routes: string[]; skipped: string[] };
-  doctor?(deps: DoctorDeps): DoctorItem[];
+  doctor?(deps: DoctorDeps, ctx?: { root: string; apps: AppInfo[] }): DoctorItem[];
 }
 
-const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER]]);
+const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER], [REACT_NATIVE.id, REACT_NATIVE]]);
 
 /** Every native stack Motif has, registered. */
 export function nativeStacks(): NativeStack[] {

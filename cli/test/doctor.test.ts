@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runDoctor, type DoctorDeps, type DoctorItem } from "../src/commands/doctor";
 import { copyFixture } from "./helpers";
+import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -225,5 +226,49 @@ describe("runDoctor: a guide git ignores (Task 15 wave B, #10)", () => {
     expect(item((await runDoctor(dir, deps({ run }))).data.items as DoctorItem[], "git")).toBeUndefined();
     run(["git", "-C", dir, "init", "-q"]);
     expect(item((await runDoctor(dir, deps({ run }))).data.items as DoctorItem[], "git")).toBeUndefined();
+  });
+
+  describe("the Expo web target", () => {
+    const expoApp = (deps: Record<string, string>, installed?: string) =>
+      makeProject({
+        "package.json": JSON.stringify({ dependencies: deps }),
+        ...(installed ? { "node_modules/expo/package.json": JSON.stringify({ version: installed }) } : {}),
+      });
+    const rnItem = async (dir: string) => item((await runDoctor(dir, deps())).data.items as DoctorItem[], "expo-web");
+    const web = { "react-dom": "19", "react-native-web": "0.21", "@expo/metro-runtime": "6" };
+
+    test("is ok with the SDK and the web packages", async () => {
+      const it = await rnItem(expoApp({ expo: "~54.0.1", ...web }, "54.0.12"));
+      expect(it).toEqual({ id: "expo-web", status: "ok", label: "Expo web target", detail: "Expo SDK 54, with the web target's packages." });
+    });
+
+    test("asks for the missing web packages", async () => {
+      const it = await rnItem(expoApp({ expo: "~54.0.1", "react-dom": "19" }, "54.0.12"));
+      expect(it).toEqual({
+        id: "expo-web", status: "needed", label: "Expo web target",
+        detail: "The web target needs react-dom, react-native-web and @expo/metro-runtime for screenshots: npx expo install react-dom react-native-web @expo/metro-runtime",
+      });
+    });
+
+    test("asks to upgrade an SDK older than 52", async () => {
+      const it = await rnItem(expoApp({ expo: "~51.0.0", ...web }, "51.0.39"));
+      expect(it).toMatchObject({ id: "expo-web", status: "needed", detail: "Expo SDK 51 is older than 52, which Motif's theme code needs: npx expo install expo@latest --fix." });
+    });
+
+    test("finds an Expo app one folder down", async () => {
+      const dir = makeProject({ "package.json": "{}", "mobile/expo-app/package.json": JSON.stringify({ dependencies: { expo: "~54.0.1", ...web } }) });
+      expect(await rnItem(dir)).toMatchObject({ status: "ok", detail: "Expo SDK 54, with the web target's packages." });
+    });
+
+    test("a bare React Native app says it isn't supported, and the app line stays 'coming soon'", async () => {
+      const r = await runDoctor(expoApp({ "react-native": "0.74" }), deps());
+      const items = r.data.items as DoctorItem[];
+      expect(item(items, "expo-web")).toBeUndefined();
+      expect(item(items, "react-native")).toMatchObject({
+        status: "optional",
+        detail: "React Native without Expo isn't supported: Motif supports Expo apps (spec non-goal). Theme code, checks and drafts still work; screenshots need Expo's web target.",
+      });
+      expect(item(items, "app:.")!.detail).toContain("Full support is coming soon");
+    });
   });
 });
