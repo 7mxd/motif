@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "private": true,
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
   "dependencies": {
     "@expo-google-fonts/onest": "^0.4.2",
     "@expo-google-fonts/readex-pro": "^0.4.1",

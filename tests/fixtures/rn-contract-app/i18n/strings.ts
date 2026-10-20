@@ -13,7 +13,6 @@ export const en = {
   inStock: "In stock",
   lowStock: "Only a few left",
   soldOut: "Sold out",
-  quantity: "Quantity",
   fewer: (name: string) => `One fewer ${name}`,
   more: (name: string) => `One more ${name}`,
   inBasket: (count: number) => `${count} in your basket`,
@@ -32,11 +31,10 @@ export const en = {
   signInTitle: "Sign in",
   signInIntro: "Sign in with your phone number to place orders and see them again.",
   phone: "Phone number",
-  phoneHelper: "We'll text you a 6-digit code.",
+  phoneHelper: "The shop calls this number if something you ordered has run out.",
   phoneError: "Enter a phone number of 8 digits.",
-  sendCode: "Send code",
-  codeSent: "We've sent a code to your phone.",
-  textRates: "Your network's usual text rates apply.",
+  continueLabel: "Continue",
+  phoneUse: "We use your number only for your orders.",
 };
 
 export const ar: typeof en = {
@@ -45,14 +43,15 @@ export const ar: typeof en = {
   onTheShelves: "على الرفوف",
   signIn: "تسجيل الدخول",
   basket: "السلة",
-  basketWith: (count: number) => (count === 1 ? "السلة، غرض واحد" : `السلة، ${count} أغراض`),
+  // Arabic counts: one, two (the dual), 3 to 10, and 11 and up.
+  basketWith: (count: number) =>
+    count === 1 ? "السلة، غرض واحد" : count === 2 ? "السلة، غرضان" : count <= 10 ? `السلة، ${count} أغراض` : `السلة، ${count} غرضًا`,
   back: "رجوع",
   addToBasket: "أضف إلى السلة",
   addNamed: (name: string) => `أضف ${name} إلى السلة`,
   inStock: "متوفر",
   lowStock: "بقي القليل",
   soldOut: "نفد",
-  quantity: "الكمية",
   fewer: (name: string) => `واحد أقل من ${name}`,
   more: (name: string) => `واحد أكثر من ${name}`,
   inBasket: (count: number) => `${count} في سلتك`,
@@ -71,11 +70,10 @@ export const ar: typeof en = {
   signInTitle: "تسجيل الدخول",
   signInIntro: "سجّل الدخول برقم هاتفك لترسل الطلبات وتراها لاحقًا.",
   phone: "رقم الهاتف",
-  phoneHelper: "سنرسل لك رمزًا من ٦ أرقام.",
+  phoneHelper: "يتصل بك الدكان على هذا الرقم إذا نفد شيء طلبته.",
   phoneError: "أدخل رقم هاتف من ٨ أرقام.",
-  sendCode: "أرسل الرمز",
-  codeSent: "أرسلنا رمزًا إلى هاتفك.",
-  textRates: "تُطبَّق أسعار الرسائل المعتادة لدى شبكتك.",
+  continueLabel: "متابعة",
+  phoneUse: "نستخدم رقمك لطلباتك فقط.",
 };
 
 function language(): string {

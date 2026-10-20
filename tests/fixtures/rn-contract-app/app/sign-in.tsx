@@ -24,7 +24,7 @@ export default function SignIn() {
     }
     setError(undefined);
     setSending(true);
-    // In memory: the code is taken as sent and the member signed in.
+    // In memory: the number is taken as checked and the member signed in.
     setTimeout(() => {
       shop.signIn();
       setSending(false);
@@ -47,8 +47,8 @@ export default function SignIn() {
           autoComplete="tel"
         />
         <View style={styles.actions}>
-          <AppButton label={strings.sendCode} onPress={send} loading={sending} />
-          <Text style={[type.caption, { color: colors.textSecondary }]}>{strings.textRates}</Text>
+          <AppButton label={strings.continueLabel} onPress={send} loading={sending} />
+          <Text style={[type.caption, { color: colors.textSecondary }]}>{strings.phoneUse}</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

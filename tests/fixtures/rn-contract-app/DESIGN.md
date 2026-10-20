@@ -83,7 +83,7 @@ Dukkan is the corner shop on your street, on your phone: look through what's on 
 
 ## 9. Do / Don't
 
-- **Do:** show prices with their currency and unit ("1.250 KWD · 1 L"), with a word beside the colour for every stock status; keep one primary action per screen.
+- **Do:** show prices with their currency, written the way the phone's language writes them ("KWD 1.250"), and the pack beside them ("1 L carton"); show a word beside the colour for every stock status; keep one primary action per screen.
 - **Don't:** use colour alone for stock; hard-code left or right.
 
 ## 10. Change log

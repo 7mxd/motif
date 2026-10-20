@@ -327,7 +327,7 @@ describe("Dukkan and its seeded copy, installed, type-checked and drawn through 
     const findings = r.data.findings as Found[];
     // What the audit says of each planted problem, in English or Arabic.
     const SHOWN: Record<string, RegExp> = {
-      "E-06": /"(Your network's usual text rates apply\.|تُطبَّق أسعار الرسائل المعتادة لدى شبكتك\.)"/,
+      "E-06": /"(We use your number only for your orders\.|نستخدم رقمك لطلباتك فقط\.)"/,
       "E-07": /^The "(Add .+ to basket|أضف .+ إلى السلة)" button is 32×32 px/,
       "E-08": /^The icon has no name/,
     };

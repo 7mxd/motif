@@ -21,7 +21,7 @@ Then run `npm ci` in the copy before `npx tsc --noEmit`, `npx expo start --web` 
 | E-03 | exact (check) | Off-scale corner `borderRadius: 10` on the basket's lines | `app/basket.tsx:75` |
 | E-04 | exact (check) | A typed `fontSize: 15` on the product's description | `app/products/[id].tsx:51` |
 | E-05 | exact (check) | A raw `Easing.bezier(0.4, 0, 0.6, 1)` in the skeleton's pulse | `components/skeleton.tsx:17` |
-| E-06 | exact (shot) | The text-rates caption faded to 50%: unreadable | `/sign-in`, `app/sign-in.tsx:51` |
+| E-06 | exact (shot) | The caption on how the phone number is used, faded to 50%: unreadable | `/sign-in`, `app/sign-in.tsx:51` |
 | E-07 | exact (shot) | 32×32 "Add to basket" buttons on every product | `/`, `components/product-row.tsx:71` |
 | E-08 | exact (shot) | A sign-in icon button with no `accessibilityLabel`, so no name | `/`, `app/index.tsx:26` |
 | E-09 | judgement | Products crammed into tight rows, the pack size gone | `/`, `components/product-row.tsx` |
