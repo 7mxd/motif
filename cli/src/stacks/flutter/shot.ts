@@ -94,6 +94,9 @@ interface RawScreen {
   /** Fallback families (fontFamilyFallback) asked for by text beyond Latin that Motif didn't load. */
   missingFallbacks?: string[];
   texts?: string[];
+  /** How many failing texts the contrast check left out: something is drawn over them, or they're over an image the screenshot doesn't show. */
+  covered?: number;
+  overImages?: number;
   /** Why the audit couldn't finish on this screen. */
   auditError?: string;
 }
@@ -171,7 +174,14 @@ const familyName = (f: string) => f.replace(/_(regular|italic|[1-9]00(italic)?)$
 /** Notes from what the screens collected: requests nothing answered, images drawn blank, fonts and fallback fonts drawn as boxes. */
 export function screenNotes(screens: RawScreen[]): string[] {
   const notes: string[] = [];
+  const texts = (n: number) => (n === 1 ? "1 text" : `${n} texts`);
   for (const s of screens) {
+    // A screen the contrast check couldn't fully judge says so, so nobody takes it as clean.
+    const skipped = [
+      ...(s.covered ? [`${texts(s.covered)} something is drawn over (a floating bar, a dialog's barrier)`] : []),
+      ...(s.overImages ? [`${texts(s.overImages)} over an image the screenshot doesn't show`] : []),
+    ];
+    if (skipped.length) notes.push(`Contrast on ${s.route} wasn't judged for ${andList(skipped)}: check them by eye.`);
     if (s.unanswered?.length) notes.push(`Requests nothing answered on ${s.route}: ${s.unanswered.join(", ")}. Add them to ${HTTP_FILE}.`);
     if (s.blankImages?.length) notes.push(`Images nothing answered on ${s.route} were drawn blank: ${s.blankImages.join(", ")}. Add them to ${HTTP_FILE} to show them.`);
   }

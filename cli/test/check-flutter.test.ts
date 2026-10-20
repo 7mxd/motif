@@ -126,6 +126,12 @@ describe("motif check on a Flutter app", () => {
     const both = await check(two);
     expect(where(both)).toEqual(["raw-color mobile/packages/core/lib/card.dart:3:35"]);
     expect((both.data as any).summary.files).toBe(3);
+
+    // Both apps expect the one generated file: edited by hand, it is one warning, not one per app.
+    const theme = join(two, shared, "motif_theme.dart");
+    writeFileSync(theme, readFileSync(theme, "utf8").replace("Color(0x", "Color(0x1"));
+    const edited = await check(two);
+    expect((edited.data.warnings as any[]).map((w) => [w.rule, w.file])).toEqual([["generated-edited", `${shared}/motif_theme.dart`]]);
   });
 
   test("paths with no Dart files: the message names .dart", async () => {

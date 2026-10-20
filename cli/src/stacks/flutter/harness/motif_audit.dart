@@ -37,11 +37,25 @@ class Pixels {
   }
 }
 
+/// The texts the contrast check failed but left out, by what they say: [covered] had something drawn over them,
+/// [overImages] were over an image the screenshot doesn't show. A screen's note counts them.
+class NotJudged {
+  final Set<String> covered = {};
+  final Set<String> overImages = {};
+}
+
 /// The audit's checks on a screen as it is now: contrast, names and targets, as asked. [blankImages] are the image
-/// requests the harness answered with a blank picture ("GET <url>"): text over them isn't judged.
-List<Issue> auditScreen(RenderView view, Set<String> checks, Pixels? pixels, {Set<String> blankImages = const {}}) {
+/// requests the harness answered with a blank picture ("GET <url>"): text over them isn't judged, and goes in
+/// [notJudged] with text something is drawn over.
+List<Issue> auditScreen(
+  RenderView view,
+  Set<String> checks,
+  Pixels? pixels, {
+  Set<String> blankImages = const {},
+  NotJudged? notJudged,
+}) {
   final issues = <Issue>[];
-  if (checks.contains('contrast') && pixels != null) issues.addAll(_contrast(view, pixels, blankImages));
+  if (checks.contains('contrast') && pixels != null) issues.addAll(_contrast(view, pixels, blankImages, notJudged ?? NotJudged()));
   if (checks.contains('names') || checks.contains('targets')) {
     issues.addAll(_tappables(view, names: checks.contains('names'), targets: checks.contains('targets')));
   }
@@ -89,14 +103,14 @@ Future<Issue?> stillMoving(WidgetTester tester) async {
 /// colour against the colour most common under it in the screenshot. Not judged: text something else is drawn over (a
 /// floating tab bar), text over an image the harness couldn't draw, and text with no letters or digits (a "·" between
 /// two facts), as axe-core leaves text of only symbols and punctuation unjudged on the web.
-List<Issue> _contrast(RenderView view, Pixels pixels, Set<String> blankImages) {
+List<Issue> _contrast(RenderView view, Pixels pixels, Set<String> blankImages, NotJudged notJudged) {
   final dpr = view.flutterView.devicePixelRatio;
   final undrawn = _undrawnImages(view, blankImages);
   final out = <Issue>[];
   void visit(RenderObject o) {
     Issue? issue;
-    if (o is RenderParagraph) issue = _textContrast(view, o, o.text, o.textScaler, pixels, dpr, undrawn);
-    if (o is RenderEditable && o.text != null) issue = _textContrast(view, o, o.text!, o.textScaler, pixels, dpr, undrawn);
+    if (o is RenderParagraph) issue = _textContrast(view, o, o.text, o.textScaler, pixels, dpr, undrawn, notJudged);
+    if (o is RenderEditable && o.text != null) issue = _textContrast(view, o, o.text!, o.textScaler, pixels, dpr, undrawn, notJudged);
     if (issue != null) out.add(issue);
     o.visitChildren(visit);
   }
@@ -179,11 +193,20 @@ bool _paintsAt(RenderObject root, Offset point) {
   return found;
 }
 
-/// True for render objects that draw something over what's under them.
+/// Painters that draw no fill a text could be under: a shape's border (Material draws one around everything it holds,
+/// even a transparent Material with no side), and the overscroll glow, which shows only while a list is pulled.
+const Set<String> _strokeOnlyPainters = {'_ShapeBorderPainter', '_GlowingOverscrollIndicatorPainter'};
+
+bool _fills(CustomPainter? painter) => painter != null && !_strokeOnlyPainters.contains(painter.runtimeType.toString());
+
+/// True for render objects that draw something over what's under them. Text counts only when it has characters to
+/// draw: an empty text field draws nothing over its own hint and label, which it is hit-tested before.
 bool _paints(RenderObject o) {
-  if (o is RenderParagraph || o is RenderEditable || o is RenderBackdropFilter) return true;
+  if (o is RenderParagraph) return o.text.toPlainText().trim().isNotEmpty;
+  if (o is RenderEditable) return (o.text?.toPlainText().trim() ?? '').isNotEmpty;
+  if (o is RenderBackdropFilter) return true;
   if (o is RenderImage) return o.image != null;
-  if (o is RenderCustomPaint) return o.painter != null || o.foregroundPainter != null;
+  if (o is RenderCustomPaint) return _fills(o.painter) || _fills(o.foregroundPainter);
   if (o is RenderPhysicalModel) return o.color.a > 0;
   if (o is RenderPhysicalShape) return o.color.a > 0;
   if (o is RenderDecoratedBox) {
@@ -285,7 +308,16 @@ _Style? _mainStyle(InlineSpan root, TextScaler scaler, {bool marks = false}) {
   return main;
 }
 
-Issue? _textContrast(RenderView view, RenderBox box, InlineSpan text, TextScaler scaler, Pixels pixels, double dpr, List<Rect> undrawn) {
+Issue? _textContrast(
+  RenderView view,
+  RenderBox box,
+  InlineSpan text,
+  TextScaler scaler,
+  Pixels pixels,
+  double dpr,
+  List<Rect> undrawn,
+  NotJudged notJudged,
+) {
   if (!box.hasSize) return null;
   final raw = text.toPlainText();
   final plain = _plain(raw);
@@ -314,8 +346,15 @@ Issue? _textContrast(RenderView view, RenderBox box, InlineSpan text, TextScaler
   if (ratio >= expected) return null;
   // What the screenshot shows there isn't the text on its background: something is drawn over it, or the image under
   // it wasn't drawn.
-  if (undrawn.any((r) => r.contains(rect.center))) return null;
-  if (_covered(view, box, rect)) return null;
+  final which = icon?.code ?? plain;
+  if (undrawn.any((r) => r.contains(rect.center))) {
+    notJudged.overImages.add(which);
+    return null;
+  }
+  if (_covered(view, box, rect)) {
+    notJudged.covered.add(which);
+    return null;
+  }
   final element = _creator(box);
   if (icon != null) {
     final label = icon.widget == null ? '' : ((icon.widget!.widget as Icon).semanticLabel ?? '');

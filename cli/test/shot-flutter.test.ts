@@ -7,7 +7,7 @@ import { HARNESS_AUDIT, HARNESS_HTTP, HARNESS_TEST, RESULT_FILE, withNoProxy, ty
 import { googleFamilies, resolvedPackages } from "../src/stacks/flutter/google";
 import { HOOKS_FILE } from "../src/stacks/flutter/hooks";
 import { findScreen, readHttpFixtures, screenSlug } from "../src/stacks/flutter/inputs";
-import { FLUTTER_VARIANT_HOW, shootFlutter } from "../src/stacks/flutter/shot";
+import { FLUTTER_VARIANT_HOW, screenNotes, shootFlutter } from "../src/stacks/flutter/shot";
 import type { NativeShotOptions } from "../src/stacks/native";
 import { partnerTokens } from "./helpers";
 import { makeProject } from "./project";
@@ -530,6 +530,13 @@ describe("the audit and states on a Flutter app", () => {
         shot: "design/shots/index.mobile.png",
         status: "open",
       },
+    ]);
+  });
+
+  test("a screen whose contrast check left texts out says how many, and why, so it isn't taken as clean", () => {
+    expect(screenNotes([{ route: "/", covered: 1 }, { route: "/offers", covered: 2, overImages: 3 }, { route: "/clean" }])).toEqual([
+      "Contrast on / wasn't judged for 1 text something is drawn over (a floating bar, a dialog's barrier): check them by eye.",
+      "Contrast on /offers wasn't judged for 2 texts something is drawn over (a floating bar, a dialog's barrier) and 3 texts over an image the screenshot doesn't show: check them by eye.",
     ]);
   });
 

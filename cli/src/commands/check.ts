@@ -142,7 +142,8 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   }
   const violations = results.flatMap((r) => r.violations);
   const exceptions: ExceptionHit[] = results.flatMap((r) => r.exceptions);
-  const warnings = results.flatMap((r) => r.warnings);
+  // Two apps sharing a theme folder expect the same generated file: one warning for it, not one per app.
+  const warnings = [...new Map(results.flatMap((r) => r.warnings).map((w) => [`${w.rule}|${w.file}`, w])).values()];
   const files = results.reduce((n, r) => n + r.files, 0);
   const filesWithProblems = new Set(violations.map((v) => v.file)).size;
   const allowed = exceptions.length ? ` (${exceptions.length} allowed with a reason)` : "";

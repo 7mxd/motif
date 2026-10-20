@@ -258,6 +258,10 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
       // The same pale text is a problem in the open, and not under the bar drawn over it or over an image the harness
       // drew blank.
       expect(byLabel("Open caption")).toHaveLength(1);
+      expect(byLabel("Ink caption")).toHaveLength(1);
+      expect(byLabel("Rounded ink caption")).toHaveLength(1);
+      expect(byLabel("Pale hint")).toHaveLength(1);
+      expect(byLabel("Pale label")).toHaveLength(1);
       expect(byLabel("Covered caption")).toEqual([]);
       expect(byLabel("Glass caption")).toEqual([]);
       expect(byLabel("Photo caption")).toEqual([]);
@@ -268,6 +272,11 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
       // button does, and its finding names the screen it's on, not the app around it.
       const names = issues.filter((i) => i.rule === "name");
       expect(names.map((i) => [i.kind, i.selector])).toEqual([["button", "AppScope > TapToDismiss > MinApp > HandsOnScreen"]]);
+
+      // The screen says what the contrast check left out.
+      expect((r.data.notes as string[]).filter((n) => n.startsWith("Contrast on"))).toEqual([
+        "Contrast on HandsOnScreen wasn't judged for 2 texts something is drawn over (a floating bar, a dialog's barrier) and 1 text over an image the screenshot doesn't show: check them by eye.",
+      ]);
 
       // In the review, the icons are one finding about icons, named by Flutter's own names.
       const review = JSON.parse(readFileSync(join(app, "design", "shots", "audit.json"), "utf8"));
@@ -320,6 +329,31 @@ class HandsOnScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 const Text('Open caption', style: pale),
+                // Ink laid over a card: a transparent Material draws only its (empty) border, so the text under it
+                // is judged.
+                for (final material in [
+                  const Material(type: MaterialType.transparency),
+                  Material(color: Colors.transparent, borderRadius: BorderRadius.circular(12)),
+                ])
+                  SizedBox(
+                    height: 48,
+                    child: Stack(
+                      children: [
+                        Text(material.type == MaterialType.transparency ? 'Ink caption' : 'Rounded ink caption', style: pale),
+                        Positioned.fill(
+                          child: Material(
+                            type: material.type,
+                            color: material.color,
+                            borderRadius: material.borderRadius,
+                            child: Semantics(label: 'Open the card', child: InkWell(onTap: () {})),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                // An empty field draws nothing over its own hint and resting label.
+                const TextField(decoration: InputDecoration(hintText: 'Pale hint', hintStyle: pale)),
+                const TextField(decoration: InputDecoration(labelText: 'Pale label', labelStyle: pale)),
                 const SizedBox(height: 16),
                 SizedBox(
                   height: 120,

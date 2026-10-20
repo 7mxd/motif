@@ -17,7 +17,7 @@
 // motifState if the shot has one, and draws the PNG; with checks, it audits what it drew (motif_audit.dart).
 // It writes resultPath: { "screens": [{ "route", "shots": [file], "errors": [text], "unreachable"?, "landedOn"?,
 // "unanswered": ["GET <url>"], "blankImages": ["GET <url>"], "missingFonts": [family], "missingFallbacks": [family],
-// "auditError"?, "texts"? }],
+// "covered"?: count, "overImages"?: count, "auditError"?, "texts"? }],
 // "shots": [{ "file", "error"? }], "issues": [{ rule, selector, label, kind, …, "route", "file", "size", "scheme",
 // "variant"?, "state"?, "rtl"? }], "notes": [text] }.
 import 'dart:async';
@@ -157,6 +157,7 @@ class _Screen {
   final Set<String> missingFonts = {};
   final Set<String> missingFallbacks = {};
   final Set<String> texts = {};
+  final NotJudged notJudged = NotJudged();
   String? auditError;
 
   Map<String, Object?> toJson(bool debug) => {
@@ -169,6 +170,8 @@ class _Screen {
     'blankImages': blankImages.toList(),
     'missingFonts': missingFonts.toList(),
     'missingFallbacks': missingFallbacks.toList(),
+    if (notJudged.covered.isNotEmpty) 'covered': notJudged.covered.length,
+    if (notJudged.overImages.isNotEmpty) 'overImages': notJudged.overImages.length,
     if (auditError != null) 'auditError': auditError,
     if (debug) 'texts': texts.toList(),
   };
@@ -383,7 +386,7 @@ Future<List<Issue>> _capture(
 
   final issues = <Issue>[];
   try {
-    issues.addAll(auditScreen(view, checks, pixels, blankImages: run.screen.blankImages));
+    issues.addAll(auditScreen(view, checks, pixels, blankImages: run.screen.blankImages, notJudged: run.screen.notJudged));
     // Last, as it lets the screen run on for two seconds.
     if (checks.contains('motion')) {
       final moving = await stillMoving(tester);

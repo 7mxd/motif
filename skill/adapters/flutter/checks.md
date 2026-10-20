@@ -107,7 +107,7 @@ AnimatedScale(
 From `motif shot --audit`: text measured as drawn below 4.5:1 (3:1 for large text: 24 px, or 18.66 px bold), and icons below 3:1 (an icon is a mark, not text: WCAG 1.4.11). Motif reads each piece of text's colour and the pixels behind it in the screenshot. An icon's finding names it as an icon: by its `semanticLabel`, Flutter's own name (`Icons.star`) or its code point.
 
 - Fix: use the text role the design guide pairs with that surface (`textPrimary` on `surface`, `onActionPrimary` on `actionPrimary`). If a pair itself fails, `motif validate` reports it too, and the role values need changing.
-- Text over a photo or a gradient has no single background, so it is left out; look at those screens by eye. Text in a disabled control is left out too, and so is text something else is drawn over (a floating tab bar, a dialog's barrier), text over an image the screenshot doesn't show (one that hasn't loaded, or that `design/states/http.json` doesn't answer), and text with no letters or digits (a `·` between two facts).
+- Text over a photo or a gradient has no single background, so it is left out; look at those screens by eye. Text in a disabled control is left out too, and so is text something else is drawn over (a floating tab bar, a dialog's barrier), text over an image the screenshot doesn't show (one that hasn't loaded, or that `design/states/http.json` doesn't answer), and text with no letters or digits (a `·` between two facts). A note names each screen where covered text or text over an image was left out, with how many: check those by eye.
 - Fix an icon the same way: an icon colour role with 3:1 on its surface.
 
 ```dart
