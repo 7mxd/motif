@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">ComposeMin</string>
+    <string name="home_title">Welcome home</string>
+    <string name="home_body">Your next booking is on Thursday at 10:30.</string>
+    <string name="arabic_sample" translatable="false">مرحبا بكم في التطبيق</string>
+    <string name="open_settings">Open settings</string>
+    <string name="settings_title">Settings</string>
+    <string name="notifications">Notifications</string>
+    <string name="back">Back</string>
 </resources>

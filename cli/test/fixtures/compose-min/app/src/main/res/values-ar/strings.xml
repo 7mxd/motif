@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">ComposeMin</string>
+    <string name="home_title">أهلا بك</string>
+    <string name="home_body">موعدك القادم يوم الخميس الساعة 10:30.</string>
+    <string name="open_settings">افتح الإعدادات</string>
+    <string name="settings_title">الإعدادات</string>
+    <string name="notifications">الإشعارات</string>
+    <string name="back">رجوع</string>
+</resources>
