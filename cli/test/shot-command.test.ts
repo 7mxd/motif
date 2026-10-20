@@ -521,7 +521,7 @@ describe("motif shot --variant", () => {
       const r = await runShot(makeProject({ ...NEXT_APP, ...files }), ctx({ variant: "men" }), f.deps);
       expect(r.exitCode).toBe(2);
       expect(r.data).toMatchObject({ error: "no-such-variant", variants: [] });
-      expect(r.text).toContain("This design guide has no variants.");
+      expect(r.text).toContain("This design guide has no variants. Leave out --variant to use its one look.");
       expect(f.calls.captured).toEqual([]);
     }
   });

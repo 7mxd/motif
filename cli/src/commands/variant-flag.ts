@@ -19,7 +19,7 @@ export function brokenVariants(flag: string | undefined): VariantRefusal {
  * and shot so both say it the same way.
  */
 export function variantRefusal(who: string, flag: string, ids: string[]): VariantRefusal | null {
-  if (ids.length === 0) return { exitCode: 2, text: `${who} has no variants.`, data: { error: "no-such-variant", variant: flag, variants: [] } };
+  if (ids.length === 0) return { exitCode: 2, text: `${who} has no variants. Leave out --variant to use its one look.`, data: { error: "no-such-variant", variant: flag, variants: [] } };
   if (flag !== "all" && !ids.includes(flag)) {
     const list = ids.map((id, n) => (n === 0 ? `${id} (the default)` : id)).join(", ");
     return { exitCode: 2, text: `${who} has no variant called "${flag}". Variants: ${list}.`, data: { error: "no-such-variant", variant: flag, variants: ids } };

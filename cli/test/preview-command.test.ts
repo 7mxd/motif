@@ -513,7 +513,7 @@ describe("motif preview --variant", () => {
     const r = await runPreview(project(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "men" }), f.deps);
     expect(r.exitCode).toBe(2);
     expect(r.data).toMatchObject({ error: "no-such-variant" });
-    expect(r.text).toContain("This design guide has no variants.");
+    expect(r.text).toContain("This design guide has no variants. Leave out --variant to use its one look.");
     expect(f.calls.render).toHaveLength(0);
   });
 
