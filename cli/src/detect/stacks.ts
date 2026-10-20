@@ -22,8 +22,8 @@ export const STACK_LABELS: Record<StackId, string> = {
 };
 
 /** Stacks with full support: every area of the parity checklist (docs/parity.md) is done. */
-export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web", "flutter"];
-/** The supported web stacks: motif extract reads their CSS and markup; Flutter goes through its own stack. */
+export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web", "flutter", "compose"];
+/** The supported web stacks: motif extract reads their CSS and markup; Flutter and Compose go through their own stacks. */
 export const WEB_STACKS: readonly StackId[] = ["react-web", "plain-web"];
 export const NODE_STACKS: readonly StackId[] = ["react-web", "vue", "svelte", "angular", "react-native"];
 

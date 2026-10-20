@@ -159,6 +159,17 @@ const where = (r: any) => (r.data.violations as any[]).map((h) => `${h.rule} ${h
 const only = (file: string) => (h: string) => h.includes(file);
 
 describe("motif check on a Compose app", () => {
+  test("a Compose app without a guide is sent to motif extract, which reads it (Task 15)", async () => {
+    const root = makeProject({
+      "settings.gradle.kts": 'rootProject.name = "Rafiq"\ninclude(":app")\n',
+      "app/build.gradle.kts": GRADLE,
+      [`${SRC}/MainActivity.kt`]: MAIN,
+    });
+    const r = await check(root);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("Draft one from your code with motif extract");
+  });
+
   test("reports typed colours and sizes with Kotlin fixes, and honours a reasoned motif-ok", async () => {
     const r = await check(await composeApp({ [`${SRC}/Home.kt`]: HOME, [`${SRC}/ui/theme/Color.kt`]: QUIET_COLOR_KT }));
     expect(r.exitCode).toBe(1);

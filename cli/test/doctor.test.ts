@@ -246,7 +246,7 @@ describe("runDoctor", () => {
       expect(item(got, "jdk")).toMatchObject({ status: "ok", detail: "JDK 17.0.2." });
     });
 
-    test("no Compose app means neither item, and the app line keeps its words", async () => {
+    test("no Compose app means neither item, and a Compose app has full support (Task 15)", async () => {
       const files = disk({});
       const web = copyFixture();
       writeFileSync(join(web, "package.json"), JSON.stringify({ dependencies: { react: "^19", vite: "^6" } }));
@@ -254,7 +254,7 @@ describe("runDoctor", () => {
       expect(item(none, "jdk")).toBeUndefined();
       expect(item(none, "android-sdk")).toBeUndefined();
       const got = await items(composeApp(), { which: () => "/usr/bin/java", run: () => java("17.0.12"), files });
-      expect(item(got, "app:app")).toMatchObject({ status: "optional", detail: "Jetpack Compose detected. Full support is coming soon; Motif will still help using general guidance." });
+      expect(item(got, "app:app")).toMatchObject({ status: "ok", detail: "Full support for Jetpack Compose." });
     });
   });
 
