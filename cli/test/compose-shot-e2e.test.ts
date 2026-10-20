@@ -418,6 +418,52 @@ class BrokenApp : Application() {
     });
   }, 1_200_000);
 
+  test.skipIf(!android)("a card whose text is below the screen's edge isn't called unnamed: a screen reader scrolls to it and reads its text (Task 15; skipped without a JDK and the Android SDK)", async () => {
+    // JetNews's "Popular on Jetnews" cards: only their pictures show at the bottom of the home screen, and ATF, which
+    // reads what is on the screen, found no text for them.
+    const below = `package dev.motif.composemin.ui.screens
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import dev.motif.composemin.ui.theme.ComposeMinTheme
+
+@Composable
+fun BelowTheFold() {
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        Spacer(Modifier.height(640.dp))
+        Card(onClick = {}, modifier = Modifier.fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth().height(400.dp))
+            Text("Popular this week")
+        }
+    }
+}
+
+@Preview
+@Composable
+fun BelowTheFoldPreview() {
+    ComposeMinTheme { BelowTheFold() }
+}
+`;
+    await withFiles({ "app/src/main/java/dev/motif/composemin/ui/screens/BelowTheFold.kt": below }, async () => {
+      const r = await shot({ screen: "BelowTheFoldPreview", sizes: "390", variant: "default", audit: true });
+      expect(routesOf(r.data).map((x) => [x.route, x.status, (x as { auditError?: string }).auditError ?? null])).toEqual([["BelowTheFoldPreview", 200, null]]);
+      const review = JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8"));
+      expect(review.findings.map((f: { summary: string; location: { selector: string } }) => [f.location.selector, f.summary])).toEqual([]);
+      expect(r.exitCode).toBe(0);
+    });
+  }, 1_200_000);
+
   test.skipIf(!android)("routes are audited as the app draws them: compose-min's only finding is the settings switch, which says nothing of what it switches (skipped without a JDK and the Android SDK)", async () => {
     const r = await shot({ routes: "/,/settings", sizes: "390", variant: "default", audit: true });
     expect(r.exitCode).toBe(1);

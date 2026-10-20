@@ -244,10 +244,16 @@ internal class MotifAudit(
      */
     private fun names(): List<JSONObject> {
         val ids = linkedSetOf<Int>()
-        for (result in failed(SpeakableTextPresentCheck().runCheckOnHierarchy(hierarchy))) {
-            if (result.resultId == SpeakableTextPresentCheck.RESULT_ID_MISSING_SPEAKABLE_TEXT) nodeId(result.element)?.let { ids.add(it) }
-        }
         val screen = RectF(0f, 0f, activity.window.decorView.width.toFloat(), activity.window.decorView.height.toFloat())
+        for (result in failed(SpeakableTextPresentCheck().runCheckOnHierarchy(hierarchy))) {
+            if (result.resultId != SpeakableTextPresentCheck.RESULT_ID_MISSING_SPEAKABLE_TEXT) continue
+            val id = nodeId(result.element) ?: continue
+            // ATF reads only what is on the screen. A control that runs past the screen's edge with its text in the part
+            // that's off it (a card at the bottom of a list) has that text as its name: a screen reader scrolls to it.
+            val node = merged[id]
+            if (node != null && nameOf(node).isNotBlank() && !onScreen(node, screen)) continue
+            ids.add(id)
+        }
         for (node in merged.values) {
             val c = node.config
             if (SemanticsActions.OnClick !in c && SemanticsActions.OnLongClick !in c) continue
@@ -261,6 +267,14 @@ internal class MotifAudit(
             ids.add(node.id)
         }
         return ids.mapNotNull { id -> merged[id]?.let { describe(it).put("rule", "name") } }
+    }
+
+    /** Whether all of a node is inside the screen (half a pixel's leeway): its laid-out size, not the clipped bounds. */
+    private fun onScreen(node: SemanticsNode, screen: RectF): Boolean {
+        val at = node.positionInWindow
+        val right = at.x + node.size.width
+        val bottom = at.y + node.size.height
+        return at.x >= screen.left - 0.5f && at.y >= screen.top - 0.5f && right <= screen.right + 0.5f && bottom <= screen.bottom + 0.5f
     }
 
     /** ATF's touch-target check (48 dp is its own): Motif reports targets under 44×44 dp, as on the other stacks. */
