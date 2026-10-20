@@ -251,6 +251,10 @@ describe("the Compose guide", () => {
       "No Gradle needs to be installed", "`JAVA_HOME`", "C:\\Program Files\\Android\\Android Studio\\jbr", "/Applications/Android Studio.app/Contents/jbr/Contents/Home",
       "~/.gradle/wrapper/dists/", "https://services.gradle.org/distributions/gradle-8.14.3-bin.zip", "`.sha256`", "`Expand-Archive`", "`curl.exe`",
       "bin/gradle wrapper --gradle-version 8.14.3", "`bin\\gradle.bat`", "sdk.dir=C:/Users/you/AppData/Local/Android/Sdk", "JAVA_HOME is not set",
+      // The distribution's checksum is pinned (Gradle's published .sha256), checked per shell, and kept in the wrapper's properties.
+      "bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531", "--gradle-distribution-sha256-sum bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531",
+      "Get-FileHash -Algorithm SHA256", "shasum -a 256", "sha256sum",
+      '$env:JAVA_HOME = "C:\\Program Files\\Android\\Android Studio\\jbr"', 'set "JAVA_HOME=', 'JAVA_HOME="/opt/android-studio/jbr" ./gradlew',
     ]);
   });
 
