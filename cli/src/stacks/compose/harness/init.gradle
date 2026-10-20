@@ -75,6 +75,28 @@ allprojects { project ->
             testImplementation "junit:junit:4.13.2"
             testImplementation "com.google.android.apps.common.testing.accessibility.framework:accessibility-test-framework:4.1.1"
         }
+        // The harness is a JUnit 4 test (Robolectric's runner). On the JUnit Platform (useJUnitPlatform()) Gradle finds no
+        // test in it without JUnit's vintage engine, which is added then, at the version of the app's own JUnit (Jupiter, or
+        // its junit-bom), as its test dependencies declare it: JUnit's libraries must share one version, and a later
+        // vintage engine would raise the app's Jupiter with it. With none declared, 5.13.4 is only preferred. Read once the
+        // build file has set up the test task (after it is evaluated, and after the Android plugin has made its tasks).
+        project.afterEvaluate {
+            def name = debugTests ?: firstTests
+            def test = name ? project.tasks.findByName(name) : null
+            if (!(test instanceof Test) || !(test.options instanceof org.gradle.api.tasks.testing.junitplatform.JUnitPlatformOptions)) return
+            def junit = null
+            project.configurations.each { configuration ->
+                if (!configuration.name.toLowerCase().contains("test")) return
+                configuration.dependencies.each { d ->
+                    if (junit == null && d.group in ["org.junit", "org.junit.jupiter", "org.junit.vintage"] && d.version ==~ /\d[\w.-]*/) junit = d.version
+                }
+            }
+            if (junit) {
+                project.dependencies.add("testRuntimeOnly", "org.junit.vintage:junit-vintage-engine:" + junit)
+            } else {
+                project.dependencies.add("testRuntimeOnly", "org.junit.vintage:junit-vintage-engine") { version { prefer "5.13.4" } }
+            }
+        }
         project.tasks.withType(Test).configureEach { test ->
             if (!test.name.toLowerCase().contains("unittest")) return
             test.systemProperty "motif.shot.config", new File(shotDir, "config.json").absolutePath

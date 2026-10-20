@@ -137,4 +137,14 @@ describe("the init script", () => {
     // --tests can't be given to a task that isn't a test task: the script narrows the run to the harness as --tests does.
     expect(script).toContain('setTestNameIncludePatterns(["dev.motif.shot.MotifShotTest"])');
   });
+
+  test("an app on the JUnit Platform gets JUnit's vintage engine, at its own JUnit version (final review)", () => {
+    // Only when the test task uses the platform: an app on JUnit 4 gets nothing more on its test classpath.
+    expect(script).toMatch(/test\.options instanceof org\.gradle\.api\.tasks\.testing\.junitplatform\.JUnitPlatformOptions/);
+    // The version the app's test dependencies declare for Jupiter or its BOM (checked: Jupiter 5.11.4 gave vintage 5.11.4,
+    // where a preferred 5.13.4 raised the app's Jupiter to 5.13.4 through JUnit's BOM).
+    expect(script).toContain('d.group in ["org.junit", "org.junit.jupiter", "org.junit.vintage"]');
+    expect(script).toContain('"org.junit.vintage:junit-vintage-engine:" + junit');
+    expect(script).toContain('version { prefer "5.13.4" }');
+  });
 });
