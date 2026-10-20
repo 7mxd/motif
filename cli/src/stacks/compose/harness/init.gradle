@@ -44,7 +44,10 @@ allprojects { project ->
         def shotDir = new File(motifModuleDir, ".motif/shot")
         // Before the Android plugin locks its DSL, after the module's own build file has set it.
         project.androidComponents.finalizeDsl { android ->
-            android.sourceSets.getByName("test").java.srcDir(new File(shotDir, "src"))
+            // Under java and kotlin both: AGP 9's built-in Kotlin compiles only the kotlin folders.
+            def tests = android.sourceSets.getByName("test")
+            tests.java.srcDir(new File(shotDir, "src"))
+            tests.kotlin.srcDir(new File(shotDir, "src"))
             android.testOptions.unitTests.includeAndroidResources = true
         }
         project.dependencies {

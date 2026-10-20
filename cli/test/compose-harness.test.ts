@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { DoctorDeps } from "../src/commands/doctor";
 import { gradleCommand, ROBOLECTRIC_DOWNLOAD_FAILED, splitJvmOptions } from "../src/stacks/compose/harness";
 import { composeDoctor, gradleJava } from "../src/stacks/compose/doctor";
@@ -115,5 +117,17 @@ Execution failed for task ':app:testDebugUnitTest'.
     expect(ROBOLECTRIC_DOWNLOAD_FAILED.test(CAPTURED)).toBe(true);
     expect(ROBOLECTRIC_DOWNLOAD_FAILED.test("java.lang.AssertionError: Failed to fetch maven artifact org.robolectric:android-all-instrumented:15-robolectric-13954326-i7")).toBe(true);
     expect(ROBOLECTRIC_DOWNLOAD_FAILED.test("MotifShotTest > shots FAILED\n    java.lang.IllegalStateException at MotifShotTest.kt:90")).toBe(false);
+  });
+});
+
+describe("the init script", () => {
+  const script = readFileSync(join(import.meta.dir, "../src/stacks/compose/harness/init.gradle"), "utf8");
+
+  test("adds the harness folder to the test sources for Java and Kotlin: AGP 9's built-in Kotlin compiles only the Kotlin folders (Task 15)", () => {
+    // Found on JetNews (AGP 9.3.1): with the folder only under java, compileDebugUnitTestKotlin said NO-SOURCE and nothing was drawn.
+    const dsl = script.slice(script.indexOf("finalizeDsl"), script.indexOf("project.dependencies"));
+    expect(dsl).toContain('getByName("test")');
+    expect(dsl).toMatch(/\.java\.srcDir\(new File\(shotDir, "src"\)\)/);
+    expect(dsl).toMatch(/\.kotlin\.srcDir\(new File\(shotDir, "src"\)\)/);
   });
 });
