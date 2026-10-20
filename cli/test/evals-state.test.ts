@@ -52,7 +52,7 @@ describe("the verdicts", () => {
   });
 
   test("cases not run leave their tests incomplete", () => {
-    expect(testVerdicts(state(allGraded(pass, ["c-review", "c-plain", "c-flutter"])), CASES).map((v) => v.status)).toEqual(["incomplete", "pass", "incomplete"]);
+    expect(testVerdicts(state(allGraded(pass, ["c-review", "c-plain", "c-flutter", "c-rn"])), CASES).map((v) => v.status)).toEqual(["incomplete", "pass", "incomplete"]);
   });
 });
 

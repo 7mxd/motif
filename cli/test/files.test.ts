@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { FLUTTER_IGNORES, listDartFiles, listSourceFiles } from "../src/check/files";
+import { FLUTTER_IGNORES, listDartFiles, listRnFiles, listSourceFiles } from "../src/check/files";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -132,5 +132,22 @@ describe("final review: Flutter's ignores are anchored to the app or package (Mi
 
   test("web apps keep ignoring every build/ folder, as before", () => {
     expect(paths(listSourceFiles(makeProject({ "src/build/a.ts": "x", "src/b.ts": "x" }), "."))).toEqual(["src/b.ts"]);
+  });
+});
+
+describe("listRnFiles", () => {
+  test("reads an Expo app's scripts, not native folders, build output, expo's own files or tests", () => {
+    const root = makeProject({
+      "package.json": "{}",
+      "app/index.tsx": "x", "app/_layout.tsx": "x", "components/Button.js": "x", "src/theme.ts": "x", "styles.css": "x",
+      "ios/Pods/x.js": "x", "android/app/y.js": "x", ".expo/types/router.d.ts": "x", "dist/bundle.js": "x", "web-build/a.js": "x",
+      ".motif/run/b.tsx": "x", "expo-env.d.ts": "x", "app/index.test.tsx": "x", "__tests__/a.tsx": "x", "components/__tests__/b.tsx": "x",
+    });
+    expect(paths(listRnFiles(root, "."))).toEqual(["app/_layout.tsx", "app/index.tsx", "components/Button.js", "src/theme.ts"]);
+  });
+
+  test("an app in a monorepo is listed from its folder", () => {
+    const root = makeProject({ "mobile/a/app/index.tsx": "x", "mobile/a/ios/z.js": "x", "mobile/b/app/index.tsx": "x" });
+    expect(paths(listRnFiles(root, "mobile/a"))).toEqual(["mobile/a/app/index.tsx"]);
   });
 });

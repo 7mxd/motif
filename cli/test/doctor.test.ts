@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runDoctor, type DoctorDeps, type DoctorItem } from "../src/commands/doctor";
 import { copyFixture } from "./helpers";
+import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -59,6 +60,12 @@ describe("runDoctor", () => {
     writeFileSync(join(dir, "pubspec.yaml"), "dependencies:\n  flutter:\n    sdk: flutter\n");
     const r = await runDoctor(dir, deps());
     expect(item(r.data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for Flutter." });
+  });
+
+  test("an Expo app has full support (2G Task 13)", async () => {
+    const dir = makeProject({ "package.json": JSON.stringify({ dependencies: { expo: "~54.0.1", "react-native": "0.81.5" } }) });
+    const r = await runDoctor(dir, deps());
+    expect(item(r.data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for React Native (Expo)." });
   });
 
   test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
@@ -225,5 +232,51 @@ describe("runDoctor: a guide git ignores (Task 15 wave B, #10)", () => {
     expect(item((await runDoctor(dir, deps({ run }))).data.items as DoctorItem[], "git")).toBeUndefined();
     run(["git", "-C", dir, "init", "-q"]);
     expect(item((await runDoctor(dir, deps({ run }))).data.items as DoctorItem[], "git")).toBeUndefined();
+  });
+
+  describe("the Expo web target", () => {
+    const expoApp = (deps: Record<string, string>, installed?: string) =>
+      makeProject({
+        "package.json": JSON.stringify({ dependencies: deps }),
+        ...(installed ? { "node_modules/expo/package.json": JSON.stringify({ version: installed }) } : {}),
+      });
+    const rnItem = async (dir: string) => item((await runDoctor(dir, deps())).data.items as DoctorItem[], "expo-web");
+    const web = { "react-dom": "19", "react-native-web": "0.21", "@expo/metro-runtime": "6" };
+
+    test("is ok with the SDK and the web packages", async () => {
+      const it = await rnItem(expoApp({ expo: "~54.0.1", ...web }, "54.0.12"));
+      expect(it).toEqual({ id: "expo-web", status: "ok", label: "Expo web target", detail: "Expo SDK 54, with the web target's packages." });
+    });
+
+    test("asks for the missing web packages", async () => {
+      const it = await rnItem(expoApp({ expo: "~54.0.1", "react-dom": "19" }, "54.0.12"));
+      expect(it).toEqual({
+        id: "expo-web", status: "needed", label: "Expo web target",
+        detail: "The web target needs react-dom, react-native-web and @expo/metro-runtime for screenshots: npx expo install react-dom react-native-web @expo/metro-runtime",
+      });
+    });
+
+    test("asks to upgrade an SDK older than 52", async () => {
+      const it = await rnItem(expoApp({ expo: "~51.0.0", ...web }, "51.0.39"));
+      expect(it).toMatchObject({ id: "expo-web", status: "needed", detail: "Expo SDK 51 is older than 52, which Motif's theme code needs: npx expo install expo@latest --fix." });
+    });
+
+    test("finds an Expo app one folder down", async () => {
+      const dir = makeProject({ "package.json": "{}", "mobile/expo-app/package.json": JSON.stringify({ dependencies: { expo: "~54.0.1", ...web } }) });
+      expect(await rnItem(dir)).toMatchObject({ status: "ok", detail: "Expo SDK 54, with the web target's packages." });
+    });
+
+    test("a bare React Native app is told once, in plain words, what works without Expo; the app line doesn't claim full support", async () => {
+      const r = await runDoctor(expoApp({ "react-native": "0.74" }), deps());
+      const items = r.data.items as DoctorItem[];
+      expect(item(items, "expo-web")).toBeUndefined();
+      expect(item(items, "react-native")).toBeUndefined();
+      expect(item(items, "app:.")).toMatchObject({
+        status: "optional",
+        detail: "React Native without Expo detected. Motif fully supports Expo apps; here theme code, checks and drafts work, and for screenshots, run the app on react-native-web and pass its address to motif shot --url.",
+      });
+      expect(r.text.match(/without Expo/g)).toHaveLength(1);
+      expect(r.text).not.toContain("non-goal");
+    });
   });
 });

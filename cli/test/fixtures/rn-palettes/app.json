@@ -1,0 +1,1 @@
+{ "expo": { "name": "rn-palettes", "slug": "rn-palettes", "web": { "bundler": "metro" }, "plugins": ["expo-router"] } }

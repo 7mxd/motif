@@ -29,6 +29,8 @@ Roles a variant doesn't mention keep the default's value, so leave out everythin
 
 On Flutter, a variant changes colours only: the theme code gives each variant its own colours and keeps the default's fonts, corners and motion. The app switches with `MotifTheme.light(variant: MotifVariant.women)` and the same for `dark`, from its own state ([how](../adapters/flutter/tokens.md#switching-variants)).
 
+On React Native, a variant changes colours only too. The app switches with `<MotifProvider variant="women">`, from its own state ([how](../adapters/react-native/tokens.md#switching-variants)).
+
 ## What never varies
 
 The app must still read as one brand, and every variant must be as usable as the others:

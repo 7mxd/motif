@@ -8,7 +8,7 @@ Ask one round of questions, each with choices and a default. Skip any the develo
 
 1. What is the app? (one sentence, in their words)
 2. Who is it for?
-3. Platform and stack: a web app (React, the default), a simple web page or site with no framework (plain web), a mobile app in Flutter, or another stack. Pre-fill what `motif doctor --json` found.
+3. Platform and stack: a web app (React, the default), a simple web page or site with no framework (plain web), a mobile app in Flutter or in React Native with Expo, or another stack. Pre-fill what `motif doctor --json` found.
 4. Brand: a name, a logo, colours or fonts they must use (optional).
 5. Feel: offer the 8 starting styles. Run `motif preview --gallery --png-only --out design/directions/gallery` and show the PNGs (light and dark); if you can't show images, describe each from `presets/<style>/about.md` in the skill folder. Words work too ("calm and premium").
 6. Apps or sites they like (optional; links are enough).
@@ -17,7 +17,7 @@ Save the answers in the progress file's `notes`, so a later session doesn't ask 
 
 ## 2. Scaffold
 
-- **No project yet:** create it in a new folder named after the app, with the starter in the stack guide ([React web](../adapters/react-web/README.md): Next.js by default, Vite for a single-page app; [plain web](../adapters/plain-web/README.md): a few files and no build step; [Flutter](../adapters/flutter/README.md): `flutter create --org <the developer's reverse-domain name> <app>`, which adds `flutter_test` to `dev_dependencies`; `motif shot` needs it, so add it to an existing app that lacks it). Starters need an empty folder, so the brief's files can't go first: once the project exists, move the `design/` folder from step 1 into it, and run every later command (`motif` included) from the new folder. Ask before installing anything the starter command doesn't install.
+- **No project yet:** create it in a new folder named after the app, with the starter in the stack guide ([React web](../adapters/react-web/README.md): Next.js by default, Vite for a single-page app; [plain web](../adapters/plain-web/README.md): a few files and no build step; [Flutter](../adapters/flutter/README.md): `flutter create --org <the developer's reverse-domain name> <app>`, which adds `flutter_test` to `dev_dependencies`; `motif shot` needs it, so add it to an existing app that lacks it; [React Native](../adapters/react-native/README.md): `npx create-expo-app@latest <app>`, which includes the web packages screenshots use). Starters need an empty folder, so the brief's files can't go first: once the project exists, move the `design/` folder from step 1 into it, and run every later command (`motif` included) from the new folder. Ask before installing anything the starter command doesn't install.
 - **An existing project:** keep it. Add Motif's files beside what's there and change nothing else yet.
 
 ## 3. Research

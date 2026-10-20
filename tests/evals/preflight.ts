@@ -1,5 +1,5 @@
 // Checks before a run: Claude Code signed in with a Claude account (never an API key), this checkout's motif tool and plugin built,
-// Node.js for the apps, a browser for the cases that need one, and Flutter for the Flutter cases. Nothing is downloaded or installed for the developer.
+// Node.js for the apps, a browser for the cases that need one (the React Native cases among them: Expo's web target), and Flutter for the Flutter cases. Nothing is downloaded or installed for the developer.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { FLUTTER_INSTALL, FLUTTER_MIN, olderThanFlutterMin } from "../../cli/src/stacks/flutter/doctor";
@@ -87,14 +87,17 @@ export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDep
 
   const doctor = await d.run([p.motifBin, "doctor", "--json"], p.repo, 60_000);
   let browser = false;
+  let doctorLine = "";
   try {
-    browser = JSON.parse(doctor.stdout).items.some((i: any) => i.id === "browser" && i.status === "ok");
+    const item = JSON.parse(doctor.stdout).items.find((i: any) => i.id === "browser");
+    browser = item?.status === "ok";
+    doctorLine = typeof item?.detail === "string" ? item.detail : "";
   } catch {
     browser = false;
   }
   if (needsBrowser && !browser) {
     return {
-      error: `No Chrome or Edge was found. Test C's web reviews check what the browser shows, and test D's web apps and b-plain's page are checked in a browser. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter cases (--cases ${CASES.filter((c) => !caseNeedsBrowser(c)).map((c) => c.id).join(",")}) don't need one.`,
+      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, and the React Native cases draw their screens through Expo's web target in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter cases (--cases ${CASES.filter((c) => !caseNeedsBrowser(c)).map((c) => c.id).join(",")}) don't need one.`,
     };
   }
   return { claude: found.exe, claudeVersion: version.stdout.trim(), browser };

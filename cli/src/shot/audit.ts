@@ -13,7 +13,7 @@ export interface RawIssue {
   /** Its visible text or accessible name, shortened. */
   label: string;
   /** "icon": an icon's glyph (Flutter's audit), judged as a mark at 3:1. */
-  kind: "link" | "button" | "field" | "image" | "icon" | "element";
+  kind: "link" | "button" | "field" | "image" | "icon" | "element" | "tab" | "switch" | "checkbox" | "radio button" | "menu item" | "option";
   /** An icon's name or code point (Icons.star, U+F01D4), when kind is "icon". */
   icon?: string;
   ratio?: number;
@@ -82,7 +82,12 @@ export interface Review {
 interface AuditApi {
   /** naming: the rules reported as "name". */
   axe(rules: string[], naming: string[]): Promise<RawIssue[]>;
-  smallTargets(min: number): RawIssue[];
+  /** pressables: also the elements react-native-web draws for a Pressable or Touchable (React Native apps only). */
+  smallTargets(min: number, pressables?: boolean): RawIssue[];
+  /** React Native apps: controls with no name a screen reader can say (a Pressable has no role on the web, and an icon font's glyph isn't a name). */
+  names(): RawIssue[];
+  /** React Native apps: labels leave out icon-font glyphs. */
+  setReactNative(on: boolean): void;
   motion(sampleMs: number): Promise<RawIssue[]>;
 }
 
@@ -90,6 +95,50 @@ declare const axe: { run(context: unknown, options: unknown): Promise<{ violatio
 
 /** Runs inside the page and defines window.__motifAudit. It's sent as source text, so it may only use browser globals. */
 function installAudit(): boolean {
+  let reactNative = false;
+  const CONTROLS =
+    'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="option"]';
+  // Icon fonts keep their glyphs in the Unicode private-use areas: a screen reader can't say them.
+  const GLYPH = /[\uE000-\uF8FF]|[\u{F0000}-\u{10FFFF}]/gu;
+  const readable = (node: Node): string => {
+    if (node.nodeType === 3) return (node.textContent ?? "").replace(GLYPH, "");
+    if (node.nodeType !== 1) return "";
+    const el = node as Element;
+    if (el.getAttribute("aria-hidden") === "true") return "";
+    if (el.tagName === "IMG") return el.getAttribute("alt") ?? "";
+    return [...el.childNodes].map(readable).join(" ");
+  };
+  const glyphOf = (el: Element) => {
+    const found = (el.textContent ?? "").match(GLYPH);
+    return found ? `U+${(found[0]!.codePointAt(0) ?? 0).toString(16).toUpperCase()}` : undefined;
+  };
+  const shown = (el: Element) => {
+    if (el.closest("[hidden], [inert], [aria-hidden='true']")) return false;
+    const style = getComputedStyle(el);
+    if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  // react-native-web draws a Pressable, TouchableOpacity or TouchableHighlight as <div tabindex="0"> with a pointer
+  // cursor and no role (unless the app sets one).
+  const roleless = (el: Element) => el.matches("[tabindex]:not([role])");
+  const pressables = (): Element[] => {
+    const found = [...document.querySelectorAll("[tabindex]:not([role])")].filter(
+      (el) => !["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA", "SUMMARY"].includes(el.tagName) && el.getAttribute("tabindex") !== "-1" && getComputedStyle(el).cursor === "pointer",
+    );
+    const inList = new Set(found);
+    // Nested inside another control: the outer one is what's tapped.
+    return found.filter((el) => {
+      for (let p = el.parentElement; p; p = p.parentElement) if (inList.has(p) || p.matches(CONTROLS)) return false;
+      return true;
+    });
+  };
+  const named = (el: Element) => {
+    if (el.getAttribute("aria-label")?.trim() || el.getAttribute("title")?.trim()) return true;
+    const by = el.getAttribute("aria-labelledby");
+    if (by && by.split(/\s+/).some((id) => document.getElementById(id)?.textContent?.trim())) return true;
+    return readable(el).trim().length > 0;
+  };
   const unique = (selector: string) => {
     try {
       return document.querySelectorAll(selector).length === 1;
@@ -114,6 +163,7 @@ function installAudit(): boolean {
     return parts.join(" > ");
   };
   const kind = (el: Element): RawIssue["kind"] => {
+    if (reactNative && roleless(el)) return "button";
     const role = el.getAttribute("role");
     if (el.tagName === "A" || role === "link") return "link";
     if (el.tagName === "BUTTON" || role === "button") return "button";
@@ -121,11 +171,28 @@ function installAudit(): boolean {
     return "element";
   };
   const label = (el: Element) =>
-    (el.getAttribute("aria-label") || (el as HTMLElement).innerText || el.getAttribute("title") || el.getAttribute("alt") || "")
+    (el.getAttribute("aria-label") || (reactNative ? readable(el) : (el as HTMLElement).innerText) || el.getAttribute("title") || el.getAttribute("alt") || "")
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 40);
   const describe = (el: Element) => ({ selector: path(el), label: label(el), kind: kind(el) });
+
+  /**
+   * The turning view of React Native's ActivityIndicator as react-native-web draws it: the only child of a
+   * role="progressbar" with aria-valuemin 0, aria-valuemax 1 and no aria-valuenow, turned by a CSS animation from its
+   * class (no transform of the app's in its style), around an svg of two circles. It's the platform's own spinner, which
+   * shows that something is loading: the app has no setting to slow or stop it under reduce motion (iOS keeps it turning),
+   * so it isn't the app's motion. An app's own bar or shimmer with accessibilityRole="progressbar" (Animated, Reanimated)
+   * is the app's, and still counts; so does a web page's spinner, which the page draws and can stop.
+   */
+  const activityIndicator = (e: Element) => {
+    const bar = e.parentElement;
+    if (!bar?.matches("[role='progressbar'][aria-valuemin='0'][aria-valuemax='1']:not([aria-valuenow])") || bar.children.length !== 1) return false;
+    if (/transform|translate|rotate|scale|left|top/i.test(e.getAttribute("style") ?? "")) return false;
+    if (!e.getAnimations().some((a) => "animationName" in a)) return false;
+    const svg = e.children.length === 1 ? e.firstElementChild : null;
+    return svg?.tagName.toLowerCase() === "svg" && svg.children.length === 2 && [...svg.children].every((c) => c.tagName.toLowerCase() === "circle");
+  };
 
   const api: AuditApi = {
     async axe(rules, naming) {
@@ -152,11 +219,27 @@ function installAudit(): boolean {
       }
       return out;
     },
-    smallTargets(min) {
-      const selector =
-        'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="option"]';
+    setReactNative(on) {
+      reactNative = on;
+    },
+    names() {
       const out: RawIssue[] = [];
-      for (const el of document.querySelectorAll(selector)) {
+      // A Pressable with accessibilityRole="tab" (a tab bar's icons), "switch" or "checkbox" has a role no axe name rule covers.
+      const tappable = "[role='tab'], [role='switch'], [role='checkbox'], [role='radio'], [role='menuitem'], [role='option']";
+      for (const el of new Set([...pressables(), ...document.querySelectorAll(`a[href], button, [role='button'], [role='link'], ${tappable}`)])) {
+        if (!shown(el) || named(el)) continue;
+        const glyph = glyphOf(el);
+        // A Pressable is a button to whoever taps it; an icon-font glyph on a real button is an icon that axe took for text.
+        // The control's own kind when its role says it (a tab bar's icons are tabs).
+        const ROLE_KINDS: Record<string, RawIssue["kind"]> = { tab: "tab", switch: "switch", checkbox: "checkbox", radio: "radio button", menuitem: "menu item", option: "option" };
+        const own = el.matches(tappable) ? ROLE_KINDS[el.getAttribute("role") ?? ""] : undefined;
+        out.push({ rule: "name", ...describe(el), ...(roleless(el) ? { kind: "button" as const } : glyph ? { kind: "icon" as const, icon: glyph } : own ? { kind: own } : {}) });
+      }
+      return out;
+    },
+    smallTargets(min, withPressables) {
+      const out: RawIssue[] = [];
+      for (const el of [...document.querySelectorAll(CONTROLS), ...(withPressables ? pressables() : [])]) {
         if (el.matches(":disabled, [aria-disabled='true']") || el.closest("[hidden], [inert], [aria-hidden='true']")) continue;
         const style = getComputedStyle(el);
         if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") continue;
@@ -214,6 +297,7 @@ function installAudit(): boolean {
         if (before[i] !== after[i]) moving.add(e);
       });
       return [...moving]
+        .filter((e) => !(reactNative && activityIndicator(e)))
         .filter((e) => e.isConnected && e.getBoundingClientRect().width > 0)
         .map((e) => ({ rule: "motion" as const, ...describe(e) }));
     },
@@ -228,15 +312,24 @@ const INSTALL_AUDIT = `(${installAudit.toString()})()`;
 const NAME_RULES = ["button-name", "link-name", "label", "image-alt"];
 
 /** Audits the page as it is now (loaded and settled, reduced motion emulated). */
-export async function auditPage(page: Page, ctx: { viewport: "mobile" | "desktop"; scheme: Scheme; motionSampleMs?: number }): Promise<RawIssue[]> {
+export async function auditPage(
+  page: Page,
+  ctx: { viewport: "mobile" | "desktop"; scheme: Scheme; motionSampleMs?: number; motion?: boolean; reactNative?: boolean },
+): Promise<RawIssue[]> {
   await page.evaluate(`${AXE_SOURCE}\n;true`);
   await page.evaluate(INSTALL_AUDIT);
   const light = ctx.scheme === "light";
+  if (ctx.reactNative) await page.evaluate("__motifAudit.setReactNative(true)");
   // Names at every size and scheme: a page can show other controls in dark mode or on a phone.
   const rules = light ? ["color-contrast", "target-size", ...NAME_RULES] : ["color-contrast", ...NAME_RULES];
   const issues = await page.evaluate<RawIssue[]>(`__motifAudit.axe(${JSON.stringify(rules)}, ${JSON.stringify(NAME_RULES)})`);
-  if (light && ctx.viewport === "mobile") issues.push(...(await page.evaluate<RawIssue[]>("__motifAudit.smallTargets(44)")));
-  if (light && ctx.viewport === "desktop") issues.push(...(await page.evaluate<RawIssue[]>(`__motifAudit.motion(${ctx.motionSampleMs ?? 300})`)));
+  if (ctx.reactNative) {
+    // A Pressable has no role on the web and an icon font's glyph is text to axe: Motif looks for both itself.
+    const mine = await page.evaluate<RawIssue[]>("__motifAudit.names()");
+    issues.push(...mine.filter((m) => !issues.some((i) => i.rule === "name" && i.selector === m.selector)));
+  }
+  if (light && ctx.viewport === "mobile") issues.push(...(await page.evaluate<RawIssue[]>(`__motifAudit.smallTargets(44${ctx.reactNative ? ", true" : ""})`)));
+  if (light && (ctx.motion ?? ctx.viewport === "desktop")) issues.push(...(await page.evaluate<RawIssue[]>(`__motifAudit.motion(${ctx.motionSampleMs ?? 300})`)));
   return issues;
 }
 
@@ -247,7 +340,8 @@ function subject(issue: RawIssue, textual: boolean): string {
     const which = issue.icon ? ` (${issue.icon})` : "";
     return issue.label ? `The "${issue.label}" icon${which}` : `An icon${which}`;
   }
-  if (issue.kind !== "element") return issue.label ? `The "${issue.label}" ${issue.kind}` : `A ${issue.kind}`;
+  // Every kind's name is spelled as it sounds: a vowel letter is a vowel sound ("an option", "an image").
+  if (issue.kind !== "element") return issue.label ? `The "${issue.label}" ${issue.kind}` : `${/^[aeiou]/.test(issue.kind) ? "An" : "A"} ${issue.kind}`;
   if (textual) return issue.label ? `Text "${issue.label}"` : "Some text";
   return issue.label ? `The "${issue.label}" element` : "An element";
 }

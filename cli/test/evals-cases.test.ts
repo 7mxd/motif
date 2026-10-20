@@ -1,22 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CASES, isFlutter, isPlain, needsBrowser, selectCases, UNATTENDED, type EvalCase } from "../../tests/evals/cases";
+import { CASES, isFlutter, isPlain, isReactNative, needsBrowser, selectCases, UNATTENDED, type EvalCase } from "../../tests/evals/cases";
 
 const REPO = join(import.meta.dir, "../..");
 const ids = (r: EvalCase[] | { error: string }) => ("error" in r ? r : r.map((c) => c.id));
 
 describe("the eval cases (spec §13.2)", () => {
-  test("eight features for B, three reviews for C and four new apps for D", () => {
-    expect(CASES.filter((c) => c.test === "B").map((c) => c.id)).toEqual(["b-settings", "b-search", "b-profile", "b-notifications", "b-checkout", "b-plain", "b-flutter-reserve", "b-flutter-search"]);
-    expect(CASES.filter((c) => c.test === "C").map((c) => c.id)).toEqual(["c-review", "c-plain", "c-flutter"]);
-    expect(CASES.filter((c) => c.test === "D").map((c) => c.id)).toEqual(["d-stride", "d-ledgerly", "d-bloom", "d-sahm"]);
+  test("ten features for B, four reviews for C and five new apps for D", () => {
+    expect(CASES.filter((c) => c.test === "B").map((c) => c.id)).toEqual(["b-settings", "b-search", "b-profile", "b-notifications", "b-checkout", "b-plain", "b-flutter-reserve", "b-flutter-search", "b-rn-orders", "b-rn-favourites"]);
+    expect(CASES.filter((c) => c.test === "C").map((c) => c.id)).toEqual(["c-review", "c-plain", "c-flutter", "c-rn"]);
+    expect(CASES.filter((c) => c.test === "D").map((c) => c.id)).toEqual(["d-stride", "d-ledgerly", "d-bloom", "d-sahm", "d-rihla"]);
     expect(new Set(CASES.map((c) => c.id)).size).toBe(CASES.length);
   });
 
   test("B adds a page to a contract fixture; C reviews a seeded one; D starts from a brief that exists", () => {
     for (const c of CASES.filter((x) => x.test === "B")) {
-      expect(["react-contract-app", "plain-contract-site", "flutter-contract-app"]).toContain(c.fixture!);
+      expect(["react-contract-app", "plain-contract-site", "flutter-contract-app", "rn-contract-app"]).toContain(c.fixture!);
       expect(c.routes).toHaveLength(1);
       expect(c.prompt).toContain(` ${c.routes[0]}:`);
     }
@@ -25,8 +25,8 @@ describe("the eval cases (spec §13.2)", () => {
     expect(CASES.find((c) => c.id === "c-plain")!).toMatchObject({ fixture: "plain-seeded-site", routes: ["/"] });
     for (const c of CASES.filter((x) => x.test === "D")) {
       expect(existsSync(join(REPO, "tests/fixtures/briefs", `${c.brief}.md`))).toBe(true);
-      expect(c.routes).toEqual(["/", "/sign-in", "/home"]);
-      for (const r of ["/sign-in", "/home"]) expect(c.prompt).toContain(r);
+      expect(c.routes).toEqual(c.id === "d-rihla" ? ["/", "/sign-in", "/trips"] : ["/", "/sign-in", "/home"]);
+      for (const r of c.routes.slice(1)) expect(c.prompt).toContain(r);
     }
   });
 
@@ -53,6 +53,26 @@ describe("the eval cases (spec §13.2)", () => {
     expect(review.prompt).toContain("don't change the app's code");
     for (const r of review.routes) expect(review.prompt).toContain(r);
     expect(CASES.find((c) => c.id === "d-sahm")!).toMatchObject({ test: "D", brief: "sahm", routes: ["/", "/sign-in", "/home"] });
+  });
+
+  test("the React Native cases: two features on Dukkan, the seeded review, and Rihla from a brief; all need a browser", () => {
+    expect(CASES.filter(isReactNative).map((c) => c.id)).toEqual(["b-rn-orders", "b-rn-favourites", "c-rn", "d-rihla"]);
+    for (const c of CASES) expect(c.stack === "react-native").toBe(isReactNative(c));
+    for (const c of CASES.filter(isReactNative)) expect(needsBrowser(c)).toBe(true);
+    const orders = CASES.find((c) => c.id === "b-rn-orders")!;
+    expect(orders).toMatchObject({ test: "B", fixture: "rn-contract-app", routes: ["/orders"] });
+    expect(orders.prompt).toContain("empty state");
+    const fav = CASES.find((c) => c.id === "b-rn-favourites")!;
+    expect(fav).toMatchObject({ test: "B", fixture: "rn-contract-app", routes: ["/favourites"] });
+    expect(fav.prompt).toContain("product's page");
+    const review = CASES.find((c) => c.id === "c-rn")!;
+    expect(review).toMatchObject({ test: "C", fixture: "rn-seeded-app", routes: ["/", "/products/oat-milk", "/basket", "/sign-in"] });
+    expect(review.prompt).toContain("don't change the app's code");
+    for (const r of review.routes) expect(review.prompt).toContain(r);
+    const rihla = CASES.find((c) => c.id === "d-rihla")!;
+    expect(rihla).toMatchObject({ test: "D", brief: "rihla", routes: ["/", "/sign-in", "/trips"] });
+    expect(rihla.prompt).toContain("welcome screen at /");
+    expect(readFileSync(join(REPO, "tests/fixtures/briefs/rihla.md"), "utf8")).toContain("Expo");
   });
 
   test("every prompt starts a Motif command and switches approvals off in the skill's own words", () => {
@@ -85,10 +105,10 @@ describe("the eval cases (spec §13.2)", () => {
 
 describe("choosing cases", () => {
   test("by test and by id; everything by default", () => {
-    expect(ids(selectCases(CASES, { tests: ["c"] }))).toEqual(["c-review", "c-plain", "c-flutter"]);
+    expect(ids(selectCases(CASES, { tests: ["c"] }))).toEqual(["c-review", "c-plain", "c-flutter", "c-rn"]);
     expect(ids(selectCases(CASES, { ids: ["d-bloom", "b-search"] }))).toEqual(["b-search", "d-bloom"]);
     expect(ids(selectCases(CASES, { ids: ["d-sahm", "b-flutter-search"] }))).toEqual(["b-flutter-search", "d-sahm"]);
-    expect(ids(selectCases(CASES, {}))).toHaveLength(15);
+    expect(ids(selectCases(CASES, {}))).toHaveLength(19);
   });
 
   test("names what doesn't exist, and refuses an empty choice", () => {

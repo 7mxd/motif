@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
-import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, flutterComponents, reactComponents, recordedIn } from "../../tests/evals/collect";
+import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, flutterComponents, reactComponents, recordedIn, rnComponents } from "../../tests/evals/collect";
 import { Paused, type JudgeFn } from "../../tests/evals/judge";
 import type { SeededIssue } from "../../tests/evals/match";
 import { runCmd, type MotifResult, type Run } from "../../tests/evals/tools";
@@ -501,5 +501,144 @@ describe("test D on Flutter", () => {
     expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["flutter pub get", "flutter analyze --no-fatal-infos"]);
     expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/,/sign-in,/home", "--sizes", "390"]);
     for (const file of ["DESIGN.md", "validate.json", "check.json", "shot.json", "pub-get.log", "analyze.log"]) expect(existsSync(join(out, file))).toBe(true);
+  });
+});
+
+describe("new components on React Native, from the session's diff", () => {
+  test("an exported function component under components/ is new; the route file's default export is the screen, its private components are parts of it", () => {
+    const diff = [
+      newFile("components/order-card.tsx", 'import { View, Text } from "react-native";\nexport function OrderCard() {\n  return <View><Text>x</Text></View>;\n}'),
+      newFile("components/badge.tsx", 'import { View } from "react-native";\nexport const Badge = () => <View />;\nexport default Badge;'),
+      newFile("app/orders.tsx", 'import { OrderCard } from "../components/order-card";\nexport default function OrdersScreen() {\n  return <Group />;\n}\nfunction Group() {\n  return <OrderCard />;\n}\nconst Header = () => <OrderCard />;'),
+    ].join("\n");
+    expect(rnComponents(diff)).toEqual({ newComponents: ["OrderCard", "Badge"], screens: ["OrdersScreen"], screenParts: ["Group", "Header"], notUi: [] });
+  });
+
+  test("memo and forwardRef components count; hooks, types and anything outside components/ and app/ don't", () => {
+    const diff = [
+      newFile("components/price.tsx", 'export const Price = React.memo(function Price() {\n  return <Text />;\n});\nexport const Field = forwardRef<View, Props>((props, ref) => <View ref={ref} />);\nexport function usePrice() {\n  return 1;\n}\nexport type PriceProps = {};'),
+      newFile("design/motif-theme.tsx", 'export function ThemeProvider({ children }) {\n  return <Ctx.Provider value={1}>{children}</Ctx.Provider>;\n}'),
+      newFile("state/favourites.tsx", 'export function FavouritesProvider({ children }) {\n  return <Ctx value={1}>{children}</Ctx>;\n}'),
+      newFile("components/order-card.test.tsx", 'export function Fixture() {\n  return <View />;\n}'),
+    ].join("\n");
+    expect(rnComponents(diff)).toEqual({ newComponents: ["Price", "Field"], screens: [], screenParts: [], notUi: [] });
+  });
+
+  test("a capitalised function that draws nothing is not UI; a route layout is navigation, not a screen", () => {
+    const diff = [
+      newFile("components/format.tsx", 'export function Money(value: number) {\n  return String(value);\n}'),
+      newFile("app/orders/_layout.tsx", 'export default function Layout() {\n  return <Stack />;\n}'),
+    ].join("\n");
+    expect(rnComponents(diff)).toEqual({ newComponents: [], screens: [], screenParts: [], notUi: ["Money", "_layout"] });
+  });
+
+  test("a route file with an anonymous default export is named by its file; only a new route file is a new screen", () => {
+    const diff = [
+      newFile("app/favourites.tsx", "export default () => <View />;"),
+      edit("app/index.tsx", ["export default function Home() { return <A />; }"], ["export default function Home() { return <B />; }"]),
+    ].join("\n");
+    expect(rnComponents(diff)).toEqual({ newComponents: [], screens: ["favourites"], screenParts: [], notUi: [] });
+  });
+
+  test("an edit that adds an export to an existing components file counts; one that only restyles, or moves a component, doesn't", () => {
+    const diff = [
+      edit("components/stock-label.tsx", ["  padding: 4,"], ["  padding: 8,"]),
+      edit("components/product-row.tsx", ["export function Old() { return <View />; }"], ["export function Old() { return <View />; }", "export function ProductHeart() { return <View />; }"]),
+      edit("components/app-button.tsx", ["export function Moved() { return <View />; }"], []),
+      newFile("components/moved.tsx", "export function Moved() {\n  return <View />;\n}"),
+    ].join("\n");
+    expect(rnComponents(diff).newComponents).toEqual(["ProductHeart"]);
+  });
+
+  test("comments and strings that look like components don't count; src/ is looked through", () => {
+    const diff = newFile("src/components/note.tsx", '// export function Fake() { return <View />; }\nconst x = "export function AlsoFake() { return <View />; }";\nexport function Real() {\n  return <View />;\n}');
+    expect(rnComponents(diff).newComponents).toEqual(["Real"]);
+  });
+
+  test("componentFacts uses it for a React Native case, and says which the design guide records", () => {
+    const diff = [
+      newFile("components/order-card.tsx", "export function OrderCard() {\n  return <View />;\n}"),
+      newFile("components/order-tag.tsx", "export function OrderTag() {\n  return <View />;\n}"),
+      newFile("app/orders.tsx", "export default function Orders() {\n  return <View />;\n}"),
+      edit("DESIGN.md", [], ["| OrderTag | A status on an order | — |"]),
+    ].join("\n");
+    expect(componentFacts(byId("b-rn-orders"), diff)).toEqual({ newComponents: ["OrderCard", "OrderTag"], screens: ["Orders"], screenParts: [], notUi: [], recorded: ["OrderTag"] });
+  });
+});
+
+describe("test B on React Native", () => {
+  test("the page (from Expo Router), tsc for the type check, the page drawn at 390 through the web target; nothing built", async () => {
+    const ws = await prepareWorkspace(byId("b-rn-orders"), join(tempDir("motif-col-"), "brn"), run);
+    expect(commands.at(-1)).toEqual(["npm", "ci", "--no-audit", "--no-fund"]);
+    mkdirSync(join(ws.app, "components"), { recursive: true });
+    writeFileSync(join(ws.app, "app/orders.tsx"), 'import { OrderCard } from "../components/order-card";\nexport default function OrdersScreen() {\n  return <OrderCard />;\n}\n');
+    writeFileSync(join(ws.app, "components/order-card.tsx"), "export function OrderCard() {\n  return <View />;\n}\n");
+    const saved = outputs.shot;
+    outputs.shot = { command: "shot", ok: true, exitCode: 0, shots: [], routes: [{ route: "/orders", status: 200, shots: [] }] };
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    try {
+      const before = commands.length;
+      const out = join(ws.dir, "results");
+      const f = await collectB(byId("b-rn-orders"), ws, { run, motif: recording, judge: noJudge }, out);
+      expect(f).toMatchObject({
+        route: "/orders", pageExists: true, typecheck: { code: 0, command: "tsc" }, render: { route: "/orders", status: 200, pageErrors: 0 },
+        newComponents: ["OrderCard"], screens: ["OrdersScreen"],
+      });
+      expect(f.build).toBeUndefined();
+      expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npx tsc --noEmit"]);
+      expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--routes", "/orders", "--sizes", "390"]);
+      for (const file of ["check.json", "validate.json", "diff.patch", "typecheck.log", "shot.json"]) expect(existsSync(join(out, file))).toBe(true);
+    } finally {
+      outputs.shot = saved;
+    }
+  });
+
+  test("no page at the feature's route: Dukkan has no /favourites", async () => {
+    const ws = await prepareWorkspace(byId("b-rn-favourites"), join(tempDir("motif-col-"), "brn2"), run);
+    expect((await collectB(byId("b-rn-favourites"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"))).pageExists).toBe(false);
+  });
+});
+
+describe("test C on the React Native seeded app", () => {
+  test("is graded against its own list", async () => {
+    const seededApp: SeededIssue[] = JSON.parse(readFileSync(join(REPO, "tests/fixtures/rn-seeded-app/seeded-issues.json"), "utf8")).issues;
+    const ws = await prepareWorkspace(byId("c-rn"), join(tempDir("motif-col-"), "crn"), run);
+    const e01 = seededApp.find((i) => i.id === "E-01")!;
+    mkdirSync(join(ws.app, "design/reviews"), { recursive: true });
+    writeFileSync(join(ws.app, "design/reviews/2026-10-20-whole-app.json"), JSON.stringify({ motifReview: 1, scope: "whole app", date: "2026-10-20", findings: [
+      { id: "F-001", severity: "major", category: e01.categories[0], source: "exact", location: e01.location, summary: e01.summary, fix: "Use the success role." },
+    ] }));
+    const f = await collectC(byId("c-rn"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"));
+    expect(f.exact.found).toEqual(["E-01"]);
+    expect(f.exact.missed).toHaveLength(seededApp.filter((i) => i.kind === "exact").length - 1);
+    expect(f.changedCode).toEqual([]);
+  });
+});
+
+describe("test D on React Native", () => {
+  test("installs the packages when the session didn't, runs tsc and draws the starter screens at 390; nothing built", async () => {
+    const ws = await prepareWorkspace(byId("d-rihla"), join(tempDir("motif-col-"), "drn"), run);
+    const app = join(ws.app, "rihla");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "DESIGN.md"), readFileSync(join(REPO, "tests/fixtures/rn-contract-app/DESIGN.md"), "utf8"));
+    writeFileSync(join(app, "package.json"), "{}");
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    const before = commands.length;
+    const out = join(ws.dir, "results");
+    const f = await collectD(byId("d-rihla"), ws, { run, motif: recording, judge: noJudge }, out);
+    expect(f.app).toBe(app);
+    expect(f.build).toBeUndefined();
+    expect(f.typecheck).toEqual({ code: 0, timedOut: false, command: "tsc" });
+    expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm install", "npx tsc --noEmit"]);
+    expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/,/sign-in,/trips", "--sizes", "390"]);
+    for (const file of ["DESIGN.md", "validate.json", "check.json", "shot.json", "install.log", "typecheck.log"]) expect(existsSync(join(out, file))).toBe(true);
   });
 });

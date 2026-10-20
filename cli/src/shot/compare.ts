@@ -325,3 +325,22 @@ export async function renderComparisons(opts: {
   }
   return results;
 }
+
+/**
+ * True when the run took dark screenshots and every one is byte-identical to its light twin (same screen, state, size,
+ * variant and direction): the app didn't draw a dark mode. A dark screenshot with no light twin, or one that can't be
+ * read, makes it false.
+ */
+export function darkLooksLikeLight(shots: string[]): boolean {
+  const taken = new Set(shots);
+  const dark = shots.filter((s) => s.endsWith(".dark.png"));
+  if (dark.length === 0) return false;
+  return dark.every((shot) => {
+    const light = `${shot.slice(0, -".dark.png".length)}.png`;
+    try {
+      return taken.has(light) && readFileSync(shot).equals(readFileSync(light));
+    } catch {
+      return false;
+    }
+  });
+}
