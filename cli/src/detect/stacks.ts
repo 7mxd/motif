@@ -282,6 +282,9 @@ function homeFolder(): string | null {
   }
 }
 
+/** The stacks whose apps are looked for one folder further (mobile/customer): a monorepo's mobile/ folder holds several. */
+const NESTED_STACKS: ReadonlySet<StackId> = new Set<StackId>(["flutter", "compose", "swiftui", "react-native"]);
+
 export function detectApps(root: string, opts: { home?: string } = {}): { apps: AppInfo[]; findings: Finding[] } {
   const settings = readSettings(root);
   if (settings.apps) return { apps: settings.apps, findings: settings.findings };
@@ -330,8 +333,8 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
       }
     }
   };
-  // One folder further (mobile/customer, mobile/admin), for stacks other than plain web only, and never for shared
-  // Flutter packages.
+  // One folder further (mobile/customer, mobile/admin), for native and mobile stacks only (a web app under examples/
+  // or e2e/ is a fixture, not an app), and never for shared Flutter packages.
   const nested = (dir: string) => {
     let entries: string[];
     try {
@@ -345,7 +348,7 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
       const abs = join(root, relPath);
       if (!isDir(abs)) continue;
       const stack = detectStack(abs);
-      if (!stack || stack === "plain-web" || (stack === "flutter" && isFlutterPackage(abs))) continue;
+      if (!stack || !NESTED_STACKS.has(stack) || (stack === "flutter" && isFlutterPackage(abs))) continue;
       apps.push(detected(root, rel(relPath), stack));
     }
   };

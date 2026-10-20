@@ -117,3 +117,17 @@ describe("naming and the registry", () => {
     expect(nativeStack(null)).toBeNull();
   });
 });
+
+describe("final review: one folder deeper is for native and mobile stacks only (Ruling V)", () => {
+  test("a React example under examples/ isn't a new app; a Flutter app under mobile/ is", () => {
+    const root = makeProject({
+      "dashboard/package.json": JSON.stringify({ dependencies: { react: "18", vite: "5" } }),
+      "examples/demo/package.json": JSON.stringify({ dependencies: { react: "18", vite: "5" } }),
+      "e2e/fixture/package.json": JSON.stringify({ dependencies: { vue: "3", vite: "5" } }),
+      "mobile/customer/pubspec.yaml": pubspec("customer"),
+      "mobile/customer/lib/main.dart": "void main() {}\n",
+    });
+    const { apps } = detectApps(root);
+    expect(apps.map((a) => [a.path, a.stack])).toEqual([["dashboard", "react-web"], ["mobile/customer", "flutter"]]);
+  });
+});
