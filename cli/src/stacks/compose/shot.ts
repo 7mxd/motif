@@ -21,7 +21,7 @@ import type { NativeShotOptions } from "../native";
 import { findAndroidSdk, gradleJava, NO_ANDROID_SDK } from "./doctor";
 import { THEME_FILE } from "./generate";
 import {
-  composeFont, HARNESS_SRC, ROBOLECTRIC_DOWNLOAD_FAILED, runHarness, type ComposeFont, type ComposeShot, type HarnessConfig, type HarnessResult, type HarnessRun, type HarnessSource,
+  composeFont, HARNESS_SRC, harnessReport, ROBOLECTRIC_DOWNLOAD_FAILED, runHarness, type ComposeFont, type ComposeShot, type HarnessConfig, type HarnessResult, type HarnessRun, type HarnessSource,
 } from "./harness";
 import { composeThemeDir, gradleRoot } from "./project";
 import { composeScreenProblem, discoverComposeScreens, previewSlug, type Preview } from "./screens";
@@ -348,9 +348,10 @@ const shortException = (text: string) => text.replace(/\b(?:[a-z_$][\w$]*\.)+([A
 
 /** Why the app's Application couldn't start (a_shots' failure in Gradle's test report), or null when it isn't there. */
 function applicationFailure(moduleDir: string): string | null {
-  const report = join(moduleDir, "build", "test-results", "testDebugUnitTest", "TEST-dev.motif.shot.MotifShotTest.xml");
+  const report = harnessReport(moduleDir);
   let xml: string;
   try {
+    if (!report) return null;
     xml = readFileSync(report, "utf8");
   } catch {
     return null;

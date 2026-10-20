@@ -1,7 +1,7 @@
 // The runner for the Compose screenshot harness (decision 0008): writes the Kotlin test and the Gradle init script into
 // <module>/.motif/shot/, runs the project's own Gradle wrapper on them, and always removes what it wrote. motif shot
 // (shot.ts) builds on it.
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { onExit } from "../../cleanup";
 import { killTree } from "../../shot/devserver";
@@ -23,6 +23,13 @@ export const TARGETS_FILE = ".motif/shot/targets.txt";
 /** Where the harness writes what it did; deleted once read (kept with MOTIF_DEBUG), and before every run. */
 export const RESULT_FILE = ".motif/shot/result.json";
 export const TEST_CLASS = "dev.motif.shot.MotifShotTest";
+/**
+ * The task Motif runs: init.gradle registers it, and it runs the unit tests of the app's first debug variant
+ * (testDebugUnitTest, or testDemoDebugUnitTest in an app with product flavours), narrowed to TEST_CLASS.
+ */
+export const SHOT_TASK = "motifShots";
+/** Where Gradle puts its test tasks' JUnit reports, a folder each (testDebugUnitTest, testDemoDebugUnitTest), in the module. */
+export const TEST_RESULTS = "build/test-results";
 /** How long Motif waits for a stopped run's output and exit before giving up on them. */
 export const GRACE_MS = 3000;
 
@@ -150,6 +157,31 @@ export function writeHarness(moduleDir: string, config: HarnessConfig, sources: 
   writeFileSync(join(moduleDir, TARGETS_FILE), targets.map((t) => `${t.replace(/[\r\n]+/g, " ")}\n`).join(""));
 }
 
+/**
+ * The harness's JUnit report from the last run (TEST-dev.motif.shot.MotifShotTest.xml): in the folder of whichever
+ * variant's test task motifShots ran, the newest when several have one. Null when there is none.
+ */
+export function harnessReport(moduleDir: string): string | null {
+  const dir = join(moduleDir, TEST_RESULTS);
+  let best: { path: string; time: number } | null = null;
+  let tasks: string[];
+  try {
+    tasks = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  for (const task of tasks) {
+    const path = join(dir, task, `TEST-${TEST_CLASS}.xml`);
+    try {
+      const time = statSync(path).mtimeMs;
+      if (!best || time > best.time) best = { path, time };
+    } catch {
+      // No report of the harness's in this task's folder.
+    }
+  }
+  return best?.path ?? null;
+}
+
 /** Removes the test sources, the init script and the options (and its list of screens); .motif/.gitignore stays. */
 export function removeHarness(moduleDir: string): void {
   rmSync(join(moduleDir, HARNESS_SRC), { recursive: true, force: true });
@@ -217,7 +249,7 @@ export function gradleCommand(java: string, projectDir: string, moduleDir: strin
   const rel = relative(projectDir, moduleDir).split("\\").join("/");
   return gradleTaskCommand(
     java,
-    [`${gradleProjectPath(projectDir, moduleDir)}:testDebugUnitTest`, "--tests", TEST_CLASS, "-I", `${rel === "" ? "" : `${rel}/`}${INIT_SCRIPT}`, "--console=plain"],
+    [`${gradleProjectPath(projectDir, moduleDir)}:${SHOT_TASK}`, "-I", `${rel === "" ? "" : `${rel}/`}${INIT_SCRIPT}`, "--console=plain"],
     env,
   );
 }

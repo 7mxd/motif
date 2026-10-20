@@ -397,7 +397,7 @@ describe("shootCompose", () => {
 
   test("an app whose Application couldn't start is drawn with a plain one, and the note says why", async () => {
     const root = makeProject(COMPOSE_APP);
-    const report = join(root, "app/build/test-results/testDebugUnitTest/TEST-dev.motif.shot.MotifShotTest.xml");
+    const report = join(root, "app/build/test-results/testDemoDebugUnitTest/TEST-dev.motif.shot.MotifShotTest.xml");
     mkdirSync(dirname(report), { recursive: true });
     writeFileSync(
       report,
@@ -413,7 +413,7 @@ describe("shootCompose", () => {
 
   test("an Application that started for the first screen and failed when started again gets its own note", async () => {
     const root = makeProject(COMPOSE_APP);
-    const report = join(root, "app/build/test-results/testDebugUnitTest/TEST-dev.motif.shot.MotifShotTest.xml");
+    const report = join(root, "app/build/test-results/testDemoDebugUnitTest/TEST-dev.motif.shot.MotifShotTest.xml");
     mkdirSync(dirname(report), { recursive: true });
     writeFileSync(
       report,
@@ -688,7 +688,7 @@ describe("the Gradle command for a module", () => {
       "android/app/build.gradle.kts": GRADLE,
     });
     const cmd = gradleCommand("java", root, join(root, "android", "app"), {});
-    expect(cmd).toContain(":app:testDebugUnitTest");
+    expect(cmd).toContain(":app:motifShots");
     expect(cmd).toContain("android/app/.motif/shot/init.gradle");
   });
 
@@ -699,7 +699,7 @@ describe("the Gradle command for a module", () => {
     });
     const cmd = gradleCommand("C:\\Program Files\\Java\\bin\\java.exe", root, join(root, "my app"), {});
     expect(cmd[0]).toBe("C:\\Program Files\\Java\\bin\\java.exe");
-    expect(cmd).toContain(":mobile:testDebugUnitTest");
+    expect(cmd).toContain(":mobile:motifShots");
     expect(cmd).toContain("my app/.motif/shot/init.gradle");
   });
 });

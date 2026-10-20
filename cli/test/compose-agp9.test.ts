@@ -37,7 +37,7 @@ describe("the Compose harness on the Android Gradle Plugin 9 (Task 15)", () => {
       timeoutMs: 1_100_000,
     });
     if (run.code !== 0) console.log(run.output.split(/\r?\n/).slice(-40).join("\n"));
-    expect(run.output).not.toMatch(/testDebugUnitTest NO-SOURCE/);
+    expect(run.output).not.toMatch(/UnitTest NO-SOURCE/);
     expect(run.code).toBe(0);
     expect(run.result?.shots).toEqual([{ file: "index.mobile.png" }]);
     expect(pngSize(readFileSync(join(outDir, "index.mobile.png")))).toEqual({ width: 780, height: 1688 });

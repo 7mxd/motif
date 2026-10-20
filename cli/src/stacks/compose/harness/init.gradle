@@ -1,9 +1,10 @@
 // Motif's Gradle init script for Compose screenshots (decision 0008). Motif writes it, unchanged from run to run, to
-// <module>/.motif/shot/init.gradle and runs `gradlew :<module>:testDebugUnitTest --tests dev.motif.shot.MotifShotTest
-// -I <module>/.motif/shot/init.gradle` from the project's root. It changes that run only, and only the module it sits
-// in (found from the script's own path): .motif/shot/src becomes a unit-test source folder, the test libraries are
-// added, Android resources are made visible to unit tests, and the harness's test task is told where its options are
-// and always runs. The developer's build files are never edited. Groovy rather than Kotlin: the Android plugin isn't on
+// <module>/.motif/shot/init.gradle and runs `gradlew :<module>:motifShots -I <module>/.motif/shot/init.gradle` from the
+// project's root. It changes that run only, and only the module it sits in (found from the script's own path):
+// .motif/shot/src becomes a unit-test source folder, the test libraries are added, Android resources are made visible to
+// unit tests, and the unit-test tasks are told where the harness's options are, run only the harness, and always run.
+// motifShots runs the first debug variant's unit tests: testDebugUnitTest, or testDemoDebugUnitTest in an app with
+// product flavours, which has no testDebugUnitTest. The developer's build files are never edited. Groovy rather than Kotlin: the Android plugin isn't on
 // an init script's classpath, and Groovy reaches its DSL (android { … }) without it.
 
 def motifModuleDir = initscript.sourceFile.parentFile.parentFile.parentFile.canonicalFile
@@ -42,6 +43,21 @@ allprojects { project ->
     if (project.projectDir.canonicalFile != motifModuleDir) return
     project.pluginManager.withPlugin("com.android.application") {
         def shotDir = new File(motifModuleDir, ".motif/shot")
+        // The unit-test task of the first debug variant the Android plugin makes (its variants come in the order of the
+        // flavours as declared), else of its first variant; a variant whose unit tests are switched off has none.
+        def debugTests = null
+        def firstTests = null
+        project.androidComponents.onVariants(project.androidComponents.selector().all()) { variant ->
+            if (variant.hasProperty("unitTest") && variant.unitTest == null) return
+            def task = "test" + variant.name.substring(0, 1).toUpperCase() + variant.name.substring(1) + "UnitTest"
+            if (firstTests == null) firstTests = task
+            if (debugTests == null && variant.buildType == "debug") debugTests = task
+        }
+        // What Motif runs. Which test task it depends on is read once the variants are known.
+        project.tasks.register("motifShots") { task ->
+            task.description = "Draws Motif's screenshots (added by Motif for one run)."
+            task.dependsOn { debugTests ?: firstTests ?: "testDebugUnitTest" }
+        }
         // Before the Android plugin locks its DSL, after the module's own build file has set it.
         project.androidComponents.finalizeDsl { android ->
             // Under java and kotlin both: AGP 9's built-in Kotlin compiles only the kotlin folders.
@@ -65,6 +81,9 @@ allprojects { project ->
             test.systemProperty "robolectric.graphicsMode", "NATIVE"
             test.systemProperty "robolectric.pixelCopyRenderMode", "hardware"
             test.systemProperties robolectricDownload
+            // Only the harness, as --tests would (which a task that isn't a test task can't be given), whatever the
+            // build's own filter includes.
+            test.setTestNameIncludePatterns(["dev.motif.shot.MotifShotTest"])
             // Every run draws again: the options change while the sources don't.
             test.outputs.upToDateWhen { false }
             test.outputs.cacheIf { false }

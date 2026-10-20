@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DoctorDeps } from "../src/commands/doctor";
-import { gradleCommand, ROBOLECTRIC_DOWNLOAD_FAILED, splitJvmOptions } from "../src/stacks/compose/harness";
+import { gradleCommand, ROBOLECTRIC_DOWNLOAD_FAILED, SHOT_TASK, splitJvmOptions } from "../src/stacks/compose/harness";
 import { composeDoctor, gradleJava } from "../src/stacks/compose/doctor";
 
 /** A machine with these java programs (path → version), and these files. */
@@ -77,9 +77,7 @@ describe("the Gradle command", () => {
       "-classpath",
       "gradle/wrapper/gradle-wrapper.jar",
       "org.gradle.wrapper.GradleWrapperMain",
-      ":app:testDebugUnitTest",
-      "--tests",
-      "dev.motif.shot.MotifShotTest",
+      ":app:motifShots",
       "-I",
       "app/.motif/shot/init.gradle",
       "--console=plain",
@@ -88,7 +86,7 @@ describe("the Gradle command", () => {
 
   test("a nested module is its Gradle path, and an empty option list adds nothing", () => {
     const cmd = gradleCommand("java", "/p", "/p/apps/android", {});
-    expect(cmd).toContain(":apps:android:testDebugUnitTest");
+    expect(cmd).toContain(":apps:android:motifShots");
     expect(cmd).toContain("apps/android/.motif/shot/init.gradle");
     expect(splitJvmOptions(undefined)).toEqual([]);
     expect(splitJvmOptions("  ")).toEqual([]);
@@ -129,5 +127,14 @@ describe("the init script", () => {
     expect(dsl).toContain('getByName("test")');
     expect(dsl).toMatch(/\.java\.srcDir\(new File\(shotDir, "src"\)\)/);
     expect(dsl).toMatch(/\.kotlin\.srcDir\(new File\(shotDir, "src"\)\)/);
+  });
+  test("Motif runs its own task, motifShots, which runs the first debug variant's unit tests: an app with product flavours has no testDebugUnitTest", () => {
+    expect(SHOT_TASK).toBe("motifShots");
+    expect(script).toContain('project.tasks.register("motifShots")');
+    // The variant is the Android plugin's own (androidComponents), not a task name Motif guesses.
+    expect(script).toMatch(/androidComponents\.onVariants\(/);
+    expect(script).toMatch(/variant\.buildType == "debug"/);
+    // --tests can't be given to a task that isn't a test task: the script narrows the run to the harness as --tests does.
+    expect(script).toContain('setTestNameIncludePatterns(["dev.motif.shot.MotifShotTest"])');
   });
 });
