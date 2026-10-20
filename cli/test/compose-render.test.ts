@@ -6,7 +6,7 @@ import { pngSize } from "../src/browser/png";
 import { defaultDoctorDeps } from "../src/commands/doctor";
 import { gradleJava } from "../src/stacks/compose/doctor";
 import { CONFIG_FILE, HARNESS_SRC, INIT_SCRIPT, runHarness, type ComposeShot } from "../src/stacks/compose/harness";
-import { androidToolchain, FIXTURES, hasAndroid } from "./helpers";
+import { androidToolchain, FIXTURES, hasAndroid, heavyStackTests } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -52,10 +52,13 @@ function colours(png: Buffer, max = 2): number {
   return seen.size;
 }
 
+const heavy = heavyStackTests("compose", hasAndroid());
+if (!heavy.run) console.log(`[compose-render] Gradle and Robolectric tests skipped: ${heavy.reason}`);
+
 describe("the Compose screenshot harness (decision 0008)", () => {
   // Needs a JDK and the Android SDK (bun's skipIf takes no reason, so the name says it). The first run on a machine
   // downloads Gradle, the Android plugin, Compose and Robolectric's Android jars.
-  test.skipIf(!hasAndroid())("draws compose-min's home in light and dark with Robolectric (skipped without a JDK and the Android SDK)", async () => {
+  test.skipIf(!heavy.run)("draws compose-min's home in light and dark with Robolectric (skipped without a JDK and the Android SDK)", async () => {
     const { sdk } = androidToolchain()!;
     const jdk = gradleJava(defaultDoctorDeps());
     if ("problem" in jdk) throw new Error(jdk.problem);

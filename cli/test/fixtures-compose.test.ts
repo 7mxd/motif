@@ -7,7 +7,7 @@ import { runShot } from "../src/commands/shot";
 import { runTokens } from "../src/commands/tokens";
 import { runValidate } from "../src/commands/validate";
 import { discoverComposeScreens } from "../src/stacks/compose/screens";
-import { androidToolchain, hasAndroid } from "./helpers";
+import { androidToolchain, hasAndroid, heavyStackTests } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -258,7 +258,9 @@ describe("the assembled Compose seeded app", () => {
 
 describe("Rafiq and its seeded copy, built by Gradle and drawn by Robolectric", () => {
   // Needs a JDK and the Android SDK (bun's skipIf takes no reason, so each name says it).
-  const android = hasAndroid();
+  const heavy = heavyStackTests("compose", hasAndroid());
+  const android = heavy.run;
+  if (!heavy.run) console.log(`[fixtures-compose] Gradle and Robolectric tests skipped: ${heavy.reason}`);
   // The brief's command, with no --routes: the routes a run takes by itself (sign-in first), then every preview.
   const FLAGS = { sizes: "390", audit: true, variant: "all", rtl: true };
   const SCREENS = ["/sign-in", "/", "/add", "AddHabitPreview", "HabitPreview", "SignInPreview", "TodayPreview", "TodayEmptyPreview"];

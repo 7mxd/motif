@@ -7,14 +7,17 @@ import { runTokens } from "../src/commands/tokens";
 import { NATIVE_VIEWPORTS } from "../src/shot/capture";
 import { CONFIG_FILE, HARNESS_SRC, INIT_SCRIPT, RESULT_FILE } from "../src/stacks/compose/harness";
 import { shootCompose } from "../src/stacks/compose/shot";
-import { FIXTURES, hasAndroid, hexColor, partnerTokens } from "./helpers";
+import { FIXTURES, hasAndroid, heavyStackTests, hexColor, partnerTokens } from "./helpers";
 import { decodePng, pixel } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 // Needs a JDK and the Android SDK (bun's skipIf takes no reason, so each name says it). The tests share one copy of
 // compose-min, in a folder with a space and an "&" in its name, whose activity uses Motif's generated theme and passes
 // its own variant (Partner); Gradle reuses its build from one run to the next.
-const android = hasAndroid();
+const heavy = heavyStackTests("compose", hasAndroid());
+const android = heavy.run;
+if (!heavy.run) console.log(`[compose-shot-e2e] Gradle and Robolectric tests skipped: ${heavy.reason}`);
+
 let root = "";
 let app = "";
 const saved = { home: process.env.MOTIF_HOME, debug: process.env.MOTIF_DEBUG };

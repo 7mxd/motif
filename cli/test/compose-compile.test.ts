@@ -4,7 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { buildThemeSet } from "../src/generate/theme";
 import { fontCertsXml } from "../src/stacks/compose/fonts";
 import { generateCompose } from "../src/stacks/compose/generate";
-import { androidToolchain, docFrom, FIXTURES, hasAndroid, partnerTokens, validTokens, withCompanion } from "./helpers";
+import { androidToolchain, docFrom, FIXTURES, hasAndroid, heavyStackTests, partnerTokens, validTokens, withCompanion } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -93,8 +93,11 @@ function run(cmd: string[], cwd: string, env: Record<string, string | undefined>
   return { code: r.exitCode ?? 1, out: `${r.stdout.toString()}\n${r.stderr.toString()}` };
 }
 
+const heavy = heavyStackTests("compose", hasAndroid());
+if (!heavy.run) console.log(`[compose-compile] Gradle and Robolectric tests skipped: ${heavy.reason}`);
+
 describe("the generated Kotlin", () => {
-  test.skipIf(!hasAndroid())("compiles with the app's Gradle, with no warnings from Motif's files", () => {
+  test.skipIf(!heavy.run)("compiles with the app's Gradle, with no warnings from Motif's files", () => {
     const { java, sdk } = androidToolchain()!;
     const dir = tempDir("motif-compose-");
     cpSync(join(FIXTURES, "compose-min"), dir, {

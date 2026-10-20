@@ -53,6 +53,42 @@ jobs:
         working-directory: cli
         run: bun test --timeout 300000 test/flutter-*.test.ts test/check-flutter.test.ts test/extract-flutter.test.ts test/fixtures-flutter.test.ts test/shot-flutter.test.ts test/tokens-flutter.test.ts
 
+  # The Compose tests on the floor JDK (17), with the SDK set up by its action rather than the runner's own copy
+  # (docs/decisions/0008-compose-rendering.md). The Gradle and Robolectric tests skip in the test job above (MOTIF_STACK_JOB
+  # names this job); the first run downloads Gradle, the Android plugin and Robolectric's Android jars (into ~/.m2).
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      MOTIF_STACK_JOB: compose
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platforms;android-36
+      # Gradle's downloads, and Robolectric's Android jar (~200 MB), which it puts in ~/.m2 itself.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.m2
+          key: compose-${{ runner.os }}-${{ hashFiles('cli/test/fixtures/compose-*/gradle/libs.versions.toml', 'tests/fixtures/compose-*/gradle/libs.versions.toml', 'cli/test/fixtures/compose-*/gradle/wrapper/gradle-wrapper.properties', 'tests/fixtures/compose-*/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: compose-${{ runner.os }}-
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: Compose tests
+        working-directory: cli
+        run: bun test --timeout 900000 test/compose-*.test.ts test/check-compose.test.ts test/extract-compose.test.ts test/fixtures-compose.test.ts test/shot-compose.test.ts test/tokens-compose.test.ts
+
   build:
     strategy:
       fail-fast: true
@@ -147,7 +183,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [build, plugin, test, flutter]
+    needs: [build, plugin, test, flutter, compose]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

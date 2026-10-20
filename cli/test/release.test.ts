@@ -86,7 +86,7 @@ describe("the release workflow", () => {
 
   test("publishes with written notes and the notices, only after checking the notes exist", () => {
     const publish = section("publish");
-    expect(publish).toContain("needs: [build, plugin, test, flutter]");
+    expect(publish).toContain("needs: [build, plugin, test, flutter, compose]");
     expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre');
     expect(publish).not.toContain("--generate-notes");
     expect(publish).toContain("cp THIRD-PARTY-NOTICES.txt dist/");
@@ -212,11 +212,24 @@ describe("the agents workflow", () => {
   });
 });
 
+describe("the Compose job and the heavy Compose tests agree on its name", () => {
+  test("MOTIF_STACK_JOB in both workflows' compose job is the stack name the tests pass to heavyStackTests", () => {
+    const tests = ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose"]
+      .map((f) => readFileSync(join(REPO, "cli/test", `${f}.test.ts`), "utf8"));
+    for (const t of tests) expect(t).toMatch(/heavyStackTests\("compose", /);
+    for (const f of ["ci.yml", "release.yml"]) {
+      const wf = readFileSync(join(REPO, ".github/workflows", f), "utf8").replace(/\r\n/g, "\n");
+      const job = wf.slice(wf.indexOf("\n  compose:\n")).split(/\n  \w[\w-]*:\n/)[1] ?? "";
+      expect(job).toContain("MOTIF_STACK_JOB: compose\n");
+    }
+  });
+});
+
 describe("the release workflows are hardened (backlog)", () => {
   test("a tag publishes only after the tests pass", () => {
     const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
     expect(wf).toContain("\n  test:\n");
-    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter]/);
+    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose]/);
   });
 
   test("every action is pinned to a commit, with its version beside it", () => {
