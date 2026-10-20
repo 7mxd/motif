@@ -27,12 +27,12 @@ A stack is supported when the developer gets the whole of Motif on it, not part 
 | Flutter | done | done | done | done | done | done | done | done | done | done | done |
 | Jetpack Compose | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | SwiftUI | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
-| React Native (Expo) | done | done | done | done | done | done | done | done | done | done | done |
+| React Native (Expo) | done | done | done | done | done | done | done | done | done | pending | done |
 | Vue / Nuxt | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | Svelte / SvelteKit | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | Angular | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 
-React web and plain web were finished in Part 1 and plan 2A; right-to-left screenshots and the accessible-name audit came to them with Flutter (plan 2E). Flutter (plan 2E) and React Native with Expo (plan 2G) are done; Jetpack Compose and SwiftUI are the rest of Phase A; Vue, Svelte and Angular are Phase B. Motif still helps on those stacks with general guidance: `motif tokens` writes plain CSS variables and `design/generated/tokens.flat.json` to map by hand.
+React web and plain web were finished in Part 1 and plan 2A; right-to-left screenshots and the accessible-name audit came to them with Flutter (plan 2E). Flutter (plan 2E) is done, and React Native with Expo (plan 2G) is done in every area but Evals, whose four cases haven't been run yet; Jetpack Compose and SwiftUI are the rest of Phase A; Vue, Svelte and Angular are Phase B. Motif still helps on those stacks with general guidance: `motif tokens` writes plain CSS variables and `design/generated/tokens.flat.json` to map by hand.
 
 ## Flutter: the tests that show it
 
@@ -59,7 +59,7 @@ Tests marked "needs Flutter" run in CI's Flutter job and skip, saying so, where 
 
 ## React Native (Expo): the tests that show it
 
-React Native with Expo was built in [plan 2G](plans/2026-10-20-motif-2g-expo.md). Every area is done. Bare React Native (without Expo) is a non-goal: `motif doctor` says so, and theme code, checks and drafts still work on it. Its code is in the CLI, so `motif doctor` built from source already treats Expo apps as supported; the README and the release notes list it from v0.5.0, with the rest of Phase A, once its row is complete and these release gates are passed:
+React Native with Expo was built in [plan 2G](plans/2026-10-20-motif-2g-expo.md). Every area is done but Evals, which is pending until its four cases have been run and pass. Bare React Native (without Expo) is a non-goal: `motif doctor` says so, and theme code, checks and drafts still work on it. Its code is in the CLI, so `motif doctor` built from source already treats Expo apps as supported; the README and the release notes list it from v0.5.0, with the rest of Phase A, once its row is complete and these release gates are passed:
 
 - The React Native job in CI passes on the pull request.
 - The four React Native eval cases pass (the Evals row below).

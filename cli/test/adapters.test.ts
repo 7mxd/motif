@@ -305,8 +305,13 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web, Flutter and React Native have every area done; the stacks still to come have none", () => {
-    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+  test("React web, plain web and Flutter have every area done, React Native every area but its pending eval runs; the stacks still to come have none", () => {
+    for (const stack of ["React web", "Plain web", "Flutter"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+    // Evals turns "done" once the four React Native cases have passed (the proof below says "Pending" until then).
+    expect(row("React Native (Expo)")!.slice(1)).toEqual(AREAS.map((a) => (a === "Evals" ? "pending" : "done")));
+    // The cell and its proof agree: one is flipped with the other.
+    const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes("fixtures-rn.test.ts"))!;
+    expect(proof[1]).toContain("Pending:");
     for (const stack of ["Jetpack Compose", "SwiftUI", "Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }
