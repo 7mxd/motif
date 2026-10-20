@@ -26,8 +26,10 @@ interface Group {
   message: string;
   fix: string;
   suggestion?: string;
-  /** Where the first few are (file:line). */
+  /** Where the first few are (file:line), each place once. */
   where: string[];
+  /** How many places (file:line) it is at: a line with the same value twice is one place. */
+  places: number;
 }
 
 const WHERE = 3;
@@ -42,6 +44,7 @@ function groupHits(hits: Hit[]): Group[] {
   return [...groups.values()]
     .map((all) => {
       const first = all[0]!;
+      const places = [...new Set(all.map((h) => `${h.file}:${h.line}`))];
       return {
         rule: first.rule,
         ...(first.kind ? { kind: first.kind } : {}),
@@ -51,7 +54,8 @@ function groupHits(hits: Hit[]): Group[] {
         message: first.message,
         fix: first.fix,
         ...(first.suggestion ? { suggestion: first.suggestion } : {}),
-        where: all.slice(0, WHERE).map((h) => `${h.file}:${h.line}`),
+        where: places.slice(0, WHERE),
+        places: places.length,
       };
     })
     .sort((a, b) => b.count - a.count || a.text.localeCompare(b.text));
@@ -151,7 +155,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   // The same problem many times (text-sm ×345 on a first check of a real app) is one line, with the closest role.
   const groups = groupHits(violations);
   const grouped = violations.length > GROUP_OVER;
-  const where = (g: Group) => `At ${g.where.join(", ")}${g.count > g.where.length ? ` and ${g.count - g.where.length} more` : ""}.`;
+  const where = (g: Group) => `At ${g.where.join(", ")}${g.places > g.where.length ? ` and ${g.places - g.where.length} more` : ""}.`;
   const groupLine = (g: Group) => `  ${g.count}× ${g.text}  ${g.message} ${g.suggestion ? `Closest: ${g.suggestion}.` : g.fix} ${where(g)}`;
   const rest = groups.slice(MAX_GROUPS);
   const restCount = rest.reduce((n, g) => n + g.count, 0);
@@ -171,6 +175,11 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (warnings.length) {
     lines.push("", "Warnings:", ...warnings.map((w) => `  ${w.file}${w.line ? `:${w.line}` : ""}  ${w.message} ${w.fix}`));
   }
+  // An app's own palette is typed colours by nature: still flagged, with what to do once the app uses Motif's theme.
+  const palettes = results.flatMap((r) => r.palettes ?? []);
+  if (palettes.length) {
+    lines.push("", ...palettes.map((p) => `• ${p} is your own theme's palette: once the app uses Motif's theme, remove it, or list its folder under "ignore" in design/motif.json.`));
+  }
   const skipped = apps.filter((a) => !supported.includes(a)).map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
   if (skipped.length) lines.push("", `Skipped (not supported yet): ${skipped.join(", ")}.`);
   if (violations.length) lines.push("", 'Fix these, or ask your agent: "fix the motif check findings".');
@@ -187,6 +196,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
       groups,
       exceptions,
       warnings,
+      ...(palettes.length ? { palettes } : {}),
       summary: { files, violations: violations.length, exceptions: exceptions.length, warnings: warnings.length },
     },
   };

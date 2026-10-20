@@ -13,6 +13,17 @@ const RADIUS_PX_3: Record<string, number> = { sm: 2, md: 6, lg: 8, xl: 12, "2xl"
 /** A utility class (p-7, text-sm, rounded-t-xl, p-[13px]), not a CSS value. */
 const CLASS = /^-?[a-z][a-z-]*-(?:\[[^\]]+\]|[\w.]+)$/;
 
+/**
+ * The radius roles a corner size is nearest to: the guide's full role for a pill (a corner of 100px or more, past every
+ * finite role, as 999 or 9999 is), else the one or two nearest finite ones.
+ */
+function nearestRadius<T extends { name: string; px: number }>(radius: T[], px: number): T[] {
+  const finite = radius.filter((r) => r.px < 9999 && (r.px > 0 || px === 0));
+  const full = radius.find((r) => r.name === "full") ?? radius.find((r) => r.px >= 9999);
+  if (full && px >= 100 && finite.every((r) => px > r.px)) return [full];
+  return nearest(finite, px, (r) => r.px);
+}
+
 /** The one or two roles nearest px (two when it falls exactly between them). */
 function nearest<T extends { name: string }>(roles: T[], px: number, size: (r: T) => number): T[] {
   if (roles.length === 0 || !Number.isFinite(px)) return [];
@@ -69,10 +80,9 @@ export function suggestRole(
   }
   if (hit.kind === "radius") {
     const px = (opts.tailwind3 ? RADIUS_PX_3 : RADIUS_PX)[value] ?? Number.parseFloat(value);
-    const roles = theme.radius.filter((r) => r.px < 9999 && (r.px > 0 || px === 0));
     const name = (r: { name: string }) =>
       !cls ? `var(--motif-radius-${r.name})` : opts.tailwind3 ? `${prefix}[var(--motif-radius-${r.name})]` : `${prefix}${r.name}`;
-    return join(nearest(roles, px, (r) => r.px).map((r) => `${name(r)} (${r.px}px)`));
+    return join(nearestRadius(theme.radius, px).map((r) => `${name(r)} (${r.px}px)`));
   }
   return undefined;
 }
@@ -90,10 +100,7 @@ function nativeSuggestion(hit: Hit, theme: Theme, role: (kind: ValueKind, name: 
   const join = (items: string[]) => (items.length > 0 ? items.join(" or ") : undefined);
   if (hit.kind === "font-size") return join(nearest(theme.fonts, px, (f) => f.sizePx).map((f) => `${role("font-size", f.name)} (${f.sizePx}px)`));
   if (hit.kind === "space") return join(nearest(theme.space, px, (s) => s.px).map((s) => `${role("space", s.name)} (${s.px}px)`));
-  if (hit.kind === "radius") {
-    const roles = theme.radius.filter((r) => r.px < 9999 && (r.px > 0 || px === 0));
-    return join(nearest(roles, px, (r) => r.px).map((r) => `${role("radius", r.name)} (${r.px}px)`));
-  }
+  if (hit.kind === "radius") return join(nearestRadius(theme.radius, px).map((r) => `${role("radius", r.name)} (${r.px}px)`));
   if (hit.kind === "color") {
     const wanted = parseColor(hit.value ?? "");
     if (!wanted) return undefined;

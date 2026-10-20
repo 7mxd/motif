@@ -154,3 +154,56 @@ describe("motif check on a Flutter app", () => {
     expect(r.text).toContain("motif check works on Flutter apps, React web apps and plain web sites in this version.");
   });
 });
+
+describe("motif check on a Flutter app: groups and the app's own palette (Task 15 wave B, #7 and ruling U)", () => {
+  test("a group names each place once: EdgeInsets.fromLTRB(28, 60, 28, 28) is one place", async () => {
+    const lines = Array.from({ length: 9 }, (_, i) => `final p${i} = EdgeInsets.fromLTRB(28, 60, 28, 28);`);
+    const r = await check(await flutterApp({ "lib/pad.dart": [...lines, ""].join("\n") }));
+    const line = r.text.split(/\r?\n/).find((l) => l.startsWith("  27× 28 "));
+    expect(line).toEndWith("At lib/pad.dart:1, lib/pad.dart:2, lib/pad.dart:3 and 6 more.");
+  });
+
+  test("a pill's corner (999) suggests MotifRadius.full", async () => {
+    const lines = Array.from({ length: 26 }, (_, i) => `final r${i} = BorderRadius.circular(999);`);
+    const r = await check(await flutterApp({ "lib/pill.dart": [...lines, ""].join("\n") }));
+    expect(r.text).toContain("Closest: MotifRadius.full (9999px).");
+    expect(r.text).not.toContain("MotifRadius.lg (16px)");
+  });
+
+  const PALETTE = `import 'package:flutter/material.dart';
+
+class AppColors extends ThemeExtension<AppColors> {
+  const AppColors({required this.bg, required this.text});
+  final Color bg;
+  final Color text;
+
+  static const light = AppColors(bg: Color(0xFFF8FAF9), text: Color(0xFF0A1733));
+  static const dark = AppColors(bg: Color(0xFF0F1413), text: Color(0xFFF1F5F4));
+
+  @override
+  AppColors copyWith({Color? bg, Color? text}) => AppColors(bg: bg ?? this.bg, text: text ?? this.text);
+  @override
+  AppColors lerp(AppColors? other, double t) => this;
+}
+`;
+  const BRAND = `import 'package:flutter/material.dart';
+
+class Brand {
+  static const Color mint = Color(0xFF7EEBC1);
+  static const Color navy = Color(0xFF0A1733);
+  static const Color sand = Color(0xFFF1E9DA);
+}
+`;
+  const HINT = (file: string) => `${file} is your own theme's palette: once the app uses Motif's theme, remove it, or list its folder under "ignore" in design/motif.json.`;
+
+  test("typed colours in the app's own palette are still flagged, with one hint line per palette file", async () => {
+    const r = await check(await flutterApp({ "lib/theme/app_colors.dart": PALETTE, "lib/theme/brand.dart": BRAND, "lib/home.dart": HOME }));
+    const files = new Set((r.data.violations as any[]).map((h) => h.file));
+    expect([...files].sort()).toEqual(["lib/home.dart", "lib/theme/app_colors.dart", "lib/theme/brand.dart"]);
+    expect(r.text).toContain(HINT("lib/theme/app_colors.dart"));
+    expect(r.text).toContain(HINT("lib/theme/brand.dart"));
+    expect(r.text).not.toContain(HINT("lib/home.dart"));
+    expect(r.text.split(HINT("lib/theme/brand.dart")).length).toBe(2);
+    expect(r.data.palettes).toEqual(["lib/theme/app_colors.dart", "lib/theme/brand.dart"]);
+  });
+});

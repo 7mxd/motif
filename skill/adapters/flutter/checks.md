@@ -17,6 +17,7 @@ A colour typed into widget code.
 
 - Example: `Color(0xFF8A8A8A)`, `Color.fromRGBO(0, 0, 0, 0.5)`, `Colors.white`, `Colors.grey.shade600`, `CupertinoColors.systemRed`. (`Colors.transparent` is fine.)
 - Fix: the colour role it stands for, `MotifColors.of(context).<role>`. Each finding names the nearest role.
+- The app's own palette (a `ThemeExtension`'s light and dark instances, a `ColorScheme` of typed colours, a class of `static const Color` fields) is typed colours by nature, so its colours are flagged too, and `motif check` adds one line for the file: `<file> is your own theme's palette: once the app uses Motif's theme, remove it, or list its folder under "ignore" in design/motif.json.` Don't rewrite the palette with Motif's roles: move the widgets to `MotifColors`, then remove it, or list its folder under `"ignore"` while both themes live side by side.
 
 ```dart
 final colors = MotifColors.of(context);

@@ -35,6 +35,11 @@ export interface NativeStack {
   sourceFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
   scan?(file: SourceFile, scale: Scale): Hit[];
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];
+  /**
+   * True when a file's typed colours define the app's own palette (a Flutter ThemeExtension's instances, a ColorScheme, a
+   * class of colour constants) rather than style its widgets: check still flags them, with a hint.
+   */
+  paletteFile?(file: SourceFile, hits: Hit[]): boolean;
   /** What to use instead of a hit, in the stack's own language. */
   fix?(hit: Hit): string;
   /** A theme role as the stack's code names it, for "Closest:" suggestions (text-secondary → MotifColors.of(context).textSecondary). */

@@ -10,6 +10,7 @@ import { andList } from "../../text";
 import { collectFlutter } from "./extract";
 import { flutterFonts } from "./fonts";
 import { generateFlutter } from "./generate";
+import { dartPaletteFile } from "./palette";
 import { importFor, pathDependencies } from "./project";
 import { dartFix, dartReducedMotion, dartRole, scanDart } from "./rules";
 import { discoverFlutterRoutes } from "./routes";
@@ -95,6 +96,7 @@ export const FLUTTER: NativeStack = {
   // Motif's own file defines MotifMotion and reads disableAnimations: only the app's code says whether it respects reduce motion.
   appWide: (files) => dartReducedMotion(files),
   fix: dartFix,
+  paletteFile: dartPaletteFile,
   role: dartRole,
   collect: collectFlutter,
 

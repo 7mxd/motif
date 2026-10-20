@@ -240,3 +240,19 @@ describe("runCheck: the review of batch C2", () => {
     expect(hit("#ff0000").variant).toBeUndefined();
   });
 });
+
+describe("runCheck groups (Task 15 wave B, #7)", () => {
+  test("a group names each place once, and counts the places it doesn't name", async () => {
+    const css = Array.from({ length: 10 }, (_, i) => `.a${i} { padding: 13px 13px 13px 13px; }`).join("\n");
+    const r = await runCheck(project({ "src/a.css": css }), ctx());
+    expect(r.text).toContain("40× 13px");
+    expect(r.text).toContain("At src/a.css:1, src/a.css:2, src/a.css:3 and 7 more.");
+    expect((r.data.groups as any[])[0].where).toEqual(["src/a.css:1", "src/a.css:2", "src/a.css:3"]);
+  });
+
+  test("a pill's corner (999px) suggests the full role, not the largest finite one", async () => {
+    const css = Array.from({ length: 26 }, (_, i) => `.p${i} { border-radius: 999px; }`).join("\n");
+    const r = await runCheck(project({ "src/a.css": css }), ctx());
+    expect(r.text).toContain("Closest: var(--motif-radius-full) (9999px).");
+  });
+});
