@@ -106,7 +106,19 @@ export function pathDependencies(dir: string): { name: string; path: string }[] 
 
 /** The font families a pubspec.yaml bundles (flutter: fonts: - family: Name). */
 export function fontFamilies(text: string): string[] {
-  const families: string[] = [];
+  return fontAssets(text).map((f) => f.family);
+}
+
+/** A font family a pubspec.yaml bundles, with its files (asset paths relative to the pubspec's folder). */
+export interface BundledFont {
+  family: string;
+  files: { asset: string; weight: number; style: "normal" | "italic" }[];
+}
+
+/** The font families a pubspec.yaml bundles, each with its asset files, weights and styles. */
+export function fontAssets(text: string): BundledFont[] {
+  const families: BundledFont[] = [];
+  const value = (line: string, key: string) => line.match(new RegExp(`^\\s*-?\\s*${key}:\\s*["']?([^"'#]+?)["']?\\s*(#.*)?$`))?.[1]?.trim();
   let inFlutter = false;
   let inFonts = false;
   let fontsIndent = 0;
@@ -126,8 +138,19 @@ export function fontFamilies(text: string): string[] {
       continue;
     }
     if (inFonts && indent <= fontsIndent && !line.trimStart().startsWith("-")) inFonts = false;
-    const family = inFonts ? line.match(/^\s*-?\s*family:\s*["']?([^"'#]+?)["']?\s*(#.*)?$/)?.[1] : undefined;
-    if (family) families.push(family.trim());
+    if (!inFonts) continue;
+    const family = value(line, "family");
+    if (family) {
+      families.push({ family, files: [] });
+      continue;
+    }
+    const files = families[families.length - 1]?.files;
+    if (!files) continue;
+    const asset = value(line, "asset");
+    const last = files[files.length - 1];
+    if (asset) files.push({ asset, weight: 400, style: "normal" });
+    else if (last && value(line, "weight") && /^\d+$/.test(value(line, "weight")!)) last.weight = Number(value(line, "weight"));
+    else if (last && value(line, "style") === "italic") last.style = "italic";
   }
   return families;
 }

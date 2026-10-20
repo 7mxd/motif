@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { cpSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runExtract } from "../src/commands/extract";
+import { checkProjectFontFiles, readProjectFonts } from "../src/contract/fonts";
 import { checkRoles } from "../src/contract/roles";
 import { validateTokens } from "../src/contract/tokens";
 import { checkVariants } from "../src/contract/variants";
@@ -367,11 +368,13 @@ Widget cards(AppColors c) => Column(children: [
     expect(bg.dark).toBe("#0F1413");
   });
 
-  test("surface's dark and variant values come from the variable its light value came from (--surface → --bg)", () => {
+  // Wave B (#6a) changed this: ColorScheme's surface: palette.bg made surface the page again, losing the cards' colour. A
+  // card field now gives surface its values, every mode's and variant's from that one field.
+  test("surface's dark and variant values come from the variable its light value came from (card, not the page's bg)", () => {
     const surface = values("surface");
     const bg = values("background");
-    expect(surface.light).toBe(bg.light);
-    expect(surface.dark).toBe("#0F1413");
+    expect([bg.light, bg.dark]).toEqual(["#F8FAF9", "#0F1413"]);
+    expect([surface.light, surface.dark]).toEqual(["#FFFFFF", "#1B2120"]);
     expect(surface.male ?? [surface.light, surface.dark]).toEqual([surface.light, surface.dark]);
   });
 
@@ -444,5 +447,279 @@ class Picker {
 `,
     });
     expect(occ.variables!.find((v) => v.name === "--accent")!.variants).toBeUndefined();
+  });
+});
+
+// ---------- Task 15 wave B: what the HiSalon hands-on test found in the draft ----------
+
+const WAVE_B_PUBSPEC = `${PUBSPEC}  google_fonts: ^6.2.1
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: ThmanyahSans
+      fonts:
+        - asset: assets/fonts/thmanyahsans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/thmanyahsans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/thmanyahsans-Bold.woff2
+          weight: 700
+`;
+
+/** HiSalon's text themes: Onest through google_fonts for Latin, the bundled ThmanyahSans for Arabic, chosen by locale. */
+const TEXT_THEME = `import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+ThemeData buildTheme(Locale locale) {
+  final base = locale.languageCode == 'ar' ? _arabicTextTheme() : _latinTextTheme();
+  return ThemeData(textTheme: base);
+}
+
+TextTheme _latinTextTheme() {
+  return GoogleFonts.onestTextTheme(ThemeData().textTheme).copyWith(
+    displayLarge: GoogleFonts.onest(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -0.6),
+    headlineMedium: GoogleFonts.onest(fontSize: 24, fontWeight: FontWeight.w700),
+    titleLarge: GoogleFonts.onest(fontSize: 20, fontWeight: FontWeight.w700),
+    titleMedium: GoogleFonts.onest(fontSize: 16, fontWeight: FontWeight.w600),
+    titleSmall: GoogleFonts.onest(fontSize: 14, fontWeight: FontWeight.w600),
+    bodyLarge: GoogleFonts.onest(fontSize: 16, fontWeight: FontWeight.w400, height: 1.5),
+    bodyMedium: GoogleFonts.onest(fontSize: 14, fontWeight: FontWeight.w400),
+    bodySmall: GoogleFonts.onest(fontSize: 12, fontWeight: FontWeight.w400),
+    labelLarge: GoogleFonts.onest(fontSize: 14, fontWeight: FontWeight.w600),
+    labelMedium: GoogleFonts.onest(fontSize: 12, fontWeight: FontWeight.w500),
+    labelSmall: GoogleFonts.onest(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.4),
+  );
+}
+
+TextTheme _arabicTextTheme() {
+  const family = 'ThmanyahSans';
+  TextStyle s(double size, FontWeight w) => TextStyle(fontFamily: family, fontSize: size, fontWeight: w);
+  final fallback = ThemeData().textTheme;
+  final materialBase = TextTheme(
+    displayLarge: fallback.displayLarge,
+    bodyLarge: fallback.bodyLarge,
+    bodyMedium: fallback.bodyMedium,
+  );
+  return materialBase.copyWith(
+    displayLarge: s(32, FontWeight.w900),
+    bodyMedium: s(14, FontWeight.w400),
+  );
+}
+`;
+
+/** Widgets whose typed sizes would draft display 45, heading 22, body 18, label 17 and caption 9 on their own. */
+const SIZES_IN_USE = `import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+Widget texts() => Column(children: [
+      Text('a', style: GoogleFonts.onest(fontSize: 13)),
+      Text('b', style: GoogleFonts.onest(fontSize: 13)),
+      Text('c', style: GoogleFonts.onest(fontSize: 13)),
+      Text('d', style: TextStyle(fontSize: 18)),
+      Text('e', style: TextStyle(fontSize: 17)),
+      Text('f', style: TextStyle(fontSize: 22)),
+      Text('g', style: TextStyle(fontSize: 45)),
+      Text('h', style: TextStyle(fontSize: 9)),
+      Text('i', style: TextStyle(fontSize: 30)),
+    ]);
+`;
+
+const fontRole = (t: any, role: string) => t.font[role].$value;
+
+describe("type roles come from the app's TextTheme (Task 15 wave B, #4)", () => {
+  const root = makeProject({ "pubspec.yaml": WAVE_B_PUBSPEC, "lib/main.dart": "void main() {}\n", "lib/theme.dart": TEXT_THEME, "lib/texts.dart": SIZES_IN_USE });
+  const { tokens, report } = buildDraft(collect(root));
+  const t = tokens as any;
+
+  test("each role takes its TextTheme slot's size, weight and height", () => {
+    const sizes = Object.fromEntries(["display", "title", "heading", "body", "label", "caption"].map((r) => [r, fontRole(t, r).fontSize.value]));
+    expect(sizes).toEqual({ display: 32, title: 24, heading: 20, body: 16, label: 14, caption: 12 });
+    expect(fontRole(t, "display").fontWeight).toBe(800);
+    expect(fontRole(t, "label").fontWeight).toBe(600);
+    expect(fontRole(t, "body").lineHeight).toBe(1.5);
+    // A slot without height keeps Motif's line height for the role.
+    expect(fontRole(t, "heading").lineHeight).toBe(1.3);
+  });
+
+  test("the report says where the type roles came from", () => {
+    expect(report.notes.join("\n")).toContain("Type roles came from your TextTheme (lib/theme.dart:");
+  });
+
+  test("roles the TextTheme doesn't give fall back to the sizes in use", () => {
+    const partial = makeProject({
+      "pubspec.yaml": PUBSPEC,
+      "lib/main.dart": "void main() {}\n",
+      "lib/theme.dart": `import 'package:flutter/material.dart';
+
+final theme = ThemeData(textTheme: const TextTheme(
+  displayLarge: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+  bodyMedium: TextStyle(fontSize: 15),
+));
+`,
+      "lib/texts.dart": SIZES_IN_USE,
+    });
+    const p = buildDraft(collect(partial)).tokens as any;
+    expect(fontRole(p, "display").fontSize.value).toBe(40);
+    expect(fontRole(p, "display").fontWeight).toBe(700);
+    expect(fontRole(p, "body").fontSize.value).toBe(15);
+    expect(fontRole(p, "body").fontWeight).toBe(400);
+    // heading: the first size in use above the body.
+    expect(fontRole(p, "heading").fontSize.value).toBe(17);
+  });
+
+  test("the draft stays a valid guide", () => {
+    const doc = docFrom(tokens);
+    expect(validateTokens(doc)).toEqual([]);
+    expect(checkRoles(doc)).toEqual([]);
+  });
+});
+
+describe("the font the theme picks for Arabic is the companion (Task 15 wave B, #5)", () => {
+  const files = {
+    "pubspec.yaml": WAVE_B_PUBSPEC,
+    "assets/fonts/thmanyahsans-Regular.ttf": "font",
+    "assets/fonts/thmanyahsans-Bold.ttf": "font",
+    "assets/fonts/thmanyahsans-Bold.woff2": "font",
+    "lib/main.dart": "void main() {}\n",
+    "lib/texts.dart": SIZES_IN_USE,
+  };
+
+  test("a locale check choosing a text theme in a bundled family drafts it second in every role's fonts", () => {
+    const root = makeProject({ ...files, "lib/theme.dart": TEXT_THEME });
+    const { tokens, report } = buildDraft(collect(root));
+    const t = tokens as any;
+    expect(t.primitive.font.sans.$value).toEqual(["Onest", "ThmanyahSans", "system-ui", "sans-serif"]);
+    expect(fontRole(t, "body").fontFamily).toBe("{primitive.font.sans}");
+    expect(t.$extensions["dev.motif"].fonts).toEqual([
+      {
+        family: "ThmanyahSans",
+        files: [
+          { path: "assets/fonts/thmanyahsans-Regular.ttf", weight: 400, style: "normal" },
+          { path: "assets/fonts/thmanyahsans-Bold.ttf", weight: 700, style: "normal" },
+        ],
+      },
+    ]);
+    expect(report.notes.join("\n")).toContain("ThmanyahSans");
+    const doc = docFrom(tokens);
+    expect(validateTokens(doc)).toEqual([]);
+    const { fonts, findings } = readProjectFonts(doc);
+    expect(findings).toEqual([]);
+    expect(checkProjectFontFiles(root, fonts, doc)).toEqual([]);
+  });
+
+  test("a fontFamilyFallback listing a bundled family makes it the companion too", () => {
+    const root = makeProject({
+      ...files,
+      "lib/theme.dart": `import 'package:flutter/material.dart';
+
+final theme = ThemeData(textTheme: const TextTheme(bodyMedium: TextStyle(fontFamily: 'Onest', fontFamilyFallback: ['ThmanyahSans'], fontSize: 14)));
+`,
+    });
+    const t = buildDraft(collect(root)).tokens as any;
+    expect(t.primitive.font.sans.$value).toEqual(["Onest", "ThmanyahSans", "system-ui", "sans-serif"]);
+  });
+
+  test("a bundled family the theme never picks for Arabic isn't a companion", () => {
+    const root = makeProject({
+      ...files,
+      "lib/theme.dart": `import 'package:flutter/material.dart';
+
+final theme = ThemeData(textTheme: const TextTheme(bodyMedium: TextStyle(fontFamily: 'Onest', fontSize: 14)));
+`,
+    });
+    const t = buildDraft(collect(root)).tokens as any;
+    expect(t.primitive.font.sans.$value).not.toContain("ThmanyahSans");
+    expect(t.$extensions["dev.motif"].fonts).toBeUndefined();
+  });
+});
+
+describe("surface and text-secondary from the palette's own fields (Task 15 wave B, #6)", () => {
+  // HiSalon's shape: ColorScheme's surface is the page's bg; the palette has a card colour, and its muted text carries alpha.
+  const instance = (name: string, v: Record<string, string>) =>
+    `  static const AppColors ${name} = AppColors(${Object.entries(v).map(([k, c]) => `${k}: Color(0x${c})`).join(", ")});`;
+  const light = { bg: "FFF8FAF9", card: "FFFFFFFF", bgElevated: "FFFFFFFF", text: "FF0A1733", textMuted: "A60A1733", accent: "FF7EEBC1", accentStrong: "FF0E5C4D", accentContrast: "FF0A1733", cardBorder: "140F3C32" };
+  const dark = { bg: "FF0F1413", card: "FF1B2120", bgElevated: "FF1B2120", text: "FFF1F5F4", textMuted: "A6F1F5F4", accent: "FF7EEBC1", accentStrong: "FF7EEBC1", accentContrast: "FF0A1733", cardBorder: "1FFFFFFF" };
+  const fields = Object.keys(light);
+  const root = makeProject({
+    "pubspec.yaml": PUBSPEC,
+    "lib/main.dart": "void main() {}\n",
+    "lib/colors.dart": `import 'package:flutter/material.dart';
+
+class AppColors extends ThemeExtension<AppColors> {
+  const AppColors({${fields.map((f) => `required this.${f}`).join(", ")}});
+${fields.map((f) => `  final Color ${f};`).join("\n")}
+${instance("light", light)}
+${instance("dark", dark)}
+${instance("lightMale", { ...light, accent: "FF3D4B6E", accentStrong: "FF3D4B6E", textMuted: "A6202020" })}
+${instance("darkMale", { ...dark, accent: "FF7E94C9", accentStrong: "FF7E94C9" })}
+}
+`,
+    "lib/theme.dart": `import 'package:flutter/material.dart';
+import 'colors.dart';
+
+ThemeData build(AppColors palette) => ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: palette.accent, primary: palette.accent, onPrimary: palette.accentContrast, surface: palette.bg, onSurface: palette.text),
+      scaffoldBackgroundColor: palette.bg,
+    );
+`,
+    "lib/screens.dart": `import 'package:flutter/material.dart';
+import 'colors.dart';
+
+Widget screen(AppColors c) => Column(children: [
+      Card(color: c.card),
+      Card(color: c.card),
+      Text('a', style: TextStyle(color: c.text)),
+      Text('b', style: TextStyle(color: c.text)),
+      Text('c', style: TextStyle(color: c.textMuted)),
+      Text('d', style: TextStyle(color: c.textMuted)),
+      Text('e', style: TextStyle(color: c.textMuted)),
+      Text('f', style: TextStyle(color: c.textMuted)),
+      Text('g', style: TextStyle(color: c.accentStrong)),
+      Text('h', style: TextStyle(color: c.accentStrong)),
+      Container(decoration: BoxDecoration(border: Border.all(color: c.cardBorder))),
+    ]);
+`,
+  });
+  const { tokens, report } = buildDraft(collect(root));
+  const t = tokens as any;
+  const role = (name: string) => {
+    const r = t.color[name];
+    const own = r.$extensions["dev.motif"].variants ?? {};
+    return { light: hexOf(t, r.$value), dark: hexOf(t, r.$extensions["dev.motif"].modes.dark), male: own.male && [hexOf(t, own.male.value), hexOf(t, own.male.dark)] };
+  };
+  /** A see-through ARGB colour laid over a solid ARGB one, as #RRGGBB. */
+  const over = (argb: string, bg: string) => {
+    const a = Number.parseInt(argb.slice(0, 2), 16) / 255;
+    const ch = (s: string, i: number) => Number.parseInt(s.slice(i, i + 2), 16);
+    return `#${[2, 4, 6].map((i) => Math.round(a * ch(argb, i) + (1 - a) * ch(bg, i)).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+  };
+
+  test("surface is the card colour, not the page's again, in light and dark", () => {
+    expect(role("surface").light).toBe("#FFFFFF");
+    expect(role("surface").dark).toBe("#1B2120");
+    expect(role("background").light).toBe("#F8FAF9");
+    expect(role("background").dark).toBe("#0F1413");
+  });
+
+  test("text-secondary is the muted text laid over the background, not the accent", () => {
+    const ts = role("text-secondary");
+    expect(ts.light).toBe(over(light.textMuted, light.bg));
+    expect(ts.dark).toBe(over(dark.textMuted, dark.bg));
+    expect(ts.male![0]).toBe(over("A6202020", light.bg));
+    expect(report.notes.join("\n")).toContain("text-secondary comes from --text-muted, which is see-through (#0a1733a6)");
+  });
+
+  test("the see-through note names only roles whose own value is see-through", () => {
+    const notes = report.notes.join("\n");
+    expect(notes).not.toContain("text-primary comes from a see-through colour");
+    expect(notes).toContain("border comes from a see-through colour (#0f3c3214)");
+  });
+
+  test("the draft stays a valid guide", () => {
+    const doc = docFrom(tokens);
+    expect(validateTokens(doc)).toEqual([]);
+    expect(checkRoles(doc)).toEqual([]);
+    expect(checkVariants(doc).filter((f) => f.severity === "error")).toEqual([]);
   });
 });

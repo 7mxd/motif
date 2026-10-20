@@ -279,3 +279,29 @@ describe("buildDraft with design variants", () => {
     expect(report.designVariants).toBeUndefined();
   });
 });
+
+describe("the see-through note names only a see-through value (Task 15 wave B, #6c)", () => {
+  // A web app whose --text-primary is solid navy, while its most used text colour is the same navy at 65%: the role takes the
+  // variable's solid value, so no note says it came from a see-through colour.
+  const occ: Occurrences = {
+    colors: [
+      { value: "#0a1733a6", count: 12, contexts: { text: 12 }, examples: [] },
+      { value: "#0a1733", count: 3, contexts: { text: 3 }, examples: [] },
+      { value: "#ffffff", count: 5, contexts: { background: 5, page: 1 }, examples: [] },
+    ],
+    space: [], radius: [], fontSize: [], fontFamily: [], duration: [], easing: [], unresolved: [],
+    variables: [{ name: "--text-primary", light: "#0a1733" }, { name: "--background", light: "#ffffff" }],
+    aliases: {},
+    roleNames: ["--text-primary", "--background"],
+    variableUses: { "--text-primary": { text: 3 }, "--background": { background: 1 } },
+    followVariables: true,
+  };
+  test("a role named by a solid variable isn't noted as see-through", () => {
+    const { report } = buildDraft(occ);
+    expect(report.notes.join("\n")).not.toContain("text-primary comes from a see-through colour");
+  });
+  test("a role whose own value is see-through still is", () => {
+    const { report } = buildDraft({ ...occ, variables: [{ name: "--background", light: "#ffffff" }], roleNames: ["--background"], variableUses: { "--background": { background: 1 } } });
+    expect(report.notes.join("\n")).toContain("text-primary comes from a see-through colour (#0a1733a6)");
+  });
+});

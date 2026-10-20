@@ -8,7 +8,7 @@ import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
 import { locator, stripBom } from "../../text";
-import { fontFamilies } from "./project";
+import { fontAssets } from "./project";
 import { callArgs, colorContext, namedArgument, scanDart } from "./rules";
 
 const MAX_EXAMPLES = 5;
@@ -190,10 +190,13 @@ function pairInstances(instances: Instance[]): {
   return { defaultPair, variants, unpaired: unpaired.filter((i) => !isDefault(i)) };
 }
 
-/** Each pubspec.yaml above the files (the app's, a package's), read once: its bundled font families, and where it is. */
-function pubspecFonts(files: SourceFile[]): { family: string; path: string }[] {
+/**
+ * Each pubspec.yaml above the files (the app's, a package's), read once: its bundled font families, where it is, and the
+ * families' files (paths from the project's root; files outside the project left out).
+ */
+function pubspecFonts(files: SourceFile[]): { family: string; path: string; files: { path: string; weight: number; style: "normal" | "italic" }[] }[] {
   const seen = new Set<string>();
-  const out: { family: string; path: string }[] = [];
+  const out: { family: string; path: string; files: { path: string; weight: number; style: "normal" | "italic" }[] }[] = [];
   for (const f of files) {
     if (!f.abs) continue;
     let abs = dirname(f.abs);
@@ -209,8 +212,14 @@ function pubspecFonts(files: SourceFile[]): { family: string; path: string }[] {
         } catch {
           // Unreadable: no fonts from it.
         }
-        const path = rel === "." || rel === "" ? "pubspec.yaml" : `${rel}/pubspec.yaml`;
-        for (const family of fontFamilies(text)) out.push({ family, path });
+        const top = rel === "." || rel === "";
+        const path = top ? "pubspec.yaml" : `${rel}/pubspec.yaml`;
+        for (const font of fontAssets(text)) {
+          const own = font.files
+            .map((f) => ({ path: posix.normalize(top ? f.asset : `${rel}/${f.asset}`), weight: f.weight, style: f.style }))
+            .filter((f) => !f.path.startsWith("..") && !posix.isAbsolute(f.path));
+          out.push({ family: font.family, path, files: own });
+        }
         break;
       }
       const up = dirname(abs);
@@ -220,6 +229,74 @@ function pubspecFonts(files: SourceFile[]): { family: string; path: string }[] {
     }
   }
   return out;
+}
+
+/** A TextTheme's slots, by the Motif role each one is evidence for, in order of preference (the inverse of generate.ts's map). */
+const TEXT_SLOTS: [string, string[]][] = [
+  ["display", ["displayLarge", "displayMedium", "displaySmall"]],
+  ["title", ["headlineLarge", "headlineMedium", "headlineSmall"]],
+  ["heading", ["titleLarge", "titleMedium", "titleSmall"]],
+  ["body", ["bodyLarge", "bodyMedium"]],
+  ["label", ["labelLarge", "labelMedium"]],
+  ["caption", ["bodySmall", "labelSmall"]],
+];
+const SLOT_NAMES = new Set(TEXT_SLOTS.flatMap(([, slots]) => slots));
+const NAMED_WEIGHTS: Record<string, number> = { normal: 400, bold: 700 };
+
+/** A text style's size, weight and height, as written in a slot (TextStyle(fontSize: 14), GoogleFonts.onest(…), s(14, …)). */
+function slotStyle(value: string): { size: number; weight?: number; lineHeight?: number } | undefined {
+  const size = value.match(/\bfontSize\s*:\s*(\d+(?:\.\d+)?)\b/)?.[1] ?? value.match(/^[\w$.?!]+\s*\(\s*(\d+(?:\.\d+)?)\s*[,)]/)?.[1];
+  if (!size) return undefined;
+  const w = value.match(/\bFontWeight\.(?:w([1-9])00|(normal|bold))\b/);
+  const weight = w ? (w[1] ? Number(w[1]) * 100 : NAMED_WEIGHTS[w[2]!]) : undefined;
+  const height = value.match(/\bheight\s*:\s*(\d+(?:\.\d+)?)\b/)?.[1];
+  return { size: Number(size), ...(weight ? { weight } : {}), ...(height ? { lineHeight: Number(height) } : {}) };
+}
+
+/**
+ * The app's text theme: the TextTheme(…) or copyWith(…) call that sets the most slots with a size (the first, when two
+ * set as many), as Motif's type roles.
+ */
+function textThemeRoles(files: DartFile[]): Occurrences["typeRoles"] {
+  let best: { from: string; roles: Record<string, { size: number; weight?: number; lineHeight?: number }>; sized: number } | undefined;
+  for (const file of files) {
+    for (const m of file.code.matchAll(/(?<![\w$])(?:TextTheme|copyWith)\s*\(/g)) {
+      const call = callArgs(file.code, m.index! + m[0].length - 1);
+      if (!call) continue;
+      const slots = new Map<string, NonNullable<ReturnType<typeof slotStyle>>>();
+      for (const a of call.args) {
+        if (!a.name || !SLOT_NAMES.has(a.name)) continue;
+        const style = slotStyle(a.value);
+        if (style) slots.set(a.name, style);
+      }
+      if (slots.size < 2 || (best && slots.size <= best.sized)) continue;
+      const roles: Record<string, { size: number; weight?: number; lineHeight?: number }> = {};
+      for (const [role, names] of TEXT_SLOTS) {
+        const slot = names.find((n) => slots.has(n));
+        if (slot) roles[role] = slots.get(slot)!;
+      }
+      best = { from: `${file.source.path}:${file.lineOf(m.index!)}`, roles, sized: slots.size };
+    }
+  }
+  return best ? { from: best.from, roles: best.roles } : undefined;
+}
+
+/** A locale check for a right-to-left language with its own script: languageCode == 'ar' (or 'fa', 'ur'). */
+const RTL_LOCALE = /languageCode\s*==\s*(["'])(?:ar|fa|ur)\1|(["'])(?:ar|fa|ur)\2\s*==\s*[\w$.?!()]*languageCode/;
+
+/**
+ * A family the app bundles that its theme picks for another script: named in a file that checks for Arabic
+ * (locale.languageCode == 'ar' choosing a text theme in it), or listed in a fontFamilyFallback.
+ */
+function companionFamily(files: DartFile[], bundled: string[]): string | undefined {
+  const texts = files.map((f) => maskComments(f.source.text, "dart"));
+  const quoted = (family: string) => new RegExp(`(["'])${family.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\1`);
+  for (const family of bundled) {
+    const q = quoted(family);
+    const fallback = texts.some((t) => [...t.matchAll(/\bfontFamilyFallback\s*:\s*(?:const\s*)?(?:<String>\s*)?\[([^\]]*)\]/g)].some((m) => q.test(m[1]!)));
+    if (fallback || texts.some((t) => RTL_LOCALE.test(t) && q.test(t))) return family;
+  }
+  return undefined;
 }
 
 /**
@@ -460,7 +537,15 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
       }
     }
   }
-  for (const { family, path } of pubspecFonts([...files, ...shared])) add("fontFamily", family, path);
+  const bundled = pubspecFonts([...files, ...shared]);
+  for (const { family, path } of bundled) add("fontFamily", family, path);
+  const typeRoles = textThemeRoles(dart);
+  const companion = companionFamily(dart, [...new Set(bundled.map((b) => b.family))]);
+  const projectFonts = bundled
+    .filter((b) => b.family === companion)
+    .map((b) => ({ family: b.family, files: b.files.filter((f) => /\.(ttf|otf)$/i.test(f.path)) }))
+    .filter((b) => b.files.length > 0)
+    .slice(0, 1);
 
   const sorted = (m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
   return {
@@ -474,5 +559,8 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
     source: "dart",
     ...(Object.keys(variantLabels).length ? { variantLabels } : {}),
     ...(notes.length ? { notes } : {}),
+    ...(typeRoles ? { typeRoles } : {}),
+    ...(companion ? { companion } : {}),
+    ...(projectFonts.length ? { projectFonts } : {}),
   };
 }
