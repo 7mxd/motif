@@ -8,6 +8,7 @@ import { prefixPath } from "../../project/apps";
 import type { NativeStack } from "../native";
 import { andList } from "../../text";
 import { collectFlutter } from "./extract";
+import { flutterDoctor } from "./doctor";
 import { flutterFonts } from "./fonts";
 import { generateFlutter } from "./generate";
 import { dartPaletteFile } from "./palette";
@@ -51,6 +52,8 @@ function usesTheme(root: string, app: AppInfo): boolean {
 
 export const FLUTTER: NativeStack = {
   id: "flutter",
+  extensions: [".dart"],
+  stateFiles: { extension: ".dart", language: "Dart" },
 
   themeDir: (_root, app) => app.themeDir ?? prefixPath(app.path, "lib/design"),
 
@@ -130,4 +133,5 @@ export const FLUTTER: NativeStack = {
   shotTimeLimit: flutterTimeLimit,
   variantHow: FLUTTER_VARIANT_HOW,
   routes: discoverFlutterRoutes,
+  doctor: flutterDoctor,
 };

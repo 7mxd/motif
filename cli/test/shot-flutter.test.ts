@@ -848,3 +848,12 @@ describe("final review: several apps and no browser (Minor #8)", () => {
     expect(r.text).toBe("There are several apps here (mobile/admin, mobile/customer). Choose one with --app <path>.");
   });
 });
+
+describe("final review: a state script is what the stack says (Minor #10)", () => {
+  test("a file that isn't Dart is refused in the stack's words", async () => {
+    const root = makeProject({ ...FLUTTER_APP, "design/states/notes.txt": "x" });
+    const r = await runShot(root, ctx({ state: "design/states/notes.txt" }), fakes().deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toBe("--state: notes.txt isn't a Dart file; a Flutter app's states are Dart files, like design/states/notes.dart.");
+  });
+});

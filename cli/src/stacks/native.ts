@@ -26,6 +26,10 @@ export interface NativeShotOptions {
 /** What a native stack (Flutter, and later SwiftUI and Compose) adds to Motif. Each stack fills in the parts it supports. */
 export interface NativeStack {
   id: StackId;
+  /** The source files motif check and extract read, by extension (".dart"). */
+  extensions?: string[];
+  /** What a --state script is for this stack: a file in its language ("Dart"), with its extension (".dart"). */
+  stateFiles?: { extension: string; language: string };
   /** Where theme code goes for an app, relative to the project root (themeDir from motif.json wins). */
   themeDir(root: string, app: AppInfo): string;
   /** Theme code (root-relative files), files to copy into the app (root-relative), and notes for the developer. */
@@ -68,6 +72,11 @@ export interface NativeStack {
 }
 
 const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER]]);
+
+/** Every native stack Motif has, registered. */
+export function nativeStacks(): NativeStack[] {
+  return [...STACKS.values()];
+}
 
 /** The native stacks motif check reads. */
 export function checkableNativeStacks(): NativeStack[] {

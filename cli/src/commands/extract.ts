@@ -10,8 +10,8 @@ import { ownSpacingPx, readTailwindDefaults } from "../extract/tailwind-theme";
 import { isMotifGenerated } from "../generate/header";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
-import { nativeStack, type NativeStack } from "../stacks/native";
-import { plural } from "../text";
+import { nativeStack, nativeStacks, type NativeStack } from "../stacks/native";
+import { andList, plural } from "../text";
 
 /**
  * Stylesheets a page links for dark mode only (<link media="(prefers-color-scheme: dark)">): all their colours are dark.
@@ -49,10 +49,11 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   const supported = apps.filter((a) => isWeb(a) || native(a) !== null);
   if (supported.length === 0) {
     const others = apps.filter((a) => a.stack).map((a) => `${appLabel(a)} (${STACK_LABELS[a.stack!]})`);
+    const drafted = nativeStacks().filter((s) => s.collect).map((s) => `${STACK_LABELS[s.id]} apps`);
     return {
       command: "extract",
       exitCode: 2,
-      text: `motif extract works on React web apps and plain web sites, and on Flutter apps, in this version.${others.length ? ` Found: ${others.join(", ")}.` : " None of them was found here."} Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.`,
+      text: `motif extract works on React web apps and plain web sites${drafted.length > 0 ? `, and on ${andList(drafted)}` : ""}, in this version.${others.length ? ` Found: ${others.join(", ")}.` : " None of them was found here."} Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.`,
       data: { error: "unsupported-stack" },
     };
   }

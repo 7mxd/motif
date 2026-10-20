@@ -140,7 +140,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
     return {
       command: "check",
       exitCode: 2,
-      text: `None of these paths contain files motif check reads (${supported.some((a) => nativeStack(a.stack)) ? ".dart, " : ""}.css, .ts, .tsx, .js, .jsx, .html, …), or they're ignored: ${ctx.positionals.join(", ")}.`,
+      text: `None of these paths contain files motif check reads (${[...new Set(supported.flatMap((a) => nativeStack(a.stack)?.extensions ?? []))].map((e) => `${e}, `).join("")}.css, .ts, .tsx, .js, .jsx, .html, …), or they're ignored: ${ctx.positionals.join(", ")}.`,
       data: { error: "nothing-to-check" },
     };
   }

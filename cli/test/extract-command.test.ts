@@ -299,3 +299,14 @@ body { @apply bg-bg text-ink; }
     expect([hex("background"), hex("surface")]).toEqual(["#09090B", "#27272A"]);
   });
 });
+
+describe("final review: extract's refusal lists the stacks from the registry (Minor #10)", () => {
+  test("a Vue app: the same words as before, with Flutter named from its registration", async () => {
+    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { vue: "3", vite: "5" } }), "src/App.vue": "<template></template>" });
+    const r = await runExtract(root, { positionals: [], flags: {} });
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toBe(
+      "motif extract works on React web apps and plain web sites, and on Flutter apps, in this version. Found: Your app (Vue / Nuxt). Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.",
+    );
+  });
+});

@@ -253,13 +253,14 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (shoot && native && app) {
     const label = app.stack ? STACK_LABELS[app.stack] : "These";
     if (givenUrl !== undefined) return usage(`${label} apps are screenshotted from their code, not a URL; drop --url.`, { error: "usage" });
-    for (const s of states) {
-      if (s.file?.endsWith(".dart")) continue;
+    // A state is a script in the stack's own language (a Dart file for Flutter), not a browser script.
+    const kind = native.stateFiles;
+    for (const s of kind ? states : []) {
+      if (s.file?.endsWith(kind!.extension)) continue;
       const base = basename(s.file ?? s.name);
+      const like = `a ${label} app's states are ${kind!.language} files, like design/states/${s.name}${kind!.extension}.`;
       return usage(
-        /\.(m?js|ts)$/i.test(base)
-          ? `--state: ${base} is a browser script; a ${label} app's states are Dart files, like design/states/${s.name}.dart.`
-          : `--state: ${base} isn't a Dart file; a ${label} app's states are Dart files, like design/states/${s.name}.dart.`,
+        /\.(m?js|ts)$/i.test(base) ? `--state: ${base} is a browser script; ${like}` : `--state: ${base} isn't a ${kind!.language} file; ${like}`,
         { error: "usage" },
       );
     }

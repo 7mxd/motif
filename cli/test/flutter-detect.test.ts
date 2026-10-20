@@ -2,7 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { detectApps } from "../src/detect/stacks";
 import { importFor, isFlutterApp, isFlutterPackage, packageName, dependsOn } from "../src/stacks/flutter/project";
-import { nativeStack } from "../src/stacks/native";
+import { flutterDoctor } from "../src/stacks/flutter/doctor";
+import { nativeStack, nativeStacks } from "../src/stacks/native";
 import { dartIdentifier } from "../src/stacks/naming";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
@@ -129,5 +130,15 @@ describe("final review: one folder deeper is for native and mobile stacks only (
     });
     const { apps } = detectApps(root);
     expect(apps.map((a) => [a.path, a.stack])).toEqual([["dashboard", "react-web"], ["mobile/customer", "flutter"]]);
+  });
+});
+
+describe("final review: the commands reach a stack through its registration (Minor #10)", () => {
+  test("Flutter brings its doctor item, its file extensions and what a state script is; extract and check read them from the registry", () => {
+    const flutter = nativeStack("flutter")!;
+    expect(flutter.doctor).toBe(flutterDoctor);
+    expect(flutter.extensions).toEqual([".dart"]);
+    expect(flutter.stateFiles).toEqual({ extension: ".dart", language: "Dart" });
+    expect(nativeStacks().map((s) => s.id)).toEqual(["flutter"]);
   });
 });

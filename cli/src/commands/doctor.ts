@@ -8,7 +8,7 @@ import { readAgentServers, sourcesIn } from "../detect/sources";
 import { SOURCES } from "../sources/catalog";
 import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, siteDir, STACK_LABELS } from "../detect/stacks";
 import { ignoredByGit, ignoredNotes } from "../project/git";
-import { flutterDoctor } from "../stacks/flutter/doctor";
+import { nativeStack } from "../stacks/native";
 import { VERSION } from "../version";
 import { runValidate } from "./validate";
 
@@ -94,7 +94,8 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
     else push("node", "needed", "Node.js", "Not found. Your app needs Node.js to run — install it from nodejs.org.");
   }
 
-  if (apps.some((a) => a.stack === "flutter")) items.push(...flutterDoctor(deps));
+  // Each native stack's toolchain (Flutter's SDK), once however many of its apps there are.
+  for (const id of new Set(apps.map((a) => a.stack))) items.push(...(nativeStack(id)?.doctor?.(deps) ?? []));
 
   const hasGuide = existsSync(join(cwd, "DESIGN.md")) && existsSync(join(cwd, "design", "tokens.json"));
   if (!hasGuide) {
