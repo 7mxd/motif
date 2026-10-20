@@ -248,10 +248,87 @@ const SCHEME: [string, string][] = [
   ["surfaceTint", "surface"],
 ];
 
+/**
+ * Material's own widgets drawn the way the stack guide's components are: buttons and fields at the md corner, cards,
+ * dialogs and sheets raised at lg, fields outlined with the focus and danger roles. Each is left out when the guide
+ * lacks a role it needs. The types are the ones Flutter 3.27 (the floor) takes and newer versions still accept.
+ */
+function componentThemes(t: Theme): { locals: string[]; args: Expr[] } {
+  const has = new Set([...t.colors.map((c) => `color.${c.name}`), ...t.radius.map((r) => `radius.${r.name}`)]);
+  const needs = (...roles: string[]) => roles.every((r) => has.has(r));
+  const c = (role: string) => `colors.${colorField(role)}`;
+  const radius = (name: string) => `MotifRadius.${member(name, "r")}`;
+  const raised = needs("color.surface-raised", "radius.lg");
+  const buttons = needs("radius.md");
+  const fields = needs("radius.md", "color.border", "color.surface", "color.focus", "color.danger");
+
+  const locals: string[] = [];
+  if (buttons) locals.push(...render(call("RoundedRectangleBorder(", [`borderRadius: BorderRadius.circular(${radius("md")})`]), 4, "final corners = ", ";"));
+  if (fields) {
+    locals.push(
+      "    OutlineInputBorder field(Color color, [double width = 1]) {",
+      ...render(
+        call("OutlineInputBorder(", [`borderRadius: BorderRadius.circular(${radius("md")})`, "borderSide: BorderSide(color: color, width: width)"]),
+        6,
+        "return ",
+        ";",
+      ),
+      "    }",
+    );
+  }
+  if (locals.length > 0) locals.push("");
+
+  const args: Expr[] = [];
+  if (needs("color.background", "color.text-primary")) {
+    args.push(call("appBarTheme: AppBarTheme(", [`backgroundColor: ${c("background")}`, `foregroundColor: ${c("text-primary")}`]));
+  }
+  if (raised) {
+    const top = call("shape: RoundedRectangleBorder(", [call("borderRadius: BorderRadius.vertical(", [`top: Radius.circular(${radius("lg")})`])]);
+    args.push(call("bottomSheetTheme: BottomSheetThemeData(", [`backgroundColor: ${c("surface-raised")}`, top]));
+  }
+  if (raised && needs("color.border")) {
+    args.push(
+      call("cardTheme: CardThemeData(", [
+        `color: ${c("surface-raised")}`,
+        "elevation: 0",
+        call("shape: RoundedRectangleBorder(", [`borderRadius: BorderRadius.circular(${radius("lg")})`, `side: BorderSide(color: ${c("border")})`]),
+      ]),
+    );
+  }
+  if (raised) {
+    args.push(
+      call("dialogTheme: DialogThemeData(", [
+        `backgroundColor: ${c("surface-raised")}`,
+        call("shape: RoundedRectangleBorder(", [`borderRadius: BorderRadius.circular(${radius("lg")})`]),
+      ]),
+    );
+  }
+  const button = (theme: string, widget: string) =>
+    call(`${theme}: ${widget}ThemeData(`, [call(`style: ${widget}.styleFrom(`, ["shape: corners"])]);
+  if (buttons) args.push(button("elevatedButtonTheme", "ElevatedButton"), button("filledButtonTheme", "FilledButton"));
+  if (fields) {
+    args.push(
+      call("inputDecorationTheme: InputDecorationTheme(", [
+        "filled: true",
+        `fillColor: ${c("surface")}`,
+        `border: field(${c("border")})`,
+        `enabledBorder: field(${c("border")})`,
+        `disabledBorder: field(${c("border")})`,
+        `focusedBorder: field(${c("focus")}, 2)`,
+        `errorBorder: field(${c("danger")})`,
+        `focusedErrorBorder: field(${c("danger")}, 2)`,
+      ]),
+    );
+  }
+  if (buttons) args.push(button("outlinedButtonTheme", "OutlinedButton"), button("textButtonTheme", "TextButton"));
+  return { locals, args };
+}
+
 function themeBlock(set: ThemeSet): string[] {
   const t = set.base;
   const has = new Set(t.colors.map((c) => c.name));
   const fonts = new Set(t.fonts.map((f) => f.name));
+  const components = componentThemes(t);
   const scheme = call("colorScheme: ColorScheme(", [
     "brightness: brightness",
     ...SCHEME.filter(([, role]) => has.has(role)).map(([key, role]) => `${key}: colors.${colorField(role)}`),
@@ -265,6 +342,7 @@ function themeBlock(set: ThemeSet): string[] {
     scheme,
     ...(has.has("background") ? ["scaffoldBackgroundColor: colors.background"] : []),
     ...(has.has("border") ? ["dividerColor: colors.border"] : []),
+    ...components.args,
     textTheme,
     "extensions: [colors]",
   ]);
@@ -304,6 +382,7 @@ function themeBlock(set: ThemeSet): string[] {
       : []),
     ...builders,
     "  static ThemeData _theme(Brightness brightness, MotifColors colors) {",
+    ...components.locals,
     ...render(theme, 4, "return ", ";"),
     "  }",
     "}",

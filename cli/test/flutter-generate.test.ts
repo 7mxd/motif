@@ -122,6 +122,53 @@ describe("generateFlutter, the test guide (no variants)", () => {
     expect(slotSize(12, 10, scale)).toBe(10);
   });
 
+  test("Material's own widgets take the guide's corners and roles, as the stack guide's components draw them", () => {
+    // Types that compile from Flutter 3.27 to today: CardThemeData and DialogThemeData exist in both, while
+    // InputDecorationTheme and AppBarTheme are the ones 3.27 takes (newer versions accept them too).
+    for (const line of [
+      "final corners = RoundedRectangleBorder(\n      borderRadius: BorderRadius.circular(MotifRadius.md),\n    );",
+      "OutlineInputBorder field(Color color, [double width = 1]) {",
+      "borderSide: BorderSide(color: color, width: width),",
+      "appBarTheme: AppBarTheme(",
+      "backgroundColor: colors.background,",
+      "foregroundColor: colors.textPrimary,",
+      "cardTheme: CardThemeData(",
+      "color: colors.surfaceRaised,",
+      "elevation: 0,",
+      "borderRadius: BorderRadius.circular(MotifRadius.lg),",
+      "side: BorderSide(color: colors.border),",
+      "filledButtonTheme: FilledButtonThemeData(\n        style: FilledButton.styleFrom(shape: corners),\n      ),",
+      "elevatedButtonTheme: ElevatedButtonThemeData(",
+      "outlinedButtonTheme: OutlinedButtonThemeData(",
+      "textButtonTheme: TextButtonThemeData(",
+      "inputDecorationTheme: InputDecorationTheme(",
+      "filled: true,",
+      "fillColor: colors.surface,",
+      "enabledBorder: field(colors.border),",
+      "focusedBorder: field(colors.focus, 2),",
+      "errorBorder: field(colors.danger),",
+      "focusedErrorBorder: field(colors.danger, 2),",
+      "dialogTheme: DialogThemeData(",
+      "bottomSheetTheme: BottomSheetThemeData(",
+      "top: Radius.circular(MotifRadius.lg),",
+    ]) expect(dart).toContain(line);
+    expect(dart).not.toContain("InputDecorationThemeData");
+    expect(dart).not.toContain("AppBarThemeData");
+  });
+
+  test("a component theme is left out when the guide lacks a role it needs", () => {
+    const t = validTokens();
+    delete t.radius.lg;
+    delete t.color["surface-raised"];
+    const dart = dartFor(t);
+    expect(dart).not.toContain("cardTheme:");
+    expect(dart).not.toContain("dialogTheme:");
+    expect(dart).not.toContain("bottomSheetTheme:");
+    // Buttons and fields need only md, border, surface, focus and danger.
+    expect(dart).toContain("filledButtonTheme:");
+    expect(dart).toContain("inputDecorationTheme:");
+  });
+
   test("without variants there is no variant enum, parameter or override", () => {
     expect(dart).not.toContain("MotifVariant");
     expect(dart).not.toContain("debugVariantOverride");

@@ -443,6 +443,16 @@ abstract final class MotifTheme {
   }
 
   static ThemeData _theme(Brightness brightness, MotifColors colors) {
+    final corners = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(MotifRadius.md),
+    );
+    OutlineInputBorder field(Color color, [double width = 1]) {
+      return OutlineInputBorder(
+        borderRadius: BorderRadius.circular(MotifRadius.md),
+        borderSide: BorderSide(color: color, width: width),
+      );
+    }
+
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme(
@@ -468,6 +478,54 @@ abstract final class MotifTheme {
       ),
       scaffoldBackgroundColor: colors.background,
       dividerColor: colors.border,
+      appBarTheme: AppBarTheme(
+        backgroundColor: colors.background,
+        foregroundColor: colors.textPrimary,
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: colors.surfaceRaised,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(MotifRadius.lg),
+          ),
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: colors.surfaceRaised,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(MotifRadius.lg),
+          side: BorderSide(color: colors.border),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: colors.surfaceRaised,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(MotifRadius.lg),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(shape: corners),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(shape: corners),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: colors.surface,
+        border: field(colors.border),
+        enabledBorder: field(colors.border),
+        disabledBorder: field(colors.border),
+        focusedBorder: field(colors.focus, 2),
+        errorBorder: field(colors.danger),
+        focusedErrorBorder: field(colors.danger, 2),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(shape: corners),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(shape: corners),
+      ),
       textTheme: TextTheme(
         displayLarge: MotifText.display,
         displayMedium: MotifText.display,
