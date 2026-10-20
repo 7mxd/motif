@@ -239,7 +239,9 @@ const RN = `<!doctype html><html><head><meta name="viewport" content="width=devi
 <div id="outer" tabindex="0" aria-label="Open" style="cursor: pointer; width: 120px; height: 60px; background: #dddddd"><div id="inner" tabindex="0" style="cursor: pointer; width: 20px; height: 20px"></div></div>
 <div id="focusable" tabindex="0" style="width: 32px; height: 32px; background: #dddddd"></div>
 <button id="glyph" role="button" style="width: 32px; height: 32px; padding: 0">&#xE001;</button>
-<button id="back" aria-label="Back" style="width: 60px; height: 60px; padding: 0">&#xE001;</button></body></html>`;
+<button id="back" aria-label="Back" style="width: 60px; height: 60px; padding: 0">&#xE001;</button>
+<div role="tablist"><div id="tab" role="tab" tabindex="0" aria-selected="true" style="cursor: pointer; width: 60px; height: 60px; background: #dddddd"><svg width="24" height="24"><circle cx="12" cy="12" r="8"></circle></svg></div>
+<div id="search-tab" role="tab" tabindex="0" aria-label="Search" style="cursor: pointer; width: 60px; height: 60px; background: #dddddd"></div></div></body></html>`;
 
 const browser = findBrowser();
 let server: ReturnType<typeof Bun.serve>;
@@ -299,11 +301,13 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
     // Web: the divs are not controls, and the glyph is text to axe.
     expect(await audit(false)).toEqual(["target-size #glyph: The \"\ue001\" button is 32×32 px on a phone; 44×44 px is easier to tap."]);
     // React Native: the unnamed Pressables are buttons with no name (the glyph and the aria-hidden glyph are not names), and so is the
-    // button axe passed for its glyph; the named, large, nested and non-pointer ones are not reported.
+    // button axe passed for its glyph, and a tab with only an icon (accessibilityRole="tab", as a tab bar has; hands-on); the
+    // named, large, nested and non-pointer ones are not reported.
     expect(await audit(true)).toEqual([
       "accessibility #icon: The button has no name a screen reader can say.",
       "accessibility #plus: The button has no name a screen reader can say.",
       "accessibility #glyph: The icon has no name a screen reader can say.",
+      "accessibility #tab: The button has no name a screen reader can say.",
       "target-size #glyph: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
       "target-size #icon: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
       "target-size #plus: A button is 32×32 px on a phone; 44×44 px is easier to tap.",

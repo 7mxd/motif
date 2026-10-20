@@ -207,11 +207,14 @@ function installAudit(): boolean {
     },
     names() {
       const out: RawIssue[] = [];
-      for (const el of new Set([...pressables(), ...document.querySelectorAll("a[href], button, [role='button'], [role='link']")])) {
+      // A Pressable with accessibilityRole="tab" (a tab bar's icons), "switch" or "checkbox" has a role no axe name rule covers.
+      const tappable = "[role='tab'], [role='switch'], [role='checkbox'], [role='radio'], [role='menuitem'], [role='option']";
+      for (const el of new Set([...pressables(), ...document.querySelectorAll(`a[href], button, [role='button'], [role='link'], ${tappable}`)])) {
         if (!shown(el) || named(el)) continue;
         const glyph = glyphOf(el);
         // A Pressable is a button to whoever taps it; an icon-font glyph on a real button is an icon that axe took for text.
-        out.push({ rule: "name", ...describe(el), ...(roleless(el) ? { kind: "button" as const } : glyph ? { kind: "icon" as const, icon: glyph } : {}) });
+        const button = roleless(el) || (!glyph && el.matches(tappable));
+        out.push({ rule: "name", ...describe(el), ...(button ? { kind: "button" as const } : glyph ? { kind: "icon" as const, icon: glyph } : {}) });
       }
       return out;
     },
