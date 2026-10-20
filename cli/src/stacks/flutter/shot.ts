@@ -90,6 +90,8 @@ interface RawScreen {
   unanswered?: string[];
   blankImages?: string[];
   missingFonts?: string[];
+  /** Fallback families (fontFamilyFallback) asked for by text beyond Latin that Motif didn't load. */
+  missingFallbacks?: string[];
   texts?: string[];
   /** Why the audit couldn't finish on this screen. */
   auditError?: string;
@@ -165,7 +167,7 @@ export function planShots(opts: NativeShotOptions, targets: Target[]): FlutterSh
 /** google_fonts' Family_700 is the family Onest's weight 700: notes name the family. */
 const familyName = (f: string) => f.replace(/_(regular|italic|[1-9]00(italic)?)$/, "");
 
-/** Notes from what the screens collected: requests nothing answered, images drawn blank, fonts drawn as boxes. */
+/** Notes from what the screens collected: requests nothing answered, images drawn blank, fonts and fallback fonts drawn as boxes. */
 export function screenNotes(screens: RawScreen[]): string[] {
   const notes: string[] = [];
   for (const s of screens) {
@@ -178,6 +180,16 @@ export function screenNotes(screens: RawScreen[]): string[] {
   }
   for (const [family, routes] of fonts) {
     notes.push(`Text in ${family} on ${andList(routes)} is drawn as boxes: Motif couldn't load that font (bundle it in pubspec.yaml, or see the font notes).`);
+  }
+  // A fallback the text needs (Arabic in a Latin font falls back to the Arabic companion): its letters are boxes too.
+  const fallbacks = new Map<string, string[]>();
+  for (const s of screens) {
+    for (const f of new Set((s.missingFallbacks ?? []).map(familyName))) fallbacks.set(f, [...(fallbacks.get(f) ?? []), s.route]);
+  }
+  for (const [family, routes] of fallbacks) {
+    notes.push(
+      `Text on ${andList(routes)} needs the fallback font ${family} for letters its main font lacks (Arabic, say), but Motif couldn't load it, so those letters are drawn as boxes (bundle it in pubspec.yaml, or see the font notes).`,
+    );
   }
   return notes;
 }

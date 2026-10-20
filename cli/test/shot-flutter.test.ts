@@ -325,6 +325,7 @@ describe("FLUTTER.shoot", () => {
               landedOn: "/sign-in",
               unanswered: ["GET https://api.example.com/salons"],
               missingFonts: ["Inter_700", "Inter_regular"],
+              missingFallbacks: ["ReadexPro_regular", "ReadexPro_700"],
             },
             { route: "/gone", shots: [], errors: [], unreachable: "The app has no page at /gone (go_router: no routes for location: /gone)." },
           ],
@@ -360,6 +361,7 @@ describe("FLUTTER.shoot", () => {
       "This app doesn't offer ar (supportedLocales), so its RTL screenshots show it left to right.",
       "Requests nothing answered on /home: GET https://api.example.com/salons. Add them to design/states/http.json.",
       "Text in Inter on /home is drawn as boxes: Motif couldn't load that font (bundle it in pubspec.yaml, or see the font notes).",
+      "Text on /home needs the fallback font ReadexPro for letters its main font lacks (Arabic, say), but Motif couldn't load it, so those letters are drawn as boxes (bundle it in pubspec.yaml, or see the font notes).",
     ]);
   });
 

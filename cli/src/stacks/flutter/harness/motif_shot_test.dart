@@ -16,7 +16,8 @@
 // bounded pumps (never pumpAndSettle, which a spinner never ends), opens the route, waits again, runs the state's
 // motifState if the shot has one, and draws the PNG; with checks, it audits what it drew (motif_audit.dart).
 // It writes resultPath: { "screens": [{ "route", "shots": [file], "errors": [text], "unreachable"?, "landedOn"?,
-// "unanswered": ["GET <url>"], "blankImages": ["GET <url>"], "missingFonts": [family], "auditError"?, "texts"? }],
+// "unanswered": ["GET <url>"], "blankImages": ["GET <url>"], "missingFonts": [family], "missingFallbacks": [family],
+// "auditError"?, "texts"? }],
 // "shots": [{ "file", "error"? }], "issues": [{ rule, selector, label, kind, …, "route", "file", "size", "scheme",
 // "variant"?, "state"?, "rtl"? }], "notes": [text] }.
 import 'dart:async';
@@ -154,6 +155,7 @@ class _Screen {
   final Set<String> unanswered = {};
   final Set<String> blankImages = {};
   final Set<String> missingFonts = {};
+  final Set<String> missingFallbacks = {};
   final Set<String> texts = {};
   String? auditError;
 
@@ -166,6 +168,7 @@ class _Screen {
     'unanswered': unanswered.toList(),
     'blankImages': blankImages.toList(),
     'missingFonts': missingFonts.toList(),
+    'missingFallbacks': missingFallbacks.toList(),
     if (auditError != null) 'auditError': auditError,
     if (debug) 'texts': texts.toList(),
   };
@@ -506,11 +509,34 @@ void _read(RenderObject root, _Run run) {
         if (family != null && !run.loaded.contains(family)) run.screen.missingFonts.add(family);
         return true;
       });
+      _fallbacks(text, null, run);
     }
     o.visitChildren(visit);
   }
 
   visit(root);
+}
+
+/// Letters beyond Latin (Greek, Cyrillic, Hebrew, Arabic, CJK, emoji…): the ones a Latin font usually lacks, which
+/// Flutter draws from the style's fontFamilyFallback. Punctuation, arrows and symbols (U+2000–U+2BFF) and icons (the
+/// private use area) don't count.
+final _beyondLatin = RegExp(r'[Ͱ-῿Ⰰ-\uDFFF豈-￿]');
+
+/// The fallback families (fontFamilyFallback, as each span inherits it) that text with letters beyond Latin asks for
+/// and Motif didn't load: those letters are drawn as boxes. Latin-only text never reaches its fallbacks, so it isn't
+/// judged.
+void _fallbacks(InlineSpan span, TextStyle? inherited, _Run run) {
+  final style = inherited == null ? span.style : inherited.merge(span.style);
+  if (span is! TextSpan) return;
+  final text = span.text;
+  if (text != null && _beyondLatin.hasMatch(text)) {
+    for (final family in style?.fontFamilyFallback ?? const <String>[]) {
+      if (!run.loaded.contains(family)) run.screen.missingFallbacks.add(family);
+    }
+  }
+  for (final child in span.children ?? const <InlineSpan>[]) {
+    _fallbacks(child, style, run);
+  }
 }
 
 /// What [_await] waited for: whether it finished in time, and its value.

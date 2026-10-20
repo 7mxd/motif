@@ -63,7 +63,7 @@ Maktaba is the neighbourhood library in your pocket: find a book, see whether it
 ## 6. Patterns
 
 - **Navigation:** a bottom navigation bar on phones (Home, Books, Loans) that becomes a side rail on tablets; a book's page has the app bar's back button. Loans need someone signed in: anyone else goes to Sign in.
-- **Forms:** labels above fields, help below them, errors below them in words, checked on submit.
+- **Forms:** each field's label sits inside it and floats to its top edge once the field is focused or filled (Material's outlined field, through AppField); help and errors sit below the field in words; checked on submit.
 - **Empty, loading and error:** skeleton rows in the list's own layout while loading; an empty state with one action; errors with Try again.
 - **Feedback:** a snack bar for confirmations ("Renewed until 17 November"); inline messages for errors.
 - **Modal or sheet:** sheets for short tasks; dialogs only for decisions that need an answer.

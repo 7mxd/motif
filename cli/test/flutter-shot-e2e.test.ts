@@ -152,6 +152,21 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     expect(moving[0]!.shot).toBe("design/shots/audit.mobile.png");
   }, 600_000);
 
+  test.skipIf(!flutter)("Arabic text whose fallback font isn't loaded gets a note naming the font and the screen; text with a loaded fallback gets none (skipped without Flutter)", async () => {
+    writeFileSync(join(app, "lib", "fallback_screen.dart"), FALLBACK_SCREEN);
+    try {
+      const r = await shot({ screen: "FallbackScreen", sizes: "390", variant: "default" });
+      if (r.exitCode !== 0) console.log(r.text);
+      expect(r.exitCode).toBe(0);
+      const notes = (r.data.notes ?? []) as string[];
+      expect(notes.filter((n) => n.includes("fallback font"))).toEqual([
+        "Text on FallbackScreen needs the fallback font NoSuchArabic for letters its main font lacks (Arabic, say), but Motif couldn't load it, so those letters are drawn as boxes (bundle it in pubspec.yaml, or see the font notes).",
+      ]);
+    } finally {
+      rmSync(join(app, "lib", "fallback_screen.dart"), { force: true });
+    }
+  }, 600_000);
+
   test.skipIf(!flutter)("a state that types an address gives home@filled; a state that throws is reported, and the other screenshots are kept (skipped without Flutter)", async () => {
     mkdirSync(join(app, "design", "states"), { recursive: true });
     writeFileSync(join(app, "design", "states", "filled.dart"), FILLED);
@@ -222,6 +237,26 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
   }, 600_000);
 });
 
+/** Arabic in Roboto twice: once falling back to the bundled Noto Naskh Arabic, once to a family nothing loads. */
+const FALLBACK_SCREEN = `import 'package:flutter/material.dart';
+
+class FallbackScreen extends StatelessWidget {
+  const FallbackScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Column(
+        children: [
+          Text('مرحبا', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: ['NotoNaskhArabic'])),
+          Text('أهلا', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: ['NoSuchArabic'])),
+          Text('Hello', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: ['NoSuchLatin'])),
+        ],
+      ),
+    );
+  }
+}
+`;
 const FILLED = `import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

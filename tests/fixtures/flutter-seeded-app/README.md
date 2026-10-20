@@ -25,11 +25,11 @@ Then run `flutter pub get` in the copy (it also writes the translations) before 
 | F-07 | exact (shot) | A 32×32 "See all books" icon button | `/`, `home_screen.dart:43` |
 | F-08 | exact (shot) | A refresh icon button with no tooltip, so no name | `/books`, `books_screen.dart:24` |
 | F-09 | judgement | Loans crammed into one tight row each | `/loans` |
-| F-10 | judgement | Sign in's main action is a stock `ElevatedButton`, unlike every other | `/sign-in`, `sign_in_screen.dart:100` |
+| F-10 | judgement | Sign in's main action is a stock `ElevatedButton`, unlike every other (and near-black on near-black in dark mode) | `/sign-in`, `sign_in_screen.dart:100` |
 | F-11 | judgement | Loans has no empty state | `/loans` |
 | F-12 | judgement | `EdgeInsets.only(left:` in a book row: wrong side in Arabic | `/books`, `book_row.dart:56` |
 | F-13 | judgement | A failed load shows the raw exception, with no Try again | `/loans`, `loans_screen.dart:47` |
-| F-14 | judgement | The book page hides its back button | `/books/:id`, `book_screen.dart:26` |
+| F-14 | judgement | No back button on the book page; only the Books tab or the system back gesture lead back | `/books/:id`, `book_screen.dart:26` |
 
 ## How a grader reads the list
 
