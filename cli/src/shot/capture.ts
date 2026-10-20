@@ -138,6 +138,8 @@ export interface CaptureOptions {
   motionSampleMs?: number;
   /** The width the reduced-motion check runs at, for apps with no desktop size (Expo: a phone); the desktop size when not given. */
   motionWidth?: number;
+  /** An Expo app (its web target): Pressables with no role, and icon-font glyphs, are judged as controls (audit). */
+  reactNative?: boolean;
   /** Also capture each page after each of these scripts runs in it. */
   states?: StateScript[];
   /** How long a state script may run (15 s). */
@@ -338,7 +340,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   result.shots.push(file);
                   if (opts.audit) {
                     try {
-                      const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs, ...(opts.motionWidth ? { motion: viewport.width === opts.motionWidth } : {}) });
+                      const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs, ...(opts.reactNative ? { reactNative: true } : {}), ...(opts.motionWidth ? { motion: viewport.width === opts.motionWidth } : {}) });
                       for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, size: viewport.file ?? viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}), ...(variant ? { variant } : {}), ...(lang ? { rtl: true as const } : {}) });
                     } catch (e) {
                       result.auditError = e instanceof Error ? e.message : String(e);

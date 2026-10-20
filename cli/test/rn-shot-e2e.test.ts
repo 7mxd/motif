@@ -11,7 +11,8 @@ import { cleanupTempDirs, tempDir } from "./tmp";
 // motif shot on expo-min through Expo's web target (plan 2G, Task 7; decision 0009). Needs Node with npm (Expo runs on
 // Node) and Chrome, Edge or Chromium; bun's skipIf takes no reason, so each name says it. The tests share one copy of
 // expo-min, whose node_modules are installed once (offline from npm's cache when it can). Each run starts Expo and
-// waits for its first web bundle, so these take a minute or more.
+// waits for its first web bundle, so these take a minute or more. The audit tests add routes to the shared copy (copied
+// in after the tests that count expo-min's own two routes), so any test added before them must not count routes.
 //
 // expo-min passes its own variant ("partner") to MotifProvider, has an Arabic string table chosen by the locale, calls
 // I18nManager.forceRTL only on native, and loads Onest from @expo-google-fonts and Noto Naskh Arabic from its own files.
@@ -136,35 +137,48 @@ describe("motif shot on expo-min, through Expo's web target", () => {
   // The routes below are planted with problems (cli/test/fixtures/expo-audit-routes) and added to the copy here, after
   // the tests above have counted expo-min's own two routes.
   const plant = () => {
-    for (const f of ["audit", "motion", "calm", "form"]) cpSync(join(import.meta.dir, "fixtures", "expo-audit-routes", `${f}.tsx`), join(app, "app", `${f}.tsx`));
+    for (const f of ["audit", "motion", "loop", "calm", "form"]) cpSync(join(import.meta.dir, "fixtures", "expo-audit-routes", `${f}.tsx`), join(app, "app", `${f}.tsx`));
   };
+  // Every place a finding was seen: a loop on two screens with the same selector is one finding: its location and the other places.
   const findingsOf = () =>
-    (JSON.parse(readFileSync(join(app, "design", "shots", "audit.json"), "utf8")).findings as { location: { screen: string }; category: string; summary: string }[]).map((f) => ({
-      screen: f.location.screen,
-      category: f.category,
-      summary: f.summary,
-    }));
+    (JSON.parse(readFileSync(join(app, "design", "shots", "audit.json"), "utf8")).findings as { location: { screen: string }; locations?: { screen: string }[]; category: string; summary: string; fix: string }[]).flatMap((f) =>
+      [...new Set([f.location, ...(f.locations ?? [])].map((l) => l.screen))].map((screen) => ({ screen, category: f.category, summary: f.summary, fix: f.fix })),
+    );
+  const on = (screen: string, category: string) => findingsOf().filter((f) => f.screen === screen && f.category === category);
 
-  test.skipIf(!ready)("--audit finds a low-contrast caption, an unnamed 32 px button and a Reanimated loop that ignores reduced motion, and passes the loop that respects it (skipped without Node, npm or a browser)", async () => {
+  test.skipIf(!ready)("--audit finds a low-contrast caption, unnamed 32 px Pressables (with an icon, with and without a role), and loops that ignore reduced motion, and passes the one that checks it (skipped without Node, npm or a browser)", async () => {
     plant();
-    const r = await runShot(app, { positionals: [], flags: { sizes: "390", routes: "/audit,/motion,/calm", variant: "default", audit: true } });
-    if (r.exitCode !== 0 && !r.text.includes("✗ Audit:")) console.log(r.text);
+    const r = await runShot(app, { positionals: [], flags: { sizes: "390", routes: "/audit,/motion,/loop,/calm", variant: "default", audit: true } });
+    if (!r.text.includes("✗ Audit:")) console.log(r.text);
+    // Findings make the run exit 1, as for web apps.
+    expect(r.exitCode).toBe(1);
     clean(r.data);
-    expect(findingsOf()).toEqual([
-      { screen: "/audit", category: "contrast", summary: `Text "Last restocked three days ago" is hard to read in light and dark mode (1.67:1, needs 4.5:1).` },
-      { screen: "/audit", category: "accessibility", summary: "The button has no name a screen reader can say." },
-      { screen: "/motion", category: "reduced-motion", summary: "An element keeps moving when the viewer asks for reduced motion." },
-      { screen: "/audit", category: "target-size", summary: "A button is 32×32 px on a phone; 44×44 px is easier to tap." },
-      { screen: "/audit", category: "target-size", summary: `The "Add item" button is 32×32 px on a phone; 44×44 px is easier to tap.` },
+    expect(on("/audit", "contrast").map((f) => f.summary)).toEqual([`Text "Last restocked three days ago" is hard to read in light and dark mode (1.67:1, needs 4.5:1).`]);
+    // The Pressable, TouchableOpacity and TouchableHighlight with an Ionicons glyph and no label are <div tabindex="0"> with no
+    // role on the web; the one with role="button" is a <button> whose only text is the icon font's glyph (axe takes it for a
+    // name, Motif doesn't): four controls with no name in all.
+    expect(on("/audit", "accessibility").map((f) => f.summary).sort()).toEqual([
+      "The button has no name a screen reader can say.",
+      "The button has no name a screen reader can say.",
+      "The button has no name a screen reader can say.",
+      "The icon has no name a screen reader can say.",
     ]);
-    // /calm has the same loop and checks useReducedMotion (and Reanimated's own default stops it): nothing on /calm.
-    expect(findingsOf().some((f) => f.screen === "/calm")).toBe(false);
-    // The Pressable with no role is a plain div in react-native-web: neither the name rules nor the target query see it
-    // (decision 0009, limits), so only the two buttons count and one of them is the unnamed one.
-    expect(findingsOf().filter((f) => f.category === "target-size")).toHaveLength(2);
+    expect(on("/audit", "accessibility")[0]!.fix).toBe("Give it an accessibilityLabel (or visible text).");
+    // Sizes: those four, the labelled one, and the 58×32 "Skip" (named by its text, so it is not in the list above).
+    const sizes = on("/audit", "target-size").map((f) => f.summary);
+    expect(sizes.filter((s) => s === "A button is 32×32 px on a phone; 44×44 px is easier to tap.")).toHaveLength(4);
+    expect(sizes).toContain(`The "Add item" button is 32×32 px on a phone; 44×44 px is easier to tap.`);
+    expect(sizes.some((s) => /^The "Skip" button is \d+×32 px on a phone/.test(s))).toBe(true);
+    expect(sizes).toHaveLength(6);
+    expect(on("/audit", "target-size")[0]!.fix).toContain("hitSlop");
+    // Reanimated with ReduceMotion.Never and core Animated.loop, neither checking reduced motion; /calm checks it.
+    expect(on("/motion", "reduced-motion")).toHaveLength(1);
+    expect(on("/loop", "reduced-motion")).toHaveLength(1);
+    expect(on("/calm", "reduced-motion")).toEqual([]);
+    expect(on("/motion", "reduced-motion")[0]!.fix).toContain("useReducedMotion()");
   }, 600_000);
 
-  test.skipIf(!ready)("a state that fills a TextInput (found by aria-label) draws form@filled with the text on the screen (skipped without Node, npm or a browser)", async () => {
+  test.skipIf(!ready)("a state that fills two TextInputs (found by aria-label and by placeholder alone) draws form@filled with the text on the screen (skipped without Node, npm or a browser)", async () => {
     plant();
     writeFileSync(join(app, "design", "states", "filled.js"), FILL);
     const r = await runShot(app, { positionals: [], flags: { sizes: "390", routes: "/form", state: "design/states/filled.js" } });
@@ -178,12 +192,19 @@ describe("motif shot on expo-min, through Expo's web target", () => {
 });
 
 const FILL = `
-const input = document.querySelector('input[aria-label="Item name"], input[placeholder="Item name"]');
-if (input) {
+const fill = async (input, text) => {
   const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
-  set.call(input, "Oat milk");
+  set.call(input, text);
   input.dispatchEvent(new Event("input", { bubbles: true }));
   await new Promise((done) => setTimeout(done, 200));
-  if (!document.body.innerText.includes("Adding Oat milk")) throw new Error("the field didn't take the text");
+};
+const name = document.querySelector('input[aria-label="Item name"]');
+if (name) {
+  await fill(name, "Oat milk");
+  // This field has a placeholder and no aria-label.
+  const quantity = document.querySelector('input[placeholder="Quantity"]');
+  if (!quantity || quantity.hasAttribute("aria-label")) throw new Error("no field with only a placeholder");
+  await fill(quantity, "2");
+  if (!document.body.innerText.includes("Adding 2 Oat milk")) throw new Error("the fields didn't take the text");
 }
 `;

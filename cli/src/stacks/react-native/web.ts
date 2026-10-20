@@ -69,8 +69,9 @@ const timedOut = (e: unknown) => e instanceof Error && (e.name === "TimeoutError
  * Metro couldn't build is an error saying why; so is one that isn't ready by the deadline. Anything else (a page that
  * doesn't answer, a server that renders on its own) is left to the screenshots.
  */
-export async function buildWebBundle(appDir: string, baseUrl: string, deadline: number): Promise<{ error?: string }> {
-  const late = { error: `Expo's web bundle wasn't ready within the start limit (${Math.round(RN_START_TIMEOUT_MS / 1000)} s). Run npx expo start --web to see where Metro stops, or start the app yourself and pass its address with --url.` };
+export async function buildWebBundle(appDir: string, baseUrl: string, deadline: number, started?: string): Promise<{ error?: string }> {
+  const next = started ? `Run "${started}" yourself to see where Metro stops, or start the app and pass its address with --url.` : "Start the app yourself to see where Metro stops, then pass its address with --url.";
+  const late = { error: `Expo's web bundle wasn't ready within the start limit (${Math.round(RN_START_TIMEOUT_MS / 1000)} s). ${next}` };
   const signal = () => AbortSignal.timeout(Math.max(1, deadline - Date.now()));
   let html: string;
   try {

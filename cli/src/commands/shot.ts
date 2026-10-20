@@ -18,7 +18,7 @@ import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { startStaticServer, type StaticServer } from "../shot/static-server";
 import { nativeStack, type NativeStack } from "../stacks/native";
 import { WEB_INSTALL } from "../stacks/react-native/doctor";
-import { RN_MOTION_SIZE, RN_START_TIMEOUT_MS, RN_WEB_NOTE } from "../stacks/react-native";
+import { RN_FIXES, RN_MOTION_SIZE, RN_START_TIMEOUT_MS, RN_WEB_NOTE } from "../stacks/react-native";
 import { fixedScheme, hasWebSupport, isExpoApp } from "../stacks/react-native/project";
 import { buildWebBundle, webErrorHints } from "../stacks/react-native/web";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
@@ -418,7 +418,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     baseUrl = server.url;
     if (rn && deps.webBundle) {
-      const built = await deps.webBundle(appDir, baseUrl, started + RN_START_TIMEOUT_MS);
+      const built = await deps.webBundle(appDir, baseUrl, started + RN_START_TIMEOUT_MS, how.display);
       if (built.error) {
         await server.stop();
         return {
@@ -447,7 +447,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     } else {
       captured = await deps.capture({
         browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })),
-        ...(rn ? { motionWidth: RN_MOTION_SIZE.width } : {}),
+        ...(rn ? { motionWidth: RN_MOTION_SIZE.width, reactNative: true } : {}),
         ...(viewports ?? (rn ? NATIVE_VIEWPORTS : undefined) ? { viewports: viewports ?? NATIVE_VIEWPORTS } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
         ...(defaultVariant ? { defaultVariant } : {}), ...(appScheme ? { appScheme: appScheme.scheme } : {}),
       });
@@ -509,7 +509,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     const landed = new Map(captured.routes.map((r) => [r.route, landedOn(r)]));
     // An Expo screen that threw as it loaded is covered by Expo's error overlay: auditing it would judge the overlay.
     const overlaid = rn ? captured.routes.filter((r) => r.pageErrors?.some((e) => !e.startsWith('State "'))).map((r) => r.route) : [];
-    findings = toFindings(captured.issues.filter((i) => !overlaid.includes(i.route)).map((i) => ({ ...i, route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
+    findings = toFindings(captured.issues.filter((i) => !overlaid.includes(i.route)).map((i) => ({ ...i, ...(rn && !i.fix && RN_FIXES[i.rule] ? { fix: RN_FIXES[i.rule] } : {}), route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
     const redirected = captured.routes.filter((r) => landedOn(r) !== r.route);
     if (redirected.length > 0) {
       notes.push(`Pages that redirected were audited as the page they landed on: ${redirected.map((r) => `${r.route} → ${landedOn(r)}`).join(", ")}.`);

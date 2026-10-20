@@ -228,6 +228,19 @@ const OLD_BROWSER = `<!doctype html><html><head><meta name="viewport" content="w
 <body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111">
 <button id="small" style="width: 30px; height: 30px; padding: 0" aria-label="Small"></button></body></html>`;
 
+// What react-native-web draws: a Pressable or Touchable is <div tabindex="0"> with a pointer cursor and no role, and an
+// icon font's glyph is a private-use character in a text node (here U+E001, and U+F0001 beyond the first plane).
+const RN = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111">
+<div id="icon" tabindex="0" style="cursor: pointer; width: 32px; height: 32px; background: #444444"><div dir="auto">&#xE001;</div></div>
+<div id="plus" tabindex="0" style="cursor: pointer; width: 32px; height: 32px; background: #444444"><div dir="auto" aria-hidden="true">&#xF0001;</div></div>
+<div id="named" tabindex="0" aria-label="Add item" style="cursor: pointer; width: 32px; height: 32px; background: #444444"><div dir="auto">&#xE001;</div></div>
+<div id="skip" tabindex="0" style="cursor: pointer; width: 120px; height: 60px; background: #dddddd"><div dir="auto">Skip</div></div>
+<div id="outer" tabindex="0" aria-label="Open" style="cursor: pointer; width: 120px; height: 60px; background: #dddddd"><div id="inner" tabindex="0" style="cursor: pointer; width: 20px; height: 20px"></div></div>
+<div id="focusable" tabindex="0" style="width: 32px; height: 32px; background: #dddddd"></div>
+<button id="glyph" role="button" style="width: 32px; height: 32px; padding: 0">&#xE001;</button>
+<button id="back" aria-label="Back" style="width: 60px; height: 60px; padding: 0">&#xE001;</button></body></html>`;
+
 const browser = findBrowser();
 let server: ReturnType<typeof Bun.serve>;
 beforeAll(() => {
@@ -236,7 +249,7 @@ beforeAll(() => {
     port: 0,
     fetch: (req) => {
       const path = new URL(req.url).pathname;
-      return new Response(path === "/clean" ? CLEAN : path === "/old" ? OLD_BROWSER : BAD, { headers: { "content-type": "text/html" } });
+      return new Response(path === "/clean" ? CLEAN : path === "/old" ? OLD_BROWSER : path === "/rn" ? RN : BAD, { headers: { "content-type": "text/html" } });
     },
   });
 });
@@ -267,6 +280,35 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
     expect(findings[0]!.summary).toContain("Faint note");
     // Found at every phone size; the finding keeps the first screenshot, the narrowest phone.
     expect(findings[0]!.shot).toEndWith("index.mobile-360.png");
+  }, 120_000);
+
+  test("React Native apps: a Pressable with no role is a control, an icon's glyph is no name, and web apps are judged as before (Task 8)", async () => {
+    const audit = async (reactNative: boolean) => {
+      const { routes, issues } = await captureScreens({
+        browserPath: browser!.path,
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        routes: ["/rn"],
+        outDir: tempDir("motif-audit-"),
+        audit: true,
+        settleMs: 100,
+        ...(reactNative ? { reactNative: true } : {}),
+      });
+      expect(routes[0]!.auditError).toBeUndefined();
+      return toFindings(issues).map((f) => `${f.category} ${f.location.selector}: ${f.summary}`);
+    };
+    // Web: the divs are not controls, and the glyph is text to axe.
+    expect(await audit(false)).toEqual(["target-size #glyph: The \"\ue001\" button is 32×32 px on a phone; 44×44 px is easier to tap."]);
+    // React Native: the unnamed Pressables are buttons with no name (the glyph and the aria-hidden glyph are not names), and so is the
+    // button axe passed for its glyph; the named, large, nested and non-pointer ones are not reported.
+    expect(await audit(true)).toEqual([
+      "accessibility #icon: The button has no name a screen reader can say.",
+      "accessibility #plus: The button has no name a screen reader can say.",
+      "accessibility #glyph: The icon has no name a screen reader can say.",
+      "target-size #glyph: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
+      "target-size #icon: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
+      "target-size #plus: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
+      'target-size #named: The "Add item" button is 32×32 px on a phone; 44×44 px is easier to tap.',
+    ]);
   }, 120_000);
 
   test("a browser without checkVisibility() still gets its audit", async () => {

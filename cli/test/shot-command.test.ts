@@ -214,6 +214,7 @@ describe("motif shot", () => {
     expect(r.exitCode).toBe(0);
     expect(calls.started).toEqual([]);
     expect(calls.captured[0]).toMatchObject({ baseUrl: "http://localhost:5173", routes: ["/", "/settings", "/about"], outDir: join(root, "shots") });
+    expect(calls.captured[0]).not.toHaveProperty("reactNative");
     expect(existsSync(join(root, "shots/.gitignore"))).toBe(false);
   });
 

@@ -140,6 +140,40 @@ describe("motif shot: an Expo app", () => {
     expect(r.text.split("A native-only component (made with React Native's codegenNativeComponent").length).toBe(2);
     expect(r.text).toContain("The native module ExpoCamera has no web version of takePicture: move the code that uses it into a file of its own");
   });
+  test("--audit tells the capture it is an Expo app, and explains each problem in React Native's terms (hitSlop, accessibilityLabel, useReducedMotion)", async () => {
+    const issue = (rule: AuditIssue["rule"], kind: AuditIssue["kind"], selector: string, extra: Partial<AuditIssue> = {}): AuditIssue => ({
+      rule, selector, label: "", kind, route: "/", viewport: "mobile", scheme: "light", shot: "x.png", width: 32, height: 32, ...extra,
+    });
+    const { deps, calls } = fakes({
+      capture: async (o) => {
+        calls.captured.push(o);
+        return {
+          routes: [{ route: "/", url: `${o.baseUrl}/`, status: 200, shots: [] }],
+          issues: [issue("name", "button", "#a"), issue("target-mobile", "button", "#b"), issue("motion", "element", "#c"), issue("target-size", "button", "#d", { width: 16, height: 16 })],
+        };
+      },
+    });
+    const r = await runShot(makeProject(EXPO_APP), ctx({ audit: true }), deps);
+    expect(calls.captured[0]!.reactNative).toBe(true);
+    const fixes = Object.fromEntries((r.data.findings as { category: string; fix: string }[]).map((f) => [f.category, f.fix]));
+    expect(fixes["accessibility"]).toBe("Give it an accessibilityLabel (or visible text).");
+    expect(fixes["reduced-motion"]).toBe("Check useReducedMotion() (or useMotifTheme().reducedMotion) and keep Reanimated's ReduceMotion.System; for core Animated, check AccessibilityInfo.isReduceMotionEnabled.");
+    expect(fixes["target-size"]).toContain("hitSlop");
+    expect(JSON.stringify(r.data.findings)).not.toMatch(/aria-label|MotionConfig|Tailwind/);
+  });
+
+  test("the start-limit message names the command Motif ran", async () => {
+    const dir = makeProject(EXPO_APP);
+    const server = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) });
+    try {
+      expect(await buildWebBundle(dir, `http://127.0.0.1:${server.port}`, Date.now() + 300, "npx expo start --web --port 8081")).toEqual({
+        error: `Expo's web bundle wasn't ready within the start limit (300 s). Run "npx expo start --web --port 8081" yourself to see where Metro stops, or start the app and pass its address with --url.`,
+      });
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("--audit checks reduced motion at the 390 px phone, and says so when --sizes leaves it out", async () => {
     const root = makeProject(EXPO_APP);
     const on = fakes();
@@ -315,7 +349,7 @@ describe("an app Expo can't build or run on the web", () => {
       // A bundle that isn't ready by the deadline stops the run, as a server that doesn't start does.
       reply = () => new Promise<Response>(() => {});
       expect(await buildWebBundle(appDir, url, Date.now() + 500)).toEqual({
-        error: "Expo's web bundle wasn't ready within the start limit (300 s). Run npx expo start --web to see where Metro stops, or start the app yourself and pass its address with --url.",
+        error: "Expo's web bundle wasn't ready within the start limit (300 s). Start the app yourself to see where Metro stops, then pass its address with --url.",
       });
     } finally {
       server.stop(true);

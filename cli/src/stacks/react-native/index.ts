@@ -4,6 +4,7 @@ import { listRnFiles } from "../../check/files";
 import { maskComments } from "../../check/mask";
 import type { AppInfo } from "../../detect/stacks";
 import { isMotifGenerated } from "../../generate/header";
+import type { RawIssue } from "../../shot/audit";
 import type { ThemeSet } from "../../generate/theme";
 import { prefixPath } from "../../project/apps";
 import { andList, stripBom } from "../../text";
@@ -63,6 +64,13 @@ export const RN_VARIANT_HOW = "MotifProvider, which follows data-variant on the 
 export const RN_MOTION_SIZE = { width: 390, text: "the 390 px phone size" };
 /** Expo's first web bundle can take a minute or more, so its server gets longer to start than a web app's (ms). */
 export const RN_START_TIMEOUT_MS = 300_000;
+/** What to do about each audit problem in a React Native app, in its own terms (the web's fixes name CSS and ARIA). */
+export const RN_FIXES: Partial<Record<RawIssue["rule"], string>> = {
+  "target-size": "Make it at least 24×24 px: padding, a larger size, or hitSlop (which widens the area that counts as a tap without changing how it looks).",
+  "target-mobile": "Give it at least 44×44 px: a minimum width and height, padding, or hitSlop (which widens the tap area without changing how it looks).",
+  motion: "Check useReducedMotion() (or useMotifTheme().reducedMotion) and keep Reanimated's ReduceMotion.System; for core Animated, check AccessibilityInfo.isReduceMotionEnabled.",
+  name: "Give it an accessibilityLabel (or visible text).",
+};
 /** What the first run says about its screenshots. */
 export const RN_WEB_NOTE = "React Native screenshots are of Expo's web target in Chrome: close to the app, but native-only components and platform fonts can differ.";
 
