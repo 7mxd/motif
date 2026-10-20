@@ -77,3 +77,28 @@ jobs:
       - name: The fresh app on Flutter 3.27
         working-directory: cli
         run: bun test --timeout 600000 test/flutter-starter.test.ts
+
+  # The Compose tests on the floor JDK (17), with the SDK set up by its action rather than the runner's own copy
+  # (docs/decisions/0008-compose-rendering.md). The first run downloads Gradle, the Android plugin and Robolectric's
+  # Android jars.
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platforms;android-36
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: Compose tests
+        working-directory: cli
+        run: bun test --timeout 1200000 test/compose-compile.test.ts test/compose-render.test.ts

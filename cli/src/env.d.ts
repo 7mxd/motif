@@ -29,3 +29,13 @@ declare module "*.dart" {
   const text: string;
   export default text;
 }
+
+declare module "*.kt" {
+  const text: string;
+  export default text;
+}
+
+declare module "*.gradle" {
+  const text: string;
+  export default text;
+}

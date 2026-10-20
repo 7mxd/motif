@@ -1,0 +1,39 @@
+// Motif's Gradle init script for Compose screenshots (decision 0008). Motif writes it, unchanged from run to run, to
+// <module>/.motif/shot/init.gradle and runs `gradlew :<module>:testDebugUnitTest --tests dev.motif.shot.MotifShotTest
+// -I <module>/.motif/shot/init.gradle` from the project's root. It changes that run only, and only the module it sits
+// in (found from the script's own path): .motif/shot/src becomes a unit-test source folder, the test libraries are
+// added, Android resources are made visible to unit tests, and the harness's test task is told where its options are
+// and always runs. The developer's build files are never edited. Groovy rather than Kotlin: the Android plugin isn't on
+// an init script's classpath, and Groovy reaches its DSL (android { … }) without it.
+
+def motifModuleDir = initscript.sourceFile.parentFile.parentFile.parentFile.canonicalFile
+
+allprojects { project ->
+    if (project.projectDir.canonicalFile != motifModuleDir) return
+    project.pluginManager.withPlugin("com.android.application") {
+        def shotDir = new File(motifModuleDir, ".motif/shot")
+        // Before the Android plugin locks its DSL, after the module's own build file has set it.
+        project.androidComponents.finalizeDsl { android ->
+            android.sourceSets.getByName("test").java.srcDir(new File(shotDir, "src"))
+            android.testOptions.unitTests.includeAndroidResources = true
+        }
+        project.dependencies {
+            // Compose's test libraries take the app's own Compose version (its BOM, or the version its Compose UI
+            // resolves to: androidx keeps a group's libraries aligned); 1.9.0 is only preferred, for an app with neither.
+            testImplementation("androidx.compose.ui:ui-test-junit4") { version { prefer "1.9.0" } }
+            testImplementation("androidx.compose.ui:ui-test-manifest") { version { prefer "1.9.0" } }
+            testImplementation "org.robolectric:robolectric:4.17"
+            testImplementation "junit:junit:4.13.2"
+            testImplementation "com.google.android.apps.common.testing.accessibility.framework:accessibility-test-framework:4.1.1"
+        }
+        project.tasks.withType(Test).configureEach { test ->
+            if (!test.name.toLowerCase().contains("unittest")) return
+            test.systemProperty "motif.shot.config", new File(shotDir, "config.json").absolutePath
+            test.systemProperty "robolectric.graphicsMode", "NATIVE"
+            test.systemProperty "robolectric.pixelCopyRenderMode", "hardware"
+            // Every run draws again: the options change while the sources don't.
+            test.outputs.upToDateWhen { false }
+            test.outputs.cacheIf { false }
+        }
+    }
+}
