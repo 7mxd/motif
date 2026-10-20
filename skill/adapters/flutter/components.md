@@ -29,10 +29,10 @@ A component handles all of these that apply, with `WidgetState` so Flutter tells
 | Pressed | `WidgetState.pressed` | Show it in the first frame of the touch. |
 | Focused | `WidgetState.focused` | Keyboards and switch control. A visible ring in the `focus` role. |
 | Disabled | `WidgetState.disabled` | Still readable; say why in nearby text when it isn't obvious. |
-| Loading | (your own flag) | Keep the size; ignore taps. |
+| Loading | (your own flag) | Keep the size and the name; ignore taps. |
 | Error | `WidgetState.error` or `errorText` | Text and an icon, not colour alone. |
 
-Here is a button with them, built on `FilledButton`. The default overlay Material draws for hovered and focused is kept; the focus ring, disabled colours, loading and the 48 pixel height are added:
+Here is a button with them, built on `FilledButton`. The default overlay Material draws for hovered and focused is kept; the focus ring, disabled colours, loading (same size, same name) and the 48 pixel height are added:
 
 ```dart
 import 'package:flutter/material.dart';
@@ -54,6 +54,8 @@ class AppButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = MotifColors.of(context);
+    // A spinner never stops, so with reduce motion on the label stays as it is.
+    final spinner = loading && !MotifMotion.reduced(context);
     return FilledButton(
       onPressed: loading ? null : onPressed,
       style: ButtonStyle(
@@ -95,16 +97,27 @@ class AppButton extends StatelessWidget {
           return null;
         }),
       ),
-      child: loading
-          ? SizedBox(
+      // The label stays in the layout (and is read aloud) while the spinner
+      // shows, so the button keeps its size and its name.
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Opacity(
+            opacity: spinner ? 0 : 1,
+            alwaysIncludeSemantics: true,
+            child: Text(label),
+          ),
+          if (spinner)
+            SizedBox(
               width: MotifSpace.s5,
               height: MotifSpace.s5,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
                 color: colors.onActionPrimary,
               ),
-            )
-          : Text(label),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -127,7 +140,7 @@ IconButton(
 Material gives an `IconButton` a 48 by 48 tap area. If you use `InkWell` or `GestureDetector` on a small icon, wrap it in a `SizedBox` of 44 by 44 or more. For a custom control whose children are not text, say what it is:
 
 ```dart
-class AppCard extends StatelessWidget {
+class AppCard extends StatefulWidget {
   const AppCard({super.key, required this.child, this.onTap, this.label});
 
   final Widget child;
@@ -137,33 +150,42 @@ class AppCard extends StatelessWidget {
   final String? label;
 
   @override
+  State<AppCard> createState() => _AppCardState();
+}
+
+class _AppCardState extends State<AppCard> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
     final colors = MotifColors.of(context);
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(MotifRadius.lg),
-      side: BorderSide(color: colors.border),
+      // The focus ring: a 2 px border in the focus role.
+      side: BorderSide(
+        color: _focused ? colors.focus : colors.border,
+        width: _focused ? 2 : 1,
+      ),
     );
     return Semantics(
-      button: onTap != null,
-      label: label,
+      button: widget.onTap != null,
+      label: widget.label,
       child: Material(
         color: colors.surfaceRaised,
         shape: shape,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: onTap,
+          onTap: widget.onTap,
+          onFocusChange: (focused) => setState(() => _focused = focused),
           overlayColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.pressed)) {
               return colors.textPrimary.withValues(alpha: 0.10);
-            }
-            if (states.contains(WidgetState.focused)) {
-              return colors.focus.withValues(alpha: 0.10);
             }
             return null;
           }),
           child: Padding(
             padding: const EdgeInsets.all(MotifSpace.s4),
-            child: child,
+            child: widget.child,
           ),
         ),
       ),
@@ -261,7 +283,7 @@ For a new app, build these, each with the states above and the options its scree
 
 ## A screen's states
 
-A screen that shows data has a branch for loading, empty and error, besides the data itself. Mock data loads at once and is never empty, so write the branches anyway:
+A screen that shows data has a branch for loading, empty and error, besides the data itself. Mock data loads at once and is never empty, so write the branches anyway. Loading shows skeleton rows in the final layout (`Skeleton` is in [motion](motion.md#skeletons)), as [the empty, loading and error pattern](../../knowledge/ux-patterns/empty-loading-error.md) asks; a spinner is only for a small wait inside a control:
 
 ```dart
 class OrdersBody extends StatelessWidget {
@@ -291,7 +313,23 @@ class OrdersBody extends StatelessWidget {
       );
     }
     final data = orders.data;
-    if (data == null) return const Center(child: CircularProgressIndicator());
+    if (data == null) {
+      // Skeleton rows in the final layout; they stop pulsing under reduce motion.
+      return Semantics(
+        label: 'Loading orders',
+        child: Padding(
+          padding: const EdgeInsets.all(MotifSpace.s4),
+          child: Column(
+            children: [
+              for (var i = 0; i < 4; i++) ...[
+                const Skeleton(width: double.infinity, height: MotifSpace.s12),
+                const SizedBox(height: MotifSpace.s3),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
     if (data.isEmpty) {
       return Center(child: Text('No orders yet.', style: MotifText.body));
     }

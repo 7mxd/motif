@@ -90,7 +90,7 @@ class PriceTag extends StatelessWidget {
 
 `MotifText` loads the theme's fonts for you:
 
-- **Google Fonts** (the usual case): through the `google_fonts` package. Add it once with `flutter pub add google_fonts`. `motif tokens` says when it's missing, and writes a file that compiles in the meantime. Fonts download the first time the app shows them; to work offline, bundle the font files as google_fonts' documentation describes (an `assets/google_fonts/` folder listed in `pubspec.yaml`).
+- **Google Fonts** (the usual case): through the `google_fonts` package. Add it once with `flutter pub add google_fonts`. `motif tokens` says when it's missing, and writes a file that compiles in the meantime. Fonts download the first time the app shows them; to work offline, bundle the font files as the [google_fonts documentation](https://pub.dev/packages/google_fonts) describes (an `assets/google_fonts/` folder listed in `pubspec.yaml`).
 - **Project fonts** (files in the guide's font files): `motif tokens` copies `.ttf` and `.otf` files into `assets/fonts/` and prints the `fonts:` block to add under `flutter:` in `pubspec.yaml`. Add it by hand, then run `flutter pub get`. Flutter can't use WOFF2; the guide needs a `.ttf` or `.otf` of the family.
 - **An Arabic companion** (the second font in a font list) becomes each role's `fontFamilyFallback`, so Arabic letters draw in the right font when the first one doesn't have them. Keep it that way: a hand-written `TextStyle(fontFamily: …)` drops it, which is one more reason `raw-font` is a finding.
 

@@ -57,7 +57,7 @@ For apps that share widgets, put the theme in the shared package and tell Motif 
 }
 ```
 
-Then `motif tokens` writes one `motif_theme.dart` into the package, and both apps import it as `package:core/design/motif_theme.dart` (the package has to be a dependency of each app, with `path: ../packages/core`). `motif check` and `motif extract` also read the Dart in the path dependencies under `mobile/packages`, one level deep, so shared widgets are checked too. Run `flutter pub get` in each app after changing a dependency.
+Then `motif tokens` writes one `motif_theme.dart` into the package, and both apps import it as `package:core/design/motif_theme.dart` (the package has to be a dependency of each app, with `path: ../packages/core`). `motif check` and `motif extract` also read the Dart in every `path:` dependency inside the project (the shared packages under `mobile/packages`, say), one level deep, so shared widgets are checked too. Run `flutter pub get` in each app after changing a dependency.
 
 ## Build, type-check and run
 

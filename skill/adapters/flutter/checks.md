@@ -2,7 +2,7 @@
 
 What `motif check` and `motif shot --audit` report in a Flutter app, how to fix each finding, and the files that let `motif shot` reach screens behind a tap or a fetch.
 
-`motif check` reads the app's Dart code, and the Dart of the packages it depends on from the project (`path:` dependencies, one level). Comments and the insides of strings are not code, so a colour in a comment is fine; code inside `${…}` in a string is read. Every finding names the file, line and column. Generated files (`*.g.dart`, `*.freezed.dart`, `lib/l10n/`) and tests aren't read.
+`motif check` reads the app's Dart code, and the Dart of the packages it depends on from the project (`path:` dependencies, one level). Comments and the insides of strings are not code, so a colour in a comment is fine; code inside `${…}` in a string is read. Every finding names the file, line and column. These aren't read: `.dart_tool/`, `build/`, `test/`, `integration_test/`, `*.g.dart`, `*.freezed.dart`, `*.mocks.dart`, `*.gr.dart`, `lib/generated/` and `lib/l10n/app_localizations*.dart`.
 
 A value that truly must stay as it is (a colour the user picks, a partner's brand colour) gets a `// motif-ok: <reason>` comment on its line or the line above. `motif check` lists these exceptions separately instead of as problems. Keep them rare, and always give the reason:
 
@@ -153,7 +153,7 @@ IconButton(
 
 ## Reduced motion
 
-From `motif shot --audit`: with the "reduce motion" setting on, something on the screen keeps animating. This is stricter than the web's check, which allows fades and colour changes: Flutter doesn't say what changed from one frame to the next, so any animation that keeps going is reported, a looping fade and a spinner included. The finding names the widget that rebuilds.
+From `motif shot --audit`: with the "reduce motion" setting on, something on the screen keeps animating. Motif draws every screenshot with the setting on, so a screen caught while loading shows its still state, and a spinner left running is reported. This is stricter than the web's check, which allows fades and colour changes: Flutter doesn't say what changed from one frame to the next, so any animation that keeps going is reported, a looping fade and a spinner included. The finding names the widget that rebuilds.
 
 - Fix: stop it, or show its still frame, when `MotifMotion.reduced(context)` is true ([motion](motion.md#skeletons)). Animations built from `MotifMotion.duration(context, …)` finish at once and don't show up.
 

@@ -108,6 +108,8 @@ class _SpringPressState extends State<SpringPress>
 }
 ```
 
+`SpringPress` wraps a child that already takes focus (a button, a card); it only adds the press. Don't use it around a bare `Text`, which can't be reached from a keyboard.
+
 A drag that lets go (a sheet, a swipe to dismiss) works the same way: start the `SpringSimulation` at the position where the finger left, with the finger's velocity, so the motion carries on from it. Use `smooth` for large surfaces, `snappy` for small ones, and `bouncy` only where the guide says playful.
 
 ## Reduced motion
@@ -181,4 +183,4 @@ class _SkeletonState extends State<Skeleton>
 }
 ```
 
-The same goes for a spinner: a `CircularProgressIndicator` never stops, so when `MotifMotion.reduced(context)` is true show a still "Loading…" label in `MotifText.body` instead.
+A spinner is different from a skeleton: a `CircularProgressIndicator` never stops, and the Flutter audit reports any animation that keeps running with reduce motion on (that is the audit's rule, Motif's decision 0007, not a platform convention). For content, prefer a skeleton. A spinner belongs only inside a small control, such as a button that's saving, and when `MotifMotion.reduced(context)` is true it is replaced by a still label that is still announced (`AppButton` in [components](components.md#every-state) keeps its label in the layout and in semantics).

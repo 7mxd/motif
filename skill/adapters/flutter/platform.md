@@ -65,7 +65,7 @@ MaterialApp(
 )
 ```
 
-`supportedLocales` is what Flutter checks to pick the phone's language; without `ar` in it, an Arabic phone gets the app left to right. `flutter gen-l10n` writes `AppLocalizations` from `.arb` files (set `generate: true` in `pubspec.yaml`). Write user-facing text in those files, not in widgets.
+`supportedLocales` is what Flutter checks to pick the phone's language; without `ar` in it, an Arabic phone gets the app left to right. `flutter gen-l10n` writes `AppLocalizations` from `.arb` files. It needs the `flutter_localizations` package (`flutter pub add flutter_localizations --sdk=flutter` and `flutter pub add intl:any`), `generate: true` under `flutter:` in `pubspec.yaml`, and an `l10n.yaml`; follow Flutter's [internationalization guide](https://docs.flutter.dev/ui/accessibility-and-localization/internationalization), which changes between releases. Write user-facing text in those files, not in widgets.
 
 ## Safe areas, keyboards and text size
 
@@ -75,42 +75,54 @@ MaterialApp(
 
 ## Phones and tablets
 
-`motif shot` draws three phone widths (360, 390 and 430) and a tablet (768). Lay out from the space the widget gets, not the device:
+`motif shot` draws three phone widths (360, 390 and 430) and a tablet (768). Lay out from the space the widget gets, not the device, with `LayoutBuilder` (see Flutter's [adaptive and responsive design guide](https://docs.flutter.dev/ui/adaptive-responsive)):
 
 ```dart
 class AppShell extends StatelessWidget {
-  const AppShell({super.key, required this.body});
+  const AppShell({
+    super.key,
+    required this.body,
+    required this.selected,
+    required this.onSelected,
+  });
 
   final Widget body;
+  final int selected;
+  final ValueChanged<int> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 600;
-    const destinations = [
-      NavigationRailDestination(icon: Icon(Icons.home_outlined), label: Text('Home')),
-      NavigationRailDestination(icon: Icon(Icons.settings_outlined), label: Text('Settings')),
-    ];
-    return Scaffold(
-      body: Row(
-        children: [
-          if (wide)
-            NavigationRail(
-              selectedIndex: 0,
-              labelType: NavigationRailLabelType.all,
-              destinations: destinations,
-            ),
-          Expanded(child: body),
-        ],
-      ),
-      bottomNavigationBar: wide
-          ? null
-          : NavigationBar(
-              selectedIndex: 0,
-              destinations: const [
-                NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
-                NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Settings'),
-              ],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 600;
+        return Scaffold(
+          body: Row(
+            children: [
+              if (wide)
+                NavigationRail(
+                  selectedIndex: selected,
+                  onDestinationSelected: onSelected,
+                  labelType: NavigationRailLabelType.all,
+                  destinations: const [
+                    NavigationRailDestination(icon: Icon(Icons.home_outlined), label: Text('Home')),
+                    NavigationRailDestination(icon: Icon(Icons.settings_outlined), label: Text('Settings')),
+                  ],
+                ),
+              Expanded(child: body),
+            ],
+          ),
+          bottomNavigationBar: wide
+              ? null
+              : NavigationBar(
+                  selectedIndex: selected,
+                  onDestinationSelected: onSelected,
+                  destinations: const [
+                    NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
+                    NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Settings'),
+                  ],
+                ),
+        );
+      },
     );
   }
 }
