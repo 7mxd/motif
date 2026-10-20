@@ -82,3 +82,16 @@ export function hasFlutter(): boolean {
   }
   return flutterFound;
 }
+
+/**
+ * Whether a stack's heavy tests (npm ci on a fixture, starting a dev server) run here. They need the stack's toolchain,
+ * and in CI they run only in that stack's own job, which sets MOTIF_STACK_JOB to the stack's name; the plain test job
+ * runs on three operating systems that already have Node and Chrome, and would repeat them. Outside CI they run
+ * whenever the toolchain is there. `reason` is the sentence for a skip message.
+ */
+export function heavyStackTests(stack: string, toolchainPresent: boolean): { run: boolean; reason: string } {
+  const inCi = Boolean(process.env.CI) && process.env.CI !== "0" && process.env.CI !== "false";
+  if (!toolchainPresent) return { run: false, reason: "the toolchain isn't installed" };
+  if (inCi && process.env.MOTIF_STACK_JOB !== stack) return { run: false, reason: `runs in CI's ${stack} job` };
+  return { run: true, reason: "" };
+}

@@ -9,6 +9,7 @@ import { runValidate } from "../src/commands/validate";
 import { findBrowser } from "../src/detect/browser";
 import { TS_HEADER } from "../src/generate/header";
 import { discoverExpoRoutes } from "../src/stacks/react-native/routes";
+import { heavyStackTests } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs, 120_000);
@@ -246,7 +247,9 @@ const npm = Bun.which("npm");
 const node = Bun.which("node");
 const npx = Bun.which("npx");
 const browser = findBrowser() !== null;
-const hasNode = Boolean(npm && node && npx);
+const toolchain = Boolean(npm && node && npx);
+const gate = heavyStackTests("react-native", toolchain);
+const hasNode = gate.run;
 const ready = hasNode && browser;
 
 describe("Dukkan and its seeded copy, installed, type-checked and drawn through Expo's web target", () => {
@@ -260,7 +263,7 @@ describe("Dukkan and its seeded copy, installed, type-checked and drawn through 
 
   beforeAll(() => {
     if (!hasNode) {
-      console.log("fixtures-rn: the installed tests are skipped, Node and npm aren't installed.");
+      console.log(`fixtures-rn: the installed tests are skipped, ${toolchain ? gate.reason : "Node and npm aren't installed"}.`);
       return;
     }
     if (!browser) console.log("fixtures-rn: the screenshot tests are skipped, no Chrome, Edge or Chromium was found.");

@@ -53,6 +53,32 @@ jobs:
         working-directory: cli
         run: bun test --timeout 300000 test/flutter-*.test.ts test/check-flutter.test.ts test/extract-flutter.test.ts test/fixtures-flutter.test.ts test/shot-flutter.test.ts test/tokens-flutter.test.ts
 
+  # The React Native tests that run npm ci on an Expo app or start Expo's web target skip in the job above
+  # (MOTIF_STACK_JOB is not set there); this one runs them. Node and Chrome are on the runner.
+  react-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      MOTIF_STACK_JOB: react-native
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            cli/test/fixtures/expo-min/package-lock.json
+            tests/fixtures/rn-contract-app/package-lock.json
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: React Native tests
+        working-directory: cli
+        run: bun test --timeout 600000 test/rn-*.test.ts test/check-rn.test.ts test/extract-rn.test.ts test/fixtures-rn.test.ts test/shot-rn.test.ts test/tokens-rn.test.ts
+
   build:
     strategy:
       fail-fast: true
@@ -147,7 +173,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [build, plugin, test, flutter]
+    needs: [build, plugin, test, flutter, react-native]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

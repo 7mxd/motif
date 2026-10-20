@@ -5,7 +5,7 @@ import { pngSize } from "../src/browser/png";
 import { runShot } from "../src/commands/shot";
 import { runTokens } from "../src/commands/tokens";
 import { findBrowser } from "../src/detect/browser";
-import { FIXTURES } from "./helpers";
+import { FIXTURES, heavyStackTests } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 // motif shot on expo-min through Expo's web target (plan 2G, Task 7; decision 0009). Needs Node with npm (Expo runs on
@@ -19,8 +19,9 @@ import { cleanupTempDirs, tempDir } from "./tmp";
 const npm = Bun.which("npm");
 const node = Bun.which("node");
 const browser = findBrowser() !== null;
-const ready = Boolean(npm && node && browser);
-const reason = !node || !npm ? "Node and npm aren't installed" : !browser ? "no Chrome, Edge or Chromium was found" : "";
+const gate = heavyStackTests("react-native", Boolean(npm && node && browser));
+const ready = gate.run;
+const reason = !node || !npm ? "Node and npm aren't installed" : !browser ? "no Chrome, Edge or Chromium was found" : gate.reason;
 let app = "";
 
 function run(cmd: string[], cwd: string): { code: number; out: string } {

@@ -3,13 +3,15 @@ import { cpSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { buildThemeSet } from "../src/generate/theme";
 import { REACT_NATIVE } from "../src/stacks/react-native";
-import { docFrom, FIXTURES, partnerTokens, validTokens, withCompanion } from "./helpers";
+import { docFrom, FIXTURES, heavyStackTests, partnerTokens, validTokens, withCompanion } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
 
 const node = Bun.which("node");
 const npm = Bun.which("npm");
+// Runs npm ci on an Expo app: in CI that is the react-native job's work, not the test matrix's ("runs in CI's react-native job").
+const heavy = heavyStackTests("react-native", Boolean(node && npm)).run;
 
 /** Code that uses every part of the generated API, the way an app calls it. */
 const usage = (extra: { variants: boolean; arabic: boolean }) => `import { useFonts } from "expo-font";
@@ -63,7 +65,7 @@ function run(cmd: string[], cwd: string): { code: number; out: string } {
 }
 
 describe("the generated TypeScript", () => {
-  test.skipIf(!node || !npm)("passes tsc --noEmit in an Expo app, with variants and without", () => {
+  test.skipIf(!heavy)("passes tsc --noEmit in an Expo app, with variants and without", () => {
     const dir = tempDir("motif-expo-");
     cpSync(join(FIXTURES, "expo-min"), dir, { recursive: true, filter: (src) => !["node_modules", ".expo"].includes(basename(src)) });
     // The packages are fetched once; npm's cache makes later runs offline.
