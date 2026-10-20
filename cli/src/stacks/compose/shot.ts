@@ -202,7 +202,7 @@ export function hooksSource(inputs: ComposeInputs): string {
 
 /** Which of the app's build variants was drawn, when it has several (from the line the init script prints). */
 export function variantNote(drawn: { name: string; of: string[] }): string {
-  return `This app has ${drawn.of.length} build variants (${drawn.of.join(", ")}); Motif drew ${drawn.name}, the one Android Studio selects by default: the build type and flavours the build marks isDefault, else debug and each dimension's first flavour by name.`;
+  return `This app has ${drawn.of.length} build variants (${drawn.of.join(", ")}); Motif drew ${drawn.name}, the one Android Studio selects by default: the build type and flavours the build marks isDefault, else the test build type (debug unless testBuildType says otherwise) and each dimension's first flavour by name.`;
 }
 
 /** The guide's default variant id; "" without variants. */

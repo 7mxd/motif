@@ -417,7 +417,7 @@ describe("shootCompose", () => {
     const { run } = fakeRun(() => ({ output: `> Configure project :app\r\n${line}\r\n> Task :app:testProdDebugUnitTest\r\n`, result: { screens: [] } }));
     const got = await shootCompose(options(root, { routes: ["/"] }), base(root, run));
     expect(got.notes).toContain(
-      "This app has 4 build variants (demoDebug, demoRelease, prodDebug, prodRelease); Motif drew prodDebug, the one Android Studio selects by default: the build type and flavours the build marks isDefault, else debug and each dimension's first flavour by name.",
+      "This app has 4 build variants (demoDebug, demoRelease, prodDebug, prodRelease); Motif drew prodDebug, the one Android Studio selects by default: the build type and flavours the build marks isDefault, else the test build type (debug unless testBuildType says otherwise) and each dimension's first flavour by name.",
     );
     const single = fakeRun(() => ({ output: "> Task :app:testDebugUnitTest", result: { screens: [] } }));
     expect((await shootCompose(options(root, { routes: ["/"] }), base(root, single.run))).notes.some((n) => n.includes("build variants"))).toBe(false);
