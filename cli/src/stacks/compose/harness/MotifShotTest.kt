@@ -25,7 +25,7 @@
 // of Flutter's harness:
 //   { "screens": [{ "route", "shots": [file], "errors": [text], "auditError"?, "covered"? }], "shots": [{ "file", "error"? }],
 //     "issues": [{ rule, selector, label, kind, …, "route", "file", "size", "scheme", "variant"?, "state"?, "rtl"? }],
-//     "notes": [text], "timings": [{ "file", "ms" }], "plainApplication": false }
+//     "notes": [text], "timings": [{ "file", "ms" }], "plainApplication": false, "variant"?: { "name", "of": [name] } }
 package dev.motif.shot
 
 import android.app.Activity
@@ -184,7 +184,13 @@ class MotifShotTest(private val index: Int) {
             JSONObject(resultFile.readText())
         } else {
             JSONObject().put("screens", JSONArray()).put("shots", JSONArray()).put("issues", JSONArray())
-                .put("notes", JSONArray()).put("timings", JSONArray()).put("plainApplication", false)
+                .put("notes", JSONArray()).put("timings", JSONArray()).put("plainApplication", false).also { fresh ->
+                    // The variant the init script chose among several, when it did.
+                    System.getProperty("motif.shot.variant")?.let { name ->
+                        val of = JSONArray((System.getProperty("motif.shot.variants") ?: name).split(","))
+                        fresh.put("variant", JSONObject().put("name", name).put("of", of))
+                    }
+                }
         }
 
     /**

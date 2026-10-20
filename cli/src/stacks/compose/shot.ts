@@ -542,7 +542,12 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
   }
   const mapped = mapComposeResult(targets, opts.outDir, result.result, result.timedOut ? { seconds } : null);
   if (result.result.plainApplication === true) notes.push(plainApplicationNote(moduleDir, result.result.applicationStarted === true));
-  const drawn = variantDrawn(result.output);
+  // From result.json, which the harness fills from the init script's choice; the line the script prints is the fallback.
+  const v = result.result.variant as { name?: unknown; of?: unknown } | undefined;
+  const drawn =
+    typeof v?.name === "string" && Array.isArray(v.of) && v.of.every((n) => typeof n === "string")
+      ? { name: v.name, of: v.of as string[] }
+      : variantDrawn(result.output);
   if (drawn) notes.push(variantNote(drawn));
   return { ...mapped, notes: [...notes, ...mapped.notes] };
 }

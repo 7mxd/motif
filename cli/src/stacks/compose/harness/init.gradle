@@ -124,6 +124,13 @@ allprojects { project ->
             // type other than debug.
             if (candidates.size() > 1 && choose() != null && (chosen.flavors || chosen.buildType != "debug")) {
                 println "Motif draws the ${chosen.name} variant, of ${candidates*.name.join(", ")}."
+                // The harness writes it into result.json: the line above can fall off the tail of Gradle's output, and a
+                // reused configuration cache doesn't print it, but the task's system properties are cached with it.
+                def drawing = project.tasks.findByName(chosen.task)
+                if (drawing instanceof Test) {
+                    drawing.systemProperty "motif.shot.variant", chosen.name
+                    drawing.systemProperty "motif.shot.variants", candidates*.name.join(",")
+                }
             }
         }
         project.afterEvaluate {

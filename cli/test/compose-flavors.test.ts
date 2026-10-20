@@ -66,6 +66,8 @@ describe("the Compose harness on an app with product flavours (final review)", (
     expect(run.output).not.toContain("testProdDebugUnitTest");
     const drawn = variantDrawn(run.output);
     expect(drawn?.name).toBe("demoDebug");
+    // The harness wrote the choice into result.json too, which is where Motif reads it from.
+    expect(run.result?.variant).toEqual({ name: "demoDebug", of: drawn?.of });
     expect([...(drawn?.of ?? [])].sort()).toEqual(["demoDebug", "demoRelease", "prodDebug", "prodRelease"]);
     // The JUnit report is where Motif reads an Application's failure from, whichever variant ran.
     expect(harnessReport(app)).toBe(join(app, TEST_RESULTS, "testDemoDebugUnitTest", `TEST-${TEST_CLASS}.xml`));

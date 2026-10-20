@@ -419,6 +419,10 @@ describe("shootCompose", () => {
     expect(got.notes).toContain(
       "This app has 4 build variants (demoDebug, demoRelease, prodDebug, prodRelease); Motif drew prodDebug, the one Android Studio selects by default: the build type and flavours the build marks isDefault, else the test build type (debug unless testBuildType says otherwise) and each dimension's first flavour by name.",
     );
+    // The variant result.json names counts even when the line fell off the tail of the output (or the configuration was cached).
+    const fromResult = fakeRun(() => ({ output: "", result: { screens: [], variant: { name: "prodDebug", of: ["demoDebug", "demoRelease", "prodDebug", "prodRelease"] } } }));
+    const viaResult = await shootCompose(options(root, { routes: ["/"] }), base(root, fromResult.run));
+    expect(viaResult.notes.some((n) => n.includes("Motif drew prodDebug, the one Android Studio selects"))).toBe(true);
     const single = fakeRun(() => ({ output: "> Task :app:testDebugUnitTest", result: { screens: [] } }));
     expect((await shootCompose(options(root, { routes: ["/"] }), base(root, single.run))).notes.some((n) => n.includes("build variants"))).toBe(false);
   });
