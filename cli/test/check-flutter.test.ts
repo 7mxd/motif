@@ -151,7 +151,7 @@ describe("motif check on a Flutter app", () => {
     const root = makeProject({ "design/tokens.json": TOKENS, "package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "src/App.vue": "" });
     const r = await check(root);
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("motif check works on Flutter apps, React web apps and plain web sites in this version.");
+    expect(r.text).toContain("motif check works on Flutter apps, Jetpack Compose apps, React web apps and plain web sites in this version.");
   });
 });
 

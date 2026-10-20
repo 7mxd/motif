@@ -4,18 +4,9 @@ import type { SourceFile } from "../../check/files";
 import { maskComments, maskStrings } from "../../check/mask";
 import type { Hit } from "../../check/types";
 import { callArgs } from "./rules";
+import { closingBrace } from "../../check/calls";
 
 const IDENT = "[A-Za-z_$][\\w$]*";
-
-/** The index just past the brace that closes the one at `open` (on masked text). */
-function closingBrace(text: string, open: number): number {
-  let depth = 0;
-  for (let i = open; i < text.length; i++) {
-    if (text[i] === "{") depth++;
-    else if (text[i] === "}" && --depth === 0) return i + 1;
-  }
-  return text.length;
-}
 
 /**
  * Where a file defines colours for a theme: ThemeExtension classes and their instances, ColorSchemes with two or more

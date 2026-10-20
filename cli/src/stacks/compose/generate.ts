@@ -50,7 +50,7 @@ export function kotlinMember(name: string, lead: string, taken: Set<string> = ne
 
 /** Names a data class already has: its copy, equals, hashCode, toString and componentN functions. */
 const COLOR_MEMBERS = new Set(["copy", "equals", "hashCode", "toString"]);
-const colorField = (name: string) => {
+export const colorField = (name: string) => {
   const id = kotlinMember(name, "c", COLOR_MEMBERS);
   return /^component\d+$/.test(id) ? `${id}Value` : id;
 };

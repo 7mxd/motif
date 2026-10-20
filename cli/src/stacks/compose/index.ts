@@ -11,7 +11,9 @@ import type { NativeStack } from "../native";
 import { composeDoctor } from "./doctor";
 import { composeFonts } from "./fonts";
 import { generateCompose, THEME_FILE } from "./generate";
+import { composePaletteFile } from "./palette";
 import { composeModule, folderPackage, packageFolder } from "./project";
+import { composeFix, composeReducedMotion, composeRole, scanKotlin } from "./rules";
 
 /** The package the theme file declares: its folder's below the source folder, or the module's own ui.motif outside one. */
 function themePackage(root: string, app: AppInfo, themeDir: string): string {
@@ -88,5 +90,11 @@ export const COMPOSE: NativeStack = {
   },
 
   sourceFiles: (root, app, { ignore }) => listKotlinFiles(root, app.path, { ignore }),
+  scan: scanKotlin,
+  // Motif's own file defines MotifMotion and reads the animator duration scale: only the app's code says whether it respects Remove animations.
+  appWide: (files) => composeReducedMotion(files),
+  fix: composeFix,
+  paletteFile: composePaletteFile,
+  role: composeRole,
   doctor: composeDoctor,
 };

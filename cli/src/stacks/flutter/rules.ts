@@ -3,6 +3,7 @@ import type { SourceFile } from "../../check/files";
 import { maskComments, maskStrings } from "../../check/mask";
 import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../../check/types";
 import { locator } from "../../text";
+import { callArgs, callee, enclosing, namedArgument, type Arg } from "../../check/calls";
 import { colorField, member } from "./generate";
 
 const FIX = {
@@ -60,90 +61,9 @@ export function dartRole(kind: ValueKind, name: string): string {
 /** A number literal; Dart allows digit separators (1_000). */
 const NUMBER = /^-?\d[\d_]*(?:\.\d[\d_]*)?$/;
 const num = (literal: string) => Number(literal.replace(/_/g, ""));
-const OPENERS = "([{";
-const CLOSERS = ")]}";
 
-export interface Arg {
-  /** The named argument's name (padding: …), if it has one. */
-  name?: string;
-  /** Where the argument starts (its name, if it has one). */
-  start: number;
-  end: number;
-  /** The value, trimmed, and where it starts. */
-  value: string;
-  valueStart: number;
-}
-
-/** The arguments of the call whose "(" is at `open` (on masked text), and the index of its ")". Null when it doesn't close. */
-export function callArgs(text: string, open: number): { args: Arg[]; close: number } | null {
-  const args: Arg[] = [];
-  let depth = 0;
-  let from = open + 1;
-  const push = (to: number) => {
-    const raw = text.slice(from, to);
-    const lead = raw.length - raw.trimStart().length;
-    const body = raw.trim();
-    if (body === "") return;
-    const start = from + lead;
-    const named = body.match(/^([A-Za-z_$][\w$]*)\s*:(?!:)\s*/);
-    const value = named ? body.slice(named[0].length) : body;
-    args.push({ ...(named ? { name: named[1] } : {}), start, end: start + body.length, value, valueStart: start + (named ? named[0].length : 0) });
-  };
-  for (let i = open + 1; i < text.length; i++) {
-    const c = text[i]!;
-    if (OPENERS.includes(c)) depth++;
-    else if (CLOSERS.includes(c)) {
-      if (depth === 0) {
-        push(i);
-        return { args, close: i };
-      }
-      depth--;
-    } else if (c === "," && depth === 0) {
-      push(i);
-      from = i + 1;
-    }
-  }
-  return null;
-}
-
-/** Walking back from `index`: where its argument starts, and the bracket that holds it (-1 at a statement's start). */
-function enclosing(text: string, index: number): { argStart: number; open: number } {
-  let depth = 0;
-  let argStart = -1;
-  for (let i = index - 1; i >= 0; i--) {
-    const c = text[i]!;
-    if (CLOSERS.includes(c)) depth++;
-    else if (OPENERS.includes(c)) {
-      if (depth === 0) return { argStart: argStart === -1 ? i + 1 : argStart, open: i };
-      depth--;
-    } else if (depth === 0 && c === "," && argStart === -1) argStart = i + 1;
-    else if (depth === 0 && c === ";") return { argStart: argStart === -1 ? i + 1 : argStart, open: -1 };
-  }
-  return { argStart: argStart === -1 ? 0 : argStart, open: -1 };
-}
-
-/** The constructor or function whose "(" is at `open`: BoxDecoration, Border.all (a library prefix dropped). */
-function callee(text: string, open: number): string {
-  if (open < 0 || text[open] !== "(") return "";
-  const m = text.slice(Math.max(0, open - 200), open).match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*(?:<[^<>()]*>)?\s*$/);
-  if (!m) return "";
-  const parts = m[1]!.split(".");
-  const last = parts[parts.length - 1]!;
-  return /^[A-Z]/.test(last) || parts.length === 1 ? last : parts.slice(-2).join(".");
-}
-
-/** The nearest named argument around `index` (climbing out of wrapper calls), and the call it's given to. */
-export function namedArgument(text: string, index: number): { name: string; call: string } | null {
-  let at = index;
-  for (let level = 0; level < 8; level++) {
-    const { argStart, open } = enclosing(text, at);
-    const m = text.slice(argStart, at).match(/^\s*([A-Za-z_$][\w$]*)\s*:(?!:)/);
-    if (m) return { name: m[1]!, call: callee(text, open) };
-    if (open === -1 || text[open] === "{") return null;
-    at = open;
-  }
-  return null;
-}
+export { callArgs, namedArgument };
+export type { Arg };
 
 const BACKGROUND_ARGS = new Set(["backgroundColor", "fillColor", "scaffoldBackgroundColor", "canvasColor"]);
 const TEXT_ARGS = new Set(["foregroundColor", "iconColor", "cursorColor"]);
