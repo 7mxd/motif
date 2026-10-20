@@ -203,7 +203,23 @@ motif shot --routes /contact --state design/states/sent.kt
 - It runs on every screen `motif shot` draws: start with a guard that returns on the others, or capture only its screen with `--routes`.
 - Screenshots are named after the screen and the state (`contact@sent.mobile.png`), each starting from a fresh launch. Use the same `--state` options for `--save` and `--against`.
 - A state has 15 seconds. An error it throws is the screen's error, and the screenshot is still taken.
-- A screen that loads its data off the main thread (a repository on `Dispatchers.IO`, a fake network delay) is drawn while it loads: Motif waits until Compose is idle, and work on other threads isn't Compose's. A state that waits shows it loaded: `Thread.sleep(2_000)` in `motifState` is enough, since Motif lets the screen settle after the state. Under Robolectric, `rule.waitUntil { … }` can time out waiting for that work; sleep instead.
+- A screen that loads its data later (a repository on `Dispatchers.IO`, a `delay` in a `LaunchedEffect` or a `ViewModel`) is drawn while it loads: Motif waits until Compose is idle, and under Robolectric a wait isn't work. Which clock a wait runs on decides what moves it on. Work on another thread runs in real time, so `Thread.sleep` lets it finish. A `delay` in a `LaunchedEffect` runs on the Compose test's clock, which only `rule.mainClock.advanceTimeBy` moves. A `delay` on the main thread (`viewModelScope`, `Dispatchers.Main`) runs on Robolectric's clock, which only `idleFor` moves. A state that does all three shows the screen loaded, and Motif settles it again afterwards. `rule.waitUntil { … }` moves none of these clocks, and times out.
+
+  ```kotlin
+  // design/states/loaded.kt: each screen once its data has arrived.
+  package dev.motif.states.loaded
+
+  import android.os.Looper
+  import androidx.compose.ui.test.junit4.ComposeContentTestRule
+  import java.time.Duration
+  import org.robolectric.Shadows.shadowOf
+
+  fun motifState(rule: ComposeContentTestRule) {
+      Thread.sleep(1_000) // work on Dispatchers.IO, in real time
+      rule.mainClock.advanceTimeBy(2_000) // a delay in a LaunchedEffect
+      shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2)) // a delay in viewModelScope
+  }
+  ```
 - Mock data only.
 
 ### The setup file
