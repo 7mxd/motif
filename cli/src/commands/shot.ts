@@ -12,14 +12,15 @@ import {
   captureScreens, describeSizes, MAX_HEIGHT, NATIVE_DESKTOP, NATIVE_VIEWPORTS, parseSizes, type RouteResult, type StateScript, type Viewport,
 } from "../shot/capture";
 import {
-  identicalVariantNotes, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison,
+  darkLooksLikeLight, identicalVariantNotes, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons, type ComparePair, type Comparison,
 } from "../shot/compare";
 import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { startStaticServer, type StaticServer } from "../shot/static-server";
 import { nativeStack, type NativeStack } from "../stacks/native";
 import { WEB_INSTALL } from "../stacks/react-native/doctor";
 import { RN_MOTION_SIZE, RN_START_TIMEOUT_MS, RN_WEB_NOTE } from "../stacks/react-native";
-import { hasWebSupport, isExpoApp } from "../stacks/react-native/project";
+import { fixedScheme, hasWebSupport, isExpoApp } from "../stacks/react-native/project";
+import { buildWebBundle, webErrorHints } from "../stacks/react-native/web";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
 import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes";
 import { andList } from "../text";
@@ -38,6 +39,8 @@ export interface ShotDeps {
   which?: (cmd: string) => string | null;
   /** Stands in for a native stack's shoot in tests. */
   shoot?: NativeStack["shoot"];
+  /** Has Expo build its web bundle before the first screenshot (buildWebBundle); not called when not given. */
+  webBundle?: typeof buildWebBundle;
 }
 
 const MAX_ROUTES = 12;
@@ -53,28 +56,6 @@ export function signInFirst(routes: string[]): string[] {
   return [...signIn, ...home, ...routes.filter((r) => !signIn.includes(r) && r !== "/")];
 }
 const RN_NOTE_MARKER = ".motif-web-target-noted";
-/** Packages an error names that have no web build: "Unable to resolve module X", "Cannot find module 'X'", or a native-looking package after "in". */
-function webModuleHints(errors: string[]): string[] {
-  const names = new Set<string>();
-  for (const e of errors) {
-    const named = [
-      ...e.matchAll(/Unable to resolve module ['"]?([^'"\s]+)/g),
-      ...e.matchAll(/Cannot find module ['"]([^'"]+)['"]/g),
-      ...e.matchAll(/\bin ['"]?((?:@[\w.-]+\/)?(?:react-native|expo)-[\w.-]+)/g),
-    ];
-    for (const m of named) {
-      const spec = m[1]!.replace(/[.,;:]+$/, "");
-      if (spec.startsWith(".") || spec.startsWith("/")) continue;
-      const parts = spec.split("/");
-      const pkg = spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
-      if (pkg && pkg !== "react-native-web") names.add(pkg);
-    }
-  }
-  return [...names].map((pkg) => {
-    const file = pkg.split("/").pop();
-    return `${pkg} doesn't run on the web; stub it for screenshots with a ${file}.web.tsx file beside the import, or skip the route.`;
-  });
-}
 const INSTALL_HINT = '"motif browser install" downloads a private headless copy (about 120 MB to download, about 300 MB on disk) that only Motif uses.';
 
 function today(): string {
@@ -91,6 +72,7 @@ const defaultDeps: ShotDeps = {
   compare: renderComparisons,
   today,
   browserOff: () => browserOff(),
+  webBundle: buildWebBundle,
 };
 
 const usage = (text: string, data: Record<string, unknown>): CommandResult => ({ command: "shot", exitCode: 2, text, data });
@@ -425,6 +407,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   } else if (!baseUrl) {
     const how = deps.devCommand(appDir);
     if ("error" in how) return usage(how.error, { error: "cant-start" });
+    // Expo's start limit covers its server and its first web bundle.
+    const started = Date.now();
     try {
       server = await deps.startDevServer({
         cwd: appDir, command: how.command, ...(how.env ? { env: how.env } : {}), ...(rn ? { timeoutMs: RN_START_TIMEOUT_MS } : {}),
@@ -433,7 +417,18 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       return usage(`Couldn't start the app with "${how.display}". ${message(e)}`, { error: "dev-server-failed" });
     }
     baseUrl = server.url;
+    if (rn && deps.webBundle) {
+      const built = await deps.webBundle(appDir, baseUrl, started + RN_START_TIMEOUT_MS);
+      if (built.error) {
+        await server.stop();
+        return {
+          command: "shot", exitCode: 1, text: `Expo couldn't build the app for the web, so there's nothing to screenshot: ${built.error}`, data: { error: "web-bundle-failed", message: built.error },
+        };
+      }
+    }
   }
+  // An Expo app that keeps light (or dark) whatever the phone's setting is drawn that way in every screenshot.
+  const appScheme = rn && app ? fixedScheme(appDir) : null;
 
   let captured: Awaited<ReturnType<typeof captureScreens>>;
   try {
@@ -454,7 +449,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })),
         ...(rn ? { motionWidth: RN_MOTION_SIZE.width } : {}),
         ...(viewports ?? (rn ? NATIVE_VIEWPORTS : undefined) ? { viewports: viewports ?? NATIVE_VIEWPORTS } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
-        ...(defaultVariant ? { defaultVariant } : {}),
+        ...(defaultVariant ? { defaultVariant } : {}), ...(appScheme ? { appScheme: appScheme.scheme } : {}),
       });
     }
   } catch (e) {
@@ -477,7 +472,19 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     notes.push(`${r.route} doesn't switch to right to left by itself for ${rtl}; Motif set dir="rtl" to show it.`);
   }
   if (rn) {
-    notes.push(...webModuleHints(captured.routes.flatMap((r) => r.pageErrors ?? [])));
+    notes.push(...webErrorHints(captured.routes.flatMap((r) => r.pageErrors ?? []), appDir));
+    if (appScheme) {
+      const { scheme, set } = appScheme;
+      const why = set ? `app.json sets userInterfaceStyle to "${scheme}"` : `app.json doesn't set userInterfaceStyle, and Expo's default is "light"`;
+      notes.push(
+        scheme === "light"
+          ? `${why}, so on a phone the app stays light in dark mode: its .dark screenshots are drawn light too. Set it to "automatic" to follow the phone's setting.`
+          : `${why}, so on a phone the app stays dark in light mode: its light screenshots are drawn dark too. Set it to "automatic" to follow the phone's setting.`,
+      );
+    } else if (darkLooksLikeLight(captured.routes.filter(rendered).flatMap((r) => r.shots))) {
+      // Only screens that drew without an error: a crashed screen looks the same in both.
+      notes.push("Dark mode looks exactly like light on every screen: the app doesn't follow the phone's setting on the web. MotifProvider reads it with useColorScheme(); use its colours.");
+    }
     // Said the first time a folder of screenshots is made.
     const marker = join(outDir, RN_NOTE_MARKER);
     // Kept only in the default folder; with --out the note repeats.

@@ -64,3 +64,27 @@ const WEB_PACKAGES = ["react-dom", "react-native-web", "@expo/metro-runtime"];
 export function hasWebSupport(dir: string): string[] {
   return WEB_PACKAGES.filter((p) => declared(dir, p) === null && !existsSync(join(dir, "node_modules", p, "package.json")));
 }
+
+const SCHEME_STYLES = new Set(["light", "dark", "automatic"]);
+
+/**
+ * The light or dark an Expo app keeps on a phone whatever the phone's setting (app.json's userInterfaceStyle, Expo's
+ * default "light" when it sets none), when iOS and Android agree; null when the app follows the phone, or when Motif
+ * can't tell (no app.json, or an app.config.* that can change it). set says whether app.json names it.
+ */
+export function fixedScheme(dir: string): { scheme: "light" | "dark"; set: boolean } | null {
+  if (["js", "ts", "cjs", "mjs", "json"].some((ext) => existsSync(join(dir, `app.config.${ext}`)))) return null;
+  const expo = readJson(join(dir, "app.json"))?.expo;
+  if (!expo || typeof expo !== "object") return null;
+  const style = (o: unknown): string | undefined => {
+    const v = o && typeof o === "object" ? (o as Record<string, unknown>).userInterfaceStyle : undefined;
+    return typeof v === "string" && SCHEME_STYLES.has(v) ? v : undefined;
+  };
+  const top = style(expo);
+  const e = expo as Record<string, unknown>;
+  const ios = style(e.ios) ?? top;
+  const android = style(e.android) ?? top;
+  const scheme = ios ?? android ?? "light";
+  if ((ios ?? "light") !== (android ?? "light") || scheme === "automatic") return null;
+  return { scheme: scheme as "light" | "dark", set: ios !== undefined || android !== undefined };
+}

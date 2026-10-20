@@ -153,6 +153,11 @@ export interface CaptureOptions {
    */
   defaultVariant?: string;
   /**
+   * The light or dark an app keeps whatever the phone's setting (an Expo app's userInterfaceStyle): every screenshot is
+   * taken in it, the .dark ones too, as a phone would show them. The browser's setting is followed when not given.
+   */
+  appScheme?: Scheme;
+  /**
    * Also capture each page right to left, in this language (a BCP 47 primary tag such as "ar"): the page loads in that
    * locale, and gets dir="rtl" from Motif when it doesn't turn right to left by itself.
    */
@@ -261,7 +266,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
         for (const viewport of viewports) {
           for (const scheme of SCHEMES) {
             const media = [
-              { name: "prefers-color-scheme", value: scheme },
+              { name: "prefers-color-scheme", value: opts.appScheme ?? scheme },
               { name: "prefers-reduced-motion", value: "reduce" },
             ];
             // Each variant left to right and, with --rtl, right to left in that language.

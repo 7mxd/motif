@@ -236,3 +236,17 @@ describe("the web's generated CSS has no rule for the default variant's id", () 
     for (const f of files) expect(f.content).not.toContain('data-variant="women"');
   });
 });
+
+describe.skipIf(!browser)("an app's own fixed scheme (needs Chrome, Edge or Chromium)", () => {
+  test("every screenshot is taken in it: the .dark ones of a light-only app look light", async () => {
+    const PHONE = [{ name: "mobile" as const, width: 390, height: 844, scale: 2, mobile: true }];
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/"], outDir: out, settleMs: 50, viewports: PHONE, appScheme: "light" });
+    expect(routes[0]!.shots.map((f) => f.slice(out.length + 1))).toEqual(["index.mobile.png", "index.mobile.dark.png"]);
+    expect(readFileSync(join(out, "index.mobile.png")).equals(readFileSync(join(out, "index.mobile.dark.png")))).toBe(true);
+    // The same page follows the browser without it (its own CSS has a dark mode).
+    const free = tempDir("motif-shots-");
+    await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/"], outDir: free, settleMs: 50, viewports: PHONE });
+    expect(readFileSync(join(free, "index.mobile.png")).equals(readFileSync(join(free, "index.mobile.dark.png")))).toBe(false);
+  }, 120_000);
+});
