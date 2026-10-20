@@ -57,11 +57,6 @@ struct MotifOtherRoot: View {
         MotifExample().motifTheme()
     }
 }
-
-/** The theme read off the main actor, as a background task might. */
-func motifBackgroundRead() async -> Color {
-    await Task.detached { MotifColors.light.surface }.value
-}
 `;
 
 /** The other shape: no variants, no companion, a project font. */
