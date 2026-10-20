@@ -28,11 +28,17 @@ export const DEFAULT_IGNORES = [
   ".*/", "/design/",
 ];
 
-/** Flutter's build output, tests, and generated Dart: never the team's own code. */
+/**
+ * Flutter's build output, tests, and generated Dart: never the team's own code. The folders are the app's or the
+ * package's own (/build/), so a feature folder named build or test under lib/ is still read.
+ */
 export const FLUTTER_IGNORES = [
-  ".dart_tool/", "build/", "test/", "integration_test/", "*.g.dart", "*.freezed.dart", "*.mocks.dart", "*.gr.dart",
+  "/.dart_tool/", "/build/", "/test/", "/integration_test/", "*.g.dart", "*.freezed.dart", "*.mocks.dart", "*.gr.dart",
   "lib/generated/", "lib/l10n/app_localizations*.dart",
 ];
+
+/** The defaults for Dart: as for the web, but a build/ folder is ignored only at the app's top (FLUTTER_IGNORES). */
+const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/");
 
 export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_LENGTH = 3000;
@@ -60,9 +66,18 @@ export function matchesPaths(rel: string, wanted: string[]): boolean {
   return w.length === 0 || w.some((p) => rel === p || rel.startsWith(p + "/"));
 }
 
-export function listSourceFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[]; langs?: Record<string, Lang>; extraIgnores?: string[] } = {}): SourceFile[] {
+/** A Flutter app's or package's Dart files, without its build output, tests and generated code. */
+export function listDartFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
+  return listSourceFiles(root, appPath, { ...opts, langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES, defaults: DART_DEFAULT_IGNORES });
+}
+
+export function listSourceFiles(
+  root: string,
+  appPath: string,
+  opts: { paths?: string[]; ignore?: string[]; langs?: Record<string, Lang>; extraIgnores?: string[]; defaults?: string[] } = {},
+): SourceFile[] {
   const langs = opts.langs ?? WEB_LANGS;
-  const rootIgnore = ignore().add(DEFAULT_IGNORES).add(readGitignore(root)).add(opts.ignore ?? []).add(opts.extraIgnores ?? []);
+  const rootIgnore = ignore().add(opts.defaults ?? DEFAULT_IGNORES).add(readGitignore(root)).add(opts.ignore ?? []).add(opts.extraIgnores ?? []);
   const app = toPosix(appPath) || ".";
   const appDir = join(root, app);
   const appIgnore = app === "." ? null : ignore().add(readGitignore(appDir)).add(opts.extraIgnores ?? []);

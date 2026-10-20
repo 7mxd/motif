@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { FLUTTER_IGNORES, listSourceFiles } from "../src/check/files";
+import { FLUTTER_IGNORES, listDartFiles, listSourceFiles } from "../src/check/files";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -99,5 +99,24 @@ describe("listSourceFiles for Dart", () => {
   });
   test("without langs, Dart files are not listed (today's behaviour)", () => {
     expect(paths(listSourceFiles(makeProject(files), "."))).toEqual(["lib/b.ts"]);
+  });
+});
+
+describe("final review: Flutter's ignores are anchored to the app or package (Minor #4)", () => {
+  test("a feature folder named build or test under lib/ is read; the app's own build/, test/ and integration_test/ aren't", () => {
+    const root = makeProject({
+      "lib/features/build/build_screen.dart": "x", "lib/features/test/test_screen.dart": "x", "lib/features/integration_test/x.dart": "x",
+      "build/app/x.dart": "x", "test/a_test.dart": "x", "integration_test/a_test.dart": "x", ".dart_tool/x.dart": "x",
+    });
+    expect(paths(listDartFiles(root, "."))).toEqual(["lib/features/build/build_screen.dart", "lib/features/integration_test/x.dart", "lib/features/test/test_screen.dart"]);
+    const nested = makeProject({
+      "mobile/customer/lib/features/build/a.dart": "x", "mobile/customer/lib/features/test/b.dart": "x",
+      "mobile/customer/build/x.dart": "x", "mobile/customer/test/a_test.dart": "x",
+    });
+    expect(paths(listDartFiles(nested, "mobile/customer"))).toEqual(["mobile/customer/lib/features/build/a.dart", "mobile/customer/lib/features/test/b.dart"]);
+  });
+
+  test("web apps keep ignoring every build/ folder, as before", () => {
+    expect(paths(listSourceFiles(makeProject({ "src/build/a.ts": "x", "src/b.ts": "x" }), "."))).toEqual(["src/b.ts"]);
   });
 });

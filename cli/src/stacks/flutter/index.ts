@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { FLUTTER_IGNORES, listSourceFiles, type SourceFile } from "../../check/files";
+import { listDartFiles, type SourceFile } from "../../check/files";
 import { maskComments } from "../../check/mask";
 import type { AppInfo } from "../../detect/stacks";
 import { isMotifGenerated } from "../../generate/header";
@@ -44,7 +44,7 @@ function variantWiring(set: ThemeSet): string {
 
 /** True when the app's own Dart code (not Motif's file, and not a comment) uses MotifTheme. */
 function usesTheme(root: string, app: AppInfo): boolean {
-  return listSourceFiles(root, app.path, { langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES }).some(
+  return listDartFiles(root, app.path).some(
     (f) => !isMotifGenerated(f.path, f.text) && maskComments(f.text, "dart").includes("MotifTheme."),
   );
 }
@@ -78,7 +78,7 @@ export const FLUTTER: NativeStack = {
     );
   },
 
-  sourceFiles: (root, app, { ignore }) => listSourceFiles(root, app.path, { ignore, langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES }),
+  sourceFiles: (root, app, { ignore }) => listDartFiles(root, app.path, { ignore }),
 
   // The packages the app's pubspec.yaml takes from a folder (core: path: ../packages/core): their lib/ Dart files, one
   // level only. A folder outside the project isn't read.
@@ -98,7 +98,7 @@ export const FLUTTER: NativeStack = {
       if (dir === appDir) continue;
       // Listed from the package's folder, so its own .gitignore and the generated-file patterns (lib/generated/) apply there.
       const pkg = rel.split(sep).join("/") || ".";
-      const own = listSourceFiles(root, pkg, { ignore, paths: [prefixPath(pkg, "lib")], langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES });
+      const own = listDartFiles(root, pkg, { ignore, paths: [prefixPath(pkg, "lib")] });
       if (own.length === 0) continue;
       files.push(...own);
       read.push(`${dep.name} (${rel.split(sep).join("/")})`);
