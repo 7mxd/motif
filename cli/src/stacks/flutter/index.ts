@@ -81,7 +81,9 @@ export const FLUTTER: NativeStack = {
         continue;
       }
       if (dir === appDir) continue;
-      const own = listSourceFiles(root, prefixPath(rel.split(sep).join("/") || ".", "lib"), { ignore, langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES });
+      // Listed from the package's folder, so its own .gitignore and the generated-file patterns (lib/generated/) apply there.
+      const pkg = rel.split(sep).join("/") || ".";
+      const own = listSourceFiles(root, pkg, { ignore, paths: [prefixPath(pkg, "lib")], langs: { ".dart": "dart" }, extraIgnores: FLUTTER_IGNORES });
       if (own.length === 0) continue;
       files.push(...own);
       read.push(`${dep.name} (${rel.split(sep).join("/")})`);

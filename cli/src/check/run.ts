@@ -118,7 +118,7 @@ export function checkApp(
   root: string,
   app: AppInfo,
   theme: Theme,
-  opts: { paths?: string[]; ignore?: string[]; variants?: ThemeVariant[]; set?: ThemeSet } = {},
+  opts: { paths?: string[]; ignore?: string[]; variants?: ThemeVariant[]; set?: ThemeSet; seen?: Set<string> } = {},
 ): AppCheck {
   const native = nativeStack(app.stack);
   if (native?.scan) {
@@ -180,17 +180,24 @@ function sortOut(found: Hit[], lines: Map<string, string[]>, decorate: (hit: Hit
   return { violations, exceptions };
 }
 
-/** A native app (Flutter): its stack lists, reads and fixes its own code, and writes the theme files it expects. */
-function checkNativeApp(root: string, app: AppInfo, native: NativeStack, scan: NonNullable<NativeStack["scan"]>, set: ThemeSet, opts: { paths?: string[]; ignore?: string[] }): AppCheck {
+/**
+ * A native app (Flutter): its stack lists, reads and fixes its own code, and writes the theme files it expects. The code of
+ * the in-repo packages it depends on (a Flutter app's path: dependencies) is checked with it. `seen` holds the files an
+ * earlier app of the same run checked: a package two apps share is reported once.
+ */
+function checkNativeApp(root: string, app: AppInfo, native: NativeStack, scan: NonNullable<NativeStack["scan"]>, set: ThemeSet, opts: { paths?: string[]; ignore?: string[]; seen?: Set<string> }): AppCheck {
   const theme = set.base;
   const themeDir = native.themeDir(root, app);
   const scale = buildScale(theme, themeDir);
   const expected = native.generate ? native.generate(set, { root, app, themeDir }).files : [];
 
-  const all = native.sourceFiles ? native.sourceFiles(root, app, { ignore: opts.ignore }) : [];
+  const own = native.sourceFiles ? native.sourceFiles(root, app, { ignore: opts.ignore }) : [];
+  const shared = native.sharedFiles ? native.sharedFiles(root, app, { ignore: opts.ignore }).files : [];
+  const all = [...new Map([...own, ...shared].map((f) => [f.path, f])).values()];
   const generated = all.filter((f) => isMotifGenerated(f.path, f.text));
   const appFiles = all.filter((f) => !isMotifGenerated(f.path, f.text));
-  const files = appFiles.filter((f) => matchesPaths(f.path, opts.paths ?? []));
+  const files = appFiles.filter((f) => matchesPaths(f.path, opts.paths ?? []) && !opts.seen?.has(f.path));
+  for (const f of files) opts.seen?.add(f.path);
   const inScope = new Set(files.map((f) => f.path));
   const lines = new Map(files.map((f) => [f.path, f.text.split(/\r?\n/)]));
 

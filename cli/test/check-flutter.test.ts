@@ -98,6 +98,36 @@ describe("motif check on a Flutter app", () => {
     expect(r.text).toContain("1× Color(0xFFFF00AA)  Raw colour Color(0xFFFF00AA). Use MotifColors.of(context).<role>. At lib/many.dart:28.");
   });
 
+  test("an app's in-repo path: packages are checked with it; a file two apps share is reported once (HiSalon #1)", async () => {
+    const shared = "mobile/packages/core/lib/design";
+    const app = (name: string) => `name: ${name}\nenvironment:\n  sdk: ^3.6.0\n\ndependencies:\n  flutter:\n    sdk: flutter\n  core:\n    path: ../packages/core\n\nflutter:\n  uses-material-design: true\n`;
+    const CARD = "import 'package:flutter/material.dart';\n\nWidget card() => Container(color: Colors.white);\n";
+    const files = {
+      "design/tokens.json": TOKENS,
+      "mobile/customer/pubspec.yaml": app("customer"),
+      "mobile/customer/lib/main.dart": "void main() {}\n",
+      "mobile/admin/pubspec.yaml": app("admin"),
+      "mobile/admin/lib/main.dart": "void main() {}\n",
+      "mobile/packages/core/pubspec.yaml": "name: core\nenvironment:\n  sdk: ^3.6.0\n\ndependencies:\n  flutter:\n    sdk: flutter\n",
+      "mobile/packages/core/lib/card.dart": CARD,
+      "mobile/packages/core/lib/card.g.dart": CARD,
+      "mobile/packages/core/lib/generated/assets.dart": CARD,
+    };
+    const settings = (apps: string[]) => JSON.stringify({ motifContract: 1, apps: apps.map((path) => ({ path, stack: "flutter", themeDir: shared })), ignore: [] });
+
+    const one = makeProject({ ...files, "design/motif.json": settings(["mobile/customer"]) });
+    expect((await runTokens(one, { positionals: [] })).exitCode).toBe(0);
+    const r = await runCheck(one, { positionals: [], app: "mobile/customer" });
+    // The package's widget is read; its generated files (*.g.dart, lib/generated/) and Motif's motif_theme.dart there are not.
+    expect(where(r)).toEqual(["raw-color mobile/packages/core/lib/card.dart:3:35"]);
+
+    const two = makeProject({ ...files, "design/motif.json": settings(["mobile/customer", "mobile/admin"]) });
+    expect((await runTokens(two, { positionals: [] })).exitCode).toBe(0);
+    const both = await check(two);
+    expect(where(both)).toEqual(["raw-color mobile/packages/core/lib/card.dart:3:35"]);
+    expect((both.data as any).summary.files).toBe(3);
+  });
+
   test("paths with no Dart files: the message names .dart", async () => {
     const root = await flutterApp({ "assets/notes.txt": "hi\n" });
     const r = await runCheck(root, { positionals: ["assets"] });

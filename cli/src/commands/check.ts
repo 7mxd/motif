@@ -129,7 +129,9 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   const set = buildThemeSet(doc);
   const { base: theme, variants } = set;
   const ignore = readIgnorePatterns(cwd);
-  const results = supported.map((a) => checkApp(cwd, a, theme, { paths, ignore, variants, set }));
+  // A file two apps share (a Flutter package both depend on) is checked once, with the first app.
+  const seen = new Set<string>();
+  const results = supported.map((a) => checkApp(cwd, a, theme, { paths, ignore, variants, set, seen }));
   if (paths.length > 0 && results.every((r) => r.files === 0)) {
     return {
       command: "check",
