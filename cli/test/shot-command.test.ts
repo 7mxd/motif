@@ -695,6 +695,6 @@ describe("motif shot --rtl", () => {
     const r = await runShot(root, ctx({ url: URL_, audit: true, rtl: true }), fakes({ results: bothWays, issues }).deps);
     expect(r.exitCode).toBe(1);
     expect(r.text).toContain("major    / (mobile, right to left) The button has no name a screen reader can say.");
-    expect((r.data.findings as { category: string; location: { rtl?: boolean } }[])[0]).toMatchObject({ category: "accessible-name", location: { rtl: true } });
+    expect((r.data.findings as { category: string; location: { rtl?: boolean } }[])[0]).toMatchObject({ category: "accessibility", location: { rtl: true } });
   });
 });

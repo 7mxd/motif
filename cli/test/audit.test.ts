@@ -133,7 +133,7 @@ describe("toFindings", () => {
     expect(web!.fix).toBe("Give it a visible label or an accessible name (aria-label, or alt for an image).");
   });
 
-  test("a control with no name is an accessible-name finding, one per element across sizes, schemes, variants and directions", () => {
+  test("a control with no name is an accessibility finding, one per element across sizes, schemes, variants and directions", () => {
     const unnamed = (over: Partial<AuditIssue>) =>
       issue({ rule: "name", selector: "#menu", kind: "button", label: "", ratio: undefined, expected: undefined, ...over });
     const findings = toFindings([
@@ -144,8 +144,8 @@ describe("toFindings", () => {
       unnamed({ selector: "#logo", kind: "image", rtl: true, shot: "design/shots/index.mobile.rtl.png" }),
     ]);
     expect(findings.map((f) => [f.severity, f.category, f.location.selector, f.summary])).toEqual([
-      ["major", "accessible-name", "#menu", "The button has no name a screen reader can say."],
-      ["major", "accessible-name", "#logo", "The image has no name a screen reader can say."],
+      ["major", "accessibility", "#menu", "The button has no name a screen reader can say."],
+      ["major", "accessibility", "#logo", "The image has no name a screen reader can say."],
     ]);
     expect(findings[0]!.fix).toBe("Give it a visible label or an accessible name (aria-label, or alt for an image).");
     expect(findings[0]!.location).toEqual({ screen: "/", selector: "#menu", viewport: "mobile" });

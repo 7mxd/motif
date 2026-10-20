@@ -5,7 +5,7 @@ A new feature that looks as if it was always part of the app: built from the des
 ## 1. Read what exists
 
 1. Read `DESIGN.md`, `design/tokens.json` and `design/motif.json`.
-2. List the existing components. The stack guide says where they live (React web: [components](../adapters/react-web/components.md); plain web: the `Component:` lines in `components.css`, [components](../adapters/plain-web/components.md)). Note each one's name, variants and states, so you reuse them rather than rebuild them.
+2. List the existing components. The stack guide says where they live (React web: [components](../adapters/react-web/components.md); plain web: the `Component:` lines in `components.css`, [components](../adapters/plain-web/components.md); Flutter: the public widgets in `lib/widgets/` and `lib/features/*/widgets/`, [components](../adapters/flutter/components.md)). Note each one's name, variants and states, so you reuse them rather than rebuild them.
 3. No design guide yet? Run [review's extract step](review.md#2-extract-only-when-there-is-no-design-guide) first, then come back here.
 
 ## 2. Understand the feature

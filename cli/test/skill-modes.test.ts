@@ -303,3 +303,38 @@ describe("design variants and project fonts in the skill", () => {
     expect(outOfOrder(read("contract/DESIGN.template.md"), ["## 3. Foundations", "## Variants", "delete this section", "## 4. Motion"])).toBeNull();
   });
 });
+
+describe("Flutter in the skill and the modes", () => {
+  test("SKILL.md sends Flutter apps to their guide, and the toolchain row names the Flutter SDK", () => {
+    const skill = read("SKILL.md");
+    expect(skill).toContain("(adapters/flutter/README.md)");
+    expect(skill).toContain("Flutter SDK");
+  });
+
+  test("init starts a Flutter app with flutter create, and apps need flutter_test", () => {
+    const init = read("modes/init.md");
+    for (const s of ["flutter create --org", "(../adapters/flutter/README.md)", "flutter_test", "dev_dependencies"]) expect(init).toContain(s);
+  });
+
+  test("feature lists a Flutter app's widgets from its guide", () => {
+    expect(read("modes/feature.md")).toContain("(../adapters/flutter/components.md)");
+  });
+
+  test("review links Flutter's checks, mentions --rtl, and reports unnamed controls as accessibility", () => {
+    const review = read("modes/review.md");
+    for (const s of ["(../adapters/flutter/checks.md)", "(../adapters/flutter/checks.md#screens-behind-a-form-or-a-click)", "--rtl", "right to left", "motif shot --audit` reports unnamed controls under `accessibility`"]) {
+      expect(review).toContain(s);
+    }
+    expect(review).not.toContain("accessible-name");
+  });
+
+  test("variants: switching a Flutter app's variant, and what Flutter varies", () => {
+    const variants = read("knowledge/variants.md");
+    for (const s of ["MotifTheme.light(variant: MotifVariant.", "(../adapters/flutter/tokens.md#switching-variants)"]) expect(variants).toContain(s);
+  });
+
+  test("the template makes the parity checklist the definition of a finished guide", () => {
+    const template = read("adapters/_template/README.md");
+    for (const s of ["## A finished guide", "right-to-left", "the toolchain", "state scripts"]) expect(template).toContain(s);
+  });
+});

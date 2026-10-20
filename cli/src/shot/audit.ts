@@ -58,7 +58,7 @@ export interface Place {
 export interface ReviewFinding {
   id: string;
   severity: Severity;
-  category: "contrast" | "target-size" | "reduced-motion" | "accessible-name";
+  category: "contrast" | "target-size" | "reduced-motion" | "accessibility";
   source: "exact";
   location: Place;
   /** The other places the same problem was found, when there are any. */
@@ -282,7 +282,7 @@ function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" |
     case "name":
       return {
         severity: "major",
-        category: "accessible-name",
+        category: "accessibility",
         summary: `The ${issue.kind} has no name a screen reader can say.`,
         fix: "Give it a visible label or an accessible name (aria-label, or alt for an image).",
         withScheme: false,

@@ -498,7 +498,7 @@ describe("the audit and states on a Flutter app", () => {
       {
         id: "F-002",
         severity: "major",
-        category: "accessible-name",
+        category: "accessibility",
         source: "exact",
         location: { screen: "/", selector: close, viewport: "mobile" },
         summary: "The button has no name a screen reader can say.",

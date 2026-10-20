@@ -7,6 +7,8 @@ import type { Lang } from "../src/check/files";
 import { scanFile } from "../src/check/run";
 import { buildScale } from "../src/check/scale";
 import { buildTheme } from "../src/generate/theme";
+import { exceptionFor } from "../src/check/exceptions";
+import { dartReducedMotion, scanDart } from "../src/stacks/flutter/rules";
 import { docFrom, validTokens } from "./helpers";
 
 const ADAPTERS = join(import.meta.dir, "../../skill/adapters");
@@ -145,6 +147,76 @@ describe("the plain web guide", () => {
         const hits = expandHtml([{ path, abs: path, text: m[2]!, lang: LANGS[m[1]!]! }])
           .flatMap((f) => scanFile(f, scale, { tailwind: false }))
           .filter((h) => h.violation);
+        expect(hits.map((h) => `${path}: ${h.rule} ${h.text}`)).toEqual([]);
+      }
+    }
+  });
+});
+
+describe("the Flutter guide", () => {
+  const has = (file: string, strings: string[]) => {
+    const text = read(`flutter/${file}`);
+    for (const s of strings) expect(text).toContain(s);
+  };
+
+  test("has exactly the template's files", () => {
+    expect(readdirSync(join(ADAPTERS, "flutter")).sort()).toEqual(GUIDE_FILES);
+  });
+
+  test("README: the starter, the build commands, the toolchain, the theme folder and monorepos", () => {
+    has("README.md", [
+      "flutter create --org", "flutter analyze", "flutter test", "design/motif.json", "themeDir",
+      "Flutter SDK", "Flutter 3.44.8 (Dart 3.12.2)", "3.27", "https://docs.flutter.dev/get-started/install",
+      "## Monorepos", "mobile/packages", "one guide for the web dashboard and the Flutter app", "platform notes", "flutter_test",
+    ]);
+  });
+
+  test("tokens.md: wiring the generated file, reading it in widgets, fonts, and switching variants", () => {
+    has("tokens.md", [
+      "MotifTheme.light(", "MotifColors.of(context)", "MotifText.", "MotifSpace.", "fontFamilyFallback", "pubspec.yaml", "google_fonts",
+      "## Switching variants", "MotifTheme.light(variant: MotifVariant.", "MotifTheme.debugVariantOverride", "colours only",
+    ]);
+  });
+
+  test("components.md: where widgets live, private widgets, every state, and names", () => {
+    has("components.md", [
+      "lib/widgets/", "lib/features/<feature>/widgets/", "private `_Widget` classes are parts of a screen",
+      "WidgetState.pressed", "WidgetState.focused", "WidgetState.disabled", "Semantics(", "tooltip:",
+    ]);
+    for (const c of ["Button", "IconButton", "Field", "Checkbox", "Switch", "Card", "ListItem", "TopBar", "TabBar", "Sheet", "Dialog", "Toast", "Skeleton", "EmptyState", "ErrorState", "Avatar", "Badge"]) {
+      expect(read("flutter/components.md")).toContain(`\`${c}\``);
+    }
+  });
+
+  test("motion.md: the roles in Flutter's animation API, springs, and reduced motion", () => {
+    has("motion.md", ["MotifCurves.", "MotifDurations.", "MotifSprings.", "SpringSimulation", "MotifMotion.duration(context"]);
+  });
+
+  test("platform.md: right to left, Material on Android and Cupertino conventions on iOS, locales", () => {
+    has("platform.md", ["Directionality", "EdgeInsetsDirectional", "AlignmentDirectional", "Material 3 on Android", "Cupertino conventions on iOS", "supportedLocales", "DESIGN.md"]);
+  });
+
+  test("checks.md: every rule, the audit, the setup and state scripts, and the screenshot flags", () => {
+    const checks = read("flutter/checks.md");
+    for (const id of RULE_IDS.filter((r) => !r.startsWith("tailwind") && r !== "primitive-use")) expect(checks).toContain(`## \`${id}\``);
+    has("checks.md", [
+      "## Contrast", "## Target size", "## Names", "## Reduced motion", "// motif-ok:",
+      "design/states/setup.dart", "Future<Widget?> motifSetup({required String variant, required Locale locale, required Brightness brightness}) async",
+      "design/states/http.json", "Future<void> motifState(WidgetTester tester) async", "--screen", "--rtl", "--state", "flutter_test",
+    ]);
+  });
+
+  test("the Dart examples pass motif check as they are", () => {
+    const scale = buildScale(buildTheme(docFrom(validTokens())), "lib/design");
+    for (const file of GUIDE_FILES) {
+      const text = read(`flutter/${file}`);
+      const blocks = [...text.matchAll(/```dart\n([\s\S]*?)```/g)].map((m) => m[1]!);
+      if (file !== "README.md") expect(blocks.length).toBeGreaterThan(0);
+      for (const [i, code] of blocks.entries()) {
+        const path = `${file}-example-${i + 1}.dart`;
+        const source = { path, abs: path, text: code, lang: "dart" as const };
+        const lines = code.split("\n");
+        const hits = [...scanDart(source, scale), ...dartReducedMotion([source])].filter((h) => h.violation && !("reason" in (exceptionFor(lines, h.line) ?? {})));
         expect(hits.map((h) => `${path}: ${h.rule} ${h.text}`)).toEqual([]);
       }
     }

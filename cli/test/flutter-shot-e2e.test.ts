@@ -143,7 +143,7 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     const small = of("target-size");
     expect(small.map((f) => f.summary)).toEqual(["A button is 32×32 px on a phone; 44×44 px is easier to tap."]);
     expect(small[0]!.location.selector).toBe("AuditScreen > Scaffold > ListView > IconButton");
-    const unnamed = of("accessible-name");
+    const unnamed = of("accessibility");
     expect(unnamed.map((f) => [f.summary, f.location.selector])).toEqual([["The button has no name a screen reader can say.", "AuditScreen > Scaffold > ListView > IconButton"]]);
     const moving = of("reduced-motion");
     expect(moving.map((f) => [f.summary, f.location.selector])).toEqual([
