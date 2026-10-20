@@ -216,7 +216,7 @@ describe("the agents workflow", () => {
 
 describe("the Compose job and the heavy Compose tests agree on its name", () => {
   test("MOTIF_STACK_JOB in both workflows' compose job is the stack name the tests pass to heavyStackTests", () => {
-    const tests = ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose"]
+    const tests = ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose", "compose-agp9", "compose-flavors", "compose-junit-platform"]
       .map((f) => readFileSync(join(REPO, "cli/test", `${f}.test.ts`), "utf8"));
     for (const t of tests) expect(t).toMatch(/heavyStackTests\("compose", /);
     for (const f of ["ci.yml", "release.yml"]) {
