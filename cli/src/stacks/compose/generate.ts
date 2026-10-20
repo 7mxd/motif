@@ -137,7 +137,7 @@ function fontPlan(t: Theme, opts: ComposeOptions) {
         fonts = files.map((f, i) => `Font(R.font.${names[i]}, ${fontWeight(f.weight)}${f.style === "italic" ? ", FontStyle.Italic" : ""})`);
         doc = `${use.family}, from the app's font resources.`;
       } else {
-        doc = `${use.family}: the guide has no .ttf or .otf file of it, so the system font stands in.`;
+        doc = `${use.family}: not in the app's font resources (res/font), so the system font stands in.`;
       }
     } else if (opts.googleFonts) {
       fonts = use.weights.map((w) =>

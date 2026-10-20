@@ -11,13 +11,7 @@ import type { NativeStack } from "../native";
 import { composeDoctor } from "./doctor";
 import { composeFonts } from "./fonts";
 import { generateCompose, THEME_FILE } from "./generate";
-import { composeModule, packageFolder } from "./project";
-
-/** The Kotlin package of a folder inside a source folder (app/src/main/java/com/example/ui → com.example.ui), or null outside one. */
-export function folderPackage(dir: string): string | null {
-  const m = `/${dir.replace(/\\/g, "/").replace(/\/+$/, "")}`.match(/\/src\/[^/]+\/(?:java|kotlin)(?:\/(.*))?$/);
-  return m ? (m[1] ?? "").split("/").filter(Boolean).join(".") : null;
-}
+import { composeModule, folderPackage, packageFolder } from "./project";
 
 /** The package the theme file declares: its folder's below the source folder, or the module's own ui.motif outside one. */
 function themePackage(root: string, app: AppInfo, themeDir: string): string {

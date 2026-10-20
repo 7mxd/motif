@@ -48,6 +48,7 @@ fun Example(open: Boolean) {
         Text("\\u0645\\u0631\\u062D\\u0628\\u0627", style = MotifType.bodyArabic)
         Text("\${MotifMotion.reduced()}", style = MaterialTheme.typography.labelSmall)
         Text("Ok", fontFamily = MotifFonts.readexPro, color = LocalMotifColors.current.actionPrimary)
+        Text("Small", style = MotifType.caption.copy(fontFamily = MotifFonts.brandSans))
     }
 }
 
@@ -99,14 +100,20 @@ describe("the generated Kotlin", () => {
     const tokens = withCompanion(partnerTokens());
     tokens.space["0-5"] = { $value: { value: 2, unit: "px" } };
     tokens.shadow.md.$value = [{ ...tokens.shadow.md.$value, spread: { value: -1, unit: "px" } }, tokens.shadow.sm.$value];
+    // And a project font, so one file takes Font from both androidx.compose.ui.text.font and googlefonts.
+    tokens.$extensions["dev.motif"].fonts = [{ family: "Brand Sans", files: [{ path: "design/fonts/Brand.ttf", weight: 400, style: "normal" }] }];
+    tokens.font.caption.$value.fontFamily = ["Brand Sans", "sans-serif"];
     const [theme] = generateCompose(buildThemeSet(docFrom(tokens)), {
       packageName: `${PACKAGE}.ui.motif`,
       rPackage: PACKAGE,
       googleFonts: true,
-      resFonts: new Map(),
+      resFonts: new Map([["brand sans", ["brand_sans"]]]),
     });
     expect(theme!.content).toContain("enum class MotifVariant { Default, Partner }");
     expect(theme!.content).toContain("val bodyArabic: TextStyle");
+    expect(theme!.content).toContain("import androidx.compose.ui.text.font.Font\n");
+    expect(theme!.content).toContain("import androidx.compose.ui.text.googlefonts.Font\n");
+    expect(theme!.content).toContain("Font(R.font.brand_sans, FontWeight.W400),");
     mkdirSync(join(dir, SOURCES, "ui/motif"), { recursive: true });
     writeFileSync(join(dir, SOURCES, "ui/motif/MotifTheme.kt"), theme!.content);
     writeFileSync(join(dir, SOURCES, "ui/motif/Usage.kt"), USAGE);

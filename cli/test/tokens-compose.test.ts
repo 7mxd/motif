@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runTokens } from "../src/commands/tokens";
 import { TS_HEADER, XML_HEADER } from "../src/generate/header";
@@ -284,4 +284,89 @@ describe("motif tokens for a Compose app", () => {
   test("without variants, the note doesn't mention them", async () => {
     expect(notes(await runTokens(composeApp(), ctx))).not.toContain("variant");
   });
+});
+
+/** The certificates as an app that already uses downloadable fonts has them (Android's own sample file). */
+const OWN_CERTS = '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <array name="com_google_android_gms_fonts_certs">\n        <item>@array/com_google_android_gms_fonts_certs_dev</item>\n    </array>\n</resources>\n';
+
+describe("motif tokens for a Compose app: review fixes (Task 4, round 1)", () => {
+  test("an app that already has the font certificates keeps its own, and Motif writes none", async () => {
+    const root = composeApp({ "app/src/main/res/values-v23/font_certs.xml": OWN_CERTS });
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(statuses(r)[CERTS]).toBeUndefined();
+    expect(existsSync(join(root, CERTS))).toBe(false);
+    // The theme's R.array reference resolves to the app's own array.
+    expect(readFileSync(join(root, THEME), "utf8")).toContain("certificates = R.array.com_google_android_gms_fonts_certs,");
+  });
+
+  test("when the app adds its own certificates after Motif wrote them, a note says to delete Motif's copy", async () => {
+    const root = composeApp();
+    await runTokens(root, ctx);
+    expect(existsSync(join(root, CERTS))).toBe(true);
+    writeFileSync(join(root, "app/src/main/res/values/font_certs.xml"), OWN_CERTS);
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)[CERTS]).toBeUndefined();
+    expect(notes(r)).toContain(
+      `Delete ${CERTS}: app/src/main/res/values/font_certs.xml defines the same font certificates, and Android won't build an app that defines them twice.`,
+    );
+    // Once it's gone, there's nothing more to say.
+    rmSync(join(root, CERTS));
+    expect(notes(await runTokens(root, ctx))).not.toContain("font certificates");
+  });
+
+  test("a project font whose file isn't there stays on the system font: the code never names a resource that isn't in place", async () => {
+    const root = composeApp({ "design/tokens.json": brandTokens(["design/fonts/Thmanyah Sans Regular.ttf"]) });
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)["app/src/main/res/font/thmanyah_sans_regular.ttf"]).toBe("skipped");
+    expect(notes(r)).toContain("design/fonts/Thmanyah Sans Regular.ttf doesn't exist, so it wasn't copied");
+    const kt = readFileSync(join(root, THEME), "utf8");
+    expect(kt).not.toContain("R.font.");
+    expect(kt).toContain('get() = debugFontOverride?.invoke("Thmanyah Sans") ?: FontFamily.Default');
+    // A copy already in place is used even when the guide's own file has gone.
+    mkdirSync(join(root, "app/src/main/res/font"), { recursive: true });
+    writeFileSync(join(root, "app/src/main/res/font/thmanyah_sans_regular.ttf"), "regular");
+    await runTokens(root, ctx);
+    expect(readFileSync(join(root, THEME), "utf8")).toContain("Font(R.font.thmanyah_sans_regular, FontWeight.W400),");
+  });
+
+  test("a font file already in res/font keeps its own name; a copy that would share it gets another", async () => {
+    const t = validTokens();
+    t.$extensions["dev.motif"].fonts = [{
+      family: "Brand Sans",
+      files: [
+        { path: "design/fonts/Brand.otf", weight: 700, style: "normal" },
+        { path: "app/src/main/res/font/brand.ttf", weight: 400, style: "normal" },
+      ],
+    }];
+    t.font.body.$value.fontFamily = ["Brand Sans", "sans-serif"];
+    const root = composeApp({
+      "design/tokens.json": JSON.stringify(t),
+      "design/fonts/Brand.otf": "bold",
+      "app/src/main/res/font/brand.ttf": "regular",
+    });
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)["app/src/main/res/font/brand_2.otf"]).toBe("created");
+    expect(Object.keys(statuses(r))).not.toContain("app/src/main/res/font/brand.ttf");
+    const kt = readFileSync(join(root, THEME), "utf8");
+    expect(kt).toContain("Font(R.font.brand_2, FontWeight.W700),");
+    expect(kt).toContain("Font(R.font.brand, FontWeight.W400),");
+  });
+
+  for (const [folder, word] of [["my-theme", "my-theme"], ["in", "in"]]) {
+    test(`a themeDir that isn't a Kotlin package (${folder}) is refused with what to do`, async () => {
+      const themeDir = `app/src/main/java/com/example/rafiq/${folder}/motif`;
+      const root = composeApp({
+        "design/motif.json": JSON.stringify({ motifContract: 1, apps: [{ path: "app", stack: "compose", themeDir }], ignore: [] }),
+      });
+      const r = await runTokens(root, ctx);
+      expect(notes(r)).toContain(
+        `design/motif.json: the themeDir for "app" (${themeDir}) can't be a Kotlin package, because "${word}" isn't a Kotlin name. ` +
+          "Rename that folder (letters, digits and underscores, not starting with a digit, and not a Kotlin keyword) or choose another themeDir, then run motif tokens again.",
+      );
+      expect(existsSync(join(root, themeDir, "MotifTheme.kt"))).toBe(false);
+      // As for any themeDir Motif can't use, the theme goes to the default folder.
+      expect(statuses(r)[THEME]).toBe("created");
+    });
+  }
 });

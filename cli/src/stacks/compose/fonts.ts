@@ -1,8 +1,8 @@
 // What a Compose app needs for the theme's fonts: project font files copied into res/font, and Google's downloadable fonts.
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { AppInfo } from "../../detect/stacks";
-import { XML_HEADER, type GeneratedFile } from "../../generate/header";
+import { isMotifGenerated, XML_HEADER, type GeneratedFile } from "../../generate/header";
 import type { Theme } from "../../generate/theme";
 import { themeFonts } from "../../generate/theme-fonts";
 import { prefixPath } from "../../project/apps";
@@ -99,6 +99,36 @@ function catalogueAliases(text: string): string[] {
 /** A catalogue alias as Gradle's accessor names it: androidx-compose-ui-text-google-fonts is libs.androidx.compose.ui.text.google.fonts. */
 const accessor = (alias: string) => `libs.${alias.replace(/[-_.]/g, ".")}`;
 
+const CERTS_NAME = /\bname\s*=\s*["']com_google_android_gms_fonts_certs["']/;
+
+/**
+ * The app's own resource file (root-relative) that defines the font certificates, or null. An app that already uses
+ * downloadable fonts has one (font_certs.xml); Motif's would then define them twice.
+ */
+function ownCertificates(root: string, moduleDir: string): string | null {
+  const res = join(moduleDir, "src", "main", "res");
+  let folders: string[];
+  try {
+    folders = readdirSync(res).filter((d) => /^values(-|$)/.test(d)).sort();
+  } catch {
+    return null;
+  }
+  for (const folder of folders) {
+    let names: string[];
+    try {
+      names = readdirSync(join(res, folder)).filter((n) => n.toLowerCase().endsWith(".xml")).sort();
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const path = join(res, folder, name);
+      const text = read(path);
+      if (text !== null && !isMotifGenerated(path, text) && CERTS_NAME.test(text)) return posix(relative(root, path));
+    }
+  }
+  return null;
+}
+
 export interface ComposeFonts {
   /** Font files to copy into the app, root-relative. */
   copies: { from: string; to: string }[];
@@ -129,11 +159,18 @@ export function composeFonts(theme: Theme, root: string, app: AppInfo): ComposeF
   // Files outside the module's res/font are copied in; two that share a name get their folders' names in front.
   const outside = theme.projectFonts.flatMap((f) => f.files.map((file) => file.path)).filter((p) => ANDROID_FONT.test(p) && !inside(fontDir, resolve(root, p)));
   const asset = assetNames(outside);
-  const taken = new Set<string>();
-  const unique = (name: string) => {
-    let n = name;
-    for (let i = 2; taken.has(n); i++) n = `${name}_${i}`;
+  // A file already in res/font under a valid resource name keeps it: those names are taken before any copy is named.
+  const inPlace = (path: string) => inside(fontDir, resolve(root, path)) && resourceName(path) === basename(path, extname(path));
+  const taken = new Set(theme.projectFonts.flatMap((f) => f.files.map((file) => file.path)).filter((p) => ANDROID_FONT.test(p) && inPlace(p)).map(resourceName));
+  const named = new Map<string, string>();
+  const copyName = (path: string) => {
+    const known = named.get(posix(path));
+    if (known) return known;
+    const base = resourceName(asset.get(posix(path)) ?? path);
+    let n = base;
+    for (let i = 2; taken.has(n); i++) n = `${base}_${i}`;
     taken.add(n);
+    named.set(posix(path), n);
     return n;
   };
 
@@ -145,15 +182,20 @@ export function composeFonts(theme: Theme, root: string, app: AppInfo): ComposeF
       notes.push(`Android can't use WOFF2: add a .ttf or .otf of ${font.family} to the guide's font files.`);
       continue;
     }
+    // The code names a font resource only when it's in place: already there, or copied from a file that exists.
+    let ready = true;
     const names = files.map((f) => {
-      const abs = resolve(root, f.path);
-      if (inside(fontDir, abs) && resourceName(f.path) === basename(f.path, extname(f.path))) return unique(resourceName(f.path));
-      const name = unique(resourceName(asset.get(posix(f.path)) ?? f.path));
+      if (inPlace(f.path)) {
+        if (!existsSync(resolve(root, f.path))) ready = false;
+        return resourceName(f.path);
+      }
+      const name = copyName(f.path);
       const to = prefixPath(app.path, `${FONT_RES}/${name}${extname(f.path).toLowerCase()}`);
       if (!copies.some((c) => c.to === to)) copies.push({ from: posix(f.path), to });
+      if (!existsSync(resolve(root, f.path)) && !existsSync(resolve(root, to))) ready = false;
       return name;
     });
-    resFonts.set(font.family.toLowerCase(), names);
+    if (ready) resFonts.set(font.family.toLowerCase(), names);
   }
 
   const google = uses.filter((u) => u.source === "google" || u.source === "bundled").map((u) => u.family);
@@ -167,7 +209,14 @@ export function composeFonts(theme: Theme, root: string, app: AppInfo): ComposeF
   const used = (alias: string) => new RegExp(`${escapeRe(accessor(alias))}(?![\\w.])`).test(build?.text ?? "");
   const googleFonts = !!build && (build.text.includes(GOOGLE_FONTS_MODULE) || aliases.some(used));
   if (googleFonts) {
-    files.push({ path: prefixPath(app.path, CERTS_FILE), content: fontCertsXml() });
+    const certs = prefixPath(app.path, CERTS_FILE);
+    const own = ownCertificates(root, moduleDir);
+    if (own === null) {
+      files.push({ path: certs, content: fontCertsXml() });
+    } else if (existsSync(resolve(root, certs)) && isMotifGenerated(certs, read(resolve(root, certs)) ?? "")) {
+      // The app added its own after Motif wrote them: two definitions stop the build.
+      notes.push(`Delete ${certs}: ${own} defines the same font certificates, and Android won't build an app that defines them twice.`);
+    }
     return { copies, notes, googleFonts, resFonts, files };
   }
 

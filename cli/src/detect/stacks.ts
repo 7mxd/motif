@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import { homedir } from "node:os";
 import { isAbsolute, join, parse, resolve } from "node:path";
 import type { Finding } from "../findings";
-import { composeAppFolders, composeModule, composeModules } from "../stacks/compose/project";
+import { badPackagePart, composeAppFolders, composeModule, composeModules } from "../stacks/compose/project";
 import { isFlutterPackage } from "../stacks/flutter/project";
 import { savedAsUtf16, stripBom, UTF16_MESSAGE } from "../text";
 
@@ -235,6 +235,12 @@ function readSettings(root: string): { apps: AppInfo[] | null; findings: Finding
       const t = typeof a.themeDir === "string" ? rel(a.themeDir).replace(/\/+$/, "") : "";
       if (t === "" || t === "." || isAbsolute(t) || /^[A-Za-z]:/.test(t) || t.split("/").includes("..")) {
         findings.push(bad(`design/motif.json: the themeDir for "${path}" must be a folder inside this project, like "lib/design".`));
+      } else if (stack === "compose" && badPackagePart(t) !== null) {
+        // Its folders below the source folder are the theme's Kotlin package: a part Kotlin won't take doesn't compile.
+        findings.push(bad(
+          `design/motif.json: the themeDir for "${path}" (${t}) can't be a Kotlin package, because "${badPackagePart(t)}" isn't a Kotlin name. ` +
+            "Rename that folder (letters, digits and underscores, not starting with a digit, and not a Kotlin keyword) or choose another themeDir, then run motif tokens again.",
+        ));
       } else {
         themeDir = t;
       }

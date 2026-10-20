@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { stripBom } from "../../text";
+import { RESERVED } from "../naming";
 
 function read(path: string): string | null {
   try {
@@ -66,6 +67,19 @@ export function gradleRoot(dir: string, top: string): string {
     at = up;
   }
   return resolve(dir);
+}
+
+/** The Kotlin package of a folder inside a source folder (app/src/main/java/com/example/ui → com.example.ui), or null outside one. */
+export function folderPackage(dir: string): string | null {
+  const m = `/${dir.replace(/\\/g, "/").replace(/\/+$/, "")}`.match(/\/src\/[^/]+\/(?:java|kotlin)(?:\/(.*))?$/);
+  return m ? (m[1] ?? "").split("/").filter(Boolean).join(".") : null;
+}
+
+/** The first part of a folder's package that Kotlin won't take as a name (my-theme, in), or null when every part is fine. */
+export function badPackagePart(dir: string): string | null {
+  const pkg = folderPackage(dir);
+  if (!pkg) return null;
+  return pkg.split(".").find((part) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(part) || RESERVED.kotlin.has(part)) ?? null;
 }
 
 /** com.example.rafiq becomes com/example/rafiq. */

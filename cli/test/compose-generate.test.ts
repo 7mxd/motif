@@ -263,7 +263,7 @@ describe("generateCompose, fonts", () => {
 
   test("a project font with no font files Android reads stays on the system font, named in a comment", () => {
     const kt = kotlinFor(brandTokens(), { resFonts: new Map() });
-    expect(kt).toContain("/** Brand Sans: the guide has no .ttf or .otf file of it, so the system font stands in. */");
+    expect(kt).toContain("/** Brand Sans: not in the app's font resources (res/font), so the system font stands in. */");
     expect(kt).toContain('get() = debugFontOverride?.invoke("Brand Sans") ?: FontFamily.Default');
   });
 
