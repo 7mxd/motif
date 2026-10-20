@@ -44,8 +44,8 @@ interface Frame {
   map?: boolean;
 }
 
-/** The routes one Dart file declares, in the order they start. */
-function fileRoutes(text: string): string[] {
+/** The routes one Dart file declares, in the order they start, and how many it declares that Motif can't read. */
+function fileRoutes(text: string): { routes: string[]; unread: number } {
   const code = maskComments(text, "dart");
   const s = maskStrings(code, "dart");
   const nodes: GoNode[] = [];
@@ -126,15 +126,22 @@ function fileRoutes(text: string): string[] {
     if (base === null) return null;
     return `${base.replace(/\/+$/, "")}/${n.path}`;
   };
-  return [...nodes.map((n) => ({ start: n.start, path: full(n) })), ...keys]
+  const routes = [...nodes.map((n) => ({ start: n.start, path: full(n) })), ...keys]
     .filter((r): r is { start: number; path: string } => r.path !== null && r.path.startsWith("/"))
     .sort((a, b) => a.start - b.start)
     .map((r) => r.path);
+  // A GoRoute whose path isn't written out (path: Routes.home), and go_router_builder's @TypedGoRoute.
+  const unread = nodes.filter((n) => n.path === null).length + (s.match(/\bTypedGoRoute\s*</g)?.length ?? 0);
+  return { routes, unread };
 }
+
+/** When only / was found although the code declares routes Motif can't read. */
+export const UNREAD_ROUTES_NOTE = "Only / was found; routes written as constants or with TypedGoRoute aren't read — name the screens with --routes.";
 
 /** The app's routes: GoRoute paths (nested ones joined), MaterialApp routes: keys, and / always; ones needing a value are skipped. */
 export function discoverFlutterRoutes(appDir: string): RouteDiscovery {
   const found = new Set<string>(["/"]);
+  let unread = 0;
   for (const file of libDartFiles(appDir)) {
     let text: string;
     try {
@@ -142,10 +149,12 @@ export function discoverFlutterRoutes(appDir: string): RouteDiscovery {
     } catch {
       continue;
     }
-    if (!/GoRoute\s*\(|routes\s*:/.test(text)) continue;
-    for (const route of fileRoutes(text)) found.add(route.length > 1 ? route.replace(/\/+$/, "") : route);
+    if (!/GoRoute\s*[(<]|routes\s*:/.test(text)) continue;
+    const read = fileRoutes(text);
+    unread += read.unread;
+    for (const route of read.routes) found.add(route.length > 1 ? route.replace(/\/+$/, "") : route);
   }
   const all = [...found];
   const needsValue = (r: string) => /(^|\/)[:*]/.test(r);
-  return { routes: all.filter((r) => !needsValue(r)), skipped: all.filter(needsValue) };
+  return { routes: all.filter((r) => !needsValue(r)), skipped: all.filter(needsValue), ...(all.length === 1 && unread > 0 ? { notes: [UNREAD_ROUTES_NOTE] } : {}) };
 }

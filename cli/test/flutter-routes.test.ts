@@ -78,3 +78,36 @@ void main() => runApp(MaterialApp(
     expect(discoverFlutterRoutes(app)).toEqual({ routes: ["/"], skipped: [] });
   });
 });
+
+describe("final review: routes Motif can't read (Minor #11)", () => {
+  const NOTE = "Only / was found; routes written as constants or with TypedGoRoute aren't read — name the screens with --routes.";
+  test("paths written as constants: only / is found, and a note says why", () => {
+    const root = makeProject({
+      "lib/router.dart": `import 'package:go_router/go_router.dart';
+abstract final class Routes { static const home = '/home'; static const settings = '/settings'; }
+final router = GoRouter(routes: [
+  GoRoute(path: Routes.home, builder: (c, s) => const Home()),
+  GoRoute(path: Routes.settings, builder: (c, s) => const Settings()),
+]);
+`,
+    });
+    expect(discoverFlutterRoutes(root)).toEqual({ routes: ["/"], skipped: [], notes: [NOTE] });
+  });
+
+  test("TypedGoRoute: the same note", () => {
+    const root = makeProject({
+      "lib/routes.dart": `import 'package:go_router/go_router.dart';
+part 'routes.g.dart';
+@TypedGoRoute<HomeRoute>(path: '/home')
+class HomeRoute extends GoRouteData { const HomeRoute(); }
+`,
+    });
+    expect(discoverFlutterRoutes(root).notes).toEqual([NOTE]);
+  });
+
+  test("an app with no router, or whose routes were read, gets no note", () => {
+    expect(discoverFlutterRoutes(makeProject({ "lib/main.dart": "void main() {}\n" }))).toEqual({ routes: ["/"], skipped: [] });
+    const read = makeProject({ "lib/r.dart": "final r = GoRouter(routes: [GoRoute(path: '/a', builder: (c, s) => const A()), GoRoute(path: Routes.b, builder: (c, s) => const B())]);\n" });
+    expect(discoverFlutterRoutes(read)).toEqual({ routes: ["/", "/a"], skipped: [] });
+  });
+});

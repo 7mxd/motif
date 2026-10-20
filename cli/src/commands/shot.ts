@@ -345,6 +345,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         : `Captured the first ${MAX_ROUTES} of ${all.length} pages. Left out: ${named}. Choose others with --routes.`,
     );
   }
+  notes.push(...(discovery.notes ?? []));
   if (discovery.skipped.length > 0) {
     notes.push(`Skipped pages that need values in their address: ${discovery.skipped.join(", ")}. Add real ones with --routes.`);
   }

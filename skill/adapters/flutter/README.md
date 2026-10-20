@@ -66,7 +66,7 @@ Each app imports its own package, so give each app its own screenshot setup: `mo
 - `flutter analyze`: the compiler and linter. Run it after every change; it must report no issues.
 - `flutter test`: the app's own tests. `motif shot` also runs `flutter test` to draw screens, so the SDK and `flutter_test` in `dev_dependencies` have to be there. Motif never edits `pubspec.yaml`: when `flutter_test` is missing it stops and shows the three lines to add.
 - `flutter run`: runs the app on a device, simulator or emulator. `motif shot` needs none of them. It draws each screen in a test, at every size, light and dark, with the app's real fonts, and the look is Android's.
-- Each route is a screen: Motif reads `GoRoute` paths (nested ones joined to their parent's) and a `MaterialApp`'s `routes:` map. Without `--routes`, a run takes 12 of them: sign-in pages (`/sign-in`, `/login`, `/auth/…`, `/welcome`, `/onboarding`) and `/` first, then the rest in the order the code lists them, and the note names the ones left out. A screen that isn't a route is shot by its widget's name with `--screen` ([checks](checks.md)).
+- Each route is a screen: Motif reads `GoRoute` paths (nested ones joined to their parent's) and a `MaterialApp`'s `routes:` map. Paths written as constants (`path: Routes.home`) and `@TypedGoRoute` routes aren't read: when that leaves only `/`, the run says so, and `--routes` names the screens. Without `--routes`, a run takes 12 of them: sign-in pages (`/sign-in`, `/login`, `/auth/…`, `/welcome`, `/onboarding`) and `/` first, then the rest in the order the code lists them, and the note names the ones left out. A screen that isn't a route is shot by its widget's name with `--screen` ([checks](checks.md)).
 
 ## The rest of this guide
 

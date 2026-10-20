@@ -5,6 +5,8 @@ export interface RouteDiscovery {
   routes: string[];
   /** Routes that need values in their address (/posts/[id]); shown to the developer, not captured. */
   skipped: string[];
+  /** What the developer should know about how the routes were found (a native stack's routes Motif can't read). */
+  notes?: string[];
 }
 
 const APP_PAGE = /^page\.(tsx|ts|jsx|js|mdx)$/;
