@@ -215,7 +215,7 @@ export async function launchBrowser(
   } = {},
 ): Promise<Browser> {
   const args = opts.trustedKeys?.length ? [...ARGS, `--ignore-certificate-errors-spki-list=${opts.trustedKeys.join(",")}`] : ARGS;
-  const timeoutMs = opts.timeoutMs ?? 20_000;
+  const timeoutMs = opts.timeoutMs ?? 45_000;
   // Every call to the browser gets an answer or an error: a page stuck in a loop must never hang Motif.
   const callTimeoutMs = opts.callTimeoutMs ?? 30_000;
   let started;

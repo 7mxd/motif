@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   bundledFonts,
@@ -300,7 +300,8 @@ await Bun.write(${JSON.stringify(join(app, "..", "seen.json"))}, JSON.stringify(
     const seen = JSON.parse(readFileSync(join(app, "..", "seen.json"), "utf8"));
     expect(harnessArgs()).toEqual([".motif/shot/motif_shot_test.dart", "--reporter", "expanded", "--dart-define=MOTIF_SHOT_CONFIG=.motif/shot/config.json"]);
     expect(seen.args).toEqual(harnessArgs());
-    expect(resolve(seen.cwd)).toBe(resolve(app));
+    // realpath: macOS reports /var/folders as /private/var/folders.
+    expect(realpathSync(seen.cwd)).toBe(realpathSync(app));
     expect(seen.fonts).toEqual([{ family: "Naskh", files: [join(app, "fonts", "Naskh.ttf")], scripts: ["arabic"] }]);
   }, 30_000);
 

@@ -44,9 +44,36 @@ jobs:
           channel: stable
           flutter-version: 3.44.8
           cache: true
+      # Roboto and the Material icons come from the SDK's material_fonts folder, which a cached SDK can be missing.
+      - name: Flutter's fonts
+        run: flutter precache --no-android --no-ios
       - name: Install
         working-directory: cli
         run: bun install --frozen-lockfile
       - name: Flutter tests
         working-directory: cli
         run: bun test --timeout 300000 test/flutter-*.test.ts test/check-flutter.test.ts test/extract-flutter.test.ts test/fixtures-flutter.test.ts test/shot-flutter.test.ts test/tokens-flutter.test.ts
+
+  # The oldest Flutter Motif supports (FLUTTER_MIN in cli/src/stacks/flutter/doctor.ts): a fresh flutter create app gets
+  # the theme, passes flutter analyze, and is drawn and audited. The fixtures need a newer Dart, so only this test runs.
+  flutter-floor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.27.4
+          cache: true
+      - name: Flutter's fonts
+        run: flutter precache --no-android --no-ios
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: The fresh app on Flutter 3.27
+        working-directory: cli
+        run: bun test --timeout 600000 test/flutter-starter.test.ts
