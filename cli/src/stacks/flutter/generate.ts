@@ -5,9 +5,12 @@ import { num } from "../../generate/css-values";
 import { TS_HEADER, type GeneratedFile } from "../../generate/header";
 import type { Theme, ThemeFont, ThemeSet, ThemeShadowLayer } from "../../generate/theme";
 import { stackFamilies, themeFonts } from "../../generate/theme-fonts";
-import { dartIdentifier, RESERVED } from "../naming";
+import { slotSize, TYPE_SLOTS, typeScale } from "../../generate/type-slots";
+import { dartIdentifier, lowerCamel, RESERVED } from "../naming";
 
 export const THEME_FILE = "motif_theme.dart";
+
+export { slotSize };
 
 /** dart format's line width. */
 const WIDTH = 80;
@@ -53,9 +56,7 @@ const COLOR_MEMBERS = new Set(["light", "dark", "of", "copyWith", "lerp", "type"
  * between digits (0-5 → 0p5), a letter in front of a leading digit, and never a keyword.
  */
 export function member(name: string, lead: string, taken: Set<string> = new Set()): string {
-  const words = name.replace(/(\d)[-_](?=\d)/g, "$1p").split(/[^A-Za-z0-9]+/).filter(Boolean);
-  let id = words.map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1))).join("");
-  if (id === "" || /^[0-9]/.test(id)) id = `${lead}${id}`;
+  const id = lowerCamel(name, lead);
   return RESERVED.dart.has(id) || taken.has(id) ? `${id}Value` : id;
 }
 /** A colour role's member on MotifColors (text-secondary → textSecondary). */
@@ -205,33 +206,9 @@ const FAMILY_HELPER = [
   "  }",
 ];
 
-/**
- * Each TextTheme slot: the type role it takes its font, weight and line height from, and Material 3's default size for
- * it. Apps rely on the slots stepping down (titleSmall is smaller than titleLarge), so a slot's size is the guide's
- * size closest to Material's, never bigger than its role's own.
- */
-const TEXT_THEME: [string, string, number][] = [
-  ["displayLarge", "display", 57], ["displayMedium", "display", 45], ["displaySmall", "display", 36],
-  ["headlineLarge", "title", 32], ["headlineMedium", "title", 28], ["headlineSmall", "title", 24],
-  ["titleLarge", "heading", 22], ["titleMedium", "heading", 16], ["titleSmall", "heading", 14],
-  ["bodyLarge", "body", 16], ["bodyMedium", "body", 14], ["bodySmall", "caption", 12],
-  ["labelLarge", "label", 14], ["labelMedium", "label", 12], ["labelSmall", "label", 11],
-];
-
-/** The guide's size closest to Material's for a slot, no bigger than the role's own (ties go to the smaller). */
-export function slotSize(materialPx: number, rolePx: number, scale: number[]): number {
-  const fits = scale.filter((px) => px <= rolePx);
-  if (fits.length === 0) return rolePx;
-  return fits.reduce((best, px) => {
-    const d = Math.abs(px - materialPx) - Math.abs(best - materialPx);
-    return d < 0 || (d === 0 && px < best) ? px : best;
-  });
-}
-
 function textThemeSlot(slot: string, role: string, materialPx: number, fonts: ThemeFont[]): string {
   const own = fonts.find((f) => f.name === role)!;
-  const scale = [...new Set(fonts.filter((f) => f.name !== "mono").map((f) => f.sizePx))];
-  const px = slotSize(materialPx, own.sizePx, scale);
+  const px = slotSize(materialPx, own.sizePx, typeScale(fonts));
   const style = `MotifText.${member(role, "t")}`;
   return px === own.sizePx ? `${slot}: ${style}` : `${slot}: ${style}.copyWith(fontSize: ${num(px)})`;
 }
@@ -335,7 +312,7 @@ function themeBlock(set: ThemeSet): string[] {
   ]);
   const textTheme = call(
     "textTheme: TextTheme(",
-    TEXT_THEME.filter(([, role]) => fonts.has(role)).map(([key, role, px]) => textThemeSlot(key, role, px, t.fonts)),
+    TYPE_SLOTS.filter(([, role]) => fonts.has(role)).map(([key, role, px]) => textThemeSlot(key, role, px, t.fonts)),
   );
   const theme = call("ThemeData(", [
     "useMaterial3: true",

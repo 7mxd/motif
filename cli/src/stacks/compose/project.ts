@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { stripBom } from "../../text";
 
 function read(path: string): string | null {
@@ -44,6 +44,28 @@ export function composeModule(dir: string): { namespace: string | null; sourceRo
 /** A Compose Android library (a shared UI module): never an app of its own. */
 export function composeLibrary(dir: string): { namespace: string | null; sourceRoot: string } | null {
   return module(dir, LIBRARY);
+}
+
+/** A module's build file name (build.gradle.kts or build.gradle) and its text without comments, or null when it has none. */
+export function moduleBuild(dir: string): { name: string; text: string } | null {
+  for (const name of ["build.gradle.kts", "build.gradle"]) {
+    const text = read(join(dir, name));
+    if (text !== null) return { name, text: stripComments(text) };
+  }
+  return null;
+}
+
+/** The Gradle project root a module belongs to: the module's folder or the nearest one above it with a settings file. */
+export function gradleRoot(dir: string, top: string): string {
+  let at = resolve(dir);
+  const stop = resolve(top);
+  for (let i = 0; i < 8; i++) {
+    if (settingsFile(at) !== null) return at;
+    const up = dirname(at);
+    if (at === stop || up === at) break;
+    at = up;
+  }
+  return resolve(dir);
 }
 
 /** com.example.rafiq becomes com/example/rafiq. */

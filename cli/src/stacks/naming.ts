@@ -1,5 +1,5 @@
 /** Words a native language won't take as an identifier: a variant called "default" becomes defaultVariant. */
-export const RESERVED: { dart: Set<string> } = {
+export const RESERVED: { dart: Set<string>; kotlin: Set<string> } = {
   dart: new Set([
     // Reserved words
     "assert", "break", "case", "catch", "class", "const", "continue", "default", "do", "else", "enum", "extends",
@@ -10,7 +10,23 @@ export const RESERVED: { dart: Set<string> } = {
     "get", "implements", "import", "interface", "late", "library", "mixin", "operator", "part", "required", "set",
     "static", "typedef", "await", "yield",
   ]),
+  // Kotlin's hard keywords: soft ones (data, value, open…) are fine as names.
+  kotlin: new Set([
+    "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in", "interface", "is", "null",
+    "object", "package", "return", "super", "this", "throw", "true", "try", "typealias", "typeof", "val", "var",
+    "when", "while",
+  ]),
 };
+
+/**
+ * A role name as a lowerCamelCase member: words joined (on-action-primary → onActionPrimary), "p" for a point between
+ * digits (0-5 → 0p5), and the lead letter in front of a leading digit (2xl → r2xl).
+ */
+export function lowerCamel(name: string, lead: string): string {
+  const words = name.replace(/(\d)[-_](?=\d)/g, "$1p").split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const id = words.map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1) : w.charAt(0).toUpperCase() + w.slice(1))).join("");
+  return id === "" || /^[0-9]/.test(id) ? `${lead}${id}` : id;
+}
 
 /** "partner-store" becomes partnerStore. A Dart keyword gets "Variant" added: default becomes defaultVariant. */
 export function dartIdentifier(id: string): string {

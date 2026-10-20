@@ -3,7 +3,7 @@ import { listDartFiles, type SourceFile } from "../../check/files";
 import { maskComments } from "../../check/mask";
 import type { AppInfo } from "../../detect/stacks";
 import { isMotifGenerated } from "../../generate/header";
-import type { Theme, ThemeSet } from "../../generate/theme";
+import { variantChanges, type ThemeSet } from "../../generate/theme";
 import { prefixPath } from "../../project/apps";
 import type { NativeStack } from "../native";
 import { andList } from "../../text";
@@ -17,19 +17,6 @@ import { dartIdentifier } from "../naming";
 import { dartFix, dartReducedMotion, dartRole, scanDart } from "./rules";
 import { discoverFlutterRoutes } from "./routes";
 import { FLUTTER_VARIANT_HOW, flutterShotRefusal, flutterTimeLimit, MOTION_WIDTH, readShotInputs, shootFlutter } from "./shot";
-
-/** What else a variant changes besides colours, in plain words. */
-function otherChanges(base: Theme, variant: Theme): string[] {
-  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-  const groups: [string, (t: Theme) => unknown][] = [
-    ["spacing", (t) => t.space],
-    ["corners", (t) => t.radius],
-    ["shadows", (t) => t.shadows],
-    ["type", (t) => t.fonts],
-    ["motion", (t) => [t.durations, t.easings, t.springs]],
-  ];
-  return groups.filter(([, pick]) => !same(pick(base), pick(variant))).map(([name]) => name);
-}
 
 /** How to choose a design variant in the theme, for the wiring note; nothing when the guide has none. */
 function variantWiring(set: ThemeSet): string {
@@ -62,7 +49,7 @@ export const FLUTTER: NativeStack = {
     const files = generateFlutter(set, { googleFonts: fonts.googleFonts }).map((f) => ({ path: `${themeDir}/${f.path}`, content: f.content }));
     const notes = [...fonts.notes];
     for (const v of set.variants) {
-      const other = otherChanges(set.base, v.theme);
+      const other = variantChanges(set.base, v.theme);
       if (other.length > 0) {
         notes.push(`The ${v.label} variant also changes ${andList(other)}. Flutter theme code gives each variant its own colours only, so it uses the default ${andList(other)}.`);
       }

@@ -1,8 +1,10 @@
-import { cpSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "./tmp";
 import { loadTokenDocument } from "../src/contract/load";
 import type { TokenDocument } from "../src/contract/types";
+import { defaultDoctorDeps } from "../src/commands/doctor";
+import { findAndroidSdk, findJava } from "../src/stacks/compose/doctor";
 
 export const FIXTURES = join(import.meta.dir, "fixtures");
 
@@ -81,4 +83,25 @@ export function hasFlutter(): boolean {
     }
   }
   return flutterFound;
+}
+
+let android: { java: string; sdk: string } | null | undefined;
+
+/**
+ * The JDK and the Android SDK Motif would use here (found as motif doctor finds them), or null when either is missing.
+ * It looks once and remembers the answer.
+ */
+export function androidToolchain(): { java: string; sdk: string } | null {
+  if (android === undefined) {
+    const deps = defaultDoctorDeps();
+    const java = findJava(deps);
+    const sdk = findAndroidSdk(join(FIXTURES, "compose-min"), { path: "app", stack: "compose", source: "detected" }, deps);
+    android = java && sdk && existsSync(join(sdk, "platforms")) ? { java, sdk } : null;
+  }
+  return android;
+}
+
+/** True when a JDK and an Android SDK with platforms/ are here, so Gradle can build a Compose app. */
+export function hasAndroid(): boolean {
+  return androidToolchain() !== null;
 }

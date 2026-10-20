@@ -161,3 +161,16 @@ export function buildThemeSet(doc: TokenDocument): ThemeSet {
     variants: variants.filter((v) => v.id !== defaultId).map((v) => ({ id: v.id, label: v.label, theme: buildTheme(variantView(doc, v.id)) })),
   };
 }
+
+/** What else a variant changes besides colours, in plain words (stacks whose theme code gives variants their colours only). */
+export function variantChanges(base: Theme, variant: Theme): string[] {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const groups: [string, (t: Theme) => unknown][] = [
+    ["spacing", (t) => t.space],
+    ["corners", (t) => t.radius],
+    ["shadows", (t) => t.shadows],
+    ["type", (t) => t.fonts],
+    ["motion", (t) => [t.durations, t.easings, t.springs]],
+  ];
+  return groups.filter(([, pick]) => !same(pick(base), pick(variant))).map(([name]) => name);
+}
