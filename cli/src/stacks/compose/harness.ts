@@ -25,7 +25,7 @@ export const TARGETS_FILE = ".motif/shot/targets.txt";
 export const RESULT_FILE = ".motif/shot/result.json";
 export const TEST_CLASS = "dev.motif.shot.MotifShotTest";
 /**
- * The task Motif runs: init.gradle registers it, and it runs the unit tests of the app's first debug variant
+ * The task Motif runs: init.gradle registers it, and it runs the unit tests of the variant Android Studio selects by default
  * (testDebugUnitTest, or testDemoDebugUnitTest in an app with product flavours), narrowed to TEST_CLASS.
  */
 export const SHOT_TASK = "motifShots";
@@ -293,6 +293,16 @@ export interface HarnessResult {
   result: Record<string, unknown> | null;
   /** Why result.json couldn't be read, when it exists but is cut short. */
   problem?: string;
+}
+
+/**
+ * The variant motifShots drew and the ones it chose from, from the line the init script prints when it chose among
+ * product flavours or chose a build type other than debug; null when it printed none (an app with only debug and
+ * release, or a configuration Gradle reused from its cache, which doesn't print it again).
+ */
+export function variantDrawn(output: string): { name: string; of: string[] } | null {
+  const m = /^Motif draws the (\S+) variant, of (.+)\.\s*$/m.exec(output);
+  return m ? { name: m[1]!, of: m[2]!.split(", ") } : null;
 }
 
 /** Reads a stream into text as it arrives (the last 50,000 characters); cancel() stops reading. */

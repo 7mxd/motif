@@ -411,6 +411,18 @@ describe("shootCompose", () => {
     );
   });
 
+  test("an app with several build variants: the note names the one drawn, from the line the init script printed", async () => {
+    const root = makeProject(COMPOSE_APP);
+    const line = "Motif draws the prodDebug variant, of demoDebug, demoRelease, prodDebug, prodRelease.";
+    const { run } = fakeRun(() => ({ output: `> Configure project :app\r\n${line}\r\n> Task :app:testProdDebugUnitTest\r\n`, result: { screens: [] } }));
+    const got = await shootCompose(options(root, { routes: ["/"] }), base(root, run));
+    expect(got.notes).toContain(
+      "This app has 4 build variants (demoDebug, demoRelease, prodDebug, prodRelease); Motif drew prodDebug, the one Android Studio selects by default: the build type and flavours the build marks isDefault, else debug and each dimension's first flavour by name.",
+    );
+    const single = fakeRun(() => ({ output: "> Task :app:testDebugUnitTest", result: { screens: [] } }));
+    expect((await shootCompose(options(root, { routes: ["/"] }), base(root, single.run))).notes.some((n) => n.includes("build variants"))).toBe(false);
+  });
+
   test("an Application that started for the first screen and failed when started again gets its own note", async () => {
     const root = makeProject(COMPOSE_APP);
     const report = join(root, "app/build/test-results/testDemoDebugUnitTest/TEST-dev.motif.shot.MotifShotTest.xml");

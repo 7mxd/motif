@@ -128,12 +128,18 @@ describe("the init script", () => {
     expect(dsl).toMatch(/\.java\.srcDir\(new File\(shotDir, "src"\)\)/);
     expect(dsl).toMatch(/\.kotlin\.srcDir\(new File\(shotDir, "src"\)\)/);
   });
-  test("Motif runs its own task, motifShots, which runs the first debug variant's unit tests: an app with product flavours has no testDebugUnitTest", () => {
+  test("Motif runs its own task, motifShots, which runs the default variant's unit tests: an app with product flavours has no testDebugUnitTest", () => {
     expect(SHOT_TASK).toBe("motifShots");
     expect(script).toContain('project.tasks.register("motifShots")');
     // The variant is the Android plugin's own (androidComponents), not a task name Motif guesses.
     expect(script).toMatch(/androidComponents\.onVariants\(/);
-    expect(script).toMatch(/variant\.buildType == "debug"/);
+    // The default as Android Studio selects it: the build type and flavours marked isDefault (read with isDefault(), not
+    // the Provider-valued isDefault property), then the test build type, then the flavours by name.
+    expect(script).toContain("android.buildTypes.findAll { it.isDefault() }");
+    expect(script).toContain("android.productFlavors.findAll { it.isDefault() }");
+    expect(script).toContain('def testBuildType = "debug"');
+    expect(script).toContain("a.flavors[i][1].compareTo(b.flavors[i][1])");
+    expect(script).toContain('println "Motif draws the ${chosen.name} variant, of ${candidates*.name.join(", ")}."');
     // --tests can't be given to a task that isn't a test task: the script narrows the run to the harness as --tests does.
     expect(script).toContain('setTestNameIncludePatterns(["dev.motif.shot.MotifShotTest"])');
   });

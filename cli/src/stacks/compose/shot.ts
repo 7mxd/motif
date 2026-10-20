@@ -21,7 +21,7 @@ import type { NativeShotOptions } from "../native";
 import { findAndroidSdk, gradleJava, NO_ANDROID_SDK } from "./doctor";
 import { THEME_FILE } from "./generate";
 import {
-  composeFont, HARNESS_SRC, harnessReport, ROBOLECTRIC_DOWNLOAD_FAILED, runHarness, type ComposeFont, type ComposeShot, type HarnessConfig, type HarnessResult, type HarnessRun, type HarnessSource,
+  composeFont, HARNESS_SRC, harnessReport, ROBOLECTRIC_DOWNLOAD_FAILED, runHarness, variantDrawn, type ComposeFont, type ComposeShot, type HarnessConfig, type HarnessResult, type HarnessRun, type HarnessSource,
 } from "./harness";
 import { composeThemeDir, gradleRoot, unreadModulesNote } from "./project";
 import { composeScreenProblem, discoverComposeScreens, previewSlug, type Preview } from "./screens";
@@ -198,6 +198,11 @@ export function hooksSource(inputs: ComposeInputs): string {
     "}",
     "",
   ].join("\n");
+}
+
+/** Which of the app's build variants was drawn, when it has several (from the line the init script prints). */
+export function variantNote(drawn: { name: string; of: string[] }): string {
+  return `This app has ${drawn.of.length} build variants (${drawn.of.join(", ")}); Motif drew ${drawn.name}, the one Android Studio selects by default: the build type and flavours the build marks isDefault, else debug and each dimension's first flavour by name.`;
 }
 
 /** The guide's default variant id; "" without variants. */
@@ -537,6 +542,8 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
   }
   const mapped = mapComposeResult(targets, opts.outDir, result.result, result.timedOut ? { seconds } : null);
   if (result.result.plainApplication === true) notes.push(plainApplicationNote(moduleDir, result.result.applicationStarted === true));
+  const drawn = variantDrawn(result.output);
+  if (drawn) notes.push(variantNote(drawn));
   return { ...mapped, notes: [...notes, ...mapped.notes] };
 }
 

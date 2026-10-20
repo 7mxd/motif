@@ -1,6 +1,6 @@
 // Motif's screenshot harness for Compose apps (decision 0008). Motif writes this file, unchanged from run to run, to
 // <module>/.motif/shot/src/dev/motif/shot/MotifShotTest.kt with init.gradle next to the src folder, runs
-// `gradlew :<module>:motifShots -I <module>/.motif/shot/init.gradle` from the project's root (the first debug variant's
+// `gradlew :<module>:motifShots -I <module>/.motif/shot/init.gradle` from the project's root (the default variant's
 // unit tests, narrowed to this class), and deletes both when the run ends. Next to it, Motif may write MotifHooks.kt (the run's setup and
 // states, found here by reflection), design/states/Setup.kt and the --state files.
 //

@@ -3,8 +3,8 @@
 // project's root. It changes that run only, and only the module it sits in (found from the script's own path):
 // .motif/shot/src becomes a unit-test source folder, the test libraries are added, Android resources are made visible to
 // unit tests, and the unit-test tasks are told where the harness's options are, run only the harness, and always run.
-// motifShots runs the first debug variant's unit tests: testDebugUnitTest, or testDemoDebugUnitTest in an app with
-// product flavours, which has no testDebugUnitTest. The developer's build files are never edited. Groovy rather than Kotlin: the Android plugin isn't on
+// motifShots runs the unit tests of the variant Android Studio selects by default: testDebugUnitTest, or
+// testDemoDebugUnitTest in an app with product flavours, which has no testDebugUnitTest. The developer's build files are never edited. Groovy rather than Kotlin: the Android plugin isn't on
 // an init script's classpath, and Groovy reaches its DSL (android { … }) without it.
 
 def motifModuleDir = initscript.sourceFile.parentFile.parentFile.parentFile.canonicalFile
@@ -43,20 +43,48 @@ allprojects { project ->
     if (project.projectDir.canonicalFile != motifModuleDir) return
     project.pluginManager.withPlugin("com.android.application") {
         def shotDir = new File(motifModuleDir, ".motif/shot")
-        // The unit-test task of the first debug variant the Android plugin makes (its variants come in the order of the
-        // flavours as declared), else of its first variant; a variant whose unit tests are switched off has none.
-        def debugTests = null
-        def firstTests = null
+        // The variant Android Studio selects by default, as the Android plugin computes it (VariantModelImpl's
+        // computeDefaultVariant, AGP 8 and 9): the build type marked isDefault, then the most flavours marked isDefault
+        // (one per dimension, the first by name when several are), then the test build type (debug unless testBuildType
+        // says), then the flavours by name, dimension by dimension; on a tie, the variant the plugin made first. Only
+        // variants with unit tests count: a variant whose unit tests are switched off has no task to run.
+        def defaultBuildType = null
+        def defaultFlavors = [:]
+        def testBuildType = "debug"
+        def candidates = []
         project.androidComponents.onVariants(project.androidComponents.selector().all()) { variant ->
             if (variant.hasProperty("unitTest") && variant.unitTest == null) return
             def task = "test" + variant.name.substring(0, 1).toUpperCase() + variant.name.substring(1) + "UnitTest"
-            if (firstTests == null) firstTests = task
-            if (debugTests == null && variant.buildType == "debug") debugTests = task
+            candidates << [name: variant.name, task: task, buildType: variant.buildType, flavors: variant.productFlavors.collect { [it.first, it.second] }]
+        }
+        def rank = { c ->
+            [
+                defaultBuildType != null && c.buildType == defaultBuildType ? 0 : 1,
+                -c.flavors.count { defaultFlavors[it[0]] == it[1] },
+                c.buildType == testBuildType ? 0 : 1,
+            ]
+        }
+        def better = { a, b ->
+            def ra = rank(a)
+            def rb = rank(b)
+            for (int i = 0; i < ra.size(); i++) if (ra[i] != rb[i]) return ra[i] < rb[i]
+            for (int i = 0; i < Math.min(a.flavors.size(), b.flavors.size()); i++) {
+                def order = a.flavors[i][1].compareTo(b.flavors[i][1])
+                if (order != 0) return order < 0
+            }
+            false
+        }
+        def chosen = null
+        def choose = {
+            if (chosen == null) {
+                candidates.each { c -> if (chosen == null || better(c, chosen)) chosen = c }
+            }
+            chosen
         }
         // What Motif runs. Which test task it depends on is read once the variants are known.
         project.tasks.register("motifShots") { task ->
             task.description = "Draws Motif's screenshots (added by Motif for one run)."
-            task.dependsOn { debugTests ?: firstTests ?: "testDebugUnitTest" }
+            task.dependsOn { choose()?.task ?: "testDebugUnitTest" }
         }
         // Before the Android plugin locks its DSL, after the module's own build file has set it.
         project.androidComponents.finalizeDsl { android ->
@@ -65,6 +93,17 @@ allprojects { project ->
             tests.java.srcDir(new File(shotDir, "src"))
             tests.kotlin.srcDir(new File(shotDir, "src"))
             android.testOptions.unitTests.includeAndroidResources = true
+            // What the build marks as Android Studio's default. Groovy reads Kotlin's isDefault through isDefault():
+            // the property of that name is getIsDefault(), a Provider object, which is always true as a condition.
+            def marked = android.buildTypes.findAll { it.isDefault() }*.name.sort()
+            if (marked) defaultBuildType = marked[0]
+            // A flavour may leave its dimension out when the build has only one.
+            def onlyDimension = android.flavorDimensions.size() == 1 ? android.flavorDimensions[0] : null
+            android.productFlavors.findAll { it.isDefault() }.sort { it.name }.each { f ->
+                def dimension = f.dimension ?: onlyDimension
+                if (!defaultFlavors.containsKey(dimension)) defaultFlavors[dimension] = f.name
+            }
+            if (android.testBuildType) testBuildType = android.testBuildType
         }
         project.dependencies {
             // Compose's test libraries take the app's own Compose version (its BOM, or the version its Compose UI
@@ -81,7 +120,14 @@ allprojects { project ->
         // vintage engine would raise the app's Jupiter with it. With none declared, 5.13.4 is only preferred. Read once the
         // build file has set up the test task (after it is evaluated, and after the Android plugin has made its tasks).
         project.afterEvaluate {
-            def name = debugTests ?: firstTests
+            // Said for motif shot's notes when there was a choice beyond debug or release: product flavours, or a build
+            // type other than debug.
+            if (candidates.size() > 1 && choose() != null && (chosen.flavors || chosen.buildType != "debug")) {
+                println "Motif draws the ${chosen.name} variant, of ${candidates*.name.join(", ")}."
+            }
+        }
+        project.afterEvaluate {
+            def name = choose()?.task
             def test = name ? project.tasks.findByName(name) : null
             if (!(test instanceof Test) || !(test.options instanceof org.gradle.api.tasks.testing.junitplatform.JUnitPlatformOptions)) return
             def junit = null
