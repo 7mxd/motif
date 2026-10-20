@@ -214,7 +214,7 @@ describe("runDoctor", () => {
       expect(item(win, "android-sdk")!.detail).toBe(`Android SDK at ${winSdk} (platforms 35).`);
     });
 
-    test("no SDK asks for one; an SDK with no recent platform says which to install", async () => {
+    test("no SDK asks for one; an SDK with no platforms yet is fine, and so is an old platform", async () => {
       const none = await items(composeApp(), { files: disk({}) });
       expect(item(none, "android-sdk")).toEqual({
         id: "android-sdk",
@@ -222,9 +222,28 @@ describe("runDoctor", () => {
         label: "Android SDK",
         detail: "No Android SDK found. Screenshots need it: install Android Studio, or set ANDROID_HOME to an SDK folder.",
       });
-      const old = await items(composeApp(), { vars: { ANDROID_HOME: "/sdk" }, files: disk({ "/sdk/platforms/android-30/x": "" }) });
-      expect(item(old, "android-sdk")).toMatchObject({ status: "needed" });
-      expect(item(old, "android-sdk")!.detail).toContain("platform 35 or newer");
+      const bare = await items(composeApp(), { vars: { ANDROID_HOME: "/sdk" }, files: disk({ "/sdk/licenses/x": "" }) });
+      expect(item(bare, "android-sdk")).toMatchObject({ status: "ok", detail: "Android SDK at /sdk (no platforms yet; Gradle downloads the one the app compiles against)." });
+      const old = await items(composeApp(), { vars: { ANDROID_HOME: "/sdk" }, files: disk({ "/sdk/platforms/android-34/x": "" }) });
+      expect(item(old, "android-sdk")).toMatchObject({ status: "ok", detail: "Android SDK at /sdk (platforms 34)." });
+    });
+
+    test("local.properties at the Gradle root is found, and an ANDROID_HOME missing on disk falls through", async () => {
+      const root = composeApp();
+      const files = disk({ [join(root, "local.properties")]: "sdk.dir=/from/root\n","/from/root/platforms/android-36/x": "" });
+      const got = await items(root, { vars: { ANDROID_HOME: "/gone" }, files });
+      expect(item(got, "android-sdk")!.detail).toBe("Android SDK at /from/root (platforms 36).");
+    });
+
+    test("a java on the PATH that fails falls through to JAVA_HOME", async () => {
+      const files = disk({ "/opt/jdk/bin/java": "" });
+      const got = await items(composeApp(), {
+        which: () => "/usr/bin/java",
+        vars: { JAVA_HOME: "/opt/jdk" },
+        run: (cmd) => (cmd[0] === "/opt/jdk/bin/java" ? java("17.0.2") : { code: 1, stdout: "" }),
+        files,
+      });
+      expect(item(got, "jdk")).toMatchObject({ status: "ok", detail: "JDK 17.0.2." });
     });
 
     test("no Compose app means neither item, and the app line keeps its words", async () => {

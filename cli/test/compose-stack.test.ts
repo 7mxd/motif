@@ -1,5 +1,4 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { join } from "node:path";
 import { detectApps } from "../src/detect/stacks";
 import { COMPOSE } from "../src/stacks/compose";
 import { nativeStack } from "../src/stacks/native";
@@ -43,6 +42,5 @@ describe("the Compose stack", () => {
     const [app] = detectApps(root).apps;
     expect(COMPOSE.themeDir(root, app!)).toBe("app/src/main/kotlin/ui/motif");
     expect(COMPOSE.themeDir(root, { ...app!, themeDir: "app/src/main/java/design" })).toBe("app/src/main/java/design");
-    expect(join(root)).toBeTruthy();
   });
 });

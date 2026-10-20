@@ -5,8 +5,6 @@ import { diskFiles, type DoctorFiles } from "../../project/disk";
 
 /** The oldest JDK Android's build runs on. */
 const JDK_MIN = 17;
-/** The oldest Android platform Motif's screenshots compile against. */
-const PLATFORM_MIN = 35;
 
 const files = (deps: DoctorDeps): DoctorFiles => deps.files ?? diskFiles;
 const at = (deps: DoctorDeps, ...parts: string[]) => parts.join(deps.platform === "win32" ? "\\" : "/");
@@ -124,9 +122,8 @@ function sdkItem(root: string, apps: AppInfo[], deps: DoctorDeps): DoctorItem {
     return { id: "android-sdk", status: "needed", label, detail: "No Android SDK found. Screenshots need it: install Android Studio, or set ANDROID_HOME to an SDK folder." };
   }
   const levels = platformsOf(sdk, deps);
-  if (!levels.some((n) => n >= PLATFORM_MIN)) {
-    const has = levels.length > 0 ? `only has platforms ${levels.join(", ")}` : "has no platform installed";
-    return { id: "android-sdk", status: "needed", label, detail: `The Android SDK at ${sdk} ${has}. Screenshots need platform ${PLATFORM_MIN} or newer: install it in Android Studio's SDK Manager.` };
+  if (levels.length === 0) {
+    return { id: "android-sdk", status: "ok", label, detail: `Android SDK at ${sdk} (no platforms yet; Gradle downloads the one the app compiles against).` };
   }
   return { id: "android-sdk", status: "ok", label, detail: `Android SDK at ${sdk} (platforms ${levels.join(", ")}).` };
 }
