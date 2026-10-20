@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runDoctor, type DoctorDeps, type DoctorItem } from "../src/commands/doctor";
 import { copyFixture } from "./helpers";
+import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -122,6 +123,119 @@ describe("runDoctor", () => {
       expect(item((await runDoctor(web, deps({ which: found }))).data.items as DoctorItem[], "flutter")).toBeUndefined();
       const items = (await runDoctor(flutterApp(), deps({ which: found, run: () => ({ code: 0, stdout: json }) }))).data.items as DoctorItem[];
       expect(item(items, "app:.")).toMatchObject({ status: "ok", detail: "Full support for Flutter." });
+    });
+  });
+
+  describe("the Android toolchain", () => {
+    const composeApp = (extra: Record<string, string> = {}) =>
+      makeProject({
+        "settings.gradle.kts": 'include(":app")\n',
+        "app/build.gradle.kts": 'plugins {\n  alias(libs.plugins.android.application)\n  alias(libs.plugins.kotlin.compose)\n}\nandroid { namespace = "com.example.rafiq" }\n',
+        ...extra,
+      });
+    /** A fake disk: file contents by path; a folder exists when something is inside it. */
+    const disk = (files: Record<string, string>) => ({
+      exists: (p: string) => p in files || Object.keys(files).some((f) => f.startsWith(p + "/") || f.startsWith(p + "\\")),
+      read: (p: string) => files[p] ?? null,
+      list: (p: string) =>
+        [...new Set(Object.keys(files).filter((f) => f.startsWith(p + "/") || f.startsWith(p + "\\")).map((f) => f.slice(p.length + 1).split(/[\\/]/)[0]!))],
+    });
+    const java = (version: string) => ({ code: 0, stdout: "", stderr: `openjdk version "${version}" 2024-07-16\nOpenJDK Runtime Environment (build ${version}+7)\n` });
+    const items = async (dir: string, over: Partial<DoctorDeps>) => (await runDoctor(dir, deps({ platform: "linux", home: "/home/dev", ...over }))).data.items as DoctorItem[];
+
+    test("a JDK on the PATH is read from java -version's error output", async () => {
+      const ran: string[][] = [];
+      const got = await items(composeApp(), { which: (c) => (c === "java" ? "/usr/bin/java" : null), run: (cmd) => (ran.push(cmd), java("17.0.12")), files: disk({}) });
+      expect(item(got, "jdk")).toEqual({ id: "jdk", status: "ok", label: "JDK", detail: "JDK 17.0.12." });
+      expect(ran[0]).toEqual(["/usr/bin/java", "-version"]);
+    });
+
+    test("no JDK anywhere asks for one, and says what still works", async () => {
+      const got = await items(composeApp(), { run: () => ({ code: 127, stdout: "" }), files: disk({}) });
+      expect(item(got, "jdk")).toEqual({
+        id: "jdk",
+        status: "needed",
+        label: "JDK",
+        detail: "No JDK found. Theme code, checks and drafts work without it; screenshots need JDK 17 or newer: install Android Studio (it brings one) or a JDK from https://adoptium.net.",
+      });
+    });
+
+    test("a JDK older than 17 is called out", async () => {
+      const got = await items(composeApp(), { which: () => "/usr/bin/java", run: () => java("11.0.2"), files: disk({}) });
+      expect(item(got, "jdk")).toMatchObject({ status: "needed", detail: "JDK 11.0.2 is older than 17, which Android's build needs." });
+      const old = await items(composeApp(), { which: () => "/usr/bin/java", run: () => java("1.8.0_352"), files: disk({}) });
+      expect(item(old, "jdk")!.detail).toBe("JDK 1.8.0 is older than 17, which Android's build needs.");
+    });
+
+    test("JAVA_HOME is used when java isn't on the PATH", async () => {
+      const files = disk({ "/opt/jdk/bin/java": "" });
+      const got = await items(composeApp(), { vars: { JAVA_HOME: "/opt/jdk" }, run: (cmd) => (cmd[0] === "/opt/jdk/bin/java" ? java("21.0.3") : { code: 127, stdout: "" }), files });
+      expect(item(got, "jdk")).toMatchObject({ status: "ok", detail: "JDK 21.0.3." });
+    });
+
+    test("Android Studio's bundled JDK is the last resort on each system", async () => {
+      const bundled = {
+        win32: "C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\java.exe",
+        darwin: "/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java",
+        linux: "/opt/android-studio/jbr/bin/java",
+      } as const;
+      for (const platform of ["win32", "darwin", "linux"] as const) {
+        const path = bundled[platform];
+        const got = await items(composeApp(), { platform, run: (cmd) => (cmd[0] === path ? java("21.0.8") : { code: 127, stdout: "" }), files: disk({ [path]: "" }) });
+        expect(item(got, "jdk")).toMatchObject({ status: "ok", detail: "JDK 21.0.8." });
+      }
+    });
+
+    test("the Android SDK comes from ANDROID_HOME, with the platforms it has", async () => {
+      const files = disk({ "/sdk/platforms/android-36/android.jar": "", "/sdk/platforms/android-35/android.jar": "" });
+      const got = await items(composeApp(), { vars: { ANDROID_HOME: "/sdk" }, files });
+      expect(item(got, "android-sdk")).toEqual({ id: "android-sdk", status: "ok", label: "Android SDK", detail: "Android SDK at /sdk (platforms 35, 36)." });
+    });
+
+    test("ANDROID_SDK_ROOT, then local.properties with an escaped Windows path, then the default folder", async () => {
+      const platforms = (sdk: string) => ({ [`${sdk}/platforms/android-35/x`]: "" });
+      const root = composeApp();
+      const viaRoot = await items(root, { vars: { ANDROID_SDK_ROOT: "/rootsdk" }, files: disk(platforms("/rootsdk")) });
+      expect(item(viaRoot, "android-sdk")!.detail).toBe("Android SDK at /rootsdk (platforms 35).");
+
+      const local = join(root, "app", "local.properties");
+      const winSdk = "C:\\Users\\Dev\\AppData\\Local\\Android\\Sdk";
+      const viaProps = await items(root, {
+        platform: "win32",
+        files: disk({ [local]: "## This file is automatically generated by Android Studio.\nsdk.dir=C\\:\\\\Users\\\\Dev\\\\AppData\\\\Local\\\\Android\\\\Sdk\n", [`${winSdk}\\platforms\\android-36\\x`]: "" }),
+      });
+      expect(item(viaProps, "android-sdk")!.detail).toBe(`Android SDK at ${winSdk} (platforms 36).`);
+
+      const viaDefault = await items(root, { files: disk(platforms("/home/dev/Android/Sdk")) });
+      expect(item(viaDefault, "android-sdk")!.detail).toBe("Android SDK at /home/dev/Android/Sdk (platforms 35).");
+      const mac = await items(root, { platform: "darwin", files: disk(platforms("/home/dev/Library/Android/sdk")) });
+      expect(item(mac, "android-sdk")!.detail).toBe("Android SDK at /home/dev/Library/Android/sdk (platforms 35).");
+      const win = await items(root, { platform: "win32", home: "C:\\Users\\Dev", vars: { LOCALAPPDATA: "C:\\Users\\Dev\\AppData\\Local" }, files: disk({ [`${winSdk}\\platforms\\android-35\\x`]: "" }) });
+      expect(item(win, "android-sdk")!.detail).toBe(`Android SDK at ${winSdk} (platforms 35).`);
+    });
+
+    test("no SDK asks for one; an SDK with no recent platform says which to install", async () => {
+      const none = await items(composeApp(), { files: disk({}) });
+      expect(item(none, "android-sdk")).toEqual({
+        id: "android-sdk",
+        status: "needed",
+        label: "Android SDK",
+        detail: "No Android SDK found. Screenshots need it: install Android Studio, or set ANDROID_HOME to an SDK folder.",
+      });
+      const old = await items(composeApp(), { vars: { ANDROID_HOME: "/sdk" }, files: disk({ "/sdk/platforms/android-30/x": "" }) });
+      expect(item(old, "android-sdk")).toMatchObject({ status: "needed" });
+      expect(item(old, "android-sdk")!.detail).toContain("platform 35 or newer");
+    });
+
+    test("no Compose app means neither item, and the app line keeps its words", async () => {
+      const files = disk({});
+      const web = copyFixture();
+      writeFileSync(join(web, "package.json"), JSON.stringify({ dependencies: { react: "^19", vite: "^6" } }));
+      const none = await items(web, { which: () => "/usr/bin/java", run: () => java("17.0.12"), files });
+      expect(item(none, "jdk")).toBeUndefined();
+      expect(item(none, "android-sdk")).toBeUndefined();
+      const got = await items(composeApp(), { which: () => "/usr/bin/java", run: () => java("17.0.12"), files });
+      expect(item(got, "app:app")).toMatchObject({ status: "optional", detail: "Jetpack Compose detected. Full support is coming soon; Motif will still help using general guidance." });
     });
   });
 

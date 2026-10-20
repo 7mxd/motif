@@ -7,6 +7,7 @@ import { AGENTS, shown, type AgentEnv } from "../agents/catalog";
 import { readAgentServers, sourcesIn } from "../detect/sources";
 import { SOURCES } from "../sources/catalog";
 import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, siteDir, STACK_LABELS } from "../detect/stacks";
+import { diskFiles, type DoctorFiles } from "../project/disk";
 import { ignoredByGit, ignoredNotes } from "../project/git";
 import { nativeStack } from "../stacks/native";
 import { VERSION } from "../version";
@@ -30,7 +31,9 @@ export interface DoctorDeps {
   /** True when MOTIF_BROWSER=none turns the browser off. */
   browserOff?: () => boolean;
   /** Runs a program and returns its exit code and output (a missing program gives a non-zero code). */
-  run?: (cmd: string[]) => { code: number; stdout: string };
+  run?: (cmd: string[]) => { code: number; stdout: string; stderr?: string };
+  /** Reads the disk (the Android SDK's folders, local.properties); tests give a fake. */
+  files?: DoctorFiles;
 }
 
 export function defaultDoctorDeps(): DoctorDeps {
@@ -44,12 +47,13 @@ export function defaultDoctorDeps(): DoctorDeps {
     browserOff: () => browserOff(),
     run: (cmd) => {
       try {
-        const r = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore" });
-        return { code: r.exitCode ?? 1, stdout: r.stdout.toString() };
+        const r = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
+        return { code: r.exitCode ?? 1, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
       } catch {
         return { code: 127, stdout: "" };
       }
     },
+    files: diskFiles,
   };
 }
 
@@ -94,8 +98,10 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
     else push("node", "needed", "Node.js", "Not found. Your app needs Node.js to run — install it from nodejs.org.");
   }
 
-  // Each native stack's toolchain (Flutter's SDK), once however many of its apps there are.
-  for (const id of new Set(apps.map((a) => a.stack))) items.push(...(nativeStack(id)?.doctor?.(deps) ?? []));
+  // Each native stack's toolchain (Flutter's SDK; the JDK and Android SDK), once however many of its apps there are.
+  for (const id of new Set(apps.map((a) => a.stack))) {
+    items.push(...(nativeStack(id)?.doctor?.(deps, { root: cwd, apps: apps.filter((a) => a.stack === id) }) ?? []));
+  }
 
   const hasGuide = existsSync(join(cwd, "DESIGN.md")) && existsSync(join(cwd, "design", "tokens.json"));
   if (!hasGuide) {
