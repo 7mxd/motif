@@ -223,6 +223,8 @@ describe("motif shot on a Compose app", () => {
     const ok = await runShot(root, ctx({ state: "design/states/filled.kt", routes: "/" }), deps);
     expect(ok.exitCode).toBe(0);
     expect(calls.map((c) => c.states.map((s) => s.name))).toEqual([["filled"]]);
+    // Each state is a screenshot more of every shot: / at 4 sizes × 2 schemes, without and with the state.
+    expect(calls[0]!.timeoutMs).toBe(composeTimeLimit(4 * 2 * 2));
   });
 
   test("design/states/Setup.kt must be in dev.motif.states and define motifSetup", async () => {

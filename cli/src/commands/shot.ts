@@ -395,7 +395,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     if (shoot && app) {
       const sizes = viewports ?? NATIVE_VIEWPORTS;
-      const count = (routes.length + runScreens.length) * sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1);
+      // Each state is one more screenshot of every shot, after the screen has settled.
+      const count = (routes.length + runScreens.length) * sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1) * (1 + states.length);
       const timeoutMs = native?.shotTimeLimit?.(count) ?? 240_000 + 3_000 * count;
       const drawn = await shoot({
         root: cwd, app, routes, screens: runScreens, outDir, viewports: sizes, variants, ...(rtl ? { rtl } : {}), states, audit, timeoutMs,
