@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { runShot } from "../src/commands/shot";
+import { runTokens } from "../src/commands/tokens";
 import { findBrowser } from "../src/detect/browser";
 import { FIXTURES } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -26,7 +27,7 @@ function run(cmd: string[], cwd: string): { code: number; out: string } {
   return { code: r.exitCode ?? 1, out: `${r.stdout.toString()}\n${r.stderr.toString()}` };
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   if (!ready) {
     console.log(`rn-shot-e2e: skipped, ${reason}.`);
     return;
@@ -39,13 +40,18 @@ beforeAll(() => {
     if (again.code !== 0) console.log(again.out);
     expect(again.code).toBe(0);
   }
+  // The theme is made by today's generator from the fixture's guide, not taken from the committed copy.
+  rmSync(join(app, "design", "motif-theme.tsx"));
+  const made = await runTokens(app, { positionals: [] });
+  expect(made.exitCode).toBe(0);
+  expect(existsSync(join(app, "design", "motif-theme.tsx"))).toBe(true);
   // A state script that checks each screenshot's look from inside the page: which colours, which fonts (loaded), and
   // Arabic right to left. What it throws is the screen's error, which the tests look for.
   mkdirSync(join(app, "design", "states"), { recursive: true });
   writeFileSync(join(app, "design", "states", "check.js"), CHECK);
 }, 900_000);
 
-afterAll(cleanupTempDirs);
+afterAll(cleanupTempDirs, 120_000);
 
 const CHECK = `
 // React draws what data-variant changed in its next frames.
@@ -126,4 +132,58 @@ describe("motif shot on expo-min, through Expo's web target", () => {
     // react-native-web has no I18nManager.isRTL: Motif sets dir="rtl" on <html>, and says so.
     expect(notesOf(r.data)).toContain(`/ doesn't switch to right to left by itself for ar; Motif set dir="rtl" to show it.`);
   }, 600_000);
+
+  // The routes below are planted with problems (cli/test/fixtures/expo-audit-routes) and added to the copy here, after
+  // the tests above have counted expo-min's own two routes.
+  const plant = () => {
+    for (const f of ["audit", "motion", "calm", "form"]) cpSync(join(import.meta.dir, "fixtures", "expo-audit-routes", `${f}.tsx`), join(app, "app", `${f}.tsx`));
+  };
+  const findingsOf = () =>
+    (JSON.parse(readFileSync(join(app, "design", "shots", "audit.json"), "utf8")).findings as { location: { screen: string }; category: string; summary: string }[]).map((f) => ({
+      screen: f.location.screen,
+      category: f.category,
+      summary: f.summary,
+    }));
+
+  test.skipIf(!ready)("--audit finds a low-contrast caption, an unnamed 32 px button and a Reanimated loop that ignores reduced motion, and passes the loop that respects it (skipped without Node, npm or a browser)", async () => {
+    plant();
+    const r = await runShot(app, { positionals: [], flags: { sizes: "390", routes: "/audit,/motion,/calm", variant: "default", audit: true } });
+    if (r.exitCode !== 0 && !r.text.includes("✗ Audit:")) console.log(r.text);
+    clean(r.data);
+    expect(findingsOf()).toEqual([
+      { screen: "/audit", category: "contrast", summary: `Text "Last restocked three days ago" is hard to read in light and dark mode (1.67:1, needs 4.5:1).` },
+      { screen: "/audit", category: "accessibility", summary: "The button has no name a screen reader can say." },
+      { screen: "/motion", category: "reduced-motion", summary: "An element keeps moving when the viewer asks for reduced motion." },
+      { screen: "/audit", category: "target-size", summary: "A button is 32×32 px on a phone; 44×44 px is easier to tap." },
+      { screen: "/audit", category: "target-size", summary: `The "Add item" button is 32×32 px on a phone; 44×44 px is easier to tap.` },
+    ]);
+    // /calm has the same loop and checks useReducedMotion (and Reanimated's own default stops it): nothing on /calm.
+    expect(findingsOf().some((f) => f.screen === "/calm")).toBe(false);
+    // The Pressable with no role is a plain div in react-native-web: neither the name rules nor the target query see it
+    // (decision 0009, limits), so only the two buttons count and one of them is the unnamed one.
+    expect(findingsOf().filter((f) => f.category === "target-size")).toHaveLength(2);
+  }, 600_000);
+
+  test.skipIf(!ready)("a state that fills a TextInput (found by aria-label) draws form@filled with the text on the screen (skipped without Node, npm or a browser)", async () => {
+    plant();
+    writeFileSync(join(app, "design", "states", "filled.js"), FILL);
+    const r = await runShot(app, { positionals: [], flags: { sizes: "390", routes: "/form", state: "design/states/filled.js" } });
+    if (r.exitCode !== 0) console.log(r.text);
+    expect(r.exitCode).toBe(0);
+    // The state script throws unless the field took the text and the screen drew "Adding Oat milk".
+    clean(r.data);
+    expect(r.data.shots).toEqual(["design/shots/form.mobile.png", "design/shots/form@filled.mobile.png", "design/shots/form.mobile.dark.png", "design/shots/form@filled.mobile.dark.png"]);
+    expect(png("form.mobile.png").equals(png("form@filled.mobile.png"))).toBe(false);
+  }, 600_000);
 });
+
+const FILL = `
+const input = document.querySelector('input[aria-label="Item name"], input[placeholder="Item name"]');
+if (input) {
+  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+  set.call(input, "Oat milk");
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await new Promise((done) => setTimeout(done, 200));
+  if (!document.body.innerText.includes("Adding Oat milk")) throw new Error("the field didn't take the text");
+}
+`;
