@@ -89,7 +89,7 @@ describe("the release workflow", () => {
 
   test("publishes with written notes and the notices, only after checking the notes exist", () => {
     const publish = section("publish");
-    expect(publish).toContain("needs: [build, plugin, test, flutter, compose, react-native]");
+    expect(publish).toContain("needs: [build, plugin, test, flutter, compose, react-native, swiftui]");
     expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre');
     expect(publish).not.toContain("--generate-notes");
     expect(publish).toContain("cp THIRD-PARTY-NOTICES.txt dist/");
@@ -219,6 +219,7 @@ describe("each stack job and its heavy tests agree on its name", () => {
   const HEAVY: Record<string, string[]> = {
     compose: ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose", "compose-agp9", "compose-flavors", "compose-junit-platform"],
     "react-native": ["rn-compile", "rn-shot-e2e", "fixtures-rn"],
+    swiftui: ["swiftui-compile"],
   };
 
   test("every heavy test is one of these: no other test file calls heavyStackTests", () => {
@@ -248,7 +249,7 @@ describe("the release workflows are hardened (backlog)", () => {
   test("a tag publishes only after the tests pass", () => {
     const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
     expect(wf).toContain("\n  test:\n");
-    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose, react-native]/);
+    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose, react-native, swiftui]/);
   });
 
   test("every action is pinned to a commit, with its version beside it", () => {
