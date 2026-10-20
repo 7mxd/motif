@@ -24,7 +24,7 @@ A stack is supported when the developer gets the whole of Motif on it, not part 
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | React web | done | done | done | done | done | done | done | done | done | done | done |
 | Plain web | done | done | done | done | done | done | done | done | done | done | done |
-| Flutter | done | done | done | done | done | done | done | done | done | done | done |
+| Flutter | done | done | done | done | done | done | done | done | done | pending the four eval runs | done |
 | Jetpack Compose | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | SwiftUI | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | React Native (Expo) | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
@@ -49,5 +49,5 @@ Flutter was finished in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Tests m
 | Screenshots | Routes from go_router and named routes: [flutter-routes.test.ts](../cli/test/flutter-routes.test.ts). The four native sizes, `--sizes`, `--screen`, variants, `--rtl`, `.dart` states, `setup.dart` and `http.json`: [shot-flutter.test.ts](../cli/test/shot-flutter.test.ts). Drawn for real by `flutter test` (needs Flutter): [flutter-render.test.ts](../cli/test/flutter-render.test.ts), [flutter-shot-e2e.test.ts](../cli/test/flutter-shot-e2e.test.ts). Fonts loaded for the pictures: [flutter-harness.test.ts](../cli/test/flutter-harness.test.ts). How Flutter is drawn: [decision 0007](decisions/0007-flutter-rendering.md). |
 | Audit | Contrast, tap targets, unnamed controls and reduced motion in `audit.json`: [shot-flutter.test.ts](../cli/test/shot-flutter.test.ts) ("the audit and states on a Flutter app"), and found as rendered (needs Flutter): [flutter-shot-e2e.test.ts](../cli/test/flutter-shot-e2e.test.ts). |
 | Skill | The Flutter guide's six files and their Dart examples, which pass `motif check`: [adapters.test.ts](../cli/test/adapters.test.ts). The modes on Flutter: [skill-modes.test.ts](../cli/test/skill-modes.test.ts). |
-| Evals | Maktaba and its seeded copy: [fixtures-flutter.test.ts](../cli/test/fixtures-flutter.test.ts). The four cases (two features, the seeded review, Sahm from a brief): [evals-cases.test.ts](../cli/test/evals-cases.test.ts). The release runs them before it ships. |
+| Evals | Maktaba and its seeded copy: [fixtures-flutter.test.ts](../cli/test/fixtures-flutter.test.ts). The four cases (two features, the seeded review, Sahm from a brief): [evals-cases.test.ts](../cli/test/evals-cases.test.ts). The release's tests check the fixtures and the cases' definitions; the eval runs themselves (an agent working each case) are run by hand, not by the release. Pending until the four runs are recorded. |
 | Agents | The package for other agents carries the whole skill, the Flutter guide with it: [agents-package.test.ts](../cli/test/agents-package.test.ts), [plugin.test.ts](../cli/test/plugin.test.ts). |
