@@ -347,7 +347,7 @@ describe("Jetpack Compose in the skill and the modes", () => {
 
   test("init offers Compose, starts it from Android Studio's Empty Activity template, and offers to write the template's files", () => {
     const init = read("modes/init.md");
-    for (const s of ["an Android app in Jetpack Compose", "(../adapters/compose/README.md)", "Empty Activity", "no command-line starter", "write the template's files"]) {
+    for (const s of ["an Android app in Jetpack Compose", "(../adapters/compose/README.md)", "Empty Activity", "no command-line starter", "write the template's files", "the Gradle wrapper, which the guide makes without Gradle installed"]) {
       expect(init).toContain(s);
     }
   });

@@ -246,6 +246,13 @@ describe("the Compose guide", () => {
     expect(read("compose/README.md")).not.toContain("8.5");
   });
 
+  test("README: the wrapper is made with no Gradle installed, from a cached Gradle or Gradle's own release, on Android Studio's JDK (Task 15)", () => {
+    has("README.md", [
+      "No Gradle needs to be installed", "`JAVA_HOME`", "C:\\Program Files\\Android\\Android Studio\\jbr", "/Applications/Android Studio.app/Contents/jbr/Contents/Home",
+      "~/.gradle/wrapper/dists/", "https://services.gradle.org/distributions/gradle-8.14.3-bin.zip", "`.sha256`", "`Expand-Archive`", "`curl.exe`",
+      "bin/gradle wrapper --gradle-version 8.14.3", "`bin\\gradle.bat`", "sdk.dir=C:/Users/you/AppData/Local/Android/Sdk", "JAVA_HOME is not set",
+    ]);
+  });
 
   test("tokens.md: wiring MotifTheme in, reading it in composables, fonts, the Arabic companion and switching variants", () => {
     has("tokens.md", [

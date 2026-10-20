@@ -72,7 +72,16 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 - `app/src/main/java/com/example/myapp/MainActivity.kt`: a `ComponentActivity` whose `onCreate` calls `enableEdgeToEdge()` and `setContent { … }` ([theme code](tokens.md#wiring-it-in) shows it with `MotifTheme`).
 - `.gitignore`: `.gradle/`, `build/`, `local.properties`, `.kotlin/`, `.idea/`.
 
-The Gradle wrapper (`gradlew`, `gradlew.bat` and `gradle/wrapper/gradle-wrapper.jar`) isn't text you can write. With Gradle installed, make it first: in the new folder, write only an empty `settings.gradle.kts`, run `gradle wrapper --gradle-version 8.14.3`, and then write the build files above (with them in place, the installed Gradle would apply the Android plugin first, and an older one fails). Otherwise ask the developer to open the folder in Android Studio and accept if it offers to create the wrapper, or to copy the wrapper from another Android project. `motif shot` runs the project's own wrapper and stops without it. Without Android Studio, set `ANDROID_HOME` or write `sdk.dir` in `local.properties` so the developer's own builds find the SDK.
+The Gradle wrapper (`gradlew`, `gradlew.bat` and `gradle/wrapper/gradle-wrapper.jar`) isn't text you can write: Gradle makes it, and `motif shot` runs the project's own wrapper and stops without it. Make it before the build files, in the new folder with only an empty `settings.gradle.kts` (with the build files in place, Gradle would apply the Android plugin first, and an older Gradle fails). No Gradle needs to be installed:
+
+1. **A JDK for Gradle.** Gradle runs on `JAVA_HOME`, or the `java` on the PATH. When neither is set, set `JAVA_HOME` for these commands to the JDK Android Studio brings, the one `motif doctor` found: `C:\Program Files\Android\Android Studio\jbr` on Windows, `/Applications/Android Studio.app/Contents/jbr/Contents/Home` on macOS, `/opt/android-studio/jbr` on Linux.
+2. **A Gradle to run once,** the first of these:
+   - `gradle` on the PATH;
+   - a Gradle that another Android build already downloaded: any `gradle-<version>` folder (8.7 or newer) in `~/.gradle/wrapper/dists/gradle-<version>-bin/<random>/` (`%USERPROFILE%\.gradle\…` on Windows). No download;
+   - Gradle's own release: download `https://services.gradle.org/distributions/gradle-8.14.3-bin.zip` (about 130 MB) into a new temporary folder outside the project, check it against the SHA-256 at the same address with `.sha256` added, and unzip it there (`unzip`, or `Expand-Archive` in PowerShell). Use `curl.exe` in Windows PowerShell, where `curl` is another command.
+3. **Make the wrapper:** from the new folder, run that Gradle's `bin/gradle wrapper --gradle-version 8.14.3` (`bin\gradle.bat` in PowerShell or Command Prompt), and delete the temporary folder.
+
+Then write the build files above, and `local.properties` with the Android SDK folder `motif doctor` found, in forward slashes, so Gradle finds the SDK without `ANDROID_HOME`: `sdk.dir=C:/Users/you/AppData/Local/Android/Sdk` (Android Studio writes the same with escaped backslashes). `.gitignore` keeps it out of git. With no network and no Gradle anywhere, ask the developer to open the folder in Android Studio and accept if it offers to create the wrapper, or to copy the wrapper from another Android project.
 
 ## Folders
 
@@ -104,7 +113,7 @@ Each app can have its own screenshot setup: `mobile/android/app/design/states/Se
 
 ## Build, type-check and run
 
-Run Gradle from the project's folder (where `settings.gradle.kts` is), through its wrapper: `./gradlew` in a POSIX shell and PowerShell, `gradlew` in Command Prompt.
+Run Gradle from the project's folder (where `settings.gradle.kts` is), through its wrapper: `./gradlew` in a POSIX shell and PowerShell, `gradlew` in Command Prompt. When it says `JAVA_HOME is not set`, set `JAVA_HOME` for the command to Android Studio's JDK, as in [starting a new project](#starting-a-new-project) (`motif shot` finds the JDK itself).
 
 - `./gradlew :app:compileDebugKotlin`: the compiler, as a type check. Run it after every change; it must finish without errors.
 - `./gradlew :app:assembleDebug`: builds the app. `./gradlew :app:installDebug` installs it on a connected phone or a running emulator; Android Studio's **Run** does the same.
