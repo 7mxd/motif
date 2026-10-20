@@ -1,0 +1,4 @@
+{
+  "GET /books": "fixtures/books.json",
+  "GET /loans": "fixtures/loans.json"
+}

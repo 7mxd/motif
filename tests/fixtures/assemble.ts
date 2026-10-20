@@ -2,11 +2,17 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-export const FIXTURE_NAMES = ["react-contract-app", "react-seeded-app", "plain-contract-site", "plain-seeded-site"] as const;
+export const FIXTURE_NAMES = [
+  "react-contract-app", "react-seeded-app", "plain-contract-site", "plain-seeded-site", "flutter-contract-app", "flutter-seeded-app",
+] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
 
 /** Each seeded fixture is its base fixture plus an overlay. */
-const BASES: Partial<Record<FixtureName, FixtureName>> = { "react-seeded-app": "react-contract-app", "plain-seeded-site": "plain-contract-site" };
+const BASES: Partial<Record<FixtureName, FixtureName>> = {
+  "react-seeded-app": "react-contract-app",
+  "plain-seeded-site": "plain-contract-site",
+  "flutter-seeded-app": "flutter-contract-app",
+};
 
 const FIXTURES = import.meta.dir;
 

@@ -8,6 +8,8 @@ Fixtures and evaluations for Motif. Nothing here ships to users: skill installs 
 - **`fixtures/react-seeded-app/`** — the same app with 23 planted problems: `overlay/` holds the files that differ, and `seeded-issues.json` is the exact list of problems and where each one is. Test C reviews a copy and is graded against the list. Its [README](fixtures/react-seeded-app/README.md) describes every problem.
 - **`fixtures/plain-contract-site/`** — Kitepost, a one-page postcard tool in plain HTML, CSS and JavaScript (no framework, no build): a design guide from the Soft starting style, its own variables defined from roles, the plain web guide's components it uses, and three state scripts (`design/states/`) for the screens behind its form. CI checks it with `motif validate`, `motif check` and, where a browser is found, `motif shot --audit` in every state (`cli/test/fixtures-plain-contract.test.ts`). Test B's `b-plain` adds a page to a copy.
 - **`fixtures/plain-seeded-site/`** — the same site with 18 planted problems, listed in its `seeded-issues.json`, and without the state scripts (a review writes its own). Test C's `c-plain` reviews a copy. Its [README](fixtures/plain-seeded-site/README.md) describes every problem.
+- **`fixtures/flutter-contract-app/`** — Maktaba, a neighbourhood library app in Flutter (Material 3, go_router, Riverpod, `shared_preferences`, an HTTP catalogue client), in English and Arabic: a design guide from the Minimal starting style with a Kids' corner variant (colours only) and Readex Pro for Arabic, the generated theme (`lib/design/motif_theme.dart`), and four screens plus a book's page (`/`, `/books`, `/books/:id`, `/loans`, `/sign-in`). `design/states/setup.dart` signs screenshots in, and `design/states/http.json` answers the catalogue from `design/fixtures/`. CI checks it with `motif validate`, `motif check` and `motif tokens`, and where Flutter is installed with `flutter analyze` and `motif shot --audit` in both variants, light and dark, left to right and right to left (`cli/test/fixtures-flutter.test.ts`). Test B's Flutter cases add features to copies of it.
+- **`fixtures/flutter-seeded-app/`** — Maktaba with 14 planted problems (8 exact, 6 that need judgement), listed in its `seeded-issues.json`. Test C's Flutter case reviews a copy. Its [README](fixtures/flutter-seeded-app/README.md) describes every problem.
 - **`fixtures/briefs/`** — three briefs (Stride, Ledgerly, Bloom) for test D's new apps.
 - **`fixtures/assemble.ts`** — builds a working copy of any of these fixtures in an empty folder:
 
@@ -16,9 +18,11 @@ Fixtures and evaluations for Motif. Nothing here ships to users: skill installs 
   bun tests/fixtures/assemble.ts react-seeded-app <empty folder>
   bun tests/fixtures/assemble.ts plain-contract-site <empty folder>
   bun tests/fixtures/assemble.ts plain-seeded-site <empty folder>
+  bun tests/fixtures/assemble.ts flutter-contract-app <empty folder>
+  bun tests/fixtures/assemble.ts flutter-seeded-app <empty folder>
   ```
 
-  Then run `npm install` in a React app's folder to build or run it; a plain site needs nothing installed.
+  Then run `npm install` in a React app's folder to build or run it, or `flutter pub get` in a Flutter app's; a plain site needs nothing installed.
 
 ## Evals
 

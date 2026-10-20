@@ -1,0 +1,79 @@
+{
+  "@@locale": "en",
+  "appTitle": "Maktaba",
+  "navHome": "Home",
+  "navBooks": "Books",
+  "navLoans": "Loans",
+  "homeGreeting": "Good to see you",
+  "homeIntro": "Find a book, see whether it's on the shelf, and keep track of what you've borrowed.",
+  "homeNewHeading": "New on the shelves",
+  "homeSeeAll": "See all books",
+  "homeLoansHeading": "Your loans",
+  "homeLoansSummary": "{count, plural, =0{Nothing on loan right now.} =1{1 book on loan, due back on {date}.} other{{count} books on loan. The next is due back on {date}.}}",
+  "@homeLoansSummary": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "date": { "type": "DateTime", "format": "MMMd" }
+    }
+  },
+  "homeSeeLoans": "See your loans",
+  "homeSignInPrompt": "Sign in with your library card to see your loans and renew them.",
+  "homeKidsCorner": "Kids' corner colours",
+  "homeKidsCornerHelp": "A softer palette, as in the children's room.",
+  "booksTitle": "Books",
+  "booksLoading": "Loading the catalogue",
+  "booksEmpty": "The catalogue is empty for now.",
+  "booksError": "We couldn't load the catalogue. Check your connection and try again.",
+  "tryAgain": "Try again",
+  "onShelf": "{count, plural, =1{1 copy on the shelf} other{{count} copies on the shelf}}",
+  "@onShelf": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "allOnLoan": "All copies on loan",
+  "dueOn": "Due {date}",
+  "@dueOn": {
+    "placeholders": { "date": { "type": "DateTime", "format": "MMMd" } }
+  },
+  "dueSoon": "Due soon, {date}",
+  "@dueSoon": {
+    "placeholders": { "date": { "type": "DateTime", "format": "MMMd" } }
+  },
+  "overdue": "Overdue since {date}",
+  "@overdue": {
+    "placeholders": { "date": { "type": "DateTime", "format": "MMMd" } }
+  },
+  "bookDetails": "{year} · Shelf {shelfMark}",
+  "@bookDetails": {
+    "placeholders": { "year": { "type": "int" }, "shelfMark": { "type": "String" } }
+  },
+  "bookAbout": "About this book",
+  "bookBorrowHint": "To borrow it, take a copy from shelf {shelfMark} to the front desk.",
+  "@bookBorrowHint": {
+    "placeholders": { "shelfMark": { "type": "String" } }
+  },
+  "bookNotFound": "We couldn't find that book. It may have left the catalogue.",
+  "backToBooks": "Back to books",
+  "loansTitle": "Your loans",
+  "loansLoading": "Loading your loans",
+  "loansEmpty": "You have nothing on loan.",
+  "loansError": "We couldn't load your loans. Check your connection and try again.",
+  "renew": "Renew",
+  "renewalsLeft": "{count, plural, =0{No renewals left} =1{1 renewal left} other{{count} renewals left}}",
+  "@renewalsLeft": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "renewed": "Renewed. The new date is in your email.",
+  "renewFailed": "We couldn't renew this book. Ask at the front desk.",
+  "signOut": "Sign out",
+  "signInTitle": "Sign in",
+  "signInIntro": "Use the number on your library card and your PIN.",
+  "signInCard": "Library card number",
+  "signInCardHelp": "The 10 digits under the barcode.",
+  "signInPin": "PIN",
+  "showPin": "Show PIN",
+  "hidePin": "Hide PIN",
+  "signInButton": "Sign in",
+  "signInMissing": "Enter your card number and PIN.",
+  "signInFailed": "That card number and PIN don't match. Try again, or ask at the front desk.",
+  "signInLostCard": "Lost your card? Ask at the front desk for a new one."
+}
