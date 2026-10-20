@@ -26,7 +26,7 @@ Only these, and only in the copy:
 | 2. `extract` drafts the app's light and dark palette; a minimal guide validates | Failed at first: the palette wasn't read, so dark mode was copied from light. Fixed (problem 1); passed after the fix, with two values changed so the guide validates. Some roles and the fonts need work (problems 4–6) |
 | 3. `tokens` | Passed. The theme type-checks once Reanimated is installed, as the note said |
 | 4. `check` | Passed: 376 problems in 31 files, and they make sense |
-| 5. `shot --audit --variant all --rtl` | `--variant all` was refused: the guide has no variants (problem 3). Without it, every screen reached rendered, in English and Arabic, at every size. The audit found real problems, missed the unnamed tab bar (problem 2, fixed) and has some noise (problems 7, 8) |
+| 5. `shot --audit --variant all --rtl` | `--variant all` was refused: the guide has no variants (problem 3). Without it, every screen reached rendered, in English and Arabic, at every size. The audit found real problems, missed the unnamed tab bar (problem 2, fixed) and had some noise (problem 7 open; problem 8 fixed) |
 
 ### 1. doctor
 
@@ -88,7 +88,7 @@ npx expo install react-native-reanimated react-native-worklets
 - The theme went in `src/design/` (the app has `src/` and an `@/*` alias to it), 188 lines, next to the app's own `src/theme/`, which wasn't touched; neither was `package.json`, `app.json` or `babel.config.js`.
 - Onest came from the `@expo-google-fonts/onest` package the app already lists.
 - Before Reanimated was installed, `npx tsc --noEmit` failed only on the theme's `react-native-reanimated` import. After the printed `npx expo install` line (Reanimated 4.1.1 with worklets 0.5.1), `tokens` said "up to date" and `tsc` found no errors.
-- The note says "your root layout"; this app has no layout file, only `App.tsx` (problem 9).
+- The note said "your root layout"; this app has no layout file, only `App.tsx` (problem 9, fixed: it now says "wrap your root component (App.tsx)").
 
 ### 4. check
 
@@ -117,7 +117,7 @@ The state scripts click the tab bar's tabs (`[role="tab"]`, from `accessibilityR
 
 - Real: "Barber" on its dark category card is 1.15:1 (critical); the muted text (4.16:1), the search placeholder (4.28:1) and "See all" in the mint accent (3.14:1); the notification bell and the search screen's back button have no name; the bell (42 px), "See all" (41×17), the back button (36–40 px), the filter chips (37 px tall), "Filters" and the text fields are under 44 px.
 - Missed, then fixed: the unnamed tabs (problem 2).
-- Likely noise: three reduced-motion findings that are probably the loading spinners (problem 8).
+- Noise: three reduced-motion findings, which were the loading spinners (problem 8, fixed).
 - Each finding's fix is in React Native's words: `accessibilityLabel`, `hitSlop`, `useReducedMotion()`.
 - The contrast findings say "in light and dark mode" because the app draws light in both.
 
@@ -134,14 +134,14 @@ These screenshots show HiSalon's app signed out, with no data: nothing personal 
 | # | Severity | Problem | Status |
 |---|---|---|---|
 | 1 | Important | **`extract` didn't read a palette written as two top-level objects** (`export const light: Palette = { … }`, `export const dark = { … }`), only `light` and `dark` inside another object, so the whole palette was missed and dark mode was copied from light. | Fixed: "fix(extract): an Expo app's top-level light and dark palette objects are paired by name". Objects with fewer than two colours, or with a style's colour keys (`backgroundColor`), aren't taken for palettes |
-| 2 | Important | **The name audit skipped tabs.** On Expo's web target a `Pressable` with `accessibilityRole="tab"` is `role="tab"`, which neither axe's name rules nor Motif's own check covered, so an icon-only tab bar (HiSalon's four tabs) passed. Switches, checkboxes, radios, menu items and options had the same gap. | Fixed: "fix(audit): an Expo app's unnamed tabs, switches and checkboxes are reported". React Native apps only; web audits are unchanged |
+| 2 | Important | **The name audit skipped tabs.** On Expo's web target a `Pressable` with `accessibilityRole="tab"` is `role="tab"`, which neither axe's name rules nor Motif's own check covered, so an icon-only tab bar (HiSalon's four tabs) passed. Switches, checkboxes, radios, menu items and options had the same gap. | Fixed: "fix(audit): an Expo app's unnamed tabs, switches and checkboxes are reported", then "fix(audit): an Expo app's unnamed control is named by its kind: the tab, the switch" ("The tab has no name a screen reader can say."). React Native apps only; web audits are unchanged |
 | 3 | Minor | **`--variant all` on a guide without variants is refused with no next step** ("This design guide has no variants.", exit 2). Every refusal should say what to do; `all` could also just draw the default. The same message comes from `preview` and from every stack. | Open |
-| 4 | Moderate | **Some drafted colour roles are off.** `action-primary` and `focus` became `#D4A574` from the category art, not the app's `accent` (`#1F9F87`): "accent" isn't a name for `action-primary` (and can't simply be one, since shadcn's `--accent` is a hover fill). `cardBorder` isn't taken for `border`, which gets the default `#D1D5DB` in dark mode too. | Open |
+| 4 | Moderate | **Some drafted colour roles are off.** `action-primary` and `focus` became `#D4A574` from the category art, not the app's `accent` (`#1F9F87`): "accent" isn't a name for `action-primary` (and can't simply be one on the web, since shadcn's `--accent` is a hover fill). `cardBorder` isn't taken for `border`, which gets the default `#D1D5DB` in dark mode too. | The action colour is fixed: "fix(extract): an Expo palette's tint or accent is drafted as the action colour" (React Native only; HiSalon now drafts `#1F9F87`, dark `#5DCBB1`, and create-expo-app's older palette its `tint`). The border is open |
 | 5 | Moderate | **No Arabic companion, and the bundled font isn't found.** The app loads Thmanyah Sans with `useFonts(fontAssets)`, an object defined elsewhere with `require("…ttf")` entries, and uses it for Arabic. `extract` reads only `useFonts({ … })` written inline and `@expo-google-fonts` imports, so it lists only Onest, and the draft has no companion. | Open |
 | 6 | Minor | **The draft's type roles miss the commonest small sizes.** Caption is 10 px, while 12 px (22 uses) and 11 px (11) are common, so `check` suggests `type.label (13px)` for 12 px text. | Open |
 | 7 | Moderate | **"Dark looks like light" needs byte-identical pictures.** HiSalon draws light in dark mode, but its loading spinners make each dark screenshot differ by a few pixels, so the note isn't given (the identical-variant note works the same way). | Open |
-| 8 | Minor | **Loading spinners are reported as motion that ignores reduced motion** (three major findings), with advice (`useReducedMotion()`) that doesn't apply to `ActivityIndicator`. | Open, to confirm which elements they are |
-| 9 | Minor | **The wiring note says "your root layout"** for an app without Expo Router, whose root is `App.tsx`. | Open |
+| 8 | Important | **Loading spinners are reported as motion that ignores reduced motion** (three major findings), with advice (`useReducedMotion()`) that doesn't apply to `ActivityIndicator`. react-native-web draws it as `role="progressbar"` around a view with an endless CSS rotation. | Fixed: "fix(audit): an Expo app's loading spinner isn't motion that ignores reduce motion" (React Native only: it's the platform's spinner, which the app can't stop; a web page's own spinner still counts). HiSalon's re-run has no motion findings, so all three were spinners |
+| 9 | Minor | **The wiring note says "your root layout"** for an app without Expo Router, whose root is `App.tsx`. | Fixed: "fix(tokens): the wiring note for an Expo app without Expo Router names its root component" ("wrap your root component (App.tsx)") |
 
 Not Motif's to fix, but worth knowing: Expo's web target mirrors what the app keeps left to right on a phone when the app doesn't use `I18nManager`, and an app whose screens need an API or a signed-in user shows spinners and signed-out screens, since React Native has no `setup` or `http.json` like Flutter's (state scripts run after load).
 
