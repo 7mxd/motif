@@ -85,7 +85,7 @@ struct MotifColors: Equatable, Sendable {
 }
 
 extension EnvironmentValues {
-    /// The guide's colours for the colour scheme (and the design variant) here.
+    /// The guide's colours for the colour scheme here.
     var motifColors: MotifColors { MotifColors.resolve(colorScheme) }
 }
 
@@ -151,9 +151,10 @@ enum MotifShadows {
 }
 
 extension View {
-    /// Draws the shadow's layers around the view, the first on top as in CSS.
+    /// Draws the shadow's layers around the view in CSS's order, the first on top. SwiftUI shadows the view with
+    /// the earlier layers' shadows in it, so each later layer also casts the earlier ones: they compound a little.
     func motifShadow(_ layers: [MotifShadow]) -> some View {
-        layers.reversed().reduce(AnyView(self)) { view, layer in
+        layers.reduce(AnyView(self)) { view, layer in
             AnyView(view.shadow(color: layer.color, radius: layer.radius, x: layer.x, y: layer.y))
         }
     }
@@ -193,8 +194,9 @@ enum MotifMotion {
     }
 }
 
-/// A type role: its font (in the role's family, scaled with Dynamic Type relative to the nearest text style),
-/// its line spacing and its letter spacing. It carries no colour, so the view's foreground style applies.
+/// A type role: its font, its line spacing and its letter spacing. It carries no colour, so the view's
+/// foreground style applies. A role in a named font (Font.custom) scales with Dynamic Type, relative to the nearest
+/// text style; a role in the system font (Font.system(size:)) keeps its size.
 ///
 /// Use it with .motifFont(.body), which sets all three, or as a Font: MotifType.body.font().
 struct MotifType: Sendable {
@@ -426,7 +428,7 @@ extension EnvironmentValues {
     /// The design variant .motifTheme(variant:) chose.
     @Entry var motifVariant: MotifVariant = .defaultVariant
 
-    /// The guide's colours for the colour scheme (and the design variant) here.
+    /// The guide's colours for the colour scheme and the design variant here.
     var motifColors: MotifColors { MotifColors.resolve(colorScheme, variant: motifVariant) }
 }
 
@@ -502,9 +504,10 @@ enum MotifShadows {
 }
 
 extension View {
-    /// Draws the shadow's layers around the view, the first on top as in CSS.
+    /// Draws the shadow's layers around the view in CSS's order, the first on top. SwiftUI shadows the view with
+    /// the earlier layers' shadows in it, so each later layer also casts the earlier ones: they compound a little.
     func motifShadow(_ layers: [MotifShadow]) -> some View {
-        layers.reversed().reduce(AnyView(self)) { view, layer in
+        layers.reduce(AnyView(self)) { view, layer in
             AnyView(view.shadow(color: layer.color, radius: layer.radius, x: layer.x, y: layer.y))
         }
     }
@@ -544,8 +547,9 @@ enum MotifMotion {
     }
 }
 
-/// A type role: its font (in the role's family, scaled with Dynamic Type relative to the nearest text style),
-/// its line spacing and its letter spacing. It carries no colour, so the view's foreground style applies.
+/// A type role: its font, its line spacing and its letter spacing. It carries no colour, so the view's
+/// foreground style applies. A role in a named font (Font.custom) scales with Dynamic Type, relative to the nearest
+/// text style; a role in the system font (Font.system(size:)) keeps its size.
 ///
 /// Use it with .motifFont(.body), which sets all three, or as a Font: MotifType.body.font().
 /// A role with an Arabic companion uses it when the layout is right to left or the language is written in Arabic script.

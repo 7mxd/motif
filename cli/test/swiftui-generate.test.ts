@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { isMotifGenerated, TS_HEADER } from "../src/generate/header";
 import { buildThemeSet } from "../src/generate/theme";
 import { generateSwiftUI, swiftColor, swiftMember, textStyleFor } from "../src/stacks/swiftui/generate";
-import { docFrom, hexColor, partnerTokens, validTokens, withCompanion } from "./helpers";
+import { docFrom, hexColor, partnerTokens, twoVariantTokens, validTokens, withCompanion } from "./helpers";
 
 const swiftFor = (tokens: any) => {
   const files = generateSwiftUI(buildThemeSet(docFrom(tokens)));
@@ -32,8 +32,9 @@ describe("generateSwiftUI, the test guide (no variants)", () => {
 
   test("colours are read from the environment, which follows the colour scheme", () => {
     expect(swift).toContain("extension EnvironmentValues {");
-    expect(swift).toContain("    var motifColors: MotifColors { MotifColors.resolve(colorScheme) }");
+    expect(swift).toContain("    /// The guide's colours for the colour scheme here.\n    var motifColors: MotifColors { MotifColors.resolve(colorScheme) }");
     expect(swift).not.toContain("@Entry");
+    expect(swift).not.toContain("design variant");
   });
 
   test("without variants: no variant enum, environment value or override; .motifTheme() sets the accent colour", () => {
@@ -55,7 +56,10 @@ describe("generateSwiftUI, the test guide (no variants)", () => {
     expect(swift).toContain(
       "    static let md: [MotifShadow] = [\n        MotifShadow(color: Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 0.1), radius: 6, x: 0, y: 4),\n    ]",
     );
-    expect(swift).toContain("    func motifShadow(_ layers: [MotifShadow]) -> some View {");
+    // In CSS's order: the first layer is applied first, so it's drawn on top of the later ones' shadows.
+    expect(swift).toContain("    func motifShadow(_ layers: [MotifShadow]) -> some View {\n        layers.reduce(AnyView(self)) { view, layer in\n");
+    expect(swift).not.toContain("reversed()");
+    expect(swift).toContain("so each later layer also casts the earlier ones");
   });
 
   test("a shadow's inset layers are left out, and one with none left is empty", () => {
@@ -94,6 +98,9 @@ describe("generateSwiftUI, the test guide (no variants)", () => {
     expect(swift).toContain('Font.custom("Inter", size: 20, relativeTo: .title3).weight(.semibold)');
     expect(swift).toContain('Font.custom("Inter", size: 14, relativeTo: .subheadline).weight(.medium)');
     expect(swift).toContain('Font.custom("Inter", size: 12, relativeTo: .caption).weight(.regular)');
+    // Only a role in a named font scales with Dynamic Type: Font.system(size:) keeps its size.
+    expect(swift).toContain("A role in a named font (Font.custom) scales with Dynamic Type");
+    expect(swift).toContain("a role in the system font (Font.system(size:)) keeps its size.");
     expect(swift).toContain("    func motifFont(_ type: MotifType) -> some View {");
     expect(swift).toContain(".lineSpacing(type.lineSpacing)");
     expect(swift).toContain(".tracking(type.tracking)");
@@ -114,7 +121,9 @@ describe("generateSwiftUI, the test guide (no variants)", () => {
     t.font.title.$value.fontFamily = ["SF Mono", "monospace"];
     t.font.heading.$value.fontFamily = ["Segoe UI", "ui-rounded"];
     t.font.caption.$value.fontFamily = ["Georgia", "serif"];
+    t.font.label.$value.fontFamily = ["Times", "serif"];
     const out = swiftFor(t);
+    expect(out).toContain('Font.custom("Times", size: 14, relativeTo: .subheadline).weight(.medium)');
     expect(out).toContain("Font.system(size: 40, weight: .bold, design: .serif)");
     expect(out).toContain("Font.system(size: 28, weight: .bold, design: .monospaced)");
     // Segoe UI isn't on Apple's platforms: the next family in the list.
@@ -176,6 +185,19 @@ describe("generateSwiftUI, two variants and an Arabic companion", () => {
 
   test("the whole file", () => {
     expect(swift).toMatchSnapshot();
+  });
+});
+
+describe("generateSwiftUI, variants whose default isn't called default", () => {
+  const swift = swiftFor(twoVariantTokens());
+
+  test("every default is the guide's own default variant", () => {
+    expect(swift).toContain("enum MotifVariant: String, CaseIterable, Sendable {\n    case women\n    case men\n}");
+    expect(swift).toContain("    static func resolve(_ scheme: ColorScheme, variant: MotifVariant = .women) -> MotifColors {");
+    expect(swift).toContain("        case .women: return scheme == .dark ? dark : light\n        case .men: return scheme == .dark ? menDark : menLight\n");
+    expect(swift).toContain("    @Entry var motifVariant: MotifVariant = .women\n");
+    expect(swift).toContain("    func motifTheme(variant: MotifVariant = .women) -> some View {");
+    expect(swift).not.toContain("defaultVariant");
   });
 });
 

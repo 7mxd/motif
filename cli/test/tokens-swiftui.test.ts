@@ -24,7 +24,7 @@ const THEME = "SwiftUIMin/Design/MotifTheme.swift";
 const APP_FILE = "SwiftUIMin/SwiftUIMinApp.swift";
 const TOKENS = JSON.stringify(validTokens());
 
-/** The fixture's project as Xcode 16's App template makes it: SwiftUIMin is a synchronized folder. */
+/** The fixture's project, modelled on Xcode 16's App template: SwiftUIMin is a synchronized folder. */
 const swiftApp = (files: Record<string, string> = {}) =>
   makeProject({
     [PBXPROJ]: fixture(PBXPROJ),
@@ -107,16 +107,28 @@ describe("motif tokens for a SwiftUI app", () => {
     expect(notes(r)).not.toContain("Motif already has");
   });
 
-  test("a Google family Motif has downloaded for screenshots: the note says where its files are", async () => {
+  test("a Google family Motif has downloaded for screenshots: where its files are, a folder of its own, and the fonts list entry", async () => {
     const home = tempDir("motif-home-");
     mkdirSync(join(home, "fonts/google/Inter"), { recursive: true });
-    writeFileSync(join(home, "fonts/google/Inter/files.json"), JSON.stringify([{ weight: 400, italic: false, file: "regular.ttf" }]));
-    writeFileSync(join(home, "fonts/google/Inter/regular.ttf"), "ttf");
+    const faces = [{ weight: 400, italic: false, file: "regular.ttf" }, { weight: 700, italic: true, file: "700italic.ttf" }];
+    writeFileSync(join(home, "fonts/google/Inter/files.json"), JSON.stringify(faces));
+    for (const f of faces) writeFileSync(join(home, "fonts/google/Inter", f.file), "ttf");
     const before = process.env.MOTIF_HOME;
     process.env.MOTIF_HOME = home;
     try {
       const r = await runTokens(swiftApp(), ctx);
-      expect(notes(r)).toContain(`Motif already has Inter's .ttf files from its screenshots, in ${join(home, "fonts/google/Inter")}: copy them into design/fonts/ to use them.`);
+      const entry = {
+        family: "Inter",
+        files: [
+          { path: "design/fonts/Inter/regular.ttf", weight: 400, style: "normal" },
+          { path: "design/fonts/Inter/700italic.ttf", weight: 700, style: "italic" },
+        ],
+      };
+      expect(notes(r)).toContain(
+        `Motif already has Inter's .ttf files from its screenshots, in ${join(home, "fonts/google/Inter")}. To bundle them, copy them into design/fonts/Inter/ and add this to the fonts list in design/tokens.json ($extensions › dev.motif › fonts):\n` +
+          `${JSON.stringify(entry, null, 2)}\n` +
+          "As a project font, Inter then loads from these files everywhere, the web stacks' theme and previews included, not from Google Fonts.",
+      );
     } finally {
       process.env.MOTIF_HOME = before;
     }
@@ -124,40 +136,40 @@ describe("motif tokens for a SwiftUI app", () => {
 
   test("a project font's files are copied into the target's Fonts folder, with the UIAppFonts lines", async () => {
     const root = swiftApp({
-      "design/tokens.json": brandTokens(["design/fonts/Brand-Regular.ttf", "design/fonts/Brand-Bold.otf"]),
-      "design/fonts/Brand-Regular.ttf": "regular",
-      "design/fonts/Brand-Bold.otf": "bold",
+      "design/tokens.json": brandTokens(["design/fonts/BrandSans-Regular.ttf", "design/fonts/BrandSans-Bold.otf"]),
+      "design/fonts/BrandSans-Regular.ttf": "regular",
+      "design/fonts/BrandSans-Bold.otf": "bold",
     });
     const r = await runTokens(root, ctx);
     expect(r.exitCode).toBe(0);
-    expect(statuses(r)["SwiftUIMin/Fonts/Brand-Regular.ttf"]).toBe("created");
-    expect(statuses(r)["SwiftUIMin/Fonts/Brand-Bold.otf"]).toBe("created");
-    expect(readFileSync(join(root, "SwiftUIMin/Fonts/Brand-Bold.otf"), "utf8")).toBe("bold");
+    expect(statuses(r)["SwiftUIMin/Fonts/BrandSans-Regular.ttf"]).toBe("created");
+    expect(statuses(r)["SwiftUIMin/Fonts/BrandSans-Bold.otf"]).toBe("created");
+    expect(readFileSync(join(root, "SwiftUIMin/Fonts/BrandSans-Bold.otf"), "utf8")).toBe("bold");
     expect(readFileSync(join(root, THEME), "utf8")).toContain('Font.custom("Brand Sans", size: 16, relativeTo: .callout).weight(.regular)');
     expect(notes(r)).toContain(
       [
         'Register the theme\'s fonts: in Xcode, open the SwiftUIMin target\'s Info tab and add "Fonts provided by application" (UIAppFonts) with these items, or add these lines to its Info.plist:',
         "<key>UIAppFonts</key>",
         "<array>",
-        "    <string>Brand-Regular.ttf</string>",
-        "    <string>Brand-Bold.otf</string>",
+        "    <string>BrandSans-Regular.ttf</string>",
+        "    <string>BrandSans-Bold.otf</string>",
         "</array>",
         "Xcode already copies SwiftUIMin/Fonts into the app: SwiftUIMin is a synchronized folder.",
       ].join("\n"),
     );
     expect(notes(r)).not.toContain("draws Brand Sans");
-    expect(statuses(await runTokens(root, ctx))["SwiftUIMin/Fonts/Brand-Bold.otf"]).toBe("unchanged");
+    expect(statuses(await runTokens(root, ctx))["SwiftUIMin/Fonts/BrandSans-Bold.otf"]).toBe("unchanged");
   });
 
   test("font files already in the target are registered where they are, and an Info.plist that lists them gets no note", async () => {
     const root = swiftApp({
-      "design/tokens.json": brandTokens(["SwiftUIMin/Resources/Brand-Regular.ttf"]),
-      "SwiftUIMin/Resources/Brand-Regular.ttf": "regular",
+      "design/tokens.json": brandTokens(["SwiftUIMin/Resources/BrandSans-Regular.ttf"]),
+      "SwiftUIMin/Resources/BrandSans-Regular.ttf": "regular",
     });
     const r = await runTokens(root, ctx);
     expect(Object.keys(statuses(r)).some((p) => p.includes("/Fonts/"))).toBe(false);
-    expect(notes(r)).toContain("    <string>Brand-Regular.ttf</string>");
-    writeFileSync(join(root, "SwiftUIMin/Info.plist"), "<plist><dict><key>UIAppFonts</key><array><string>Brand-Regular.ttf</string></array></dict></plist>");
+    expect(notes(r)).toContain("    <string>BrandSans-Regular.ttf</string>");
+    writeFileSync(join(root, "SwiftUIMin/Info.plist"), "<plist><dict><key>UIAppFonts</key><array><string>BrandSans-Regular.ttf</string></array></dict></plist>");
     expect(notes(await runTokens(root, ctx))).not.toContain("UIAppFonts");
   });
 
@@ -169,25 +181,69 @@ describe("motif tokens for a SwiftUI app", () => {
   test("a project without synchronized folders: add the theme file and the Fonts folder to the target", async () => {
     const root = swiftApp({
       [PBXPROJ]: classicPbxproj(),
-      "design/tokens.json": brandTokens(["design/fonts/Brand-Regular.ttf"]),
-      "design/fonts/Brand-Regular.ttf": "regular",
+      "design/tokens.json": brandTokens(["design/fonts/BrandSans-Regular.ttf"]),
+      "design/fonts/BrandSans-Regular.ttf": "regular",
     });
     const r = await runTokens(root, ctx);
     expect(statuses(r)[THEME]).toBe("created");
     expect(notes(r)).toContain(`Next: add ${THEME} to the SwiftUIMin target (in Xcode: File › Add Files to "SwiftUIMin"…), then ${USAGE}`);
-    expect(notes(r)).toContain('Then add the SwiftUIMin/Fonts folder to the SwiftUIMin target (in Xcode: File › Add Files to "SwiftUIMin"…, with the target ticked).');
+    expect(notes(r)).toContain('Then add the SwiftUIMin/Fonts folder to the SwiftUIMin target (in Xcode: File › Add Files to "SwiftUIMin"…, choose "Create groups" and tick the target).');
+  });
+
+  test("a project without synchronized folders: a font already in the target's folder is added to the target too", async () => {
+    const root = swiftApp({
+      [PBXPROJ]: classicPbxproj(),
+      "design/tokens.json": brandTokens(["SwiftUIMin/Resources/BrandSans-Regular.ttf"]),
+      "SwiftUIMin/Resources/BrandSans-Regular.ttf": "regular",
+      "SwiftUIMin/Info.plist": "<plist><dict><key>UIAppFonts</key><array><string>BrandSans-Regular.ttf</string></array></dict></plist>",
+    });
+    const r = await runTokens(root, ctx);
+    expect(notes(r)).not.toContain("UIAppFonts");
+    expect(notes(r)).toContain(
+      'Add SwiftUIMin/Resources/BrandSans-Regular.ttf to the SwiftUIMin target too, unless it\'s in it already (in Xcode: File › Add Files to "SwiftUIMin"…, choose "Create groups" and tick the target).',
+    );
+  });
+
+  test("copied files are named for their family: files that only name a weight, from two families, never overwrite each other", async () => {
+    const t = validTokens();
+    t.$extensions["dev.motif"].fonts = [
+      { family: "Inter", files: [{ path: "design/fonts/Inter/regular.ttf", weight: 400, style: "normal" }] },
+      {
+        family: "Brand Sans",
+        files: [
+          { path: "design/fonts/BrandSans/regular.ttf", weight: 400, style: "normal" },
+          { path: "design/fonts/BrandSans/700.ttf", weight: 700, style: "normal" },
+        ],
+      },
+    ];
+    t.font.body.$value.fontFamily = ["Brand Sans", "sans-serif"];
+    const root = swiftApp({
+      "design/tokens.json": JSON.stringify(t),
+      "design/fonts/Inter/regular.ttf": "inter",
+      "design/fonts/BrandSans/regular.ttf": "brand",
+      "design/fonts/BrandSans/700.ttf": "brand bold",
+    });
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)["SwiftUIMin/Fonts/Inter-regular.ttf"]).toBe("created");
+    expect(statuses(r)["SwiftUIMin/Fonts/BrandSans-regular.ttf"]).toBe("created");
+    expect(statuses(r)["SwiftUIMin/Fonts/BrandSans-700.ttf"]).toBe("created");
+    expect(readFileSync(join(root, "SwiftUIMin/Fonts/BrandSans-regular.ttf"), "utf8")).toBe("brand");
+    expect(notes(r)).toContain("    <string>Inter-regular.ttf</string>\n    <string>BrandSans-regular.ttf</string>\n    <string>BrandSans-700.ttf</string>");
   });
 
   test("a Mac app gets the ATSApplicationFontsPath line", async () => {
     const root = swiftApp({
       // The target's own settings name the platform.
       [PBXPROJ]: fixture(PBXPROJ).replace(/SWIFT_VERSION = 5\.0;/g, "SDKROOT = macosx;\n\t\t\t\tSWIFT_VERSION = 5.0;"),
-      "design/tokens.json": brandTokens(["design/fonts/Brand-Regular.ttf"]),
-      "design/fonts/Brand-Regular.ttf": "regular",
+      "design/tokens.json": brandTokens(["design/fonts/BrandSans-Regular.ttf"]),
+      "design/fonts/BrandSans-Regular.ttf": "regular",
     });
     const r = await runTokens(root, ctx);
     expect(notes(r)).toContain("<key>ATSApplicationFontsPath</key>\n<string>.</string>");
     expect(notes(r)).not.toContain("UIAppFonts");
+    // An Info.plist that sets it already gets no note.
+    writeFileSync(join(root, "SwiftUIMin/Info.plist"), "<plist><dict><key>ATSApplicationFontsPath</key><string>.</string></dict></plist>");
+    expect(notes(await runTokens(root, ctx))).not.toContain("ATSApplicationFontsPath");
   });
 
   test("a Swift package app: the theme in the target's folder, which the package builds as it is", async () => {
@@ -195,12 +251,12 @@ describe("motif tokens for a SwiftUI app", () => {
       "Package.swift":
         '// swift-tools-version: 6.0\nimport PackageDescription\nlet package = Package(name: "Desk", platforms: [.macOS(.v14)], targets: [.executableTarget(name: "Desk")])\n',
       "Sources/Desk/DeskApp.swift": 'import SwiftUI\n@main struct DeskApp: App { var body: some Scene { WindowGroup { Text("x") } } }\n',
-      "design/tokens.json": brandTokens(["design/fonts/Brand-Regular.ttf"]),
-      "design/fonts/Brand-Regular.ttf": "regular",
+      "design/tokens.json": brandTokens(["design/fonts/BrandSans-Regular.ttf"]),
+      "design/fonts/BrandSans-Regular.ttf": "regular",
     });
     const r = await runTokens(root, ctx);
     expect(statuses(r)["Sources/Desk/Design/MotifTheme.swift"]).toBe("created");
-    expect(statuses(r)["Sources/Desk/Fonts/Brand-Regular.ttf"]).toBe("created");
+    expect(statuses(r)["Sources/Desk/Fonts/BrandSans-Regular.ttf"]).toBe("created");
     expect(notes(r)).toContain(
       "Next: apply .motifTheme() to your root view in DeskApp.swift (WindowGroup { ContentView().motifTheme() }), then read colours in your views with @Environment(\\.motifColors) private var colors, type with .motifFont(.body) and sizes with MotifSpace. " +
         "Swift Package Manager already builds Sources/Desk/Design/MotifTheme.swift into the Desk target.",

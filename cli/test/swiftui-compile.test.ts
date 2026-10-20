@@ -3,7 +3,7 @@ import { cpSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildThemeSet } from "../src/generate/theme";
 import { generateSwiftUI } from "../src/stacks/swiftui/generate";
-import { docFrom, FIXTURES, heavyStackTests, isMacWithXcode, partnerTokens, validTokens, withCompanion } from "./helpers";
+import { docFrom, FIXTURES, heavyStackTests, isMacWithXcode, partnerTokens, twoVariantTokens, validTokens, withCompanion } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -75,6 +75,28 @@ struct PlainExample: View {
 }
 `;
 
+/** Two variants, women (the default) and men: the defaults the theme's functions take. */
+const WOMEN_USAGE = `import SwiftUI
+
+struct WomenExample: View {
+    @Environment(\\.motifColors) private var colors
+    @Environment(\\.motifVariant) private var variant
+
+    var body: some View {
+        VStack {
+            Text(variant.rawValue).foregroundStyle(colors.surface)
+            Text("Men").motifTheme(variant: .men)
+        }
+        .background(MotifColors.resolve(.dark).surface)
+        .motifTheme()
+        .onAppear {
+            MotifTheme.debugVariantOverride = .men
+            _ = MotifColors.resolve(.light) == MotifColors.light && MotifColors.menDark != MotifColors.dark
+        }
+    }
+}
+`;
+
 function run(cmd: string[], cwd: string): { code: number; out: string } {
   const r = Bun.spawnSync(cmd, { cwd, stdout: "pipe", stderr: "pipe" });
   return { code: r.exitCode ?? 1, out: `${r.stdout.toString()}\n${r.stderr.toString()}` };
@@ -105,7 +127,7 @@ describe("the generated Swift", () => {
     writeFileSync(join(dir, "SwiftUIMin/Design/MotifTheme.swift"), theme!.content);
     writeFileSync(join(dir, "SwiftUIMin/MotifUsage.swift"), USAGE);
 
-    // The fixture as Xcode 16 makes it (Swift 5), Swift 6, and Xcode 26's template (the main actor by default).
+    // The fixture as it is (Swift 5, modelled on Xcode 16's App template), Swift 6, and Xcode 26's template (the main actor by default).
     const modes = [[], ["SWIFT_VERSION=6"], ["SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor", "SWIFT_APPROACHABLE_CONCURRENCY=YES"]];
     for (const mode of modes) {
       const build = run(
@@ -121,7 +143,7 @@ describe("the generated Swift", () => {
     }
   }, 900_000);
 
-  test.skipIf(!heavy.run)("typechecks for macOS 14 and iOS 17, with and without variants, with no warnings", () => {
+  test.skipIf(!heavy.run)("typechecks for macOS 14 and iOS 17, with and without variants (and a default not called default), with no warnings", () => {
     const dir = tempDir("motif-swiftui-tc-");
     const [full] = generateSwiftUI(buildThemeSet(docFrom(tokens)));
     mkdirSync(join(dir, "full"));
@@ -137,14 +159,22 @@ describe("the generated Swift", () => {
     writeFileSync(join(dir, "plain/MotifTheme.swift"), plain!.content);
     writeFileSync(join(dir, "plain/PlainUsage.swift"), PLAIN_USAGE);
 
+    // Variants whose default isn't called "default": every default argument names the guide's own.
+    const [women] = generateSwiftUI(buildThemeSet(docFrom(twoVariantTokens())));
+    expect(women!.content).toContain("variant: MotifVariant = .women");
+    mkdirSync(join(dir, "women"));
+    writeFileSync(join(dir, "women/MotifTheme.swift"), women!.content);
+    writeFileSync(join(dir, "women/WomenUsage.swift"), WOMEN_USAGE);
+
     const targets = [
       ["macosx", "arm64-apple-macos14"],
       ["iphonesimulator", "arm64-apple-ios17.0-simulator"],
     ];
-    for (const shape of ["full", "plain"]) {
+    const usage: Record<string, string> = { full: "MotifUsage.swift", plain: "PlainUsage.swift", women: "WomenUsage.swift" };
+    for (const shape of ["full", "plain", "women"]) {
       for (const [name, target] of targets) {
         for (const mode of [["-swift-version", "5"], ["-swift-version", "6"], ["-swift-version", "6", "-default-isolation", "MainActor"]]) {
-          const files = shape === "full" ? ["MotifTheme.swift", "MotifUsage.swift"] : ["MotifTheme.swift", "PlainUsage.swift"];
+          const files = ["MotifTheme.swift", usage[shape]!];
           const tc = run(["xcrun", "swiftc", "-typecheck", "-sdk", sdk(name!), "-target", target!, ...mode, ...files], join(dir, shape));
           if (tc.code !== 0) console.log(`${shape} ${target} ${mode.join(" ")}\n${tc.out}`);
           expect(tc.code).toBe(0);

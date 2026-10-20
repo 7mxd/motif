@@ -81,7 +81,7 @@ const SYSTEM_DESIGN: Record<string, string> = {
 };
 
 /** System fonts that ship with both iOS and macOS, so Font.custom finds them by name. */
-const APPLE_FONTS = new Set(["arial", "helvetica", "helvetica neue", "georgia", "times new roman", "courier", "courier new", "verdana", "trebuchet ms", "menlo"]);
+const APPLE_FONTS = new Set(["arial", "helvetica", "helvetica neue", "georgia", "times", "times new roman", "courier", "courier new", "verdana", "trebuchet ms", "menlo"]);
 
 /** Languages written in Arabic script, whose text takes the type roles' Arabic companion. */
 const ARABIC_SCRIPT = ["ar", "fa", "ur", "ps", "ckb", "sd", "ug"];
@@ -169,7 +169,7 @@ function colorsBlock(set: ThemeSet, variants: boolean): string[] {
   const resolve = variants
     ? [
         ...doc(["The colours for a colour scheme and a design variant."], 4),
-        "    static func resolve(_ scheme: ColorScheme, variant: MotifVariant = .defaultVariant) -> MotifColors {",
+        `    static func resolve(_ scheme: ColorScheme, variant: MotifVariant = .${swiftIdentifier(set.defaultId!)}) -> MotifColors {`,
         "        switch variant {",
         `        case .${swiftIdentifier(set.defaultId!)}: return scheme == .dark ? dark : light`,
         ...set.variants.map((v) => {
@@ -200,7 +200,7 @@ function environmentBlock(set: ThemeSet, variants: boolean, accent: string | nul
     "",
     "extension EnvironmentValues {",
     ...(variants ? [...doc(["The design variant .motifTheme(variant:) chose."], 4), `    @Entry var motifVariant: MotifVariant = .${def}`, ""] : []),
-    ...doc(["The guide's colours for the colour scheme (and the design variant) here."], 4),
+    ...doc([variants ? "The guide's colours for the colour scheme and the design variant here." : "The guide's colours for the colour scheme here."], 4),
     `    var motifColors: MotifColors { ${resolved} }`,
     "}",
   ];
@@ -265,9 +265,12 @@ function shadowsBlock(t: Theme): string[] {
     "}",
     "",
     "extension View {",
-    ...doc(["Draws the shadow's layers around the view, the first on top as in CSS."], 4),
+    ...doc([
+      "Draws the shadow's layers around the view in CSS's order, the first on top. SwiftUI shadows the view with",
+      "the earlier layers' shadows in it, so each later layer also casts the earlier ones: they compound a little.",
+    ], 4),
     "    func motifShadow(_ layers: [MotifShadow]) -> some View {",
-    "        layers.reversed().reduce(AnyView(self)) { view, layer in",
+    "        layers.reduce(AnyView(self)) { view, layer in",
     "            AnyView(view.shadow(color: layer.color, radius: layer.radius, x: layer.x, y: layer.y))",
     "        }",
     "    }",
@@ -333,8 +336,9 @@ function typeBlock(t: Theme): string[] {
   return [
     "",
     ...doc([
-      "A type role: its font (in the role's family, scaled with Dynamic Type relative to the nearest text style),",
-      "its line spacing and its letter spacing. It carries no colour, so the view's foreground style applies.",
+      "A type role: its font, its line spacing and its letter spacing. It carries no colour, so the view's",
+      "foreground style applies. A role in a named font (Font.custom) scales with Dynamic Type, relative to the nearest",
+      "text style; a role in the system font (Font.system(size:)) keeps its size.",
       "",
       "Use it with .motifFont(.body), which sets all three, or as a Font: MotifType.body.font().",
       ...(arabic ? ["A role with an Arabic companion uses it when the layout is right to left or the language is written in Arabic script."] : []),
