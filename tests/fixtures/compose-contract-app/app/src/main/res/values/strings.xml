@@ -1,0 +1,54 @@
+<resources>
+    <string name="app_name">Rafiq</string>
+    <string name="back">Back</string>
+    <string name="count" translatable="false">%1$d</string>
+
+    <string name="today_title">Today</string>
+    <string name="today_greeting">Small steps today</string>
+    <string name="today_summary">%1$d of %2$d done</string>
+    <string name="today_add">Add a habit</string>
+    <string name="today_sign_out">Sign out</string>
+    <string name="today_mark_done">Done today: %1$s</string>
+    <string name="today_contrast">High-contrast colours</string>
+    <string name="today_contrast_help">Stronger text and borders</string>
+    <string name="today_empty_title">No habits yet</string>
+    <string name="today_empty_body">Start with one small thing you can do every day.</string>
+
+    <string name="streak_none">No streak yet</string>
+    <plurals name="streak">
+        <item quantity="one">%d-day streak</item>
+        <item quantity="other">%d-day streak</item>
+    </plurals>
+
+    <plurals name="habit_in_a_row">
+        <item quantity="one">day in a row</item>
+        <item quantity="other">days in a row</item>
+    </plurals>
+    <plurals name="habit_best">
+        <item quantity="one">Best: %d day</item>
+        <item quantity="other">Best: %d days</item>
+    </plurals>
+    <string name="habit_history">Last 14 days</string>
+    <string name="habit_history_summary">Done on %1$d of the last 14 days</string>
+    <string name="habit_mark_done">Mark today done</string>
+    <string name="habit_undo">Undo today</string>
+    <string name="habit_goal_daily">Every day</string>
+    <string name="habit_goal_weekdays">On weekdays</string>
+    <string name="habit_missing">This habit isn\'t here any more.</string>
+
+    <string name="add_title">New habit</string>
+    <string name="add_name">Name</string>
+    <string name="add_name_helper">Something small, like “Read 10 pages”.</string>
+    <string name="add_name_error">Give the habit a name.</string>
+    <string name="add_goal">How often</string>
+    <string name="add_save">Save habit</string>
+
+    <string name="sign_in_title">Welcome to Rafiq</string>
+    <string name="sign_in_body">Small habits, kept every day.</string>
+    <string name="sign_in_email">Email</string>
+    <string name="sign_in_password">Password</string>
+    <string name="sign_in_show_password">Show</string>
+    <string name="sign_in_hide_password">Hide</string>
+    <string name="sign_in_submit">Sign in</string>
+    <string name="sign_in_error">Enter your email and password.</string>
+</resources>

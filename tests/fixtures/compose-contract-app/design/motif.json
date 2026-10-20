@@ -1,0 +1,10 @@
+{
+  "motifContract": 1,
+  "apps": [
+    {
+      "path": "app",
+      "stack": "compose"
+    }
+  ],
+  "ignore": []
+}

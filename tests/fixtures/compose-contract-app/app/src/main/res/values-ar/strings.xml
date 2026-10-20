@@ -1,0 +1,65 @@
+<resources>
+    <string name="app_name">رفيق</string>
+    <string name="back">رجوع</string>
+
+    <string name="today_title">اليوم</string>
+    <string name="today_greeting">خطوات صغيرة اليوم</string>
+    <string name="today_summary">أنجزت %1$d من %2$d</string>
+    <string name="today_add">أضف عادة</string>
+    <string name="today_sign_out">تسجيل الخروج</string>
+    <string name="today_mark_done">أنجزت اليوم: %1$s</string>
+    <string name="today_contrast">ألوان عالية التباين</string>
+    <string name="today_contrast_help">نص وحدود أوضح</string>
+    <string name="today_empty_title">لا عادات بعد</string>
+    <string name="today_empty_body">ابدأ بشيء صغير تستطيع فعله كل يوم.</string>
+
+    <string name="streak_none">لم تبدأ السلسلة بعد</string>
+    <plurals name="streak">
+        <item quantity="zero">لم تبدأ السلسلة بعد</item>
+        <item quantity="one">سلسلة يوم واحد</item>
+        <item quantity="two">سلسلة يومين</item>
+        <item quantity="few">سلسلة %d أيام</item>
+        <item quantity="many">سلسلة %d يومًا</item>
+        <item quantity="other">سلسلة %d يوم</item>
+    </plurals>
+
+    <plurals name="habit_in_a_row">
+        <item quantity="zero">يوم متتالٍ</item>
+        <item quantity="one">يوم متتالٍ</item>
+        <item quantity="two">يومان متتاليان</item>
+        <item quantity="few">أيام متتالية</item>
+        <item quantity="many">يومًا متتاليًا</item>
+        <item quantity="other">يوم متتالٍ</item>
+    </plurals>
+    <plurals name="habit_best">
+        <item quantity="zero">الأفضل: %d يوم</item>
+        <item quantity="one">الأفضل: يوم واحد</item>
+        <item quantity="two">الأفضل: يومان</item>
+        <item quantity="few">الأفضل: %d أيام</item>
+        <item quantity="many">الأفضل: %d يومًا</item>
+        <item quantity="other">الأفضل: %d يوم</item>
+    </plurals>
+    <string name="habit_history">آخر ١٤ يومًا</string>
+    <string name="habit_history_summary">أنجزتها في %1$d من آخر ١٤ يومًا</string>
+    <string name="habit_mark_done">أنجزتها اليوم</string>
+    <string name="habit_undo">تراجع عن اليوم</string>
+    <string name="habit_goal_daily">كل يوم</string>
+    <string name="habit_goal_weekdays">أيام العمل</string>
+    <string name="habit_missing">هذه العادة لم تعد موجودة.</string>
+
+    <string name="add_title">عادة جديدة</string>
+    <string name="add_name">الاسم</string>
+    <string name="add_name_helper">شيء صغير، مثل «اقرأ ١٠ صفحات».</string>
+    <string name="add_name_error">أعطِ العادة اسمًا.</string>
+    <string name="add_goal">كم مرة</string>
+    <string name="add_save">احفظ العادة</string>
+
+    <string name="sign_in_title">أهلًا بك في رفيق</string>
+    <string name="sign_in_body">عادات صغيرة، كل يوم.</string>
+    <string name="sign_in_email">البريد الإلكتروني</string>
+    <string name="sign_in_password">كلمة المرور</string>
+    <string name="sign_in_show_password">إظهار</string>
+    <string name="sign_in_hide_password">إخفاء</string>
+    <string name="sign_in_submit">تسجيل الدخول</string>
+    <string name="sign_in_error">أدخل بريدك الإلكتروني وكلمة المرور.</string>
+</resources>
