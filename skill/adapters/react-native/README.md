@@ -4,13 +4,13 @@ How Motif works with a React Native app built with Expo: what it expects, how to
 
 ## What Motif expects
 
-- An Expo app in TypeScript, with Expo Router (the starter's default) or React Navigation. React Native without Expo isn't supported: theme code, checks and drafts work there, but screenshots need Expo's web target.
+- An Expo app in TypeScript, with Expo Router (the starter's default) or React Navigation. React Native without Expo isn't supported: theme code, checks and drafts work there, and for screenshots the app has to run on react-native-web, started by you and passed to `motif shot --url`.
 - **The floors:** Expo SDK 52 (React Native 0.76, whose New Architecture draws `boxShadow`), TypeScript 5 and Reanimated 3.16. Motif's own tests ran on SDK 52 and on a current SDK. `motif doctor` says when the SDK is older than 52: `npx expo install expo@latest --fix`.
 - One design guide for the whole project. Motif writes the same theme for iOS and Android; [platform rules](platform.md) says what to keep different on purpose.
 
 ## How Motif recognises it
 
-A folder is an Expo app when its `package.json` lists `expo` and `react-native`. `motif doctor --json` lists the apps, with the stack `react-native`. It also checks the **Expo web target**, because screenshots use it, and tells the developer in one line: `Expo web target`, ok, "Expo SDK 52, with the web target's packages." When `react-dom`, `react-native-web` or `@expo/metro-runtime` is missing, the same line is marked as needed, with the command:
+A folder is a React Native app when its `package.json` lists `expo` or `react-native` (in `dependencies` or `devDependencies`), and an Expo app when it lists `expo`. `motif doctor --json` lists both with the stack `react-native`; one without `expo` is told what works without it. It also checks the **Expo web target**, because screenshots use it, and tells the developer in one line: `Expo web target`, ok, "Expo SDK 52, with the web target's packages." When `react-dom`, `react-native-web` or `@expo/metro-runtime` is missing, the same line is marked as needed, with the command:
 
 ```bash
 npx expo install react-dom react-native-web @expo/metro-runtime

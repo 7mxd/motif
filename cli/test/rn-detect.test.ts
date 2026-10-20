@@ -34,6 +34,13 @@ describe("Expo apps", () => {
     expect(hasWebSupport(dir)).toEqual(["@expo/metro-runtime"]);
   });
 
+  test("expo in devDependencies makes an Expo app too, as it makes the stack React Native (the guide's rule)", () => {
+    const dir = makeProject({ "package.json": JSON.stringify({ name: "app", dependencies: { "react-native": "0.79.0" }, devDependencies: { expo: "~53.0.0" } }) });
+    expect(detectApps(dir).apps[0]!.stack).toBe("react-native");
+    expect(isExpoApp(dir)).toBe(true);
+    expect(expoSdk(dir)).toBe(53);
+  });
+
   test("a bare React Native app is not an Expo app; the SDK is unknown", () => {
     const dir = makeProject({ "package.json": pkg({ "react-native": "0.74" }) });
     expect(isExpoApp(dir)).toBe(false);

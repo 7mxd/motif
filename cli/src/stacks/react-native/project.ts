@@ -22,11 +22,9 @@ export function declared(dir: string, name: string): string | null {
   return null;
 }
 
-/** True when the app lists expo in its dependencies. */
+/** True when the app lists expo in its dependencies or devDependencies, as stack detection reads them. */
 export function isExpoApp(dir: string): boolean {
-  const pkg = readJson(join(dir, "package.json"));
-  const deps = pkg?.dependencies;
-  return !!deps && typeof deps === "object" && "expo" in deps;
+  return declared(dir, "expo") !== null;
 }
 
 export function usesExpoRouter(dir: string): boolean {
