@@ -25,14 +25,14 @@ A stack is supported when the developer gets the whole of Motif on it, not part 
 | React web | done | done | done | done | done | done | done | done | done | done | done |
 | Plain web | done | done | done | done | done | done | done | done | done | done | done |
 | Flutter | done | done | done | done | done | done | done | done | done | done | done |
-| Jetpack Compose | done | done | done | done | done | done | done | done | done | done | done |
+| Jetpack Compose | done | done | done | done | done | done | done | done | done | pending | done |
 | SwiftUI | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | React Native (Expo) | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | Vue / Nuxt | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | Svelte / SvelteKit | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | Angular | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 
-React web and plain web were finished in Part 1 and plan 2A; right-to-left screenshots and the accessible-name audit came to them with Flutter (plan 2E). Flutter (plan 2E) and Jetpack Compose (plan 2F) are done; SwiftUI and React Native are the rest of Phase A; Vue, Svelte and Angular are Phase B. Motif still helps on those stacks with general guidance: `motif tokens` writes plain CSS variables and `design/generated/tokens.flat.json` to map by hand.
+React web and plain web were finished in Part 1 and plan 2A; right-to-left screenshots and the accessible-name audit came to them with Flutter (plan 2E). Flutter (plan 2E) is done, and Jetpack Compose (plan 2F) is done but for its evals; SwiftUI and React Native are the rest of Phase A; Vue, Svelte and Angular are Phase B. Motif still helps on those stacks with general guidance: `motif tokens` writes plain CSS variables and `design/generated/tokens.flat.json` to map by hand.
 
 ## Flutter: the tests that show it
 
@@ -59,7 +59,7 @@ Tests marked "needs Flutter" run in CI's Flutter job and skip, saying so, where 
 
 ## Jetpack Compose: the tests that show it
 
-Jetpack Compose was built in [plan 2F](plans/2026-10-20-motif-2f-compose.md). Every area is done. Its code is in the CLI, so `motif doctor` built from source already treats Compose apps as supported; the README and the release notes list it from v0.5.0, with the rest of Phase A, once its row is complete and these release gates are passed:
+Jetpack Compose was built in [plan 2F](plans/2026-10-20-motif-2f-compose.md). Every area but Evals is done; Evals is pending until the four Compose cases pass. Its code is in the CLI, so `motif doctor` built from source already treats Compose apps as supported; the README and the release notes list it from v0.5.0, with the rest of Phase A, once its row is complete and these release gates are passed:
 
 - The Compose job in CI passes on the pull request.
 - The four Compose eval cases pass (the Evals row below).

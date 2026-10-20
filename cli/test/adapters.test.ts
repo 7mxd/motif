@@ -325,8 +325,10 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web, Flutter and Jetpack Compose have every area done; the stacks still to come have none", () => {
-    for (const stack of ["React web", "Plain web", "Flutter", "Jetpack Compose"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+  test("React web, plain web and Flutter have every area done, Jetpack Compose every area but its pending evals; the stacks still to come have none", () => {
+    for (const stack of ["React web", "Plain web", "Flutter"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+    // Compose's Evals cell turns "done" once its four cases pass.
+    expect(row("Jetpack Compose")!.slice(1)).toEqual(AREAS.map((a) => (a === "Evals" ? "pending" : "done")));
     for (const stack of ["SwiftUI", "React Native (Expo)", "Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }
