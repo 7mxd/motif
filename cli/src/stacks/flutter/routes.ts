@@ -1,5 +1,6 @@
-// The pages of a Flutter app, for motif shot: go_router's GoRoute paths (nested ones joined to their parent's) and a
-// MaterialApp's routes: map keys, read from the app's Dart code.
+// The pages of a Flutter app, for motif shot: go_router's GoRoute and TypedGoRoute paths (nested ones joined to their
+// parent's) and a MaterialApp's routes: map keys, read from the app's Dart code, with paths named by a string constant
+// (Routes.home, HomeScreen.routeName) read from the constant.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { maskComments, maskStrings } from "../../check/mask";
@@ -44,17 +45,65 @@ interface Frame {
   map?: boolean;
 }
 
+/** String constants: `Class.name` for a static one in a class, `name` for a top-level one. */
+type Constants = Map<string, string>;
+
+const CHAIN = /^[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*/;
+
+/** The plain string constants a file declares (no interpolation), keyed as Constants says. */
+function fileConstants(text: string, into: Constants): void {
+  const code = maskComments(text, "dart");
+  const s = maskStrings(code, "dart");
+  // Each class body's range, from the masked text so braces in strings don't count.
+  const classes: { name: string; start: number; end: number }[] = [];
+  for (const m of s.matchAll(/\b(?:class|mixin|extension|enum)\s+([A-Za-z_$][\w$]*)[^{;]*\{/g)) {
+    let depth = 0;
+    let j = m.index + m[0].length - 1;
+    for (; j < s.length; j++) {
+      if (s[j] === "{") depth++;
+      else if (s[j] === "}" && --depth === 0) break;
+    }
+    classes.push({ name: m[1]!, start: m.index + m[0].length, end: j });
+  }
+  for (const m of code.matchAll(/\b(static\s+)?const\s+(?:String\s+)?([A-Za-z_$][\w$]*)\s*=\s*r?(['"])([^'"\n]*)\3\s*;/g)) {
+    if (m[4]!.includes("$")) continue;
+    const owner = classes.filter((c) => c.start <= m.index && m.index < c.end).pop();
+    if (m[1] && owner) into.set(`${owner.name}.${m[2]}`, m[4]!);
+    else if (!m[1] && !owner) into.set(m[2]!, m[4]!);
+  }
+}
+
+/** A name's string, by its last two parts (an import prefix in front is ignored), or by itself when it's one word. */
+function resolve(chain: string, constants: Constants): string | null {
+  const parts = chain.split(/\s*\.\s*/);
+  return constants.get(parts.slice(-2).join(".")) ?? (parts.length === 1 ? constants.get(parts[0]!) : undefined) ?? null;
+}
+
 /** The routes one Dart file declares, in the order they start, and how many it declares that Motif can't read. */
-function fileRoutes(text: string): { routes: string[]; unread: number } {
+function fileRoutes(text: string, constants: Constants = new Map()): { routes: string[]; unread: number } {
   const code = maskComments(text, "dart");
   const s = maskStrings(code, "dart");
   const nodes: GoNode[] = [];
   const keys: { start: number; path: string }[] = [];
+  let unreadKeys = 0;
   const stack: Frame[] = [];
   let pendingMap = false;
   let i = 0;
   const skipSpace = (j: number) => {
     while (j < s.length && /\s/.test(s[j]!)) j++;
+    return j;
+  };
+  const skipSpaceBack = (j: number) => {
+    while (j >= 0 && /\s/.test(s[j]!)) j--;
+    return j;
+  };
+  /** From the < at j, the position just after its matching >. */
+  const skipGeneric = (j: number) => {
+    let depth = 0;
+    for (; j < s.length; j++) {
+      if (s[j] === "<") depth++;
+      else if (s[j] === ">" && --depth === 0) return j + 1;
+    }
     return j;
   };
   /** The string literal starting at j (after an optional r): its value and where it ends. */
@@ -74,29 +123,40 @@ function fileRoutes(text: string): { routes: string[]; unread: number } {
     if (/[A-Za-z_$]/.test(c)) {
       const word = /^[A-Za-z_$][\w$]*/.exec(s.slice(i, i + 100))![0];
       const after = skipSpace(i + word.length);
-      if (word === "GoRoute" && s[after] === "(") {
+      // GoRoute(…), and go_router_builder's TypedGoRoute<HomeRoute>(…).
+      const open = word === "GoRoute" ? after : word === "TypedGoRoute" && s[after] === "<" ? skipSpace(skipGeneric(after)) : -1;
+      if (open >= 0 && s[open] === "(") {
         const parent = [...stack].reverse().find((f) => f.go)?.go ?? null;
         const go = { start: i, path: null, parent };
         nodes.push(go);
         stack.push({ close: ")", go });
-        i = after + 1;
+        i = open + 1;
         continue;
       }
       if (word === "path" && s[after] === ":" && top?.go) {
-        const str = stringAt(skipSpace(after + 1));
-        if (str) top.go.path = str.value;
+        const at = skipSpace(after + 1);
+        const str = stringAt(at);
+        if (str) top.go.path = str.value.includes("$") ? null : str.value;
+        else {
+          const chain = CHAIN.exec(s.slice(at, at + 200));
+          if (chain) top.go.path = resolve(chain[0], constants);
+        }
+      }
+      // A routes: map keyed by a constant (HomeScreen.routeName: …), at the map's own level, after { or a comma.
+      if (top?.map && /[{,]/.test(s[skipSpaceBack(i - 1)] ?? "")) {
+        const chain = CHAIN.exec(s.slice(i, i + 200))![0];
+        if (s[skipSpace(i + chain.length)] === ":") {
+          const path = resolve(chain, constants);
+          if (path === null) unreadKeys++;
+          else keys.push({ start: i, path });
+          i += chain.length;
+          continue;
+        }
       }
       if (word === "routes" && s[after] === ":") {
         // routes: {…} or routes: <String, WidgetBuilder>{…} is a MaterialApp's map; routes: […] is a list of GoRoutes.
         let j = skipSpace(after + 1);
-        if (s[j] === "<") {
-          let depth = 0;
-          for (; j < s.length; j++) {
-            if (s[j] === "<") depth++;
-            else if (s[j] === ">" && --depth === 0) break;
-          }
-          j = skipSpace(j + 1);
-        }
+        if (s[j] === "<") j = skipSpace(skipGeneric(j));
         pendingMap = s[j] === "{";
       }
       i += word.length;
@@ -130,27 +190,32 @@ function fileRoutes(text: string): { routes: string[]; unread: number } {
     .filter((r): r is { start: number; path: string } => r.path !== null && r.path.startsWith("/"))
     .sort((a, b) => a.start - b.start)
     .map((r) => r.path);
-  // A GoRoute whose path isn't written out (path: Routes.home), and go_router_builder's @TypedGoRoute.
-  const unread = nodes.filter((n) => n.path === null).length + (s.match(/\bTypedGoRoute\s*</g)?.length ?? 0);
+  // A route whose path is built at run time or named by a constant Motif didn't find (in another package, say).
+  const unread = nodes.filter((n) => n.path === null).length + unreadKeys;
   return { routes, unread };
 }
 
 /** When only / was found although the code declares routes Motif can't read. */
-export const UNREAD_ROUTES_NOTE = "Only / was found; routes written as constants or with TypedGoRoute aren't read — name the screens with --routes.";
+export const UNREAD_ROUTES_NOTE =
+  "Only / was found; some routes are built at run time or named by constants Motif can't find — name the screens with --routes.";
 
 /** The app's routes: GoRoute paths (nested ones joined), MaterialApp routes: keys, and / always; ones needing a value are skipped. */
 export function discoverFlutterRoutes(appDir: string): RouteDiscovery {
   const found = new Set<string>(["/"]);
   let unread = 0;
+  const texts: string[] = [];
   for (const file of libDartFiles(appDir)) {
-    let text: string;
     try {
-      text = readFileSync(file, "utf8");
+      texts.push(readFileSync(file, "utf8"));
     } catch {
       continue;
     }
+  }
+  const constants: Constants = new Map();
+  for (const text of texts) if (/\bconst\b/.test(text)) fileConstants(text, constants);
+  for (const text of texts) {
     if (!/GoRoute\s*[(<]|routes\s*:/.test(text)) continue;
-    const read = fileRoutes(text);
+    const read = fileRoutes(text, constants);
     unread += read.unread;
     for (const route of read.routes) found.add(route.length > 1 ? route.replace(/\/+$/, "") : route);
   }

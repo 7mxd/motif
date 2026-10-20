@@ -859,11 +859,11 @@ describe("final review: a state script is what the stack says (Minor #10)", () =
 });
 
 describe("final review: routes Motif can't read are named in the run's notes (Minor #11)", () => {
-  test("only / from a router of constants: the run says to name the screens with --routes", async () => {
+  test("only / from a router of constants Motif can't find: the run says to name the screens with --routes", async () => {
     const router = "import 'package:go_router/go_router.dart';\nfinal router = GoRouter(routes: [GoRoute(path: Routes.home, builder: (c, s) => const Home())]);\n";
     const r = await runShot(makeProject({ "pubspec.yaml": PUBSPEC, "lib/main.dart": router }), ctx(), fakes().deps);
     expect(r.exitCode).toBe(0);
-    expect(r.data.notes).toEqual(["Only / was found; routes written as constants or with TypedGoRoute aren't read — name the screens with --routes."]);
+    expect(r.data.notes).toEqual(["Only / was found; some routes are built at run time or named by constants Motif can't find — name the screens with --routes."]);
   });
 });
 

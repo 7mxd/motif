@@ -79,30 +79,68 @@ void main() => runApp(MaterialApp(
   });
 });
 
-describe("final review: routes Motif can't read (Minor #11)", () => {
-  const NOTE = "Only / was found; routes written as constants or with TypedGoRoute aren't read — name the screens with --routes.";
-  test("paths written as constants: only / is found, and a note says why", () => {
+describe("routes written as constants, and TypedGoRoute", () => {
+  const NOTE = "Only / was found; some routes are built at run time or named by constants Motif can't find — name the screens with --routes.";
+  test("a GoRoute path named by a constant in a class is read from the constant", () => {
     const root = makeProject({
+      "lib/routes.dart": `abstract final class Routes {
+  static const home = '/home';
+  static const String settings = "/settings";
+  static const details = 'details';
+}
+abstract final class Paths { static const home = '/elsewhere'; }
+`,
       "lib/router.dart": `import 'package:go_router/go_router.dart';
-abstract final class Routes { static const home = '/home'; static const settings = '/settings'; }
+import 'routes.dart' as r;
 final router = GoRouter(routes: [
-  GoRoute(path: Routes.home, builder: (c, s) => const Home()),
+  GoRoute(path: Routes.home, builder: (c, s) => const Home(), routes: [
+    GoRoute(path: r.Routes.details, builder: (c, s) => const Details()),
+  ]),
   GoRoute(path: Routes.settings, builder: (c, s) => const Settings()),
 ]);
 `,
     });
-    expect(discoverFlutterRoutes(root)).toEqual({ routes: ["/"], skipped: [], notes: [NOTE] });
+    expect(discoverFlutterRoutes(root)).toEqual({ routes: ["/", "/home", "/home/details", "/settings"], skipped: [] });
   });
 
-  test("TypedGoRoute: the same note", () => {
+  test("a MaterialApp's routes: map keyed by a screen's routeName, and a top-level constant", () => {
+    const root = makeProject({
+      "lib/home.dart": "class HomeScreen extends StatelessWidget {\n  static const routeName = '/home';\n}\n",
+      "lib/main.dart": `const aboutPath = '/about';
+final app = MaterialApp(routes: {
+  HomeScreen.routeName: (context) => const HomeScreen(),
+  aboutPath: (context) => wide ? const About() : const AboutNarrow(),
+});
+`,
+    });
+    expect(discoverFlutterRoutes(root)).toEqual({ routes: ["/", "/home", "/about"], skipped: [] });
+  });
+
+  test("TypedGoRoute paths are read like GoRoute's, nested ones joined", () => {
     const root = makeProject({
       "lib/routes.dart": `import 'package:go_router/go_router.dart';
 part 'routes.g.dart';
-@TypedGoRoute<HomeRoute>(path: '/home')
+@TypedGoRoute<HomeRoute>(path: '/home', routes: <TypedGoRoute<GoRouteData>>[
+  TypedGoRoute<DetailsRoute>(path: 'details/:id'),
+  TypedGoRoute<OffersRoute>(path: 'offers'),
+])
 class HomeRoute extends GoRouteData { const HomeRoute(); }
 `,
     });
-    expect(discoverFlutterRoutes(root).notes).toEqual([NOTE]);
+    expect(discoverFlutterRoutes(root)).toEqual({ routes: ["/", "/home", "/home/offers"], skipped: ["/home/details/:id"] });
+  });
+
+  test("a constant Motif can't find, or a path built at run time: only / is found, and a note says why", () => {
+    const root = makeProject({
+      "lib/router.dart": `import 'package:go_router/go_router.dart';
+import 'package:shared/routes.dart';
+final router = GoRouter(routes: [
+  GoRoute(path: SharedRoutes.home, builder: (c, s) => const Home()),
+  GoRoute(path: '\${base}/settings', builder: (c, s) => const Settings()),
+]);
+`,
+    });
+    expect(discoverFlutterRoutes(root)).toEqual({ routes: ["/"], skipped: [], notes: [NOTE] });
   });
 
   test("an app with no router, or whose routes were read, gets no note", () => {
