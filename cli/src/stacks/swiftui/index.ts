@@ -2,12 +2,15 @@ import { join } from "node:path";
 import { listSwiftFiles } from "../../check/files";
 import { prefixPath } from "../../project/apps";
 import type { NativeStack } from "../native";
+import { swiftUIDoctor } from "./doctor";
 import { swiftUIApp } from "./project";
 
 /** SwiftUI: apps in Xcode projects and Swift packages. Each area is added as it is built; so far, finding the app and its Swift. */
 export const SWIFTUI: NativeStack = {
   id: "swiftui",
   extensions: [".swift"],
+
+  doctor: swiftUIDoctor,
 
   // The theme sits in the app target's own folder, which an Xcode 16 synchronized group or a package target compiles as it is.
   themeDir(root, app) {
