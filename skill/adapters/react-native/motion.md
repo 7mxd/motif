@@ -45,7 +45,7 @@ export function FadeSwap({ visible, children }: { visible: boolean; children: Re
 ```tsx
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
-import { duration, easing, useMotifTheme } from "@/design/motif-theme";
+import { duration, useMotifTheme } from "@/design/motif-theme";
 
 export function SavedNote() {
   const { colors, type, reducedMotion } = useMotifTheme();

@@ -218,7 +218,7 @@ For a new app, build these, each with the states above and the props its screens
 | Component | Starts from | Notes |
 |---|---|---|
 | `Button` | `Pressable` | One component with `kind` (primary, secondary, quiet) and `loading`; the example above. |
-| `IconButton` | `Pressable` with an icon | An `accessibilityLabel` is its name; A 44 point box; `hitSlop` adds to it. |
+| `IconButton` | `Pressable` with an icon | An `accessibilityLabel` is its name; a 44 point box; `hitSlop` adds to it. |
 | `Field` | `TextInput` | Label, helper, error; a password field also shows a toggle with a label. |
 | `Checkbox` | `Pressable` with `accessibilityRole="checkbox"` | The row is the tap area, not the box; `accessibilityState={{ checked }}`. |
 | `Switch` | `Switch` in a `Pressable` row | Same, with the label at the start (right in right to left); `trackColor` from roles. |
