@@ -203,6 +203,7 @@ motif shot --routes /contact --state design/states/sent.kt
 - It runs on every screen `motif shot` draws: start with a guard that returns on the others, or capture only its screen with `--routes`.
 - Screenshots are named after the screen and the state (`contact@sent.mobile.png`), each starting from a fresh launch. Use the same `--state` options for `--save` and `--against`.
 - A state has 15 seconds. An error it throws is the screen's error, and the screenshot is still taken.
+- A screen that loads its data off the main thread (a repository on `Dispatchers.IO`, a fake network delay) is drawn while it loads: Motif waits until Compose is idle, and work on other threads isn't Compose's. A state that waits shows it loaded: `Thread.sleep(2_000)` in `motifState` is enough, since Motif lets the screen settle after the state. Under Robolectric, `rule.waitUntil { … }` can time out waiting for that work; sleep instead.
 - Mock data only.
 
 ### The setup file
