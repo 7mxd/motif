@@ -74,7 +74,8 @@ const AUDIT_FILE = "app/src/main/java/dev/motif/composemin/ui/screens/AuditScree
 
 /**
  * What the audit is for: a caption in a pale grey, a line in a mid grey (under 4.5:1, too little for its size) with a large
- * bold one in the same grey (enough for large text), two 32 dp icon buttons with no contentDescription, a pulse that
+ * bold one in the same grey (enough for large text), two 32 dp icon buttons with no contentDescription and a third, of
+ * Material's own size, further down (three unnamed buttons, two of them alike but for where they are), a pulse that
  * loops with Animatable (Remove animations makes each step instant, so it flickers instead of stopping), and a form.
  */
 const AUDIT_SCREEN = `package dev.motif.composemin.ui.screens
@@ -124,6 +125,10 @@ fun AuditScreen() {
                 IconButton(onClick = {}, modifier = Modifier.size(32.dp)) {
                     Box(Modifier.size(16.dp).background(Color.Black))
                 }
+            }
+            Text("Share this order")
+            IconButton(onClick = {}) {
+                Box(Modifier.size(16.dp).background(Color.Black))
             }
         }
     }
@@ -389,15 +394,18 @@ class BrokenApp : Application() {
       expect(otherTexts).toEqual([]);
       expect(caption!.summary).toMatch(/^Text "Prices include tax" is hard to read in light mode \(2\.\d\d:1, needs 4\.5:1\)\.$/);
       expect(caption!.severity).toBe("critical");
-      expect(caption!.location).toMatchObject({ screen: "AuditPreview", selector: 'Text("Prices include tax")', scheme: "light" });
+      // Selectors start with the app's own composable around the node.
+      expect(caption!.location).toMatchObject({ screen: "AuditPreview", selector: 'AuditScreen > Text("Prices include tax")', scheme: "light" });
       expect(grey!.summary).toMatch(/^Text "Delivery in 2 days" is hard to read in light mode \(3\.\d\d:1, needs 4\.5:1\)\.$/);
       expect(grey!.severity).toBe("major");
       // Two 32 dp icon buttons side by side: Compose widens a small target's touch area to 48 dp only where nothing else
       // is, so the first is 32 dp wide where people tap it, and the second, with room on its right, is 48 dp.
-      expect(of("target-size").map((f) => [f.location.selector, f.summary])).toEqual([["Button#close", "A button is 32×48 px on a phone; 44×44 px is easier to tap."]]);
+      expect(of("target-size").map((f) => [f.location.selector, f.summary])).toEqual([["AuditScreen > Button#close", "A button is 32×48 px on a phone; 44×44 px is easier to tap."]]);
+      // The two untagged ones are told apart by their order on the screen, so neither is lost.
       expect(of("accessibility").map((f) => [f.location.selector, f.summary])).toEqual([
-        ["Button#close", "The button has no name a screen reader can say."],
-        ["Button", "The button has no name a screen reader can say."],
+        ["AuditScreen > Button#close", "The button has no name a screen reader can say."],
+        ["AuditScreen > Button[1]", "The button has no name a screen reader can say."],
+        ["AuditScreen > Button[2]", "The button has no name a screen reader can say."],
       ]);
       const moving = of("reduced-motion");
       expect(moving.map((f) => [f.location.screen, f.location.selector, f.summary])).toEqual([
@@ -413,8 +421,43 @@ class BrokenApp : Application() {
     expect(routesOf(r.data).map((x) => [x.route, x.status, x.shots.length, (x as { auditError?: string }).auditError ?? null])).toEqual([["/", 200, 2, null], ["/settings", 200, 2, null]]);
     const review = JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8"));
     expect(review.findings.map((f: { summary: string; location: { screen: string; selector: string } }) => [f.location.screen, f.location.selector, f.summary])).toEqual([
-      ["/settings", "Switch", "The element has no name a screen reader can say."],
+      ["/settings", "SettingsScreen > Switch", "The element has no name a screen reader can say."],
     ]);
+  }, 1_200_000);
+
+  test.skipIf(!android)("a check that fails keeps the others' findings, a missing internal is a note that says what to do, and without the slot-table tag previews are still drawn and routes open by deep link (skipped without a JDK and the Android SDK)", async () => {
+    await withFiles({ [AUDIT_FILE]: AUDIT_SCREEN }, async () => {
+      const got = await shootCompose(
+        {
+          root,
+          app: { path: "app", stack: "compose", source: "detected" },
+          routes: ["/", "/settings"],
+          screens: ["AuditPreview"],
+          outDir: join(root, "design", "shots"),
+          viewports: [NATIVE_VIEWPORTS[1]!],
+          variants: [],
+          states: [],
+          audit: true,
+          timeoutMs: 1_100_000,
+        },
+        { faults: { contrast: "unreadable", names: "error" }, slotTables: false },
+      );
+      expect(got.routes.map((r) => [r.route, r.status, r.shots.length, r.auditError ?? null])).toEqual([
+        ["/", 200, 2, "the names check: IllegalStateException: planted by Motif's test"],
+        ["/settings", 200, 2, "the names check: IllegalStateException: planted by Motif's test"],
+        ["AuditPreview", 200, 2, "the names check: IllegalStateException: planted by Motif's test"],
+      ]);
+      // /settings was opened by its deep link.
+      expect(same("index.mobile.png", "settings.mobile.png")).toBe(false);
+      // The tap-target check ran; contrast and names didn't. Without the slot tables, selectors have no composable.
+      expect(got.issues.map((i) => [i.route, i.rule, i.selector])).toEqual([["AuditPreview", "target-mobile", "Button#close"]]);
+      expect(got.notes).toContain(
+        "Motif couldn't read an internal it needs (NoSuchFieldException: planted by Motif's test) from this version of Compose, so the contrast check wasn't run on AuditPreview. Tell Motif's maintainers which Compose version the app uses.",
+      );
+      expect(got.notes).toContain(
+        "Motif couldn't find Layout Inspector's slot-table tag in this version of Compose, so routes were opened by deep link and moving composables weren't named. Tell Motif's maintainers which Compose version the app uses.",
+      );
+    });
   }, 1_200_000);
 
   test.skipIf(!android)("a state that types a name gives form@filled; a state that throws is reported, and the other screenshots are kept (skipped without a JDK and the Android SDK)", async () => {

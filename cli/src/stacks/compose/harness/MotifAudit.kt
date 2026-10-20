@@ -4,9 +4,11 @@
 // writes this file next to MotifShotTest.kt, the same in every run, and deletes it when the run ends.
 //
 // Each problem is a JSON object like audit.json's RawIssue: { rule, selector, label, kind, ratio?, expected?, fg?, bg?,
-// width?, height? }. The selector is the node's role (Text for plain text, TextField for a field, Clickable for something
-// tappable with no role), its test tag after #, and its text or name: Button("Sign in"), Button#close, Text("Prices
-// include tax").
+// width?, height?, nth?, of? }. The selector is the nearest composable of the app's own around the node (from the slot
+// tables, by the files in appFiles), then the node's role (Text for plain text, TextField for a field, Clickable for
+// something tappable with no role), its test tag after #, and its text or name: LoginScreen > Button("Sign in"),
+// TopBar > Button#close, Text("Prices include tax"). When several nodes on the screen have the same selector (a top bar's
+// back and action buttons, both unnamed), nth and of say which one it is, and Motif adds [nth] to the selector.
 package dev.motif.shot
 
 import android.app.Activity
@@ -15,6 +17,9 @@ import android.graphics.RectF
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.runtime.tooling.CompositionData
+import androidx.compose.runtime.tooling.CompositionGroup
+import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -34,11 +39,45 @@ import com.google.android.apps.common.testing.accessibility.framework.uielement.
 import com.google.android.apps.common.testing.accessibility.framework.utils.contrast.BitmapImage
 import com.google.common.collect.HashBiMap
 import org.json.JSONObject
+import java.util.IdentityHashMap
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-/** The audit's checks on one screenshot: contrast, names and targets, as asked (checks), on the screen as it is now. */
-internal class MotifAudit(private val activity: Activity, private val pixels: Bitmap) {
+/** A slot-table group's composable, as its source information names it: Pulse, from Pulse.kt. */
+internal class SlotName(val name: String, val file: String?)
+
+private val composableName = Regex("^C+\\(([A-Z][\\w$]*)\\)")
+private val composableFile = Regex(":([^:#]+\\.kt)(?:#\\w*)?$")
+
+/** The composable a slot-table group is a call of ("C(Pulse)…:AuditScreen.kt#…"), or null for one with no name. */
+internal fun slotName(sourceInfo: String?): SlotName? {
+    val info = sourceInfo ?: return null
+    val name = composableName.find(info)?.groupValues?.get(1) ?: return null
+    return SlotName(name, composableFile.find(info)?.groupValues?.get(1))
+}
+
+/** Something the audit needs that this Compose or Android doesn't have: what it couldn't read, in words. */
+internal class Unreadable(val what: String, cause: Throwable? = null) : Exception(what, cause)
+
+/** What one screenshot's checks found, and what kept a check from running. */
+internal class AuditOutcome {
+    val issues = mutableListOf<JSONObject>()
+    /** check → what it couldn't read (an internal that isn't there): a note. */
+    val unreadable = linkedMapOf<String, String>()
+    /** check → what went wrong otherwise: the screen's auditError. */
+    val failed = linkedMapOf<String, String>()
+}
+
+/**
+ * The audit's checks on one screenshot: contrast, names and targets, as asked (checks), on the screen as it is now.
+ * tables are the screen's slot tables (Layout Inspector's), and appFiles the app module's Kotlin files, for selectors.
+ */
+internal class MotifAudit(
+    private val activity: Activity,
+    private val pixels: Bitmap,
+    private val tables: Set<Any> = emptySet(),
+    private val appFiles: Set<String> = emptySet(),
+) {
     companion object {
         /** The smallest tap target, in dp, on phones and tablets (as on the other stacks). */
         const val MIN_TARGET = 44
@@ -89,7 +128,11 @@ internal class MotifAudit(private val activity: Activity, private val pixels: Bi
     }
 
     private val sourceNodeId by lazy {
-        AccessibilityNodeInfo::class.java.getDeclaredMethod("getSourceNodeId").apply { isAccessible = true }
+        try {
+            AccessibilityNodeInfo::class.java.getDeclaredMethod("getSourceNodeId").apply { isAccessible = true }
+        } catch (e: ReflectiveOperationException) {
+            throw Unreadable("Android's accessibility node ids (AccessibilityNodeInfo.getSourceNodeId)", e)
+        }
     }
 
     /** The semantics node's id an ATF element stands for (its virtual view id), or null for a View. */
@@ -100,12 +143,24 @@ internal class MotifAudit(private val activity: Activity, private val pixels: Bi
         return if (virtual >= FAKE_NODE_IDS) virtual % FAKE_NODE_IDS else virtual
     }
 
-    fun run(checks: Set<String>): List<JSONObject> {
-        val out = mutableListOf<JSONObject>()
-        if ("contrast" in checks) out.addAll(contrast())
-        if ("names" in checks) out.addAll(names())
-        if ("targets" in checks) out.addAll(targets())
-        return out
+    /**
+     * Runs each check asked for on its own: one that fails keeps none of its own findings, and the others keep theirs.
+     * faults plants a failure in a check, for Motif's own tests ("unreadable": a missing internal; "error": anything else).
+     */
+    fun run(checks: Set<String>, faults: Map<String, String> = emptyMap()): AuditOutcome {
+        val outcome = AuditOutcome()
+        for ((check, body) in listOf<Pair<String, () -> List<JSONObject>>>("contrast" to ::contrast, "names" to ::names, "targets" to ::targets)) {
+            if (check !in checks) continue
+            try {
+                plantFault(faults[check])
+                outcome.issues.addAll(body())
+            } catch (t: Throwable) {
+                t.printStackTrace()
+                val missing = unreadable(t)
+                if (missing != null) outcome.unreadable[check] = missing else outcome.failed[check] = describeError(t)
+            }
+        }
+        return outcome
     }
 
     private fun failed(results: List<AccessibilityHierarchyCheckResult>) =
@@ -177,10 +232,7 @@ internal class MotifAudit(private val activity: Activity, private val pixels: Bi
         return if (kind != "element" && plain(nameOf(control)) == text) control else null
     }
 
-    private fun textElement(node: SemanticsNode?, text: String): JSONObject {
-        val tag = node?.config?.getOrNull(SemanticsProperties.TestTag)
-        return JSONObject().put("selector", selector("Text", tag, text)).put("label", short(text)).put("kind", "element")
-    }
+    private fun textElement(node: SemanticsNode?, text: String): JSONObject = describeAs(node, "Text", text, "element")
 
     // -----------------------------------------------------------------------------------------------------------------
     // Names and targets
@@ -268,10 +320,56 @@ internal class MotifAudit(private val activity: Activity, private val pixels: Bi
         return "Node"
     }
 
-    private fun describe(node: SemanticsNode): JSONObject {
-        val name = plain(nameOf(node))
-        val tag = node.config.getOrNull(SemanticsProperties.TestTag)
-        return JSONObject().put("selector", selector(typeOf(node), tag, name)).put("label", short(name)).put("kind", kindOf(node))
+    private fun describe(node: SemanticsNode): JSONObject = describeAs(node, typeOf(node), plain(nameOf(node)), kindOf(node))
+
+    /** A node as an issue: its selector (its app's composable, role, tag and name), label and kind, and which of its like it is. */
+    private fun describeAs(node: SemanticsNode?, type: String, name: String, kind: String): JSONObject {
+        val base = if (node == null) selector(type, null, name) else baseOf(node, type, name)
+        val out = JSONObject().put("selector", base).put("label", short(name)).put("kind", kind)
+        if (node != null) {
+            // Which of the screen's nodes with this selector it is, in the tree's order, so two unnamed buttons stay two.
+            val same = everyNode.filter { selectors[it.id] == base }
+            val index = same.indexOfFirst { it.id == node.id }
+            val of = if (index < 0) same.size + 1 else same.size
+            if (of > 1) out.put("nth", if (index < 0) of else index + 1).put("of", of)
+        }
+        return out
+    }
+
+    private fun baseOf(node: SemanticsNode, type: String = typeOf(node), name: String = plain(nameOf(node))): String {
+        val owner = ownerOf(node.layoutInfo)
+        return (if (owner != null) "$owner > " else "") + selector(type, node.config.getOrNull(SemanticsProperties.TestTag), name)
+    }
+
+    /** Every node on the screen once, as a screen reader reads it, then the texts merged into a control. */
+    private val everyNode: List<SemanticsNode> by lazy { merged.values + unmerged.values.filter { it.id !in merged } }
+    private val selectors: Map<Int, String> by lazy { everyNode.associate { it.id to baseOf(it) } }
+
+    /**
+     * A layout node's nearest composable of the app's own: its own, else its parent's. A subcomposition (Scaffold's
+     * content, a LazyColumn's items) is a slot table of its own, whose nodes hang below the node that subcomposes them.
+     */
+    private fun ownerOf(info: LayoutInfo): String? {
+        var p: LayoutInfo? = info
+        while (p != null) {
+            owners[p]?.let { return it }
+            p = p.parentInfo
+        }
+        return null
+    }
+
+    /** Each layout node's nearest composable of the app's own within its slot table. */
+    private val owners: Map<LayoutInfo, String> by lazy {
+        val map = IdentityHashMap<LayoutInfo, String>()
+        fun visit(group: CompositionGroup, owner: String?) {
+            val named = slotName(group.sourceInfo)
+            val mine = if (named?.file != null && named.file in appFiles) named.name else owner
+            val node = group.node
+            if (node is LayoutInfo && mine != null && !map.containsKey(node)) map[node] = mine
+            for (child in group.compositionGroups) visit(child, mine)
+        }
+        for (table in tables) if (table is CompositionData) for (group in table.compositionGroups) visit(group, null)
+        map
     }
 
     /** An element ATF found outside Compose (a View): its class and its text. */
@@ -295,4 +393,25 @@ internal class MotifAudit(private val activity: Activity, private val pixels: Bi
     }
 
     private fun hex(argb: Int) = "#%06x".format(argb and 0xFFFFFF)
+
+    private fun plantFault(fault: String?) {
+        when (fault) {
+            "unreadable" -> throw NoSuchFieldException("planted by Motif's test")
+            "error" -> throw IllegalStateException("planted by Motif's test")
+        }
+    }
+}
+
+/** What an exception says, as "IllegalStateException: no semantics". */
+internal fun describeError(t: Throwable): String {
+    val root = generateSequence(t) { it.cause }.last()
+    return if (root.message.isNullOrBlank()) root.javaClass.simpleName else "${root.javaClass.simpleName}: ${root.message!!.lines().first()}"
+}
+
+/** What a check couldn't read, when it failed for an internal of Compose or Android that isn't there; else null. */
+internal fun unreadable(t: Throwable): String? {
+    val chain = generateSequence(t) { it.cause }.toList()
+    chain.firstOrNull { it is Unreadable }?.let { return (it as Unreadable).what }
+    val missing = chain.firstOrNull { it is NoSuchMethodException || it is NoSuchFieldException || it is ClassNotFoundException || it is NoSuchMethodError || it is NoSuchFieldError } ?: return null
+    return "an internal it needs (${missing.javaClass.simpleName}: ${missing.message})"
 }

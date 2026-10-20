@@ -101,8 +101,17 @@ class MotifShotTest(private val index: Int) {
         private fun targets(): List<String> =
             File(System.getProperty("motif.shot.config")!!).resolveSibling("targets.txt").readLines().filter { it.isNotEmpty() }
 
-        /** The view tag Layout Inspector reads a composition's slot table from (Compose records it there when the tag is set). */
-        private val slotTableTag: Int by lazy { Class.forName("androidx.compose.ui.R\$id").getField("inspection_slot_table_set").getInt(null) }
+        /**
+         * The view tag Layout Inspector reads a composition's slot table from (Compose records it there when the tag is
+         * set), or null when this Compose has none: screens are still drawn, routes open by deep link, and what moves
+         * isn't named.
+         */
+        private val slotTableTag: Int? by lazy {
+            runCatching { Class.forName("androidx.compose.ui.R\$id").getField("inspection_slot_table_set").getInt(null) }.getOrNull()
+        }
+
+        /** The audit's checks as findings and notes name them. */
+        private val CHECK_NAMES = mapOf("contrast" to "contrast", "names" to "names", "targets" to "tap-target", "motion" to "reduced-motion")
     }
 
     @get:Rule
@@ -127,6 +136,15 @@ class MotifShotTest(private val index: Int) {
     private var auditError: String? = null
     /** Texts the contrast check left out on this screen, as something may be drawn over them. */
     private val covered = linkedSetOf<String>()
+
+    /** The slot-table tag, unless the run is told to do without it (slotTables: false, for Motif's own tests). */
+    private val slotTag: Int? by lazy {
+        val tag = if (config.optBoolean("slotTables", true)) slotTableTag else null
+        if (tag == null) {
+            notes.add("Motif couldn't find Layout Inspector's slot-table tag in this version of Compose, so routes were opened by deep link and moving composables weren't named. Tell Motif's maintainers which Compose version the app uses.")
+        }
+        tag
+    }
 
     /** The screen's shots, with the app's own Application. */
     @Test
@@ -392,7 +410,7 @@ class MotifShotTest(private val index: Int) {
             try {
                 try {
                     val view = ComposeView(controller.get())
-                    view.setTag(slotTableTag, tables)
+                    slotTag?.let { view.setTag(it, tables) }
                     view.setContent { Invoke(owner, preview.substring(dot + 1)) }
                     controller.get().setContentView(view)
                     settleOrNote(target)
@@ -484,7 +502,7 @@ class MotifShotTest(private val index: Int) {
             launch.flags = launch.flags and (Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK).inv()
         }
         val tables = Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
-        val callbacks = SlotTables(tables)
+        val callbacks = SlotTables(slotTag, tables)
         app.registerActivityLifecycleCallbacks(callbacks)
         val scenario = try {
             ActivityScenario.launch<Activity>(launch)
@@ -508,10 +526,11 @@ class MotifShotTest(private val index: Int) {
     }
 
     /** Tags each composition root the activity's onCreate set up, so its slot table is recorded in tables. */
-    private class SlotTables(private val tables: MutableSet<Any>) : Application.ActivityLifecycleCallbacks {
+    private class SlotTables(private val tag: Int?, private val tables: MutableSet<Any>) : Application.ActivityLifecycleCallbacks {
         override fun onActivityPostCreated(activity: Activity, savedInstanceState: Bundle?) {
+            val tag = tag ?: return
             val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
-            for (i in 0 until content.childCount) content.getChildAt(i).setTag(slotTableTag, tables)
+            for (i in 0 until content.childCount) content.getChildAt(i).setTag(tag, tables)
         }
 
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -688,16 +707,29 @@ class MotifShotTest(private val index: Int) {
         val checks = (0 until list.length()).map { list.getString(it) }.toSet()
         if (checks.isEmpty()) return
         val found = mutableListOf<JSONObject>()
-        try {
-            val audit = MotifAudit(activity, bitmap)
-            found.addAll(audit.run(checks))
-            covered.addAll(audit.covered)
-            // Last, as it lets the screen run on for two seconds.
-            if ("motion" in checks) moving(activity, tables)?.let { found.add(it) }
-        } catch (t: Throwable) {
-            t.printStackTrace()
-            if (auditError == null) auditError = describe(t)
+        val faults = config.optJSONObject("faults")?.let { f -> f.keys().asSequence().associateWith { f.getString(it) } } ?: emptyMap()
+        val audit = MotifAudit(activity, bitmap, tables, appFiles)
+        val outcome = audit.run(checks, faults)
+        found.addAll(outcome.issues)
+        covered.addAll(audit.covered)
+        // Last, as it lets the screen run on for two seconds; on its own, so the others' findings stand whatever it does.
+        if ("motion" in checks) {
+            try {
+                when (faults["motion"]) {
+                    "unreadable" -> throw NoSuchFieldException("planted by Motif's test")
+                    "error" -> throw IllegalStateException("planted by Motif's test")
+                }
+                moving(activity, tables)?.let { found.add(it) }
+            } catch (t: Throwable) {
+                t.printStackTrace()
+                val missing = unreadable(t)
+                if (missing != null) outcome.unreadable["motion"] = missing else outcome.failed["motion"] = describeError(t)
+            }
         }
+        for ((check, what) in outcome.unreadable) {
+            notes.add("Motif couldn't read $what from this version of Compose, so the ${CHECK_NAMES[check] ?: check} check wasn't run on $target. Tell Motif's maintainers which Compose version the app uses.")
+        }
+        for ((check, why) in outcome.failed) if (auditError == null) auditError = "the ${CHECK_NAMES[check] ?: check} check: $why"
         val variant = shot.optString("variantId", "")
         for (issue in found) {
             issue.put("route", target).put("file", shot.getString("file")).put("size", shot.optString("size", ""))
@@ -707,6 +739,11 @@ class MotifShotTest(private val index: Int) {
             if (shot.optBoolean("rtl")) issue.put("rtl", true)
             shotIssues.add(issue)
         }
+    }
+
+    /** The app module's Kotlin files, for naming composables after the app's own. */
+    private val appFiles: Set<String> by lazy {
+        config.optJSONArray("appFiles")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet()
     }
 
     /** True when the screen still asks for frames (the test clock's frame clock has awaiters); null when that can't be read. */
@@ -721,23 +758,17 @@ class MotifShotTest(private val index: Int) {
             null
         }
 
-    /** A group of the slot table with a name, as reduced-motion findings name it: Pulse, from Pulse.kt. */
-    private class Named(val name: String, val file: String?)
-
     /** A group's box on screen (its layout nodes' bounds, together), and the named groups it is in, outermost first. */
-    private class SlotBox(val key: String, val group: Named?, val box: RectF?, val path: List<Named>)
-
-    private val nameOf = Regex("^C+\\(([A-Z][\\w$]*)\\)")
-    private val fileOf = Regex(":([^:#]+\\.kt)(?:#\\w*)?$")
+    private class SlotBox(val key: String, val group: SlotName?, val box: RectF?, val path: List<SlotName>)
 
     /** Every group of the compositions' slot tables, in order, with its box. */
     private fun boxes(tables: Set<Any>): List<SlotBox> {
         val out = mutableListOf<SlotBox>()
         var n = 0
-        fun visit(group: CompositionGroup, path: List<Named>): RectF? {
+        fun visit(group: CompositionGroup, path: List<SlotName>): RectF? {
             val i = n++
             val info = group.sourceInfo
-            val named = info?.let { s -> nameOf.find(s)?.groupValues?.get(1)?.let { Named(it, fileOf.find(s)?.groupValues?.get(1)) } }
+            val named = slotName(info)
             val inside = if (named != null) path + named else path
             val index = out.size
             out.add(SlotBox("", null, null, path))
@@ -783,8 +814,7 @@ class MotifShotTest(private val index: Int) {
                 if (!snapshot(activity).sameAs(first)) drawn = true
             }
             if (changed.isEmpty() && !drawn) return null
-            val appFiles = config.optJSONArray("appFiles")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet()
-            val own = { n: Named -> n.file != null && n.file in appFiles }
+            val own = { n: SlotName -> n.file != null && n.file in appFiles }
             val subject = changed.lastOrNull { it.group != null && own(it.group) } ?: changed.lastOrNull { it.group != null }
             val issue = JSONObject().put("rule", "motion").put("kind", "element")
             if (subject == null) return issue.put("selector", "").put("label", "")

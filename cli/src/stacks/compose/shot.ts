@@ -21,7 +21,7 @@ import type { NativeShotOptions } from "../native";
 import { findAndroidSdk, gradleJava, NO_ANDROID_SDK } from "./doctor";
 import { THEME_FILE } from "./generate";
 import {
-  composeFont, HARNESS_SRC, ROBOLECTRIC_DOWNLOAD_FAILED, runHarness, type ComposeFont, type ComposeShot, type HarnessResult, type HarnessRun, type HarnessSource,
+  composeFont, HARNESS_SRC, ROBOLECTRIC_DOWNLOAD_FAILED, runHarness, type ComposeFont, type ComposeShot, type HarnessConfig, type HarnessResult, type HarnessRun, type HarnessSource,
 } from "./harness";
 import { composeThemeDir, gradleRoot } from "./project";
 import { composeScreenProblem, discoverComposeScreens, previewSlug, type Preview } from "./screens";
@@ -79,6 +79,9 @@ export interface ComposeShotDeps {
   robolectricCache?: string;
   /** Opens routes by a deep link only, as when no NavController is found (tests of that way). */
   deepLinks?: boolean;
+  /** Failures planted in the audit's checks, and a Compose without the slot-table tag (tests of those ways). */
+  faults?: HarnessConfig["faults"];
+  slotTables?: false;
   /** Stands in for runHarness in tests. */
   run?: (run: HarnessRun) => Promise<HarnessResult>;
 }
@@ -266,7 +269,18 @@ interface RawScreen {
 }
 
 /** What the harness found (MotifAudit.kt and its reduced-motion check), as a RawIssue with where it was seen. */
-type RawComposeIssue = RawIssue & { route: string; file?: string; size: string; scheme: Scheme; variant?: string; state?: string; rtl?: boolean };
+type RawComposeIssue = RawIssue & {
+  route: string;
+  file?: string;
+  size: string;
+  scheme: Scheme;
+  variant?: string;
+  state?: string;
+  rtl?: boolean;
+  /** Which of the screen's nodes with the same selector it is (1-based), and how many there are. */
+  nth?: number;
+  of?: number;
+};
 
 /** The run's result as RouteResults: drawn screens (200) with their errors, and those that couldn't be (0). */
 export function mapComposeResult(
@@ -289,10 +303,12 @@ export function mapComposeResult(
   });
   const slugOf = new Map(targets.map((t) => [t.key, t.slug]));
   const raw = (Array.isArray(result.issues) ? result.issues : []) as RawComposeIssue[];
-  const issues = raw.map(({ rtl, file, ...i }): AuditIssue => {
+  const issues = raw.map(({ rtl, file, nth, of, ...i }): AuditIssue => {
     const fix = COMPOSE_FIXES[i.rule];
     return {
       ...i,
+      // Two unnamed buttons on one screen (a top bar's back and action) are two places, not one.
+      ...(nth && of && of > 1 ? { selector: `${i.selector}[${nth}]` } : {}),
       viewport: i.size === "desktop" ? "desktop" : "mobile",
       shot: join(outDir, file ?? shotName(`${slugOf.get(i.route) ?? routeSlug(i.route)}${i.state ? `@${i.state}` : ""}`, i.size, i.scheme, i.variant, Boolean(rtl))),
       ...(rtl ? { rtl: true as const } : {}),
@@ -460,10 +476,12 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
       ...(theme?.variants ? { variantClass: `${theme.pkg}.MotifTheme`, variantEnum: `${theme.pkg}.MotifVariant` } : {}),
       ...(theme?.fonts ? { fontsClass: `${theme.pkg}.MotifFonts` } : {}),
       ...(deps.deepLinks ? { deepLinks: true } : {}),
+      ...(deps.faults ? { faults: deps.faults } : {}),
+      ...(deps.slotTables === false ? { slotTables: false } : {}),
       ...(process.env.MOTIF_DEBUG ? { debug: true } : {}),
       // The default's issues name no variant, as on the other stacks.
       ...(defaultId ? { defaultVariant: defaultId } : {}),
-      // The reduced-motion check names what moves after the composables in these files: the app's own.
+      // Findings name the app's own composable around what they're about: one from these files.
       ...(opts.audit ? { appFiles: [...new Set(listKotlinFiles(moduleDir, ".").map((f) => basename(f.path)))].sort() } : {}),
       settleMs: SETTLE_MS,
       stateMs: STATE_MS,

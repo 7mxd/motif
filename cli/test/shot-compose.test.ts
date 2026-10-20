@@ -578,6 +578,40 @@ describe("the audit and states on a Compose app", () => {
     ]);
   });
 
+  test("two unnamed buttons on one screen (a top bar's back and action) are two findings' places: the harness says which of its like each is", async () => {
+    const root = makeProject(COMPOSE_APP);
+    const light = { route: "/", size: "mobile", scheme: "light", file: "index.mobile.png" };
+    const { runs, run } = fakeRun(() => ({
+      code: 0,
+      result: {
+        screens: [{ route: "/", shots: ["index.mobile.png", "index.mobile.dark.png"], errors: [] }],
+        issues: [
+          { rule: "name", selector: "TopBar > Button", label: "", kind: "button", nth: 1, of: 2, ...light },
+          { rule: "name", selector: "TopBar > Button", label: "", kind: "button", nth: 2, of: 2, ...light },
+          { rule: "target-mobile", selector: "TopBar > Button", label: "", kind: "button", width: 32, height: 48, nth: 1, of: 2, ...light },
+          // Alone of its kind on the screen: no ordinal.
+          { rule: "name", selector: "Settings > Switch", label: "", kind: "element", nth: 1, of: 1, ...light },
+        ],
+      },
+    }));
+    const deps: ShotDeps = { ...fakes().deps, shoot: (o) => shootCompose(o, base(root, run, { faults: { names: "error" }, slotTables: false })) };
+    await runShot(root, ctx({ routes: "/", sizes: "390", audit: true }), deps);
+    // Tests of the harness's own failures reach it through the options.
+    expect(runs[0]!.config.faults).toEqual({ names: "error" });
+    expect(runs[0]!.config.slotTables).toBe(false);
+    const review = JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8"));
+    const places = (review.findings as { category: string; location: { selector: string }; locations?: { selector: string }[] }[]).map((f) => [
+      f.category,
+      [f.location, ...(f.locations ?? [])].map((l) => l.selector),
+    ]);
+    expect(places).toEqual([
+      ["accessibility", ["TopBar > Button[1]"]],
+      ["accessibility", ["TopBar > Button[2]"]],
+      ["accessibility", ["Settings > Switch"]],
+      ["target-size", ["TopBar > Button[1]"]],
+    ]);
+  });
+
   test("the harness is told the default variant, so only another variant's issues name it; a screen's audit trouble and a state's error stay with the screen", async () => {
     const root = makeProject({ ...COMPOSE_APP, "design/tokens.json": JSON.stringify(partnerTokens()), "design/states/filled.kt": FILLED });
     const states = [{ name: "filled", script: FILLED, file: join(root, "design/states/filled.kt") }];

@@ -96,8 +96,12 @@ export interface HarnessConfig {
   stateMs?: number;
   /** The guide's default variant id: issues seen in it name no variant. */
   defaultVariant?: string;
-  /** The names of the app module's Kotlin files (--audit): the reduced-motion check names the composable that moves after the app's own. */
+  /** The names of the app module's Kotlin files (--audit): findings name the app's own composable around what they're about. */
   appFiles?: string[];
+  /** Failures planted in the audit's checks, for Motif's own tests: "unreadable" (an internal that isn't there) or "error". */
+  faults?: Partial<Record<"contrast" | "names" | "targets" | "motion", "unreadable" | "error">>;
+  /** false: draw as if this Compose had no slot-table tag (for Motif's own tests). */
+  slotTables?: boolean;
 }
 
 /** A source file the run compiles with the harness (the setup, a state, the hooks that call them), relative to the module. */
