@@ -38,10 +38,11 @@ function isDir(path: string): boolean {
   }
 }
 
-/** True when a Swift file in the folder (or one inside it, a few levels down) satisfies the test; the search is capped. */
-function someSwiftFile(dir: string, test: (text: string) => boolean): boolean {
+/** The first Swift file in the folder (or one inside it, a few levels down) that satisfies the test, or null; the search is capped. */
+function findSwiftFile(dir: string, test: (text: string) => boolean): string | null {
   let scanned = 0;
   let seen = 0;
+  let found: string | null = null;
   const visit = (d: string, depth: number): boolean => {
     if (depth > SWIFT_MAX_DEPTH || scanned >= SWIFT_MAX_FILES || seen >= SWIFT_MAX_ENTRIES) return false;
     let entries: string[];
@@ -57,7 +58,10 @@ function someSwiftFile(dir: string, test: (text: string) => boolean): boolean {
       if (++seen > SWIFT_MAX_ENTRIES) return false;
       scanned++;
       const text = read(join(d, name));
-      if (text !== null && test(text)) return true;
+      if (text !== null && test(text)) {
+        found = join(d, name);
+        return true;
+      }
       if (scanned >= SWIFT_MAX_FILES) return false;
     }
     for (const name of names.filter((n) => !n.endsWith(".swift"))) {
@@ -67,7 +71,13 @@ function someSwiftFile(dir: string, test: (text: string) => boolean): boolean {
     }
     return false;
   };
-  return visit(dir, 0);
+  visit(dir, 0);
+  return found;
+}
+
+/** True when a Swift file in the folder (or one inside it, a few levels down) satisfies the test; the search is capped. */
+function someSwiftFile(dir: string, test: (text: string) => boolean): boolean {
+  return findSwiftFile(dir, test) !== null;
 }
 
 /** True when a Swift file in the folder (or one inside it, a few levels down) imports SwiftUI. */
@@ -75,9 +85,16 @@ export function hasSwiftUIImport(dir: string): boolean {
   return someSwiftFile(dir, (text) => text.includes("import SwiftUI"));
 }
 
+const APP_ENTRY = /@main\s+(?:(?:@\w+(?:\([^)]*\))?|public|internal|open|package|final|nonisolated)\s+)*(?:struct|class)\s+\w+\s*:\s*[^{]*\bApp\b/;
+
 /** True when a Swift file in the folder is a SwiftUI app's entry point: @main struct X: App. */
 function hasAppEntry(dir: string): boolean {
-  return someSwiftFile(dir, (text) => /@main\s+(?:(?:@\w+(?:\([^)]*\))?|public|internal|open|package|final|nonisolated)\s+)*(?:struct|class)\s+\w+\s*:\s*[^{]*\bApp\b/.test(text));
+  return someSwiftFile(dir, (text) => APP_ENTRY.test(text));
+}
+
+/** The app's entry point (the Swift file with @main struct X: App) in its target's folder, or null. */
+export function appEntryFile(appDir: string, app: SwiftUIApp): string | null {
+  return findSwiftFile(join(appDir, app.sourceRoot), (text) => APP_ENTRY.test(text));
 }
 
 interface PbxObject {
@@ -271,4 +288,17 @@ export function swiftUIApp(dir: string): SwiftUIApp | null {
     if (app) return app;
   }
   return entries.includes("Package.swift") ? packageApp(dir) : null;
+}
+
+/**
+ * True when the target builds every file in its folder as it is: a Swift package's target, or an Xcode 16 project whose
+ * target folder is a file-system synchronized group. Otherwise a new file has to be added to the target in Xcode.
+ */
+export function buildsWholeFolder(appDir: string, app: SwiftUIApp): boolean {
+  if (app.kind === "package") return true;
+  const pbx = read(join(appDir, app.project, "project.pbxproj"));
+  if (pbx === null) return false;
+  return [...pbxObjects(pbx).values()].some(
+    (o) => /\bisa = PBXFileSystemSynchronizedRootGroup;/.test(o.own) && unquote(field(o.own, "path") ?? "") === app.sourceRoot,
+  );
 }

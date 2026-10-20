@@ -21,8 +21,8 @@ const app = (extra: Record<string, string> = {}, tailwind = true) => makeProject
   ...extra,
 });
 const ctx = (app?: string) => ({ positionals: [], app });
-/** An app whose stack has no adapter yet (Flutter has had one since 2E, Compose since 2F). */
-const SWIFTUI = { "Package.swift": "// swift-tools-version:5.9\nlet package = Package(name: \"App\", targets: [.executableTarget(name: \"App\")])", "Sources/App/App.swift": "import SwiftUI\n@main struct A: App {}" };
+/** An app whose stack has no adapter yet (Flutter has had one since 2E, Compose since 2F, SwiftUI since 2H). */
+const VUE = { "package.json": JSON.stringify({ dependencies: { vue: "^3" } }) };
 const statuses = (r: any) => Object.fromEntries((r.data.files as any[]).map((f) => [f.path, f.status]));
 
 describe("runTokens", () => {
@@ -80,12 +80,12 @@ describe("runTokens", () => {
   });
 
   test("a stack without an adapter gets plain CSS variables and flat JSON", async () => {
-    const root = makeProject({ ...SWIFTUI, "design/tokens.json": TOKENS });
+    const root = makeProject({ ...VUE, "design/tokens.json": TOKENS });
     const r = await runTokens(root, ctx());
     expect(r.exitCode).toBe(0);
     expect(existsSync(join(root, "design/generated/motif.css"))).toBe(true);
     expect(existsSync(join(root, "design/generated/tokens.flat.json"))).toBe(true);
-    expect((r.data.notes as string[]).join("\n")).toContain("SwiftUI support is coming soon");
+    expect((r.data.notes as string[]).join("\n")).toContain("Vue / Nuxt support is coming soon");
   });
 
   test("broken theme values → exit 1 and nothing written", async () => {
@@ -214,7 +214,7 @@ describe("motif tokens on a plain web site at the project's root (backlog)", () 
       "package.json": reactPkg(), "src/main.tsx": "", "src/index.css": '@import "tailwindcss";\n',
       "design/tokens.json": JSON.stringify(twoVariantTokens()),
     });
-    const native = makeProject({ ...SWIFTUI, "design/tokens.json": JSON.stringify(twoVariantTokens()) });
+    const native = makeProject({ ...VUE, "design/tokens.json": JSON.stringify(twoVariantTokens()) });
     const r = await runTokens(root, ctx());
     expect(r.exitCode).toBe(0);
     expect(readFileSync(join(root, "src/styles/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
