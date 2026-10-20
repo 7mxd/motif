@@ -17,6 +17,9 @@ import {
 import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { startStaticServer, type StaticServer } from "../shot/static-server";
 import { nativeStack, type NativeStack } from "../stacks/native";
+import { WEB_INSTALL } from "../stacks/react-native/doctor";
+import { RN_START_TIMEOUT_MS, RN_WEB_NOTE } from "../stacks/react-native";
+import { hasWebSupport, isExpoApp } from "../stacks/react-native/project";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
 import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes";
 import { andList } from "../text";
@@ -48,6 +51,29 @@ export function signInFirst(routes: string[]): string[] {
   const signIn = routes.filter((r) => SIGN_IN.test(r));
   const home = routes.filter((r) => r === "/");
   return [...signIn, ...home, ...routes.filter((r) => !signIn.includes(r) && r !== "/")];
+}
+const RN_NOTE_MARKER = ".motif-web-target-noted";
+/** Packages an error names that have no web build: "Unable to resolve module X", "Cannot find module 'X'", or a native-looking package after "in". */
+function webModuleHints(errors: string[]): string[] {
+  const names = new Set<string>();
+  for (const e of errors) {
+    const named = [
+      ...e.matchAll(/Unable to resolve module ['"]?([^'"\s]+)/g),
+      ...e.matchAll(/Cannot find module ['"]([^'"]+)['"]/g),
+      ...e.matchAll(/\bin ['"]?((?:@[\w.-]+\/)?(?:react-native|expo)-[\w.-]+)/g),
+    ];
+    for (const m of named) {
+      const spec = m[1]!.replace(/[.,;:]+$/, "");
+      if (spec.startsWith(".") || spec.startsWith("/")) continue;
+      const parts = spec.split("/");
+      const pkg = spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
+      if (pkg && pkg !== "react-native-web") names.add(pkg);
+    }
+  }
+  return [...names].map((pkg) => {
+    const file = pkg.split("/").pop();
+    return `${pkg} doesn't run on the web; stub it for screenshots with a ${file}.web.tsx file beside the import, or skip the route.`;
+  });
 }
 const INSTALL_HINT = '"motif browser install" downloads a private headless copy (about 120 MB to download, about 300 MB on disk) that only Motif uses.';
 
@@ -249,6 +275,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const app: AppInfo | undefined = selected.length === 1 ? selected[0] : undefined;
   // A native app is drawn from its code by its own stack (Flutter: flutter test), without a browser or a dev server.
   const native = app ? nativeStack(app.stack) : null;
+  // Expo's apps are drawn in the browser, through the web target: the web path, with native sizes and notes.
+  const rn = app?.stack === "react-native";
   const shoot = native?.shoot ? (deps.shoot ?? native.shoot.bind(native)) : undefined;
   if (shoot && native && app) {
     const label = app.stack ? STACK_LABELS[app.stack] : "These";
@@ -270,11 +298,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     const problem = native.shotInputsProblem?.(cwd, app, { screens, states });
     if (problem) return usage(problem, { error: "usage" });
   } else if (screens.length > 0) {
+    if (rn) return usage("React Native screens are routes; pass --routes.", { error: "usage" });
     return usage("--screen opens a Flutter widget by its class name; this app isn't a Flutter app. Use --routes for its pages.", { error: "usage" });
   }
   let viewports: Viewport[] | undefined;
   if (typeof flags.sizes === "string") {
-    const sizes = parseSizes(flags.sizes, shoot ? [...NATIVE_VIEWPORTS, NATIVE_DESKTOP] : undefined);
+    const sizes = parseSizes(flags.sizes, shoot || rn ? [...NATIVE_VIEWPORTS, NATIVE_DESKTOP] : undefined);
     if ("error" in sizes) return usage(sizes.error, { error: "usage" });
     viewports = sizes;
   }
@@ -301,7 +330,15 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       return usage("No app found in this folder. Run this inside your app's folder, or pass a running app's address with --url.", { error: "no-app" });
     }
     if (!app) return usage(`There are several apps here (${selected.map((a) => a.path).join(", ")}). Choose one with --app <path>.`, { error: "several-apps" });
-    if (app.stack !== "react-web" && app.stack !== "plain-web") {
+    if (rn && isExpoApp(join(cwd, app.path))) {
+      const missing = hasWebSupport(join(cwd, app.path));
+      if (missing.length > 0) {
+        return usage(
+          `Expo's web target needs ${andList(missing)}, which this app doesn't have yet. Install them with: ${WEB_INSTALL}`,
+          { error: "needs-web-target" },
+        );
+      }
+    } else if (app.stack !== "react-web" && app.stack !== "plain-web") {
       const what = app.stack ? `${STACK_LABELS[app.stack]} apps` : "this app";
       return usage(`Motif can't start ${what} for screenshots yet. Start it yourself and pass its address with --url.`, { error: "unsupported-stack" });
     }
@@ -316,6 +353,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         ? screens.length > 0
           ? { routes: [], skipped: [] }
           : (native?.routes?.(appDir) ?? { routes: ["/"], skipped: [] })
+        : rn
+        ? (native?.routes?.(appDir) ?? { routes: ["/"], skipped: [] })
         : app?.stack === "react-web"
         ? discoverRoutes(appDir)
         : siteFolderPath
@@ -330,7 +369,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     );
   }
   // A native app's own pages, past the cap: sign-in and the home page first, so the run shows the screens people meet first.
-  const reordered = Boolean(shoot) && typeof flags.routes !== "string" && discovery.routes.length > MAX_ROUTES;
+  const reordered = Boolean(shoot || rn) && typeof flags.routes !== "string" && discovery.routes.length > MAX_ROUTES;
   const all = reordered ? signInFirst(discovery.routes) : discovery.routes;
   const routes = all.slice(0, MAX_ROUTES);
   const notes: string[] = settingProblems.map((f) => f.message);
@@ -382,7 +421,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     const how = deps.devCommand(appDir);
     if ("error" in how) return usage(how.error, { error: "cant-start" });
     try {
-      server = await deps.startDevServer({ cwd: appDir, command: how.command });
+      server = await deps.startDevServer({
+        cwd: appDir, command: how.command, ...(how.env ? { env: how.env } : {}), ...(rn ? { timeoutMs: RN_START_TIMEOUT_MS } : {}),
+      });
     } catch (e) {
       return usage(`Couldn't start the app with "${how.display}". ${message(e)}`, { error: "dev-server-failed" });
     }
@@ -406,7 +447,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     } else {
       captured = await deps.capture({
         browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })),
-        ...(viewports ? { viewports } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
+        ...(viewports ?? (rn ? NATIVE_VIEWPORTS : undefined) ? { viewports: viewports ?? NATIVE_VIEWPORTS } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
       });
     }
   } catch (e) {
@@ -421,12 +462,25 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const width = Math.max(...captured.routes.map((r) => r.route.length));
   const lines = [
     shots.length > 0
-      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? (shoot ? "screen" : "page") : shoot ? "screens" : "pages"} (${describeSizes(viewports ?? (shoot ? NATIVE_VIEWPORTS : undefined))}, light and dark${rtl ? `, right to left in ${rtl}` : ""}${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
+      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? (shoot ? "screen" : "page") : shoot ? "screens" : "pages"} (${describeSizes(viewports ?? (shoot || rn ? NATIVE_VIEWPORTS : undefined))}, light and dark${rtl ? `, right to left in ${rtl}` : ""}${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
       : "✗ No screenshots were taken.",
     ...captured.routes.map((r) => routeLine(r, width)),
   ];
   for (const r of captured.routes.filter((r) => r.rtlForced)) {
     notes.push(`${r.route} doesn't switch to right to left by itself for ${rtl}; Motif set dir="rtl" to show it.`);
+  }
+  if (rn) {
+    notes.push(...webModuleHints(captured.routes.flatMap((r) => r.pageErrors ?? [])));
+    // Said the first time a folder of screenshots is made.
+    const marker = join(outDir, RN_NOTE_MARKER);
+    if (!existsSync(marker)) {
+      notes.unshift(RN_WEB_NOTE);
+      try {
+        writeFileSync(marker, "");
+      } catch {
+        // Not saving that it was said only means it is said again.
+      }
+    }
   }
   notes.push(...identicalVariantNotes(captured.routes.flatMap((r) => r.shots), native?.variantHow ?? WEB_VARIANT_HOW));
 

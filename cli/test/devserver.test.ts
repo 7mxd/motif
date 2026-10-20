@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { answers, devCommand, findLocalUrl, outputSummary, startDevServer } from "../src/shot/devserver";
+import { answers, devCommand, findLocalAddress, findLocalUrl, outputSummary, startDevServer } from "../src/shot/devserver";
 import { selfSignedCert } from "./tls";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -87,6 +87,41 @@ describe("devCommand", () => {
   test("Yarn Plug'n'Play apps have no node_modules, and count as installed (backlog)", () => {
     const pnp = makeProject({ "package.json": JSON.stringify({ scripts: { dev: "vite" } }), "yarn.lock": "", ".pnp.cjs": "" });
     expect(devCommand(pnp, { platform: "linux", which: has(["yarn", "node"]) })).toMatchObject({ display: "yarn run dev" });
+  });
+});
+
+describe("devCommand for an Expo app", () => {
+  const expo = (files: Record<string, string>, scripts: Record<string, string> = {}) =>
+    makeProject({ "package.json": JSON.stringify({ scripts, dependencies: { expo: "~52.0.0" } }), "node_modules/.keep": "", ...files });
+  const all = has(["bun", "bunx", "pnpm", "yarn", "npm", "npx", "node"]);
+
+  test("runs expo start --web on a free port through the package manager's exec, with CI=1 and no telemetry", () => {
+    const run = (files: Record<string, string>, platform: NodeJS.Platform = "linux") => devCommand(expo(files), { platform, which: all, port: 8099, vars: {} });
+    expect(run({})).toMatchObject({ command: ["/usr/bin/npx", "expo", "start", "--web", "--port", "8099"], display: "npx expo start --web --port 8099", env: { CI: "1", EXPO_NO_TELEMETRY: "1" } });
+    expect(run({ "pnpm-lock.yaml": "" })).toMatchObject({ command: ["/usr/bin/pnpm", "exec", "expo", "start", "--web", "--port", "8099"], display: "pnpm exec expo start --web --port 8099" });
+    expect(run({ "yarn.lock": "" })).toMatchObject({ command: ["/usr/bin/yarn", "expo", "start", "--web", "--port", "8099"], display: "yarn expo start --web --port 8099" });
+    expect(run({ "bun.lock": "" })).toMatchObject({ display: "bunx expo start --web --port 8099" });
+    expect(run({}, "win32")).toMatchObject({ command: ["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", "npx expo start --web --port 8099"] });
+  });
+
+  test("uses the app's web script when it has one", () => {
+    expect(devCommand(expo({ "yarn.lock": "" }, { web: "expo start --web" }), { platform: "linux", which: all })).toMatchObject({
+      command: ["/usr/bin/yarn", "run", "web"], display: "yarn run web", env: { CI: "1", EXPO_NO_TELEMETRY: "1" },
+    });
+  });
+
+  test("picks a free port when none is given, and a web app gets no extra variables", () => {
+    const r = devCommand(expo({}), { platform: "linux", which: all });
+    expect("error" in r ? 0 : Number(r.command[r.command.length - 1])).toBeGreaterThan(1023);
+    const web = devCommand(app({}), { platform: "linux", which: all });
+    expect("env" in web ? web.env : undefined).toBeUndefined();
+  });
+});
+
+describe("Expo's own address line", () => {
+  test('"Web is waiting on http://localhost:8081" is found, though no line says Local', () => {
+    const found = findLocalAddress("Starting project at /app\nStarting Metro Bundler\nWeb is waiting on http://localhost:8081\n");
+    expect(found).toEqual({ url: "http://localhost:8081", onLocalLine: false });
   });
 });
 

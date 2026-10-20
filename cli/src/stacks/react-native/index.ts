@@ -57,6 +57,13 @@ function variantWiring(set: ThemeSet): string {
   );
 }
 
+/** How a design variant is set in Expo apps, for the note when a variant looks exactly like the default. */
+export const RN_VARIANT_HOW = "MotifProvider, which follows data-variant on the web";
+/** Expo's first web bundle can take a minute or more, so its server gets longer to start than a web app's (ms). */
+export const RN_START_TIMEOUT_MS = 300_000;
+/** What the first run says about its screenshots. */
+export const RN_WEB_NOTE = "React Native screenshots are of Expo's web target in Chrome: close to the app, but native-only components and platform fonts can differ.";
+
 /** React Native with Expo. Its screenshots reuse the browser pipeline (Expo's web target); the parts later tasks add are not here yet. */
 export const REACT_NATIVE: NativeStack = {
   id: "react-native",
@@ -99,6 +106,8 @@ export const REACT_NATIVE: NativeStack = {
   collect: collectReactNative,
 
   routes: discoverExpoRoutes,
+
+  variantHow: RN_VARIANT_HOW,
 
   doctor: rnDoctor,
 };
