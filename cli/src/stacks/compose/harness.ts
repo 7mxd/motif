@@ -215,6 +215,15 @@ export function gradleProjectPath(projectDir: string, moduleDir: string): string
  */
 export function gradleCommand(java: string, projectDir: string, moduleDir: string, env: Record<string, string | undefined> = process.env): string[] {
   const rel = relative(projectDir, moduleDir).split("\\").join("/");
+  return gradleTaskCommand(
+    java,
+    [`${gradleProjectPath(projectDir, moduleDir)}:testDebugUnitTest`, "--tests", TEST_CLASS, "-I", `${rel === "" ? "" : `${rel}/`}${INIT_SCRIPT}`, "--console=plain"],
+    env,
+  );
+}
+
+/** The wrapper's jar started with java directly (as gradleCommand explains), then these arguments. */
+export function gradleTaskCommand(java: string, args: string[], env: Record<string, string | undefined> = process.env): string[] {
   return [
     java,
     "-Xmx64m",
@@ -225,12 +234,7 @@ export function gradleCommand(java: string, projectDir: string, moduleDir: strin
     "-classpath",
     "gradle/wrapper/gradle-wrapper.jar",
     "org.gradle.wrapper.GradleWrapperMain",
-    `${gradleProjectPath(projectDir, moduleDir)}:testDebugUnitTest`,
-    "--tests",
-    TEST_CLASS,
-    "-I",
-    `${rel === "" ? "" : `${rel}/`}${INIT_SCRIPT}`,
-    "--console=plain",
+    ...args,
   ];
 }
 

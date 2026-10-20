@@ -1,5 +1,5 @@
 // The eval cases (spec §13.2 and the plain web spec §11): test B's features on copies of the contract apps and site, test C's reviews of the seeded apps and site,
-// and test D's new apps from briefs; on React web, plain web and Flutter. Each prompt switches approvals off in the skill's own words.
+// and test D's new apps from briefs; on React web, plain web, Flutter and Jetpack Compose. Each prompt switches approvals off in the skill's own words.
 
 import type { StackId } from "../../cli/src/detect/stacks";
 import type { FixtureName } from "../fixtures/assemble";
@@ -21,7 +21,7 @@ export interface EvalCase {
   /** Claude Code's --max-budget-usd, at its API-price estimate; the developer's plan pays, not an API account. */
   maxBudgetUsd: number;
   minutes: number;
-  /** The app's stack when it isn't a web one: a Flutter case is type-checked with flutter analyze and drawn by Flutter. */
+  /** The app's stack when it isn't a web one: a Flutter case is type-checked with flutter analyze and drawn by Flutter, a Compose case with Gradle and drawn by Robolectric. */
   stack?: StackId;
 }
 
@@ -34,11 +34,14 @@ export const isPlain = (c: EvalCase): boolean => c.fixture?.startsWith("plain-")
 /** A case on a Flutter app: Flutter needs to be installed for it. */
 export const isFlutter = (c: EvalCase): boolean => c.stack === "flutter";
 
+/** A case on a Jetpack Compose app: it needs a JDK and the Android SDK. */
+export const isCompose = (c: EvalCase): boolean => c.stack === "compose";
+
 /**
- * Whether grading needs a browser: C and D always, and B on a plain site, whose new page is checked in one. Flutter
- * draws its own screens, so its cases never do.
+ * Whether grading needs a browser: C and D always, and B on a plain site, whose new page is checked in one. Flutter and
+ * Compose draw their own screens, so their cases never do.
  */
-export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && (c.test !== "B" || isPlain(c));
+export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && (c.test !== "B" || isPlain(c));
 
 const feature = (id: string, title: string, route: string, what: string): EvalCase => ({
   id, test: "B", title, fixture: "react-contract-app", routes: [route],
@@ -51,9 +54,14 @@ const flutterFeature = (id: string, title: string, route: string, what: string):
   ...feature(id, title, route, what), fixture: "flutter-contract-app", stack: "flutter", minutes: 120,
 });
 
+/** A feature on Rafiq. Every screenshot runs Gradle, so these get as long as Maktaba's. */
+const composeFeature = (id: string, title: string, route: string, what: string): EvalCase => ({
+  ...feature(id, title, route, what), fixture: "compose-contract-app", stack: "compose", minutes: 120,
+});
+
 const newApp = (brief: string, title: string, stack?: StackId): EvalCase => ({
   id: `d-${brief}`, test: "D", title, brief, routes: ["/", "/sign-in", "/home"],
-  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${stack === "flutter" ? "screen" : "page"} at /, sign-in at /sign-in and home at /home.\n\n${UNATTENDED}`,
+  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${stack ? "screen" : "page"} at /, sign-in at /sign-in and home at /home.\n\n${UNATTENDED}`,
   maxTurns: 400, maxBudgetUsd: 80, minutes: 180,
   ...(stack ? { stack } : {}),
 });
@@ -79,6 +87,11 @@ export const CASES: EvalCase[] = [
   flutterFeature("b-flutter-search", "Search with an empty state (Flutter)", "/search",
     "Add book search at /search: a search field, matching books (by title or author) as a list, a state for before anything is typed, and a state for when nothing matches that suggests another search. Link to it from the Books screen."),
 
+  composeFeature("b-compose-reminder", "Habit reminders (Compose)", "/reminders",
+    "Add a reminders screen at /reminders: every habit with a reminder time the person can set, and a save button that shows a saved confirmation. Link to it from the Today screen. Pretend to save; there's no back end."),
+  composeFeature("b-compose-stats", "Weekly stats with an empty state (Compose)", "/stats",
+    "Add a weekly stats screen at /stats: how many habits were done on each day of the past week, the week's best streak, and an empty state for a week with nothing done yet. Link to it from the Today screen."),
+
   {
     id: "c-review", test: "C", title: "Review of the seeded app", fixture: "react-seeded-app", routes: ["/", "/products", "/products/oats"],
     prompt: `/motif:review Review the whole app: its screens are /, /products and /products/oats (a product). Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
@@ -95,10 +108,19 @@ export const CASES: EvalCase[] = [
     prompt: `/motif:review Review the whole app: its screens are /, /books, /books/season-of-migration (a book), /loans and /sign-in. Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
     maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
   },
+  {
+    id: "c-compose", test: "C", title: "Review of the seeded Compose app", fixture: "compose-seeded-app", stack: "compose",
+    routes: ["/", "/sign-in", "/add", "TodayPreview", "TodayEmptyPreview", "HabitPreview", "AddHabitPreview", "SignInPreview"],
+    prompt: `/motif:review Review the whole app: its screens are the routes / (Today), /sign-in and /add, and the previews TodayPreview, TodayEmptyPreview, HabitPreview (a habit's page), AddHabitPreview and SignInPreview. Write the report only: stop after the report step and don't change the app's code.
+
+${UNATTENDED}`,
+    maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
+  },
   newApp("stride", "New app: Stride (a running club)"),
   newApp("ledgerly", "New app: Ledgerly (invoicing)"),
   newApp("bloom", "New app: Bloom (plant care)"),
   newApp("sahm", "New Flutter app: Sahm (university carpools)", "flutter"),
+  newApp("nabta", "New Compose app: Nabta (plant care)", "compose"),
 ];
 
 export function selectCases(all: EvalCase[], pick: { tests?: string[]; ids?: string[] }): EvalCase[] | { error: string } {

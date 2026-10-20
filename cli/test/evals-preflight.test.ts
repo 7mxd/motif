@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { DoctorDeps } from "../../cli/src/commands/doctor";
 import { paths, preflight, type PreflightDeps } from "../../tests/evals/preflight";
 import type { RunResult } from "../../tests/evals/tools";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -118,5 +119,44 @@ describe("before a run with Flutter cases", () => {
     const { p, deps, seen } = setup({}, { flutter: null });
     expect(await preflight(p, false, deps)).toMatchObject({ claude: "/bin/claude" });
     expect(seen.flutter).toBeUndefined();
+  });
+});
+
+describe("before a run with Compose cases", () => {
+  const webCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,c-review,c-plain,d-stride,d-ledgerly,d-bloom";
+  const java = (v: string) => ({ code: 0, stdout: "", stderr: `openjdk version "${v}" 2024-07-16
+` });
+  /** A computer with (or without) a JDK and an SDK, as doctor sees it. */
+  function android(opts: { jdk?: string; sdk?: boolean }): DoctorDeps {
+    const present = new Set<string>(opts.sdk ? ["/sdk", "/sdk/platforms/android-35/android.jar"] : []);
+    return {
+      platform: "linux", arch: "x64", home: "/home/dev", findBrowser: () => null,
+      which: (c) => (c === "java" && opts.jdk ? "/usr/bin/java" : null),
+      vars: opts.sdk ? { ANDROID_HOME: "/sdk" } : {},
+      run: (cmd) => (opts.jdk && cmd[0] === "/usr/bin/java" ? java(opts.jdk) : { code: 127, stdout: "" }),
+      files: { exists: (p) => present.has(p), read: () => null, list: (p) => (p === "/sdk/platforms" ? ["android-35"] : []) },
+    };
+  }
+
+  test("ready: a JDK 17 or later and an Android SDK", async () => {
+    const { p, deps } = setup();
+    expect(await preflight(p, false, { ...deps, doctor: android({ jdk: "17.0.12", sdk: true }) }, false, true)).toMatchObject({ claude: "/bin/claude" });
+  });
+
+  test("no JDK or no SDK: doctor's own words, and the cases to run instead", async () => {
+    const { p, deps } = setup();
+    const noJdk = await preflight(p, false, { ...deps, doctor: android({ sdk: true }) }, false, true);
+    expect(noJdk).toEqual({ error: expect.stringContaining("No JDK found.") });
+    expect((noJdk as { error: string }).error).toContain("https://adoptium.net");
+    expect((noJdk as { error: string }).error).toContain(`--cases ${webCases}`);
+    const noSdk = await preflight(p, false, { ...deps, doctor: android({ jdk: "21.0.3" }) }, false, true);
+    expect(noSdk).toEqual({ error: expect.stringContaining("No Android SDK found.") });
+    const old = await preflight(p, false, { ...deps, doctor: android({ jdk: "11.0.2", sdk: true }) }, false, true);
+    expect(old).toEqual({ error: expect.stringContaining("JDK 11.0.2 is older than 17") });
+  });
+
+  test("not checked without a Compose case", async () => {
+    const { p, deps } = setup();
+    expect(await preflight(p, false, { ...deps, doctor: android({}) })).toMatchObject({ claude: "/bin/claude" });
   });
 });

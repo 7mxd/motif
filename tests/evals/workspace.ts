@@ -1,7 +1,9 @@
-// A case's folder: a fresh copy of the fixture app with its packages installed (B, C; npm ci, or flutter pub get), or an empty folder holding the brief (D),
+// A case's folder: a fresh copy of the fixture app with its packages installed (B, C; npm ci, or flutter pub get, or local.properties for Compose), or an empty folder holding the brief (D),
 // plus git's record of how it started (a plain site installs nothing). The record lives beside the app, not in it, so nothing the session does can change it.
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { defaultDoctorDeps } from "../../cli/src/commands/doctor";
+import { findAndroidSdk } from "../../cli/src/stacks/compose/doctor";
 import { assemble } from "../fixtures/assemble";
 import type { EvalCase } from "./cases";
 import { tail, type Run } from "./tools";
@@ -79,6 +81,11 @@ export async function prepareWorkspace(c: EvalCase, dir: string, run: Run): Prom
   } else if (existsSync(join(ws.app, "pubspec.yaml"))) {
     const pub = await run(["flutter", "pub", "get"], ws.app, 900_000);
     if (pub.code !== 0) throw new Error(`Getting the app's packages failed (flutter pub get):\n${tail(pub)}`);
+  }
+  // A Compose app finds the Android SDK through local.properties, which the app's .gitignore keeps out of its record.
+  if (c.stack === "compose") {
+    const sdk = findAndroidSdk(ws.app, { path: ".", stack: "compose", source: "detected" }, defaultDoctorDeps());
+    if (sdk) writeFileSync(join(ws.app, "local.properties"), `sdk.dir=${sdk.replace(/\\/g, "\\\\").replace(/:/g, "\\:")}\n`);
   }
   ws.baseline = await snapshot(ws, run);
   return ws;

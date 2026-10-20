@@ -9,14 +9,25 @@ import { detectApps, siteDir } from "../../cli/src/detect/stacks";
 import { discoverPlainRoutes } from "../../cli/src/stacks/plain-web/routes";
 import { maskComments, maskStrings } from "../../cli/src/check/mask";
 import { discoverFlutterRoutes } from "../../cli/src/stacks/flutter/routes";
-import { isFlutter, isPlain, type EvalCase } from "./cases";
+import { defaultDoctorDeps } from "../../cli/src/commands/doctor";
+import { findAndroidSdk, gradleJava } from "../../cli/src/stacks/compose/doctor";
+import { gradleProjectPath, gradleTaskCommand } from "../../cli/src/stacks/compose/harness";
+import { discoverComposeScreens, previewSlug, type Preview } from "../../cli/src/stacks/compose/screens";
+import { isCompose, isFlutter, isPlain, type EvalCase } from "./cases";
 import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
 import { Paused, type JudgeFn, type JudgeInput, type JudgeVerdict } from "./judge";
 import { gradeExact, parseReport, type SeededIssue } from "./match";
-import { packageManager, type Motif, type MotifResult, type Run } from "./tools";
+import { packageManager, withoutProviderKeys, type Motif, type MotifResult, type Run } from "./tools";
 import { changes, findApp, patch, type Workspace } from "./workspace";
 
-export interface Collectors { run: Run; motif: Motif; judge: JudgeFn }
+/** The JDK and Android SDK a Gradle run uses, or why there is none. */
+export type AndroidTools = { java: string; javaHome: string; sdk?: string } | { problem: string };
+
+export interface Collectors {
+  run: Run; motif: Motif; judge: JudgeFn;
+  /** Compose: the JDK and SDK for Gradle; found as motif doctor finds them when not given (tests give a fake). */
+  android?: () => AndroidTools;
+}
 
 const FIXTURES = join(import.meta.dir, "..", "fixtures");
 
@@ -60,7 +71,41 @@ async function flutterAnalyze(dir: string, k: Collectors, out: string): Promise<
   return { code: analyze.code, timedOut: analyze.timedOut, command: "flutter analyze" };
 }
 
-/** motif shot's sizes for a Flutter app: one phone, so each screen is drawn once per scheme rather than at every native size. */
+/** What a Compose app's type check is called in the details and the grade. */
+const COMPOSE_TYPECHECK = "./gradlew :app:compileDebugKotlin";
+
+/** The module a Compose project's app is in: its detected one, else app/. */
+const composeModule = (dir: string): string => detectApps(dir).apps.find((a) => a.stack === "compose")?.path ?? "app";
+
+/** The JDK and SDK as motif doctor finds them on this computer. */
+function androidTools(dir: string): AndroidTools {
+  const deps = defaultDoctorDeps();
+  const java = gradleJava(deps);
+  if ("problem" in java) return java;
+  const sdk = findAndroidSdk(dir, { path: ".", stack: "compose", source: "detected" }, deps);
+  return { ...java, ...(sdk ? { sdk } : {}) };
+}
+
+/**
+ * A Compose app's type check: its Kotlin compiled with Gradle (the wrapper's jar started with the JDK doctor chooses,
+ * as motif shot does, since gradlew.bat breaks on some paths). When there's no JDK, SDK or wrapper, it fails and says so.
+ */
+async function composeCompile(dir: string, k: Collectors, out: string): Promise<CmdFacts> {
+  const failed = (detail: string): CmdFacts => ({ code: 1, command: COMPOSE_TYPECHECK, detail });
+  const tools: AndroidTools = k.android ? k.android() : androidTools(dir);
+  if ("problem" in tools) return failed(tools.problem);
+  if (!existsSync(join(dir, "gradle", "wrapper", "gradle-wrapper.jar"))) {
+    return failed("There's no Gradle wrapper (gradle/wrapper/gradle-wrapper.jar), so the app couldn't be compiled.");
+  }
+  const env: Record<string, string | undefined> = { ...withoutProviderKeys(process.env), JAVA_HOME: tools.javaHome };
+  if (tools.sdk) env.ANDROID_HOME ||= tools.sdk;
+  const task = `${gradleProjectPath(dir, join(dir, composeModule(dir)))}:compileDebugKotlin`;
+  const r = await k.run(gradleTaskCommand(tools.java, [task, "--console=plain"], env), dir, 1_800_000, env);
+  save(out, "compile.log", `${r.stdout}\n${r.stderr}`);
+  return { code: r.code, timedOut: r.timedOut, command: COMPOSE_TYPECHECK };
+}
+
+/** motif shot's sizes for a native app: one phone, so each screen is drawn once per scheme rather than at every native size. */
 const FLUTTER_SIZES = ["--sizes", "390"];
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -273,6 +318,71 @@ export function flutterComponents(diff: string): FlutterComponents {
   return found;
 }
 
+export interface ComposeComponents {
+  /** New public @Composable functions under ui/: they count against the limit unless the design guide records them. */
+  newComponents: string[];
+  /** A screen's entry point (*Screen) and the stateless *Content beside it. */
+  screens: string[];
+  /** Private @Composable functions: a screen's or a component's own parts. */
+  screenParts: string[];
+}
+
+const KOTLIN_FUN =
+  /^((?:@[\w.]+(?:\([^)]*\))?\s*)*)((?:(?:public|private|internal|protected|inline|actual|expect|override)\s+)*)fun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+?\.)?([A-Za-z_]\w*)\s*\(/;
+const KOTLIN_FUN_NAME = /\bfun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+?\.)?([A-Za-z_]\w*)\s*\(/;
+
+interface ComposableFun { name: string; isPrivate: boolean; isPreview: boolean }
+
+/** The @Composable functions declared in some Kotlin lines, with comments and strings masked. */
+function composableFuns(lines: string[]): ComposableFun[] {
+  const found: ComposableFun[] = [];
+  let pending = "";
+  for (const raw of maskStrings(maskComments(lines.join("\n"), "kotlin"), "kotlin").split("\n")) {
+    const t = raw.trim();
+    // An annotation's arguments may run over several lines.
+    if (pending && (pending.match(/\(/g) ?? []).length > (pending.match(/\)/g) ?? []).length) {
+      pending += ` ${t}`;
+      continue;
+    }
+    const m = KOTLIN_FUN.exec(t);
+    if (m) {
+      const annotations = `${pending} ${m[1]}`;
+      if (/@Composable\b/.test(annotations)) {
+        found.push({ name: m[3]!, isPrivate: /\bprivate\b/.test(m[2]!), isPreview: /@Preview\b/.test(annotations) || /Preview$/.test(m[3]!) });
+      }
+      pending = "";
+    } else pending = t.startsWith("@") ? `${pending} ${t}` : "";
+  }
+  return found;
+}
+
+/**
+ * Compose's new components, from the session's diff: public @Composable functions it adds under ui/, minus previews and
+ * a screen's entry point (*Screen, and the *Content beside it in the same file). Private ones are a screen's parts. The
+ * generated theme (ui/motif/, or a file that starts with Motif's header) never counts, and a function the diff also
+ * removes (moved or renamed in place) isn't new.
+ */
+export function composeComponents(diff: string): ComposeComponents {
+  const all = diffFiles(diff);
+  const removed = new Set(all.flatMap((f) => f.removed.flatMap((l) => KOTLIN_FUN_NAME.exec(l)?.[1] ?? [])));
+  const found: ComposeComponents = { newComponents: [], screens: [], screenParts: [] };
+  const seen = new Set<string>();
+  for (const f of all) {
+    if (f.deleted || !/(^|\/)ui\/.+\.kt$/.test(f.path) || /(^|\/)src\/(test|androidTest)\//.test(f.path) || /(^|\/)ui\/motif\//.test(f.path)) continue;
+    if (reallyAdded(f)[0]?.startsWith("// Generated by Motif")) continue;
+    const funs = composableFuns(reallyAdded(f));
+    const entries = new Set(funs.filter((x) => !x.isPrivate && !x.isPreview && x.name.endsWith("Screen")).map((x) => x.name));
+    for (const fun of funs) {
+      if (fun.isPreview || removed.has(fun.name) || seen.has(fun.name)) continue;
+      seen.add(fun.name);
+      if (fun.isPrivate) found.screenParts.push(fun.name);
+      else if (entries.has(fun.name) || (fun.name.endsWith("Content") && entries.has(`${fun.name.slice(0, -"Content".length)}Screen`))) found.screens.push(fun.name);
+      else found.newComponents.push(fun.name);
+    }
+  }
+  return found;
+}
+
 /** A plain site's new components, from the session's diff of its pages and stylesheets. */
 const plainComponents = (diff: string, existing: Set<string>) =>
   addedComponents(diffFiles(diff).filter((f) => !f.deleted && /\.(css|html?)$/i.test(f.path)).map((f) => f.text).join("\n"), existing);
@@ -296,7 +406,7 @@ export function fixtureComponents(fixture: string, root = join(import.meta.dir, 
 
 /** A B case's new components, and which the design guide records, from the session's diff (also used by --regrade). */
 export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi" | "screens"> {
-  const found = isFlutter(c) ? flutterComponents(diff) : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
+  const found = isCompose(c) ? composeComponents(diff) : isFlutter(c) ? flutterComponents(diff) : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
   return { ...found, recorded: recordedIn(diff, found.newComponents) };
 }
 
@@ -318,11 +428,26 @@ function plainSite(app: string): string {
 }
 
 /** The feature's page as motif shot draws it (in a browser, or by Flutter): its status and how many errors it threw. */
-async function renderFacts(k: Collectors, app: string, route: string, out: string, extra: string[] = []): Promise<ScreenFacts | { error: string }> {
-  const shot = await motifJson(k, ["shot", "--routes", route, ...extra], app, out, "shot.json", 900_000);
-  const r = Array.isArray(shot.json?.routes) ? shot.json.routes.find((x: any) => x.route === route) : undefined;
-  if (!r) return { error: String(shot.json?.error ?? `${route} wasn't captured`) };
-  return { route, status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 };
+async function renderFacts(k: Collectors, app: string, route: string, out: string, extra: string[] = [], screen?: string, timeoutMs = 900_000): Promise<ScreenFacts | { error: string }> {
+  const key = screen ?? route;
+  const shot = await motifJson(k, ["shot", ...(screen ? ["--screen", screen] : ["--routes", route]), ...extra], app, out, "shot.json", timeoutMs);
+  const r = Array.isArray(shot.json?.routes) ? shot.json.routes.find((x: any) => x.route === key) : undefined;
+  if (!r) return { error: String(shot.json?.error ?? `${key} wasn't captured`) };
+  return { route: key, status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 };
+}
+
+/** The @Preview that stands for a route: /reminders is RemindersPreview or RemindersScreenPreview. */
+function previewFor(previews: Preview[], route: string): Preview | undefined {
+  const slug = route.replace(/^\/+/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return slug ? previews.find((p) => [slug, `${slug}-screen`].includes(previewSlug(p.name))) : undefined;
+}
+
+/** A Compose screen exists when its route, or a preview named for it, is among the app's screens; it is drawn by whichever it has. */
+function composeScreen(app: string, route: string): { exists: boolean; preview?: string } {
+  const found = discoverComposeScreens(join(app, composeModule(app)));
+  if (found.routes.includes(route)) return { exists: true };
+  const preview = previewFor(found.previews, route);
+  return preview ? { exists: true, preview: preview.name } : { exists: false };
 }
 
 export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: string): Promise<BFacts> {
@@ -339,6 +464,14 @@ export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: s
     return {
       route, pageExists: discoverPlainRoutes(plainSite(ws.app)).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
       render: await renderFacts(k, ws.app, route, out), ...components,
+    };
+  }
+  if (isCompose(c)) {
+    const screen = composeScreen(ws.app, route);
+    const typecheck = await composeCompile(ws.app, k, out);
+    return {
+      route, pageExists: screen.exists, check: checkFacts(check), validate: validateFacts(validate),
+      typecheck, render: await renderFacts(k, ws.app, route, out, FLUTTER_SIZES, screen.preview, 1_800_000), ...components,
     };
   }
   if (isFlutter(c)) {
@@ -466,16 +599,19 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
     return { app: null, validate: none, check: none, sections: { missing: [...REQUIRED_SECTIONS], empty: [] }, build: { code: 1 }, typecheck: { code: 1 }, screens: none, routes: c.routes };
   }
   for (const f of ["DESIGN.md", "design/tokens.json"]) if (existsSync(join(app, f))) copyFileSync(join(app, f), join(out, basename(f)));
+  const compose = isCompose(c);
   const flutter = isFlutter(c);
-  if (!flutter && !existsSync(join(app, "node_modules"))) {
+  if (!flutter && !compose && !existsSync(join(app, "node_modules"))) {
     const r = await k.run([packageManager(app), "install"], app, 900_000);
     save(out, "install.log", `${r.stdout}\n${r.stderr}`);
   }
   const validate = await motifJson(k, ["validate"], app, out, "validate.json");
   const check = await motifJson(k, ["check"], app, out, "check.json");
   const sections = designSections(existsSync(join(app, "DESIGN.md")) ? readFileSync(join(app, "DESIGN.md"), "utf8") : "");
-  const { build, typecheck } = flutter ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) } : await buildAndTypecheck(app, k, out);
-  const shot = await motifJson(k, ["shot", "--audit", "--routes", c.routes.join(","), ...(flutter ? FLUTTER_SIZES : [])], app, out, "shot.json", 900_000);
+  const { build, typecheck } = compose
+    ? { build: undefined, typecheck: await composeCompile(app, k, out) }
+    : flutter ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) } : await buildAndTypecheck(app, k, out);
+  const shot = await motifJson(k, ["shot", "--audit", "--routes", c.routes.join(","), ...(flutter || compose ? FLUTTER_SIZES : [])], app, out, "shot.json", compose ? 1_800_000 : 900_000);
   copyShots(app, shot.json, join(out, "shots"));
   const screens = Array.isArray(shot.json?.routes)
     ? shot.json.routes.map((r: any) => ({ route: String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
 import { runCmd, type Run } from "../../tests/evals/tools";
@@ -89,6 +89,27 @@ describe("a case's folder", () => {
     expect(npmCalls.length).toBe(before);
     const failing: Run = async (cmd, cwd, t) => (cmd[0] === "flutter" ? { code: 1, stdout: "", stderr: "Because maktaba depends on go_router, version solving failed.", timedOut: false } : runCmd(cmd, cwd, t));
     await expect(prepareWorkspace(byId("b-flutter-search"), join(tempDir("motif-ws-"), "f"), failing)).rejects.toThrow("version solving failed");
+  });
+
+  test("a Compose app: a fresh copy with a local.properties pointing at the SDK, nothing installed, that file left out of the record", async () => {
+    const sdk = tempDir("motif-sdk-");
+    mkdirSync(join(sdk, "platforms"), { recursive: true });
+    const saved = process.env.ANDROID_HOME;
+    process.env.ANDROID_HOME = sdk;
+    try {
+      const before = npmCalls.length;
+      for (const id of ["b-compose-reminder", "c-compose"]) {
+        const ws = await prepareWorkspace(byId(id), join(tempDir("motif-ws-"), id), run);
+        expect(existsSync(join(ws.app, "gradlew"))).toBe(true);
+        expect(readFileSync(join(ws.app, "local.properties"), "utf8")).toBe(`sdk.dir=${sdk.replace(/\\/g, "\\\\").replace(/:/g, "\\:")}\n`);
+        expect(ws.baseline).toMatch(/^[0-9a-f]{40}$/);
+        expect(await changes(ws, run)).toEqual([]);
+      }
+      expect(npmCalls.length).toBe(before);
+    } finally {
+      if (saved === undefined) delete process.env.ANDROID_HOME;
+      else process.env.ANDROID_HOME = saved;
+    }
   });
 
   test("D: an empty folder holding the brief, nothing recorded", async () => {

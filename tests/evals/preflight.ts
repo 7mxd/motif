@@ -1,9 +1,11 @@
 // Checks before a run: Claude Code signed in with a Claude account (never an API key), this checkout's motif tool and plugin built,
-// Node.js for the apps, a browser for the cases that need one, and Flutter for the Flutter cases. Nothing is downloaded or installed for the developer.
+// Node.js for the apps, a browser for the cases that need one, Flutter for the Flutter cases, and a JDK and the Android SDK for the Compose ones. Nothing is downloaded or installed for the developer.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { defaultDoctorDeps, type DoctorDeps } from "../../cli/src/commands/doctor";
+import { composeDoctor } from "../../cli/src/stacks/compose/doctor";
 import { FLUTTER_INSTALL, FLUTTER_MIN, olderThanFlutterMin } from "../../cli/src/stacks/flutter/doctor";
-import { CASES, isFlutter, needsBrowser as caseNeedsBrowser } from "./cases";
+import { CASES, isCompose, isFlutter, needsBrowser as caseNeedsBrowser } from "./cases";
 import { resolveClaude, sessionEnv } from "./claude";
 import { tail, type Run } from "./tools";
 
@@ -22,6 +24,8 @@ export interface PreflightDeps {
   /** This Bun, for `bun run build` and `bun run plugin`. */
   bun: string;
   claudeOverride?: string;
+  /** Compose: how doctor looks for the JDK and the Android SDK (this computer's own when not given; tests give a fake). */
+  doctor?: DoctorDeps;
 }
 
 /** Flutter's version from flutter --version --machine (an "upgrade available" banner may come first), or null. */
@@ -43,12 +47,22 @@ async function flutterProblem(d: PreflightDeps, cwd: string): Promise<string | n
   const version = await flutterVersion(d, cwd);
   if (version && !olderThanFlutterMin(version)) return null;
   const flutterCases = CASES.filter(isFlutter).map((c) => c.id);
-  const others = CASES.filter((c) => !isFlutter(c)).map((c) => c.id);
+  const others = CASES.filter((c) => !c.stack).map((c) => c.id);
   const found = version ? `This is Flutter ${version}; run flutter upgrade, or ${FLUTTER_INSTALL}` : `Flutter wasn't found on the PATH (or didn't say its version): ${FLUTTER_INSTALL}`;
   return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN} or later. ${found}, then run this again. Or run the other cases without it: --cases ${others.join(",")}`;
 }
 
-export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false): Promise<Ready | { error: string }> {
+/** Why the Compose cases can't run here (doctor's own lines for the JDK and the SDK), naming the cases that can; nothing when both are found. */
+function androidProblem(d: PreflightDeps, repo: string): string | null {
+  const deps = d.doctor ?? { ...defaultDoctorDeps(), which: d.which, vars: d.env };
+  const needed = composeDoctor(deps, { root: repo, apps: [{ path: ".", stack: "compose", source: "detected" }] }).filter((i) => i.status === "needed");
+  if (needed.length === 0) return null;
+  const composeCases = CASES.filter(isCompose).map((c) => c.id);
+  const others = CASES.filter((c) => !c.stack).map((c) => c.id);
+  return `The Compose cases (${composeCases.join(", ")}) need a JDK 17 or later and the Android SDK. ${needed.map((i) => i.detail).join(" ")} Then run this again. Or run the web cases without them: --cases ${others.join(",")}`;
+}
+
+export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false): Promise<Ready | { error: string }> {
   const found = resolveClaude(d.claudeOverride ?? d.which("claude"));
   if ("error" in found) return found;
   const { env } = sessionEnv(d.env, p.motifBin);
@@ -68,6 +82,10 @@ export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDep
   // Before the builds, which take a while.
   if (needsFlutter) {
     const problem = await flutterProblem(d, p.repo);
+    if (problem) return { error: problem };
+  }
+  if (needsAndroid) {
+    const problem = androidProblem(d, p.repo);
     if (problem) return { error: problem };
   }
 

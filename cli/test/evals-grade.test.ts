@@ -151,3 +151,24 @@ describe("test D on Flutter", () => {
     expect(failing(gradeD({ ...rest, typecheck: { code: 3, command: "flutter analyze" } }))).toEqual(["typecheck"]);
   });
 });
+
+describe("test B and D on Compose", () => {
+  const gradle = { code: 0, command: "./gradlew :app:compileDebugKotlin" };
+  const okCompose: BFacts = {
+    route: "/reminders", pageExists: true, check: { violations: 0, exceptions: 0, warnings: 0 }, validate: { errors: 0, warnings: 0, missingSections: [] },
+    typecheck: gradle, render: { route: "/reminders", status: 200, pageErrors: 0 }, newComponents: [], recorded: [],
+  };
+  test("compileDebugKotlin stands for the type check and the page is drawn by motif shot; there's no build", () => {
+    const g = gradeB(okCompose);
+    expect(g.pass).toBe(true);
+    expect(g.criteria.map((c) => c.id)).toEqual(["feature", "check", "exceptions", "validate", "typecheck", "renders", "components"]);
+    expect(g.criteria.find((c) => c.id === "typecheck")!.detail).toBe("The type check (./gradlew :app:compileDebugKotlin) passed.");
+    expect(failing(gradeB({ ...okCompose, typecheck: { ...gradle, code: 1 } }))).toEqual(["typecheck"]);
+    expect(failing(gradeB({ ...okCompose, render: { error: "Gradle stopped before drawing it." } }))).toEqual(["renders"]);
+  });
+  test("D has no build criterion either", () => {
+    const { build: _, ...rest } = okD;
+    const g = gradeD({ ...rest, typecheck: gradle });
+    expect(g.criteria.map((c) => c.id)).toEqual(["app", "validate", "check", "exceptions", "sections", "typecheck", "screens"]);
+  });
+});
