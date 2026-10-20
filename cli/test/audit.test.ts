@@ -230,7 +230,8 @@ const OLD_BROWSER = `<!doctype html><html><head><meta name="viewport" content="w
 
 // What react-native-web draws: a Pressable or Touchable is <div tabindex="0"> with a pointer cursor and no role, and an
 // icon font's glyph is a private-use character in a text node (here U+E001, and U+F0001 beyond the first plane).
-const RN = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+const RN = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>@keyframes turn { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style></head>
 <body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111">
 <div id="icon" tabindex="0" style="cursor: pointer; width: 32px; height: 32px; background: #444444"><div dir="auto">&#xE001;</div></div>
 <div id="plus" tabindex="0" style="cursor: pointer; width: 32px; height: 32px; background: #444444"><div dir="auto" aria-hidden="true">&#xF0001;</div></div>
@@ -241,7 +242,8 @@ const RN = `<!doctype html><html><head><meta name="viewport" content="width=devi
 <button id="glyph" role="button" style="width: 32px; height: 32px; padding: 0">&#xE001;</button>
 <button id="back" aria-label="Back" style="width: 60px; height: 60px; padding: 0">&#xE001;</button>
 <div role="tablist"><div id="tab" role="tab" tabindex="0" aria-selected="true" style="cursor: pointer; width: 60px; height: 60px; background: #dddddd"><svg width="24" height="24"><circle cx="12" cy="12" r="8"></circle></svg></div>
-<div id="search-tab" role="tab" tabindex="0" aria-label="Search" style="cursor: pointer; width: 60px; height: 60px; background: #dddddd"></div></div></body></html>`;
+<div id="search-tab" role="tab" tabindex="0" aria-label="Search" style="cursor: pointer; width: 60px; height: 60px; background: #dddddd"></div></div>
+<div role="progressbar" aria-valuemin="0" aria-valuemax="1"><div id="turning" style="width: 20px; height: 20px; border: 4px solid #1976d2; animation: turn 0.75s linear infinite"></div></div></body></html>`;
 
 const browser = findBrowser();
 let server: ReturnType<typeof Bun.serve>;
@@ -298,11 +300,16 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
       expect(routes[0]!.auditError).toBeUndefined();
       return toFindings(issues).map((f) => `${f.category} ${f.location.selector}: ${f.summary}`);
     };
-    // Web: the divs are not controls, and the glyph is text to axe.
-    expect(await audit(false)).toEqual(["target-size #glyph: The \"\ue001\" button is 32×32 px on a phone; 44×44 px is easier to tap."]);
+    // Web: the divs are not controls, the glyph is text to axe, and a spinner that keeps turning is motion (a web page draws
+    // its own and can stop it).
+    expect(await audit(false)).toEqual([
+      "reduced-motion #turning: An element keeps moving when the viewer asks for reduced motion.",
+      "target-size #glyph: The \"\ue001\" button is 32×32 px on a phone; 44×44 px is easier to tap.",
+    ]);
     // React Native: the unnamed Pressables are buttons with no name (the glyph and the aria-hidden glyph are not names), and so is the
     // button axe passed for its glyph, and a tab with only an icon (accessibilityRole="tab", as a tab bar has; hands-on); the
-    // named, large, nested and non-pointer ones are not reported.
+    // named, large, nested and non-pointer ones are not reported. ActivityIndicator's spinner (role="progressbar") is the
+    // platform's, which the app can't stop under reduce motion: not a motion finding (final review).
     expect(await audit(true)).toEqual([
       "accessibility #icon: The button has no name a screen reader can say.",
       "accessibility #plus: The button has no name a screen reader can say.",

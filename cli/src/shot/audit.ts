@@ -278,6 +278,10 @@ function installAudit(): boolean {
         if (before[i] !== after[i]) moving.add(e);
       });
       return [...moving]
+        // React Native's ActivityIndicator (role="progressbar" on the web) is the platform's own spinner, which shows that
+        // something is loading: the app has no setting to slow or stop it under reduce motion (iOS keeps it turning), so it
+        // isn't the app's motion. Web pages draw their own spinners and can stop them, so on the web a spinner still counts.
+        .filter((e) => !(reactNative && e.closest("[role='progressbar']")))
         .filter((e) => e.isConnected && e.getBoundingClientRect().width > 0)
         .map((e) => ({ rule: "motion" as const, ...describe(e) }));
     },

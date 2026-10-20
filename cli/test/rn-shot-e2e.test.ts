@@ -172,7 +172,8 @@ describe("motif shot on expo-min, through Expo's web target", () => {
     expect(sizes.some((s) => /^The "Skip" button is \d+×32 px on a phone/.test(s))).toBe(true);
     expect(sizes).toHaveLength(6);
     expect(on("/audit", "target-size")[0]!.fix).toContain("hitSlop");
-    // Reanimated with ReduceMotion.Never and core Animated.loop, neither checking reduced motion; /calm checks it.
+    // Reanimated with ReduceMotion.Never and core Animated.loop, neither checking reduced motion; /calm checks it, and its
+    // ActivityIndicator (the platform's spinner, which the app can't stop) isn't counted.
     expect(on("/motion", "reduced-motion")).toHaveLength(1);
     expect(on("/loop", "reduced-motion")).toHaveLength(1);
     expect(on("/calm", "reduced-motion")).toEqual([]);
