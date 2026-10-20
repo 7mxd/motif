@@ -78,7 +78,7 @@ describe("the release workflow", () => {
 
   test("publishes with written notes and the notices, only after checking the notes exist", () => {
     const publish = section("publish");
-    expect(publish).toContain("needs: [build, plugin, test]");
+    expect(publish).toContain("needs: [build, plugin, test, flutter]");
     expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre');
     expect(publish).not.toContain("--generate-notes");
     expect(publish).toContain("cp THIRD-PARTY-NOTICES.txt dist/");
@@ -208,7 +208,7 @@ describe("the release workflows are hardened (backlog)", () => {
   test("a tag publishes only after the tests pass", () => {
     const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
     expect(wf).toContain("\n  test:\n");
-    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test\]/);
+    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter]/);
   });
 
   test("every action is pinned to a commit, with its version beside it", () => {
