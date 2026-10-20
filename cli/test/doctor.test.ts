@@ -509,3 +509,52 @@ describe("the Xcode toolchain for SwiftUI apps", () => {
     }
   });
 });
+
+describe("the Xcode toolchain: noisy and failing tools", () => {
+  const app = () =>
+    makeProject({
+      "Package.swift": `// swift-tools-version:5.9\nimport PackageDescription\nlet package = Package(name: "Rafiq", platforms: [.iOS(.v17)], targets: [.executableTarget(name: "Rafiq")])\n`,
+      "Sources/Rafiq/RafiqApp.swift": "import SwiftUI\n@main struct RafiqApp: App { var body: some Scene { WindowGroup { Text(\"Hi\") } } }\n",
+    });
+  const good = '{"runtimes":[{"platform":"iOS","version":"18.2","isAvailable":true}]}';
+  const mini = (o: { xcode?: { code: number; stdout: string }; swift?: { code: number; stdout: string }; sim?: { code: number; stdout: string } }): Partial<DoctorDeps> => ({
+    platform: "darwin",
+    run: (cmd) => {
+      const c = cmd.join(" ");
+      if (c === "xcode-select -p") return { code: 0, stdout: "/Applications/Xcode.app/Contents/Developer" };
+      if (c === "xcodebuild -version") return o.xcode ?? { code: 0, stdout: "Xcode 16.2\nBuild version 16C5032a\n" };
+      if (c === "swift --version") return o.swift ?? { code: 0, stdout: "Apple Swift version 6.0.3 (swiftlang)\n" };
+      return o.sim ?? { code: 0, stdout: good };
+    },
+  });
+  const xcode = async (over: Partial<DoctorDeps>) => item((await runDoctor(app(), deps(over))).data.items as DoctorItem[], "xcode")!;
+
+  test("warnings before the simulators' JSON are skipped", async () => {
+    expect(await xcode(mini({ sim: { code: 0, stdout: `CoreSimulator is out of date. Current version (1) vs. (2).\n${good}` } }))).toMatchObject({ status: "ok", detail: "Xcode 16.2 (Swift 6.0.3), with the iOS 18.2 simulator." });
+  });
+
+  test("a failing or unreadable simctl is not 'no simulator'", async () => {
+    for (const sim of [{ code: 1, stdout: "" }, { code: 0, stdout: "not json" }, { code: 0, stdout: '{"other":1}' }]) {
+      expect(await xcode(mini({ sim }))).toMatchObject({ status: "optional", detail: expect.stringContaining("couldn't list the simulators") });
+    }
+    expect((await xcode(mini({ sim: { code: 1, stdout: "" } }))).detail).toContain("run xcrun simctl list runtimes to see why.");
+  });
+
+  test("visionOS and watchOS runtimes don't count", async () => {
+    const sim = { code: 0, stdout: JSON.stringify({ runtimes: [{ platform: "xrOS", version: "2.0", isAvailable: true }, { platform: "watchOS", version: "11.0", isAvailable: true }] }) };
+    expect(await xcode(mini({ sim }))).toMatchObject({ status: "needed", detail: expect.stringContaining("no iOS simulator") });
+  });
+
+  test("an unaccepted licence is not 'not installed'", async () => {
+    const it = await xcode(mini({ xcode: { code: 69, stdout: "You have not agreed to the Xcode license agreements." } }));
+    expect(it).toMatchObject({ status: "needed", detail: "Xcode is installed but didn't run: open it once, or run sudo xcodebuild -license accept." });
+  });
+
+  test("a beta version reads by its numbers", async () => {
+    expect(await xcode(mini({ xcode: { code: 0, stdout: "Xcode 26.1 beta\nBuild version 26B5\n" } }))).toMatchObject({ status: "ok", detail: expect.stringContaining("Xcode 26.1 (") });
+  });
+
+  test("a failing swift --version leaves the Swift out", async () => {
+    expect(await xcode(mini({ swift: { code: 1, stdout: "" } }))).toMatchObject({ status: "ok", detail: "Xcode 16.2, with the iOS 18.2 simulator." });
+  });
+});

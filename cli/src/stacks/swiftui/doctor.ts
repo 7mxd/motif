@@ -15,19 +15,23 @@ interface Runtime {
   isAvailable?: unknown;
 }
 
-/** The newest available iOS simulator runtime's version ("18.2") from `simctl list runtimes --json`; null when there is none. */
-function newestIosRuntime(json: string): string | null {
-  let runtimes: Runtime[] = [];
+/** The newest available iOS simulator runtime's version ("18.2") from `simctl list runtimes --json`: null when there is none, undefined when the output can't be read. */
+function newestIosRuntime(output: string): string | null | undefined {
+  // Warnings may come before the JSON.
+  const start = output.indexOf("{");
+  let runtimes: Runtime[];
   try {
-    const parsed = JSON.parse(json) as { runtimes?: Runtime[] };
-    runtimes = Array.isArray(parsed.runtimes) ? parsed.runtimes : [];
+    const parsed = JSON.parse(start >= 0 ? output.slice(start) : "") as { runtimes?: unknown };
+    if (!Array.isArray(parsed.runtimes)) return undefined;
+    runtimes = parsed.runtimes as Runtime[];
   } catch {
-    return null;
+    return undefined;
   }
+  // Only the numeric parts count ("27.0 beta" is 27.0).
+  const key = (v: string) => v.split(".").map((n) => (/^[0-9]+/.test(n) ? parseInt(n, 10) : 0));
   const versions = runtimes
-    .filter((r) => r.platform === "iOS" && r.isAvailable !== false && typeof r.version === "string")
+    .filter((r) => r && r.platform === "iOS" && r.isAvailable !== false && typeof r.version === "string")
     .map((r) => r.version as string);
-  const key = (v: string) => v.split(".").map(Number);
   versions.sort((a, b) => {
     const x = key(a);
     const y = key(b);
@@ -50,10 +54,11 @@ export function swiftUIDoctor(deps: DoctorDeps, ctx: { root: string; apps: AppIn
     return [item("needed", "Screenshots need Xcode, not only its command-line tools: install Xcode from the App Store, then run sudo xcode-select -s /Applications/Xcode.app.")];
   }
   const built = deps.run(["xcodebuild", "-version"]);
-  if (built.code !== 0) return [missing];
+  if (built.code === 127) return [missing];
+  if (built.code !== 0) return [item("needed", "Xcode is installed but didn't run: open it once, or run sudo xcodebuild -license accept.")];
   const version = /^Xcode\s+(\d+(?:\.\d+)*)/m.exec(built.stdout)?.[1];
   if (!version) return [item("optional", "Found Xcode, but couldn't read its version. Run xcodebuild -version to check it works.")];
-  if (Number(version.split(".")[0]) < XCODE_MIN) {
+  if (parseInt(version, 10) < XCODE_MIN) {
     return [item("needed", `Xcode ${version} is older than ${XCODE_MIN}, which Motif's theme code needs. Update Xcode from the App Store.`)];
   }
 
@@ -66,8 +71,11 @@ export function swiftUIDoctor(deps: DoctorDeps, ctx: { root: string; apps: AppIn
   if (!needsSimulator) return [item("ok", `${head}. A macOS app needs no simulator.`)];
 
   const r = deps.run(["xcrun", "simctl", "list", "runtimes", "--json"]);
-  const runtime = r.code === 0 ? newestIosRuntime(r.stdout) : null;
-  if (!runtime) {
+  const runtime = r.code === 0 ? newestIosRuntime(r.stdout) : undefined;
+  if (runtime === undefined) {
+    return [item("optional", `Motif couldn't list the simulators (${head}): run xcrun simctl list runtimes to see why.`)];
+  }
+  if (runtime === null) {
     return [item("needed", `Xcode ${version} has no iOS simulator, which an iOS app's screenshots need: install an iOS simulator in Xcode › Settings › Components.`)];
   }
   return [item("ok", `${head}, with the iOS ${runtime} simulator.`)];
