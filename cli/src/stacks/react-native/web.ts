@@ -43,11 +43,17 @@ function bundleError(body: string, appDir: string): string {
   }
   const target = typeof json?.targetModuleName === "string" ? json.targetModuleName : null;
   const origin = typeof json?.originModulePath === "string" ? json.originModulePath : null;
-  if (json?.type === "UnableToResolveError" && target && origin) {
+  // Metro's UnableToResolveError (Expo SDK 52 sends it without its type).
+  if (target && origin) {
     const from = isAbsolute(origin) ? posix(relative(appDir, origin)) : posix(origin);
     if (target.startsWith(".") || isAbsolute(target)) return `${from} imports ${target}, which Metro can't find.`;
     const pkg = packageOf(target);
-    if (!installed(appDir, pkg)) return `${from} imports ${target}, which isn't installed. Install it (npx expo install ${pkg}) or remove the import.`;
+    if (!installed(appDir, pkg)) {
+      // An import inside a package: the packages don't match each other.
+      return /(^|\/)node_modules\//.test(from)
+        ? `${from} imports ${target}, which isn't installed. Install it (npx expo install ${pkg}), or run npx expo install --fix to match your packages to your Expo SDK.`
+        : `${from} imports ${target}, which isn't installed. Install it (npx expo install ${pkg}) or remove the import.`;
+    }
     return `${from} imports ${target}, which Metro can't find for the web. ${pkg} has no web version: ${STUB}`;
   }
   const text = typeof json?.message === "string" ? json.message : body;

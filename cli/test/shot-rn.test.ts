@@ -291,6 +291,19 @@ describe("an app Expo can't build or run on the web", () => {
       expect(await buildWebBundle(appDir, url, Date.now() + 10_000)).toEqual({
         error: "app/map.tsx imports some-missing-package, which isn't installed. Install it (npx expo install some-missing-package) or remove the import.",
       });
+      // Expo SDK 52's Metro sends the same error without its type, from inside a package.
+      reply = () =>
+        Response.json(
+          {
+            originModulePath: `${appDir}${sep}node_modules${sep}expo-router${sep}build${sep}fork${sep}getPathFromState.js`,
+            targetModuleName: "query-string",
+            message: `Unable to resolve module query-string from ${appDir}${sep}node_modules${sep}expo-router${sep}build${sep}fork${sep}getPathFromState.js: query-string could not be found within the project or in these directories:\n  node_modules`,
+          },
+          { status: 500 },
+        );
+      expect(await buildWebBundle(appDir, url, Date.now() + 10_000)).toEqual({
+        error: "node_modules/expo-router/build/fork/getPathFromState.js imports query-string, which isn't installed. Install it (npx expo install query-string), or run npx expo install --fix to match your packages to your Expo SDK.",
+      });
       reply = unresolved("react-native-maps/lib/native-only");
       expect(await buildWebBundle(appDir, url, Date.now() + 10_000)).toEqual({
         error:
