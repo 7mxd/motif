@@ -426,6 +426,8 @@ Each adapter must provide, in both halves:
 
 Plus fixtures: a minimal contract-governed app and a seeded-issue app for this stack (used by tests B/C/D).
 
+An adapter is finished when its row of [the parity checklist](../parity.md) is complete (Part 2 spec §4): every area there, from detection to the agent packages, works on the stack. Until then `motif doctor` calls the stack detected, with support coming, and the README and release notes don't list it.
+
 ### 11.2 React web: guidance half
 
 - **Stack assumptions:** React 18+, TypeScript, Next.js (App Router) or Vite; Tailwind v4 or plain CSS; shadcn/ui primitives when the project already uses them (otherwise plain React + Radix primitives where accessibility needs them); Motion (`motion/react`) for animation.
@@ -495,6 +497,7 @@ Run through Claude Code's headless mode with the Part 1 plugin loaded and gates 
 - **Test B — consistency.** Fixture: `tests/fixtures/react-contract-app` (Next.js + Tailwind v4, full contract, starter components, 3 screens). Five feature tasks, each in a fresh session: settings screen; search with empty state; profile edit form with validation; notifications list; checkout summary. **Pass:** for every task, `motif check` reports zero violations (justified `motif-ok` exceptions allowed, max 2 per task), the project builds and type-checks, and at most one new component is created per task unless recorded as a contract change. Plain web (Part 2): `b-plain` adds a page to `tests/fixtures/plain-contract-site` with the same pass rules, except that the page must load without errors instead of building.
 - **Test C — review accuracy.** Fixture: `tests/fixtures/react-seeded-app` with `seeded-issues.json` (≥ 20 issues: ≥ 12 exact-detectable, ≥ 8 judgement). Run `review` in report-only mode. Grader matches findings to seeded issues by category + location (exact issues: deterministic; judgement issues: model grader with a written rubric). **Pass:** recall ≥ 90% for exact issues, ≥ 70% for judgement issues; ≤ 10% of critical/major findings are false. Plain web: `c-plain` reviews `tests/fixtures/plain-seeded-site` (18 problems: 11 exact, 7 judgement) with the same thresholds.
 - **Test D — zero accounts.** Run B and C with no MCP servers configured, plus `init` from each of 3 brief fixtures (`tests/fixtures/briefs/`). **Pass for init:** `validate` and `check` clean, project builds, all starter screens exist and render in `shot`, `DESIGN.md` has all sections.
+- **Per stack (Part 2).** Each supported stack has its own fixtures and at least two B cases, one C case and one D brief, with the same pass rules (Flutter: `b-flutter-reserve`, `b-flutter-search`, `c-flutter`, `d-sahm`; a Flutter app is type-checked with `flutter analyze` and drawn by `flutter test`). Cases that need a Mac (SwiftUI) are marked, and the runner skips them elsewhere with the reason. A release runs the cases of the stacks it adds.
 - Eval runs use the developer's signed-in Claude Code, never an API key, run only when the developer starts them, and are capped per case ([decision 0003](../decisions/0003-evals-on-your-plan.md)). CI runs only the runner's own tests.
 
 ### 13.3 Test A

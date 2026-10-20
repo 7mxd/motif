@@ -20,7 +20,10 @@ export const STACK_LABELS: Record<StackId, string> = {
   "plain-web": "Plain web (HTML and CSS)",
 };
 
-export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web"];
+/** Stacks with full support: every area of the parity checklist (docs/parity.md) is done. */
+export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web", "flutter"];
+/** The supported web stacks: motif extract reads their CSS and markup; Flutter goes through its own stack. */
+export const WEB_STACKS: readonly StackId[] = ["react-web", "plain-web"];
 export const NODE_STACKS: readonly StackId[] = ["react-web", "vue", "svelte", "angular", "react-native"];
 
 /** Where a plain web app's pages live: the first of these folders (inside the app) with an index.html. */

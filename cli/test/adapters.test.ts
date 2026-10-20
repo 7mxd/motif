@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RULE_IDS } from "../src/check/types";
 import { expandHtml } from "../src/check/html";
@@ -220,5 +220,37 @@ describe("the Flutter guide", () => {
         expect(hits.map((h) => `${path}: ${h.rule} ${h.text}`)).toEqual([]);
       }
     }
+  });
+});
+
+describe("the parity checklist (docs/parity.md, Task 15)", () => {
+  const REPO = join(import.meta.dir, "../..");
+  const AREAS = ["Detect and set up", "Theme code", "Checks", "Drafting a guide", "Components", "Mockups", "Screenshots", "Audit", "Skill", "Evals", "Agents"];
+  const parity = readFileSync(join(REPO, "docs/parity.md"), "utf8").replace(/\r\n/g, "\n");
+  const cells = (line: string) => line.split("|").slice(1, -1).map((c) => c.trim());
+  const table = parity.split("\n").filter((l) => l.startsWith("| ")).map(cells);
+  const header = table.find((r) => r[0] === "Stack")!;
+  const row = (stack: string) => table.find((r) => r[0] === stack);
+
+  test("has one row per stack, with the spec's areas as columns", () => {
+    expect(header.slice(1)).toEqual(AREAS);
+    for (const stack of ["React web", "Plain web", "Flutter", "Jetpack Compose", "SwiftUI", "React Native (Expo)", "Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
+      expect(row(stack)?.length ?? `${stack} has no row`).toBe(AREAS.length + 1);
+    }
+  });
+
+  test("Flutter, React web and plain web have every area done; the stacks still to come have none", () => {
+    for (const stack of ["Flutter", "React web", "Plain web"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+    for (const stack of ["Jetpack Compose", "SwiftUI", "React Native (Expo)", "Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
+      expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
+    }
+  });
+
+  test("Flutter's proof names every area, and every file it links to exists", () => {
+    const proof = parity.slice(parity.indexOf("## Flutter"));
+    for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
+    const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
+    expect(links.length).toBeGreaterThan(AREAS.length);
+    for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");
   });
 });

@@ -54,13 +54,19 @@ describe("runDoctor", () => {
     expect(item(items, "guide")).toMatchObject({ status: "ok", detail: "Valid." });
   });
 
-  test("a Flutter app is detected but marked as coming soon", async () => {
+  test("a Flutter app has full support (Task 15)", async () => {
     const dir = tempDir("motif-flutter-");
     writeFileSync(join(dir, "pubspec.yaml"), "dependencies:\n  flutter:\n    sdk: flutter\n");
     const r = await runDoctor(dir, deps());
-    const app = item(r.data.items as DoctorItem[], "app:.")!;
+    expect(item(r.data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for Flutter." });
+  });
+
+  test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
+    const dir = tempDir("motif-vue-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { vue: "^3" } }));
+    const app = item((await runDoctor(dir, deps())).data.items as DoctorItem[], "app:.")!;
     expect(app.status).toBe("optional");
-    expect(app.detail).toContain("Flutter detected");
+    expect(app.detail).toContain("Vue / Nuxt detected. Full support is coming soon");
   });
 
   describe("the Flutter toolchain", () => {
@@ -110,12 +116,12 @@ describe("runDoctor", () => {
       expect(it).toMatchObject({ status: "ok" });
     });
 
-    test("no Flutter app means no flutter item, and the app line stays as it was", async () => {
+    test("no Flutter app means no flutter item, and the SDK check leaves the app line alone", async () => {
       const web = copyFixture();
       writeFileSync(join(web, "package.json"), JSON.stringify({ dependencies: { react: "^19", vite: "^6" } }));
       expect(item((await runDoctor(web, deps({ which: found }))).data.items as DoctorItem[], "flutter")).toBeUndefined();
       const items = (await runDoctor(flutterApp(), deps({ which: found, run: () => ({ code: 0, stdout: json }) }))).data.items as DoctorItem[];
-      expect(item(items, "app:.")!.detail).toContain("Full support is coming soon");
+      expect(item(items, "app:.")).toMatchObject({ status: "ok", detail: "Full support for Flutter." });
     });
   });
 

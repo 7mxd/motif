@@ -4,7 +4,7 @@ import type { SourceFile } from "../check/files";
 import { expandHtml } from "../check/html";
 import { appSourceFiles } from "../check/run";
 import type { CommandResult, RunContext } from "../cli/output";
-import { ADAPTERS_AVAILABLE, detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
+import { detectApps, siteDir, STACK_LABELS, WEB_STACKS, type AppInfo } from "../detect/stacks";
 import { buildDraft, collectOccurrences, mergeOccurrences, type Occurrences } from "../extract/draft";
 import { ownSpacingPx, readTailwindDefaults } from "../extract/tailwind-theme";
 import { isMotifGenerated } from "../generate/header";
@@ -43,7 +43,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   if (apps === null) {
     return { command: "extract", exitCode: 2, text: noSuchApp(ctx.app, detected), data: { error: "no-such-app" } };
   }
-  const isWeb = (a: AppInfo) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack);
+  const isWeb = (a: AppInfo) => a.stack !== null && WEB_STACKS.includes(a.stack);
   /** A native stack (Flutter) whose code motif extract reads. */
   const native = (a: AppInfo) => (isWeb(a) ? null : nativeStack(a.stack)?.collect ? nativeStack(a.stack) : null);
   const supported = apps.filter((a) => isWeb(a) || native(a) !== null);

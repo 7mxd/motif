@@ -105,6 +105,12 @@ describe("motif check on a Flutter app", () => {
     expect(r.text).toBe("None of these paths contain files motif check reads (.dart, .css, .ts, .tsx, .js, .jsx, .html, …), or they're ignored: assets.");
   });
 
+  test("a Flutter app without a guide is sent to motif extract, which reads it (Task 15)", async () => {
+    const r = await check(makeProject({ "pubspec.yaml": PUBSPEC, "lib/main.dart": "void main() {}\n" }));
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("Draft one from your code with motif extract");
+  });
+
   test("names the stacks it reads when it can't read an app", async () => {
     const root = makeProject({ "design/tokens.json": TOKENS, "package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "src/App.vue": "" });
     const r = await check(root);
