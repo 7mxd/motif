@@ -19,7 +19,7 @@ import { discoverFlutterRoutes } from "./routes";
 import { FLUTTER_VARIANT_HOW, flutterShotRefusal, flutterTimeLimit, MOTION_WIDTH, readShotInputs, shootFlutter } from "./shot";
 
 /** What else a variant changes besides colours, in plain words. */
-function otherChanges(base: Theme, variant: Theme): string[] {
+export function otherChanges(base: Theme, variant: Theme): string[] {
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const groups: [string, (t: Theme) => unknown][] = [
     ["spacing", (t) => t.space],

@@ -12,7 +12,7 @@ function readJson(path: string): Record<string, unknown> | null {
 }
 
 /** The version range of a package in an app's package.json (dependencies, then devDependencies), or null. */
-function declared(dir: string, name: string): string | null {
+export function declared(dir: string, name: string): string | null {
   const pkg = readJson(join(dir, "package.json"));
   for (const key of ["dependencies", "devDependencies"]) {
     const group = pkg?.[key];
