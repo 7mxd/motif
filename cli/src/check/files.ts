@@ -3,7 +3,7 @@ import { extname, join } from "node:path";
 import ignore from "ignore";
 import { stripBom } from "../text";
 
-export type Lang = "css" | "script" | "markup" | "dart" | "kotlin";
+export type Lang = "css" | "script" | "markup" | "dart" | "kotlin" | "swift";
 
 export interface SourceFile {
   /** Relative to the project root, forward slashes. */
@@ -48,6 +48,12 @@ const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/");
  * whose previews aren't the app's screens.
  */
 export const COMPOSE_IGNORES = ["/build/", "/.gradle/", "/.motif/", "src/test*/", "src/androidTest*/", "src/screenshotTest*/", "src/sharedTest/", "*.kts"];
+
+/**
+ * A SwiftUI app's build output, dependencies, tests and generated Swift: never the team's own code. Matched from the app
+ * (and from each Swift package inside it), so a feature folder named build under the app's sources is still read.
+ */
+export const SWIFTUI_IGNORES = ["/build/", "/DerivedData/", "/.build/", "/.motif/", "*Tests/", "*UITests/", "/Pods/", "/Carthage/", "*.generated.swift"];
 
 /** An Expo app's native folders, build and export output, and tests: never the team's own code. */
 export const RN_IGNORES = ["/ios/", "/android/", "/.expo/", "/dist/", "/web-build/", "/.motif/", "expo-env.d.ts", "*.test.*", "__tests__/"];
@@ -100,6 +106,17 @@ export function listKotlinFiles(root: string, appPath: string, opts: { paths?: s
     extraIgnores: COMPOSE_IGNORES,
     defaults: DART_DEFAULT_IGNORES,
     packageMarker: ["build.gradle.kts", "build.gradle"],
+  });
+}
+
+/** A SwiftUI app's Swift files, without its build output, dependencies, tests and generated code. */
+export function listSwiftFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
+  return listSourceFiles(root, appPath, {
+    ...opts,
+    langs: { ".swift": "swift" },
+    extraIgnores: SWIFTUI_IGNORES,
+    defaults: DART_DEFAULT_IGNORES,
+    packageMarker: "Package.swift",
   });
 }
 

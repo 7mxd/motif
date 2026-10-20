@@ -4,6 +4,7 @@ import { isAbsolute, join, parse, resolve } from "node:path";
 import type { Finding } from "../findings";
 import { badPackagePart, composeAppFolders, composeModule, composeModules, multiplatformModule } from "../stacks/compose/project";
 import { isFlutterPackage } from "../stacks/flutter/project";
+import { swiftUIApp } from "../stacks/swiftui/project";
 import { savedAsUtf16, stripBom, UTF16_MESSAGE } from "../text";
 
 export const STACK_IDS = ["react-web", "vue", "svelte", "angular", "react-native", "flutter", "swiftui", "compose", "compose-multiplatform", "plain-web"] as const;
@@ -59,12 +60,6 @@ const REACT_WEB_TOOLING = [
 ];
 
 const SKIP_DIRS = new Set(["node_modules", "Pods", ".build", "DerivedData", "build", "dist"]);
-const SWIFT_MAX_DEPTH = 4;
-const SWIFT_MAX_FILES = 2000;
-/** Files and folders looked at, at most: a project with very many folders is looked through only so far. */
-const SWIFT_MAX_ENTRIES = 5000;
-/** Folders that never hold Swift sources: asset catalogues, translations, bundles, project files, dependencies. */
-const NOT_SOURCES = /\.(xcassets|lproj|bundle|framework|xcframework|xcodeproj|xcworkspace)$|^(Carthage|SourcePackages)$/;
 
 function readText(path: string): string | null {
   try {
@@ -91,36 +86,6 @@ function isDir(path: string): boolean {
   } catch {
     return false;
   }
-}
-
-function hasSwiftUIImport(dir: string): boolean {
-  let scanned = 0;
-  let seen = 0;
-  const visit = (d: string, depth: number): boolean => {
-    if (depth > SWIFT_MAX_DEPTH || scanned >= SWIFT_MAX_FILES || seen >= SWIFT_MAX_ENTRIES) return false;
-    let entries: string[];
-    try {
-      // In name order: Linux and macOS list a folder in no set order, and how far the scan goes must not depend on it.
-      entries = readdirSync(d).sort();
-    } catch {
-      return false;
-    }
-    const names = entries.filter((n) => !n.startsWith(".") && !SKIP_DIRS.has(n) && !NOT_SOURCES.test(n));
-    // A folder's own Swift files first, then its folders: the app's views are found before a deep folder is.
-    for (const name of names.filter((n) => n.endsWith(".swift"))) {
-      if (++seen > SWIFT_MAX_ENTRIES) return false;
-      scanned++;
-      if (readText(join(d, name))?.includes("import SwiftUI")) return true;
-      if (scanned >= SWIFT_MAX_FILES) return false;
-    }
-    for (const name of names.filter((n) => !n.endsWith(".swift"))) {
-      if (++seen > SWIFT_MAX_ENTRIES) return false;
-      const p = join(d, name);
-      if (isDir(p) && visit(p, depth + 1)) return true;
-    }
-    return false;
-  };
-  return visit(dir, 0);
 }
 
 export function detectStack(dir: string): StackId | null {
@@ -150,13 +115,21 @@ export function detectStack(dir: string): StackId | null {
   } catch {
     return null;
   }
-  const looksLikeSwift = entries.includes("Package.swift") || entries.some((e) => e.endsWith(".xcodeproj"));
-  if (looksLikeSwift && hasSwiftUIImport(dir)) return "swiftui";
+  // An Xcode project with an app target, or a Swift package with an executable, whose sources import SwiftUI.
+  if ((entries.includes("Package.swift") || entries.some((e) => e.endsWith(".xcodeproj"))) && swiftUIApp(dir)) return "swiftui";
 
   // Pages without a framework. React without known tooling isn't plain web: it's an app Motif can't place yet.
   if (deps?.has("react") || NOT_PLAIN_DEPS.some((d) => deps?.has(d))) return null;
   if (SSG_FILES.some((f) => entries.includes(f)) || isGeneratorSite(dir, entries)) return null;
   return siteFolder(dir) !== null ? "plain-web" : null;
+}
+
+function hasXcodeWorkspace(dir: string): boolean {
+  try {
+    return readdirSync(dir).some((n) => n.endsWith(".xcworkspace"));
+  } catch {
+    return false;
+  }
 }
 
 const SERVER_FRAMEWORKS = ["express", "fastify", "koa", "hono", "@nestjs/core", "@hapi/hapi"];
@@ -321,11 +294,13 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
   // through too.
   const workspace = isWorkspaceRoot(root) && !hasOwnAppFiles(root);
   // A Gradle project root lists its Compose modules (app), not itself; one with no app module is looked through.
+  // An Xcode workspace beside its app project lists the apps in the folders around it as well.
+  const swiftWorkspace = rootStack === "swiftui" && hasXcodeWorkspace(root);
   const composeRoot = rootStack === "compose" && !workspace ? composeAppFolders(root) : null;
   if (composeRoot && composeRoot.length > 0 && composeRoot[0] !== ".") {
     return { apps: composeRoot.map((m) => detected(root, m, "compose")).sort((a, b) => a.path.localeCompare(b.path)), findings: settings.findings };
   }
-  if (((rootStack && rootStack !== "plain-web") || isUnrecognisedReactApp(root)) && !workspace && composeRoot?.length !== 0) {
+  if (((rootStack && rootStack !== "plain-web") || isUnrecognisedReactApp(root)) && !workspace && !swiftWorkspace && composeRoot?.length !== 0) {
     return { apps: [detected(root, ".", rootStack)], findings: settings.findings };
   }
 
@@ -383,6 +358,7 @@ export function detectApps(root: string, opts: { home?: string } = {}): { apps: 
   scan("");
   if (existsSync(join(root, "apps"))) scan("apps");
   if (existsSync(join(root, "packages"))) scan("packages");
+  if (swiftWorkspace) apps.push(detected(root, ".", "swiftui"));
   apps.sort((a, b) => a.path.localeCompare(b.path));
   // Its folders explain the root only with an app of a known stack among them (not a library or a report folder).
   if (workspace && rootStack && rootStack !== "plain-web" && !apps.some((a) => a.stack && a.stack !== "plain-web")) {

@@ -22,7 +22,7 @@ const app = (extra: Record<string, string> = {}, tailwind = true) => makeProject
 });
 const ctx = (app?: string) => ({ positionals: [], app });
 /** An app whose stack has no adapter yet (Flutter has had one since 2E, Compose since 2F). */
-const SWIFTUI = { "Package.swift": "// swift-tools-version:5.9", "Sources/App/App.swift": "import SwiftUI\n@main struct A: App {}" };
+const SWIFTUI = { "Package.swift": "// swift-tools-version:5.9\nlet package = Package(name: \"App\", targets: [.executableTarget(name: \"App\")])", "Sources/App/App.swift": "import SwiftUI\n@main struct A: App {}" };
 const statuses = (r: any) => Object.fromEntries((r.data.files as any[]).map((f) => [f.path, f.status]));
 
 describe("runTokens", () => {

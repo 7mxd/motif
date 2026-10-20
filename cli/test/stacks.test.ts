@@ -18,6 +18,9 @@ function project(files: Record<string, string>): string {
 const pkg = (deps: Record<string, string>, dev: Record<string, string> = {}) =>
   JSON.stringify({ dependencies: deps, devDependencies: dev });
 
+/** The smallest project file with an application target (a plan 2H change: detection needs the target, not just the file). */
+const APP_PBXPROJ = "{ objects = { A = { isa = PBXNativeTarget; name = Demo; productType = \"com.apple.product-type.application\"; }; }; }";
+
 describe("detectStack", () => {
   test.each([
     ["angular", { "package.json": pkg({ "@angular/core": "^18" }) }],
@@ -29,8 +32,8 @@ describe("detectStack", () => {
     ["flutter", { "pubspec.yaml": "name: app\ndependencies:\n  flutter:\n    sdk: flutter\n" }],
     ["compose", { "app/build.gradle.kts": "android {\n  buildFeatures {\n    compose = true\n  }\n}\n" }],
     ["compose", { "build.gradle": "implementation 'androidx.compose.ui:ui:1.7.0'\n" }],
-    ["swiftui", { "Package.swift": "// swift-tools-version:5.9", "Sources/App/App.swift": "import SwiftUI\n@main struct A: App {}" }],
-    ["swiftui", { "Demo.xcodeproj/project.pbxproj": "", "Demo/ContentView.swift": "import SwiftUI" }],
+    ["swiftui", { "Package.swift": "// swift-tools-version:5.9\nlet package = Package(name: \"App\", targets: [.executableTarget(name: \"App\")])", "Sources/App/App.swift": "import SwiftUI\n@main struct A: App {}" }],
+    ["swiftui", { "Demo.xcodeproj/project.pbxproj": APP_PBXPROJ, "Demo/ContentView.swift": "import SwiftUI" }],
   ])("detects %s", (stack, files) => {
     expect(detectStack(project(files as Record<string, string>))).toBe(stack as any);
   });
@@ -48,7 +51,7 @@ describe("detectStack", () => {
   });
 
   test("a UIKit-only Xcode project is not SwiftUI", () => {
-    expect(detectStack(project({ "Demo.xcodeproj/project.pbxproj": "", "Demo/VC.swift": "import UIKit" }))).toBeNull();
+    expect(detectStack(project({ "Demo.xcodeproj/project.pbxproj": APP_PBXPROJ, "Demo/VC.swift": "import UIKit" }))).toBeNull();
   });
 
   test("an empty folder has no stack", () => {
@@ -167,7 +170,7 @@ describe("detectApps: from the backlog", () => {
   });
 
   test("a Swift project with very many folders is looked through only so far", () => {
-    const files: Record<string, string> = { "Package.swift": "// swift-tools-version:5.9" };
+    const files: Record<string, string> = { "Package.swift": 'let package = Package(name: "A", targets: [.executableTarget(name: "A")])' };
     for (let i = 0; i < 5100; i++) files[`f${String(i).padStart(4, "0")}/.keep`] = "";
     files["f5099/View.swift"] = "import SwiftUI";
     const started = Date.now();
@@ -196,7 +199,7 @@ describe("detectApps: from the review of batch C1", () => {
   });
 
   test("an ordinary SwiftUI app is found, however many images its asset catalogue holds", () => {
-    const files: Record<string, string> = { "MyApp.xcodeproj/project.pbxproj": "", "MyApp/ContentView.swift": "import SwiftUI" };
+    const files: Record<string, string> = { "MyApp.xcodeproj/project.pbxproj": APP_PBXPROJ.replace("Demo", "MyApp"), "MyApp/ContentView.swift": "import SwiftUI" };
     for (let i = 0; i < 1300; i++) for (const f of ["Contents.json", "a.png", "a@2x.png", "a@3x.png"]) files[`MyApp/Assets.xcassets/img${i}.imageset/${f}`] = "";
     expect(detectStack(project(files))).toBe("swiftui");
   }, 60_000);

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { docFrom, validTokens } from "./helpers";
 import { resolveMode } from "../src/contract/resolve";
-import { kotlinIdentifier } from "../src/stacks/naming";
+import { kotlinIdentifier, swiftIdentifier } from "../src/stacks/naming";
 import { checkVariants, readVariants, variantView } from "../src/contract/variants";
 
 const DECL = [{ id: "women", label: "Women", default: true }, { id: "men", label: "Men" }];
@@ -146,6 +146,11 @@ describe("variant block shape and identifier clashes", () => {
     const f = checkVariants(withVariants([{ id: "default", label: "A", default: true }, { id: "default-variant", label: "B" }])).filter((x) => x.code === "variant-id-clash");
     expect(f.length).toBe(1);
   });
+  test("ids that are the same Swift name clash (func is a Swift keyword, not a Dart one)", () => {
+    const f = checkVariants(withVariants([{ id: "func", label: "A", default: true }, { id: "func-variant", label: "B" }])).filter((x) => x.code === "variant-id-clash");
+    expect(f.length).toBe(1);
+    expect(f[0]!.message).toContain("funcVariant");
+  });
   test("distinct ids do not clash", () => {
     expect(codes(withVariants(DECL, { men: COLOR_MEN }))).not.toContain("variant-id-clash");
   });
@@ -156,5 +161,16 @@ describe("kotlinIdentifier", () => {
     expect(kotlinIdentifier("partner-store")).toBe("PartnerStore");
     expect(kotlinIdentifier("a1")).toBe("A1");
     expect(kotlinIdentifier("dark-blue-2")).toBe("DarkBlue2");
+  });
+});
+
+describe("swiftIdentifier", () => {
+  test("lowerCamelCase, and a Swift keyword gets Variant", () => {
+    expect(swiftIdentifier("partner-store")).toBe("partnerStore");
+    expect(swiftIdentifier("women")).toBe("women");
+    expect(swiftIdentifier("dark-blue-2")).toBe("darkBlue2");
+    for (const [id, name] of [["default", "defaultVariant"], ["case", "caseVariant"], ["class", "classVariant"], ["func", "funcVariant"], ["protocol", "protocolVariant"], ["extension", "extensionVariant"], ["self", "selfVariant"], ["in", "inVariant"]]) {
+      expect(swiftIdentifier(id!)).toBe(name!);
+    }
   });
 });

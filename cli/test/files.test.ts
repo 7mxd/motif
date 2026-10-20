@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listRnFiles, listSourceFiles } from "../src/check/files";
+import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listRnFiles, listSourceFiles, listSwiftFiles, SWIFTUI_IGNORES } from "../src/check/files";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -176,5 +176,20 @@ describe("listRnFiles", () => {
   test("an app in a monorepo is listed from its folder", () => {
     const root = makeProject({ "mobile/a/app/index.tsx": "x", "mobile/a/ios/z.js": "x", "mobile/b/app/index.tsx": "x" });
     expect(paths(listRnFiles(root, "mobile/a"))).toEqual(["mobile/a/app/index.tsx"]);
+  });
+});
+
+describe("listSwiftFiles", () => {
+  test("lists Swift, not build output, tests, dependencies or generated files; a local package's own build folders too", () => {
+    const root = makeProject({
+      "App/Views/Home.swift": "x", "App/Views/build/Keep.swift": "x", "App/Strings.generated.swift": "x",
+      "AppTests/HomeTests.swift": "x", "AppUITests/UI.swift": "x", "Tests/AppTests/T.swift": "x",
+      "build/Gen.swift": "x", "DerivedData/D.swift": "x", ".build/checkouts/B.swift": "x", ".motif/shot/S.swift": "x",
+      "Pods/Alamofire/A.swift": "x", "Carthage/Checkouts/C.swift": "x",
+      "Packages/Kit/Package.swift": "x", "Packages/Kit/Sources/Kit/Kit.swift": "x", "Packages/Kit/Tests/KitTests/K.swift": "x", "Packages/Kit/.build/B.swift": "x",
+    });
+    expect(paths(listSwiftFiles(root, "."))).toEqual(["App/Views/Home.swift", "App/Views/build/Keep.swift", "Packages/Kit/Package.swift", "Packages/Kit/Sources/Kit/Kit.swift"]);
+    expect(listSwiftFiles(root, ".")[0]!.lang).toBe("swift");
+    expect(SWIFTUI_IGNORES).toContain("*.generated.swift");
   });
 });

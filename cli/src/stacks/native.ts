@@ -10,6 +10,7 @@ import type { RouteResult, StateScript, Viewport } from "../shot/capture";
 import { COMPOSE } from "./compose";
 import { FLUTTER } from "./flutter";
 import { REACT_NATIVE } from "./react-native";
+import { SWIFTUI } from "./swiftui";
 
 export interface NativeShotOptions {
   root: string;
@@ -84,7 +85,7 @@ export interface NativeStack {
   doctor?(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[];
 }
 
-const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER], [COMPOSE.id, COMPOSE], [REACT_NATIVE.id, REACT_NATIVE]]);
+const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER], [COMPOSE.id, COMPOSE], [REACT_NATIVE.id, REACT_NATIVE], [SWIFTUI.id, SWIFTUI]]);
 
 /** Every native stack Motif has, registered. */
 export function nativeStacks(): NativeStack[] {
