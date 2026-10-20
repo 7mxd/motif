@@ -1,5 +1,6 @@
 import { cpSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { inflateSync } from "node:zlib";
 import { tempDir } from "./tmp";
 import { loadTokenDocument } from "../src/contract/load";
 import type { TokenDocument } from "../src/contract/types";
@@ -94,4 +95,40 @@ export function heavyStackTests(stack: string, toolchainPresent: boolean): { run
   if (!toolchainPresent) return { run: false, reason: "the toolchain isn't installed" };
   if (inCi && process.env.MOTIF_STACK_JOB !== stack) return { run: false, reason: `runs in CI's ${stack} job` };
   return { run: true, reason: "" };
+}
+
+/**
+ * A PNG's pixels as RGB, row by row: Chrome's screenshots are 8-bit RGB or RGBA and not interlaced, which is all this
+ * reads. Used by tests that check what a screenshot shows.
+ */
+export function pngPixels(bytes: Uint8Array): { width: number; height: number; at: (x: number, y: number) => [number, number, number] } {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
+  const colorType = bytes[25];
+  if (bytes[24] !== 8 || (colorType !== 2 && colorType !== 6) || bytes[28] !== 0) throw new Error("pngPixels reads 8-bit RGB or RGBA PNGs only");
+  const channels = colorType === 6 ? 4 : 3;
+  const idat: Uint8Array[] = [];
+  for (let at = 8; at < bytes.length; ) {
+    const length = view.getUint32(at);
+    if (new TextDecoder().decode(bytes.subarray(at + 4, at + 8)) === "IDAT") idat.push(bytes.subarray(at + 8, at + 8 + length));
+    at += 12 + length;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * channels;
+  const out = new Uint8Array(height * stride);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)]!;
+    const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    for (let i = 0; i < stride; i++) {
+      const a = i >= channels ? out[y * stride + i - channels]! : 0;
+      const b = y > 0 ? out[(y - 1) * stride + i]! : 0;
+      const c = i >= channels && y > 0 ? out[(y - 1) * stride + i - channels]! : 0;
+      const p = a + b - c;
+      const [pa, pb, pc] = [Math.abs(p - a), Math.abs(p - b), Math.abs(p - c)];
+      const predictor = [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][filter]!;
+      out[y * stride + i] = (line[i]! + predictor) & 0xff;
+    }
+  }
+  return { width, height, at: (x, y) => [out[y * stride + x * channels]!, out[y * stride + x * channels + 1]!, out[y * stride + x * channels + 2]!] };
 }

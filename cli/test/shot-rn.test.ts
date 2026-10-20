@@ -356,6 +356,57 @@ describe("an app Expo can't build or run on the web", () => {
     }
   }, 30_000);
 
+  test("buildWebBundle warms every route: its page, the page's scripts, and the route chunks they load later (Expo's static output)", async () => {
+    const appDir = makeProject(EXPO_APP);
+    const asked: string[] = [];
+    const entry = (page: string) => `/node_modules/expo-router/entry.bundle?platform=web&amp;dev=true&amp;lazy=true&amp;page=${page}`;
+    // Metro names each lazily loaded route's chunk in the entry bundle, as a JS string: Windows paths keep their
+    // backslash (escaped). A documentation example in another platform's bundle isn't fetched.
+    const ENTRY =
+      '__d(function(){var paths={"823":"/app\\\\index.bundle?platform=web&dev=true&lazy=true&modulesOnly=true&runModule=false","824":"/app/(tabs)/settings.bundle?platform=web&dev=true&lazy=true&modulesOnly=true&runModule=false"};' +
+      'var doc="/foobar.bundle?platform=android&modulesOnly=true&runModule=false";});';
+    let chunk: () => Response = () => new Response("__d(function(){});");
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url);
+        asked.push(url.pathname);
+        if (url.pathname === "/" || url.pathname === "/settings") {
+          return new Response(`<!doctype html><html><body><div id="root"></div><script src="${entry(url.pathname === "/" ? "index" : "settings")}" defer></script></body></html>`, { headers: { "content-type": "text/html" } });
+        }
+        if (url.pathname.endsWith("entry.bundle")) return new Response(ENTRY);
+        if (url.pathname.startsWith("/app/")) return chunk();
+        return new Response("not found", { status: 404 });
+      },
+    });
+    try {
+      const url = `http://127.0.0.1:${server.port}`;
+      expect(await buildWebBundle(appDir, url, Date.now() + 10_000, undefined, ["/", "/settings"])).toEqual({});
+      expect(asked.filter((p) => !p.endsWith("entry.bundle")).sort()).toEqual(["/", "/app/(tabs)/settings.bundle", "/app/index.bundle", "/settings"]);
+      // Each page's own script (they differ), each once.
+      expect(asked.filter((p) => p.endsWith("entry.bundle"))).toHaveLength(2);
+      // A route chunk Metro can't build stops the run, as the entry bundle does.
+      chunk = () => Response.json({ type: "TransformError", message: "SyntaxError: app/settings.tsx: Unexpected token (3:4)" }, { status: 500 });
+      expect(await buildWebBundle(appDir, url, Date.now() + 10_000, undefined, ["/"])).toEqual({ error: "SyntaxError: app/settings.tsx: Unexpected token (3:4)" });
+    } finally {
+      server.stop(true);
+    }
+  }, 30_000);
+
+  test("motif shot warms the routes it will capture", async () => {
+    let warmed: string[] | undefined;
+    const f = fakes({
+      webBundle: async (_dir, _url, _until, _started, routes) => {
+        warmed = routes;
+        return {};
+      },
+    });
+    const r = await runShot(makeProject(EXPO_APP), ctx({ routes: "/,/settings" }), f.deps);
+    expect(r.exitCode).toBe(0);
+    expect(warmed).toEqual(["/", "/settings"]);
+  });
+
   test("--audit leaves out a screen that threw as it loaded, since its screenshots may show Expo's error overlay", async () => {
     const issue = (route: string): AuditIssue => ({
       rule: "color-contrast", selector: "p", label: "Uncaught Error", kind: "element", ratio: 2.3, expected: 4.5, fg: "#aaaaaa", bg: "#ffffff",

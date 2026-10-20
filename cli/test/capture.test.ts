@@ -9,7 +9,7 @@ import { motifCss } from "../src/generate/motif-css";
 import { buildThemeSet } from "../src/generate/theme";
 import { startStaticServer } from "../src/shot/static-server";
 import { generateReactWeb } from "../src/stacks/react-web/generate";
-import { docFrom, twoVariantTokens } from "./helpers";
+import { docFrom, pngPixels, twoVariantTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 import { selfSignedCert } from "./tls";
@@ -45,6 +45,18 @@ const PAGE = (body: string) =>
   `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body { margin: 0; font: 16px sans-serif; } @media (prefers-color-scheme: dark) { body { background: #111111; color: #eeeeee; } }</style></head><body>${body}</body></html>`;
 const html = (body: string, status = 200) => new Response(PAGE(body), { status, headers: { "content-type": "text/html" } });
 let server: ReturnType<typeof Bun.serve>;
+const EXPO_SCREEN = '<div style="position:absolute;inset:0;background:#123456;color:#fff"><div>Pantry</div></div>';
+const EXPO_TOAST = '<div style="position:absolute;inset:0;background:#f2f2f2"></div><div style="position:fixed;bottom:16px;left:16px;opacity:0.9"><div>Bundling...</div><div>app/index.tsx</div></div>';
+const later = (ms: number) => `<script>setTimeout(() => { document.getElementById("root").innerHTML = ${JSON.stringify(EXPO_SCREEN)}; }, ${ms});</script>`;
+const EXPO_PAGES: Record<string, string> = {
+  "/expo-bundling": `<div id="root">${EXPO_TOAST}</div>${later(1500)}`,
+  // Expo's own wrappers fill the screen, transparent, before the app draws.
+  "/expo-fonts": `<div id="root"><div style="position:absolute;inset:0;background:rgba(0, 0, 0, 0)"><div style="height:100%"></div></div></div>${later(1500)}`,
+  "/expo-stuck": `<div id="root">${EXPO_TOAST}</div>`,
+  "/expo-blank": '<div id="root"><div style="position:absolute;inset:0"><div style="height:100%;background:transparent"></div></div></div>',
+  "/expo-crash": '<div id="root"></div><script>throw new Error("boom: native module")</script>',
+  "/expo-textless": '<div id="root"><div style="position:absolute;inset:0;background:#123456"></div></div>',
+};
 
 beforeAll(() => {
   server = Bun.serve({
@@ -63,6 +75,10 @@ beforeAll(() => {
       if (path === "/data") return new Promise<Response>((res) => setTimeout(() => res(new Response("3000")), 900));
       if (path === "/poll") return html('<h1>Live</h1><script>fetch("/hold")</script>');
       if (path === "/hold") return new Promise<Response>(() => {});
+      // Expo's web target while it loads a screen: the "Bundling..." toast (expo-router's SuspenseFallback, a lazily
+      // loaded route) on react-navigation's grey card, or a root with nothing drawn (a layout waiting for useFonts).
+      // Neither fetches anything, so the quiet wait passes during it.
+      if (path.startsWith("/expo-")) return html(EXPO_PAGES[path] ?? "", EXPO_PAGES[path] ? 200 : 404);
       return html("<h1>Not found</h1>", 404);
     },
   });
@@ -119,6 +135,47 @@ describe.skipIf(!browser)("captureScreens (needs Chrome, Edge or Chromium)", () 
     expect(unreachable.routes[0]!.error).toContain("Couldn't reach");
     const silent = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/never"], outDir: out, settleMs: 50, timeoutMs: 2000 });
     expect(silent.routes[0]!.error).toBe("It didn't answer within 2 s.");
+  }, 120_000);
+});
+
+describe.skipIf(!browser)("an Expo screen that is still loading (needs Chrome, Edge or Chromium)", () => {
+  const PHONE = [{ name: "mobile" as const, width: 390, height: 844, scale: 2, mobile: true }];
+  const topLeft = (file: string) => pngPixels(new Uint8Array(readFileSync(file))).at(10, 10);
+  const base = () => `http://localhost:${server.port}`;
+
+  test("is waited for: the screenshot shows the screen, not Expo's Bundling toast or an empty root", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: base(), routes: ["/expo-bundling", "/expo-fonts", "/expo-textless"], outDir: out, settleMs: 50, viewports: PHONE, reactNative: true });
+    expect(routes.map((r) => [r.route, r.error, r.pageErrors, r.shots.length])).toEqual([["/expo-bundling", undefined, undefined, 2], ["/expo-fonts", undefined, undefined, 2], ["/expo-textless", undefined, undefined, 2]]);
+    for (const name of ["expo-bundling.mobile.png", "expo-bundling.mobile.dark.png", "expo-fonts.mobile.png", "expo-textless.mobile.png"]) expect(topLeft(join(out, name))).toEqual([0x12, 0x34, 0x56]);
+  }, 120_000);
+
+  test("one that never finishes is the route's error, saying which, and nothing is captured of it", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: base(), routes: ["/expo-stuck", "/expo-blank", "/expo-bundling"], outDir: out, settleMs: 50, viewports: PHONE, reactNative: true, expoReadyMs: 3000 });
+    expect(routes[0]!.shots).toEqual([]);
+    expect(routes[0]!.error).toBe(`Expo was still bundling this screen 3 s after it loaded (its "Bundling..." toast was showing), so it wasn't captured. Run motif shot again; if it happens again, open the page in a browser to see whether Metro finishes it.`);
+    expect(routes[1]!.shots).toEqual([]);
+    expect(routes[1]!.error).toBe("The screen was still empty 3 s after it loaded, so it wasn't captured. Open the page in a browser to see what it waits for (fonts loaded with useFonts, data it fetches) before it draws.");
+    // The others go on.
+    expect(routes[2]!.shots).toHaveLength(2);
+  }, 120_000);
+
+  test("a screen that threw isn't waited for: it is captured with its error, as before", async () => {
+    const out = tempDir("motif-shots-");
+    const started = Date.now();
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: base(), routes: ["/expo-crash"], outDir: out, settleMs: 50, viewports: PHONE, reactNative: true });
+    expect(routes[0]!.error).toBeUndefined();
+    expect(routes[0]!.pageErrors).toEqual(["Error: boom: native module"]);
+    expect(routes[0]!.shots).toHaveLength(2);
+    expect(Date.now() - started).toBeLessThan(20_000);
+  }, 120_000);
+
+  test("other stacks aren't waited for: a web page with no #root content is captured at once", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: base(), routes: ["/expo-bundling"], outDir: out, settleMs: 50, viewports: PHONE });
+    expect(routes[0]!.error).toBeUndefined();
+    expect(topLeft(join(out, "expo-bundling.mobile.png"))).toEqual([0xf2, 0xf2, 0xf2]);
   }, 120_000);
 });
 

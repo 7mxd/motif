@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { runShot } from "../src/commands/shot";
 import { runTokens } from "../src/commands/tokens";
 import { findBrowser } from "../src/detect/browser";
-import { FIXTURES, heavyStackTests } from "./helpers";
+import { FIXTURES, heavyStackTests, pngPixels } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 // motif shot on expo-min through Expo's web target (plan 2G, Task 7; decision 0009). Needs Node with npm (Expo runs on
@@ -192,6 +192,60 @@ describe("motif shot on expo-min, through Expo's web target", () => {
     expect(r.data.shots).toEqual(["design/shots/form.mobile.png", "design/shots/form@filled.mobile.png", "design/shots/form.mobile.dark.png", "design/shots/form@filled.mobile.dark.png"]);
     expect(png("form.mobile.png").equals(png("form@filled.mobile.png"))).toBe(false);
   }, 600_000);
+});
+
+// Expo's default web output, "static" (create-expo-app's template sets it; expo-min pins "single"): each page is
+// rendered in Node and each route is a chunk the browser loads after the page. Before Motif warmed the routes and
+// waited for the screen to draw, the first screenshot of a cold run could be Expo's "Bundling..." toast on a grey page,
+// reported as a success (the final review of plan 2G; decision 0009). The run here has a cold Metro cache of its own.
+describe("motif shot on a copy of expo-min with Expo's static web output", () => {
+  /** The background every screenshot of expo-min should have, by its variant and scheme (the check script's colours). */
+  const BACKGROUND: Record<string, number[]> = { default: [249, 250, 251], "default.dark": [3, 7, 18], partner: [255, 237, 213], "partner.dark": [12, 10, 9] };
+
+  test.skipIf(!ready)("every screenshot shows the app (its background and its text), none Expo's Bundling toast or an empty page (skipped without Node, npm or a browser)", async () => {
+    const copy = tempDir("motif expo static ");
+    cpSync(join(FIXTURES, "expo-min"), copy, { recursive: true, filter: (src) => ![".expo", "node_modules", "dist", "web-build"].includes(basename(src)) });
+    const config = readFileSync(join(copy, "app.json"), "utf8");
+    expect(config).toContain('"output": "single"');
+    writeFileSync(join(copy, "app.json"), config.replace('"output": "single"', '"output": "static"'));
+    if (run([npm!, "ci", "--prefer-offline", "--no-audit", "--no-fund"], copy).code !== 0) expect(run([npm!, "ci", "--no-audit", "--no-fund"], copy).code).toBe(0);
+    rmSync(join(copy, "design", "motif-theme.tsx"));
+    expect((await runTokens(copy, { positionals: [] })).exitCode).toBe(0);
+    mkdirSync(join(copy, "design", "states"), { recursive: true });
+    writeFileSync(join(copy, "design", "states", "check.js"), CHECK);
+
+    // Metro keeps its cache in the temp folder, shared by every app on the machine: a new one makes this run cold.
+    const saved = { TEMP: process.env.TEMP, TMP: process.env.TMP, TMPDIR: process.env.TMPDIR };
+    const cold = join(tempDir("motif metro "), "tmp");
+    mkdirSync(cold);
+    Object.assign(process.env, { TEMP: cold, TMP: cold, TMPDIR: cold });
+    let r: Awaited<ReturnType<typeof runShot>>;
+    try {
+      r = await runShot(copy, { positionals: [], flags: { state: "design/states/check.js", sizes: "390", routes: "/,/settings", variant: "all", rtl: true } });
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+    if (r.exitCode !== 0) console.log(r.text);
+    expect(r.exitCode).toBe(0);
+    // The check script, run in the @check screenshots, throws unless the title, the colours and the fonts are there.
+    clean(r.data);
+    const files = readdirSync(join(copy, "design", "shots")).filter((f) => f.endsWith(".png"));
+    expect(files).toHaveLength(32);
+    const wrong: string[] = [];
+    for (const f of files) {
+      const px = pngPixels(new Uint8Array(readFileSync(join(copy, "design", "shots", f))));
+      const want = BACKGROUND[(f.includes("+partner") ? "partner" : "default") + (f.includes(".dark") ? ".dark" : "")]!;
+      const near = (p: number[]) => p.every((v, k) => Math.abs(v - want[k]!) <= 2);
+      // The title, card and button: pixels that aren't the background.
+      let ink = 0;
+      for (let y = 0; y < px.height; y += 4) for (let x = 0; x < px.width; x += 4) if (!near(px.at(x, y))) ink++;
+      if (!near(px.at(20, 20)) || ink < 500) wrong.push(`${f}: top left ${px.at(20, 20).join(",")}, ${ink} pixels of content`);
+    }
+    expect(wrong).toEqual([]);
+  }, 900_000);
 });
 
 const FILL = `

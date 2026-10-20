@@ -2,6 +2,7 @@
 // native-only code throws there.
 import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { routeUrl } from "../../shot/capture";
 import { RN_START_TIMEOUT_MS } from "./index";
 import { declared } from "./project";
 
@@ -63,42 +64,86 @@ function bundleError(body: string, appDir: string): string {
 
 const timedOut = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
 
+/** Same-origin script addresses a page loads. */
+function scriptsOf(html: string, pageUrl: string): URL[] {
+  const origin = new URL(pageUrl).origin;
+  return [...html.matchAll(/<script\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi)]
+    .map((m) => new URL(m[1]!.replace(/&amp;/g, "&"), pageUrl))
+    .filter((u) => u.origin === origin);
+}
+
 /**
- * Asks Expo's dev server for the app's page and the scripts it loads, so Metro builds the web bundle before the first
- * screenshot (a first bundle can take minutes; it then counts against the start limit, not a page's load). A bundle
- * Metro couldn't build is an error saying why; so is one that isn't ready by the deadline. Anything else (a page that
- * doesn't answer, a server that renders on its own) is left to the screenshots.
+ * The web chunks a bundle loads later: with lazy bundling (Expo's "static" output, async routes) Metro names each
+ * route's chunk in the entry bundle as a JS string, "/app\\index.bundle?platform=web&…&modulesOnly=true…" (a Windows
+ * path keeps its backslash, escaped).
  */
-export async function buildWebBundle(appDir: string, baseUrl: string, deadline: number, started?: string): Promise<{ error?: string }> {
+export function lazyChunks(bundle: string, baseUrl: string): URL[] {
+  const found = new Set<string>();
+  for (const m of bundle.matchAll(/"(\/[^"\s]*?\.bundle\?[^"\s]*?)"/g)) {
+    // In the JS string a backslash is written \\ and a slash may be written \/.
+    const path = m[1]!.replace(/\\\\/g, "/").replace(/\\\//g, "/");
+    if (/[?&]modulesOnly=true\b/.test(path) && /[?&]platform=web\b/.test(path)) found.add(new URL(path, baseUrl).toString());
+  }
+  return [...found].map((u) => new URL(u));
+}
+
+/** How many of Metro's bundles are asked for at once. */
+const WARM_AT_ONCE = 4;
+
+/**
+ * Asks Expo's dev server for each route's page, the scripts those pages load, and the route chunks the scripts load
+ * later, so Metro builds all of it before the first screenshot (a first bundle can take minutes; it then counts against
+ * the start limit, not a page's load). With Expo's "static" web output each page is rendered in Node and each route is
+ * a chunk of its own, built the first time a browser asks for it: unwarmed, the first screenshot could show Expo's
+ * "Bundling..." toast (decision 0009). A bundle Metro couldn't build is an error saying why; so is one that isn't ready
+ * by the deadline. Anything else (a page that doesn't answer, a server that renders on its own) is left to the
+ * screenshots.
+ */
+export async function buildWebBundle(appDir: string, baseUrl: string, deadline: number, started?: string, routes: string[] = ["/"]): Promise<{ error?: string }> {
   const next = started ? `Run "${started}" yourself to see where Metro stops, or start the app and pass its address with --url.` : "Start the app yourself to see where Metro stops, then pass its address with --url.";
   const late = { error: `Expo's web bundle wasn't ready within the start limit (${Math.round(RN_START_TIMEOUT_MS / 1000)} s). ${next}` };
   const signal = () => AbortSignal.timeout(Math.max(1, deadline - Date.now()));
-  let html: string;
-  try {
-    const res = await fetch(baseUrl, { signal: signal() });
-    if (!res.ok) return {};
-    html = await res.text();
-  } catch (e) {
-    return timedOut(e) ? late : {};
-  }
-  const origin = new URL(baseUrl).origin;
-  const scripts = [...html.matchAll(/<script\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi)]
-    .map((m) => new URL(m[1]!.replace(/&amp;/g, "&"), baseUrl))
-    .filter((u) => u.origin === origin);
-  for (const url of scripts) {
+  /** A bundle's text, or what stops the warm-up: an error, or null when it isn't Metro's to judge. */
+  const bundle = async (url: URL): Promise<string | { error?: string } | null> => {
     try {
       const res = await fetch(url, { signal: signal() });
-      if (res.ok) {
-        await res.arrayBuffer();
-        continue;
-      }
+      if (res.ok) return await res.text();
       return { error: bundleError(await res.text(), appDir) };
+    } catch (e) {
+      return timedOut(e) ? late : null;
+    }
+  };
+  /** Each bundle once, a few at a time; the first error found stops it. */
+  const seen = new Set<string>();
+  const warm = async (urls: URL[]): Promise<{ texts: string[]; error?: string; stop?: boolean }> => {
+    const todo = urls.filter((u) => !seen.has(u.toString()) && Boolean(seen.add(u.toString())));
+    const texts: string[] = [];
+    for (let i = 0; i < todo.length; i += WARM_AT_ONCE) {
+      for (const got of await Promise.all(todo.slice(i, i + WARM_AT_ONCE).map(bundle))) {
+        if (typeof got === "string") texts.push(got);
+        else if (got === null) return { texts, stop: true };
+        else return { texts, ...got, stop: true };
+      }
+    }
+    return { texts };
+  };
+
+  const pages = [...new Set((routes.length > 0 ? routes : ["/"]).map((r) => routeUrl(baseUrl, r)))];
+  const scripts: URL[] = [];
+  for (const page of pages) {
+    try {
+      const res = await fetch(page, { signal: signal() });
+      if (!res.ok) continue;
+      scripts.push(...scriptsOf(await res.text(), page));
     } catch (e) {
       if (timedOut(e)) return late;
       return {};
     }
   }
-  return {};
+  const entries = await warm(scripts);
+  if (entries.stop) return entries.error ? { error: entries.error } : {};
+  const chunks = await warm(entries.texts.flatMap((text) => lazyChunks(text, baseUrl)));
+  return chunks.error ? { error: chunks.error } : {};
 }
 
 /** ExpoSecureStore → expo-secure-store, ExpoSQLite → expo-sqlite: the package an Expo native module is usually in. */

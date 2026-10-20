@@ -418,7 +418,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     baseUrl = server.url;
     if (rn && deps.webBundle) {
-      const built = await deps.webBundle(appDir, baseUrl, started + RN_START_TIMEOUT_MS, how.display);
+      const built = await deps.webBundle(appDir, baseUrl, started + RN_START_TIMEOUT_MS, how.display, routes);
       if (built.error) {
         await server.stop();
         return {
