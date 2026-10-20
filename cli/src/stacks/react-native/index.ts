@@ -12,7 +12,8 @@ import type { NativeStack } from "../native";
 import { rnDoctor } from "./doctor";
 import { rnFonts } from "./fonts";
 import { generateReactNative } from "./generate";
-import { srcRoot } from "./project";
+import { declared, srcRoot } from "./project";
+import { rnFix, rnPaletteFile, rnReducedMotion, rnRole, scanReactNative } from "./rules";
 
 /** True when the app's own code (not Motif's file, and not a comment) uses MotifProvider. */
 function usesTheme(root: string, app: AppInfo): boolean {
@@ -84,6 +85,14 @@ export const REACT_NATIVE: NativeStack = {
   },
 
   sourceFiles: (root, app, { ignore }) => listRnFiles(root, app.path, { ignore }),
+
+  // Tailwind classes are read only when the app uses nativewind.
+  scan: (file, scale, ctx) => scanReactNative(file, scale, { nativewind: ctx !== undefined && declared(resolve(ctx.root, ctx.app.path), "nativewind") !== null }),
+  // Motif's own file reads the reduce-motion setting itself: only the app's code says whether it respects it.
+  appWide: (files) => rnReducedMotion(files),
+  fix: rnFix,
+  paletteFile: rnPaletteFile,
+  role: rnRole,
 
   doctor: rnDoctor,
 };

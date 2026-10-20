@@ -38,7 +38,8 @@ export interface NativeStack {
   /** The one step that puts the theme file (root-relative) to use, or null when the app already uses it. */
   wiring?(root: string, app: AppInfo, file: string, set?: ThemeSet): string | null;
   sourceFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
-  scan?(file: SourceFile, scale: Scale): Hit[];
+  /** The hits in one file; `ctx` is the app being checked (React Native reads its package.json for nativewind). */
+  scan?(file: SourceFile, scale: Scale, ctx?: { root: string; app: AppInfo }): Hit[];
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];
   /**
    * True when a file's typed colours define the app's own palette (a Flutter ThemeExtension's instances, a ColorScheme, a
