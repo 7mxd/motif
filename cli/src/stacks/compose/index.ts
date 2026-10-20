@@ -12,10 +12,11 @@ import { composeDoctor } from "./doctor";
 import { composeFonts } from "./fonts";
 import { generateCompose, THEME_FILE } from "./generate";
 import { composePaletteFile } from "./palette";
-import { composeModule, composeThemeDir, folderPackage } from "./project";
+import { composeModule, composeThemeDir, folderPackage, gradleRoot } from "./project";
 import { collectCompose } from "./extract";
 import { composeFix, composeReducedMotion, composeRole, scanKotlin } from "./rules";
 import { composeRoutes } from "./screens";
+import { composeVersions, diskRead, oldComposeProblem } from "./versions";
 import { COMPOSE_MOTION, COMPOSE_VARIANT_HOW, composeInputsProblem, composeShotRefusal, composeTimeLimit, shootCompose } from "./shot";
 
 /** The package the theme file declares: its folder's below the source folder, or the module's own ui.motif outside one. */
@@ -62,6 +63,10 @@ export const COMPOSE: NativeStack = {
       resFonts: fonts.resFonts,
     }).map((f) => ({ path: `${themeDir}/${f.path}`, content: f.content }));
     const notes = [...fonts.notes];
+    // MotifTheme.kt needs Compose UI 1.9: an older Compose in the app's build files gets a note; one Motif can't find, none.
+    const moduleDir = join(root, app.path);
+    const old = oldComposeProblem(app.path === "." ? "This app" : app.path, composeVersions(gradleRoot(moduleDir, root), moduleDir, diskRead));
+    if (old) notes.push(old);
     if (folderPackage(themeDir) === null) {
       const sources = prefixPath(app.path, mod?.sourceRoot ?? "src/main/java");
       notes.push(

@@ -179,6 +179,42 @@ describe("motif tokens for a Compose app", () => {
     );
   });
 
+  test("a Compose BOM older than 2025.08.00 gets a note: the theme's shadows need Compose UI 1.9 (final review)", async () => {
+    const OLD =
+      "app uses Compose BOM 2024.09.00, older than 2025.08.00 (Compose UI 1.9), which Motif's theme code needs: MotifTheme.kt's shadows use Modifier.dropShadow, so the app won't build with it. " +
+      "Update the BOM in gradle/libs.versions.toml to 2025.08.00 or later, then build again.";
+    const old = composeApp();
+    writeFileSync(join(old, "gradle/libs.versions.toml"), catalogue(true).replace('composeBom = "2025.08.00"', 'composeBom = "2024.09.00"'));
+    const r = await runTokens(old, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(notes(r)).toContain(OLD);
+    // The theme is still written: the note says what to change in the build.
+    expect(statuses(r)[THEME]).toBe("created");
+    // The floor itself, and anything later, says nothing.
+    expect(notes(await runTokens(composeApp(), ctx))).not.toContain("Compose BOM");
+    const later = composeApp();
+    writeFileSync(join(later, "gradle/libs.versions.toml"), catalogue(true).replace('composeBom = "2025.08.00"', 'composeBom = "2026.01.01"'));
+    expect(notes(await runTokens(later, ctx))).not.toContain("Compose BOM");
+  });
+
+  test("the BOM in the build file itself, and a pinned Compose UI, are read too; a version Motif can't find says nothing (final review)", async () => {
+    const direct = composeApp({ "app/build.gradle.kts": appGradle(['implementation(platform("androidx.compose:compose-bom:2024.12.01"))']) });
+    writeFileSync(join(direct, "gradle/libs.versions.toml"), "");
+    expect(notes(await runTokens(direct, ctx))).toContain("app uses Compose BOM 2024.12.01, older than 2025.08.00 (Compose UI 1.9)");
+    expect(notes(await runTokens(direct, ctx))).toContain("Update the BOM in app/build.gradle.kts to 2025.08.00 or later");
+    const pinned = composeApp({ "app/build.gradle.kts": appGradle(['implementation("androidx.compose.ui:ui:1.7.8")']) });
+    writeFileSync(join(pinned, "gradle/libs.versions.toml"), "");
+    expect(notes(await runTokens(pinned, ctx))).toContain(
+      "app uses Compose UI 1.7.8, older than 1.9, which Motif's theme code needs: MotifTheme.kt's shadows use Modifier.dropShadow, so the app won't build with it. " +
+        "Update it in app/build.gradle.kts to 1.9 or later (or use the Compose BOM 2025.08.00 or later), then build again.",
+    );
+    // A BOM set in a convention plugin (build-logic) isn't in either file: Motif can't tell, and says nothing.
+    const unknown = composeApp();
+    writeFileSync(join(unknown, "gradle/libs.versions.toml"), catalogue(true).replace('composeBom = "2025.08.00"\n', "").replace(', version.ref = "composeBom"', ""));
+    expect(notes(await runTokens(unknown, ctx))).not.toContain("Compose BOM");
+    expect(notes(await runTokens(unknown, ctx))).not.toContain("Compose UI 1.9");
+  });
+
   test("a project font's .ttf files are copied to res/font under resource names", async () => {
     const root = composeApp({
       "design/tokens.json": brandTokens(["design/fonts/Thmanyah Sans Regular.ttf", "design/fonts/Thmanyah Sans Bold.ttf"]),

@@ -7,7 +7,7 @@ How Motif works with an Android app built with Jetpack Compose: what it expects,
 - An Android app in Kotlin, with Jetpack Compose and Material 3 (`androidx.compose.material3`). Motif's generated `MotifTheme` wraps the app's content in place of the template's own theme.
 - These versions or newer:
   - **Kotlin 2.0**, with the Compose compiler Gradle plugin (`org.jetbrains.kotlin.plugin.compose`).
-  - **Compose UI 1.9** and **Material 3 1.3**: a Compose BOM of `2025.08.00` or later brings both. The theme's shadows use `Modifier.dropShadow`, which Compose UI 1.9 added.
+  - **Compose UI 1.9** and **Material 3 1.3**: a Compose BOM of `2025.08.00` or later brings both. The theme's shadows use `Modifier.dropShadow`, which Compose UI 1.9 added. When the app's build files name an older BOM (or pin an older Compose UI), `motif tokens` adds a note and `motif doctor` an item (`compose-ui:<app>`) saying what to update; a BOM set elsewhere (a convention plugin) isn't read, and nothing is said.
   - **Android Gradle Plugin 8.6**, with **Gradle 8.7**. Compose UI 1.9 refuses to build with an older plugin.
   - **JDK 17** to run Gradle, and `compileSdk` 35.
 - One design guide for the whole project. Compose apps run on Android only; [platform rules](platform.md) says what to get right there.

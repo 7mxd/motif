@@ -246,6 +246,28 @@ describe("runDoctor", () => {
       expect(item(got, "jdk")).toMatchObject({ status: "ok", detail: "JDK 17.0.2." });
     });
 
+    test("a Compose BOM older than 2025.08.00 is called out; one Motif can't find, or a new enough one, says nothing (final review)", async () => {
+      const root = composeApp();
+      const build = join(root, "app", "build.gradle.kts");
+      const toml = join(root, "gradle", "libs.versions.toml");
+      const catalogue = (bom: string) =>
+        `[versions]\ncomposeBom = "${bom}"\n\n[libraries]\nandroidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }\n`;
+      const gradle = "plugins {\n  alias(libs.plugins.android.application)\n}\ndependencies {\n  implementation(platform(libs.androidx.compose.bom))\n}\n";
+      const old = await items(root, { files: disk({ [build]: gradle, [toml]: catalogue("2024.09.00") }) });
+      expect(item(old, "compose-ui:app")).toEqual({
+        id: "compose-ui:app",
+        status: "needed",
+        label: "Compose",
+        detail:
+          "app uses Compose BOM 2024.09.00, older than 2025.08.00 (Compose UI 1.9), which Motif's theme code needs: MotifTheme.kt's shadows use Modifier.dropShadow, so the app won't build with it. " +
+          "Update the BOM in gradle/libs.versions.toml to 2025.08.00 or later, then build again.",
+      });
+      const fine = await items(root, { files: disk({ [build]: gradle, [toml]: catalogue("2025.08.00") }) });
+      expect(item(fine, "compose-ui:app")).toBeUndefined();
+      const unknown = await items(root, { files: disk({ [build]: gradle }) });
+      expect(item(unknown, "compose-ui:app")).toBeUndefined();
+    });
+
     test("no Compose app means neither item, and a Compose app has full support (Task 15)", async () => {
       const files = disk({});
       const web = copyFixture();

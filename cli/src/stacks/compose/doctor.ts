@@ -3,6 +3,8 @@ import { join, posix, win32 } from "node:path";
 import type { DoctorDeps, DoctorItem } from "../../commands/doctor";
 import type { AppInfo } from "../../detect/stacks";
 import { diskFiles, type DoctorFiles } from "../../project/disk";
+import { gradleRoot } from "./project";
+import { composeVersions, oldComposeProblem } from "./versions";
 
 /** What doctor and motif shot say when there's no Android SDK. */
 export const NO_ANDROID_SDK = "No Android SDK found. Screenshots need it: install Android Studio, or set ANDROID_HOME to an SDK folder.";
@@ -183,7 +185,16 @@ function sdkItem(root: string, apps: AppInfo[], deps: DoctorDeps): DoctorItem {
   return { id: "android-sdk", status: "ok", label, detail: `Android SDK at ${sdk} (platforms ${levels.join(", ")}).` };
 }
 
-/** The JDK and the Android SDK, for a project with Compose apps. */
+/** An app whose build files ask for a Compose older than Motif's theme code needs (UI 1.9, BOM 2025.08.00); none when it can't tell. */
+function composeVersionItems(root: string, apps: AppInfo[], deps: DoctorDeps): DoctorItem[] {
+  return apps.flatMap((app) => {
+    const moduleDir = join(root, app.path);
+    const problem = oldComposeProblem(app.path === "." ? "This app" : app.path, composeVersions(gradleRoot(moduleDir, root), moduleDir, (p) => files(deps).read(p)));
+    return problem ? [{ id: `compose-ui:${app.path}`, status: "needed" as const, label: "Compose", detail: problem }] : [];
+  });
+}
+
+/** The JDK and the Android SDK, for a project with Compose apps, and each app's Compose version when it's too old. */
 export function composeDoctor(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[] {
-  return [jdkItem(deps), sdkItem(ctx.root, ctx.apps, deps)];
+  return [jdkItem(deps), sdkItem(ctx.root, ctx.apps, deps), ...composeVersionItems(ctx.root, ctx.apps, deps)];
 }
