@@ -23,6 +23,8 @@ export const RESERVED: { dart: Set<string>; kotlin: Set<string>; swift: Set<stri
     "subscript", "typealias", "var", "break", "case", "catch", "continue", "default", "defer", "do", "else", "fallthrough",
     "for", "guard", "if", "in", "repeat", "return", "throw", "switch", "where", "while", "Any", "as", "await", "false",
     "is", "nil", "self", "Self", "super", "throws", "true", "try",
+    // Members every enum has, which a case of the same name would clash with.
+    "allCases", "rawValue", "hashValue",
   ]),
 };
 

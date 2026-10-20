@@ -170,7 +170,7 @@ describe("detectApps: from the backlog", () => {
   });
 
   test("a Swift project with very many folders is looked through only so far", () => {
-    const files: Record<string, string> = { "Package.swift": 'let package = Package(name: "A", targets: [.executableTarget(name: "A")])' };
+    const files: Record<string, string> = { "Package.swift": 'let package = Package(name: "A", targets: [.executableTarget(name: "A", path: ".")])' };
     for (let i = 0; i < 5100; i++) files[`f${String(i).padStart(4, "0")}/.keep`] = "";
     files["f5099/View.swift"] = "import SwiftUI";
     const started = Date.now();

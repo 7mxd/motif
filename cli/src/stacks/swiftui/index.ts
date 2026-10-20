@@ -13,7 +13,7 @@ export const SWIFTUI: NativeStack = {
   themeDir(root, app) {
     if (app.themeDir) return app.themeDir;
     const sourceRoot = swiftUIApp(join(root, app.path))?.sourceRoot;
-    return prefixPath(app.path, `${sourceRoot ? `${sourceRoot}/` : ""}Design`);
+    return prefixPath(app.path, `${sourceRoot && sourceRoot !== "." ? `${sourceRoot}/` : ""}Design`);
   },
 
   sourceFiles: (root, app, { ignore }) => listSwiftFiles(root, app.path, { ignore }),

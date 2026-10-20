@@ -10,7 +10,7 @@ export interface SwiftUIApp {
   /** The project or manifest file, relative to the app's folder (Rafiq.xcodeproj, Package.swift). */
   project: string;
   platforms: ("ios" | "macos")[];
-  /** The target's folder, relative to the app's folder (Rafiq, Sources/Rafiq). */
+  /** The target's folder, relative to the app's folder (Rafiq, Sources/Rafiq), or "." when the target's files sit at the root. */
   sourceRoot: string;
 }
 
@@ -38,8 +38,8 @@ function isDir(path: string): boolean {
   }
 }
 
-/** True when a Swift file in the folder (or one inside it, a few levels down) imports SwiftUI. */
-export function hasSwiftUIImport(dir: string): boolean {
+/** True when a Swift file in the folder (or one inside it, a few levels down) satisfies the test; the search is capped. */
+function someSwiftFile(dir: string, test: (text: string) => boolean): boolean {
   let scanned = 0;
   let seen = 0;
   const visit = (d: string, depth: number): boolean => {
@@ -56,7 +56,8 @@ export function hasSwiftUIImport(dir: string): boolean {
     for (const name of names.filter((n) => n.endsWith(".swift"))) {
       if (++seen > SWIFT_MAX_ENTRIES) return false;
       scanned++;
-      if (read(join(d, name))?.includes("import SwiftUI")) return true;
+      const text = read(join(d, name));
+      if (text !== null && test(text)) return true;
       if (scanned >= SWIFT_MAX_FILES) return false;
     }
     for (const name of names.filter((n) => !n.endsWith(".swift"))) {
@@ -69,18 +70,73 @@ export function hasSwiftUIImport(dir: string): boolean {
   return visit(dir, 0);
 }
 
-const unquote = (v: string) => v.trim().replace(/^"(.*)"$/s, "$1");
-
-/** The objects of a project file that have a given isa, as their text between the braces. */
-function objects(pbx: string, isa: string): string[] {
-  return [...pbx.matchAll(new RegExp(`\\{[^{}]*\\bisa = ${isa};[^{}]*\\}`, "g"))].map((m) => m[0]);
+/** True when a Swift file in the folder (or one inside it, a few levels down) imports SwiftUI. */
+export function hasSwiftUIImport(dir: string): boolean {
+  return someSwiftFile(dir, (text) => text.includes("import SwiftUI"));
 }
 
-const field = (block: string, name: string) => block.match(new RegExp(`\\b${name} = ("[^"]*"|[^;\\s]+);`))?.[1];
+/** True when a Swift file in the folder is a SwiftUI app's entry point: @main struct X: App. */
+function hasAppEntry(dir: string): boolean {
+  return someSwiftFile(dir, (text) => /@main\s+(?:@\w+\s+)*(?:struct|final\s+class|class)\s+\w+\s*:\s*[^{]*\bApp\b/.test(text));
+}
 
-/** The platforms a project's build settings (SDKROOT, SUPPORTED_PLATFORMS) name; iOS when they name none. */
-function pbxPlatforms(pbx: string): ("ios" | "macos")[] {
-  const values = [...pbx.matchAll(/\b(?:SDKROOT|SUPPORTED_PLATFORMS) = ("[^"]*"|[^;\s]+);/g)].map((m) => unquote(m[1]!));
+interface PbxObject {
+  /** The whole object, braces included. */
+  text: string;
+  /** The object without the objects nested in it (buildSettings = { … }). */
+  own: string;
+}
+
+/** Every `ID /* name *\/ = { … }` in a project file, by id; nested ones (buildSettings) too. */
+function pbxObjects(pbx: string): Map<string, PbxObject> {
+  const out = new Map<string, PbxObject>();
+  for (const m of pbx.matchAll(/\b(\w+)(?:\s*\/\*[^*]*\*\/)?\s*=\s*\{/g)) {
+    const open = m.index! + m[0].length - 1;
+    let depth = 0;
+    let quoted = false;
+    let own = "";
+    let end = -1;
+    for (let i = open; i < pbx.length; i++) {
+      const c = pbx[i]!;
+      if (quoted) {
+        if (c === "\\") {
+          if (depth === 1) own += c + (pbx[i + 1] ?? "");
+          i++;
+          continue;
+        }
+        if (c === '"') quoted = false;
+        if (depth === 1) own += c;
+        continue;
+      }
+      if (c === '"') quoted = true;
+      if (c === "{") depth++;
+      if (depth === 1) own += c;
+      if (c === "}" && --depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    if (end === -1 || !/\bisa = /.test(own)) continue;
+    out.set(m[1]!, { text: pbx.slice(open, end + 1), own });
+  }
+  return out;
+}
+
+const unquote = (v: string) => v.trim().replace(/^"(.*)"$/s, "$1");
+const field = (block: string, name: string) => block.match(new RegExp(`\\b${name} = ("[^"]*"|[^;\\s]+)(?:\\s*\\/\\*[^;]*?\\*\\/)?\\s*;`))?.[1];
+/** The ids in a parenthesised list (`ID1 /* Debug *\/, ID2 /* Release *\/,`), not the words of its comments. */
+const idsIn = (list: string | undefined) => (list ?? "").replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((s) => s.trim()).filter(Boolean);
+
+/** The text of a target's own build settings: every configuration of its configuration list. */
+function targetSettings(objs: Map<string, PbxObject>, target: PbxObject): string {
+  const list = objs.get(field(target.own, "buildConfigurationList") ?? "");
+  const configs = idsIn(list?.own.match(/buildConfigurations = \(([^)]*)\)/)?.[1]);
+  return configs.map((id) => objs.get(id)?.text ?? "").join("\n");
+}
+
+/** The platforms build settings (SDKROOT, SUPPORTED_PLATFORMS) name; iOS when they name none. */
+function settingsPlatforms(settings: string): ("ios" | "macos")[] {
+  const values = [...settings.matchAll(/\b(?:SDKROOT|SUPPORTED_PLATFORMS) = ("[^"]*"|[^;\s]+);/g)].map((m) => unquote(m[1]!));
   const words = values.flatMap((v) => v.split(/\s+/));
   const out: ("ios" | "macos")[] = [];
   if (words.includes("iphoneos") || words.includes("iphonesimulator")) out.push("ios");
@@ -88,25 +144,53 @@ function pbxPlatforms(pbx: string): ("ios" | "macos")[] {
   return out.length > 0 ? out : ["ios"];
 }
 
+/** True for a target built for the watch, the TV or Vision Pro only: never the app a design guide is for. */
+function otherDevice(settings: string): boolean {
+  const sdks = [...settings.matchAll(/\bSDKROOT = ("[^"]*"|[^;\s]+);/g)].map((m) => unquote(m[1]!));
+  return sdks.length > 0 && sdks.every((v) => /^(watchos|appletvos|xros)/.test(v));
+}
+
+/** The folders beside the project that may hold the app: Shared/ first, then one named like the project, then by name. */
+function siblingFolders(dir: string, name: string): string[] {
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {}
+  const folders = entries.filter((n) => !n.startsWith(".") && !SKIP_DIRS.has(n) && !NOT_SOURCES.test(n) && !/Tests?$/.test(n) && isDir(join(dir, n)));
+  const rank = (n: string) => (n === "Shared" ? 0 : n.toLowerCase() === name.toLowerCase() ? 1 : 2);
+  return folders.sort((a, b) => rank(a) - rank(b));
+}
+
 function xcodeApp(dir: string, projectFolder: string): SwiftUIApp | null {
   const pbx = read(join(dir, projectFolder, "project.pbxproj"));
   if (pbx === null) return null;
-  const targets = objects(pbx, "PBXNativeTarget").filter((t) => unquote(field(t, "productType") ?? "") === "com.apple.product-type.application");
-  const target = targets.find((t) => !/Tests?$/.test(unquote(field(t, "name") ?? ""))) ?? targets[0];
+  const objs = pbxObjects(pbx);
+  const targets = [...objs.values()].filter(
+    (o) => /\bisa = PBXNativeTarget;/.test(o.own) && unquote(field(o.own, "productType") ?? "") === "com.apple.product-type.application",
+  );
+  const named = (t: PbxObject) => unquote(field(t.own, "name") ?? "");
+  const projectName = projectFolder.replace(/\.xcodeproj$/, "");
+  const apps = targets.filter((t) => !/Tests?$/.test(named(t)));
+  const settings = new Map(apps.map((t) => [t, targetSettings(objs, t)]));
+  // The target named like the project, else one for a phone, tablet or Mac (not the watch, TV or Vision Pro), else the first.
+  const target =
+    apps.find((t) => named(t).toLowerCase() === projectName.toLowerCase()) ??
+    apps.find((t) => !otherDevice(settings.get(t)!)) ??
+    apps[0];
   if (!target) return null;
-  const name = unquote(field(target, "name") ?? "") || projectFolder.replace(/\.xcodeproj$/, "");
+  const name = named(target) || projectName;
 
   // The target's folder: its name's, or the folder a file-system synchronized group (Xcode 16) gives it.
   const candidates = [name];
-  const groups = target.match(/fileSystemSynchronizedGroups = \(([^)]*)\)/)?.[1] ?? "";
-  for (const id of groups.matchAll(/\b(\w+)\b/g)) {
-    const group = pbx.match(new RegExp(String.raw`\b${id[1]} (?:/\*[^*]*\*/ )?= (\{[^{}]*\})`))?.[1];
-    const path = group ? unquote(field(group, "path") ?? "") : "";
+  for (const id of idsIn(target.own.match(/fileSystemSynchronizedGroups = \(([^)]*)\)/)?.[1])) {
+    const path = unquote(field(objs.get(id)?.own ?? "", "path") ?? "");
     if (path && !candidates.includes(path)) candidates.push(path);
   }
-  const folder = candidates.find((c) => isDir(join(dir, c)) && hasSwiftUIImport(join(dir, c)));
+  let folder = candidates.find((c) => isDir(join(dir, c)) && hasSwiftUIImport(join(dir, c)));
+  // A renamed target, or the Multiplatform template's "X (iOS)" with its code in Shared/: the folder beside the project with the app's entry point.
+  folder ??= siblingFolders(dir, projectName).find((f) => hasAppEntry(join(dir, f)));
   if (folder === undefined) return null;
-  return { kind: "xcodeproj", name, project: projectFolder, platforms: pbxPlatforms(pbx), sourceRoot: folder };
+  return { kind: "xcodeproj", name, project: projectFolder, platforms: settingsPlatforms(settings.get(target)!), sourceRoot: folder };
 }
 
 /** A manifest's text without its comments. */
@@ -114,23 +198,56 @@ function stripComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'])\/\/.*$/gm, "$1");
 }
 
+/** The arguments of each call of a manifest function (`.target(`), up to its closing parenthesis. */
+function calls(text: string, fn: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(new RegExp(`\\.${fn}\\s*\\(`, "g"))) {
+    let depth = 1;
+    let i = m.index! + m[0].length;
+    const start = i;
+    for (; i < text.length && depth > 0; i++) {
+      if (text[i] === "(") depth++;
+      else if (text[i] === ")") depth--;
+    }
+    out.push(text.slice(start, i - 1));
+  }
+  return out;
+}
+
+const stringArg = (call: string, label: string) => call.match(new RegExp(`\\b${label}:\\s*"([^"]*)"`))?.[1];
+
 function packageApp(dir: string): SwiftUIApp | null {
   const raw = read(join(dir, "Package.swift"));
   if (raw === null) return null;
   const text = stripComments(raw);
-  const exe = text.match(/\.executableTarget\s*\(\s*name:\s*"([^"]+)"/)?.[1];
-  const product = text.match(/\.(?:executable|iOSApplication)\s*\(\s*name:\s*"([^"]+)"/)?.[1];
-  if (exe === undefined && product === undefined && !/\.executableTarget\s*\(|\.iOSApplication\s*\(/.test(text)) return null;
-  const name = exe ?? product ?? "App";
-  const candidates = [`Sources/${name}`, "Sources"];
-  const folder = candidates.find((c) => isDir(join(dir, c)) && hasSwiftUIImport(join(dir, c)));
-  if (folder === undefined) return null;
-  const platforms: ("ios" | "macos")[] = [];
-  const block = text.match(/\bplatforms:\s*\[([^\]]*)\]/)?.[1] ?? "";
-  if (/\.iOS\b/.test(block)) platforms.push("ios");
-  if (/\.macOS\b/.test(block)) platforms.push("macos");
-  if (platforms.length === 0) platforms.push(/\.iOSApplication\s*\(/.test(text) ? "ios" : "macos");
-  return { kind: "package", name, project: "Package.swift", platforms, sourceRoot: folder };
+  // Each target's folder (its path:), the executable ones, and the targets an executable or app product (a Playgrounds .iOSApplication) is built from.
+  const paths = new Map<string, string | undefined>();
+  const executables = new Set<string>();
+  for (const fn of ["target", "executableTarget"]) {
+    for (const c of calls(text, fn)) {
+      const n = stringArg(c, "name");
+      if (!n) continue;
+      paths.set(n, stringArg(c, "path"));
+      if (fn === "executableTarget") executables.add(n);
+    }
+  }
+  for (const fn of ["executable", "iOSApplication"]) {
+    for (const c of calls(text, fn)) {
+      for (const t of (c.match(/\btargets:\s*\[([^\]]*)\]/)?.[1] ?? "").matchAll(/"([^"]+)"/g)) executables.add(t[1]!);
+    }
+  }
+  // The first executable target whose own folder (its path:, else Sources/<name>) imports SwiftUI.
+  for (const name of [...executables].sort()) {
+    const path = (paths.get(name) ?? `Sources/${name}`).replace(/^\.\//, "").replace(/\/+$/, "") || ".";
+    if (path.startsWith("..") || !isDir(join(dir, path)) || !hasSwiftUIImport(join(dir, path))) continue;
+    const platforms: ("ios" | "macos")[] = [];
+    const block = text.match(/\bplatforms:\s*\[([^\]]*)\]/)?.[1] ?? "";
+    if (/\.iOS\b/.test(block)) platforms.push("ios");
+    if (/\.macOS\b/.test(block)) platforms.push("macos");
+    if (platforms.length === 0) platforms.push(/\.iOSApplication\s*\(/.test(text) ? "ios" : "macos");
+    return { kind: "package", name, project: "Package.swift", platforms, sourceRoot: path };
+  }
+  return null;
 }
 
 /**

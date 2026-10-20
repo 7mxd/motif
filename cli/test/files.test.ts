@@ -186,9 +186,9 @@ describe("listSwiftFiles", () => {
       "AppTests/HomeTests.swift": "x", "AppUITests/UI.swift": "x", "Tests/AppTests/T.swift": "x",
       "build/Gen.swift": "x", "DerivedData/D.swift": "x", ".build/checkouts/B.swift": "x", ".motif/shot/S.swift": "x",
       "Pods/Alamofire/A.swift": "x", "Carthage/Checkouts/C.swift": "x",
-      "Packages/Kit/Package.swift": "x", "Packages/Kit/Sources/Kit/Kit.swift": "x", "Packages/Kit/Tests/KitTests/K.swift": "x", "Packages/Kit/.build/B.swift": "x",
+      "Package.swift": "x", "Packages/Kit/Package.swift": "x", "Packages/Kit/Sources/Kit/Kit.swift": "x", "Packages/Kit/Tests/KitTests/K.swift": "x", "Packages/Kit/.build/B.swift": "x",
     });
-    expect(paths(listSwiftFiles(root, "."))).toEqual(["App/Views/Home.swift", "App/Views/build/Keep.swift", "Packages/Kit/Package.swift", "Packages/Kit/Sources/Kit/Kit.swift"]);
+    expect(paths(listSwiftFiles(root, "."))).toEqual(["App/Views/Home.swift", "App/Views/build/Keep.swift", "Packages/Kit/Sources/Kit/Kit.swift"]);
     expect(listSwiftFiles(root, ".")[0]!.lang).toBe("swift");
     expect(SWIFTUI_IGNORES).toContain("*.generated.swift");
   });

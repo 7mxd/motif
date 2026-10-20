@@ -53,7 +53,7 @@ export const COMPOSE_IGNORES = ["/build/", "/.gradle/", "/.motif/", "src/test*/"
  * A SwiftUI app's build output, dependencies, tests and generated Swift: never the team's own code. Matched from the app
  * (and from each Swift package inside it), so a feature folder named build under the app's sources is still read.
  */
-export const SWIFTUI_IGNORES = ["/build/", "/DerivedData/", "/.build/", "/.motif/", "*Tests/", "*UITests/", "/Pods/", "/Carthage/", "*.generated.swift"];
+export const SWIFTUI_IGNORES = ["/build/", "/DerivedData/", "/.build/", "/.motif/", "*Tests/", "*UITests/", "/Pods/", "/Carthage/", "*.generated.swift", "Package.swift"];
 
 /** An Expo app's native folders, build and export output, and tests: never the team's own code. */
 export const RN_IGNORES = ["/ios/", "/android/", "/.expo/", "/dist/", "/web-build/", "/.motif/", "expo-env.d.ts", "*.test.*", "__tests__/"];

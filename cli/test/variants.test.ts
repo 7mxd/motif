@@ -169,7 +169,7 @@ describe("swiftIdentifier", () => {
     expect(swiftIdentifier("partner-store")).toBe("partnerStore");
     expect(swiftIdentifier("women")).toBe("women");
     expect(swiftIdentifier("dark-blue-2")).toBe("darkBlue2");
-    for (const [id, name] of [["default", "defaultVariant"], ["case", "caseVariant"], ["class", "classVariant"], ["func", "funcVariant"], ["protocol", "protocolVariant"], ["extension", "extensionVariant"], ["self", "selfVariant"], ["in", "inVariant"]]) {
+    for (const [id, name] of [["default", "defaultVariant"], ["case", "caseVariant"], ["class", "classVariant"], ["func", "funcVariant"], ["protocol", "protocolVariant"], ["extension", "extensionVariant"], ["self", "selfVariant"], ["in", "inVariant"], ["all-cases", "allCasesVariant"], ["raw-value", "rawValueVariant"], ["hash-value", "hashValueVariant"]]) {
       expect(swiftIdentifier(id!)).toBe(name!);
     }
   });

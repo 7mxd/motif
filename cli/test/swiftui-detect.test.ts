@@ -8,34 +8,44 @@ import { cleanupTempDirs } from "./tmp";
 
 afterAll(cleanupTempDirs);
 
-/** The target block Xcode writes for an app, a unit-test target beside it, and build settings for the given platforms. */
-function pbxproj(name: string, opts: { sdk?: string; supported?: string; synced?: string; productType?: string } = {}): string {
-  return [
-    "// !$*UTF8*$!",
-    "{ objects = {",
-    "/* Begin PBXNativeTarget section */",
-    `\tAAA /* ${name} */ = {`,
-    "\t\tisa = PBXNativeTarget;",
-    `\t\tname = ${name};`,
-    ...(opts.synced ? [`\t\tfileSystemSynchronizedGroups = (\n\t\t\tGGG /* ${opts.synced} */,\n\t\t);`] : []),
-    `\t\tproductType = "${opts.productType ?? "com.apple.product-type.application"}";`,
-    "\t};",
-    `\tBBB /* ${name}Tests */ = {`,
-    "\t\tisa = PBXNativeTarget;",
-    `\t\tname = ${name}Tests;`,
-    '\t\tproductType = "com.apple.product-type.bundle.unit-test";',
-    "\t};",
-    "/* End PBXNativeTarget section */",
-    ...(opts.synced ? [`\tGGG /* ${opts.synced} */ = {\n\t\tisa = PBXFileSystemSynchronizedRootGroup;\n\t\tpath = ${opts.synced};\n\t\tsourceTree = "<group>";\n\t};`] : []),
-    "\tCCC /* Debug */ = {",
-    "\t\tisa = XCBuildConfiguration;",
-    "\t\tbuildSettings = {",
-    ...(opts.sdk ? [`\t\t\tSDKROOT = ${opts.sdk};`] : []),
-    ...(opts.supported ? [`\t\t\tSUPPORTED_PLATFORMS = "${opts.supported}";`] : []),
-    "\t\t};",
-    "\t};",
-    "}; }",
-  ].join("\n");
+interface Target { name: string; sdk?: string; supported?: string; productType?: string; synced?: string }
+
+/**
+ * A project file with the given targets in the given order (ids sort the same way), each with its own build settings,
+ * as Xcode writes them: target, configuration list, configuration.
+ */
+function pbxprojOf(targets: Target[]): string {
+  const out = ["// !$*UTF8*$!", "{ objects = {"];
+  targets.forEach((t, i) => {
+    const n = String(i + 1).padStart(2, "0");
+    out.push(
+      `\tT${n} /* ${t.name} */ = {`,
+      "\t\tisa = PBXNativeTarget;",
+      `\t\tbuildConfigurationList = L${n} /* Build configuration list for PBXNativeTarget "${t.name}" */;`,
+      `\t\tname = ${/[ ()]/.test(t.name) ? `"${t.name}"` : t.name};`,
+      ...(t.synced ? [`\t\tfileSystemSynchronizedGroups = (\n\t\t\tG${n} /* ${t.synced} */,\n\t\t);`] : []),
+      `\t\tproductType = "${t.productType ?? "com.apple.product-type.application"}";`,
+      "\t};",
+      `\tL${n} /* Build configuration list */ = {\n\t\tisa = XCConfigurationList;\n\t\tbuildConfigurations = (\n\t\t\tC${n} /* Debug */,\n\t\t);\n\t};`,
+      `\tC${n} /* Debug */ = {`,
+      "\t\tisa = XCBuildConfiguration;",
+      "\t\tbuildSettings = {",
+      ...(t.sdk ? [`\t\t\tSDKROOT = ${t.sdk};`] : []),
+      ...(t.supported ? [`\t\t\tSUPPORTED_PLATFORMS = "${t.supported}";`] : []),
+      '\t\t\tINFOPLIST_KEY_X = "{ not a brace }";',
+      "\t\t};",
+      "\t\tname = Debug;",
+      "\t};",
+    );
+    if (t.synced) out.push(`\tG${n} /* ${t.synced} */ = {\n\t\tisa = PBXFileSystemSynchronizedRootGroup;\n\t\tpath = ${t.synced};\n\t\tsourceTree = "<group>";\n\t};`);
+  });
+  out.push("}; }");
+  return out.join("\n");
+}
+
+/** One app target and its unit-test target. */
+function pbxproj(name: string, opts: Omit<Target, "name"> = {}): string {
+  return pbxprojOf([{ name, ...opts }, { name: `${name}Tests`, productType: "com.apple.product-type.bundle.unit-test" }]);
 }
 
 const view = 'import SwiftUI\n@main struct A: App { var body: some Scene { WindowGroup { Text("x") } } }\n';
@@ -85,6 +95,64 @@ describe("SwiftUI apps in Xcode projects", () => {
   });
 });
 
+describe("which target is the app", () => {
+  test("an iOS app with a watch app: the watch target is never the app, whichever the project file lists first", () => {
+    const root = makeProject({
+      // The watch target's id sorts first, and it imports SwiftUI too.
+      "Shop.xcodeproj/project.pbxproj": pbxprojOf([
+        { name: "Shop Watch App", sdk: "watchos" },
+        { name: "Customer", sdk: "iphoneos" },
+      ]),
+      "Shop Watch App/WatchApp.swift": view,
+      "Customer/CustomerApp.swift": view,
+    });
+    expect(swiftUIApp(root)).toMatchObject({ name: "Customer", sourceRoot: "Customer", platforms: ["ios"] });
+  });
+
+  test("the target named like the project wins", () => {
+    const root = makeProject({
+      "Shop.xcodeproj/project.pbxproj": pbxprojOf([{ name: "Clip", sdk: "iphoneos" }, { name: "Shop", sdk: "iphoneos" }]),
+      "Clip/ClipApp.swift": view,
+      "Shop/ShopApp.swift": view,
+    });
+    expect(swiftUIApp(root)?.name).toBe("Shop");
+  });
+
+  test("platforms come from the chosen target's own settings, not the whole file", () => {
+    const root = makeProject({
+      "Shop.xcodeproj/project.pbxproj": pbxprojOf([{ name: "Shop", sdk: "iphoneos" }, { name: "Shop Mac Helper", sdk: "macosx" }]),
+      "Shop/ShopApp.swift": view,
+    });
+    expect(swiftUIApp(root)?.platforms).toEqual(["ios"]);
+  });
+
+  test("a renamed target: the folder beside the project with the @main App is the source root", () => {
+    const root = makeProject({
+      "Old.xcodeproj/project.pbxproj": pbxprojOf([{ name: "Renamed", sdk: "iphoneos" }]),
+      "Sources/Views.swift": "import SwiftUI\nstruct V: View { var body: some View { Text(\"x\") } }\n",
+      "Brand/BrandApp.swift": view,
+    });
+    expect(swiftUIApp(root)).toMatchObject({ name: "Renamed", sourceRoot: "Brand" });
+  });
+
+  test("the Xcode 13-15 Multiplatform template: X (iOS) and X (macOS) with their code in Shared/", () => {
+    const root = makeProject({
+      "Pair.xcodeproj/project.pbxproj": pbxprojOf([
+        { name: "Pair (iOS)", sdk: "iphoneos" },
+        { name: "Pair (macOS)", sdk: "macosx" },
+        { name: "Tests iOS", productType: "com.apple.product-type.bundle.ui-testing" },
+      ]),
+      "Shared/PairApp.swift": view,
+      "Shared/ContentView.swift": "import SwiftUI\n",
+      "iOS/Info.plist": "x",
+      "macOS/Info.plist": "x",
+      "Tests iOS/T.swift": "import XCTest\n",
+    });
+    expect(swiftUIApp(root)).toMatchObject({ kind: "xcodeproj", name: "Pair (iOS)", sourceRoot: "Shared", platforms: ["ios"] });
+    expect(detectStack(root)).toBe("swiftui");
+  });
+});
+
 describe("SwiftUI apps in Swift packages", () => {
   const manifest = (products: string) =>
     `// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(\n  name: "Tool",\n  platforms: [.iOS(.v17), .macOS(.v14)],\n  products: [${products}],\n  targets: [.executableTarget(name: "Tool")]\n)\n`;
@@ -93,6 +161,29 @@ describe("SwiftUI apps in Swift packages", () => {
     const root = makeProject({ "Package.swift": manifest(""), "Sources/Tool/ToolApp.swift": view });
     expect(swiftUIApp(root)).toEqual({ kind: "package", name: "Tool", project: "Package.swift", platforms: ["ios", "macos"], sourceRoot: "Sources/Tool" });
     expect(detectStack(root)).toBe("swiftui");
+  });
+
+  test("a Swift Playgrounds app: an .iOSApplication product, its target's path: \".\", the files at the package root", () => {
+    const manifest =
+      '// swift-tools-version: 5.9\nimport PackageDescription\nimport AppleProductTypes\nlet package = Package(\n  name: "Trip",\n  products: [.iOSApplication(name: "Trip", targets: ["AppModule"], bundleIdentifier: "x.y")],\n  targets: [.executableTarget(name: "AppModule", path: ".")]\n)\n';
+    const root = makeProject({ "Package.swift": manifest, "MyApp.swift": view, "ContentView.swift": "import SwiftUI\n" });
+    expect(swiftUIApp(root)).toEqual({ kind: "package", name: "AppModule", project: "Package.swift", platforms: ["ios"], sourceRoot: "." });
+    expect(detectStack(root)).toBe("swiftui");
+    expect(SWIFTUI.themeDir(root, { path: ".", stack: "swiftui", source: "detected" })).toBe("Design");
+  });
+
+  test("a target's own path: is its source root", () => {
+    const manifest = 'let package = Package(name: "T", targets: [.executableTarget(name: "T", path: "App/Code")])\n';
+    const root = makeProject({ "Package.swift": manifest, "App/Code/Main.swift": view });
+    expect(swiftUIApp(root)?.sourceRoot).toBe("App/Code");
+  });
+
+  test("a SwiftUI library beside a command-line tool is no SwiftUI app", () => {
+    const manifest =
+      'let package = Package(name: "K", products: [.library(name: "Kit", targets: ["Kit"])], targets: [.target(name: "Kit"), .executableTarget(name: "kit-cli", dependencies: ["Kit"])])\n';
+    const root = makeProject({ "Package.swift": manifest, "Sources/Kit/View.swift": "import SwiftUI\n", "Sources/kit-cli/main.swift": "import Foundation\n" });
+    expect(swiftUIApp(root)).toBeNull();
+    expect(detectStack(root)).toBeNull();
   });
 
   test("a library package is no app, whatever it imports", () => {
