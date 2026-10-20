@@ -6,7 +6,7 @@ import type { Lang } from "./files";
  * Strings are respected, so "https://…" inside quotes is not a comment.
  */
 export function maskComments(text: string, lang: Lang): string {
-  if (lang === "dart") return scanDart(text, "comments");
+  if (lang === "dart" || lang === "kotlin") return scanDart(text, "comments", lang === "kotlin");
   const out = text.split("");
   const blank = (from: number, to: number) => {
     for (let k = from; k < to; k++) if (out[k] !== "\n" && out[k] !== "\r") out[k] = " ";
@@ -57,18 +57,23 @@ export function maskComments(text: string, lang: Lang): string {
 
 /**
  * Replace the contents of string literals with spaces, keeping the quotes, every line break and the length.
- * Dart only: `'…'`, `"…"`, triple-quoted and raw (`r'…'`) strings are blanked; code inside `${…}` stays visible
+ * Dart and Kotlin only. Dart: `'…'`, `"…"`, triple-quoted and raw (`r'…'`) strings are blanked;
+ * Kotlin: `"…"`, `"""…"""` (no escapes, closing on the last quote of a run) and `'x'` char literals are blanked; code inside `${…}` stays visible
  * (nested braces and strings handled); a bare `$name` interpolation is blanked with the rest of the string.
  * Comments are left as they are (mask them first with maskComments). Other languages are returned unchanged.
  */
 export function maskStrings(text: string, lang: Lang): string {
-  return lang === "dart" ? scanDart(text, "strings") : text;
+  return lang === "dart" || lang === "kotlin" ? scanDart(text, "strings", lang === "kotlin") : text;
 }
 
 const isIdent = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_$]/.test(c);
 
-/** One left-to-right pass over Dart: comments (nested blocks) and strings (all forms, interpolation). */
-function scanDart(text: string, mode: "comments" | "strings"): string {
+/**
+ * One left-to-right pass over Dart or Kotlin: comments (nested blocks) and strings (all forms, interpolation).
+ * Kotlin differs in three ways: `'…'` is a char literal (never triple), there is no `r'…'`, and `"""…"""`
+ * takes no escapes and closes on the last quote of a run of three or more.
+ */
+function scanDart(text: string, mode: "comments" | "strings", kotlin = false): string {
   const out = text.split("");
   const n = text.length;
   const isBreak = (c: string | undefined) => c === "\n" || c === "\r";
@@ -79,7 +84,7 @@ function scanDart(text: string, mode: "comments" | "strings"): string {
   // Scans a string whose opening quote run starts at `i`; returns the index after it.
   const string = (i: number, raw: boolean): number => {
     const q = text[i]!;
-    const triple = text[i + 1] === q && text[i + 2] === q;
+    const triple = !(kotlin && q === "'") && text[i + 1] === q && text[i + 2] === q;
     const open = triple ? 3 : 1;
     let j = i + open;
     let from = j;
@@ -89,14 +94,16 @@ function scanDart(text: string, mode: "comments" | "strings"): string {
     while (j < n) {
       const c = text[j]!;
       if (triple ? text.startsWith(q.repeat(3), j) : c === q) {
-        flush(j);
-        return j + open;
+        let end = j + open;
+        if (kotlin && triple) while (text[end] === q) end++;
+        flush(end - open);
+        return end;
       }
       if (!triple && isBreak(c)) {
         flush(j);
         return j;
       }
-      if (!raw && c === "\\") {
+      if (!raw && !(kotlin && triple) && c === "\\") {
         j += 2;
         continue;
       }
@@ -145,7 +152,7 @@ function scanDart(text: string, mode: "comments" | "strings"): string {
         i = string(i, false);
         continue;
       }
-      if (c === "r" && (text[i + 1] === "'" || text[i + 1] === '"') && !isIdent(text[i - 1])) {
+      if (!kotlin && c === "r" && (text[i + 1] === "'" || text[i + 1] === '"') && !isIdent(text[i - 1])) {
         i = string(i + 1, true);
         continue;
       }
