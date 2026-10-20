@@ -54,11 +54,12 @@ describe("the READMEs", () => {
     }
   });
 
-  test("the README's preview note lists Flutter with the web stacks, and links the parity checklist (Task 15)", () => {
+  test("the README's preview note lists the stacks the release has, says Flutter arrives in v0.5.0, and links the parity checklist (Ruling W)", () => {
     const readme = readFileSync(join(REPO, "README.md"), "utf8");
     const note = readme.slice(readme.indexOf("**Preview"), readme.indexOf("\n", readme.indexOf("**Preview")));
-    for (const s of ["React web apps", "plain web sites", "Flutter apps"]) expect(note).toContain(s);
-    expect(readme).toContain("(docs/parity.md)");
+    expect(note).toContain("for React web apps and plain web sites. Flutter apps arrive in v0.5.0 ([what each stack gets](docs/parity.md)).");
+    expect(readme).toContain("Full support in v0.4.2: React web apps and plain web sites");
+    expect(readme).not.toMatch(/Full support today[^\n]*Flutter/);
   });
 
   test("the README's motif connect row says it sets sources up in the agents you choose (Part 3)", () => {

@@ -1,6 +1,6 @@
 # The parity checklist
 
-A stack is supported when the developer gets the whole of Motif on it, not part of it. This page is that list (spec §4 of [Part 2](specs/2026-10-19-motif-part2-all-stacks-design.md)), with one row per stack. A stack's adapter is finished when every area in its row is done ([core spec §11.1](specs/2026-10-12-motif-core-design.md#111-the-adapter-template-applies-to-every-stack)). Until then `motif doctor` says the stack is detected and support is coming, and the README, the release notes and the website don't list it as supported.
+A stack is supported when the developer gets the whole of Motif on it, not part of it. This page is that list (spec §4 of [Part 2](specs/2026-10-19-motif-part2-all-stacks-design.md)), with one row per stack. A stack's adapter is finished when every area in its row is done ([core spec §11.1](specs/2026-10-12-motif-core-design.md#111-the-adapter-template-applies-to-every-stack)). Until then the README, the release notes and the website don't list it as supported, and a release's `motif doctor` says the stack is detected and support is coming. A stack can also wait on release gates that aren't areas (a run on a real phone, say); its section below lists them.
 
 ## The areas
 
@@ -36,7 +36,13 @@ React web and plain web were finished in Part 1 and plan 2A; right-to-left scree
 
 ## Flutter: the tests that show it
 
-Flutter was finished in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Tests marked "needs Flutter" run in CI's Flutter job and skip, saying so, where the Flutter SDK isn't installed.
+Flutter was built in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Every area is done except Evals, which waits until the four eval runs are recorded. Its code is in the CLI, so `motif doctor` built from source already treats it as supported; the README and the release notes list it from v0.5.0, once its row is complete and these release gates are passed:
+
+- The four Flutter eval runs pass and are recorded (the Evals area).
+- The Flutter job in CI passes on the pull request.
+- The owner runs an app's generated theme on an iPhone (plan 2E, Task 15): a release step, not an area.
+
+Tests marked "needs Flutter" run in CI's Flutter job and skip, saying so, where the Flutter SDK isn't installed.
 
 | Area | What shows it |
 |---|---|
