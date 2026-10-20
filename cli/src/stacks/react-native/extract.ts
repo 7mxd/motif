@@ -168,7 +168,18 @@ function familyOf(name: string): string {
   return name.replace(/_\d{3}\w*$/, "").replace(/-(?:Thin|ExtraLight|Light|Regular|Medium|SemiBold|Bold|ExtraBold|Black)(?:Italic)?$/, "");
 }
 
-interface Half { path: string; dark: boolean; colors: Record<string, string>; at: number; file: ScriptFile }
+/** Colour properties of a React Native style, which a palette's roles aren't called. */
+const STYLE_COLOR = /^(?:color|backgroundColor|borderColor|border(?:Top|Bottom|Left|Right|Start|End)Color|shadowColor|tintColor|textShadowColor|textDecorationColor|overlayColor)$/;
+
+interface Half {
+  path: string;
+  dark: boolean;
+  colors: Record<string, string>;
+  at: number;
+  file: ScriptFile;
+  /** For a top-level object named for its half (light, menDark): the words that say which palette it is. */
+  own?: string[];
+}
 interface Instance extends PairableInstance {
   group: string;
   raw: string;
@@ -224,6 +235,15 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
 
   // ---------- colour objects with light and dark halves ----------
   const halves: Half[] = [];
+  /** An object's own colours (not those of the objects inside it), by key. */
+  const colorsIn = (obj: Obj) => {
+    const colors: Record<string, string> = {};
+    for (const e of obj.entries) {
+      const value = isObj(e.value) ? undefined : colorOf(e.value);
+      if (value) colors[e.key] = value;
+    }
+    return colors;
+  };
   /** Walks an object looking for ones with a `light` or `dark` object inside; returns whether any was found. */
   const walk = (file: ScriptFile, obj: Obj, path: string[]): boolean => {
     const half = (name: string) => obj.entries.find((e) => e.key === name && isObj(e.value));
@@ -233,11 +253,7 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
     if (light || dark) {
       for (const [entry, isDark] of [[light, false], [dark, true]] as const) {
         if (!entry) continue;
-        const colors: Record<string, string> = {};
-        for (const e of (entry.value as Obj).entries) {
-          const value = isObj(e.value) ? undefined : colorOf(e.value);
-          if (value) colors[e.key] = value;
-        }
+        const colors = colorsIn(entry.value as Obj);
         if (Object.keys(colors).length === 0) continue;
         halves.push({ path: path.join("."), dark: isDark, colors, at: entry.keyStart, file });
         found = true;
@@ -250,7 +266,23 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
     return found;
   };
   for (const file of scripts) {
-    for (const root of file.roots) if (walk(file, root.obj, [root.name])) define(file, [root.obj.start, root.obj.end]);
+    for (const root of file.roots) {
+      if (walk(file, root.obj, [root.name])) {
+        define(file, [root.obj.start, root.obj.end]);
+        continue;
+      }
+      // A top-level object named for its half: const light = { … }, darkColors, menLight. Light and dark count only as
+      // words of the name, not inside one (highlight).
+      const parts = words(root.name);
+      const isDark = parts.includes("dark");
+      if (!isDark && !parts.includes("light")) continue;
+      const colors = colorsIn(root.obj);
+      // A palette has several colours; a style object (darkOverlay = { backgroundColor: … }) isn't one.
+      if (Object.keys(colors).length < 2 || Object.keys(colors).some((k) => STYLE_COLOR.test(k))) continue;
+      const own = parts.filter((w) => w !== "light" && w !== "dark" && !GENERIC.has(w));
+      halves.push({ path: root.name, dark: isDark, colors, at: root.obj.start, file, own });
+      define(file, [root.obj.start, root.obj.end]);
+    }
   }
   for (const name of usedNames) {
     const n = named.get(name)!;
@@ -262,16 +294,16 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
   const variantLabels: Record<string, string> = {};
   const instances: Instance[] = halves.map((h, order) => {
     const parts = h.path.split(".");
-    const own = parts.flatMap((p) => words(p)).filter((w) => !GENERIC.has(w));
+    const own = h.own ?? parts.flatMap((p) => words(p)).filter((w) => !GENERIC.has(w));
     return {
-      name: `${h.path}.${h.dark ? "dark" : "light"}`,
+      name: h.own ? h.path : `${h.path}.${h.dark ? "dark" : "light"}`,
       order,
       dark: h.dark,
       key: own.join("-"),
       label: own.map(title).join(" "),
       group: h.path,
       // The variant's id as written: the last key of an object path (palettes["partner-store"]), else the name in kebab case.
-      raw: parts.length > 1 && !GENERIC.has(kebab(parts[parts.length - 1]!)) ? parts[parts.length - 1]! : own.join("-"),
+      raw: !h.own && parts.length > 1 && !GENERIC.has(kebab(parts[parts.length - 1]!)) ? parts[parts.length - 1]! : own.join("-"),
       colors: h.colors,
       at: h.at,
       file: h.file,

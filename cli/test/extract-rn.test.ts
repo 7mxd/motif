@@ -115,6 +115,32 @@ export const SpringColors = { light: { tint: '#15803d' } };\n`,
     expect(occ.notes!.join("\n")).toContain("SpringColors");
   });
 
+  test("top-level light and dark objects pair by name, typed or not, with a palette's other words as its variant (hands-on)", () => {
+    const occ = project({
+      "src/theme/colors.ts": `export interface Palette { name: string; bg: string; accent: string }
+export const light: Palette = {
+  name: "light",
+  bg: "#F8FAF9", // the page
+  accent: "#1F9F87",
+};
+export const dark: Palette = { name: "dark", bg: "#0F1413", accent: "#5DCBB1" };
+export const menLight = { bg: "#F5F7FA", accent: "#1D4ED8" };
+export const menDark = { bg: "#0B1220", accent: "#60A5FA" };
+export const palettes: Record<string, Palette> = { light, dark };
+export const darkShadows = { card: 4 };
+export const darkOverlay = { backgroundColor: "#000000", borderColor: "#111111" };
+export const lightAccent = { accent: "#ff0000" };
+export const highlight = { bg: "#FFFF00", fg: "#000000" };\n`,
+    });
+    expect(occ.variables!.find((v) => v.name === "--bg")).toEqual({
+      name: "--bg", light: "#f8faf9", dark: "#0f1413", variants: { men: { light: "#f5f7fa", dark: "#0b1220" } },
+    });
+    expect(occ.variables!.map((v) => v.name).sort()).toEqual(["--accent", "--bg"]);
+    expect(occ.notes ?? []).toEqual([]);
+    const { tokens } = buildDraft(occ);
+    expect((tokens as any).$extensions["dev.motif"].variants.map((v: any) => v.id)).toEqual(["default", "men"]);
+  });
+
   test("commented-out palettes and objects that aren't colours are not read", () => {
     const occ = project({
       "theme/c.ts": `export const Colors = { light: { tint: '#4338ca' }, dark: { tint: '#818cf8' } };
