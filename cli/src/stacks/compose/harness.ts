@@ -6,11 +6,14 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { onExit } from "../../cleanup";
 import { killTree } from "../../shot/devserver";
 import { type FetchLike, googleFontFiles } from "../flutter/harness";
+import auditSource from "./harness/MotifAudit.kt" with { type: "text" };
 import testSource from "./harness/MotifShotTest.kt" with { type: "text" };
 import initSource from "./harness/init.gradle" with { type: "text" };
 
 /** The harness's test, under the test source folder init.gradle adds (relative to the module). */
 export const HARNESS_TEST = ".motif/shot/src/dev/motif/shot/MotifShotTest.kt";
+/** The audit's checks (--audit), next to the test. */
+export const HARNESS_AUDIT = ".motif/shot/src/dev/motif/shot/MotifAudit.kt";
 export const HARNESS_SRC = ".motif/shot/src";
 export const INIT_SCRIPT = ".motif/shot/init.gradle";
 /** The run's options; init.gradle hands its path to the test as the system property motif.shot.config. */
@@ -25,6 +28,8 @@ export const GRACE_MS = 3000;
 
 /** The Kotlin test, the same in every run. */
 export const HARNESS_SOURCE: string = testSource;
+/** The audit the test calls, the same in every run. */
+export const AUDIT_SOURCE: string = auditSource;
 /** The Gradle init script, the same in every run. */
 export const INIT_SOURCE: string = initSource;
 
@@ -89,6 +94,10 @@ export interface HarnessConfig {
   /** How long a screen may take to settle, and a state to run, in ms. */
   settleMs?: number;
   stateMs?: number;
+  /** The guide's default variant id: issues seen in it name no variant. */
+  defaultVariant?: string;
+  /** The names of the app module's Kotlin files (--audit): the reduced-motion check names the composable that moves after the app's own. */
+  appFiles?: string[];
 }
 
 /** A source file the run compiles with the harness (the setup, a state, the hooks that call them), relative to the module. */
@@ -122,6 +131,7 @@ export function writeHarness(moduleDir: string, config: HarnessConfig, sources: 
   mkdirSync(dirname(join(moduleDir, HARNESS_TEST)), { recursive: true });
   writeFileSync(join(motifDir, ".gitignore"), "*\n");
   writeFileSync(join(moduleDir, HARNESS_TEST), HARNESS_SOURCE);
+  writeFileSync(join(moduleDir, HARNESS_AUDIT), AUDIT_SOURCE);
   for (const source of sources) {
     // Only under the harness's own source folder, which every run deletes.
     const path = resolve(moduleDir, source.path);

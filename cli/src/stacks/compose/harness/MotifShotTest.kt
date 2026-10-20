@@ -11,17 +11,20 @@
 //     "shots": [{ "file": "index.mobile.dark.png", "target": "/", "route": "/", "preview": null,
 //                 "width": 390, "height": 844, "density": "xhdpi", "insets": { "top": 47, "bottom": 34 },
 //                 "dark": true, "locale": "en_US", "rtl": false, "variant": "Partner", "variantId": "partner",
-//                 "reduceMotion": false, "state": null }] }
+//                 "reduceMotion": false, "state": null, "checks": ["contrast", "names", "targets", "motion"] }],
+//     "defaultVariant": "default", "appFiles": ["MainActivity.kt"] }
 // targets.txt, next to it, lists the screens (a shot's target), one a line: each screen is a test of its own, in an
 // environment of its own, so one whose composition throws can't take the others down with it.
 // Each shot sets the device (Robolectric qualifiers), Remove animations and the variant (the default's too), runs the
 // setup, then either starts the app's launcher activity (for /, and for any other route by telling the app's own
 // NavController to open it, or by a deep link when there is none) or draws a preview ("<package>.<File>Kt.<function>")
-// in a blank activity; lets it settle (at most settleMs), runs the state, and copies the window to a PNG. A screen stops
-// at its first failure, which is recorded, and the run goes on. When the app's Application can't start in a test,
+// in a blank activity; lets it settle (at most settleMs), runs the state, and copies the window to a PNG; with checks,
+// it audits what it drew (MotifAudit.kt, and the reduced-motion check here). A screen stops at its first failure, which
+// is recorded, and the run goes on. When the app's Application can't start in a test,
 // b_plainApplication draws the screen again with a plain one. Each screen adds itself to resultPath, which has the shape
 // of Flutter's harness:
-//   { "screens": [{ "route", "shots": [file], "errors": [text] }], "shots": [{ "file", "error"? }], "issues": [],
+//   { "screens": [{ "route", "shots": [file], "errors": [text], "auditError"?, "covered"? }], "shots": [{ "file", "error"? }],
+//     "issues": [{ rule, selector, label, kind, …, "route", "file", "size", "scheme", "variant"?, "state"?, "rtl"? }],
 //     "notes": [text], "timings": [{ "file", "ms" }], "plainApplication": false }
 package dev.motif.shot
 
@@ -29,6 +32,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.RectF
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -42,6 +46,9 @@ import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.CompositionGroup
+import androidx.compose.ui.layout.LayoutInfo
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -93,6 +100,9 @@ class MotifShotTest(private val index: Int) {
 
         private fun targets(): List<String> =
             File(System.getProperty("motif.shot.config")!!).resolveSibling("targets.txt").readLines().filter { it.isNotEmpty() }
+
+        /** The view tag Layout Inspector reads a composition's slot table from (Compose records it there when the tag is set). */
+        private val slotTableTag: Int by lazy { Class.forName("androidx.compose.ui.R\$id").getField("inspection_slot_table_set").getInt(null) }
     }
 
     @get:Rule
@@ -110,6 +120,13 @@ class MotifShotTest(private val index: Int) {
     private val notes = linkedSetOf<String>()
     /** The notes of the shot being taken, kept only if it's taken. */
     private val shotNotes = linkedSetOf<String>()
+    /** The problems the audit found on the screen's shots, and on the shot being taken (kept only if it's taken). */
+    private val issues = mutableListOf<JSONObject>()
+    private val shotIssues = mutableListOf<JSONObject>()
+    /** Why the audit couldn't finish on this screen, the first time it couldn't. */
+    private var auditError: String? = null
+    /** Texts the contrast check left out on this screen, as something may be drawn over them. */
+    private val covered = linkedSetOf<String>()
 
     /** The screen's shots, with the app's own Application. */
     @Test
@@ -177,11 +194,13 @@ class MotifShotTest(private val index: Int) {
             }
             val started = System.nanoTime()
             shotNotes.clear()
+            shotIssues.clear()
             try {
                 val soft = capture(shot, target, File(outDir, file))
                 drawn.add(file)
                 if (soft != null) errors.add(soft)
                 notes.addAll(shotNotes)
+                issues.addAll(shotIssues)
                 shots.put(JSONObject().put("file", file))
             } catch (t: ShotSkipped) {
                 errors.add(t.message!!)
@@ -199,8 +218,11 @@ class MotifShotTest(private val index: Int) {
 
         val result = readResult()
         val screen = JSONObject().put("route", target).put("shots", JSONArray(drawn)).put("errors", JSONArray(errors.toList()))
+        if (auditError != null) screen.put("auditError", auditError)
+        if (covered.isNotEmpty()) screen.put("covered", covered.size)
         if (config.optBoolean("debug")) screen.put("texts", JSONArray(texts.toList()))
         result.getJSONArray("screens").put(screen)
+        for (issue in issues) result.getJSONArray("issues").put(issue)
         for (i in 0 until shots.length()) result.getJSONArray("shots").put(shots.get(i))
         for (i in 0 until timings.length()) result.getJSONArray("timings").put(timings.get(i))
         val all = result.getJSONArray("notes").let { n -> (0 until n.length()).map { n.getString(it) } }.toMutableSet()
@@ -365,9 +387,14 @@ class MotifShotTest(private val index: Int) {
                 throw ShotError("$target isn't in the compiled app (there's no ${preview.substring(0, dot)}).")
             }
             val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+            // A ComposeView of its own, tagged before its first composition, so the reduced-motion check can read its slot table.
+            val tables = Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
             try {
                 try {
-                    controller.get().setContent { Invoke(owner, preview.substring(dot + 1)) }
+                    val view = ComposeView(controller.get())
+                    view.setTag(slotTableTag, tables)
+                    view.setContent { Invoke(owner, preview.substring(dot + 1)) }
+                    controller.get().setContentView(view)
                     settleOrNote(target)
                 } catch (t: Throwable) {
                     if (generateSequence(t) { it.cause }.any { it is NoSuchMethodException }) throw ShotError("$target isn't in the compiled app (${describe(t)}).")
@@ -375,7 +402,9 @@ class MotifShotTest(private val index: Int) {
                 }
                 val soft = runState(shot, target)
                 collectTexts()
-                write(snapshot(controller.get()), png)
+                val bitmap = snapshot(controller.get())
+                write(bitmap, png)
+                audit(shot, target, controller.get(), bitmap, tables)
                 return soft
             } finally {
                 try {
@@ -415,7 +444,9 @@ class MotifShotTest(private val index: Int) {
             settleOrNote(target)
             val soft = runState(shot, target)
             collectTexts()
-            write(snapshot(opened.activity), png)
+            val bitmap = snapshot(opened.activity)
+            write(bitmap, png)
+            audit(shot, target, opened.activity, bitmap, opened.tables)
             return soft
         } finally {
             opened.close()
@@ -478,11 +509,9 @@ class MotifShotTest(private val index: Int) {
 
     /** Tags each composition root the activity's onCreate set up, so its slot table is recorded in tables. */
     private class SlotTables(private val tables: MutableSet<Any>) : Application.ActivityLifecycleCallbacks {
-        private val tag = Class.forName("androidx.compose.ui.R\$id").getField("inspection_slot_table_set").getInt(null)
-
         override fun onActivityPostCreated(activity: Activity, savedInstanceState: Bundle?) {
             val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
-            for (i in 0 until content.childCount) content.getChildAt(i).setTag(tag, tables)
+            for (i in 0 until content.childCount) content.getChildAt(i).setTag(slotTableTag, tables)
         }
 
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -647,6 +676,122 @@ class MotifShotTest(private val index: Int) {
             "State \"$name\": ${describe(t)}"
         } finally {
             settleWithin(config.optLong("settleMs", 5000))
+        }
+    }
+
+    /**
+     * The audit's checks on the shot just drawn (its "checks"), as issues with where they were seen. What goes wrong in
+     * the audit is the screen's auditError: its screenshots are kept.
+     */
+    private fun audit(shot: JSONObject, target: String, activity: Activity, bitmap: Bitmap, tables: Set<Any>) {
+        val list = shot.optJSONArray("checks") ?: return
+        val checks = (0 until list.length()).map { list.getString(it) }.toSet()
+        if (checks.isEmpty()) return
+        val found = mutableListOf<JSONObject>()
+        try {
+            val audit = MotifAudit(activity, bitmap)
+            found.addAll(audit.run(checks))
+            covered.addAll(audit.covered)
+            // Last, as it lets the screen run on for two seconds.
+            if ("motion" in checks) moving(activity, tables)?.let { found.add(it) }
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            if (auditError == null) auditError = describe(t)
+        }
+        val variant = shot.optString("variantId", "")
+        for (issue in found) {
+            issue.put("route", target).put("file", shot.getString("file")).put("size", shot.optString("size", ""))
+                .put("scheme", if (shot.optBoolean("dark")) "dark" else "light")
+            if (variant.isNotEmpty() && variant != config.optString("defaultVariant", "")) issue.put("variant", variant)
+            if (shot.optString("state", "").isNotEmpty()) issue.put("state", shot.getString("state"))
+            if (shot.optBoolean("rtl")) issue.put("rtl", true)
+            shotIssues.add(issue)
+        }
+    }
+
+    /** True when the screen still asks for frames (the test clock's frame clock has awaiters); null when that can't be read. */
+    private fun frameAwaiters(): Boolean? =
+        try {
+            val environment = compose.javaClass.getDeclaredField("environment").apply { isAccessible = true }.get(compose)
+            val clock = generateSequence<Class<*>>(environment.javaClass) { it.superclass }
+                .firstNotNullOfOrNull { c -> c.declaredFields.firstOrNull { it.name == "frameClock" } }
+                ?.apply { isAccessible = true }?.get(environment)
+            clock?.javaClass?.getMethod("getHasAwaiters")?.invoke(clock) as Boolean?
+        } catch (e: ReflectiveOperationException) {
+            null
+        }
+
+    /** A group of the slot table with a name, as reduced-motion findings name it: Pulse, from Pulse.kt. */
+    private class Named(val name: String, val file: String?)
+
+    /** A group's box on screen (its layout nodes' bounds, together), and the named groups it is in, outermost first. */
+    private class SlotBox(val key: String, val group: Named?, val box: RectF?, val path: List<Named>)
+
+    private val nameOf = Regex("^C+\\(([A-Z][\\w$]*)\\)")
+    private val fileOf = Regex(":([^:#]+\\.kt)(?:#\\w*)?$")
+
+    /** Every group of the compositions' slot tables, in order, with its box. */
+    private fun boxes(tables: Set<Any>): List<SlotBox> {
+        val out = mutableListOf<SlotBox>()
+        var n = 0
+        fun visit(group: CompositionGroup, path: List<Named>): RectF? {
+            val i = n++
+            val info = group.sourceInfo
+            val named = info?.let { s -> nameOf.find(s)?.groupValues?.get(1)?.let { Named(it, fileOf.find(s)?.groupValues?.get(1)) } }
+            val inside = if (named != null) path + named else path
+            val index = out.size
+            out.add(SlotBox("", null, null, path))
+            var box: RectF? = null
+            val node = group.node
+            if (node is LayoutInfo && node.isAttached) {
+                val b = node.coordinates.boundsInWindow()
+                box = RectF(b.left, b.top, b.right, b.bottom)
+            }
+            for (child in group.compositionGroups) {
+                val b = visit(child, inside) ?: continue
+                if (box == null) box = RectF(b) else box.union(b)
+            }
+            out[index] = SlotBox("$i ${info ?: group.key}", named, box, path)
+            return box
+        }
+        for (table in tables) if (table is CompositionData) for (group in table.compositionGroups) visit(group, emptyList())
+        return out
+    }
+
+    /**
+     * What keeps moving on a screen that has settled, with Remove animations on: if the screen still asks for frames
+     * after two more seconds of the test's clock, the composable whose box moves in the next frames (the deepest of the
+     * app's own, from appFiles). Null when the screen is still. Compose's own infinite transitions never run in a test
+     * (the test library cancels them), and stop when Remove animations is on anyway; what's found here is animation that
+     * doesn't ask Compose's duration scale (a loop of animateTo, withFrameNanos).
+     */
+    private fun moving(activity: Activity, tables: Set<Any>): JSONObject? {
+        val clock = compose.mainClock
+        clock.autoAdvance = false
+        try {
+            clock.advanceTimeBy(2000)
+            if (frameAwaiters() == false) return null
+            val before = boxes(tables)
+            val first = snapshot(activity)
+            var changed = emptyList<SlotBox>()
+            var drawn = false
+            for (frame in 0 until 6) {
+                clock.advanceTimeByFrame()
+                val after = boxes(tables).associateBy { it.key }
+                changed = before.filter { b -> after[b.key]?.box != b.box }
+                if (changed.isNotEmpty()) break
+                if (!snapshot(activity).sameAs(first)) drawn = true
+            }
+            if (changed.isEmpty() && !drawn) return null
+            val appFiles = config.optJSONArray("appFiles")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet()
+            val own = { n: Named -> n.file != null && n.file in appFiles }
+            val subject = changed.lastOrNull { it.group != null && own(it.group) } ?: changed.lastOrNull { it.group != null }
+            val issue = JSONObject().put("rule", "motion").put("kind", "element")
+            if (subject == null) return issue.put("selector", "").put("label", "")
+            val path = subject.path.filter(own).takeLast(2).map { it.name } + subject.group!!.name
+            return issue.put("selector", path.joinToString(" > ")).put("label", subject.group.name)
+        } finally {
+            clock.autoAdvance = true
         }
     }
 

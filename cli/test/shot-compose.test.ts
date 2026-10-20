@@ -6,7 +6,7 @@ import { runShot, type ShotDeps } from "../src/commands/shot";
 import { detectApps } from "../src/detect/stacks";
 import { NATIVE_VIEWPORTS, type RouteResult } from "../src/shot/capture";
 import { COMPOSE } from "../src/stacks/compose";
-import { CONFIG_FILE, gradleCommand, HARNESS_SRC, HARNESS_TEST, INIT_SCRIPT, type HarnessResult, type HarnessRun } from "../src/stacks/compose/harness";
+import { CONFIG_FILE, gradleCommand, HARNESS_AUDIT, HARNESS_SRC, HARNESS_TEST, INIT_SCRIPT, type HarnessResult, type HarnessRun } from "../src/stacks/compose/harness";
 import {
   COMPOSE_FIRST_RUN, COMPOSE_OFFLINE, COMPOSE_VARIANT_HOW, composeShotRefusal, composeTimeLimit, shootCompose, type ComposeShotDeps,
 } from "../src/stacks/compose/shot";
@@ -495,9 +495,135 @@ describe("shootCompose", () => {
     // Bun stands in for java: it refuses gradlew's JVM options at once.
     const error = await shootCompose(options(root), base(root, undefined, { jdk: { java: process.execPath, javaHome: dirname(process.execPath) } })).catch((e: Error) => e.message);
     expect(error).toContain("Gradle stopped before drawing any screen.");
-    for (const file of [HARNESS_TEST, HARNESS_SRC, INIT_SCRIPT, CONFIG_FILE]) expect(existsSync(join(app, file))).toBe(false);
+    for (const file of [HARNESS_TEST, HARNESS_AUDIT, HARNESS_SRC, INIT_SCRIPT, CONFIG_FILE]) expect(existsSync(join(app, file))).toBe(false);
     expect(readFileSync(join(app, ".motif/.gitignore"), "utf8")).toBe("*\n");
   }, 60_000);
+});
+
+describe("the audit and states on a Compose app", () => {
+  test("--audit gives each screenshot its checks, with Remove animations on for the reduced-motion one, and the harness's issues become audit.json's findings, in Compose's terms", async () => {
+    const root = makeProject(COMPOSE_APP);
+    const caption = 'Text("Prices include tax")';
+    const light = { route: "/", size: "mobile", scheme: "light", file: "index.mobile.png" };
+    const { runs, run } = fakeRun(() => ({
+      code: 0,
+      result: {
+        screens: [{ route: "/", shots: ["index.mobile.png", "index.mobile.dark.png"], errors: [] }],
+        issues: [
+          { rule: "color-contrast", selector: caption, label: "Prices include tax", kind: "element", ratio: 2.21, expected: 4.5, fg: "#aaaaaa", bg: "#faf8ff", ...light },
+          { rule: "target-mobile", selector: "Button#close", label: "", kind: "button", width: 32, height: 48, ...light },
+          { rule: "name", selector: "Button#close", label: "", kind: "button", ...light },
+          { rule: "motion", selector: "AuditScreen > Pulse", label: "Pulse", kind: "element", ...light },
+        ],
+        notes: [],
+      },
+    }));
+    const deps: ShotDeps = { ...fakes().deps, shoot: (o) => shootCompose(o, base(root, run)) };
+    const r = await runShot(root, ctx({ routes: "/", sizes: "390", audit: true }), deps);
+    expect(r.exitCode).toBe(1);
+    const config = runs[0]!.config;
+    expect(config.shots.map((s) => [s.file, s.size, s.checks, s.reduceMotion ?? false])).toEqual([
+      ["index.mobile.png", "mobile", ["contrast", "names", "targets", "motion"], true],
+      ["index.mobile.dark.png", "mobile", ["contrast", "names"], false],
+    ]);
+    // The motion check names the composable that moves after the app's own files.
+    expect(config.appFiles).toEqual(["MainActivity.kt"]);
+    expect(r.text).toContain("✗ Audit: 1 critical, 2 major, 1 minor (details in design/shots/audit.json):");
+    const review = JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8"));
+    expect(review.findings).toEqual([
+      {
+        id: "F-001",
+        severity: "critical",
+        category: "contrast",
+        source: "exact",
+        location: { screen: "/", selector: caption, viewport: "mobile", scheme: "light" },
+        summary: 'Text "Prices include tax" is hard to read in light mode (2.21:1, needs 4.5:1).',
+        fix: "Use a text colour role with more contrast on this background, or adjust the role in design/tokens.json (motif validate checks the pairs).",
+        shot: "design/shots/index.mobile.png",
+        status: "open",
+      },
+      {
+        id: "F-002",
+        severity: "major",
+        category: "accessibility",
+        source: "exact",
+        location: { screen: "/", selector: "Button#close", viewport: "mobile" },
+        summary: "The button has no name a screen reader can say.",
+        fix: "Give it a name a screen reader can say: a contentDescription (Icon and Image take one), a visible label, or Modifier.semantics { contentDescription = … }.",
+        shot: "design/shots/index.mobile.png",
+        status: "open",
+      },
+      {
+        id: "F-003",
+        severity: "major",
+        category: "reduced-motion",
+        source: "exact",
+        location: { screen: "/", selector: "AuditScreen > Pulse", viewport: "mobile" },
+        summary: 'The "Pulse" element keeps moving when the viewer asks for reduced motion.',
+        fix: "Stop this animation, or keep it still, when the system's Remove animations setting is on: MotifMotion.reduced() is true then, and MotifMotion.duration(…) is zero.",
+        shot: "design/shots/index.mobile.png",
+        status: "open",
+      },
+      {
+        id: "F-004",
+        severity: "minor",
+        category: "target-size",
+        source: "exact",
+        location: { screen: "/", selector: "Button#close", viewport: "mobile" },
+        summary: "A button is 32×48 px on a phone; 44×44 px is easier to tap.",
+        fix: "Give it at least 44×44 dp where people tap it: Modifier.minimumInteractiveComponentSize(), padding, a larger size, or room around it (Compose widens a small target's touch area to 48 dp only where nothing else is).",
+        shot: "design/shots/index.mobile.png",
+        status: "open",
+      },
+    ]);
+  });
+
+  test("the harness is told the default variant, so only another variant's issues name it; a screen's audit trouble and a state's error stay with the screen", async () => {
+    const root = makeProject({ ...COMPOSE_APP, "design/tokens.json": JSON.stringify(partnerTokens()), "design/states/filled.kt": FILLED });
+    const states = [{ name: "filled", script: FILLED, file: join(root, "design/states/filled.kt") }];
+    const where = { route: "/", size: "tablet", scheme: "light" };
+    const { runs, run } = fakeRun(() => ({
+      result: {
+        screens: [
+          {
+            route: "/",
+            shots: ["index.tablet.png", "index@filled.tablet.png", "index+partner.tablet.png"],
+            errors: ['State "filled": IllegalStateException: No field to type in'],
+            auditError: "IllegalStateException: no semantics",
+            covered: 2,
+          },
+        ],
+        issues: [
+          { rule: "name", selector: "Button", label: "", kind: "button", ...where, state: "filled", file: "index@filled.tablet.png" },
+          { rule: "color-contrast", selector: 'Text("Sale")', label: "Sale", kind: "element", ratio: 2, expected: 4.5, fg: "#999999", bg: "#ffffff", ...where, variant: "partner", file: "index+partner.tablet.png" },
+        ],
+      },
+    }));
+    const out = await shootCompose(options(root, { audit: true, states, variants: ["partner"], viewports: [NATIVE_VIEWPORTS[3]!] }), base(root, run));
+    expect(runs[0]!.config.defaultVariant).toBe("default");
+    // Remove animations is for the reduced-motion check, which runs at the 390 phone size only.
+    expect(runs[0]!.config.shots.some((s) => s.reduceMotion)).toBe(false);
+    const shots = join(root, "design", "shots");
+    expect(out.routes).toEqual([
+      {
+        route: "/",
+        url: "/",
+        status: 200,
+        shots: ["index.tablet.png", "index@filled.tablet.png", "index+partner.tablet.png"].map((f) => join(shots, f)),
+        auditError: "IllegalStateException: no semantics",
+        pageErrors: ['State "filled": IllegalStateException: No field to type in'],
+      },
+    ]);
+    expect(out.issues.map((i) => [i.rule, i.state ?? null, i.variant ?? null, i.viewport, i.shot])).toEqual([
+      ["name", "filled", null, "mobile", join(shots, "index@filled.tablet.png")],
+      ["color-contrast", null, "partner", "mobile", join(shots, "index+partner.tablet.png")],
+    ]);
+    // The texts the contrast check left out are counted, so the screen isn't taken as clean.
+    expect(out.notes).toContain("Contrast on / wasn't judged for 2 texts something is drawn over (a floating bar, a dialog's barrier): check them by eye.");
+    expect(out.issues[0]!.fix).toBe(
+      "Give it a name a screen reader can say: a contentDescription (Icon and Image take one), a visible label, or Modifier.semantics { contentDescription = … }.",
+    );
+  });
 });
 
 describe("the Gradle command for a module", () => {

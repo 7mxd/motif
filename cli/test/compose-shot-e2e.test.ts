@@ -70,6 +70,127 @@ const same = (a: string, b: string) => Buffer.compare(png(a), png(b)) === 0;
 const routesOf = (data: Record<string, unknown>) => data.routes as { route: string; status: number; error?: string; pageErrors?: string[]; shots: string[] }[];
 const RED = [255, 0, 0, 255];
 
+const AUDIT_FILE = "app/src/main/java/dev/motif/composemin/ui/screens/AuditScreen.kt";
+
+/**
+ * What the audit is for: a caption in a pale grey, a line in a mid grey (under 4.5:1, too little for its size) with a large
+ * bold one in the same grey (enough for large text), two 32 dp icon buttons with no contentDescription, a pulse that
+ * loops with Animatable (Remove animations makes each step instant, so it flickers instead of stopping), and a form.
+ */
+const AUDIT_SCREEN = `package dev.motif.composemin.ui.screens
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.motif.composemin.ui.theme.ComposeMinTheme
+
+@Composable
+fun AuditScreen() {
+    Scaffold { innerPadding ->
+        Column(Modifier.padding(innerPadding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Your order", style = MaterialTheme.typography.headlineMedium)
+            Text("Prices include tax", color = Color(0xFFAAAAAA))
+            Text("Fresh today", color = Color(0xFF808080), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text("Delivery in 2 days", color = Color(0xFF808080))
+            Row {
+                IconButton(onClick = {}, modifier = Modifier.size(32.dp).testTag("close")) {
+                    Box(Modifier.size(16.dp).background(Color.Black))
+                }
+                IconButton(onClick = {}, modifier = Modifier.size(32.dp)) {
+                    Box(Modifier.size(16.dp).background(Color.Black))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun Pulse() {
+    val x = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            x.animateTo(100f, tween(800))
+            x.animateTo(0f, tween(800))
+        }
+    }
+    Box(Modifier.padding(24.dp).offset(x = x.value.dp).size(24.dp).background(Color(0xFF1D4ED8)))
+}
+
+@Composable
+fun FormScreen() {
+    var name by remember { mutableStateOf("") }
+    Scaffold { innerPadding ->
+        Column(Modifier.padding(innerPadding).padding(24.dp)) {
+            TextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
+        }
+    }
+}
+
+@Preview
+@Composable
+fun AuditPreview() {
+    ComposeMinTheme { AuditScreen() }
+}
+
+@Preview
+@Composable
+fun PulsePreview() {
+    ComposeMinTheme { Pulse() }
+}
+
+@Preview
+@Composable
+fun FormPreview() {
+    ComposeMinTheme { FormScreen() }
+}
+`;
+
+const FILLED_STATE = `package dev.motif.states.filled
+
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.performTextInput
+
+/** A name typed in. */
+fun motifState(rule: ComposeContentTestRule) {
+    rule.onNode(hasSetTextAction()).performTextInput("Ada Lovelace")
+}
+`;
+
+const BROKEN_STATE = `package dev.motif.states.broken
+
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
+
+fun motifState(rule: ComposeContentTestRule) {
+    error("The sign-in service is down")
+}
+`;
+
 /** Replaces a file of the copy for one test, and puts it back. */
 async function withFiles(files: Record<string, string>, body: () => Promise<void>): Promise<void> {
   const before = Object.fromEntries(Object.keys(files).map((f) => [f, existsSync(join(root, f)) ? readFileSync(join(root, f), "utf8") : null]));
@@ -246,6 +367,69 @@ class BrokenApp : Application() {
       expect(routes[1]!.error).toBe("/crash couldn't start in a test: IllegalStateException: No network in a test. Draw its screens from previews (--screen), or set it up in design/states/Setup.kt.");
       expect(existsSync(join(root, "design/shots/home.mobile.png"))).toBe(true);
       expect(JSON.stringify(r.data.notes)).toContain("The app's Application class couldn't start in a test (IllegalStateException: Firebase isn't configured)");
+    });
+  }, 1_200_000);
+
+  test.skipIf(!android)("--audit finds the pale caption, the small icon buttons with no name, and the pulse that keeps moving with Remove animations on (skipped without a JDK and the Android SDK)", async () => {
+    await withFiles({ [AUDIT_FILE]: AUDIT_SCREEN }, async () => {
+      const r = await shot({ screen: "AuditPreview,PulsePreview", sizes: "390", variant: "default", audit: true });
+      if (r.exitCode !== 1) console.log(r.text);
+      expect(r.exitCode).toBe(1);
+      expect(r.data.shots).toEqual(["design/shots/audit.mobile.png", "design/shots/audit.mobile.dark.png", "design/shots/pulse.mobile.png", "design/shots/pulse.mobile.dark.png"]);
+      expect(routesOf(r.data).map((x) => [x.route, x.status, (x as { auditError?: string }).auditError ?? null])).toEqual([["AuditPreview", 200, null], ["PulsePreview", 200, null]]);
+      const review = JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8"));
+      type Place = { screen: string; selector: string; scheme?: string };
+      const findings = review.findings as { category: string; severity: string; summary: string; location: Place; locations?: Place[]; shot: string }[];
+      const of = (category: string) => findings.filter((f) => f.category === category);
+      // The title, in the theme's own colours, is fine; so is the caption in dark mode (#aaaaaa on a dark surface), and
+      // "Fresh today": ATF judges every Compose text at 3:1, and Motif asks 4.5:1 only of text below WCAG's large size.
+      expect(JSON.stringify(findings)).not.toContain("Your order");
+      expect(JSON.stringify(findings)).not.toContain("Fresh today");
+      const [caption, grey, ...otherTexts] = of("contrast");
+      expect(otherTexts).toEqual([]);
+      expect(caption!.summary).toMatch(/^Text "Prices include tax" is hard to read in light mode \(2\.\d\d:1, needs 4\.5:1\)\.$/);
+      expect(caption!.severity).toBe("critical");
+      expect(caption!.location).toMatchObject({ screen: "AuditPreview", selector: 'Text("Prices include tax")', scheme: "light" });
+      expect(grey!.summary).toMatch(/^Text "Delivery in 2 days" is hard to read in light mode \(3\.\d\d:1, needs 4\.5:1\)\.$/);
+      expect(grey!.severity).toBe("major");
+      // Two 32 dp icon buttons side by side: Compose widens a small target's touch area to 48 dp only where nothing else
+      // is, so the first is 32 dp wide where people tap it, and the second, with room on its right, is 48 dp.
+      expect(of("target-size").map((f) => [f.location.selector, f.summary])).toEqual([["Button#close", "A button is 32×48 px on a phone; 44×44 px is easier to tap."]]);
+      expect(of("accessibility").map((f) => [f.location.selector, f.summary])).toEqual([
+        ["Button#close", "The button has no name a screen reader can say."],
+        ["Button", "The button has no name a screen reader can say."],
+      ]);
+      const moving = of("reduced-motion");
+      expect(moving.map((f) => [f.location.screen, f.location.selector, f.summary])).toEqual([
+        ["PulsePreview", "PulsePreview > ComposeMinTheme > Pulse", 'The "Pulse" element keeps moving when the viewer asks for reduced motion.'],
+      ]);
+      expect(moving[0]!.shot).toBe("design/shots/pulse.mobile.png");
+    });
+  }, 1_200_000);
+
+  test.skipIf(!android)("routes are audited as the app draws them: compose-min's only finding is the settings switch, which says nothing of what it switches (skipped without a JDK and the Android SDK)", async () => {
+    const r = await shot({ routes: "/,/settings", sizes: "390", variant: "default", audit: true });
+    expect(r.exitCode).toBe(1);
+    expect(routesOf(r.data).map((x) => [x.route, x.status, x.shots.length, (x as { auditError?: string }).auditError ?? null])).toEqual([["/", 200, 2, null], ["/settings", 200, 2, null]]);
+    const review = JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8"));
+    expect(review.findings.map((f: { summary: string; location: { screen: string; selector: string } }) => [f.location.screen, f.location.selector, f.summary])).toEqual([
+      ["/settings", "Switch", "The element has no name a screen reader can say."],
+    ]);
+  }, 1_200_000);
+
+  test.skipIf(!android)("a state that types a name gives form@filled; a state that throws is reported, and the other screenshots are kept (skipped without a JDK and the Android SDK)", async () => {
+    await withFiles({ [AUDIT_FILE]: AUDIT_SCREEN, "design/states/filled.kt": FILLED_STATE, "design/states/broken.kt": BROKEN_STATE }, async () => {
+      const r = await shot({ screen: "FormPreview", sizes: "390", variant: "default", state: ["design/states/filled.kt", "design/states/broken.kt"] });
+      // A state that throws is the screen's error, as on the web: exit 1, with every screenshot taken.
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain('✗ the page threw an error: State "broken": IllegalStateException: The sign-in service is down');
+      expect(r.data.shots).toEqual([
+        "design/shots/form.mobile.png", "design/shots/form@filled.mobile.png", "design/shots/form@broken.mobile.png",
+        "design/shots/form.mobile.dark.png", "design/shots/form@filled.mobile.dark.png", "design/shots/form@broken.mobile.dark.png",
+      ]);
+      expect(same("form.mobile.png", "form@filled.mobile.png")).toBe(false);
+      expect(same("form.mobile.png", "form@broken.mobile.png")).toBe(true);
+      expect(routesOf(r.data)[0]!.pageErrors).toEqual(['State "broken": IllegalStateException: The sign-in service is down']);
     });
   }, 1_200_000);
 

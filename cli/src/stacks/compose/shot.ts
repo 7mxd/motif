@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type { DoctorDeps } from "../../commands/doctor";
+import { listKotlinFiles } from "../../check/files";
 import { maskComments } from "../../check/mask";
 import { loadTokenDocument } from "../../contract/load";
 import { readVariants } from "../../contract/variants";
@@ -14,7 +15,7 @@ import type { AuditIssue, RawIssue } from "../../shot/audit";
 import { routeSlug, shotName, type RouteResult, type Scheme, type StateScript } from "../../shot/capture";
 import type { FetchLike } from "../flutter/harness";
 import { statesFile, type StatesFile } from "../flutter/inputs";
-import { auditChecks, MOTION_WIDTH } from "../flutter/shot";
+import { auditChecks, MOTION_WIDTH, screenNotes } from "../flutter/shot";
 import { kotlinIdentifier, RESERVED } from "../naming";
 import type { NativeShotOptions } from "../native";
 import { findAndroidSdk, gradleJava, NO_ANDROID_SDK } from "./doctor";
@@ -56,9 +57,10 @@ export const SETUP_FILE = "design/states/Setup.kt";
 const SETUP_SIGNATURE = "fun motifSetup(variant: String, locale: Locale, dark: Boolean)";
 const STATE_SIGNATURE = "fun motifState(rule: ComposeContentTestRule)";
 
-/** What to do about each problem in a Compose app, in its own terms (Task 10's audit fills the issues). */
+/** What to do about each problem in a Compose app, in its own terms (the web's fixes name CSS and ARIA). */
 export const COMPOSE_FIXES: Partial<Record<RawIssue["rule"], string>> = {
-  "target-mobile": "Give it at least 44×44 dp: Modifier.minimumInteractiveComponentSize(), padding, or a larger size (Material's controls take 48 dp by default).",
+  "target-mobile":
+    "Give it at least 44×44 dp where people tap it: Modifier.minimumInteractiveComponentSize(), padding, a larger size, or room around it (Compose widens a small target's touch area to 48 dp only where nothing else is).",
   motion: "Stop this animation, or keep it still, when the system's Remove animations setting is on: MotifMotion.reduced() is true then, and MotifMotion.duration(…) is zero.",
   name: "Give it a name a screen reader can say: a contentDescription (Icon and Image take one), a visible label, or Modifier.semantics { contentDescription = … }.",
 };
@@ -221,6 +223,7 @@ export function planComposeShots(opts: NativeShotOptions, targets: Target[], the
             for (const state of [undefined, ...opts.states.map((s) => s.name)]) {
               const size = v.file ?? v.name;
               const id = variant ?? defaultId;
+              const checks = opts.audit ? auditChecks(v, scheme) : undefined;
               shots.push({
                 file: shotName(state ? `${t.slug}@${state}` : t.slug, size, scheme, variant, Boolean(lang)),
                 target: t.key,
@@ -237,7 +240,9 @@ export function planComposeShots(opts: NativeShotOptions, targets: Target[], the
                 ...(id ? { variantId: id } : {}),
                 size,
                 ...(state ? { state } : {}),
-                ...(opts.audit ? { checks: auditChecks(v, scheme) } : {}),
+                ...(checks ? { checks } : {}),
+                // The reduced-motion check looks at the screen with Remove animations on, as someone who turned it on sees it.
+                ...(checks?.includes("motion") ? { reduceMotion: true } : {}),
               });
             }
           }
@@ -256,9 +261,11 @@ interface RawScreen {
   unreachable?: string;
   landedOn?: string;
   auditError?: string;
+  /** How many failing texts the contrast check left out, as ATF found something may be drawn over them. */
+  covered?: number;
 }
 
-/** What the harness found (Task 10's audit), as a RawIssue with where it was seen. */
+/** What the harness found (MotifAudit.kt and its reduced-motion check), as a RawIssue with where it was seen. */
 type RawComposeIssue = RawIssue & { route: string; file?: string; size: string; scheme: Scheme; variant?: string; state?: string; rtl?: boolean };
 
 /** The run's result as RouteResults: drawn screens (200) with their errors, and those that couldn't be (0). */
@@ -292,7 +299,7 @@ export function mapComposeResult(
       ...(fix ? { fix } : {}),
     };
   });
-  return { routes, issues, notes: Array.isArray(result.notes) ? (result.notes as string[]) : [] };
+  return { routes, issues, notes: [...(Array.isArray(result.notes) ? (result.notes as string[]) : []), ...screenNotes(screens)] };
 }
 
 /** The last lines Gradle printed, without blank ones. */
@@ -428,7 +435,8 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
   }
 
   const targets = targetsOf(opts, moduleDir);
-  const shots = planComposeShots(opts, targets, theme, defaultVariant(root));
+  const defaultId = defaultVariant(root);
+  const shots = planComposeShots(opts, targets, theme, defaultId);
   if (opts.rtl && !offersLanguage(moduleDir, opts.rtl)) {
     notes.push(`This app doesn't offer ${opts.rtl} (it has no res/values-${opts.rtl} folder), so its RTL screenshots show its default strings, laid out right to left.`);
   }
@@ -453,6 +461,10 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
       ...(theme?.fonts ? { fontsClass: `${theme.pkg}.MotifFonts` } : {}),
       ...(deps.deepLinks ? { deepLinks: true } : {}),
       ...(process.env.MOTIF_DEBUG ? { debug: true } : {}),
+      // The default's issues name no variant, as on the other stacks.
+      ...(defaultId ? { defaultVariant: defaultId } : {}),
+      // The reduced-motion check names what moves after the composables in these files: the app's own.
+      ...(opts.audit ? { appFiles: [...new Set(listKotlinFiles(moduleDir, ".").map((f) => basename(f.path)))].sort() } : {}),
       settleMs: SETTLE_MS,
       stateMs: STATE_MS,
     },
