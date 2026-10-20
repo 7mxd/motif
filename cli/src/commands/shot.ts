@@ -19,6 +19,7 @@ import { startStaticServer, type StaticServer } from "../shot/static-server";
 import { nativeStack, type NativeStack } from "../stacks/native";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
 import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes";
+import { andList } from "../text";
 
 export interface ShotDeps {
   findBrowser: () => BrowserInfo | null;
@@ -37,6 +38,17 @@ export interface ShotDeps {
 }
 
 const MAX_ROUTES = 12;
+/** How many of the pages left out the note names before it counts the rest. */
+const LEFT_OUT_NAMED = 5;
+/** A page people meet before signing in: /sign-in, /login, /auth/…, /welcome, /onboarding. */
+const SIGN_IN = /^\/(?:sign-?in|log-?in|auth|welcome|onboarding)(?:\/|$)/i;
+
+/** Sign-in pages first, then /, then the rest, each in the order given. */
+export function signInFirst(routes: string[]): string[] {
+  const signIn = routes.filter((r) => SIGN_IN.test(r));
+  const home = routes.filter((r) => r === "/");
+  return [...signIn, ...home, ...routes.filter((r) => !signIn.includes(r) && r !== "/")];
+}
 const INSTALL_HINT = '"motif browser install" downloads a private headless copy (about 120 MB to download, about 300 MB on disk) that only Motif uses.';
 
 function today(): string {
@@ -312,10 +324,19 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       { error: "usage" },
     );
   }
-  const routes = discovery.routes.slice(0, MAX_ROUTES);
+  // A native app's own pages, past the cap: sign-in and the home page first, so the run shows the screens people meet first.
+  const reordered = Boolean(shoot) && typeof flags.routes !== "string" && discovery.routes.length > MAX_ROUTES;
+  const all = reordered ? signInFirst(discovery.routes) : discovery.routes;
+  const routes = all.slice(0, MAX_ROUTES);
   const notes: string[] = settingProblems.map((f) => f.message);
-  if (discovery.routes.length > routes.length) {
-    notes.push(`Captured the first ${MAX_ROUTES} of ${discovery.routes.length} pages. Choose others with --routes.`);
+  if (all.length > routes.length) {
+    const left = all.slice(MAX_ROUTES);
+    const named = left.length > LEFT_OUT_NAMED + 1 ? `${left.slice(0, LEFT_OUT_NAMED).join(", ")} and ${left.length - LEFT_OUT_NAMED} more` : andList(left);
+    notes.push(
+      reordered
+        ? `Captured ${MAX_ROUTES} of ${all.length} pages: sign-in pages and / first, then the rest in the order your code lists them. Left out: ${named}. Choose others with --routes.`
+        : `Captured the first ${MAX_ROUTES} of ${all.length} pages. Left out: ${named}. Choose others with --routes.`,
+    );
   }
   if (discovery.skipped.length > 0) {
     notes.push(`Skipped pages that need values in their address: ${discovery.skipped.join(", ")}. Add real ones with --routes.`);

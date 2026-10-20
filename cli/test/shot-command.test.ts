@@ -223,6 +223,9 @@ describe("motif shot", () => {
     const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", routes: many }), deps);
     expect(calls.captured[0]!.routes).toHaveLength(12);
     expect(r.text).toContain("first 12 of 14");
+    // Wave B (#11): the note names the pages left out; a web app's order is left as it is.
+    expect(calls.captured[0]!.routes[0]).toBe("/p0");
+    expect(r.text).toContain("Captured the first 12 of 14 pages. Left out: /p12 and /p13. Choose others with --routes.");
   });
 
   test("pages that didn't render make it exit 1, each with its reason", async () => {

@@ -684,3 +684,42 @@ final e = GoogleFonts.config;
     expect(r.text).toBe("Run flutter pub get in the app's folder first: Motif reads which fonts google_fonts has from the packages it resolved. Then run motif shot again.");
   });
 });
+
+describe("motif shot on a Flutter app: which pages, past twelve (Task 15 wave B, #11)", () => {
+  // HiSalon's shape: the auth routes come last in the router, after more than twelve signed-in pages.
+  const pages = Array.from({ length: 14 }, (_, i) => `GoRoute(path: '/page${i + 1}', builder: (c, s) => const Text('${i + 1}'))`);
+  const ROUTER = `import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+final router = GoRouter(routes: [
+  ${pages.join(",\n  ")},
+  GoRoute(path: '/', builder: (c, s) => const Text('home')),
+  GoRoute(path: '/auth', builder: (c, s) => const Text('auth'), routes: [GoRoute(path: 'phone', builder: (c, s) => const Text('phone'))]),
+  GoRoute(path: '/welcome', builder: (c, s) => const Text('welcome')),
+]);
+`;
+
+  test("sign-in-like pages and / come first, the rest in source order, and the note names what was left out", async () => {
+    const root = makeProject({ "pubspec.yaml": PUBSPEC, "lib/main.dart": ROUTER });
+    const { deps, calls } = fakes();
+    const r = await runShot(root, ctx(), deps);
+    expect(calls[0]!.routes).toEqual(["/auth", "/auth/phone", "/welcome", "/", ...Array.from({ length: 8 }, (_, i) => `/page${i + 1}`)]);
+    expect(r.text).toContain(
+      "Captured 12 of 18 pages: sign-in pages and / first, then the rest in the order your code lists them. Left out: /page9, /page10, /page11, /page12, /page13 and /page14. Choose others with --routes.",
+    );
+  });
+
+  test("past six pages left out, the note names five and counts the rest", async () => {
+    const more = ROUTER.replace("final router", "final more = [GoRoute(path: '/x1', builder: (c, s) => const Text('x')), GoRoute(path: '/x2', builder: (c, s) => const Text('x'))];\nfinal router");
+    const { deps } = fakes();
+    const r = await runShot(makeProject({ "pubspec.yaml": PUBSPEC, "lib/main.dart": more }), ctx(), deps);
+    expect(r.text).toContain("Left out: /page7, /page8, /page9, /page10, /page11 and 3 more.");
+  });
+
+  test("--routes keeps the order it's given", async () => {
+    const root = makeProject({ "pubspec.yaml": PUBSPEC, "lib/main.dart": ROUTER });
+    const { deps, calls } = fakes();
+    await runShot(root, ctx({ routes: "/page2,/auth/phone,/" }), deps);
+    expect(calls[0]!.routes).toEqual(["/page2", "/auth/phone", "/"]);
+  });
+});
