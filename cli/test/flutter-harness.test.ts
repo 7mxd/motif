@@ -164,6 +164,17 @@ describe("sdkFonts", () => {
     expect(r.fonts[0]!.files[0]!.startsWith(join(elsewhere, "bin"))).toBe(false);
   });
 
+  test("the file names' case doesn't matter: Linux and macOS SDKs have Roboto-Bold.ttf, Windows' roboto-bold.ttf", () => {
+    const sdk = tempDir("motif-flutter-sdk-");
+    const fonts = join(sdk, "bin", "cache", "artifacts", "material_fonts");
+    mkdirSync(fonts, { recursive: true });
+    writeFileSync(join(sdk, "bin", "flutter"), "");
+    for (const f of ["Roboto-Regular.ttf", "Roboto-BoldItalic.ttf", "MaterialIcons-Regular.otf", "MaterialIcons_LICENSE.txt"]) writeFileSync(join(fonts, f), "");
+    const r = sdkFonts(join(sdk, "bin", "flutter"));
+    expect(r.notes).toEqual([]);
+    expect(r.fonts.map((f) => [f.family, f.files.length])).toEqual([["Roboto", 2], ["MaterialIcons", 1]]);
+  });
+
   test("notes a missing material_fonts folder", () => {
     const r = sdkFonts(join(fakeSdk(false), "bin", "flutter"));
     expect(r.fonts).toEqual([]);
