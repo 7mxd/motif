@@ -3,7 +3,6 @@
     <string name="back">رجوع</string>
 
     <string name="today_title">اليوم</string>
-    <string name="today_greeting">خطوات صغيرة اليوم</string>
     <string name="today_summary">أنجزت %1$d من %2$d</string>
     <string name="today_add">أضف عادة</string>
     <string name="today_sign_out">تسجيل الخروج</string>

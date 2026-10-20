@@ -218,6 +218,17 @@ describe("matching places (backlog)", () => {
     const f: Finding = { id: "F", severity: "critical", category: "contrast", location: { file: "styles.css", line: 55 }, summary: "faded" };
     expect(gradeExact([f], [planted], none).exact).toEqual([{ id: "S", findings: ["F"] }]);
   });
+
+  test("a planted problem can show on more screens: a Compose preview that draws the same composable is one of them", () => {
+    const planted = issue({ kind: "judgement", detectedBy: "review", categories: ["platform-convention"], location: { file: "BackTopBar.kt", screen: "/habit/:id" }, screens: ["/add", "HabitPreview"] });
+    const on = (screen: string): Finding => ({ id: screen, severity: "major", category: "platform-convention", location: { screen }, summary: "the arrow points the wrong way" });
+    const grade = gradeExact([on("HabitPreview"), on("/add"), on("/habit/walk"), on("/sign-in")], [planted], none);
+    expect(grade.candidates).toEqual([{ id: "S", findings: ["HabitPreview", "/add", "/habit/walk"] }]);
+    // A knock-on can be declared on a preview too.
+    const knock = issue({ consequences: [{ category: "contrast", screens: ["/", "TodayPreview"], schemes: ["dark"], note: "streaks are unreadable in dark mode" }] });
+    const f: Finding = { id: "K", severity: "critical", category: "contrast", location: { screen: "TodayPreview", scheme: "dark" }, summary: "x" };
+    expect(gradeExact([f], [knock], none).consequences).toEqual(["K"]);
+  });
 });
 
 describe("line ranges (review of batch F)", () => {

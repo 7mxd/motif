@@ -23,6 +23,11 @@ export interface SeededIssue {
   wholeFile?: boolean;
   /** Other places that are the problem too (the CSS rule behind an element), each with the text its line holds. */
   also?: { file: string; line: number; anchor: string }[];
+  /**
+   * More screens that show the problem besides location.screen: another route, or a Compose preview that draws the same
+   * composable, by the preview's name (TodayPreview), as motif shot names it.
+   */
+  screens?: string[];
 }
 export interface Finding { id: string; severity: string; category: string; source?: string; location: Location; locations?: Location[]; summary: string; fix?: string }
 
@@ -129,7 +134,8 @@ function how(issue: SeededIssue, place: Location, lineText: LineText): "place" |
   if (L.file && place.file === L.file && issue.wholeFile) return "place";
   if (at(L.file, L.line, issue.anchor)) return "place";
   if ((issue.also ?? []).some((a) => at(a.file, a.line, a.anchor))) return "place";
-  return L.screen && place.screen && sameScreen(place.screen, L.screen) ? "screen" : null;
+  const screens = [...(L.screen ? [L.screen] : []), ...(issue.screens ?? [])];
+  return place.screen && screens.some((s) => sameScreen(place.screen!, s)) ? "screen" : null;
 }
 
 /**

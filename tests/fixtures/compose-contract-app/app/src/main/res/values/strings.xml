@@ -4,7 +4,6 @@
     <string name="count" translatable="false">%1$d</string>
 
     <string name="today_title">Today</string>
-    <string name="today_greeting">Small steps today</string>
     <string name="today_summary">%1$d of %2$d done</string>
     <string name="today_add">Add a habit</string>
     <string name="today_sign_out">Sign out</string>

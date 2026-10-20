@@ -26,11 +26,17 @@ type Consequence = { category: string; screens: string[]; schemes: string[]; not
 type Issue = {
   id: string; kind: string; detectedBy: string; rule?: string; categories: string[]; severity: string;
   location: { file?: string; line?: number; screen?: string; app?: boolean; path?: string }; anchor?: string; summary: string; consequences?: Consequence[];
+  /** More screens the problem shows on: another route, or a preview of the same composable, by its name. */
+  screens?: string[];
+  also?: { file: string; line: number; anchor: string }[];
 };
 const issues: Issue[] = list.issues;
+const PREVIEWS = discoverComposeScreens(join(APP, "app")).previews.map((p) => p.name);
 const byDetector = (d: string) => issues.filter((i) => i.detectedBy === d);
-/** A route as the audit names it, against a listed screen whose :id matches any value. */
+/** A route or a preview as the audit names it, against a listed screen whose :id matches any value. */
 const sameScreen = (listed: string, route: string) => new RegExp(`^${listed.replace(/:[^/]+/g, "[^/]+")}$`).test(route);
+/** Every screen a planted problem shows on. */
+const screensOf = (i: Issue) => [...(i.location.screen ? [i.location.screen] : []), ...(i.screens ?? [])];
 
 function kotlinFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -142,6 +148,13 @@ describe("the Compose contract app (Rafiq)", () => {
     const tracked = Bun.spawnSync(["git", "ls-files", "--cached", "--others", "--exclude-standard", "--", "."], { cwd: APP }).stdout.toString();
     expect(tracked).not.toMatch(/(^|\/)(\.gradle|build|\.motif|\.kotlin)\/|local\.properties/m);
   });
+
+  test("gradlew is executable, as Android Studio writes it, so ./gradlew runs on macOS and Linux", () => {
+    // git's own record of the mode, which a checkout on macOS or Linux follows (Windows keeps no such bit).
+    const staged = Bun.spawnSync(["git", "ls-files", "-s", "--", "gradlew"], { cwd: APP }).stdout.toString();
+    expect(staged).toMatch(/^100755 /);
+    if (process.platform !== "win32") expect(statSync(join(APP, "gradlew")).mode & 0o111).not.toBe(0);
+  });
 });
 
 describe("the Compose seeded app's list of planted problems", () => {
@@ -169,9 +182,12 @@ describe("the Compose seeded app's list of planted problems", () => {
       expect(Boolean(i.location.file || i.location.screen || i.location.app)).toBe(true);
       expect(i.summary.length).toBeGreaterThan(10);
       if (i.kind === "exact" && i.detectedBy === "check") expect(typeof i.rule).toBe("string");
+      // A screen is a route, or one of Rafiq's previews by its name (motif shot draws both).
+      for (const s of i.screens ?? []) expect(s.startsWith("/") || PREVIEWS.includes(s) ? s : `${i.id}: ${s} isn't a route or a preview`).toBe(s);
+      for (const a of i.also ?? []) expect(a.file && a.line > 0 && a.anchor ? i.id : `${i.id}: a bad also entry`).toBe(i.id);
       for (const c of i.consequences ?? []) {
         expect(CATEGORIES).toContain(c.category);
-        for (const s of c.screens) expect(s.startsWith("/")).toBe(true);
+        for (const s of c.screens) expect(s.startsWith("/") || PREVIEWS.includes(s) ? s : `${i.id}: ${s} isn't a route or a preview`).toBe(s);
         for (const s of c.schemes) expect(["light", "dark"]).toContain(s);
         expect(c.note.length).toBeGreaterThan(10);
       }
@@ -221,6 +237,12 @@ describe("the assembled Compose seeded app", () => {
       const line = at(issue.location.file!).split("\n")[issue.location.line! - 1] ?? "";
       expect(line.includes(issue.anchor!) ? issue.id : `${issue.id}: "${line.trim()}"`).toBe(issue.id);
     }
+    for (const issue of issues) {
+      for (const a of issue.also ?? []) {
+        const line = at(a.file).split("\n")[a.line - 1] ?? "";
+        expect(line.includes(a.anchor) ? issue.id : `${issue.id} (also): "${line.trim()}"`).toBe(issue.id);
+      }
+    }
   });
 
   test("nothing else is wrong on purpose: Sign out keeps its size, Add keeps its name, and the generated theme's one hand edit is radius md", () => {
@@ -237,7 +259,9 @@ describe("the assembled Compose seeded app", () => {
 describe("Rafiq and its seeded copy, built by Gradle and drawn by Robolectric", () => {
   // Needs a JDK and the Android SDK (bun's skipIf takes no reason, so each name says it).
   const android = hasAndroid();
-  const ROUTES = "/,/sign-in,/add,/habit/walk";
+  // The brief's command, with no --routes: the routes a run takes by itself (sign-in first), then every preview.
+  const FLAGS = { sizes: "390", audit: true, variant: "all", rtl: true };
+  const SCREENS = ["/sign-in", "/", "/add", "AddHabitPreview", "HabitPreview", "SignInPreview", "TodayPreview", "TodayEmptyPreview"];
   const saved = process.env.MOTIF_HOME;
   const copies: Record<string, string> = {};
 
@@ -278,12 +302,14 @@ describe("Rafiq and its seeded copy, built by Gradle and drawn by Robolectric", 
     expect(out.split(/\r?\n/).filter((l) => /^w: /.test(l) && l.includes("dev/motif/rafiq/") && !l.includes("/ui/motif/"))).toEqual([]);
   }, 1_200_000);
 
-  test.skipIf(!android)("Rafiq's screens have no audit findings, in both variants, light and dark, left to right and right to left (skipped without a JDK and the Android SDK)", async () => {
-    const r = await runShot(copies["compose-contract-app"]!, { positionals: [], flags: { routes: ROUTES, sizes: "390", audit: true, variant: "all", rtl: true } });
+  test.skipIf(!android)("Rafiq's routes and previews have no audit findings, in both variants, light and dark, left to right and right to left (skipped without a JDK and the Android SDK)", async () => {
+    const r = await runShot(copies["compose-contract-app"]!, { positionals: [], flags: FLAGS });
     if (r.exitCode !== 0) console.log(r.text);
     const routes = r.data.routes as { route: string; status: number; error?: string; pageErrors?: string[] }[];
-    expect(routes.map((x) => [x.route, x.status, x.error, x.pageErrors ?? []])).toEqual(ROUTES.split(",").map((route) => [route, 200, undefined, []]));
-    expect((r.data.shots as string[]).length).toBe(4 * 8);
+    expect(routes.map((x) => [x.route, x.status, x.error, x.pageErrors ?? []])).toEqual(SCREENS.map((route) => [route, 200, undefined, []]));
+    expect((r.data.shots as string[]).length).toBe(SCREENS.length * 8);
+    // A habit's page needs a value in its address, so a default run draws it from HabitPreview.
+    expect(JSON.stringify(r.data.notes ?? [])).toContain("/habit/{id}");
     // design/states/Setup.kt signed the member in: / is Today, not Sign in.
     expect(Buffer.compare(readFileSync(join(copies["compose-contract-app"]!, "design/shots/index.mobile.png")), readFileSync(join(copies["compose-contract-app"]!, "design/shots/sign-in.mobile.png")))).not.toBe(0);
     expect(r.data.findings).toEqual([]);
@@ -291,7 +317,8 @@ describe("Rafiq and its seeded copy, built by Gradle and drawn by Robolectric", 
   }, 1_200_000);
 
   test.skipIf(!android)("the seeded copy's audit finds its planted contrast, touch-target and name problems, and everything else is a declared knock-on (skipped without a JDK and the Android SDK)", async () => {
-    const r = await runShot(copies["compose-seeded-app"]!, { positionals: [], flags: { routes: ROUTES, sizes: "390", audit: true, variant: "all", rtl: true } });
+    const r = await runShot(copies["compose-seeded-app"]!, { positionals: [], flags: FLAGS });
+    expect((r.data.routes as { route: string }[]).map((x) => x.route)).toEqual(SCREENS);
     type Place = { screen: string; selector: string; scheme?: string };
     type Found = { category: string; location: Place; locations?: Place[]; summary: string };
     const findings = r.data.findings as Found[];
@@ -306,7 +333,7 @@ describe("Rafiq and its seeded copy, built by Gradle and drawn by Robolectric", 
     for (const i of byDetector("shot")) {
       const seen = findings.filter((f) => shows(f, i));
       expect(seen.length > 0 ? i.id : `${i.id} not reported`).toBe(i.id);
-      for (const f of seen) for (const p of [f.location, ...(f.locations ?? [])]) expect(sameScreen(i.location.screen!, p.screen)).toBe(true);
+      for (const f of seen) for (const p of [f.location, ...(f.locations ?? [])]) expect(screensOf(i).some((s) => sameScreen(s, p.screen)) ? p.screen : `${i.id} on ${p.screen}`).toBe(p.screen);
     }
     for (const f of findings) {
       const planted = byDetector("shot").some((i) => shows(f, i));

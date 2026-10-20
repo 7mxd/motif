@@ -109,11 +109,14 @@ fun TodayContent(
                         color = colors.textPrimary,
                         modifier = Modifier.semantics { heading() },
                     )
-                    Text(
-                        stringResource(R.string.today_summary, habits.count { it.doneToday }, habits.size),
-                        style = MotifType.body,
-                        color = colors.textSecondary,
-                    )
+                    // With no habits, the empty state below says it; "0 of 0 done" would say nothing.
+                    if (habits.isNotEmpty()) {
+                        Text(
+                            stringResource(R.string.today_summary, habits.count { it.doneToday }, habits.size),
+                            style = MotifType.body,
+                            color = colors.textSecondary,
+                        )
+                    }
                 }
             }
             items(habits, key = { it.id }) { habit ->
