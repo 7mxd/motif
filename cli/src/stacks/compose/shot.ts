@@ -23,7 +23,7 @@ import { THEME_FILE } from "./generate";
 import {
   composeFont, HARNESS_SRC, harnessReport, ROBOLECTRIC_DOWNLOAD_FAILED, runHarness, type ComposeFont, type ComposeShot, type HarnessConfig, type HarnessResult, type HarnessRun, type HarnessSource,
 } from "./harness";
-import { composeThemeDir, gradleRoot } from "./project";
+import { composeThemeDir, gradleRoot, unreadModulesNote } from "./project";
 import { composeScreenProblem, discoverComposeScreens, previewSlug, type Preview } from "./screens";
 
 export { MOTION_WIDTH };
@@ -475,6 +475,9 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
       notes.push(...got.notes);
     }
   }
+
+  const unread = unreadModulesNote(root, opts.app.path, "their previews can't be taken with --screen, and routes declared there are found only when you give them with --routes.");
+  if (unread) notes.push(unread);
 
   const targets = targetsOf(opts, moduleDir);
   const defaultId = defaultVariant(root);

@@ -58,6 +58,8 @@ export interface NativeStack {
    * app uses; and notes on what was read or skipped.
    */
   sharedFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): { files: SourceFile[]; notes: string[] };
+  /** What check or extract left out of the app's code and should say so (Compose's library modules), as notes. */
+  readNotes?(root: string, app: AppInfo, command: "check" | "extract"): string[];
   /** What the app's own files (and its shared packages' theme code) say about its design, for motif extract. */
   collect?(files: SourceFile[], shared?: SourceFile[]): Occurrences;
   shoot?(opts: NativeShotOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }>;

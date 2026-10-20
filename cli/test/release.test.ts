@@ -60,7 +60,8 @@ describe("the READMEs", () => {
     expect(note).toContain("for React web apps and plain web sites. Flutter and Jetpack Compose apps arrive in v0.5.0 ([what each stack gets](docs/parity.md)).");
     expect(readme).toContain("Full support in v0.4.2: React web apps and plain web sites");
     expect(readme).not.toMatch(/Full support today[^\n]*(Flutter|Compose)/);
-    expect(readme).toContain("Jetpack Compose apps (Android), also in a Gradle project with several modules, arrive in v0.5.0");
+    expect(readme).toContain("Jetpack Compose apps (Android) arrive in v0.5.0 too; in a Gradle project with several modules, Motif finds each app module and reads its own code, and names the Compose library modules it depends on, which it doesn't read yet.");
+    expect(readme).not.toContain("also in a Gradle project with several modules");
   });
 
   test("the README's motif connect row says it sets sources up in the agents you choose (Part 3)", () => {

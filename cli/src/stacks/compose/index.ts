@@ -12,7 +12,7 @@ import { composeDoctor } from "./doctor";
 import { composeFonts } from "./fonts";
 import { generateCompose, THEME_FILE } from "./generate";
 import { composePaletteFile } from "./palette";
-import { composeModule, composeThemeDir, folderPackage, gradleRoot } from "./project";
+import { composeModule, composeThemeDir, folderPackage, gradleRoot, unreadModulesNote } from "./project";
 import { collectCompose } from "./extract";
 import { composeFix, composeReducedMotion, composeRole, scanKotlin } from "./rules";
 import { composeRoutes } from "./screens";
@@ -91,6 +91,15 @@ export const COMPOSE: NativeStack = {
   },
 
   sourceFiles: (root, app, { ignore }) => listKotlinFiles(root, app.path, { ignore }),
+  // Only the app module's own code is read: the Compose libraries it depends on are named.
+  readNotes(root, app, command) {
+    const note = unreadModulesNote(
+      root,
+      app.path,
+      command === "check" ? "motif check reads an app module's own code, so theirs wasn't checked." : "motif extract reads an app module's own code, so colours and type defined there aren't in the draft.",
+    );
+    return note ? [note] : [];
+  },
   collect: collectCompose,
   scan: scanKotlin,
   // Motif's own file defines MotifMotion and reads the animator duration scale: only the app's code says whether it respects Remove animations.

@@ -31,6 +31,8 @@ export interface AppCheck {
   warnings: Hit[];
   /** Files whose problems are typed colours of the app's own palette (a native stack's), for check's hint. */
   palettes?: string[];
+  /** What the stack left out of the app's code (Compose's library modules). */
+  notes?: string[];
 }
 
 export function scanFile(file: SourceFile, scale: Scale | null, opts: { tailwind?: boolean; v3Roles?: ThemeRoles } = {}): Hit[] {
@@ -210,6 +212,7 @@ function checkNativeApp(root: string, app: AppInfo, native: NativeStack, scan: N
     return { ...found, ...(native.fix ? { fix: native.fix(found) } : {}), ...(suggestion ? { suggestion } : {}) };
   });
   const palettes = native.paletteFile ? files.filter((f) => native.paletteFile!(f, violations)).map((f) => f.path).sort() : [];
+  const notes = native.readNotes?.(root, app, "check") ?? [];
   return {
     app: app.path,
     files: files.length,
@@ -217,5 +220,6 @@ function checkNativeApp(root: string, app: AppInfo, native: NativeStack, scan: N
     exceptions: exceptions.sort(byPosition),
     warnings: generatedEditedHits(root, expected),
     ...(palettes.length > 0 ? { palettes } : {}),
+    ...(notes.length > 0 ? { notes } : {}),
   };
 }

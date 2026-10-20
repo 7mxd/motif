@@ -90,7 +90,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
     entry.own.push(...(stack.sourceFiles?.(cwd, a, { ignore }) ?? []).filter((f) => !isMotifGenerated(f.path, f.text)));
     const shared = stack.sharedFiles?.(cwd, a, { ignore });
     for (const f of shared?.files ?? []) if (!isMotifGenerated(f.path, f.text)) entry.shared.set(f.path, f);
-    for (const n of shared?.notes ?? []) if (!entry.notes.includes(n)) entry.notes.push(n);
+    for (const n of [...(shared?.notes ?? []), ...(stack.readNotes?.(cwd, a, "extract") ?? [])]) if (!entry.notes.includes(n)) entry.notes.push(n);
     nativeFiles.set(stack, entry);
   }
   for (const [stack, { own, shared, notes }] of nativeFiles) {

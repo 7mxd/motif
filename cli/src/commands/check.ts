@@ -180,6 +180,8 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (palettes.length) {
     lines.push("", ...palettes.map((p) => `• ${p} is your own theme's palette: once the app uses Motif's theme, remove it, or list its folder under "ignore" in design/motif.json.`));
   }
+  const notes = [...new Set(results.flatMap((r) => r.notes ?? []))];
+  if (notes.length) lines.push("", ...notes.map((n) => `• ${n}`));
   const skipped = apps.filter((a) => !supported.includes(a)).map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
   if (skipped.length) lines.push("", `Skipped (not supported yet): ${skipped.join(", ")}.`);
   if (violations.length) lines.push("", 'Fix these, or ask your agent: "fix the motif check findings".');
@@ -197,6 +199,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
       exceptions,
       warnings,
       ...(palettes.length ? { palettes } : {}),
+      ...(notes.length ? { notes } : {}),
       summary: { files, violations: violations.length, exceptions: exceptions.length, warnings: warnings.length },
     },
   };

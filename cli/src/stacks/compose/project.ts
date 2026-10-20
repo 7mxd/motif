@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { AppInfo } from "../../detect/stacks";
 import { prefixPath } from "../../project/apps";
-import { stripBom } from "../../text";
+import { andList, stripBom } from "../../text";
 import { RESERVED } from "../naming";
 
 function read(path: string): string | null {
@@ -118,6 +118,86 @@ function includedFolders(dir: string): string[] {
     }
   }
   return out;
+}
+
+/** The Gradle paths a settings file includes (include(":app", ":feature:home") is :app and :feature:home). */
+function includedPaths(dir: string): string[] {
+  const text = settingsFile(dir);
+  if (text === null) return [];
+  const out: string[] = [];
+  for (const m of text.matchAll(/\binclude\s*\(?\s*((?:["'][^"'\n]+["']\s*,?\s*)+)/g)) {
+    for (const s of m[1]!.matchAll(/["']([^"']+)["']/g)) {
+      const path = `:${s[1]!.replace(/^:+/, "")}`;
+      if (path !== ":" && !out.includes(path)) out.push(path);
+    }
+  }
+  return out;
+}
+
+/** project(":app").projectDir = file("android/app"), or = new File(settingsDir, 'android/app') in Groovy. */
+const PROJECT_DIR =
+  /\bproject\s*\(\s*["'](:[^"']*)["']\s*\)\s*\.\s*projectDir\s*=\s*(?:file\s*\(|(?:new\s+)?(?:java\.io\.)?File\s*\(\s*(?:settingsDir|rootDir|rootProject\.projectDir)\s*,)\s*["']([^"']+)["']\s*\)/g;
+
+/** The folders a settings file maps Gradle paths to (project(":app").projectDir = …), relative to its folder, by path. */
+export function settingsProjectDirs(dir: string): Map<string, string> {
+  return new Map([...(settingsFile(dir)?.matchAll(PROJECT_DIR) ?? [])].map((m) => [m[1]!, m[2]!]));
+}
+
+/** A module's folder by its Gradle path: the one the settings file maps it to, else its path's own (:core:ui is core/ui). */
+function projectFolder(projectDir: string, path: string): string {
+  return resolve(projectDir, settingsProjectDirs(projectDir).get(path) ?? path.split(":").filter(Boolean).join("/"));
+}
+
+/** A Gradle path or a type-safe accessor's part, compared as Gradle's accessors name it: core-ui and coreUi are alike. */
+const accessorKey = (part: string) => part.replace(/[-_]/g, "").toLowerCase();
+
+/**
+ * The project modules a build file depends on, by Gradle path: project(":core:ui"), project(path = ":core:ui"), and
+ * type-safe accessors (projects.core.ui), matched to the paths the settings file includes.
+ */
+function projectDependencies(text: string, included: string[]): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/\bproject\s*\(\s*(?:path\s*[=:]\s*)?["'](:[^"']+)["']/g)) out.add(m[1]!);
+  for (const m of text.matchAll(/\bprojects((?:\s*\.\s*[A-Za-z_]\w*)+)/g)) {
+    const parts = m[1]!.split(".").map((p) => p.trim()).filter(Boolean);
+    const key = parts.map(accessorKey).join(":");
+    const path = included.find((p) => p.split(":").filter(Boolean).map(accessorKey).join(":") === key);
+    if (path) out.add(path);
+  }
+  return [...out];
+}
+
+/**
+ * The Compose library modules (com.android.library with Compose) an app module depends on, by Gradle path, sorted, with
+ * those of the modules it depends on in turn. Motif reads an app module's own code only, so these are what it leaves out.
+ */
+export function composeLibraryDependencies(projectDir: string, moduleDir: string): string[] {
+  const included = includedPaths(projectDir);
+  const seen = new Set<string>();
+  const libraries = new Set<string>();
+  const visit = (dir: string, depth: number) => {
+    const build = buildFile(dir);
+    if (build === null || depth > 8) return;
+    for (const path of projectDependencies(build, included)) {
+      if (seen.has(path)) continue;
+      seen.add(path);
+      const folder = projectFolder(projectDir, path);
+      if (resolve(folder) === resolve(moduleDir)) continue;
+      if (composeLibrary(folder)) libraries.add(path);
+      visit(folder, depth + 1);
+    }
+  };
+  visit(moduleDir, 0);
+  return [...libraries].sort();
+}
+
+/** The note for an app whose Compose library modules weren't read: what Motif left out, then what that means for the command. */
+export function unreadModulesNote(root: string, appPath: string, consequence: string): string | null {
+  const moduleDir = resolve(root, appPath);
+  const libraries = composeLibraryDependencies(gradleRoot(moduleDir, root), moduleDir);
+  if (libraries.length === 0) return null;
+  const label = appPath === "." ? "This app" : appPath;
+  return `${label} depends on Compose modules Motif doesn't read yet (${andList(libraries)}): ${consequence}`;
 }
 
 /** The modules a Gradle project root includes that are Compose apps (folders relative to the root). */

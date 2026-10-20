@@ -9,6 +9,7 @@ import { type FetchLike, googleFontFiles } from "../flutter/harness";
 import auditSource from "./harness/MotifAudit.kt" with { type: "text" };
 import testSource from "./harness/MotifShotTest.kt" with { type: "text" };
 import initSource from "./harness/init.gradle" with { type: "text" };
+import { settingsProjectDirs } from "./project";
 
 /** The harness's test, under the test source folder init.gradle adds (relative to the module). */
 export const HARNESS_TEST = ".motif/shot/src/dev/motif/shot/MotifShotTest.kt";
@@ -214,26 +215,10 @@ export function splitJvmOptions(text: string | undefined): string[] {
   return args;
 }
 
-/** A settings file's text without its comments, or null when the folder has none. */
-function settingsText(dir: string): string | null {
-  for (const name of ["settings.gradle.kts", "settings.gradle"]) {
-    try {
-      return readFileSync(join(dir, name), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'])\/\/.*$/gm, "$1");
-    } catch {
-      // Not this one.
-    }
-  }
-  return null;
-}
-
-/** project(":app").projectDir = file("android/app"), or = new File(settingsDir, 'android/app') in Groovy. */
-const PROJECT_DIR =
-  /\bproject\s*\(\s*["'](:[^"']*)["']\s*\)\s*\.\s*projectDir\s*=\s*(?:file\s*\(|(?:new\s+)?(?:java\.io\.)?File\s*\(\s*(?:settingsDir|rootDir|rootProject\.projectDir)\s*,)\s*["']([^"']+)["']\s*\)/g;
-
 /** A module's Gradle path (:app, :feature:home): the one its settings file maps to its folder, else its folder's own. */
 export function gradleProjectPath(projectDir: string, moduleDir: string): string {
-  for (const m of settingsText(projectDir)?.matchAll(PROJECT_DIR) ?? []) {
-    if (resolve(projectDir, m[2]!) === resolve(moduleDir)) return m[1]!;
+  for (const [path, folder] of settingsProjectDirs(projectDir)) {
+    if (resolve(projectDir, folder) === resolve(moduleDir)) return path;
   }
   const rel = relative(projectDir, moduleDir).split("\\").join("/");
   return rel === "" ? "" : `:${rel.split("/").join(":")}`;
