@@ -325,6 +325,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
           { error: "needs-web-target" },
         );
       }
+    } else if (rn) {
+      // Bare React Native: Motif starts only Expo's web target.
+      return usage(
+        "Motif starts Expo apps for screenshots, and this React Native app doesn't use Expo. If it runs on react-native-web, start it and pass its address with --url.",
+        { error: "unsupported-stack" },
+      );
     } else if (app.stack !== "react-web" && app.stack !== "plain-web") {
       const what = app.stack ? `${STACK_LABELS[app.stack]} apps` : "this app";
       return usage(`Motif can't start ${what} for screenshots yet. Start it yourself and pass its address with --url.`, { error: "unsupported-stack" });

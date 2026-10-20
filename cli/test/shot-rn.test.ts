@@ -260,6 +260,19 @@ describe("the app's own light or dark (Expo's userInterfaceStyle)", () => {
   });
 });
 
+describe("motif shot: a React Native app without Expo", () => {
+  test("says Motif starts Expo apps, and how to screenshot one that runs on react-native-web", async () => {
+    const bare = makeProject({ "package.json": JSON.stringify({ dependencies: { react: "18.3.1", "react-native": "0.76.0" } }), "package-lock.json": "{}", "node_modules/.keep": "", "App.tsx": "" });
+    const f = fakes();
+    const r = await runShot(bare, ctx(), f.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.data.error).toBe("unsupported-stack");
+    expect(r.text).toContain("Motif starts Expo apps for screenshots, and this React Native app doesn't use Expo. If it runs on react-native-web, start it and pass its address with --url.");
+    expect(r.text).not.toContain("(Expo) apps");
+    expect(f.calls.started).toEqual([]);
+  });
+});
+
 describe("an app Expo can't build or run on the web", () => {
   test("Metro's bundle error stops the run with what it said, before any screenshot", async () => {
     const root = makeProject(EXPO_APP);
