@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 export const FIXTURE_NAMES = [
   "react-contract-app", "react-seeded-app", "plain-contract-site", "plain-seeded-site", "flutter-contract-app", "flutter-seeded-app",
   "compose-contract-app", "compose-seeded-app",
+  "rn-contract-app", "rn-seeded-app",
 ] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
 
@@ -14,6 +15,7 @@ const BASES: Partial<Record<FixtureName, FixtureName>> = {
   "plain-seeded-site": "plain-contract-site",
   "flutter-seeded-app": "flutter-contract-app",
   "compose-seeded-app": "compose-contract-app",
+  "rn-seeded-app": "rn-contract-app",
 };
 
 const FIXTURES = import.meta.dir;

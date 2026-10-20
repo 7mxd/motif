@@ -1,0 +1,10 @@
+{
+  "motifContract": 1,
+  "apps": [
+    {
+      "path": ".",
+      "stack": "react-native"
+    }
+  ],
+  "ignore": []
+}

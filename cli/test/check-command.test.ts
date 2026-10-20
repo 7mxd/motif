@@ -92,7 +92,7 @@ describe("runCheck", () => {
     const r = await runCheck(root, ctx());
     expect(r.exitCode).toBe(2);
     expect(r.text).toContain("Vue / Nuxt");
-    expect(r.text).toContain("Flutter apps, Jetpack Compose apps, React web apps and plain web sites");
+    expect(r.text).toContain("Flutter apps, Jetpack Compose apps, React Native (Expo) apps, React web apps and plain web sites");
   });
 
   test("no design guide → exit 2", async () => {

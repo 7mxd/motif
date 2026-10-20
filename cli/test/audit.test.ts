@@ -55,6 +55,12 @@ describe("toFindings", () => {
     expect(findings[4]!.summary).toBe('The "Go" button is 32×32 px on a phone; 44×44 px is easier to tap.');
   });
 
+  test("a kind that starts with a vowel sound takes \"an\" (the final review of plan 2G)", () => {
+    const sized = (kind: AuditIssue["kind"], selector: string) => issue({ rule: "target-size", selector, kind, label: "", width: 16, height: 16 });
+    const summaries = toFindings([sized("option", "#o"), sized("image", "#i"), sized("menu item", "#m"), sized("switch", "#s")]).map((f) => f.summary.split(" is ")[0]);
+    expect(summaries.sort()).toEqual(["A menu item", "A switch", "An image", "An option"]);
+  });
+
   test("texts that fail with the same colours are one finding that lists every place (third eval run)", () => {
     // The third eval run's report copied 53 contrast findings, one per text and state, from a few causes.
     const faint = { fg: "#b2a79f", bg: "#ffffff", ratio: 2.2, expected: 4.5 };
@@ -228,6 +234,35 @@ const OLD_BROWSER = `<!doctype html><html><head><meta name="viewport" content="w
 <body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111">
 <button id="small" style="width: 30px; height: 30px; padding: 0" aria-label="Small"></button></body></html>`;
 
+// What react-native-web draws: a Pressable or Touchable is <div tabindex="0"> with a pointer cursor and no role, and an
+// icon font's glyph is a private-use character in a text node (here U+E001, and U+F0001 beyond the first plane).
+const RN = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>@keyframes turn { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes sweep { from { transform: translateX(0); } to { transform: translateX(60px); } }
+.r-spin { animation-duration: 0.75s; animation-name: turn; animation-timing-function: linear; animation-iteration-count: infinite; }
+.r-sweep { animation: sweep 0.8s linear infinite alternate; }</style></head>
+<body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111">
+<div id="icon" tabindex="0" style="cursor: pointer; width: 32px; height: 32px; background: #444444"><div dir="auto">&#xE001;</div></div>
+<div id="plus" tabindex="0" style="cursor: pointer; width: 32px; height: 32px; background: #444444"><div dir="auto" aria-hidden="true">&#xF0001;</div></div>
+<div id="named" tabindex="0" aria-label="Add item" style="cursor: pointer; width: 32px; height: 32px; background: #444444"><div dir="auto">&#xE001;</div></div>
+<div id="skip" tabindex="0" style="cursor: pointer; width: 120px; height: 60px; background: #dddddd"><div dir="auto">Skip</div></div>
+<div id="outer" tabindex="0" aria-label="Open" style="cursor: pointer; width: 120px; height: 60px; background: #dddddd"><div id="inner" tabindex="0" style="cursor: pointer; width: 20px; height: 20px"></div></div>
+<div id="focusable" tabindex="0" style="width: 32px; height: 32px; background: #dddddd"></div>
+<button id="glyph" role="button" style="width: 32px; height: 32px; padding: 0">&#xE001;</button>
+<button id="back" aria-label="Back" style="width: 60px; height: 60px; padding: 0">&#xE001;</button>
+<div role="tablist"><div id="tab" role="tab" tabindex="0" aria-selected="true" style="cursor: pointer; width: 60px; height: 60px; background: #dddddd"><svg width="24" height="24"><circle cx="12" cy="12" r="8"></circle></svg></div>
+<div id="search-tab" role="tab" tabindex="0" aria-label="Search" style="cursor: pointer; width: 60px; height: 60px; background: #dddddd"></div></div>
+<!-- ActivityIndicator as react-native-web 0.21 draws it (taken from HiSalon's app on Expo's web target). -->
+<div role="progressbar" aria-valuemax="1" aria-valuemin="0" class="css-view"><div id="turning" class="css-view r-spin" style="height: 36px; width: 36px"><svg height="100%" viewBox="0 0 32 32" width="100%"><circle cx="16" cy="16" fill="none" r="14" stroke-width="4" style="stroke: #1976d2; opacity: 0.2;"></circle><circle cx="16" cy="16" fill="none" r="14" stroke-width="4" style="stroke: #1976d2; stroke-dasharray: 80; stroke-dashoffset: 60;"></circle></svg></div></div>
+<!-- The app's own bars with accessibilityRole="progressbar": an Animated loop (an inline transform, frame by frame) and a CSS sweep. -->
+<div role="progressbar" aria-label="Uploading" style="width: 120px; height: 8px"><div id="shimmer" style="width: 40px; height: 8px; background: #0a5"></div></div>
+<div role="progressbar" aria-label="Syncing" style="width: 120px; height: 8px"><div id="sweep" class="r-sweep" style="width: 40px; height: 8px; background: #0a5"></div></div>
+<script>
+const shimmer = document.getElementById("shimmer");
+const step = (t) => { shimmer.style.transform = "translateX(" + Math.round((t / 10) % 80) + "px)"; requestAnimationFrame(step); };
+requestAnimationFrame(step);
+</script></body></html>`;
+
 const browser = findBrowser();
 let server: ReturnType<typeof Bun.serve>;
 beforeAll(() => {
@@ -236,7 +271,7 @@ beforeAll(() => {
     port: 0,
     fetch: (req) => {
       const path = new URL(req.url).pathname;
-      return new Response(path === "/clean" ? CLEAN : path === "/old" ? OLD_BROWSER : BAD, { headers: { "content-type": "text/html" } });
+      return new Response(path === "/clean" ? CLEAN : path === "/old" ? OLD_BROWSER : path === "/rn" ? RN : BAD, { headers: { "content-type": "text/html" } });
     },
   });
 });
@@ -267,6 +302,46 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
     expect(findings[0]!.summary).toContain("Faint note");
     // Found at every phone size; the finding keeps the first screenshot, the narrowest phone.
     expect(findings[0]!.shot).toEndWith("index.mobile-360.png");
+  }, 120_000);
+
+  test("React Native apps: a Pressable with no role is a control, an icon's glyph is no name, and web apps are judged as before (Task 8)", async () => {
+    const audit = async (reactNative: boolean) => {
+      const { routes, issues } = await captureScreens({
+        browserPath: browser!.path,
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        routes: ["/rn"],
+        outDir: tempDir("motif-audit-"),
+        audit: true,
+        settleMs: 100,
+        ...(reactNative ? { reactNative: true } : {}),
+      });
+      expect(routes[0]!.auditError).toBeUndefined();
+      return toFindings(issues).map((f) => `${f.category} ${f.location.selector}: ${f.summary}`);
+    };
+    // Web: the divs are not controls, the glyph is text to axe, and a spinner that keeps turning is motion (a web page draws
+    // its own and can stop it).
+    expect(await audit(false)).toEqual([
+      "reduced-motion #turning: An element keeps moving when the viewer asks for reduced motion.",
+      "reduced-motion #sweep: An element keeps moving when the viewer asks for reduced motion.",
+      "reduced-motion #shimmer: An element keeps moving when the viewer asks for reduced motion.",
+      "target-size #glyph: The \"\ue001\" button is 32×32 px on a phone; 44×44 px is easier to tap.",
+    ]);
+    // React Native: the unnamed Pressables are buttons with no name (the glyph and the aria-hidden glyph are not names), and so is the
+    // button axe passed for its glyph, and a tab with only an icon (accessibilityRole="tab", as a tab bar has; hands-on); the
+    // named, large, nested and non-pointer ones are not reported. ActivityIndicator's spinner is the platform's, which the
+    // app can't stop under reduce motion: not a motion finding; the app's own progress bars, which it can stop, still are.
+    expect(await audit(true)).toEqual([
+      "accessibility #icon: The button has no name a screen reader can say.",
+      "accessibility #plus: The button has no name a screen reader can say.",
+      "accessibility #glyph: The icon has no name a screen reader can say.",
+      "accessibility #tab: The tab has no name a screen reader can say.",
+      "reduced-motion #sweep: An element keeps moving when the viewer asks for reduced motion.",
+      "reduced-motion #shimmer: An element keeps moving when the viewer asks for reduced motion.",
+      "target-size #glyph: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
+      "target-size #icon: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
+      "target-size #plus: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
+      'target-size #named: The "Add item" button is 32×32 px on a phone; 44×44 px is easier to tap.',
+    ]);
   }, 120_000);
 
   test("a browser without checkVisibility() still gets its audit", async () => {

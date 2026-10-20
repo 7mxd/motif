@@ -1,5 +1,6 @@
 // Checks before a run: Claude Code signed in with a Claude account (never an API key), this checkout's motif tool and plugin built,
-// Node.js for the apps, a browser for the cases that need one, Flutter for the Flutter cases, and a JDK and the Android SDK for the Compose ones. Nothing is downloaded or installed for the developer.
+// Node.js for the apps, a browser for the cases that need one (the React Native cases among them: Expo's web target), Flutter for the Flutter cases,
+// and a JDK and the Android SDK for the Compose ones. Nothing is downloaded or installed for the developer.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { defaultDoctorDeps, type DoctorDeps } from "../../cli/src/commands/doctor";
@@ -28,6 +29,9 @@ export interface PreflightDeps {
   doctor?: DoctorDeps;
 }
 
+/** The cases that need neither Flutter nor a JDK and the Android SDK: the web ones and the Expo ones. */
+const webAndExpoCases = () => CASES.filter((c) => !isFlutter(c) && !isCompose(c)).map((c) => c.id);
+
 /** Flutter's version from flutter --version --machine (an "upgrade available" banner may come first), or null. */
 async function flutterVersion(d: PreflightDeps, cwd: string): Promise<string | null> {
   const exe = d.which("flutter");
@@ -47,9 +51,9 @@ async function flutterProblem(d: PreflightDeps, cwd: string): Promise<string | n
   const version = await flutterVersion(d, cwd);
   if (version && !olderThanFlutterMin(version)) return null;
   const flutterCases = CASES.filter(isFlutter).map((c) => c.id);
-  const others = CASES.filter((c) => !c.stack).map((c) => c.id);
+  const others = webAndExpoCases();
   const found = version ? `This is Flutter ${version}; run flutter upgrade, or ${FLUTTER_INSTALL}` : `Flutter wasn't found on the PATH (or didn't say its version): ${FLUTTER_INSTALL}`;
-  return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN} or later. ${found}, then run this again. Or run the other cases without it: --cases ${others.join(",")}`;
+  return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN} or later. ${found}, then run this again. Or run the web and Expo cases without it: --cases ${others.join(",")}`;
 }
 
 /** Why the Compose cases can't run here (doctor's own lines for the JDK and the SDK), naming the cases that can; nothing when both are found. */
@@ -58,8 +62,8 @@ function androidProblem(d: PreflightDeps, repo: string): string | null {
   const needed = composeDoctor(deps, { root: repo, apps: [{ path: ".", stack: "compose", source: "detected" }] }).filter((i) => i.status === "needed");
   if (needed.length === 0) return null;
   const composeCases = CASES.filter(isCompose).map((c) => c.id);
-  const others = CASES.filter((c) => !c.stack).map((c) => c.id);
-  return `The Compose cases (${composeCases.join(", ")}) need a JDK 17 or later and the Android SDK. ${needed.map((i) => i.detail).join(" ")} Then run this again. Or run the web cases without them: --cases ${others.join(",")}`;
+  const others = webAndExpoCases();
+  return `The Compose cases (${composeCases.join(", ")}) need a JDK 17 or later and the Android SDK. ${needed.map((i) => i.detail).join(" ")} Then run this again. Or run the web and Expo cases without them: --cases ${others.join(",")}`;
 }
 
 export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false): Promise<Ready | { error: string }> {
@@ -105,14 +109,17 @@ export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDep
 
   const doctor = await d.run([p.motifBin, "doctor", "--json"], p.repo, 60_000);
   let browser = false;
+  let doctorLine = "";
   try {
-    browser = JSON.parse(doctor.stdout).items.some((i: any) => i.id === "browser" && i.status === "ok");
+    const item = JSON.parse(doctor.stdout).items.find((i: any) => i.id === "browser");
+    browser = item?.status === "ok";
+    doctorLine = typeof item?.detail === "string" ? item.detail : "";
   } catch {
     browser = false;
   }
   if (needsBrowser && !browser) {
     return {
-      error: `No Chrome or Edge was found. Test C's web reviews check what the browser shows, and test D's web apps and b-plain's page are checked in a browser. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter cases (--cases ${CASES.filter((c) => !caseNeedsBrowser(c)).map((c) => c.id).join(",")}) don't need one.`,
+      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, and the React Native cases draw their screens through Expo's web target in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${CASES.filter((c) => !caseNeedsBrowser(c)).map((c) => c.id).join(",")}) don't need one.`,
     };
   }
   return { claude: found.exe, claudeVersion: version.stdout.trim(), browser };

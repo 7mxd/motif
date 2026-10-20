@@ -9,6 +9,7 @@ import type { AuditIssue } from "../shot/audit";
 import type { RouteResult, StateScript, Viewport } from "../shot/capture";
 import { COMPOSE } from "./compose";
 import { FLUTTER } from "./flutter";
+import { REACT_NATIVE } from "./react-native";
 
 export interface NativeShotOptions {
   root: string;
@@ -42,7 +43,8 @@ export interface NativeStack {
   /** The one step that puts the theme file (root-relative) to use, or null when the app already uses it. */
   wiring?(root: string, app: AppInfo, file: string, set?: ThemeSet): string | null;
   sourceFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
-  scan?(file: SourceFile, scale: Scale): Hit[];
+  /** The hits in one file; `ctx` is the app being checked (React Native reads its package.json for nativewind). */
+  scan?(file: SourceFile, scale: Scale, ctx?: { root: string; app: AppInfo }): Hit[];
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];
   /**
    * True when a file's typed colours define the app's own palette (a Flutter ThemeExtension's instances, a ColorScheme, a
@@ -82,7 +84,7 @@ export interface NativeStack {
   doctor?(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[];
 }
 
-const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER], [COMPOSE.id, COMPOSE]]);
+const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER], [COMPOSE.id, COMPOSE], [REACT_NATIVE.id, REACT_NATIVE]]);
 
 /** Every native stack Motif has, registered. */
 export function nativeStacks(): NativeStack[] {

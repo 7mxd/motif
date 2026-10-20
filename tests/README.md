@@ -12,7 +12,9 @@ Fixtures and evaluations for Motif. Nothing here ships to users: skill installs 
 - **`fixtures/flutter-seeded-app/`** — Maktaba with 16 planted problems (10 exact, 6 that need judgement), listed in its `seeded-issues.json`. Test C's Flutter case reviews a copy. Its [README](fixtures/flutter-seeded-app/README.md) describes every problem.
 - **`fixtures/compose-contract-app/`** — Rafiq, a habit tracker in Jetpack Compose (Material 3, Navigation Compose with string routes, a ViewModel per screen over an in-memory repository, `SharedPreferences` for the signed-in flag), in English and Arabic, shaped as Android Studio makes a project (one `app` module, a version catalogue and the Gradle wrapper): a design guide from the Soft starting style with a High contrast variant (colours only) and Readex Pro for Arabic, the generated theme (`app/src/main/java/dev/motif/rafiq/ui/motif/MotifTheme.kt`), a preview for each screen, and Today (`/`), a habit's page (`/habit/{id}`), Add a habit (`/add`) and Sign in (`/sign-in`). `design/states/Setup.kt` signs screenshots in and starts each from the same habits. CI checks it with `motif validate`, `motif check` and `motif tokens`, and where a JDK and the Android SDK are found with Gradle's compiler and `motif shot --audit` in both variants, light and dark, left to right and right to left (`cli/test/fixtures-compose.test.ts`).
 - **`fixtures/compose-seeded-app/`** — Rafiq with 15 planted problems (10 exact, 5 that need judgement), listed in its `seeded-issues.json`. Its [README](fixtures/compose-seeded-app/README.md) describes every problem.
-- **`fixtures/briefs/`** — four briefs for test D's new apps: three web apps (Stride, Ledgerly, Bloom) and Sahm, a Flutter app in English and Arabic.
+- **`fixtures/rn-contract-app/`** — Dukkan, a corner shop's ordering app in React Native with Expo (SDK 58, Expo Router, in-memory data), in English and Arabic: a design guide from the Minimal starting style with a Night market variant (colours only) and Readex Pro for Arabic, the generated theme (`design/motif-theme.tsx`), the components the React Native guide's starter set needs, and three screens plus a product's page (`/`, `/basket`, `/sign-in`, `/products/[id]`). It has no orders or favourites screen: test B's Expo cases add them. `package.json` and `package-lock.json` are committed, never `node_modules/`. CI checks it with `motif validate` and `motif check`, and where Node and npm are found it installs a copy and checks it with `motif tokens`, `motif check`, `npx tsc --noEmit` and, with a browser, `motif shot --audit` through Expo's web target in both variants, light and dark, left to right and right to left (`cli/test/fixtures-rn.test.ts`).
+- **`fixtures/rn-seeded-app/`** — Dukkan with 14 planted problems (10 exact, 4 that need judgement), listed in its `seeded-issues.json`. Test C's Expo case reviews a copy. Its [README](fixtures/rn-seeded-app/README.md) describes every problem.
+- **`fixtures/briefs/`** — six briefs for test D's new apps: three web apps (Stride, Ledgerly, Bloom), Sahm, a Flutter app, Nabta, a Jetpack Compose app, and Rihla, an Expo app, the last three in English and Arabic.
 - **`fixtures/assemble.ts`** — builds a working copy of any of these fixtures in an empty folder:
 
   ```bash
@@ -24,9 +26,11 @@ Fixtures and evaluations for Motif. Nothing here ships to users: skill installs 
   bun tests/fixtures/assemble.ts flutter-seeded-app <empty folder>
   bun tests/fixtures/assemble.ts compose-contract-app <empty folder>
   bun tests/fixtures/assemble.ts compose-seeded-app <empty folder>
+  bun tests/fixtures/assemble.ts rn-contract-app <empty folder>
+  bun tests/fixtures/assemble.ts rn-seeded-app <empty folder>
   ```
 
-  Then run `npm install` in a React app's folder to build or run it, or `flutter pub get` in a Flutter app's; a Compose app builds with its own Gradle wrapper (`./gradlew :app:compileDebugKotlin`, with a JDK and the Android SDK), and a plain site needs nothing installed.
+  Then run `npm install` in a React app's folder to build or run it (`npm ci` in an Expo app's, then `npx expo start --web`), or `flutter pub get` in a Flutter app's; a Compose app builds with its own Gradle wrapper (`./gradlew :app:compileDebugKotlin`, with a JDK and the Android SDK), and a plain site needs nothing installed.
 
 ## Evals
 

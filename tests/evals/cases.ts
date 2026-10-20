@@ -1,5 +1,5 @@
 // The eval cases (spec §13.2 and the plain web spec §11): test B's features on copies of the contract apps and site, test C's reviews of the seeded apps and site,
-// and test D's new apps from briefs; on React web, plain web, Flutter and Jetpack Compose. Each prompt switches approvals off in the skill's own words.
+// and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose and React Native (Expo). Each prompt switches approvals off in the skill's own words.
 
 import type { StackId } from "../../cli/src/detect/stacks";
 import type { FixtureName } from "../fixtures/assemble";
@@ -21,7 +21,10 @@ export interface EvalCase {
   /** Claude Code's --max-budget-usd, at its API-price estimate; the developer's plan pays, not an API account. */
   maxBudgetUsd: number;
   minutes: number;
-  /** The app's stack when it isn't a web one: a Flutter case is type-checked with flutter analyze and drawn by Flutter, a Compose case with Gradle and drawn by Robolectric. */
+  /**
+   * The app's stack when it isn't a web one: a Flutter case is type-checked with flutter analyze and drawn by Flutter,
+   * a Compose case with Gradle and drawn by Robolectric, and a React Native one with tsc and drawn through Expo's web target.
+   */
   stack?: StackId;
 }
 
@@ -37,11 +40,15 @@ export const isFlutter = (c: EvalCase): boolean => c.stack === "flutter";
 /** A case on a Jetpack Compose app: it needs a JDK and the Android SDK. */
 export const isCompose = (c: EvalCase): boolean => c.stack === "compose";
 
+/** A case on an Expo app: its screens are drawn through Expo's web target, in a browser. */
+export const isReactNative = (c: EvalCase): boolean => c.stack === "react-native";
+
 /**
- * Whether grading needs a browser: C and D always, and B on a plain site, whose new page is checked in one. Flutter and
- * Compose draw their own screens, so their cases never do.
+ * Whether grading needs a browser: C and D always, and B on a plain site, whose new page is checked in one, and on an
+ * Expo app, whose new screen is drawn through its web target. Flutter and Compose draw their own screens, so their cases
+ * never do.
  */
-export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && (c.test !== "B" || isPlain(c));
+export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && (c.test !== "B" || isPlain(c) || isReactNative(c));
 
 const feature = (id: string, title: string, route: string, what: string): EvalCase => ({
   id, test: "B", title, fixture: "react-contract-app", routes: [route],
@@ -59,9 +66,15 @@ const composeFeature = (id: string, title: string, route: string, what: string):
   ...feature(id, title, route, what), fixture: "compose-contract-app", stack: "compose", minutes: 120,
 });
 
-const newApp = (brief: string, title: string, stack?: StackId): EvalCase => ({
-  id: `d-${brief}`, test: "D", title, brief, routes: ["/", "/sign-in", "/home"],
-  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${stack ? "screen" : "page"} at /, sign-in at /sign-in and home at /home.\n\n${UNATTENDED}`,
+/** A feature on Dukkan, an Expo app. The first bundle of the web target takes minutes, so these get longer than Larder's. */
+const rnFeature = (id: string, title: string, route: string, what: string): EvalCase => ({
+  ...feature(id, title, route, what), fixture: "rn-contract-app", stack: "react-native", minutes: 120,
+});
+
+/** A new app from a brief; `home` is the name of its third screen, which Rihla calls /trips. */
+const newApp = (brief: string, title: string, stack?: StackId, home = "home"): EvalCase => ({
+  id: `d-${brief}`, test: "D", title, brief, routes: ["/", "/sign-in", `/${home}`],
+  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${stack ? "screen" : "page"} at /, sign-in at /sign-in and ${home} at /${home}.\n\n${UNATTENDED}`,
   maxTurns: 400, maxBudgetUsd: 80, minutes: 180,
   ...(stack ? { stack } : {}),
 });
@@ -92,6 +105,11 @@ export const CASES: EvalCase[] = [
   composeFeature("b-compose-stats", "Weekly stats with an empty state (Compose)", "/stats",
     "Add a weekly stats screen at /stats: how many habits were done on each day of the past week, the week's best streak, and an empty state for a week with nothing done yet. Link to it from the Today screen."),
 
+  rnFeature("b-rn-orders", "Past orders with an empty state (React Native)", "/orders",
+    "Add past orders at /orders: every order newest first, each with the day it was placed, its status, its items and its total, and an empty state for before the first order that leads back to the shelves. Link to it from the app's home screen. Mock data only."),
+  rnFeature("b-rn-favourites", "Favourites saved from a product (React Native)", "/favourites",
+    "Add favourites at /favourites: a heart on a product's page saves or removes that product, and the favourites screen lists the saved products, each opening its page, with an empty state that says how to save one. Link to it from the app's home screen. Keep the saved products in memory; there's no back end."),
+
   {
     id: "c-review", test: "C", title: "Review of the seeded app", fixture: "react-seeded-app", routes: ["/", "/products", "/products/oats"],
     prompt: `/motif:review Review the whole app: its screens are /, /products and /products/oats (a product). Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
@@ -116,11 +134,18 @@ export const CASES: EvalCase[] = [
 ${UNATTENDED}`,
     maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
   },
+  {
+    id: "c-rn", test: "C", title: "Review of the seeded Expo app", fixture: "rn-seeded-app", stack: "react-native",
+    routes: ["/", "/products/oat-milk", "/basket", "/sign-in"],
+    prompt: `/motif:review Review the whole app: its screens are /, /products/oat-milk (a product), /basket and /sign-in. Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
+    maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
+  },
   newApp("stride", "New app: Stride (a running club)"),
   newApp("ledgerly", "New app: Ledgerly (invoicing)"),
   newApp("bloom", "New app: Bloom (plant care)"),
   newApp("sahm", "New Flutter app: Sahm (university carpools)", "flutter"),
   newApp("nabta", "New Compose app: Nabta (plant care)", "compose"),
+  newApp("rihla", "New Expo app: Rihla (a trip planner)", "react-native", "trips"),
 ];
 
 export function selectCases(all: EvalCase[], pick: { tests?: string[]; ids?: string[] }): EvalCase[] | { error: string } {

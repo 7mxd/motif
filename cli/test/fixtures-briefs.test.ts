@@ -5,11 +5,11 @@ import { join } from "node:path";
 const BRIEFS = join(import.meta.dir, "../../tests/fixtures/briefs");
 
 describe("the new-app briefs", () => {
-  test("there are five", () => {
-    expect(readdirSync(BRIEFS).sort()).toEqual(["bloom.md", "ledgerly.md", "nabta.md", "sahm.md", "stride.md"]);
+  test("there are six", () => {
+    expect(readdirSync(BRIEFS).sort()).toEqual(["bloom.md", "ledgerly.md", "nabta.md", "rihla.md", "sahm.md", "stride.md"]);
   });
 
-  test("each answers what init asks in its first step: three web apps, a Flutter app and a Compose app, the last two in English and Arabic", () => {
+  test("each answers what init asks in its first step: three web apps, a Flutter app, a Compose app and an Expo app, the last three in English and Arabic", () => {
     for (const file of readdirSync(BRIEFS)) {
       const text = readFileSync(join(BRIEFS, file), "utf8").replace(/\r\n/g, "\n");
       for (const heading of ["## What it is", "## Who it's for", "## Platform", "## Brand", "## Feel", "## Apps they like", "## First screens"]) {
@@ -20,6 +20,8 @@ describe("the new-app briefs", () => {
         for (const s of ["Flutter", "English and Arabic", "phone first"]) expect(platform).toContain(s);
       } else if (file === "nabta.md") {
         for (const s of ["Jetpack Compose", "English and Arabic", "phone first"]) expect(platform).toContain(s);
+      } else if (file === "rihla.md") {
+        for (const s of ["Expo (React Native)", "English and Arabic", "phone first"]) expect(platform).toContain(s);
       } else expect(platform).toContain("React web app");
     }
   });

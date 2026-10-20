@@ -1,5 +1,5 @@
 // Measures what a finished case left behind: the motif tool's checks, the build and the type check (on a plain site, the page in a browser; on Flutter,
-// flutter analyze and the page as Flutter draws it), what the session changed,
+// flutter analyze and the page as Flutter draws it; on React Native, tsc and the page as Expo's web target draws it), what the session changed,
 // and for test C the review report, graded against the seeded list (match.ts) and by the model grader (judge.ts).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join, posix } from "node:path";
@@ -13,7 +13,8 @@ import { defaultDoctorDeps } from "../../cli/src/commands/doctor";
 import { findAndroidSdk, gradleJava } from "../../cli/src/stacks/compose/doctor";
 import { gradleProjectPath, gradleTaskCommand } from "../../cli/src/stacks/compose/harness";
 import { discoverComposeScreens, previewSlug, type Preview } from "../../cli/src/stacks/compose/screens";
-import { isCompose, isFlutter, isPlain, type EvalCase } from "./cases";
+import { discoverExpoRoutes } from "../../cli/src/stacks/react-native/routes";
+import { isCompose, isFlutter, isPlain, isReactNative, type EvalCase } from "./cases";
 import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
 import { Paused, type JudgeFn, type JudgeInput, type JudgeVerdict } from "./judge";
 import { gradeExact, parseReport, type SeededIssue } from "./match";
@@ -105,8 +106,18 @@ async function composeCompile(dir: string, k: Collectors, out: string): Promise<
   return { code: r.code, timedOut: r.timedOut, command: COMPOSE_TYPECHECK };
 }
 
-/** motif shot's sizes for a native app: one phone, so each screen is drawn once per scheme rather than at every native size. */
-const FLUTTER_SIZES = ["--sizes", "390"];
+/**
+ * An Expo app's type check: tsc over the app as it is (the session may have added packages, which it installed itself).
+ * It has no build: Expo's web target is drawn by motif shot.
+ */
+async function rnTypecheck(dir: string, k: Collectors, out: string): Promise<CmdFacts> {
+  const tsc = await k.run(["npx", "tsc", "--noEmit"], dir, 600_000);
+  save(out, "typecheck.log", `${tsc.stdout}\n${tsc.stderr}`);
+  return { code: tsc.code, timedOut: tsc.timedOut, command: "tsc" };
+}
+
+/** motif shot's sizes for a Flutter, Compose or Expo app: one phone, so each screen is drawn once per scheme rather than at every native size. */
+const PHONE_SIZES = ["--sizes", "390"];
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -383,6 +394,74 @@ export function composeComponents(diff: string): ComposeComponents {
   return found;
 }
 
+export interface RnComponents {
+  /** New exported function components under components/: they count against the limit unless the design guide records them. */
+  newComponents: string[];
+  /** The default export of a new route file under app/: the page itself, as a React route file is (an anonymous one is named by its file). */
+  screens: string[];
+  /** Private components (and extra exports) in a route file, and private ones in a components file: a screen's or a component's own parts. */
+  screenParts: string[];
+  /** Capitalised functions that draw nothing, and a new route layout (navigation). */
+  notUi: string[];
+}
+
+interface Decl { name: string; exported: boolean; isDefault: boolean; draws: boolean }
+
+/** The top-level functions with a component's name (capitalised) in code, and whether each is exported and draws any JSX. */
+function declarations(code: string): Decl[] {
+  const text = maskComments(code, "script");
+  const found: { name: string; exported: boolean; isDefault: boolean; at: number }[] = [];
+  const decl = /^(export\s+(default\s+)?)?(?:async\s+)?(?:function\s*\*?\s*([A-Z]\w*)\s*[(<]|(?:const|let|var)\s+([A-Z]\w*)\s*(?::[^=\n]+)?=(?=\s*(?:async\s+)?(?:\(|[A-Za-z_$][\w$]*\s*=>|function\b|(?:React\.)?(?:memo|forwardRef)\s*[(<])))/gm;
+  for (const m of text.matchAll(decl)) found.push({ name: (m[3] ?? m[4])!, exported: Boolean(m[1]), isDefault: Boolean(m[2]), at: m.index! });
+  const defaulted = new Set([...text.matchAll(/^export\s+default\s+([A-Z]\w*)\s*;?\s*$/gm)].map((m) => m[1]!));
+  return found.map((d, i) => ({
+    name: d.name, exported: d.exported || defaulted.has(d.name), isDefault: d.isDefault || defaulted.has(d.name),
+    draws: renderedTags(text.slice(d.at, found[i + 1]?.at ?? text.length)).length > 0,
+  }));
+}
+
+const isTestFile = (path: string) => /\.(test|spec|stories|d)\.(tsx|jsx)$/.test(path);
+
+/**
+ * An Expo app's new components, from the session's diff: exported function components the session adds under
+ * components/ (the app's shared ones), minus those it moved. A route file under app/ is a screen: its default export is
+ * the page itself, and its other components are parts of it. The generated theme (design/), state files and tests
+ * never count, and a capitalised function that draws no JSX is not UI.
+ */
+export function rnComponents(diff: string): RnComponents {
+  const files = diffFiles(diff).filter((f) => !f.deleted && /\.(tsx|jsx)$/.test(f.path) && !isTestFile(f.path));
+  const removed = new Set(diffFiles(diff).filter((f) => /\.(tsx|jsx)$/.test(f.path)).flatMap((f) => declarations(f.removed.join("\n")).map((d) => d.name)));
+  const found: RnComponents = { newComponents: [], screens: [], screenParts: [], notUi: [] };
+  const seen = new Set<string>();
+  const add = (list: string[], name: string) => {
+    if (!seen.has(name)) {
+      seen.add(name);
+      list.push(name);
+    }
+  };
+  for (const f of files) {
+    const inComponents = /^(?:src\/)?components\/.+\.(tsx|jsx)$/.test(f.path);
+    const inApp = /^(?:src\/)?app\/.+\.(tsx|jsx)$/.test(f.path);
+    if (!inComponents && !inApp) continue;
+    const added = reallyAdded(f).join("\n");
+    const file = basename(f.path, extname(f.path));
+    if (inApp && file === "_layout") {
+      if (f.isNew) add(found.notUi, file);
+      continue;
+    }
+    for (const d of declarations(added)) {
+      if (removed.has(d.name)) continue;
+      if (!d.draws) add(found.notUi, d.name);
+      else if (inComponents) add(d.exported ? found.newComponents : found.screenParts, d.name);
+      else if (d.isDefault && f.isNew) add(found.screens, d.name);
+      else if (!d.isDefault) add(found.screenParts, d.name);
+    }
+    // A new route file whose default export has no name of its own.
+    if (inApp && f.isNew && !declarations(added).some((d) => d.isDefault) && /^export\s+default\b/m.test(maskComments(added, "script"))) add(found.screens, file);
+  }
+  return found;
+}
+
 /** A plain site's new components, from the session's diff of its pages and stylesheets. */
 const plainComponents = (diff: string, existing: Set<string>) =>
   addedComponents(diffFiles(diff).filter((f) => !f.deleted && /\.(css|html?)$/i.test(f.path)).map((f) => f.text).join("\n"), existing);
@@ -406,7 +485,7 @@ export function fixtureComponents(fixture: string, root = join(import.meta.dir, 
 
 /** A B case's new components, and which the design guide records, from the session's diff (also used by --regrade). */
 export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi" | "screens"> {
-  const found = isCompose(c) ? composeComponents(diff) : isFlutter(c) ? flutterComponents(diff) : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
+  const found = isCompose(c) ? composeComponents(diff) : isFlutter(c) ? flutterComponents(diff) : isReactNative(c) ? rnComponents(diff) : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
   return { ...found, recorded: recordedIn(diff, found.newComponents) };
 }
 
@@ -471,14 +550,20 @@ export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: s
     const typecheck = await composeCompile(ws.app, k, out);
     return {
       route, pageExists: screen.exists, check: checkFacts(check), validate: validateFacts(validate),
-      typecheck, render: await renderFacts(k, ws.app, route, out, FLUTTER_SIZES, screen.preview, 1_800_000), ...components,
+      typecheck, render: await renderFacts(k, ws.app, route, out, PHONE_SIZES, screen.preview, 1_800_000), ...components,
     };
   }
   if (isFlutter(c)) {
     const typecheck = await flutterAnalyze(ws.app, k, out);
     return {
       route, pageExists: discoverFlutterRoutes(ws.app).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
-      typecheck, render: await renderFacts(k, ws.app, route, out, FLUTTER_SIZES), ...components,
+      typecheck, render: await renderFacts(k, ws.app, route, out, PHONE_SIZES), ...components,
+    };
+  }
+  if (isReactNative(c)) {
+    return {
+      route, pageExists: discoverExpoRoutes(ws.app).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
+      typecheck: await rnTypecheck(ws.app, k, out), render: await renderFacts(k, ws.app, route, out, PHONE_SIZES), ...components,
     };
   }
   const { build, typecheck } = await buildAndTypecheck(ws.app, k, out);
@@ -610,8 +695,10 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
   const sections = designSections(existsSync(join(app, "DESIGN.md")) ? readFileSync(join(app, "DESIGN.md"), "utf8") : "");
   const { build, typecheck } = compose
     ? { build: undefined, typecheck: await composeCompile(app, k, out) }
-    : flutter ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) } : await buildAndTypecheck(app, k, out);
-  const shot = await motifJson(k, ["shot", "--audit", "--routes", c.routes.join(","), ...(flutter || compose ? FLUTTER_SIZES : [])], app, out, "shot.json", compose ? 1_800_000 : 900_000);
+    : flutter
+      ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) }
+      : isReactNative(c) ? { build: undefined, typecheck: await rnTypecheck(app, k, out) } : await buildAndTypecheck(app, k, out);
+  const shot = await motifJson(k, ["shot", "--audit", "--routes", c.routes.join(","), ...(flutter || compose || isReactNative(c) ? PHONE_SIZES : [])], app, out, "shot.json", compose ? 1_800_000 : 900_000);
   copyShots(app, shot.json, join(out, "shots"));
   const screens = Array.isArray(shot.json?.routes)
     ? shot.json.routes.map((r: any) => ({ route: String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))

@@ -84,10 +84,20 @@ describe("before a run", () => {
     const b = setup({ doctor: noBrowser });
     expect(await preflight(b.p, false, b.deps)).toMatchObject({ browser: false });
   });
+
+  test("a missing browser stops the React Native cases too, with doctor's own line and the cases that need none", async () => {
+    const line = "No Chrome or Edge found. Previews and screenshots need one.";
+    const noBrowser = ok(JSON.stringify({ items: [{ id: "browser", status: "needed", detail: line }] }));
+    const { p, deps } = setup({ doctor: noBrowser });
+    const r = await preflight(p, true, deps);
+    expect(r).toEqual({ error: expect.stringContaining("React Native") });
+    expect(r).toEqual({ error: expect.stringContaining(line) });
+    expect(r).toEqual({ error: expect.stringContaining("--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,c-flutter,c-compose,d-sahm,d-nabta") });
+  });
 });
 
 describe("before a run with Flutter cases", () => {
-  const otherCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,c-review,c-plain,d-stride,d-ledgerly,d-bloom";
+  const otherCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,c-review,c-plain,c-rn,d-stride,d-ledgerly,d-bloom,d-rihla";
 
   test("ready: Flutter 3.27 or later on the PATH", async () => {
     const { p, deps, seen } = setup();
@@ -123,7 +133,7 @@ describe("before a run with Flutter cases", () => {
 });
 
 describe("before a run with Compose cases", () => {
-  const webCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,c-review,c-plain,d-stride,d-ledgerly,d-bloom";
+  const webCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,c-review,c-plain,c-rn,d-stride,d-ledgerly,d-bloom,d-rihla";
   const java = (v: string) => ({ code: 0, stdout: "", stderr: `openjdk version "${v}" 2024-07-16
 ` });
   /** A computer with (or without) a JDK and an SDK, as doctor sees it. */

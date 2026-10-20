@@ -304,6 +304,33 @@ describe("design variants and project fonts in the skill", () => {
   });
 });
 
+describe("React Native in the skill and the modes", () => {
+  test("SKILL.md sends Expo apps to their guide", () => {
+    const skill = read("SKILL.md");
+    expect(skill).toContain("(adapters/react-native/README.md)");
+    expect(skill).toContain("Expo");
+  });
+
+  test("init starts an Expo app with create-expo-app", () => {
+    const init = read("modes/init.md");
+    for (const s of ["npx create-expo-app@latest", "(../adapters/react-native/README.md)"]) expect(init).toContain(s);
+  });
+
+  test("feature lists an Expo app's components from its guide", () => {
+    expect(read("modes/feature.md")).toContain("(../adapters/react-native/components.md)");
+  });
+
+  test("review links React Native's checks and state scripts, and mentions --rtl", () => {
+    const review = read("modes/review.md");
+    for (const s of ["(../adapters/react-native/checks.md)", "(../adapters/react-native/checks.md#screens-behind-a-form-or-a-tap)", "--rtl"]) expect(review).toContain(s);
+  });
+
+  test("variants: switching an Expo app's variant", () => {
+    const variants = read("knowledge/variants.md");
+    for (const s of ["<MotifProvider variant=", "(../adapters/react-native/tokens.md#switching-variants)"]) expect(variants).toContain(s);
+  });
+});
+
 describe("Flutter in the skill and the modes", () => {
   test("SKILL.md sends Flutter apps to their guide, and the toolchain row names the Flutter SDK", () => {
     const skill = read("SKILL.md");

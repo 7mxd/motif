@@ -167,8 +167,8 @@ export function sdkFonts(flutter: string): FontsFound {
     return missing;
   }
   const fonts = [
-    { family: "Roboto", files: files.filter((f) => /^roboto-[a-z]+\.ttf$/.test(f)).map((f) => join(dir, f)) },
-    { family: "MaterialIcons", files: files.filter((f) => f === "materialicons-regular.otf").map((f) => join(dir, f)) },
+    { family: "Roboto", files: files.filter((f) => /^roboto-[a-z]+\.ttf$/i.test(f)).map((f) => join(dir, f)) },
+    { family: "MaterialIcons", files: files.filter((f) => f.toLowerCase() === "materialicons-regular.otf").map((f) => join(dir, f)) },
   ].filter((f) => f.files.length > 0);
   return fonts.length > 0 ? { fonts, notes: [] } : missing;
 }

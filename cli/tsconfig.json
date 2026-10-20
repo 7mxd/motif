@@ -9,5 +9,6 @@
     "verbatimModuleSyntax": true,
     "types": ["bun"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test"],
+  "exclude": ["test/fixtures/expo-min", "test/fixtures/expo-audit-routes", "test/fixtures/rn-palettes", "node_modules"]
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { agentChecks } from "../scripts/agent-checks";
 
@@ -54,14 +54,15 @@ describe("the READMEs", () => {
     }
   });
 
-  test("the README's preview note lists the stacks the release has, says Flutter and Jetpack Compose arrive in v0.5.0, and links the parity checklist (Ruling W)", () => {
+  test("the README's preview note lists the stacks the release has, says Flutter, Jetpack Compose and React Native arrive in v0.5.0, and links the parity checklist (Ruling W)", () => {
     const readme = readFileSync(join(REPO, "README.md"), "utf8");
     const note = readme.slice(readme.indexOf("**Preview"), readme.indexOf("\n", readme.indexOf("**Preview")));
-    expect(note).toContain("for React web apps and plain web sites. Flutter and Jetpack Compose apps arrive in v0.5.0 ([what each stack gets](docs/parity.md)).");
+    expect(note).toContain("for React web apps and plain web sites. Flutter, Jetpack Compose and React Native (Expo) apps arrive in v0.5.0 ([what each stack gets](docs/parity.md)).");
     expect(readme).toContain("Full support in v0.4.2: React web apps and plain web sites");
-    expect(readme).not.toMatch(/Full support today[^\n]*(Flutter|Compose)/);
+    expect(readme).not.toMatch(/Full support today[^\n]*(Flutter|Compose|React Native)/);
     expect(readme).toContain("Jetpack Compose apps (Android) arrive in v0.5.0 too; in a Gradle project with several modules, Motif finds each app module and reads its own code, and names the Compose library modules it depends on, which it doesn't read yet.");
     expect(readme).not.toContain("also in a Gradle project with several modules");
+    expect(readme).toContain("React Native apps made with Expo (SDK 52 or later), also inside a monorepo, arrive in v0.5.0");
   });
 
   test("the README's motif connect row says it sets sources up in the agents you choose (Part 3)", () => {
@@ -88,7 +89,7 @@ describe("the release workflow", () => {
 
   test("publishes with written notes and the notices, only after checking the notes exist", () => {
     const publish = section("publish");
-    expect(publish).toContain("needs: [build, plugin, test, flutter, compose]");
+    expect(publish).toContain("needs: [build, plugin, test, flutter, compose, react-native]");
     expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre');
     expect(publish).not.toContain("--generate-notes");
     expect(publish).toContain("cp THIRD-PARTY-NOTICES.txt dist/");
@@ -214,24 +215,40 @@ describe("the agents workflow", () => {
   });
 });
 
-describe("the Compose job and the heavy Compose tests agree on its name", () => {
-  test("MOTIF_STACK_JOB in both workflows' compose job is the stack name the tests pass to heavyStackTests", () => {
-    const tests = ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose", "compose-agp9", "compose-flavors", "compose-junit-platform"]
-      .map((f) => readFileSync(join(REPO, "cli/test", `${f}.test.ts`), "utf8"));
-    for (const t of tests) expect(t).toMatch(/heavyStackTests\("compose", /);
-    for (const f of ["ci.yml", "release.yml"]) {
-      const wf = readFileSync(join(REPO, ".github/workflows", f), "utf8").replace(/\r\n/g, "\n");
-      const job = wf.slice(wf.indexOf("\n  compose:\n")).split(/\n  \w[\w-]*:\n/)[1] ?? "";
-      expect(job).toContain("MOTIF_STACK_JOB: compose\n");
-    }
+describe("each stack job and its heavy tests agree on its name", () => {
+  const HEAVY: Record<string, string[]> = {
+    compose: ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose", "compose-agp9", "compose-flavors", "compose-junit-platform"],
+    "react-native": ["rn-compile", "rn-shot-e2e", "fixtures-rn"],
+  };
+
+  test("every heavy test is one of these: no other test file calls heavyStackTests", () => {
+    const source = (f: string) => readFileSync(join(REPO, "cli/test", f), "utf8");
+    const callers = readdirSync(join(REPO, "cli/test")).filter((f) => f.endsWith(".test.ts") && f !== "release.test.ts" && source(f).includes("heavyStackTests("));
+    expect(callers.map((f) => f.replace(/\.test\.ts$/, "")).sort()).toEqual(Object.values(HEAVY).flat().sort());
   });
+
+  for (const [stack, files] of Object.entries(HEAVY)) {
+    test(`MOTIF_STACK_JOB in both workflows' ${stack} job is the stack name its heavy tests pass to heavyStackTests, and the job runs them`, () => {
+      for (const f of files) expect([f, readFileSync(join(REPO, "cli/test", `${f}.test.ts`), "utf8").includes(`heavyStackTests("${stack}", `)]).toEqual([f, true]);
+      for (const name of ["ci.yml", "release.yml"]) {
+        const wf = readFileSync(join(REPO, ".github/workflows", name), "utf8").replace(/\r\n/g, "\n");
+        const at = wf.indexOf(`\n  ${stack}:\n`);
+        expect([name, at > -1]).toEqual([name, true]);
+        const job = wf.slice(at).split(/\n  \w[\w-]*:\n/)[1] ?? "";
+        expect(job).toContain(`MOTIF_STACK_JOB: ${stack}\n`);
+        const run = job.split("\n").find((l) => l.includes("bun test")) ?? "";
+        const globs = run.split(/\s+/).filter((w) => w.startsWith("test/")).map((g) => new RegExp(`^${g.replace(/\./g, "\.").replace(/\*/g, ".*")}$`));
+        for (const f of files) expect([name, f, globs.some((g) => g.test(`test/${f}.test.ts`))]).toEqual([name, f, true]);
+      }
+    });
+  }
 });
 
 describe("the release workflows are hardened (backlog)", () => {
   test("a tag publishes only after the tests pass", () => {
     const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
     expect(wf).toContain("\n  test:\n");
-    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose]/);
+    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose, react-native]/);
   });
 
   test("every action is pinned to a commit, with its version beside it", () => {

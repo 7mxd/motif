@@ -147,6 +147,15 @@ export interface CaptureOptions {
   timeoutMs?: number;
   audit?: boolean;
   motionSampleMs?: number;
+  /** The width the reduced-motion check runs at, for apps with no desktop size (Expo: a phone); the desktop size when not given. */
+  motionWidth?: number;
+  /**
+   * An Expo app (its web target): Pressables with no role, and icon-font glyphs, are judged as controls (audit), and
+   * each screenshot waits until the screen has drawn (expoReady).
+   */
+  reactNative?: boolean;
+  /** How long an Expo screen may stay bundling or empty after it loaded (30 s); then the route's error says which. */
+  expoReadyMs?: number;
   /** Also capture each page after each of these scripts runs in it. */
   states?: StateScript[];
   /** How long a state script may run (15 s). */
@@ -155,6 +164,17 @@ export interface CaptureOptions {
   viewports?: Viewport[];
   /** Design variants to capture besides the default (always captured): each page again with data-variant set on <html>. */
   variants?: string[];
+  /**
+   * The default variant's id, when the guide has variants: the default's screenshots set data-variant to it too, so an
+   * app that passes its own variant to its theme (a React Native MotifProvider) is still drawn in the default. Motif's
+   * web CSS has no rule for that id, so a web page looks the same.
+   */
+  defaultVariant?: string;
+  /**
+   * The light or dark an app keeps whatever the phone's setting (an Expo app's userInterfaceStyle): every screenshot is
+   * taken in it, the .dark ones too, as a phone would show them. The browser's setting is followed when not given.
+   */
+  appScheme?: Scheme;
   /**
    * Also capture each page right to left, in this language (a BCP 47 primary tag such as "ar"): the page loads in that
    * locale, and gets dir="rtl" from Motif when it doesn't turn right to left by itself.
@@ -187,6 +207,54 @@ export function shotName(slug: string, viewport: string, scheme: Scheme, variant
 // The Next.js dev badge isn't part of the app.
 const HIDE_DEV_BADGES = `(() => { const s = document.createElement("style"); s.textContent = "nextjs-portal { display: none !important; }"; document.head.append(s); return true; })()`;
 const PAGE_HEIGHT = "document.documentElement.scrollHeight";
+
+/**
+ * Where an Expo screen is, from inside the page (decision 0009): "bundling" while Expo's dev "Bundling..." toast (a
+ * lazily loaded route, expo-router's SuspenseFallback) or its fast-refresh badge shows; "empty" while nothing in #root
+ * draws anything (no text, image, field or background: a layout still waiting for useFonts returns null); else "ready".
+ */
+const EXPO_STATE = String.raw`(() => {
+  const bundling = [...document.querySelectorAll("body *")].some((e) => e.childElementCount === 0 && /^Bundling(\.\.\.|…)$/.test((e.textContent || "").trim()));
+  if (bundling || document.querySelector(".__expo_fast_refresh_show")) return "bundling";
+  const root = document.getElementById("root") || document.body;
+  const clear = (c) => c === "transparent" || /^rgba\(.*,\s*0\)$/.test(c);
+  const draws = (e) => {
+    const box = e.getBoundingClientRect();
+    if (box.width < 1 || box.height < 1) return false;
+    if (e.checkVisibility && !e.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+    if (/^(img|svg|canvas|video|input|textarea|picture|iframe)$/i.test(e.tagName)) return true;
+    if ([...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) return true;
+    const s = getComputedStyle(e);
+    return !clear(s.backgroundColor) || s.backgroundImage !== "none";
+  };
+  return [...root.querySelectorAll("*")].some(draws) ? "ready" : "empty";
+})()`;
+
+type ExpoState = "ready" | "bundling" | "empty";
+
+/**
+ * Waits up to maxMs for an Expo screen to draw (EXPO_STATE). The quiet wait isn't enough: in Expo's "static" web
+ * output each route is a chunk loaded after the page, and the toast shows while Metro builds it. Errors the page
+ * throws meanwhile end the wait; they are returned, and the screen is captured with them, as any page that threw.
+ */
+async function expoReady(page: { evaluate<T>(e: string): Promise<T>; takeErrors(): string[] }, maxMs: number): Promise<{ state: ExpoState; waited: boolean; errors: string[] }> {
+  const until = Date.now() + maxMs;
+  const errors: string[] = [];
+  for (let waited = false; ; waited = true) {
+    const state = await page.evaluate<ExpoState>(EXPO_STATE);
+    errors.push(...page.takeErrors());
+    if (state === "ready" || errors.length > 0 || Date.now() >= until) return { state, waited, errors };
+    await Bun.sleep(100);
+  }
+}
+
+/** The route's error for an Expo screen that never drew. */
+function notDrawn(state: "bundling" | "empty", maxMs: number): string {
+  const s = Math.round(maxMs / 1000);
+  return state === "bundling"
+    ? `Expo was still bundling this screen ${s} s after it loaded (its "Bundling..." toast was showing), so it wasn't captured. Run motif shot again; if it happens again, open the page in a browser to see whether Metro finishes it.`
+    : `The screen was still empty ${s} s after it loaded, so it wasn't captured. Open the page in a browser to see what it waits for (fonts loaded with useFonts, data it fetches) before it draws.`;
+}
 
 /** An address on this computer: a dev server there may use https with a certificate of its own. */
 export const isLocal = (url: string) => /^https?:\/\/((?:[\w-]+\.)*localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\])(:\d+)?(\/|$)/i.test(url);
@@ -231,6 +299,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
   const settleMs = opts.settleMs ?? 400;
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const stateTimeoutMs = opts.stateTimeoutMs ?? 15_000;
+  const expoReadyMs = opts.expoReadyMs ?? 30_000;
   mkdirSync(opts.outDir, { recursive: true });
   // A local dev server on https with its own certificate: the browser accepts that one certificate, nothing else.
   const key = opts.baseUrl.startsWith("https:") && isLocal(opts.baseUrl) ? await serverKey(opts.baseUrl) : null;
@@ -264,7 +333,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
         for (const viewport of viewports) {
           for (const scheme of SCHEMES) {
             const media = [
-              { name: "prefers-color-scheme", value: scheme },
+              { name: "prefers-color-scheme", value: opts.appScheme ?? scheme },
               { name: "prefers-reduced-motion", value: "reduce" },
             ];
             // Each variant left to right and, with --rtl, right to left in that language.
@@ -297,15 +366,28 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   if (!stuck) await page.waitForQuiet(300, 5000);
                   // What the page threw as it loaded is the page's own error, the same in every state: not tagged.
                   const loadErrors = page.takeErrors();
+                  // An Expo screen can be quiet before it has drawn (a route's chunk still bundling, fonts still loading):
+                  // it is waited for, unless it threw. One that never draws is the route's error, not a blank screenshot.
+                  if (opts.reactNative && !stuck && loadErrors.length === 0) {
+                    const ready = await expoReady(page, expoReadyMs);
+                    loadErrors.push(...ready.errors);
+                    if (ready.state !== "ready" && ready.errors.length === 0) throw new Error(notDrawn(ready.state, expoReadyMs));
+                    if (ready.waited) {
+                      // What the screen fetched once it drew (images, its fonts) is waited for as on load.
+                      await page.waitForQuiet(300, 5000);
+                      await page.evaluate(`Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 5000))]).then(() => true)`);
+                    }
+                  }
                   addErrors(loadErrors);
                   if (lang && !(await page.evaluate<boolean>(`getComputedStyle(document.documentElement).direction === "rtl"`))) {
                     // The page didn't turn right to left by itself in that language: Motif turns it, and says so.
                     await page.evaluate(`(() => { const html = document.documentElement; html.dir = "rtl"; html.lang = ${JSON.stringify(lang)}; return true; })()`);
                     result.rtlForced = true;
                   }
-                  if (variant) {
+                  const chosen = variant ?? opts.defaultVariant;
+                  if (chosen) {
                     // The variant is chosen on <html>, after load and before any state runs; its fonts may differ.
-                    await page.evaluate(`document.documentElement.dataset.variant = ${JSON.stringify(variant)}; Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 500 : 2000}))]).then(() => true)`);
+                    await page.evaluate(`document.documentElement.dataset.variant = ${JSON.stringify(chosen)}; Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 500 : 2000}))]).then(() => true)`);
                   }
                   if (state) {
                     try {
@@ -335,7 +417,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   result.shots.push(file);
                   if (opts.audit) {
                     try {
-                      const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs });
+                      const found = await auditPage(page, { viewport: viewport.name, scheme, motionSampleMs: opts.motionSampleMs, ...(opts.reactNative ? { reactNative: true } : {}), ...(opts.motionWidth ? { motion: viewport.width === opts.motionWidth } : {}) });
                       for (const raw of found) issues.push({ ...raw, route, viewport: viewport.name, size: viewport.file ?? viewport.name, scheme, shot: file, ...(state ? { state: state.name } : {}), ...(variant ? { variant } : {}), ...(lang ? { rtl: true as const } : {}) });
                     } catch (e) {
                       result.auditError = e instanceof Error ? e.message : String(e);

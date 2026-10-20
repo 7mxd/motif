@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listSourceFiles } from "../src/check/files";
+import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listRnFiles, listSourceFiles } from "../src/check/files";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -159,5 +159,22 @@ describe("listKotlinFiles", () => {
       "app/src/screenshotTestDebug/kotlin/DebugShots.kt": "x", "app/src/sharedTest/java/Shared.kt": "x", "app/src/testFixtures/java/Fake.kt": "x",
     });
     expect(paths(listKotlinFiles(root, "app"))).toEqual(["app/src/demo/java/com/example/Demo.kt", "app/src/main/java/com/example/Main.kt"]);
+  });
+});
+
+describe("listRnFiles", () => {
+  test("reads an Expo app's scripts, not native folders, build output, expo's own files or tests", () => {
+    const root = makeProject({
+      "package.json": "{}",
+      "app/index.tsx": "x", "app/_layout.tsx": "x", "components/Button.js": "x", "src/theme.ts": "x", "styles.css": "x",
+      "ios/Pods/x.js": "x", "android/app/y.js": "x", ".expo/types/router.d.ts": "x", "dist/bundle.js": "x", "web-build/a.js": "x",
+      ".motif/run/b.tsx": "x", "expo-env.d.ts": "x", "app/index.test.tsx": "x", "__tests__/a.tsx": "x", "components/__tests__/b.tsx": "x",
+    });
+    expect(paths(listRnFiles(root, "."))).toEqual(["app/_layout.tsx", "app/index.tsx", "components/Button.js", "src/theme.ts"]);
+  });
+
+  test("an app in a monorepo is listed from its folder", () => {
+    const root = makeProject({ "mobile/a/app/index.tsx": "x", "mobile/a/ios/z.js": "x", "mobile/b/app/index.tsx": "x" });
+    expect(paths(listRnFiles(root, "mobile/a"))).toEqual(["mobile/a/app/index.tsx"]);
   });
 });

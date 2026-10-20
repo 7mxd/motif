@@ -206,7 +206,7 @@ function checkNativeApp(root: string, app: AppInfo, native: NativeStack, scan: N
   const lines = new Map(files.map((f) => [f.path, f.text.split(/\r?\n/)]));
 
   const appWide = (native.appWide?.(appFiles, generated) ?? []).filter((h) => inScope.has(h.file));
-  const scanned = files.flatMap((f) => scan(f, scale));
+  const scanned = files.flatMap((f) => scan(f, scale, { root, app }));
   const { violations, exceptions } = sortOut([...scanned, ...appWide], lines, (found) => {
     const suggestion = suggestRole(found, theme, { variants: set.variants, ...(native.role ? { role: native.role } : {}) });
     return { ...found, ...(native.fix ? { fix: native.fix(found) } : {}), ...(suggestion ? { suggestion } : {}) };

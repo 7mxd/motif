@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { onExit } from "../cleanup";
 import { windowsExe } from "../system";
+import { isExpoApp } from "../stacks/react-native/project";
 
 export type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
 
@@ -11,6 +12,8 @@ export interface DevCommand {
   /** How a person would type it, e.g. "pnpm run dev". */
   display: string;
   packageManager: PackageManager;
+  /** Variables the server needs besides the usual (Expo: CI=1, so it doesn't prompt). */
+  env?: Record<string, string>;
 }
 
 export interface DevServer {
@@ -44,18 +47,32 @@ function installRoot(appDir: string): string {
   return appDir;
 }
 
+/** A port nothing is listening on, for a server that must be told one. */
+function freePort(): number {
+  const probe = Bun.serve({ port: 0, fetch: () => new Response("") });
+  const port = probe.port!;
+  probe.stop(true);
+  return port;
+}
+
+/** Expo doesn't prompt, and sends nothing to its telemetry, when Motif starts it. */
+const EXPO_ENV = { CI: "1", EXPO_NO_TELEMETRY: "1" };
+/** How each package manager runs a program from the app's dependencies. */
+const EXEC: Record<PackageManager, string[]> = { npm: ["npx"], pnpm: ["pnpm", "exec"], yarn: ["yarn"], bun: ["bunx"] };
+
 const lockfileIn = (dir: string) => LOCKFILES.find(([file]) => existsSync(join(dir, file)))?.[1];
 
 /** How to start this app's dev server, or a plain explanation of why Motif can't. */
 export function devCommand(
   appDir: string,
-  env: { platform?: NodeJS.Platform; which?: (cmd: string) => string | null; vars?: Record<string, string | undefined> } = {},
+  env: { platform?: NodeJS.Platform; which?: (cmd: string) => string | null; vars?: Record<string, string | undefined>; port?: number } = {},
 ): DevCommand | { error: string } {
   const platform = env.platform ?? process.platform;
   const which = env.which ?? ((cmd: string) => Bun.which(cmd));
   const pkg = readJson(join(appDir, "package.json"));
   if (!pkg) return { error: "This app has no readable package.json, so Motif can't start it. Start it yourself and pass its address with --url." };
-  if (typeof pkg.scripts?.dev !== "string") {
+  const expo = isExpoApp(appDir);
+  if (!expo && typeof pkg.scripts?.dev !== "string") {
     return { error: 'This app has no "dev" script in package.json. Start it yourself and pass its address with --url.' };
   }
   const root = installRoot(appDir);
@@ -72,10 +89,21 @@ export function devCommand(
   if (!installed(appDir) && !installed(root)) {
     return { error: `This app's dependencies aren't installed yet. Run "${pm} install" in its folder, then try again.` };
   }
-  const display = `${pm} run dev`;
+  // An Expo app starts its web target: its "web" script, else expo itself on a port Motif chose.
+  const script = expo && typeof pkg.scripts?.web === "string" ? "web" : expo ? null : "dev";
+  const [bin, ...pre] = script === null ? EXEC[pm] : [pm, "run", script];
+  const args = script === null ? ["expo", "start", "--web", "--port", String(env.port ?? freePort())] : [];
+  const display = [bin, ...pre, ...args].join(" ");
   // npm, pnpm and yarn are .cmd scripts on Windows, and only cmd.exe can run those.
-  const command = platform === "win32" && pm !== "bun" ? [windowsExe("cmd.exe", env.vars), "/d", "/s", "/c", display] : [exe, "run", "dev"];
-  return { command, display, packageManager: pm };
+  const runner = which(bin!);
+  if (!runner && pm !== "bun") return { error: `This app uses ${pm}, and ${bin} isn't on PATH. Install Node.js, or start the app yourself and pass its address with --url.` };
+  const command =
+    platform === "win32" && pm !== "bun"
+      ? [windowsExe("cmd.exe", env.vars), "/d", "/s", "/c", display]
+      : runner
+        ? [runner, ...pre, ...args]
+        : [exe, "x", ...args]; // bun without bunx: "bun x" is the same program
+  return { command, display, packageManager: pm, ...(expo ? { env: EXPO_ENV } : {}) };
 }
 
 /** The first local address a dev server printed (Vite, Next.js and most others print one), or null. */
@@ -132,12 +160,12 @@ export async function answers(url: string): Promise<boolean> {
   }
 }
 
-export async function startDevServer(opts: { cwd: string; command: string[]; timeoutMs?: number }): Promise<DevServer> {
+export async function startDevServer(opts: { cwd: string; command: string[]; timeoutMs?: number; env?: Record<string, string> }): Promise<DevServer> {
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const proc = spawn(opts.command[0]!, opts.command.slice(1), {
     cwd: opts.cwd,
     // BROWSER=none: dev servers that open a browser tab on start shouldn't.
-    env: { ...process.env, BROWSER: "none", FORCE_COLOR: "0", NO_COLOR: "1" },
+    env: { ...process.env, BROWSER: "none", FORCE_COLOR: "0", NO_COLOR: "1", ...opts.env },
     stdio: ["ignore", "pipe", "pipe"],
     detached: process.platform !== "win32", // its own process group, so the whole tree can be stopped
     windowsHide: true,

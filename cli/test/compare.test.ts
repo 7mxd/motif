@@ -5,7 +5,7 @@ import { launchBrowser } from "../src/browser/cdp";
 import { addPngText, pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 import { shotName } from "../src/shot/capture";
-import { comparePage, identicalVariantNotes, identicalVariants, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
+import { comparePage, darkLooksLikeLight, identicalVariantNotes, identicalVariants, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -383,5 +383,22 @@ describe("variants that look like the default", () => {
     const dir = tempDir("motif-same-");
     expect(identicalVariants(write(dir, { "index.mobile.png": "a", "index.mobile.dark.png": "a" }))).toEqual([]);
     expect(identicalVariants(write(dir, { "about+men.mobile.png": "a" }))).toEqual([]);
+  });
+});
+
+describe("darkLooksLikeLight (Task 7)", () => {
+  test("every dark screenshot byte-identical to its light twin, in any variant, state or direction", () => {
+    const dir = tempDir("motif-dark-");
+    const files: Record<string, string> = {
+      "index.mobile.png": "a", "index.mobile.dark.png": "a", "index@open+men.mobile.rtl.png": "b", "index@open+men.mobile.rtl.dark.png": "b",
+    };
+    for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
+    const shots = Object.keys(files).map((f) => join(dir, f));
+    expect(darkLooksLikeLight(shots)).toBe(true);
+    writeFileSync(join(dir, "index@open+men.mobile.rtl.dark.png"), "c");
+    expect(darkLooksLikeLight(shots)).toBe(false);
+    // No dark screenshots, or one without its light twin: nothing to say.
+    expect(darkLooksLikeLight([join(dir, "index.mobile.png")])).toBe(false);
+    expect(darkLooksLikeLight([join(dir, "index.mobile.dark.png")])).toBe(false);
   });
 });

@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "expo-min",
+    "slug": "expo-min",
+    "version": "1.0.0",
+    "scheme": "expo-min",
+    "userInterfaceStyle": "automatic",
+    "web": { "bundler": "metro", "output": "single" },
+    "plugins": ["expo-router", "expo-font"]
+  }
+}

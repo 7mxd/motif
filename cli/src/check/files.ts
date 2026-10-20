@@ -49,6 +49,9 @@ const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/");
  */
 export const COMPOSE_IGNORES = ["/build/", "/.gradle/", "/.motif/", "src/test*/", "src/androidTest*/", "src/screenshotTest*/", "src/sharedTest/", "*.kts"];
 
+/** An Expo app's native folders, build and export output, and tests: never the team's own code. */
+export const RN_IGNORES = ["/ios/", "/android/", "/.expo/", "/dist/", "/web-build/", "/.motif/", "expo-env.d.ts", "*.test.*", "__tests__/"];
+
 export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_LENGTH = 3000;
 
@@ -98,6 +101,12 @@ export function listKotlinFiles(root: string, appPath: string, opts: { paths?: s
     defaults: DART_DEFAULT_IGNORES,
     packageMarker: ["build.gradle.kts", "build.gradle"],
   });
+}
+
+/** A React Native (Expo) app's scripts, without its native folders, build output and tests. */
+export function listRnFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
+  const scripts = Object.fromEntries([".ts", ".tsx", ".js", ".jsx"].map((e) => [e, "script" as const]));
+  return listSourceFiles(root, appPath, { ...opts, langs: scripts, extraIgnores: RN_IGNORES });
 }
 
 export function listSourceFiles(

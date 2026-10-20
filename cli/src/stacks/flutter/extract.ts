@@ -45,7 +45,7 @@ const SCHEME_ROLES: Record<string, string> = {
 };
 
 /** Words in a palette's name that say nothing about which palette it is (lightTheme, darkPalette). */
-const GENERIC_WORDS = new Set(["theme", "palette", "colors", "colours", "scheme", "mode"]);
+export const GENERIC_WORDS = new Set(["theme", "palette", "colors", "colours", "scheme", "mode"]);
 
 const IDENT = "[A-Za-z_$][\\w$]*";
 const escape = (s: string) => s.replace(/[$]/g, "\\$");

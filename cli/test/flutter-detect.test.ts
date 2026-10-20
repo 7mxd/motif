@@ -139,7 +139,7 @@ describe("final review: the commands reach a stack through its registration (Min
     expect(flutter.doctor).toBe(flutterDoctor);
     expect(flutter.extensions).toEqual([".dart"]);
     expect(flutter.stateFiles).toEqual({ extension: ".dart", language: "Dart" });
-    expect(nativeStacks().map((s) => s.id)).toEqual(["flutter", "compose"]);
+    expect(nativeStacks().map((s) => s.id)).toEqual(["flutter", "compose", "react-native"]);
   });
 });
 

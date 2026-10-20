@@ -214,6 +214,7 @@ describe("motif shot", () => {
     expect(r.exitCode).toBe(0);
     expect(calls.started).toEqual([]);
     expect(calls.captured[0]).toMatchObject({ baseUrl: "http://localhost:5173", routes: ["/", "/settings", "/about"], outDir: join(root, "shots") });
+    expect(calls.captured[0]).not.toHaveProperty("reactNative");
     expect(existsSync(join(root, "shots/.gitignore"))).toBe(false);
   });
 
@@ -551,6 +552,23 @@ describe("motif shot --variant", () => {
     expect(none.calls.captured[0]!.variants).toBeUndefined();
   });
 
+  test("the default's shots name the default variant whenever the guide has variants (Task 7: an app's own variant doesn't take them over)", async () => {
+    for (const flags of [{ url: URL_ }, { url: URL_, variant: "men" }, { url: URL_, variant: "women" }, { url: URL_, variant: "all", audit: true }] as Record<string, string | boolean>[]) {
+      const f = fakes();
+      await runShot(withVariants(), ctx(flags), f.deps);
+      expect(f.calls.captured[0]!.defaultVariant).toBe("women");
+    }
+    // Without variants, or with a variants block validate rejects, nothing is set.
+    const plain = fakes();
+    await runShot(makeProject({ "design/tokens.json": JSON.stringify(validTokens()) }), ctx({ url: URL_ }), plain.deps);
+    expect(plain.calls.captured[0]!.defaultVariant).toBeUndefined();
+    const t = twoVariantTokens();
+    t.$extensions["dev.motif"].variants.push({ id: "../../../escaped", label: "X" });
+    const broken = fakes();
+    await runShot(makeProject({ "design/tokens.json": JSON.stringify(t) }), ctx({ url: URL_ }), broken.deps);
+    expect(broken.calls.captured[0]!.defaultVariant).toBeUndefined();
+  });
+
   test("--audit with --variant covers just that variant (and the default)", async () => {
     const f = fakes();
     await runShot(withVariants(), ctx({ url: URL_, audit: true, variant: "women" }), f.deps);
@@ -624,6 +642,14 @@ describe("motif shot --variant", () => {
     const r = await runShot(withVariants(), ctx({ url: URL_, variant: "men" }), differ.deps);
     expect(r.text).not.toContain("looks exactly like the default");
     expect(r.data.notes).toBeUndefined();
+  });
+});
+
+describe("motif shot --audit on the web stacks", () => {
+  test("the reduced-motion check stays at the desktop size (no motion width is passed)", async () => {
+    const { deps, calls } = fakes();
+    await runShot(makeProject(NEXT_APP), ctx({ audit: true }), deps);
+    expect(calls.captured[0]!.motionWidth).toBeUndefined();
   });
 });
 
