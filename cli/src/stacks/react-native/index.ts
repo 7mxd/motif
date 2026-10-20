@@ -10,6 +10,7 @@ import { andList, stripBom } from "../../text";
 import { otherChanges } from "../flutter";
 import type { NativeStack } from "../native";
 import { rnDoctor } from "./doctor";
+import { collectReactNative } from "./extract";
 import { rnFonts } from "./fonts";
 import { generateReactNative } from "./generate";
 import { declared, srcRoot } from "./project";
@@ -93,6 +94,8 @@ export const REACT_NATIVE: NativeStack = {
   fix: rnFix,
   paletteFile: rnPaletteFile,
   role: rnRole,
+
+  collect: collectReactNative,
 
   doctor: rnDoctor,
 };

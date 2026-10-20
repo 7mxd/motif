@@ -45,13 +45,13 @@ const SCHEME_ROLES: Record<string, string> = {
 };
 
 /** Words in a palette's name that say nothing about which palette it is (lightTheme, darkPalette). */
-const GENERIC_WORDS = new Set(["theme", "palette", "colors", "colours", "scheme", "mode"]);
+export const GENERIC_WORDS = new Set(["theme", "palette", "colors", "colours", "scheme", "mode"]);
 
 const IDENT = "[A-Za-z_$][\\w$]*";
 const escape = (s: string) => s.replace(/[$]/g, "\\$");
 
 /** A Dart name in kebab case: textMuted → text-muted, HiSalonColors → hi-salon-colors. */
-function kebab(name: string): string {
+export function kebab(name: string): string {
   return name
     .replace(/^[_$]+/, "")
     .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
@@ -61,8 +61,8 @@ function kebab(name: string): string {
 }
 
 /** The words of a name: HighContrast → High, Contrast; high_contrast → high, contrast. */
-const words = (name: string) => kebab(name).split("-").filter(Boolean);
-const title = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+export const words = (name: string) => kebab(name).split("-").filter(Boolean);
+export const title = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
 
 /**
  * True when a declaration at `index` is a palette's: a top-level one, or a static member of a class (mixin, extension)
@@ -144,8 +144,11 @@ interface Instance {
   label: string;
 }
 
+/** What pairing needs to know of a palette: its place in the source, which half it is, and the words that say which one. */
+export interface PairableInstance { name: string; order: number; dark: boolean; key: string; label: string }
+
 /** Pairs a palette's instances into light/dark halves, picks the default, and names the variants. */
-function pairInstances(instances: Instance[]): {
+export function pairInstances<Instance extends PairableInstance>(instances: Instance[]): {
   defaultPair: { light?: Instance; dark?: Instance } | undefined;
   variants: { id: string; label: string; light?: Instance; dark?: Instance }[];
   unpaired: Instance[];

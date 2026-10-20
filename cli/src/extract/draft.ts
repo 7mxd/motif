@@ -37,8 +37,8 @@ export interface Occurrences {
    * names that say a role, buttons' fills, colour lists in scripts as data.
    */
   followVariables?: boolean;
-  /** Where the colours were read from, for the notes: an app's CSS (the default), or a Flutter app's Dart theme code. */
-  source?: "css" | "dart";
+  /** Where the colours were read from, for the notes: an app's CSS (the default), a Flutter app's Dart theme code, or a React Native app's TypeScript theme code. */
+  source?: "css" | "dart" | "script";
   /** A label for a design variant whose name says more than its id (high-contrast → High Contrast). */
   variantLabels?: Record<string, string>;
   /** Notes from reading the code, for the report. */
@@ -686,7 +686,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
 
   // A Flutter app's palette says more than its colour groups: a role named by a palette field takes the field's own colour,
   // even one no group stands for alone (an off-white page beside white cards), or one that is see-through (muted text).
-  const dartSource = occ.source === "dart";
+  const dartSource = occ.source === "dart" || occ.source === "script";
   /** Roles drafted from a see-through palette field laid over the background: role → the field. */
   const flattened = new Map<string, string>();
   const takenIds = new Set([...clusters.map((c) => c.id), "white", "ink"]);
@@ -1107,10 +1107,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   };
 
   const darkRoles = Object.keys(darkBase).filter((r) => BASE_ROLES.includes(r));
-  const dart = occ.source === "dart";
+  const dart = occ.source === "dart" || occ.source === "script";
+  const themeCode = occ.source === "script" ? "your theme code" : "your Dart theme code";
   const notes = [
     darkRoles.length
-      ? `Dark-mode colours came from ${dart ? "your Dart theme code" : "your CSS"} for ${darkRoles.join(", ")}; the others were copied from light mode. Review them before turning on dark mode.`
+      ? `Dark-mode colours came from ${dart ? themeCode : "your CSS"} for ${darkRoles.join(", ")}; the others were copied from light mode. Review them before turning on dark mode.`
       : "Dark-mode colours were copied from light mode. Review them before turning on dark mode.",
   ];
   const variables = (occ.variables ?? []).filter((v) => v.light).map((v) => {
@@ -1126,7 +1127,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     notes.push(`Your CSS sets ${designVariants.length} design variants (${designVariants.map((v) => v.id).join(", ")}): the :root colours are the default, and each other block's colours are on the roles they match. Review them, and rename the variants.`);
   }
   if (variables.length && dart) {
-    notes.push(`Your Dart theme code sets ${variables.length} ${variables.length === 1 ? "colour" : "colours"} (palette fields and ColorScheme arguments); design/extract-report.json shows the role each matches.`);
+    notes.push(`${occ.source === "script" ? "Your theme code" : "Your Dart theme code"} sets ${variables.length} ${variables.length === 1 ? "colour" : "colours"} (${occ.source === "script" ? "colour roles in light and dark objects" : "palette fields and ColorScheme arguments"}); design/extract-report.json shows the role each matches.`);
   } else if (variables.length) {
     notes.push(`Your CSS sets ${variables.length} colour ${variables.length === 1 ? "variable" : "variables"}; design/extract-report.json shows the role each matches, so you can define them from Motif's (--bg: var(--motif-color-background)).`);
   }
