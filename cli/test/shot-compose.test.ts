@@ -491,6 +491,33 @@ describe("shootCompose", () => {
     expect(timedOut).toBe("Gradle didn't finish within 700 s. The last lines it printed:\n> Task :app:testDebugUnitTest");
   });
 
+  test("a JDK too new for the project's Gradle says which JDK to use, not Gradle's internal error (final review)", async () => {
+    const root = makeProject(COMPOSE_APP);
+    // Captured: Gradle 7.6.4 started on Android Studio's JBR 21 (2026-10-21).
+    const captured = `Starting a Gradle Daemon (subsequent builds will be faster)
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not open settings generic class cache for settings file 'C:\\tmp\\old-gradle\\settings.gradle' (C:\\Users\\PC\\.gradle\\caches\\7.6.4\\scripts\\eh27u5yccu85b13r3rmc1m6c9).
+> BUG! exception in phase 'semantic analysis' in source unit '_BuildScript_' Unsupported class file major version 65
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+
+* Get more help at https://help.gradle.org
+
+BUILD FAILED in 16s`;
+    const { run } = fakeRun(() => ({ code: 1, output: captured }));
+    const error = await shootCompose(options(root), base(root, run)).catch((e: Error) => e.message);
+    expect(error).toBe(
+      'This project\'s Gradle can\'t run on JDK 21, the one Motif found (/jdk): Gradle said "Unsupported class file major version 65". ' +
+        "Set JAVA_HOME to a JDK this Gradle supports (JDK 17 works with every Gradle the Android plugin 8.6 and later needs), or update the project's Gradle wrapper, then run motif shot again.",
+    );
+  });
+
   test("a failing run leaves only .motif/.gitignore: the test, the hooks, the init script and the options are removed", async () => {
     const root = makeProject(COMPOSE_APP);
     const app = join(root, "app");

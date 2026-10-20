@@ -53,6 +53,21 @@ const PHONE_INSETS = { top: 47, bottom: 34 };
 /** What a Gradle failure that couldn't reach the network prints. */
 const OFFLINE = /Could not resolve|UnknownHostException/;
 
+/**
+ * What Gradle prints when it runs on a JDK newer than it supports: its Groovy can't read the JDK's classes. Captured with
+ * Gradle 7.6.4 on JDK 21: "> BUG! exception in phase 'semantic analysis' in source unit '_BuildScript_' Unsupported class
+ * file major version 65".
+ */
+const JDK_TOO_NEW = /Unsupported class file major version (\d+)/;
+
+/** Which JDK to use instead, in plain words (class file version 65 is JDK 21). */
+function jdkTooNewText(classVersion: number, javaHome: string): string {
+  return (
+    `This project's Gradle can't run on JDK ${classVersion - 44}, the one Motif found (${javaHome}): Gradle said "Unsupported class file major version ${classVersion}". ` +
+    "Set JAVA_HOME to a JDK this Gradle supports (JDK 17 works with every Gradle the Android plugin 8.6 and later needs), or update the project's Gradle wrapper, then run motif shot again."
+  );
+}
+
 export const SETUP_FILE = "design/states/Setup.kt";
 const SETUP_SIGNATURE = "fun motifSetup(variant: String, locale: Locale, dark: Boolean)";
 const STATE_SIGNATURE = "fun motifState(rule: ComposeContentTestRule)";
@@ -498,6 +513,8 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
       const said = result.output.split(/\r?\n/).find((l) => ROBOLECTRIC_DOWNLOAD_FAILED.test(l) || OFFLINE.test(l))?.trim();
       throw new Error(said ? `${COMPOSE_OFFLINE} (Gradle said: ${said})` : COMPOSE_OFFLINE);
     }
+    const tooNew = !result.timedOut ? JDK_TOO_NEW.exec(result.output) : null;
+    if (tooNew) throw new Error(jdkTooNewText(Number(tooNew[1]), jdk.javaHome));
     const why = result.problem ?? (result.timedOut ? `Gradle didn't finish within ${seconds} s.` : "Gradle stopped before drawing any screen.");
     const tail = gradleTail(result.output);
     throw new Error(tail ? `${why} The last lines it printed:\n${tail}` : why);
