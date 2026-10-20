@@ -832,3 +832,19 @@ describe("final review: text no loaded font has letters for (Important #3, hands
     ]);
   });
 });
+
+describe("final review: several apps and no browser (Minor #8)", () => {
+  test("says to choose an app with --app before any browser advice: a Flutter app needs no browser", async () => {
+    const root = makeProject({
+      "mobile/customer/pubspec.yaml": PUBSPEC.replace("name: shop", "name: customer"),
+      "mobile/customer/lib/main.dart": MAIN,
+      "mobile/admin/pubspec.yaml": PUBSPEC.replace("name: shop", "name: admin"),
+      "mobile/admin/lib/main.dart": MAIN,
+    });
+    const { deps } = fakes();
+    const r = await runShot(root, ctx(), { ...deps, findBrowser: () => null });
+    expect(r.exitCode).toBe(2);
+    expect(r.data.error).toBe("several-apps");
+    expect(r.text).toBe("There are several apps here (mobile/admin, mobile/customer). Choose one with --app <path>.");
+  });
+});

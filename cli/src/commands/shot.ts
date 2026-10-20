@@ -285,6 +285,10 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     return usage(`No Chrome or Edge found, so Motif can't take screenshots. ${INSTALL_HINT}`, { error: "needs-browser", status: "needs_browser" });
   };
+  // Which app comes before which browser: a native app among them needs none.
+  if (!givenUrl && !app && selected.length > 1) {
+    return usage(`There are several apps here (${selected.map((a) => a.path).join(", ")}). Choose one with --app <path>.`, { error: "several-apps" });
+  }
   let browser: BrowserInfo | undefined;
   if (!shoot) {
     const found = findBrowserOrRefuse();
