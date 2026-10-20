@@ -627,6 +627,14 @@ describe("motif shot --variant", () => {
   });
 });
 
+describe("motif shot --audit on the web stacks", () => {
+  test("the reduced-motion check stays at the desktop size (no motion width is passed)", async () => {
+    const { deps, calls } = fakes();
+    await runShot(makeProject(NEXT_APP), ctx({ audit: true }), deps);
+    expect(calls.captured[0]!.motionWidth).toBeUndefined();
+  });
+});
+
 describe("motif shot --rtl", () => {
   const URL_ = "http://localhost:3000";
   /** The page left to right and, with --rtl, right to left too. */

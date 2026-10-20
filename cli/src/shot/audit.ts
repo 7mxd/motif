@@ -228,7 +228,7 @@ const INSTALL_AUDIT = `(${installAudit.toString()})()`;
 const NAME_RULES = ["button-name", "link-name", "label", "image-alt"];
 
 /** Audits the page as it is now (loaded and settled, reduced motion emulated). */
-export async function auditPage(page: Page, ctx: { viewport: "mobile" | "desktop"; scheme: Scheme; motionSampleMs?: number }): Promise<RawIssue[]> {
+export async function auditPage(page: Page, ctx: { viewport: "mobile" | "desktop"; scheme: Scheme; motionSampleMs?: number; motion?: boolean }): Promise<RawIssue[]> {
   await page.evaluate(`${AXE_SOURCE}\n;true`);
   await page.evaluate(INSTALL_AUDIT);
   const light = ctx.scheme === "light";
@@ -236,7 +236,7 @@ export async function auditPage(page: Page, ctx: { viewport: "mobile" | "desktop
   const rules = light ? ["color-contrast", "target-size", ...NAME_RULES] : ["color-contrast", ...NAME_RULES];
   const issues = await page.evaluate<RawIssue[]>(`__motifAudit.axe(${JSON.stringify(rules)}, ${JSON.stringify(NAME_RULES)})`);
   if (light && ctx.viewport === "mobile") issues.push(...(await page.evaluate<RawIssue[]>("__motifAudit.smallTargets(44)")));
-  if (light && ctx.viewport === "desktop") issues.push(...(await page.evaluate<RawIssue[]>(`__motifAudit.motion(${ctx.motionSampleMs ?? 300})`)));
+  if (light && (ctx.motion ?? ctx.viewport === "desktop")) issues.push(...(await page.evaluate<RawIssue[]>(`__motifAudit.motion(${ctx.motionSampleMs ?? 300})`)));
   return issues;
 }
 

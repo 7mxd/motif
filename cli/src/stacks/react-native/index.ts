@@ -59,6 +59,8 @@ function variantWiring(set: ThemeSet): string {
 
 /** How a design variant is set in Expo apps, for the note when a variant looks exactly like the default. */
 export const RN_VARIANT_HOW = "MotifProvider, which follows data-variant on the web";
+/** Expo apps are drawn at phone sizes only, so the reduced-motion check runs at a phone. */
+export const RN_MOTION_SIZE = { width: 390, text: "the 390 px phone size" };
 /** Expo's first web bundle can take a minute or more, so its server gets longer to start than a web app's (ms). */
 export const RN_START_TIMEOUT_MS = 300_000;
 /** What the first run says about its screenshots. */
@@ -108,6 +110,7 @@ export const REACT_NATIVE: NativeStack = {
   routes: discoverExpoRoutes,
 
   variantHow: RN_VARIANT_HOW,
+  motionSize: RN_MOTION_SIZE,
 
   doctor: rnDoctor,
 };

@@ -18,7 +18,7 @@ import { devCommand, startDevServer, type DevServer } from "../shot/devserver";
 import { startStaticServer, type StaticServer } from "../shot/static-server";
 import { nativeStack, type NativeStack } from "../stacks/native";
 import { WEB_INSTALL } from "../stacks/react-native/doctor";
-import { RN_START_TIMEOUT_MS, RN_WEB_NOTE } from "../stacks/react-native";
+import { RN_MOTION_SIZE, RN_START_TIMEOUT_MS, RN_WEB_NOTE } from "../stacks/react-native";
 import { hasWebSupport, isExpoApp } from "../stacks/react-native/project";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
 import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes";
@@ -447,6 +447,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     } else {
       captured = await deps.capture({
         browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })),
+        ...(rn ? { motionWidth: RN_MOTION_SIZE.width } : {}),
         ...(viewports ?? (rn ? NATIVE_VIEWPORTS : undefined) ? { viewports: viewports ?? NATIVE_VIEWPORTS } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
       });
     }
@@ -473,9 +474,10 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     notes.push(...webModuleHints(captured.routes.flatMap((r) => r.pageErrors ?? [])));
     // Said the first time a folder of screenshots is made.
     const marker = join(outDir, RN_NOTE_MARKER);
+    // Kept only in the default folder; with --out the note repeats.
     if (!existsSync(marker)) {
       notes.unshift(RN_WEB_NOTE);
-      try {
+      if (typeof flags.out !== "string") try {
         writeFileSync(marker, "");
       } catch {
         // Not saving that it was said only means it is said again.
@@ -484,6 +486,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   }
   notes.push(...identicalVariantNotes(captured.routes.flatMap((r) => r.shots), native?.variantHow ?? WEB_VARIANT_HOW));
 
+  // Whether the reduced-motion check ran at all: it needs the stack's motion size (a desktop one on the web) among the sizes drawn.
+  const sizesDrawn = viewports ?? (rn ? NATIVE_VIEWPORTS : undefined);
+  const motionRan = shoot || !sizesDrawn ? true : rn ? sizesDrawn.some((v) => v.width === RN_MOTION_SIZE.width) : sizesDrawn.some((v) => !v.mobile);
   let findings: ReviewFinding[] = [];
   let auditFile: string | undefined;
   if (audit) {
@@ -502,7 +507,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       lines.push(`✗ Audit incomplete: it couldn't finish on ${incomplete.map((r) => `${r.route} (${r.auditError})`).join(", ")}.`);
     }
     if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
-    else if (incomplete.length === 0) lines.push(`✓ Audit: no contrast, tap-target or reduced-motion problems found, and no controls without a name (${auditFile}).`);
+    else if (incomplete.length === 0) lines.push(`✓ Audit: no contrast, tap-target${motionRan ? " or reduced-motion" : ""} problems found, and no controls without a name (${auditFile}).`);
     for (const f of findings.slice(0, 15)) {
       const l = f.location;
       const where = `${l.screen}${l.state ? ` in "${l.state}"` : ""} (${l.viewport}${l.scheme ? `, ${l.scheme}` : ""}${l.variant ? `, ${l.variant} variant` : ""}${l.rtl ? ", right to left" : ""})`;

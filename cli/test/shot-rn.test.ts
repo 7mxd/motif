@@ -136,4 +136,23 @@ describe("motif shot: an Expo app", () => {
     expect(r.text).toContain("react-native-mmkv doesn't run on the web; stub it for screenshots with a react-native-mmkv.web.tsx file beside the import, or skip the route.");
     expect(r.text).toContain("expo-camera doesn't run on the web; stub it for screenshots with a expo-camera.web.tsx file beside the import, or skip the route.");
   });
+  test("--audit checks reduced motion at the 390 px phone, and says so when --sizes leaves it out", async () => {
+    const root = makeProject(EXPO_APP);
+    const on = fakes();
+    const r = await runShot(root, ctx({ audit: true }), on.deps);
+    expect(on.calls.captured[0]!.motionWidth).toBe(390);
+    expect(r.text).toContain("reduced-motion");
+    const off = fakes();
+    const r2 = await runShot(makeProject(EXPO_APP), ctx({ audit: true, sizes: "360" }), off.deps);
+    expect(r2.text).toContain("The reduced-motion check runs at the 390 px phone size, which --sizes left out.");
+    expect(r2.text).not.toContain("desktop");
+    expect(r2.text).not.toMatch(/✓ Audit:[^\n]*reduced-motion/);
+  });
+
+  test("--out leaves no marker, so the note repeats", async () => {
+    const root = makeProject(EXPO_APP);
+    expect((await runShot(root, ctx({ out: "shots-x" }), fakes().deps)).text).toContain(NOTE);
+    expect(existsSync(join(root, "shots-x", ".motif-web-target-noted"))).toBe(false);
+    expect((await runShot(root, ctx({ out: "shots-x" }), fakes().deps)).text).toContain(NOTE);
+  });
 });
