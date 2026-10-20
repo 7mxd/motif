@@ -612,6 +612,25 @@ describe("the audit and states on a Compose app", () => {
     ]);
   });
 
+  test("audit.json's scope names the previews it audited as well as the routes (Task 15)", async () => {
+    const root = makeProject(COMPOSE_APP);
+    const { run } = fakeRun(() => ({
+      code: 0,
+      result: {
+        screens: [
+          { route: "/", shots: ["index.mobile.png", "index.mobile.dark.png"], errors: [] },
+          { route: "HomePreview", shots: ["home.mobile.png", "home.mobile.dark.png"], errors: [] },
+        ],
+        issues: [],
+        notes: [],
+      },
+    }));
+    const deps: ShotDeps = { ...fakes().deps, shoot: (o) => shootCompose(o, base(root, run)) };
+    const r = await runShot(root, ctx({ routes: "/", screen: "HomePreview", sizes: "390", audit: true }), deps);
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8")).scope).toBe("screens: /, HomePreview");
+  });
+
   test("the harness is told the default variant, so only another variant's issues name it; a screen's audit trouble and a state's error stay with the screen", async () => {
     const root = makeProject({ ...COMPOSE_APP, "design/tokens.json": JSON.stringify(partnerTokens()), "design/states/filled.kt": FILLED });
     const states = [{ name: "filled", script: FILLED, file: join(root, "design/states/filled.kt") }];

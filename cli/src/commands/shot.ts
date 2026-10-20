@@ -441,7 +441,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       notes.push(`Pages that redirected were audited as the page they landed on: ${redirected.map((r) => `${r.route} → ${landedOn(r)}`).join(", ")}.`);
     }
     const file = join(outDir, "audit.json");
-    writeFileSync(file, JSON.stringify(reviewJson(findings, routes, deps.today()), null, 2) + "\n");
+    // Every screen the run took: its routes, and the widgets or previews it drew by name.
+    writeFileSync(file, JSON.stringify(reviewJson(findings, [...routes, ...runScreens], deps.today()), null, 2) + "\n");
     auditFile = projectPath(cwd, file);
     const incomplete = captured.routes.filter((r) => r.auditError);
     if (incomplete.length > 0) {
