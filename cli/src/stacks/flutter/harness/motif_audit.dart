@@ -292,7 +292,7 @@ _Style? _mainStyle(InlineSpan root, TextScaler scaler, {bool marks = false}) {
         final color = style.foreground?.color ?? style.color ?? const Color(0xFF000000);
         final size = scaler.scale(style.fontSize ?? 14);
         final weight = style.fontWeight ?? FontWeight.normal;
-        (styles['${color.toARGB32()}|$size|${weight.value}|${style.fontFamily}'] ??= _Style(color, size, weight, style.fontFamily)).count += count;
+        (styles['${color.a},${color.r},${color.g},${color.b}|$size|${weight.value}|${style.fontFamily}'] ??= _Style(color, size, weight, style.fontFamily)).count += count;
       }
     }
     for (final child in span.children ?? const <InlineSpan>[]) {

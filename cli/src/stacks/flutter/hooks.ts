@@ -92,7 +92,9 @@ export function hooksSource(spec: HooksSpec): string {
     "String? setVariant(String? name) {",
     ...(spec.theme
       ? [
-          "  theme.MotifTheme.debugVariantOverride = null;",
+          "  // The default comes first. It's set too, so an app that passes its own",
+          "  // variant: to MotifTheme is still drawn in the guide's default.",
+          "  theme.MotifTheme.debugVariantOverride = theme.MotifVariant.values.first;",
           "  if (name == null) return null;",
           "  for (final v in theme.MotifVariant.values) {",
           "    if (v.name == name) {",
