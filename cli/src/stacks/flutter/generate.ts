@@ -167,7 +167,7 @@ function textStyle(font: ThemeFont, google: Set<string>, googleFonts: boolean): 
   const fallback: Expr[] = companions.map((f) => (viaGoogle(f) ? call("_family(", [dartString(f), ...weight]) : dartString(f)));
 
   if (first && viaGoogle(first)) {
-    // google_fonts sets its own fallback list, so _font adds the companions after it.
+    // google_fonts sets its own fallback list (the plain family); _font replaces it with the companions.
     return call("_font(", [dartString(first), call("const TextStyle(", props), ...(fallback.length > 0 ? [call("[", fallback, "]")] : [])]);
   }
   const allConst = fallback.every((f) => typeof f === "string");

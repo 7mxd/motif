@@ -142,3 +142,11 @@ describe("final review: the commands reach a stack through its registration (Min
     expect(nativeStacks().map((s) => s.id)).toEqual(["flutter"]);
   });
 });
+
+describe("final review: a package name with a comment after it (Minor #13)", () => {
+  test("name: shop # the customer app is shop", () => {
+    expect(packageName(makeProject({ "pubspec.yaml": "name: shop # the customer app\n" }))).toBe("shop");
+    expect(packageName(makeProject({ "pubspec.yaml": "name: 'shop'#x\n" }))).toBe("shop");
+    expect(packageName(makeProject({ "pubspec.yaml": "name: shop app\n" }))).toBeNull();
+  });
+});

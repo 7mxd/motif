@@ -43,7 +43,7 @@ export function isFlutterPackage(dir: string): boolean {
 }
 
 export function packageName(dir: string): string | null {
-  return pubspec(dir)?.match(/^name:\s*["']?([A-Za-z0-9_]+)["']?\s*$/m)?.[1] ?? null;
+  return pubspec(dir)?.match(/^name:\s*["']?([A-Za-z0-9_]+)["']?\s*(#.*)?$/m)?.[1] ?? null;
 }
 
 /** True when the package lists pkg under dependencies or dev_dependencies. */
