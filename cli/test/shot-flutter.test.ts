@@ -533,6 +533,38 @@ describe("the audit and states on a Flutter app", () => {
     ]);
   });
 
+  test("an icon of Flutter's own is named from the SDK's icons.dart (Icons.star); any other keeps its code point (HiSalon #2)", async () => {
+    const root = makeProject({
+      ...FLUTTER_APP,
+      "sdk/bin/flutter": "",
+      "sdk/packages/flutter/lib/src/material/icons.dart":
+        "  static const IconData star = IconData(0xe5f9, fontFamily: 'MaterialIcons');\n  static const IconData star_rate = IconData(0xe5f9, fontFamily: 'MaterialIcons');\n",
+      "sdk/packages/flutter/lib/src/cupertino/icons.dart": "  static const IconData heart = IconData(\n    0xf442,\n    fontFamily: iconFont,\n    fontPackage: iconFontPackage,\n  );\n",
+    });
+    const where = { route: "/", size: "mobile", scheme: "light", file: "index.mobile.png", ratio: 2.1, expected: 3, fg: "#bbbbbb", bg: "#ffffff" };
+    const out = await shootFlutter(options(root, { routes: ["/"], audit: true }), {
+      themeDir: "lib/design",
+      flutter: join(root, "sdk/bin/flutter"),
+      run: harness(
+        {
+          screens: [{ route: "/", shots: ["index.mobile.png"], errors: [] }],
+          issues: [
+            { rule: "color-contrast", selector: "Row > Icon(U+E5F9)", label: "", kind: "icon", icon: "U+E5F9", iconFont: "MaterialIcons", ...where },
+            { rule: "color-contrast", selector: "Row > Icon(U+F442)", label: "", kind: "icon", icon: "U+F442", iconFont: "CupertinoIcons", ...where },
+            { rule: "color-contrast", selector: 'Row > Icon("Rating")', label: "Rating", kind: "icon", icon: "U+F01D4", iconFont: "HiSalonIcons", ...where },
+          ],
+          notes: [],
+        },
+        {},
+      ),
+    });
+    expect(out.issues.map((i) => [i.icon, i.selector, "iconFont" in i])).toEqual([
+      ["Icons.star", "Row > Icon(Icons.star)", false],
+      ["CupertinoIcons.heart", "Row > Icon(CupertinoIcons.heart)", false],
+      ["U+F01D4", 'Row > Icon("Rating")', false],
+    ]);
+  });
+
   test("states: a screenshot after each state, its import and runner in the hooks, and main() told from main(args) by its type", async () => {
     const root = makeProject({ ...FLUTTER_APP, "design/states/filled.dart": FILLED_STATE });
     const seen: { run?: HarnessRun } = {};

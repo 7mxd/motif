@@ -104,10 +104,11 @@ AnimatedScale(
 
 ## Contrast
 
-From `motif shot --audit`: text measured as drawn below 4.5:1 (3:1 for large text: 24 px, or 18.66 px bold). Motif reads each piece of text's colour and the pixels behind it in the screenshot.
+From `motif shot --audit`: text measured as drawn below 4.5:1 (3:1 for large text: 24 px, or 18.66 px bold), and icons below 3:1 (an icon is a mark, not text: WCAG 1.4.11). Motif reads each piece of text's colour and the pixels behind it in the screenshot. An icon's finding names it as an icon: by its `semanticLabel`, Flutter's own name (`Icons.star`) or its code point.
 
 - Fix: use the text role the design guide pairs with that surface (`textPrimary` on `surface`, `onActionPrimary` on `actionPrimary`). If a pair itself fails, `motif validate` reports it too, and the role values need changing.
-- Text over a photo or a gradient has no single background, so it is left out; look at those screens by eye. Text in a disabled control is left out too.
+- Text over a photo or a gradient has no single background, so it is left out; look at those screens by eye. Text in a disabled control is left out too, and so is text something else is drawn over (a floating tab bar, a dialog's barrier), text over an image the screenshot doesn't show (one that hasn't loaded, or that `design/states/http.json` doesn't answer), and text with no letters or digits (a `·` between two facts).
+- Fix an icon the same way: an icon colour role with 3:1 on its surface.
 
 ```dart
 Text(
@@ -142,6 +143,7 @@ Semantics(
 From `motif shot --audit`: a tappable control or text field with no name a screen reader can say. The finding is reported in the review format under the category `accessibility`.
 
 - Fix: a visible label, a `tooltip:` (an `IconButton` takes one), or `Semantics(label: …)`. A text field's `labelText` or `hintText` names it.
+- A tap area over (nearly) the whole screen that isn't a button, link or field, such as a `GestureDetector` that closes the keyboard, isn't a control anyone aims at, so it needs no name.
 
 ```dart
 IconButton(

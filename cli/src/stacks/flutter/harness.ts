@@ -166,18 +166,21 @@ export function bundledFonts(appDir: string, pubspec: string): FontsFound {
   return { fonts, notes };
 }
 
+/** The Flutter SDK's folder, from the flutter command (bin/flutter), with links followed. */
+export function flutterSdk(flutter: string): string {
+  try {
+    return dirname(dirname(realpathSync(flutter)));
+  } catch {
+    return dirname(dirname(resolve(flutter)));
+  }
+}
+
 /**
  * Roboto and the Material icons, from the Flutter SDK's own copy (bin/cache/artifacts/material_fonts). The SDK is
  * found from the flutter command, following links (a flutter on the PATH is often a link into the SDK).
  */
 export function sdkFonts(flutter: string): FontsFound {
-  let sdk: string;
-  try {
-    sdk = dirname(dirname(realpathSync(flutter)));
-  } catch {
-    sdk = dirname(dirname(resolve(flutter)));
-  }
-  const dir = join(sdk, "bin", "cache", "artifacts", "material_fonts");
+  const dir = join(flutterSdk(flutter), "bin", "cache", "artifacts", "material_fonts");
   const missing = {
     fonts: [],
     notes: [`The Flutter SDK has no ${dir} folder, so plain Material text and icons are drawn as boxes. Run flutter precache to fetch it.`],

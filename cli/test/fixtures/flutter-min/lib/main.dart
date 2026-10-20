@@ -276,7 +276,8 @@ class AuditScreen extends StatelessWidget {
                   padding: EdgeInsets.zero,
                   iconSize: 18,
                   onPressed: () {},
-                  icon: const Icon(Icons.close),
+                  // Dark on the white panel in dark mode too, where the theme's icons are light.
+                  icon: const Icon(Icons.close, color: Color(0xFF111111)),
                 ),
               ),
             ),
@@ -315,7 +316,7 @@ class _SpinnerState extends State<Spinner> with SingleTickerProviderStateMixin {
       alignment: AlignmentDirectional.centerStart,
       child: RotationTransition(
         turns: _turns,
-        child: const Icon(Icons.autorenew),
+        child: const Icon(Icons.autorenew, color: Color(0xFF111111)),
       ),
     );
   }

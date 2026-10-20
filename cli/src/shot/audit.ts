@@ -12,7 +12,10 @@ export interface RawIssue {
   selector: string;
   /** Its visible text or accessible name, shortened. */
   label: string;
-  kind: "link" | "button" | "field" | "image" | "element";
+  /** "icon": an icon's glyph (Flutter's audit), judged as a mark at 3:1. */
+  kind: "link" | "button" | "field" | "image" | "icon" | "element";
+  /** An icon's name or code point (Icons.star, U+F01D4), when kind is "icon". */
+  icon?: string;
   ratio?: number;
   expected?: number;
   fg?: string;
@@ -240,6 +243,10 @@ export async function auditPage(page: Page, ctx: { viewport: "mobile" | "desktop
 const ORDER: Record<Severity, number> = { critical: 0, major: 1, minor: 2 };
 
 function subject(issue: RawIssue, textual: boolean): string {
+  if (issue.kind === "icon") {
+    const which = issue.icon ? ` (${issue.icon})` : "";
+    return issue.label ? `The "${issue.label}" icon${which}` : `An icon${which}`;
+  }
   if (issue.kind !== "element") return issue.label ? `The "${issue.label}" ${issue.kind}` : `A ${issue.kind}`;
   if (textual) return issue.label ? `Text "${issue.label}"` : "Some text";
   return issue.label ? `The "${issue.label}" element` : "An element";
@@ -248,6 +255,16 @@ function subject(issue: RawIssue, textual: boolean): string {
 function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" | "summary" | "fix"> & { withScheme: boolean } {
   switch (issue.rule) {
     case "color-contrast":
+      // An icon is a mark: WCAG 1.4.11 asks 3:1 of it against what's around it.
+      if (issue.kind === "icon") {
+        return {
+          severity: (issue.ratio ?? 0) < 3 ? "critical" : "major",
+          category: "contrast",
+          summary: `${subject(issue, false)} is hard to see in ${issue.scheme} mode (${issue.ratio}:1, needs ${issue.expected ?? 3}:1).`,
+          fix: "Give the icon a colour role with at least 3:1 contrast on this background, or adjust the role in design/tokens.json (motif validate checks the pairs).",
+          withScheme: true,
+        };
+      }
       return {
         severity: (issue.ratio ?? 0) < 3 ? "critical" : "major",
         category: "contrast",
@@ -297,7 +314,7 @@ function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" |
  */
 const groupKey = (i: AuditIssue) =>
   i.rule === "color-contrast" && i.fg && i.bg
-    ? `${i.rule}|${i.fg.toLowerCase()}|${i.bg.toLowerCase()}|${i.expected ?? 4.5}`
+    ? `${i.rule}|${i.fg.toLowerCase()}|${i.bg.toLowerCase()}|${i.expected ?? 4.5}${i.kind === "icon" ? "|icon" : ""}`
     : i.rule === "color-contrast"
       ? `${i.rule}|${i.route}|${i.selector}|${i.scheme}`
       : // The same selector on another page is the same element only with the same label: a page's "button" is
@@ -347,7 +364,7 @@ export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
     const mode = (schemes.size > 1 ? "light and dark mode" : `${lead.scheme} mode`) + where;
     const summary =
       lead.rule === "color-contrast" && texts.size > 1 && lead.fg && lead.bg
-        ? `${texts.size} texts are hard to read in ${mode}: ${lead.fg} on ${lead.bg} (${lead.ratio}:1, needs ${lead.expected ?? 4.5}:1)${labels.length ? `, such as ${labels.join(" and ")}` : ""}.`
+        ? `${texts.size} ${lead.kind === "icon" ? "icons are hard to see" : "texts are hard to read"} in ${mode}: ${lead.fg} on ${lead.bg} (${lead.ratio}:1, needs ${lead.expected ?? 4.5}:1)${labels.length ? `, such as ${labels.join(" and ")}` : ""}.`
         : verdict.summary.replace(`in ${lead.scheme} mode`, `in ${mode}`);
     return {
       severity: verdict.severity,

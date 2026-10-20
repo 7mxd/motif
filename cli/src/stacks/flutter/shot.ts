@@ -13,8 +13,9 @@ import { andList, stripBom } from "../../text";
 import type { NativeShotOptions } from "../native";
 import { dartIdentifier } from "../naming";
 import { googleFamilies, resolvedPackages, type ResolvedPackage } from "./google";
-import { flutterTail, runHarness, type AuditCheck, type FetchLike, type FlutterShot, type HarnessResult, type HarnessRun } from "./harness";
+import { flutterSdk, flutterTail, runHarness, type AuditCheck, type FetchLike, type FlutterShot, type HarnessResult, type HarnessRun } from "./harness";
 import { hooksSource, mainFile } from "./hooks";
+import { iconName, sdkIconNames } from "./icons";
 import { findScreen, HTTP_FILE, readHttpFixtures, readSetup, readState, screenSlug, type HttpRoute } from "./inputs";
 import { dependsOn, importFor, packageName } from "./project";
 import { libDartFiles } from "./routes";
@@ -98,7 +99,7 @@ interface RawScreen {
 }
 
 /** What the harness found, as a RawIssue with where it was seen: its screen, its screenshot's file and look. */
-type RawFlutterIssue = RawIssue & { route: string; file?: string; size: string; scheme: Scheme; variant?: string; state?: string; rtl?: boolean };
+type RawFlutterIssue = RawIssue & { route: string; file?: string; size: string; scheme: Scheme; variant?: string; state?: string; rtl?: boolean; iconFont?: string };
 
 /** What to do about each problem in a Flutter app, in its own terms (the web's fixes name CSS and ARIA). */
 export const FLUTTER_FIXES: Partial<Record<RawIssue["rule"], string>> = {
@@ -200,6 +201,8 @@ export function mapResult(
   outDir: string,
   result: Record<string, unknown>,
   timedOut: { seconds: number } | null,
+  /** Flutter's icons by font and code point (sdkIconNames), read only when an issue is about an icon. */
+  iconNames?: () => Map<string, string>,
 ): { routes: RouteResult[]; issues: AuditIssue[]; notes: string[] } {
   const screens = (Array.isArray(result.screens) ? result.screens : []) as RawScreen[];
   const routes = targets.map((t): RouteResult => {
@@ -217,10 +220,14 @@ export function mapResult(
   });
   const raw = (Array.isArray(result.issues) ? result.issues : []) as RawFlutterIssue[];
   const slugOf = new Map(targets.map((t) => [t.key, t.slug]));
-  const issues = raw.map(({ rtl, file, ...i }): AuditIssue => {
+  let names: Map<string, string> | undefined;
+  const issues = raw.map(({ rtl, file, iconFont, ...i }): AuditIssue => {
     const fix = FLUTTER_FIXES[i.rule];
+    // An icon of Flutter's own is named (Icons.star); any other keeps its code point (U+F01D4).
+    const name = i.kind === "icon" && i.icon && iconNames ? iconName((names ??= iconNames()), i.icon, iconFont) : undefined;
     return {
       ...i,
+      ...(name ? { icon: name, selector: i.selector.replace(`(${i.icon})`, `(${name})`) } : {}),
       viewport: i.size === "desktop" ? "desktop" : "mobile",
       shot: join(outDir, file ?? shotName(`${slugOf.get(i.route) ?? routeSlug(i.route)}${i.state ? `@${i.state}` : ""}`, i.size, i.scheme, i.variant, Boolean(rtl))),
       ...(rtl ? { rtl: true as const } : {}),
@@ -334,6 +341,13 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
     const tail = flutterTail(result.output);
     throw new Error(tail ? `${why} The last lines it printed:\n${tail}` : why);
   }
-  const mapped = mapResult(targets, opts.outDir, result.result, result.timedOut ? { seconds: Math.round(opts.timeoutMs / 1000) } : null);
+  const flutter = deps.flutter ?? Bun.which("flutter");
+  const mapped = mapResult(
+    targets,
+    opts.outDir,
+    result.result,
+    result.timedOut ? { seconds: Math.round(opts.timeoutMs / 1000) } : null,
+    flutter ? () => sdkIconNames(flutterSdk(flutter)) : undefined,
+  );
   return { ...mapped, notes: [...result.notes, ...mapped.notes] };
 }

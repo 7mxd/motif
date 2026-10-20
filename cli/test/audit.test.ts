@@ -120,6 +120,24 @@ describe("toFindings", () => {
     expect([badge!.location.scheme, badge!.locations?.map((l) => l.scheme)]).toEqual(["light", ["dark"]]);
   });
 
+  test("an icon (Flutter) is a mark: named as an icon, hard to see at its 3:1, and grouped apart from text with the same colours", () => {
+    const icon = (over: Partial<AuditIssue>) => issue({ kind: "icon", label: "", ratio: 1.91, expected: 3, fg: "#bbbbbb", bg: "#ffffff", ...over });
+    const [one] = toFindings([icon({ selector: "Row > Icon(Icons.star)", icon: "Icons.star" })]);
+    expect(one!.summary).toBe("An icon (Icons.star) is hard to see in light mode (1.91:1, needs 3:1).");
+    expect(one!.fix).toContain("at least 3:1");
+    const [labelled] = toFindings([icon({ selector: 'Row > Icon("Rating")', label: "Rating", icon: "U+F01D4" })]);
+    expect(labelled!.summary).toBe('The "Rating" icon (U+F01D4) is hard to see in light mode (1.91:1, needs 3:1).');
+    const mixed = toFindings([
+      icon({ selector: "Row > Icon(Icons.star)", icon: "Icons.star" }),
+      icon({ selector: 'Row > Icon("Home")', label: "Home", icon: "Icons.home" }),
+      issue({ selector: "#big", label: "Big", ratio: 1.91, expected: 3, fg: "#bbbbbb", bg: "#ffffff" }),
+    ]);
+    expect(mixed.map((f) => f.summary)).toEqual([
+      '2 icons are hard to see in light mode: #bbbbbb on #ffffff (1.91:1, needs 3:1), such as "Home".',
+      'Text "Big" is hard to read in light mode (1.91:1, needs 3:1).',
+    ]);
+  });
+
   test("a tablet-only finding says tablet, not phone (backlog)", () => {
     const [f] = toFindings([issue({ rule: "target-mobile", selector: "#go", kind: "button", label: "Go", width: 32, height: 32, size: "tablet" })]);
     expect(f!.summary).toBe('The "Go" button is 32×32 px on a tablet; 44×44 px is easier to tap.');

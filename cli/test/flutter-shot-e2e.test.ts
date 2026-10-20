@@ -235,7 +235,151 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
       rmSync(join(app, "design", "states"), { recursive: true, force: true });
     }
   }, 600_000);
+
+  test.skipIf(!flutter)("the audit on what HiSalon's hands-on test showed: icons at 3:1 and named as icons, covered text and text over an undrawn image left alone, separators skipped, text in a tappable card is text, a background tap area needs no name, and a name finding names the tappable (skipped without Flutter)", async () => {
+    writeFileSync(join(app, "lib", "hands_on_screen.dart"), HANDS_ON_SCREEN);
+    mkdirSync(join(app, "design", "states"), { recursive: true });
+    writeFileSync(join(app, "design", "states", "setup.dart"), SHELL_SETUP);
+    try {
+      const r = await shot({ screen: "HandsOnScreen", sizes: "390", variant: "default", audit: true });
+      if (r.exitCode !== 1) console.log(r.text);
+      const all = JSON.parse(readFileSync(join(app, RESULT_FILE), "utf8")).issues as { file: string; rule: string; label: string; kind: string; selector: string; icon?: string; iconFont?: string; expected?: number }[];
+      const issues = all.filter((i) => i.file === "hands-on-screen.mobile.png");
+      const contrast = issues.filter((i) => i.rule === "color-contrast");
+      const byLabel = (label: string) => contrast.filter((i) => i.label === label);
+
+      // Icons are marks at 3:1: the #949494 star (3.03:1) passes, the #bbbbbb heart and house (1.91:1) don't. They're
+      // named as icons, by their label or their code point, never by the glyph.
+      const icons = contrast.filter((i) => i.kind === "icon");
+      expect(icons.map((i) => [i.label, i.icon, i.iconFont, i.expected])).toEqual([["", "U+E25B", "MaterialIcons", 3], ["Home", "U+E318", "MaterialIcons", 3]]);
+      expect(icons[0]!.selector).toBe("HandsOnScreen > Scaffold > ListView > Icon(U+E25B)");
+      expect(icons[1]!.selector).toBe('HandsOnScreen > Scaffold > ListView > Icon("Home")');
+      expect(JSON.stringify(issues)).not.toMatch(/[-]/);
+      // The same pale text is a problem in the open, and not under the bar drawn over it or over an image the harness
+      // drew blank.
+      expect(byLabel("Open caption")).toHaveLength(1);
+      expect(byLabel("Covered caption")).toEqual([]);
+      expect(byLabel("Photo caption")).toEqual([]);
+      // Text inside a tappable card is text; a lone separator isn't judged.
+      expect(byLabel("Manama").map((i) => i.kind)).toEqual(["element"]);
+      expect(contrast.filter((i) => !/[A-Za-z0-9]/.test(i.label) && i.kind !== "icon")).toEqual([]);
+      // The shell's tap area over the whole screen (closing the keyboard) needs no name. The screen's full-screen
+      // button does, and its finding names the screen it's on, not the app around it.
+      const names = issues.filter((i) => i.rule === "name");
+      expect(names.map((i) => [i.kind, i.selector])).toEqual([["button", "AppScope > TapToDismiss > MinApp > HandsOnScreen"]]);
+
+      // In the review, the icons are one finding about icons, named by Flutter's own names.
+      const review = JSON.parse(readFileSync(join(app, "design", "shots", "audit.json"), "utf8"));
+      const iconFinding = (review.findings as { summary: string; location: { selector: string } }[]).find((f) => f.summary.includes("icon"));
+      expect(iconFinding!.summary).toBe('2 icons are hard to see in light and dark mode: #bbbbbb on #ffffff (1.91:1, needs 3:1), such as "Home".');
+      expect(iconFinding!.location.selector).toBe("HandsOnScreen > Scaffold > ListView > Icon(Icons.favorite)");
+    } finally {
+      rmSync(join(app, "lib", "hands_on_screen.dart"), { force: true });
+      rmSync(join(app, "design", "states"), { recursive: true, force: true });
+    }
+  }, 600_000);
 });
+
+/**
+ * What HiSalon's hands-on test showed the audit getting wrong: icons, text under a floating bar, text over an image the
+ * harness drew blank, separators in a tappable card, and a tap area over the whole screen (dismissing the keyboard).
+ */
+const HANDS_ON_SCREEN = `import 'package:flutter/material.dart';
+
+const pale = TextStyle(color: Color(0xFFAAAAAA), fontSize: 14);
+
+class HandsOnScreen extends StatelessWidget {
+  const HandsOnScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        backgroundColor: Colors.white,
+        body: Stack(
+          children: [
+            // A tap area under everything that says it's a button, with no name.
+            Positioned.fill(
+              child: Semantics(
+                container: true,
+                button: true,
+                child: GestureDetector(onTap: () {}, behavior: HitTestBehavior.opaque, child: const SizedBox.expand()),
+              ),
+            ),
+            ListView(
+              padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.star, color: Color(0xFF949494)),
+                    SizedBox(width: 16),
+                    Icon(Icons.favorite, color: Color(0xFFBBBBBB)),
+                    SizedBox(width: 16),
+                    Icon(Icons.home, color: Color(0xFFBBBBBB), semanticLabel: 'Home'),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text('Open caption', style: pale),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 120,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.network('https://img.example.com/cover.jpg', fit: BoxFit.cover),
+                      const Center(child: Text('Photo caption', style: pale)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Semantics(
+                  button: true,
+                  child: InkWell(
+                    onTap: () {},
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Text('4.8', style: TextStyle(color: Color(0xFF111111), fontSize: 14)),
+                          Text(' · ', style: TextStyle(color: Color(0xFFBBBBBB), fontSize: 14)),
+                          Text('Manama', style: pale),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Positioned(left: 16, bottom: 120, child: Text('Covered caption', style: pale)),
+            const Positioned(left: 0, right: 0, bottom: 100, height: 60, child: ColoredBox(color: Color(0xFFEEEEEE))),
+          ],
+        ),
+    );
+  }
+}
+`;
+
+/** The app inside a scope and a tap area over every screen that closes the keyboard, as HiSalon's shell has. */
+const SHELL_SETUP = `import 'package:flutter/widgets.dart';
+import 'package:flutter_min/main.dart';
+
+class AppScope extends StatelessWidget {
+  const AppScope({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => child;
+}
+
+class TapToDismiss extends StatelessWidget {
+  const TapToDismiss({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => GestureDetector(onTap: () => FocusManager.instance.primaryFocus?.unfocus(), child: child);
+}
+
+Future<Widget?> motifSetup({required String variant, required Locale locale, required Brightness brightness}) async {
+  return const AppScope(child: TapToDismiss(child: MinApp()));
+}
+`;
 
 /** Arabic in Roboto twice: once falling back to the bundled Noto Naskh Arabic, once to a family nothing loads. */
 const FALLBACK_SCREEN = `import 'package:flutter/material.dart';

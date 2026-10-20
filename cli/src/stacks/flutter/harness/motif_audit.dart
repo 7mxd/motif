@@ -37,10 +37,11 @@ class Pixels {
   }
 }
 
-/// The audit's checks on a screen as it is now: contrast, names and targets, as asked.
-List<Issue> auditScreen(RenderView view, Set<String> checks, Pixels? pixels) {
+/// The audit's checks on a screen as it is now: contrast, names and targets, as asked. [blankImages] are the image
+/// requests the harness answered with a blank picture ("GET <url>"): text over them isn't judged.
+List<Issue> auditScreen(RenderView view, Set<String> checks, Pixels? pixels, {Set<String> blankImages = const {}}) {
   final issues = <Issue>[];
-  if (checks.contains('contrast') && pixels != null) issues.addAll(_contrast(view, pixels));
+  if (checks.contains('contrast') && pixels != null) issues.addAll(_contrast(view, pixels, blankImages));
   if (checks.contains('names') || checks.contains('targets')) {
     issues.addAll(_tappables(view, names: checks.contains('names'), targets: checks.contains('targets')));
   }
@@ -84,15 +85,18 @@ Future<Issue?> stillMoving(WidgetTester tester) async {
 // ---------------------------------------------------------------------------------------------------------------------
 // Contrast
 
-/// Text that's hard to read: every paragraph and text field drawn on screen, its main colour against the colour most
-/// common under it in the screenshot.
-List<Issue> _contrast(RenderView view, Pixels pixels) {
+/// Text that's hard to read, and icons that are hard to see: every paragraph and text field drawn on screen, its main
+/// colour against the colour most common under it in the screenshot. Not judged: text something else is drawn over (a
+/// floating tab bar), text over an image the harness couldn't draw, and text with no letters or digits (a "·" between
+/// two facts), as axe-core leaves text of only symbols and punctuation unjudged on the web.
+List<Issue> _contrast(RenderView view, Pixels pixels, Set<String> blankImages) {
   final dpr = view.flutterView.devicePixelRatio;
+  final undrawn = _undrawnImages(view, blankImages);
   final out = <Issue>[];
   void visit(RenderObject o) {
     Issue? issue;
-    if (o is RenderParagraph) issue = _textContrast(o, o.text, o.textScaler, pixels, dpr);
-    if (o is RenderEditable && o.text != null) issue = _textContrast(o, o.text!, o.textScaler, pixels, dpr);
+    if (o is RenderParagraph) issue = _textContrast(view, o, o.text, o.textScaler, pixels, dpr, undrawn);
+    if (o is RenderEditable && o.text != null) issue = _textContrast(view, o, o.text!, o.textScaler, pixels, dpr, undrawn);
     if (issue != null) out.add(issue);
     o.visitChildren(visit);
   }
@@ -101,29 +105,147 @@ List<Issue> _contrast(RenderView view, Pixels pixels) {
   return out;
 }
 
+/// Where images are that the screenshot doesn't show as people would see them: an image that hasn't loaded, the
+/// harness's blank 1×1 picture (an image request nothing answered), and a decoration's network image nothing answered.
+/// The colour under a text there isn't what people see.
+List<Rect> _undrawnImages(RenderView view, Set<String> blankImages) {
+  final out = <Rect>[];
+  void visit(RenderObject o) {
+    var undrawn = false;
+    if (o is RenderImage) {
+      final image = o.image;
+      undrawn = image == null || (image.width <= 1 && image.height <= 1);
+    } else if (o is RenderDecoratedBox) {
+      final decoration = o.decoration;
+      final provider = decoration is BoxDecoration ? decoration.image?.image : null;
+      undrawn = provider is NetworkImage && blankImages.contains('GET ${Uri.parse(provider.url).removeFragment()}');
+    }
+    if (undrawn && o is RenderBox && o.hasSize) {
+      final rect = _visibleRect(o);
+      if (rect != null) out.add(rect);
+    }
+    o.visitChildren(visit);
+  }
+
+  visit(view);
+  return out;
+}
+
+/// True when something is drawn over a text: a hit test at three points along its middle line (a quarter, half and
+/// three quarters across) reaches something that paints (a box with a colour, an image, other text, a blur) before it
+/// reaches the text or a box the text is in. What only takes taps (an InkWell over a card) doesn't count. Hit tests go
+/// from the top down, the reverse of painting, so the first thing hit is what is drawn on top. Text that takes no hits
+/// (under an IgnorePointer) can't be told apart this way, and is judged as before.
+bool _covered(RenderView view, RenderBox box, Rect rect) {
+  final mine = <RenderObject>{};
+  for (RenderObject? p = box; p != null; p = p.parent) {
+    if (p is RenderIgnorePointer && p.ignoring) return false;
+    mine.add(p);
+  }
+  for (final across in const [0.25, 0.5, 0.75]) {
+    final result = HitTestResult();
+    view.hitTest(result, position: Offset(rect.left + rect.width * across, rect.center.dy));
+    for (final entry in result.path) {
+      final target = entry.target;
+      if (target is! RenderObject) continue;
+      if (mine.contains(target)) break;
+      if (_paints(target)) return true;
+    }
+  }
+  return false;
+}
+
+/// True for render objects that draw something over what's under them.
+bool _paints(RenderObject o) {
+  if (o is RenderParagraph || o is RenderEditable || o is RenderBackdropFilter) return true;
+  if (o is RenderImage) return o.image != null;
+  if (o is RenderCustomPaint) return o.painter != null || o.foregroundPainter != null;
+  if (o is RenderPhysicalModel) return o.color.a > 0;
+  if (o is RenderPhysicalShape) return o.color.a > 0;
+  if (o is RenderDecoratedBox) {
+    final d = o.decoration;
+    if (d is BoxDecoration) return (d.color?.a ?? 0) > 0 || d.gradient != null || d.image != null;
+    if (d is ShapeDecoration) return (d.color?.a ?? 0) > 0 || d.gradient != null || d.image != null;
+    return true;
+  }
+  // ColoredBox's render object is private; its colour isn't.
+  if (o.runtimeType.toString() == '_RenderColoredBox') {
+    try {
+      return ((o as dynamic).color as Color).a > 0;
+    } catch (_) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// An icon's glyph: the paragraph an Icon widget draws, or text in an icon font, or text of only private-use
+/// characters (where icon fonts put their glyphs).
+class _IconMark {
+  _IconMark(this.widget, this.codePoint, this.font);
+  final Element? widget;
+  final int codePoint;
+  final String font;
+  String get code => 'U+${codePoint.toRadixString(16).toUpperCase().padLeft(4, '0')}';
+}
+
+bool _isPrivateUse(int rune) => (rune >= 0xE000 && rune <= 0xF8FF) || rune >= 0xF0000;
+
+_IconMark? _iconMark(RenderBox box, String raw, String? family) {
+  final runes = raw.runes.where((r) => String.fromCharCode(r).trim().isNotEmpty).toList();
+  if (runes.isEmpty) return null;
+  // The Icon widget a few levels up (Icon > ExcludeSemantics > SizedBox > Center > RichText); an Icon has no child, so
+  // a paragraph under one is its glyph.
+  final element = _creator(box);
+  Element? icon;
+  if (element != null) {
+    var levels = 0;
+    try {
+      element.visitAncestorElements((e) {
+        if (e.widget is Icon) icon = e;
+        return icon == null && ++levels < 8;
+      });
+    } catch (_) {
+      // An element no longer in the tree.
+    }
+  }
+  final font = (family ?? '').replaceFirst(RegExp(r'^packages/[^/]+/'), '');
+  if (icon != null) {
+    final data = (icon!.widget as Icon).icon;
+    return _IconMark(icon, data?.codePoint ?? runes.first, data?.fontFamily ?? font);
+  }
+  final private = runes.every(_isPrivateUse);
+  if (private || (runes.length <= 2 && font.toLowerCase().contains('icon'))) return _IconMark(null, runes.first, font);
+  return null;
+}
+
+final RegExp _letterOrDigit = RegExp(r'[\p{L}\p{N}]', unicode: true);
+
 /// The colour, size and weight of most of a text's characters.
 class _Style {
-  _Style(this.color, this.size, this.weight);
+  _Style(this.color, this.size, this.weight, this.family);
   final Color color;
   final double size;
   final FontWeight weight;
+  final String? family;
   int count = 0;
 }
 
-_Style? _mainStyle(InlineSpan root, TextScaler scaler) {
+/// The style of most of a text's characters; with [marks], private-use characters (icon glyphs) count too.
+_Style? _mainStyle(InlineSpan root, TextScaler scaler, {bool marks = false}) {
   final styles = <String, _Style>{};
   void walk(InlineSpan span, TextStyle inherited) {
     final style = span.style == null ? inherited : inherited.merge(span.style);
     if (span is! TextSpan) return;
     final text = span.text;
     if (text != null) {
-      final count = _plain(text).replaceAll(' ', '').length;
+      final count = marks ? text.replaceAll(RegExp(r'\s'), '').runes.length : _plain(text).replaceAll(' ', '').length;
       if (count > 0) {
         // Text with no colour of its own is drawn black.
         final color = style.foreground?.color ?? style.color ?? const Color(0xFF000000);
         final size = scaler.scale(style.fontSize ?? 14);
         final weight = style.fontWeight ?? FontWeight.normal;
-        (styles['${color.toARGB32()}|$size|${weight.value}'] ??= _Style(color, size, weight)).count += count;
+        (styles['${color.toARGB32()}|$size|${weight.value}|${style.fontFamily}'] ??= _Style(color, size, weight, style.fontFamily)).count += count;
       }
     }
     for (final child in span.children ?? const <InlineSpan>[]) {
@@ -139,15 +261,21 @@ _Style? _mainStyle(InlineSpan root, TextScaler scaler) {
   return main;
 }
 
-Issue? _textContrast(RenderBox box, InlineSpan text, TextScaler scaler, Pixels pixels, double dpr) {
-  final plain = _plain(text.toPlainText());
-  if (plain.isEmpty || !box.hasSize) return null;
+Issue? _textContrast(RenderView view, RenderBox box, InlineSpan text, TextScaler scaler, Pixels pixels, double dpr, List<Rect> undrawn) {
+  if (!box.hasSize) return null;
+  final raw = text.toPlainText();
+  final plain = _plain(raw);
+  final family = _mainStyle(text, scaler, marks: true)?.family;
+  // An icon is a mark, not text: WCAG 1.4.11 asks 3:1 of it.
+  final icon = box is RenderParagraph ? _iconMark(box, raw, family) : null;
+  // Text of only symbols and punctuation (a "·" between two facts) isn't judged, as axe-core doesn't judge it.
+  if (icon == null && !_letterOrDigit.hasMatch(plain)) return null;
   final rect = _visibleRect(box);
   if (rect == null || rect.width < 1 || rect.height < 1) return null;
   final node = _semanticsOf(box);
   // A disabled control's text needn't be readable, as on the web.
   if (node != null && _disabled(node)) return null;
-  final style = _mainStyle(text, scaler);
+  final style = _mainStyle(text, scaler, marks: icon != null);
   if (style == null) return null;
   final alpha = style.color.a * _opacity(box);
   if (alpha < 0.02) return null;
@@ -158,20 +286,50 @@ Issue? _textContrast(RenderBox box, InlineSpan text, TextScaler scaler, Pixels p
   final ratio = _ratio(fg, bg);
   // WCAG's large text: 18 pt (24 px), or 14 pt (about 18.66 px) in bold, as axe-core judges it on the web.
   final large = style.size >= 24 || (style.size >= 18.66 && style.weight.value >= 700);
-  final expected = large ? 3.0 : 4.5;
+  final expected = icon != null || large ? 3.0 : 4.5;
   if (ratio >= expected) return null;
+  // What the screenshot shows there isn't the text on its background: something is drawn over it, or the image under
+  // it wasn't drawn.
+  if (undrawn.any((r) => r.contains(rect.center))) return null;
+  if (_covered(view, box, rect)) return null;
   final element = _creator(box);
+  if (icon != null) {
+    final label = icon.widget == null ? '' : ((icon.widget!.widget as Icon).semanticLabel ?? '');
+    final subject = icon.widget ?? (element == null ? null : _subject(element, rect));
+    return {
+      'rule': 'color-contrast',
+      'selector': subject == null ? '' : _selector(subject, label, mark: label.trim().isEmpty ? icon.code : null),
+      'label': _short(label),
+      'kind': 'icon',
+      'icon': icon.code,
+      if (icon.font.isNotEmpty) 'iconFont': icon.font,
+      'ratio': ratio,
+      'expected': expected,
+      'fg': _hex(fg),
+      'bg': _hex(bg),
+    };
+  }
   final subject = element == null ? null : _subject(element, rect, loose: box is RenderEditable);
   return {
     'rule': 'color-contrast',
     'selector': subject == null ? '' : _selector(subject, plain),
     'label': _short(plain),
-    'kind': node == null ? 'element' : _kind(node.getSemanticsData(), subject?.widget),
+    'kind': _textKind(box, node, plain, subject?.widget),
     'ratio': ratio,
     'expected': expected,
     'fg': _hex(fg),
     'bg': _hex(bg),
   };
+}
+
+/// What a text is, for a contrast finding: a field's own text is the field; text that is a control's whole name (a
+/// button's label) is that control; any other text is text, even inside a tappable card.
+String _textKind(RenderBox box, SemanticsNode? node, String plain, Widget? subject) {
+  if (box is RenderEditable) return 'field';
+  if (node == null) return 'element';
+  final data = node.getSemanticsData();
+  final kind = _kind(data, subject);
+  return kind != 'element' && _plain(data.label) == plain ? kind : 'element';
 }
 
 /// A text's background and its colour as drawn on it.
@@ -385,7 +543,17 @@ List<Issue> _tappables(RenderView view, {required bool names, required bool targ
       'label': _short(name),
       'kind': kind,
     };
-    if (names && name.trim().isEmpty) out.add({'rule': 'name', ...described});
+    // A tap area over (nearly) the whole screen that doesn't say it's a button, link or field is a gesture on the
+    // background (tapping out of a field to close the keyboard), not a control anyone aims at: it needs no name.
+    final logical = Offset.zero & view.size;
+    final seen = rect.intersect(logical);
+    final background = seen.width > 0 &&
+        seen.height > 0 &&
+        seen.width * seen.height >= 0.9 * logical.width * logical.height &&
+        !data.hasFlag(ui.SemanticsFlag.isButton) &&
+        !data.hasFlag(ui.SemanticsFlag.isLink) &&
+        !data.hasFlag(ui.SemanticsFlag.isTextField);
+    if (names && name.trim().isEmpty && !background) out.add({'rule': 'name', ...described});
     final small = rect.width < minTarget - 0.01 || rect.height < minTarget - 0.01;
     if (targets && small && kind != 'link') {
       out.add({'rule': 'target-mobile', ...described, 'width': rect.width.round(), 'height': rect.height.round()});
@@ -476,9 +644,15 @@ Element? _ancestor(Element element, bool Function(Element) test) {
   return found;
 }
 
+/// Widgets at the edge of a screen or of the app: a problem's subject is never above one (a full-screen tap area isn't
+/// the app around it).
+const Set<String> _edges = {'Navigator', 'Overlay', 'Router', 'WidgetsApp', 'MaterialApp', 'CupertinoApp', 'View', 'RawView'};
+
 /// The widget a problem is about: walking up from where it was found, the outermost widget worth naming that is no
-/// bigger than the problem (an IconButton around its InkWell, not the list around the button). With [loose], the first
-/// widget worth naming above it, whatever its size (a TextField around its text).
+/// bigger than the problem (an IconButton around its InkWell, not the list around the button), up to the screen's
+/// edge. A tap area around the app's navigator (one that closes the keyboard on every screen) is named by the closest
+/// widget worth naming around it. With [loose], the first widget worth naming above it, whatever its size (a TextField
+/// around its text).
 Element _subject(Element start, Rect rect, {bool tappable = false, bool loose = false}) {
   bool candidate(Element e) => _named(e) || (tappable && _tappers.contains(_type(e.widget)));
   if (loose) return _ancestor(start, _named) ?? start;
@@ -490,11 +664,16 @@ Element _subject(Element start, Rect rect, {bool tappable = false, bool loose = 
     return room.contains(r.topLeft) && room.contains(r.bottomRight);
   }
 
+  final shell = _ancestor(start, (e) => e.widget is Navigator) == null;
   var subject = candidate(start) ? start : null;
   try {
     start.visitAncestorElements((e) {
+      if (_edges.contains(_type(e.widget))) return false;
       if (subject != null && !fits(e)) return false;
-      if (candidate(e)) subject = e;
+      if (candidate(e)) {
+        subject = e;
+        if (shell && _named(e)) return false;
+      }
       return true;
     });
   } catch (_) {
@@ -504,8 +683,9 @@ Element _subject(Element start, Rect rect, {bool tappable = false, bool loose = 
 }
 
 /// The closest three widgets worth naming above the subject, then the subject with its text:
-/// AuditScreen > Scaffold > ListView > Text("Prices include tax").
-String _selector(Element subject, String? text) {
+/// AuditScreen > Scaffold > ListView > Text("Prices include tax"). An icon with no label shows its code point instead
+/// ([mark]): Row > Icon(U+E5F9).
+String _selector(Element subject, String? text, {String? mark}) {
   final names = <String>[];
   try {
     subject.visitAncestorElements((e) {
@@ -515,13 +695,20 @@ String _selector(Element subject, String? text) {
   } catch (_) {
     // An element no longer in the tree.
   }
-  final shown = text == null || text.trim().isEmpty ? '' : '("${_short(text).replaceAll('"', r'\"')}")';
+  final shown = mark != null
+      ? '($mark)'
+      : text == null || text.trim().isEmpty
+          ? ''
+          : '("${_short(text).replaceAll('"', r'\"')}")';
   return [...names.reversed, '${_name(subject.widget)}$shown'].join(' > ');
 }
 
-/// Text as people read it: icon glyphs (characters in the private use area) and placeholders left out, spaces as one.
-String _plain(String text) =>
-    text.replaceAll(RegExp('[-￼]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+/// Text as people read it: icon glyphs (characters in the private use areas, the supplementary ones too) and
+/// placeholders left out, spaces as one.
+String _plain(String text) => text
+    .replaceAll(RegExp(r'[\u{E000}-\u{F8FF}\u{F0000}-\u{10FFFF}\u{FFFC}]', unicode: true), '')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
 
 String _short(String text) {
   final plain = _plain(text);

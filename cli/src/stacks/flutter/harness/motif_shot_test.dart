@@ -383,7 +383,7 @@ Future<List<Issue>> _capture(
 
   final issues = <Issue>[];
   try {
-    issues.addAll(auditScreen(view, checks, pixels));
+    issues.addAll(auditScreen(view, checks, pixels, blankImages: run.screen.blankImages));
     // Last, as it lets the screen run on for two seconds.
     if (checks.contains('motion')) {
       final moving = await stillMoving(tester);
