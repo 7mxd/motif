@@ -3,9 +3,16 @@ import { inflateSync } from "node:zlib";
 /** An 8-bit RGB or RGBA PNG, decoded: its size and its pixels as RGBA, row by row. */
 export function decodePng(png: Uint8Array): { width: number; height: number; rgba: Uint8Array } {
   const buf = Buffer.from(png);
+  if (buf.length < 29 || buf.toString("latin1", 1, 4) !== "PNG") throw new Error("Not a PNG.");
+  const depth = buf[24];
+  const colourType = buf[25];
+  const interlace = buf[28];
+  if (depth !== 8 || (colourType !== 2 && colourType !== 6) || interlace !== 0) {
+    throw new Error(`Only 8-bit RGB or RGBA PNGs without interlacing can be decoded here (this one is ${depth}-bit, colour type ${colourType}, ${interlace ? "interlaced" : "not interlaced"}).`);
+  }
   const width = buf.readUInt32BE(16);
   const height = buf.readUInt32BE(20);
-  const bpp = buf[25] === 6 ? 4 : 3;
+  const bpp = colourType === 6 ? 4 : 3;
   const chunks: Buffer[] = [];
   for (let at = 8; at < buf.length; ) {
     const length = buf.readUInt32BE(at);

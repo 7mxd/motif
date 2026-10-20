@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { addPngText, pngSize, readPngText } from "../src/browser/png";
+import { decodePng } from "./png-pixels";
 
 // A 1×1 PNG.
 const ONE_PIXEL = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
@@ -35,5 +36,22 @@ describe("text kept inside a PNG", () => {
   test("a PNG without it has none, and anything that isn't a PNG is refused", () => {
     expect(readPngText(ONE_PIXEL, "motif:screen")).toBeUndefined();
     expect(() => addPngText(new Uint8Array([1, 2, 3]), "k", "v")).toThrow("Not a PNG");
+  });
+});
+
+describe("the tests' PNG decoder", () => {
+  const withHeader = (at: number, value: number) => {
+    const copy = new Uint8Array(ONE_PIXEL);
+    copy[at] = value;
+    return copy;
+  };
+  test("decodes an 8-bit RGBA PNG and refuses what it would decode wrongly", () => {
+    const ok = decodePng(ONE_PIXEL);
+    expect([ok.width, ok.height, ok.rgba.length]).toEqual([1, 1, 4]);
+    expect(() => decodePng(withHeader(24, 16))).toThrow(/8-bit RGB or RGBA/);
+    expect(() => decodePng(withHeader(25, 3))).toThrow(/colour type 3/);
+    expect(() => decodePng(withHeader(25, 0))).toThrow(/colour type 0/);
+    expect(() => decodePng(withHeader(28, 1))).toThrow(/interlaced/);
+    expect(() => decodePng(new Uint8Array([1, 2, 3]))).toThrow(/Not a PNG/);
   });
 });
