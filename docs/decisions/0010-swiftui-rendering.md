@@ -123,6 +123,7 @@
       | 2 shots, the build kept | 0.1 s | 0.7 s | 15.1 s | 3.1 s | 14.1 s | 3.4 s | 34 s |
 
       A shot takes 0.22–0.3 s, a shot with a state that types and taps 1.4–2 s, and the first shot of a launch about 2 s.
+    - **CI** (run 39538679777 at `83899ce`, `macos-15`, Xcode 16.4, iOS 18.5, the SDK's: every job green): the e2e's 32 shots took 229 s from nothing and its warm run 165 s; the Xcode 26 render case took build 170 s alongside boot 68 s, then test 59 s. The job's tests took 1242 s (739 s before Task 8), well within its 60 minutes. One outlier: the job's first case (swiftui-min's render) spent 333 s in `test-without-building` for 7 shots, against about 40 s for launch and shots in the run before Task 8, when the build ran inside `xcodebuild test`, after the boot. The likely cause, not proven: the runtime's first-launch work on a fresh runner (done once per runtime) is no longer hidden behind the build, which now runs alongside the boot. The cases after it on the same runner were quick.
 
 ## Consequences
 
