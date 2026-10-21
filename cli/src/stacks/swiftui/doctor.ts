@@ -42,7 +42,7 @@ function newestIosRuntime(output: string): string | null | undefined {
 }
 
 /** One doctor item for Xcode: on a Mac, its version, Swift and (for an iOS app) an iOS simulator; elsewhere, that a Mac is needed. */
-export function swiftUIDoctor(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[] {
+export function swiftUIDoctor(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[]; platform?: "ios" | "macos" }): DoctorItem[] {
   if (deps.platform !== "darwin") {
     return [item("optional", "SwiftUI screenshots need a Mac with Xcode. Theme code, checks and drafts work here.")];
   }
@@ -67,7 +67,8 @@ export function swiftUIDoctor(deps: DoctorDeps, ctx: { root: string; apps: AppIn
   const head = swift ? `Xcode ${version} (Swift ${swift})` : `Xcode ${version}`;
 
   // A macOS-only app runs on the Mac itself; any other needs an iOS simulator.
-  const needsSimulator = ctx.apps.some((a) => (swiftUIApp(join(ctx.root, a.path))?.platforms ?? ["ios"]).includes("ios"));
+  // A run drawn on the Mac (a multiplatform app at window sizes) needs none either.
+  const needsSimulator = ctx.platform !== "macos" && ctx.apps.some((a) => (swiftUIApp(join(ctx.root, a.path))?.platforms ?? ["ios"]).includes("ios"));
   if (!needsSimulator) return [item("ok", `${head}. A macOS app needs no simulator.`)];
 
   const r = deps.run(["xcrun", "simctl", "list", "runtimes", "--json"]);

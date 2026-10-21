@@ -69,7 +69,14 @@ export interface NativeStack {
   collect?(files: SourceFile[], shared?: SourceFile[]): Occurrences;
   shoot?(opts: NativeShotOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }>;
   /** Why shoot can't run for this app on this computer (a missing SDK or package), with what to do; null when it can. */
-  shotRefusal?(root: string, app: AppInfo, which: (cmd: string) => string | null, doctor?: DoctorDeps): { error: string; text: string } | null;
+  shotRefusal?(
+    root: string,
+    app: AppInfo,
+    which: (cmd: string) => string | null,
+    doctor?: DoctorDeps,
+    /** The sizes shotSizes chose for this run, when it chose any (a multiplatform SwiftUI app drawn on the Mac). */
+    sizes?: Viewport[],
+  ): { error: string; text: string } | null;
   /** What's wrong with what shoot is given (--screen widgets, --state scripts, setup files), before anything is written. */
   shotInputsProblem?(root: string, app: AppInfo, given: { screens: string[]; states: StateScript[] }): string | null;
   /**

@@ -1,12 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { detectApps } from "../src/detect/stacks";
+import { MAC_WINDOWS } from "../src/shot/capture";
 import { pngSize } from "../src/browser/png";
 import { runShot } from "../src/commands/shot";
 import { runTokens } from "../src/commands/tokens";
 import { motifSimulators } from "../src/stacks/swiftui/harness";
-import { SWIFTUI_FIRST_RUN_MAC, swiftUICacheDir } from "../src/stacks/swiftui/shot";
+import { shootSwiftUI, SWIFTUI_FIRST_RUN_MAC, swiftUICacheDir } from "../src/stacks/swiftui/shot";
 import { FIXTURES, heavyStackTests, hexColor, isMacWithXcode, partnerTokens } from "./helpers";
 import { decodePng } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -21,6 +23,14 @@ if (!heavy.run) console.log(`[swiftui-mac-shot-e2e] macOS app tests skipped: ${h
 
 let root = "";
 let home = "";
+/** The fixture app's own bundle id, and the one Motif's test host gets. */
+const REAL_ID = "dev.motif.SwiftUIMac";
+const HOST_ID = `${REAL_ID}.motif-shots`;
+let madeSentinel = false;
+const defaults = (...args: string[]) => {
+  const r = Bun.spawnSync(["defaults", ...args], { stdout: "pipe", stderr: "pipe" });
+  return { exitCode: r.exitCode, stdout: r.stdout.toString() };
+};
 const saved = process.env.MOTIF_HOME;
 const HOME = "SwiftUIMac/Screens/HomeScreen.swift";
 
@@ -78,9 +88,18 @@ beforeAll(async () => {
   if (made.exitCode !== 0) throw new Error(made.text);
   expect(existsSync(join(root, "SwiftUIMac/Design/MotifTheme.swift"))).toBe(true);
   writeFileSync(join(root, HOME), homeScreen(readFileSync(join(root, HOME), "utf8")));
+  // The developer's own app's defaults, which a run must never touch: made here when there are none (then removed).
+  if (defaults("read", REAL_ID).exitCode !== 0) {
+    defaults("write", REAL_ID, "motifSentinel", "-string", "kept");
+    madeSentinel = true;
+  }
 }, 120_000);
 
 afterAll(() => {
+  if (madeSentinel) {
+    defaults("delete", REAL_ID);
+    rmSync(join(homedir(), "Library", "Preferences", `${REAL_ID}.plist`), { force: true });
+  }
   // MOTIF_KEEP_SHOTS=<folder> keeps the screenshots, to look at them.
   if (root && process.env.MOTIF_KEEP_SHOTS) cpSync(join(root, "design", "shots"), process.env.MOTIF_KEEP_SHOTS, { recursive: true });
   if (saved === undefined) delete process.env.MOTIF_HOME;
@@ -135,6 +154,12 @@ const derivedFolders = () => (existsSync(XCODE_DERIVED) ? readdirSync(XCODE_DERI
 const simulators = () => motifSimulators(Bun.spawnSync(["xcrun", "simctl", "list", "-j", "devices"], { stdout: "pipe" }).stdout.toString()).length;
 /** Processes still running the app Motif built (the test's host): none once a run is over. */
 const hosts = () => Bun.spawnSync(["pgrep", "-f", "SwiftUIMac.app/Contents/MacOS/SwiftUIMac"], { stdout: "pipe" }).stdout.toString().trim();
+/** The host leaves no defaults domain behind, and the app's own defaults are as they were. */
+function expectDefaultsUntouched(before: string): void {
+  expect(defaults("read", HOST_ID).exitCode).not.toBe(0);
+  expect(existsSync(join(homedir(), "Library", "Preferences", `${HOST_ID}.plist`))).toBe(false);
+  expect(defaults("export", REAL_ID, "-").stdout).toBe(before);
+}
 
 /** The root right to left in Arabic, from the first run, which the second (in Hebrew) draws over. */
 let arabicRoot: Buffer | null = null;
@@ -144,6 +169,8 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
     "draws / and a preview in 1440×900 and 900×700 windows, light and dark, in each variant, right to left in Arabic, after the setup and with a state (skipped without Xcode)",
     async () => {
       const before = derivedFolders();
+      const realDefaults = defaults("export", REAL_ID, "-").stdout;
+      expect(realDefaults).toContain("<plist");
       const sims = simulators();
       const started = Date.now();
       const r = await shot(root, { routes: "/", screen: "Settings", variant: "all", rtl: "ar", state: "design/states/greeted.swift" });
@@ -151,7 +178,7 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
       console.log(r.text);
       expect(r.exitCode).toBe(0);
       // 2 screens × 2 windows × 2 schemes × 2 variants × 2 directions × 2 (without and with the state).
-      expect(r.text).toContain("✓ 64 screenshots of 2 screens (1440 and 900 px wide, light and dark, right to left in ar, 2 design variants)");
+      expect(r.text).toContain("✓ 64 screenshots of 2 screens (a 1440×900 and a 900×700 window, light and dark, right to left in ar, 2 design variants)");
       expect(r.text).toContain(SWIFTUI_FIRST_RUN_MAC);
       expect(r.text).not.toContain("doesn't offer ar");
       // Every shot came from the window server, glass and materials included.
@@ -202,11 +229,13 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
       // Nothing left behind but the build: no copy, no work folder, no simulator, no app still running, nothing in
       // Xcode's own DerivedData, and the developer's project untouched.
       const cache = swiftUICacheDir(home, root, "SwiftUIMac");
-      expect(readdirSync(cache).sort()).toEqual(["DerivedData", "last-used"]);
+      expect(readdirSync(cache).sort()).toEqual(["DerivedData-macos", "last-used"]);
       expect(simulators()).toBe(sims);
       expect(hosts()).toBe("");
       expect(derivedFolders().filter((d) => d.startsWith("SwiftUIMac-") && !before.includes(d))).toEqual([]);
       expect(readFileSync(join(root, "SwiftUIMac.xcodeproj/project.pbxproj"), "utf8")).not.toContain("MotifShots");
+      // The setup's signed-in flag went to the host's own domain, which is gone; the app's own defaults are untouched.
+      expectDefaultsUntouched(realDefaults);
     },
     1_800_000,
   );
@@ -217,14 +246,14 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
     console.log(`[swiftui-mac-shot-e2e] second run: ${Math.round((Date.now() - started) / 1000)} s`);
     console.log(r.text);
     expect(r.exitCode).toBe(0);
-    expect(r.text).toContain("✓ 4 screenshots of 1 screen (1440 px wide, light and dark, right to left in he)");
+    expect(r.text).toContain("✓ 4 screenshots of 1 screen (a 1440×900 window, light and dark, right to left in he)");
     expect(r.text).not.toContain(SWIFTUI_FIRST_RUN_MAC);
     expect(r.text).toContain("This app doesn't offer he");
     // Arabic glyphs: the title rows right to left in Arabic differ from the same rows right to left in Hebrew, which
     // the app lacks, so they stay English.
     expect(arabicRoot).not.toBeNull();
     expect(difference(arabicRoot!, png("index.desktop.rtl.png"), 150, 500)).toBeGreaterThan(5_000);
-    expect(readdirSync(swiftUICacheDir(home, root, "SwiftUIMac")).sort()).toEqual(["DerivedData", "last-used"]);
+    expect(readdirSync(swiftUICacheDir(home, root, "SwiftUIMac")).sort()).toEqual(["DerivedData-macos", "last-used"]);
     expect(hosts()).toBe("");
   }, 1_800_000);
 
@@ -236,7 +265,10 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
       pbx,
       readFileSync(pbx, "utf8")
         .replace(/\r\n/g, "\n")
-        .replace(/(\t+)(INFOPLIST_FILE = [^;]+;)/g, '$1$2\n$1IPHONEOS_DEPLOYMENT_TARGET = 17.0;\n$1SDKROOT = auto;\n$1SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";\n$1TARGETED_DEVICE_FAMILY = "1,2";'),
+        .replace(
+          /(\t+)(INFOPLIST_FILE = [^;]+;)/g,
+          '$1$2\n$1IPHONEOS_DEPLOYMENT_TARGET = 17.0;\n$1SDKROOT = auto;\n$1SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";\n$1SUPPORTS_MACCATALYST = YES;\n$1TARGETED_DEVICE_FAMILY = "1,2";',
+        ),
     );
     const sims = simulators();
     const started = Date.now();
@@ -244,11 +276,121 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
     console.log(`[swiftui-mac-shot-e2e] multiplatform, macOS: ${Math.round((Date.now() - started) / 1000)} s`);
     console.log(r.text);
     expect(r.exitCode).toBe(0);
-    expect(r.text).toContain("✓ 2 screenshots of 1 screen (1440 px wide, light and dark)");
+    expect(r.text).toContain("✓ 2 screenshots of 1 screen (a 1440×900 window, light and dark)");
     expect(r.text).toContain(SWIFTUI_FIRST_RUN_MAC);
     expect(r.text).not.toContain("without the window server");
     expect(pngSize(png("index.desktop.png", multi))).toEqual({ width: 2880, height: 1800 });
     expect(simulators()).toBe(sims);
     expect(hosts()).toBe("");
+    // With Mac Catalyst on too, the destination is the Mac's own: the app was built for macOS, not for Catalyst.
+    const products = join(swiftUICacheDir(home, multi, "SwiftUIMac"), "DerivedData-macos", "Build", "Products");
+    expect(readdirSync(products).sort()).toEqual(["Debug"]);
+  }, 1_800_000);
+});
+
+// A preview that stops the app, and one that never finishes drawing: added for the tests below, after the others.
+const PROBES = `import SwiftUI
+
+struct BrokenScreen: View {
+    var body: some View {
+        if Date.distantPast < Date() { fatalError("Broken on purpose") }
+        return Text("never")
+    }
+}
+
+#Preview("Broken") {
+    BrokenScreen()
+}
+
+struct HangScreen: View {
+    var body: some View {
+        while Date.distantPast < Date() {}
+        return Text("never")
+    }
+}
+
+#Preview("Hang") {
+    HangScreen()
+}
+`;
+
+/** The test host Motif built for the shared copy, still running: its path is inside Motif's own folder. */
+const ownHosts = () => Bun.spawnSync(["pgrep", "-f", join(swiftUICacheDir(home, root, "SwiftUIMac"), "DerivedData-macos")], { stdout: "pipe" }).stdout.toString().trim();
+
+describe("a macOS run that fails, is stopped, or draws with AppKit alone (Task 9, fix round 1)", () => {
+  test.skipIf(!heavy.run)("a preview that stops the app fails alone; the others are drawn in a new launch (skipped without Xcode)", async () => {
+    writeFileSync(join(root, "SwiftUIMac/Screens/Probes.swift"), PROBES);
+    const realDefaults = defaults("export", REAL_ID, "-").stdout;
+    const started = Date.now();
+    const r = await shot(root, { screen: ["Broken", "Settings"], sizes: "900" });
+    console.log(`[swiftui-mac-shot-e2e] a preview that stops the app: ${Math.round((Date.now() - started) / 1000)} s`);
+    console.log(r.text);
+    const routes = routesOf(r.data);
+    const broken = routes.find((x) => x.route === "Broken")!;
+    expect(broken.status).toBe(0);
+    expect(broken.error).toMatch(/^The preview Probes\.swift:\d+ stopped the app: Fatal error: Broken on purpose/);
+    const settings = routes.find((x) => x.route === "Settings")!;
+    expect([settings.status, settings.shots.length]).toEqual([200, 2]);
+    expect(pngSize(png("settings.desktop-900.png"))).toEqual({ width: 1800, height: 1400 });
+    expect(ownHosts()).toBe("");
+    expectDefaultsUntouched(realDefaults);
+  }, 1_800_000);
+
+  test.skipIf(!heavy.run)("a preview that never finishes uses up the time; the app Motif launched is stopped with it (skipped without Xcode)", async () => {
+    const [app] = detectApps(root).apps;
+    const outDir = join(root, "design", "shots");
+    const started = Date.now();
+    // The build is kept from the run before: the time goes to the launch and the hang.
+    const run = shootSwiftUI({
+      root, app: app!, routes: [], screens: ["Hang"], outDir, viewports: [MAC_WINDOWS[1]!], variants: [], states: [], audit: false, timeoutMs: 150_000,
+    });
+    await expect(run).rejects.toThrow(/The screenshots took longer than \d+ s and were stopped while drawing Probes\.swift:\d+/);
+    console.log(`[swiftui-mac-shot-e2e] a preview that never finishes: ${Math.round((Date.now() - started) / 1000)} s`);
+    expect(ownHosts()).toBe("");
+    expect(defaults("read", HOST_ID).exitCode).not.toBe(0);
+  }, 1_800_000);
+
+  test.skipIf(!heavy.run)("Ctrl+C while a screen hangs: Motif exits, and the app it launched is stopped (skipped without Xcode)", async () => {
+    const main = join(import.meta.dir, "../src/main.ts");
+    const proc = Bun.spawn([process.execPath, main, "shot", "--screen", "Hang", "--sizes", "900", "--cwd", root], {
+      env: { ...process.env, MOTIF_HOME: home },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    // Waits for the host to be up (it hangs in the preview's body), then sends Ctrl+C.
+    const deadline = Date.now() + 600_000;
+    while (ownHosts() === "" && Date.now() < deadline && proc.exitCode === null) await Bun.sleep(500);
+    expect(ownHosts()).not.toBe("");
+    await Bun.sleep(1_000);
+    proc.kill("SIGINT");
+    const code = await Promise.race([proc.exited, Bun.sleep(60_000).then(() => "still running")]);
+    expect(code).toBe(130);
+    for (let i = 0; i < 20 && ownHosts() !== ""; i++) await Bun.sleep(250);
+    expect(ownHosts()).toBe("");
+    expect(defaults("read", HOST_ID).exitCode).not.toBe(0);
+  }, 1_800_000);
+
+  test.skipIf(!heavy.run)("drawn with AppKit alone (MOTIF_SWIFTUI_APPKIT=1): opaque 2× windows, and one note that says so (skipped without Xcode)", async () => {
+    const saved = process.env.MOTIF_SWIFTUI_APPKIT;
+    process.env.MOTIF_SWIFTUI_APPKIT = "1";
+    let r: Awaited<ReturnType<typeof shot>>;
+    try {
+      r = await shot(root, { routes: "/", sizes: "1440" });
+    } finally {
+      if (saved === undefined) delete process.env.MOTIF_SWIFTUI_APPKIT;
+      else process.env.MOTIF_SWIFTUI_APPKIT = saved;
+    }
+    console.log(r.text);
+    expect(r.exitCode).toBe(0);
+    expect(r.text.split("without the window server").length - 1).toBe(1);
+    expect(r.text).toContain("without the window server (Motif was told to draw with AppKit alone, MOTIF_SWIFTUI_APPKIT=1)");
+    for (const file of ["index.desktop.png", "index.desktop.dark.png"]) {
+      expect(pngSize(png(file))).toEqual({ width: 2880, height: 1800 });
+      const { rgba } = decodePng(png(file));
+      let seeThrough = 0;
+      for (let i = 3; i < rgba.length; i += 4) if (rgba[i] !== 255) seeThrough++;
+      expect(seeThrough).toBe(0);
+    }
+    expect(ownHosts()).toBe("");
   }, 1_800_000);
 });

@@ -4,11 +4,11 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import type { DoctorDeps } from "../src/commands/doctor";
 import { runShot, type ShotDeps } from "../src/commands/shot";
 import { detectApps } from "../src/detect/stacks";
-import { NATIVE_DESKTOP, NATIVE_VIEWPORTS, type RouteResult } from "../src/shot/capture";
+import { describeSizes, NATIVE_DESKTOP, NATIVE_VIEWPORTS, type RouteResult } from "../src/shot/capture";
 import type { NativeShotOptions } from "../src/stacks/native";
 import { SWIFTUI } from "../src/stacks/swiftui";
 import { swiftUIDoctor } from "../src/stacks/swiftui/doctor";
-import { hooksSource, RESULT_FILE, scriptSource, SOURCES_FOLDER, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot } from "../src/stacks/swiftui/harness";
+import { hooksSource, MAC_HOST_SUFFIX, RESULT_FILE, scriptSource, SOURCES_FOLDER, stopMacHost, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot } from "../src/stacks/swiftui/harness";
 import {
   appStructName, copyBase, KEEP_BUILDS, MAC_WINDOWS, SWIFTUI_FIRST_RUN_MAC, swiftUIPlatform, swiftUIShotSizes, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, prunedNotes, pruneSwiftUIBuilds, readSwiftUIInputs, takeLock, screenError, shootSwiftUI, signedCapabilities,
   SWIFTUI_FIRST_RUN, SWIFTUI_VARIANT_HOW, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
@@ -466,7 +466,9 @@ describe("the screenshots of a SwiftUI run", () => {
 
 const UDID = "6863BE3D-AAA8-4177-A1E6-AB1EC415FEF2";
 const LEFTOVER = "11111111-2222-3333-4444-555555555555";
-const SETTINGS = JSON.stringify([{ target: "SwiftUIMin", buildSettings: { PRODUCT_MODULE_NAME: "SwiftUIMin", FULL_PRODUCT_NAME: "SwiftUIMin.app", EXECUTABLE_NAME: "SwiftUIMin" } }]);
+const SETTINGS = JSON.stringify([
+  { target: "SwiftUIMin", buildSettings: { PRODUCT_MODULE_NAME: "SwiftUIMin", FULL_PRODUCT_NAME: "SwiftUIMin.app", EXECUTABLE_NAME: "SwiftUIMin", PRODUCT_BUNDLE_IDENTIFIER: "dev.motif.SwiftUIMin" } },
+]);
 const SIMS = JSON.stringify({
   runtimes: [{ identifier: "com.apple.CoreSimulator.SimRuntime.iOS-18-5", version: "18.5", platform: "iOS", isAvailable: true }],
   devicetypes: [{ identifier: "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro", name: "iPhone 16 Pro" }],
@@ -480,8 +482,13 @@ interface Fake {
   removed: string[];
   hooks: (() => void)[];
   sources: Record<string, string>;
-  options: { shots: SwiftUIShot[]; setupFile?: string; stateLimit?: number } | null;
+  options: { shots: SwiftUIShot[]; setupFile?: string; stateLimit?: number; appKitOnly?: boolean } | null;
   copyDir: string;
+  /** The copy's project file and the test's environment, as the launch saw them. */
+  pbx: string;
+  env: Record<string, string | undefined> | null;
+  /** A macOS run's host clean-up: the commands it ran, the processes it stopped, and the home it cleaned. */
+  host: { spawned: string[][]; killed: number[]; home: string; ps: string };
 }
 
 /**
@@ -494,8 +501,12 @@ async function fakeShoot(
   home: string,
   test: (options: { shots: SwiftUIShot[] }, resultPath: string, fake: Fake) => ExecResult = drawsAll,
   build: ExecResult = ok("** TEST BUILD SUCCEEDED **"),
+  ps = "",
 ) {
-  const fake: Fake = { calls: [], removed: [], hooks: [], sources: {}, options: null, copyDir: "" };
+  const fake: Fake = {
+    calls: [], removed: [], hooks: [], sources: {}, options: null, copyDir: "", pbx: "", env: null,
+    host: { spawned: [], killed: [], home: tempDir("motif-swiftui-user-"), ps },
+  };
   const exec: Exec = async (cmd, o) => {
     fake.calls.push(cmd);
     const c = cmd.join(" ");
@@ -516,6 +527,8 @@ async function fakeShoot(
       const folder = join(dirname(path), SOURCES_FOLDER);
       for (const f of readdirSync(folder)) fake.sources[f] = readFileSync(join(folder, f), "utf8");
       fake.options = JSON.parse(readFileSync(path, "utf8"));
+      fake.pbx = readFileSync(join(fake.copyDir, readdirSync(fake.copyDir).find((f) => f.endsWith(".xcodeproj"))!, "project.pbxproj"), "utf8");
+      fake.env = o.env ?? null;
       return test(fake.options!, join(dirname(path), RESULT_FILE), fake);
     }
     throw new Error(`unexpected ${c}`);
@@ -534,6 +547,14 @@ async function fakeShoot(
       onExit: (fn) => {
         fake.hooks.push(fn);
         return () => fake.hooks.splice(fake.hooks.indexOf(fn), 1);
+      },
+      host: {
+        spawn: (cmd) => {
+          fake.host.spawned.push(cmd);
+          return { exitCode: 0, stdout: cmd[0] === "ps" ? fake.host.ps : "" };
+        },
+        kill: (pid) => void fake.host.killed.push(pid),
+        home: fake.host.home,
       },
     },
   );
@@ -1025,7 +1046,7 @@ describe("macOS SwiftUI apps", () => {
     expect(test.slice(0, 10)).toEqual([
       "xcodebuild", "test-without-building", "-project", join(cache, "copy", "SwiftUIMac.xcodeproj"), "-scheme", "MotifShots", "-configuration", "Debug", "-destination", "platform=macOS",
     ]);
-    expect(test[test.indexOf("-derivedDataPath") + 1]).toBe(join(cache, "DerivedData"));
+    expect(test[test.indexOf("-derivedDataPath") + 1]).toBe(join(cache, "DerivedData-macos"));
     expect(test).toContain("CODE_SIGNING_ALLOWED=NO");
     expect(fake.options!.shots.map((s) => [s.file, s.scale, s.width])).toEqual([
       ["index.desktop.png", 2, 1440],
@@ -1082,7 +1103,7 @@ describe("macOS SwiftUI apps", () => {
     if (r.exitCode !== 0) console.log(r.text);
     expect(r.exitCode).toBe(0);
     expect(calls[0]!.viewports).toEqual(MAC_WINDOWS);
-    expect(r.text).toContain("of 1 screen (1440 and 900 px wide, light and dark)");
+    expect(r.text).toContain("of 1 screen (a 1440×900 and a 900×700 window, light and dark)");
     // Its sizes are its own: no note that --sizes left anything out.
     expect(r.text).not.toContain("--sizes left out");
     const one = await runShot(root, ctx({ routes: "/", sizes: "900" }), deps);
@@ -1092,5 +1113,180 @@ describe("macOS SwiftUI apps", () => {
     expect(phone.exitCode).toBe(2);
     expect(phone.text).toContain("--sizes: \"390\" isn't one of a macOS app's sizes.");
     expect(calls).toHaveLength(2);
+  });
+});
+
+// ---- macOS apps, fix round 1 (plan 2H, Task 9) ----
+
+describe("a macOS run is isolated from the developer's own app (Task 9, fix round 1)", () => {
+  const HOST = "dev.motif.SwiftUIMac.motif-shots";
+
+  test("the host has its own bundle id and home: the copy's app target is renamed, and the test's home is in the work folder", async () => {
+    const root = macProject();
+    const home = tempDir("motif-swiftui-home-");
+    const { promise, fake } = await fakeShoot(root, { viewports: MAC_WINDOWS }, home);
+    await promise;
+    const cache = swiftUICacheDir(home, root, "SwiftUIMac");
+    // Only the app target's configurations: the harness's own target keeps its own id.
+    expect(fake.pbx.match(/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/g)!.sort()).toEqual([
+      `PRODUCT_BUNDLE_IDENTIFIER = "${HOST}";`,
+      `PRODUCT_BUNDLE_IDENTIFIER = "${HOST}";`,
+      "PRODUCT_BUNDLE_IDENTIFIER = dev.motif.shots;",
+      "PRODUCT_BUNDLE_IDENTIFIER = dev.motif.shots;",
+    ]);
+    expect(readFileSync(join(root, "SwiftUIMac.xcodeproj/project.pbxproj"), "utf8")).not.toContain(HOST);
+    expect(fake.env!.TEST_RUNNER_CFFIXED_USER_HOME).toBe(join(cache, "work", "home"));
+    expect(fake.env!.TEST_RUNNER_HOME).toBe(join(cache, "work", "home"));
+  });
+
+  test("its defaults domain and saved state are removed before and after the run, and only its own", async () => {
+    const root = macProject();
+    const home = tempDir("motif-swiftui-home-");
+    const { promise, fake } = await fakeShoot(root, { viewports: MAC_WINDOWS }, home);
+    const prefs = join(fake.host.home, "Library", "Preferences");
+    mkdirSync(prefs, { recursive: true });
+    writeFileSync(join(prefs, `${HOST}.plist`), "left by an earlier run");
+    writeFileSync(join(prefs, "dev.motif.SwiftUIMac.plist"), "the developer's own");
+    const saved = join(fake.host.home, "Library", "Saved Application State", `${HOST}.savedState`);
+    mkdirSync(saved, { recursive: true });
+    await promise;
+    const deletes = fake.host.spawned.filter((c) => c[0] === "defaults");
+    expect(deletes).toEqual([["defaults", "delete", HOST], ["defaults", "delete", HOST]]);
+    expect(existsSync(join(prefs, `${HOST}.plist`))).toBe(false);
+    expect(existsSync(saved)).toBe(false);
+    expect(readFileSync(join(prefs, "dev.motif.SwiftUIMac.plist"), "utf8")).toBe("the developer's own");
+  });
+
+  test("a host a killed run left is stopped first, and the run's own host after it, by its path in Motif's build; nothing else", async () => {
+    const root = macProject();
+    const home = tempDir("motif-swiftui-home-");
+    const products = join(swiftUICacheDir(home, root, "SwiftUIMac"), "DerivedData-macos", "Build", "Products", "Debug");
+    const ps = [
+      `  4242 ${products}/SwiftUIMac.app/Contents/MacOS/SwiftUIMac -NSTreatUnknownArgumentsAsOpen NO`,
+      "  4343 /Applications/SwiftUIMac.app/Contents/MacOS/SwiftUIMac",
+      `  4444 /bin/zsh -c echo ${products}/SwiftUIMac.app/Contents/MacOS/SwiftUIMac`,
+      "  4545 /usr/bin/xcodebuild test-without-building",
+    ].join("\n");
+    const { promise, fake } = await fakeShoot(root, { viewports: MAC_WINDOWS }, home, drawsAll, ok("** TEST BUILD SUCCEEDED **"), ps);
+    const r = await promise;
+    // Once before the run (a leftover), once after it: only the process running Motif's own build of the app.
+    expect(fake.host.killed).toEqual([4242, 4242]);
+    expect(fake.host.spawned.filter((c) => c[0] === "ps").length).toBe(2);
+    expect(r.notes).toContain("Stopped a copy of the app that an earlier motif shot left running when it was stopped.");
+  });
+
+  test("interrupted (Ctrl+C, a termination signal, the time limit): the exit hook stops the host and removes its domain", async () => {
+    const root = macProject();
+    const home = tempDir("motif-swiftui-home-");
+    const products = join(swiftUICacheDir(home, root, "SwiftUIMac"), "DerivedData-macos", "Build", "Products", "Debug");
+    let during: { killed: number[]; deletes: number } = { killed: [], deletes: 0 };
+    const { promise, fake } = await fakeShoot(root, { viewports: MAC_WINDOWS }, home, (options, path, f) => {
+      // The host is running while xcodebuild waits; Motif exits: what its exit hooks do.
+      f.host.ps = `  5151 ${products}/SwiftUIMac.app/Contents/MacOS/SwiftUIMac`;
+      for (const hook of [...f.hooks]) hook();
+      during = { killed: [...f.host.killed], deletes: f.host.spawned.filter((c) => c[0] === "defaults").length };
+      return drawsAll(options, path);
+    });
+    // The exit hooks removed the work folder too, so the launch can't write its result: the run fails, as it would.
+    await promise.catch(() => {});
+    expect(during.killed).toEqual([5151]);
+    expect(during.deletes).toBe(2);
+    expect(fake.hooks).toEqual([]);
+  });
+
+  test("an iOS run neither looks for a host nor touches defaults", async () => {
+    const root = xcodeProject();
+    const home = tempDir("motif-swiftui-home-");
+    const { promise, fake } = await fakeShoot(root, {}, home);
+    await promise;
+    expect(fake.host.spawned).toEqual([]);
+    expect(fake.pbx).not.toContain(".motif-shots");
+    expect(fake.env!.TEST_RUNNER_CFFIXED_USER_HOME).toBeUndefined();
+  });
+
+  test("stopMacHost: the processes under Motif's build, the suffixed domain; never a domain without the suffix", () => {
+    const derived = join(tempDir("motif-swiftui-dd-"), "DerivedData-macos");
+    const userHome = tempDir("motif-swiftui-user-");
+    const spawned: string[][] = [];
+    const killed: number[] = [];
+    const io = {
+      spawn: (cmd: string[]) => {
+        spawned.push(cmd);
+        const app = (dd: string) => join(dd, "Build", "Products", "Debug", "A.app", "Contents", "MacOS", "A");
+        return { exitCode: 0, stdout: cmd[0] === "ps" ? `  7 ${app(derived)}\n  8 ${app(`${derived}-other`)}` : "" };
+      },
+      kill: (pid: number) => void killed.push(pid),
+      home: userHome,
+    };
+    expect(stopMacHost(derived, "dev.example.A.motif-shots", io)).toEqual({ killed: 1 });
+    expect(killed).toEqual([7]);
+    expect(spawned.filter((c) => c[0] === "defaults")).toEqual([["defaults", "delete", "dev.example.A.motif-shots"]]);
+    spawned.length = 0;
+    stopMacHost(derived, "dev.example.A", io);
+    expect(spawned.filter((c) => c[0] === "defaults")).toEqual([]);
+    expect(MAC_HOST_SUFFIX).toBe(".motif-shots");
+  });
+});
+
+describe("macOS runs, fix round 1 (Task 9): sizes, notes and the refusal", () => {
+  test("a multiplatform app drawn on the Mac needs no iOS simulator; drawn on iOS it does", () => {
+    const root = macProject({ "SwiftUIMac.xcodeproj/project.pbxproj": multiplatformPbx() });
+    const [app] = detectApps(root).apps;
+    const noSimulator = machine({ simulator: false });
+    expect(swiftUIShotRefusal(root, app!, noSimulator, MAC_WINDOWS)).toBeNull();
+    expect(SWIFTUI.shotRefusal?.(root, app!, () => null, noSimulator, [MAC_WINDOWS[0]!])).toBeNull();
+    expect(swiftUIShotRefusal(root, app!, noSimulator)?.error).toBe("needs-xcode");
+    expect(swiftUIShotRefusal(root, app!, noSimulator, [NATIVE_VIEWPORTS[1]!])?.error).toBe("needs-xcode");
+  });
+
+  test("a multiplatform app's iOS and macOS builds are kept apart: each platform's first run says so", async () => {
+    const root = macProject({ "SwiftUIMac.xcodeproj/project.pbxproj": multiplatformPbx() });
+    const home = tempDir("motif-swiftui-home-");
+    const cache = swiftUICacheDir(home, root, "SwiftUIMac");
+    mkdirSync(join(cache, "DerivedData"), { recursive: true });
+    const mac = await fakeShoot(root, { viewports: MAC_WINDOWS }, home);
+    const r = await mac.promise;
+    expect(r.notes[0]).toBe(SWIFTUI_FIRST_RUN_MAC);
+    const test = mac.fake.calls.find((c) => c[1] === "test-without-building")!;
+    expect(test[test.indexOf("-derivedDataPath") + 1]).toBe(join(cache, "DerivedData-macos"));
+  });
+
+  test("the capabilities note says where the app runs: the simulator, or this Mac", async () => {
+    const entitlements = '<?xml version="1.0"?><plist version="1.0"><dict><key>com.apple.security.application-groups</key><array/></dict></plist>';
+    const pbx = readFileSync(join(FIXTURES, "swiftui-mac/SwiftUIMac.xcodeproj/project.pbxproj"), "utf8")
+      .replace(/\r\n/g, "\n")
+      .replace(/(\t+)(INFOPLIST_FILE = [^;]+;)/g, "$1$2\n$1CODE_SIGN_ENTITLEMENTS = SwiftUIMac/SwiftUIMac.entitlements;");
+    const root = macProject({ "SwiftUIMac.xcodeproj/project.pbxproj": pbx, "SwiftUIMac/SwiftUIMac.entitlements": entitlements });
+    const home = tempDir("motif-swiftui-home-");
+    const { promise } = await fakeShoot(root, { viewports: MAC_WINDOWS }, home);
+    const r = await promise;
+    expect(r.notes).toContain(
+      "Motif builds the app for this Mac without signing it, so it runs without what its entitlements give (App Groups): screens that use it may fail or show nothing. Fake what they need in design/states/Setup.swift.",
+    );
+  });
+
+  test("MOTIF_SWIFTUI_APPKIT=1 asks the harness to draw with AppKit alone (to test that way)", async () => {
+    const root = macProject();
+    const home = tempDir("motif-swiftui-home-");
+    const saved = process.env.MOTIF_SWIFTUI_APPKIT;
+    process.env.MOTIF_SWIFTUI_APPKIT = "1";
+    try {
+      const { promise, fake } = await fakeShoot(root, { viewports: MAC_WINDOWS }, home);
+      await promise;
+      expect(fake.options!.appKitOnly).toBe(true);
+    } finally {
+      if (saved === undefined) delete process.env.MOTIF_SWIFTUI_APPKIT;
+      else process.env.MOTIF_SWIFTUI_APPKIT = saved;
+    }
+    const plain = await fakeShoot(macProject(), { viewports: MAC_WINDOWS }, tempDir("motif-swiftui-home-"));
+    await plain.promise;
+    expect(plain.fake.options!.appKitOnly).toBeUndefined();
+  });
+
+  test("a macOS run's sizes read as windows", () => {
+    expect(describeSizes(MAC_WINDOWS)).toBe("a 1440×900 and a 900×700 window");
+    expect(describeSizes([MAC_WINDOWS[0]!])).toBe("a 1440×900 window");
+    // The other stacks' desktop size reads as before.
+    expect(describeSizes([NATIVE_DESKTOP])).toBe("1440 px wide");
   });
 });

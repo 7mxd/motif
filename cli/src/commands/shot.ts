@@ -262,6 +262,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   // Expo's apps are drawn in the browser, through the web target: the web path, with native sizes and notes.
   const rn = app?.stack === "react-native";
   const shoot = native?.shoot ? (deps.shoot ?? native.shoot.bind(native)) : undefined;
+  // Sizes the stack draws this app at instead of the native ones (a macOS SwiftUI app's windows), or why not.
+  let own: { viewports: Viewport[] } | { error: string } | null = null;
   if (shoot && native && app) {
     const label = app.stack ? STACK_LABELS[app.stack] : "These";
     if (givenUrl !== undefined) return usage(`${label} apps are screenshotted from their code, not a URL; drop --url.`, { error: "usage" });
@@ -276,7 +278,10 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         { error: "usage" },
       );
     }
-    const refusal = native.shotRefusal?.(cwd, app, deps.which ?? ((cmd) => Bun.which(cmd)), (deps.doctor ?? defaultDoctorDeps)());
+    // The stack's own sizes first: a multiplatform SwiftUI app drawn at window sizes needs no iOS simulator.
+    own = native.shotSizes?.(cwd, app, typeof flags.sizes === "string" ? flags.sizes : undefined) ?? null;
+    const chosen = own && !("error" in own) ? own.viewports : undefined;
+    const refusal = native.shotRefusal?.(cwd, app, deps.which ?? ((cmd) => Bun.which(cmd)), (deps.doctor ?? defaultDoctorDeps)(), chosen);
     if (refusal) return usage(refusal.text, { error: refusal.error });
     // A widget or a state script that can't be used is a usage error, found before anything is written.
     const problem = native.shotInputsProblem?.(cwd, app, { screens, states });
@@ -289,7 +294,6 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   // Sizes the stack draws this app at instead of the native ones (a macOS SwiftUI app's windows), from --sizes when
   // given. They are what's drawn; --sizes' notes about what it left out are for phone and tablet sizes only.
   let stackSizes: Viewport[] | undefined;
-  const own = shoot && native && app ? native.shotSizes?.(cwd, app, typeof flags.sizes === "string" ? flags.sizes : undefined) : null;
   if (own && "error" in own) return usage(own.error, { error: "usage" });
   if (own) {
     stackSizes = own.viewports;

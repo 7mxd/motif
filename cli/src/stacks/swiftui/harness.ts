@@ -3,7 +3,8 @@
 // happens; a macOS app is built and drawn on the Mac itself, with no simulator. motif shot (Tasks 7–9) builds on it;
 // it never touches the developer's own project folder.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { maskComments, maskStrings } from "../../check/mask";
 import { onExit } from "../../cleanup";
 import { andList } from "../../text";
@@ -75,6 +76,8 @@ export interface SwiftUIHarnessOptions {
   stateLimit?: number;
   /** The setup file as messages name it (design/states/Setup.swift, or an app's own). */
   setupFile?: string;
+  /** macOS: draw with AppKit alone, never the window server (MOTIF_SWIFTUI_APPKIT=1, to test that way). */
+  appKitOnly?: boolean;
 }
 
 /** A Swift file of the developer's that the harness compiles in: design/states/Setup.swift or a --state. */
@@ -572,6 +575,68 @@ export interface SwiftUIHarnessRun {
   scripts?: { setup?: SwiftUIScript; states?: SwiftUIScript[] };
   /** How Motif runs work when it exits, Ctrl+C included (for tests): cleanup's onExit by default. */
   onExit?: (fn: () => void) => () => void;
+  /** How a macOS run finds and stops its test host and removes its defaults (for tests). */
+  host?: MacHostIO;
+}
+
+/**
+ * What a macOS test host's bundle identifier gets (decision 0010, §17): a defaults domain of its own, which Motif
+ * deletes, so the developer's own app's settings are never read or written.
+ */
+export const MAC_HOST_SUFFIX = ".motif-shots";
+
+/** How stopMacHost runs commands (synchronously, as the exit hook needs), stops processes, and finds the user's home. */
+export interface MacHostIO {
+  spawn?: (cmd: string[]) => { exitCode: number | null; stdout: string };
+  kill?: (pid: number) => void;
+  home?: string;
+}
+
+const hostSpawn = (cmd: string[]) => {
+  try {
+    const r = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "ignore", timeout: 10_000 });
+    return { exitCode: r.exitCode, stdout: r.stdout ? Buffer.from(r.stdout).toString() : "" };
+  } catch {
+    return { exitCode: null, stdout: "" };
+  }
+};
+const hostKill = (pid: number) => {
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // Gone already.
+  }
+};
+
+/**
+ * Stops a macOS run's test host and removes what it leaves outside the run's work folder, synchronously (it also runs
+ * from the exit hook). The host is launched apart from xcodebuild, so stopping xcodebuild doesn't stop it: every
+ * process whose executable is an app inside `derivedData` (Motif's own build of the app) is killed. The host's
+ * defaults domain (`hostId`, which must end in MAC_HOST_SUFFIX) is deleted, with its plist and saved window state.
+ * How many processes it stopped.
+ */
+export function stopMacHost(derivedData: string, hostId: string | undefined, io: MacHostIO = {}): { killed: number } {
+  const spawn = io.spawn ?? hostSpawn;
+  const kill = io.kill ?? hostKill;
+  const prefix = `${resolve(derivedData)}${sep}`;
+  let killed = 0;
+  const listed = spawn(["ps", "-axww", "-o", "pid=,command="]);
+  for (const line of listed.stdout.split("\n")) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (!m) continue;
+    const pid = Number(m[1]);
+    const command = m[2]!;
+    if (pid === process.pid || !command.startsWith(prefix) || !/\.app[\\/]Contents[\\/]MacOS[\\/]/.test(command)) continue;
+    kill(pid);
+    killed++;
+  }
+  if (hostId?.endsWith(MAC_HOST_SUFFIX) && hostId.length > MAC_HOST_SUFFIX.length) {
+    spawn(["defaults", "delete", hostId]);
+    const library = join(io.home ?? homedir(), "Library");
+    rmSync(join(library, "Preferences", `${hostId}.plist`), { force: true });
+    rmSync(join(library, "Saved Application State", `${hostId}.savedState`), { recursive: true, force: true });
+  }
+  return { killed };
 }
 
 /** How long each `simctl shutdown` and `simctl delete` may take (3.5 s on the Mac mini, 10 s on CI's runner). */
@@ -654,12 +719,40 @@ function sharedSchemes(projectDir: string): string[] {
 }
 
 /** Writes the harness's sources and options into the work folder, and the scheme and the patched project into the copy. */
+/**
+ * The project file with build settings set on one target, in each of its configurations: replaced where the target
+ * sets them, added where it doesn't (so they win over an xcconfig's). For the copy only: a macOS host's bundle id.
+ */
+export function withTargetSettings(pbx: string, target: string, values: Record<string, string>): string {
+  const { objs, named } = projectAndTarget(pbx, target);
+  const app = named(target);
+  if (!app?.obj) throw new Error(`The project has no target named ${target}.`);
+  const list = objs.get(unquote(field(app.obj.own, "buildConfigurationList") ?? ""));
+  const configs = (list ? listIds(pbx, list, "buildConfigurations") : []).map((id) => objs.get(id)).filter((o): o is PbxObject => !!o);
+  let out = pbx;
+  // From the last in the file to the first, so the earlier ones' offsets still hold.
+  for (const config of configs.sort((a, b) => b.start - a.start)) {
+    let text = config.text;
+    const opened = /\bbuildSettings = \{/.exec(text);
+    if (!opened) continue;
+    for (const [key, value] of Object.entries(values)) {
+      const setting = new RegExp(`(\\n\\s*)${key} = ("(?:[^"\\\\]|\\\\.)*"|[^;\\s]+);`);
+      text = setting.test(text)
+        ? text.replace(setting, (_, indent: string) => `${indent}${key} = ${pbxString(value)};`)
+        : `${text.slice(0, opened.index + opened[0].length)}\n\t\t\t\t${key} = ${pbxString(value)};${text.slice(opened.index + opened[0].length)}`;
+    }
+    out = `${out.slice(0, config.start)}${text}${out.slice(config.end + 1)}`;
+  }
+  return out;
+}
+
 export function writeHarness(
   run: Pick<SwiftUIHarnessRun, "copyDir" | "workDir" | "app" | "options" | "scripts">,
   build: SwiftUIAppBuild,
   settings: Record<string, string>,
   configuration: string,
   pbx: string,
+  appSettings: Record<string, string> = {},
 ): void {
   const project = join(run.copyDir, run.app.project);
   const folder = join(run.workDir, SOURCES_FOLDER);
@@ -678,7 +771,8 @@ export function writeHarness(
   for (const [name, text] of Object.entries(sources)) writeFileSync(join(folder, name), text);
   writeFileSync(join(run.workDir, OPTIONS_FILE), JSON.stringify(run.options, null, 2));
   const copied = Object.fromEntries(COPIED.filter((k) => settings[k]).map((k) => [k, settings[k]!]));
-  const patched = addTestTarget(pbx, run.app.name, Object.keys(sources), build, copied, folder.replace(/\\/g, "/"));
+  const base = Object.keys(appSettings).length > 0 ? withTargetSettings(pbx, run.app.name, appSettings) : pbx;
+  const patched = addTestTarget(base, run.app.name, Object.keys(sources), build, copied, folder.replace(/\\/g, "/"));
   writeFileSync(join(project, "project.pbxproj"), patched.pbx);
   const schemes = join(project, "xcshareddata", "xcschemes");
   mkdirSync(schemes, { recursive: true });
@@ -828,7 +922,13 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
     product: settings.FULL_PRODUCT_NAME ?? guess.product,
     executable: settings.EXECUTABLE_NAME ?? guess.executable,
   };
-  writeHarness(run, build, settings, configuration, original);
+  // A macOS app runs on the Mac itself: as an app of its own (its bundle id suffixed, so its defaults domain is
+  // Motif's, deleted after), with its home in the work folder (decision 0010, §17).
+  const realId = settings.PRODUCT_BUNDLE_IDENTIFIER;
+  const hostId = platform === "macos" && realId && !realId.includes("$") ? `${realId}${MAC_HOST_SUFFIX}` : undefined;
+  writeHarness(run, build, settings, configuration, original, hostId ? { PRODUCT_BUNDLE_IDENTIFIER: hostId } : {});
+  const hostHome = join(run.workDir, "home");
+  const testEnv: Record<string, string> = platform === "macos" ? { TEST_RUNNER_CFFIXED_USER_HOME: hostHome, TEST_RUNNER_HOME: hostHome } : {};
 
   /** xcodebuild's command for an action (build-for-testing, test-without-building) on the run's destination. */
   const xcodebuildOn = (destination: string) => (action: string) => [
@@ -847,7 +947,11 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
     for (let launch = 0; remaining.length > 0; launch++) {
       writeFileSync(join(run.workDir, OPTIONS_FILE), JSON.stringify({ ...run.options, shots: remaining }, null, 2));
       rmSync(resultPath, { force: true });
-      const tested = await step("test", xcodebuild("test-without-building"), { ...(run.env ?? process.env), TEST_RUNNER_MOTIF_SHOT_OPTIONS: join(run.workDir, OPTIONS_FILE) });
+      const tested = await step("test", xcodebuild("test-without-building"), {
+        ...(run.env ?? process.env),
+        ...testEnv,
+        TEST_RUNNER_MOTIF_SHOT_OPTIONS: join(run.workDir, OPTIONS_FILE),
+      });
       // xcodebuild hands the variables that start with TEST_RUNNER_ to the test's process, without the prefix.
       output = `${output}${tested.stdout}\n${tested.stderr}`.slice(-200_000);
       lastCode = tested.code;
@@ -901,14 +1005,25 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
   };
 
   // A macOS app is built for the Mac and drawn there, in the app's own process (decision 0010, §17): no simulator.
+  // The host is launched apart from xcodebuild, so stopping xcodebuild (the time limit, Ctrl+C) doesn't stop it: it is
+  // stopped, and its defaults removed, before the run (one a killed run left), after it, and when Motif exits.
   if (platform === "macos") {
-    const xcodebuild = xcodebuildOn("platform=macOS");
-    const built = await step("build", xcodebuild("build-for-testing"));
-    output = `${built.stdout}\n${built.stderr}`.slice(-200_000);
-    lastCode = built.code;
-    if (built.timedOut) return tooLong("building the app");
-    if (built.code !== 0) return done({ problem: buildProblem(output, run.scripts, platform) });
-    return launches(xcodebuild);
+    const stopHost = () => stopMacHost(derivedData, hostId, run.host);
+    if (stopHost().killed > 0) notes.push("Stopped a copy of the app that an earlier motif shot left running when it was stopped.");
+    mkdirSync(hostHome, { recursive: true });
+    const cancelHostHook = (run.onExit ?? onExit)(() => void stopHost());
+    try {
+      const xcodebuild = xcodebuildOn("platform=macOS");
+      const built = await step("build", xcodebuild("build-for-testing"));
+      output = `${built.stdout}\n${built.stderr}`.slice(-200_000);
+      lastCode = built.code;
+      if (built.timedOut) return tooLong("building the app");
+      if (built.code !== 0) return done({ problem: buildProblem(output, run.scripts, platform) });
+      return await launches(xcodebuild);
+    } finally {
+      cancelHostHook();
+      stopHost();
+    }
   }
 
   if (!simulator) {

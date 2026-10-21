@@ -114,7 +114,7 @@ export const SWIFTUI: NativeStack = {
   // Screens drawn in an iOS simulator by a test Motif adds to a copy of the app (decision 0010).
   stateFiles: { extension: ".swift", language: "Swift" },
   shoot: (opts) => shootSwiftUI(opts, { themeDir: SWIFTUI.themeDir(opts.root, opts.app) }),
-  shotRefusal: (root, app, _which, doctor) => (doctor ? swiftUIShotRefusal(root, app, doctor) : null),
+  shotRefusal: (root, app, _which, doctor, sizes) => (doctor ? swiftUIShotRefusal(root, app, doctor, sizes) : null),
   shotInputsProblem: swiftUIInputsProblem,
   shotSizes: swiftUIShotSizes,
   shotTimeLimit: swiftUITimeLimit,

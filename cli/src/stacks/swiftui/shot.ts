@@ -12,14 +12,14 @@ import { loadTokenDocument } from "../../contract/load";
 import { readVariants } from "../../contract/variants";
 import type { AppInfo } from "../../detect/stacks";
 import { motifHome } from "../../home";
-import { NATIVE_VIEWPORTS, parseSizes, routeSlug, shotName, type RouteResult, type Scheme, type StateScript, type Viewport } from "../../shot/capture";
+import { MAC_WINDOWS, NATIVE_VIEWPORTS, parseSizes, routeSlug, shotName, type RouteResult, type Scheme, type StateScript, type Viewport } from "../../shot/capture";
 import { andList } from "../../text";
 import { statesFile, type StatesFile } from "../flutter/inputs";
 import type { NativeShotOptions } from "../native";
 import { swiftUIDoctor } from "./doctor";
 import { THEME_FILE } from "./generate";
 import {
-  execCommand, removeSimulator, runSwiftUIHarness, stateFunction, type Exec, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
+  execCommand, removeSimulator, runSwiftUIHarness, stateFunction, type Exec, type MacHostIO, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
 } from "./harness";
 import { appEntryFile, field, idsIn, pbxObjects, swiftUIApp, unquote, type SwiftUIApp } from "./project";
 import { discoverSwiftUIScreens, swiftUIRunName, swiftUIScreenProblem, type SwiftUIPreview } from "./screens";
@@ -29,14 +29,8 @@ export const SWIFTUI_FIRST_RUN = "The first SwiftUI screenshots build the app fo
 /** The same, for a macOS app, which is built and drawn on the Mac itself. */
 export const SWIFTUI_FIRST_RUN_MAC = "The first SwiftUI screenshots of a macOS app build it, which takes a few minutes; later runs reuse the build.";
 
-/**
- * A macOS app's sizes (decision 0010, §17): windows, not screens. The desktop's 1440×900 and a compact 900×700, both
- * at 2× (a Retina Mac's), whatever the Mac's own screen is. In file names: desktop and desktop-900.
- */
-export const MAC_WINDOWS: Viewport[] = [
-  { name: "desktop", width: 1440, height: 900, scale: 2, mobile: false },
-  { name: "desktop", file: "desktop-900", width: 900, height: 700, scale: 2, mobile: false },
-];
+/** A macOS app's windows (capture.ts holds them, so sentences about sizes can name them). */
+export { MAC_WINDOWS };
 
 /**
  * Where a run draws the app: on the Mac for a macOS-only app, and for a multiplatform one when every size asked for
@@ -112,8 +106,11 @@ const LEFT_OUT_NAMED = 5;
  * Why motif shot can't draw this SwiftUI app here: not a Mac, or Xcode (or, for an iOS app, its simulator) missing, in
  * doctor's words; a Swift package app; a project Motif can't copy whole. A macOS app is drawn on the Mac itself.
  */
-export function swiftUIShotRefusal(root: string, app: AppInfo, doctor: DoctorDeps): { error: string; text: string } | null {
-  const [item] = swiftUIDoctor(doctor, { root, apps: [app] });
+export function swiftUIShotRefusal(root: string, app: AppInfo, doctor: DoctorDeps, sizes?: Viewport[]): { error: string; text: string } | null {
+  // A multiplatform app drawn at window sizes runs on the Mac: it needs no iOS simulator.
+  const chosen = sizes ? swiftUIApp(resolve(root, app.path)) : null;
+  const onMac = chosen ? swiftUIPlatform(chosen, sizes!) === "macos" : false;
+  const [item] = swiftUIDoctor(doctor, { root, apps: [app], ...(onMac ? { platform: "macos" as const } : {}) });
   if (item && doctor.platform !== "darwin") return { error: "needs-mac", text: `${item.detail} Run motif shot on a Mac that has Xcode.` };
   if (item?.status === "needed") return { error: "needs-xcode", text: `${item.detail} Then run motif shot again.` };
   const swift = swiftUIApp(resolve(root, app.path));
@@ -634,6 +631,8 @@ export interface SwiftUIShotDeps {
   exec?: Exec;
   remove?: (udid: string) => { code: number; stderr: string };
   onExit?: (fn: () => void) => () => void;
+  /** How a macOS run stops its test host and removes its defaults (tests). */
+  host?: MacHostIO;
 }
 
 /** Deletes simulators a killed motif shot left (motif-<pid>-…, its process gone); how many. */
@@ -880,7 +879,7 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
   const capabilities = signedCapabilities(appDir, swift);
   if (capabilities.length > 0) {
     notes.push(
-      `Motif builds the app for the simulator without signing it, so it runs without what its entitlements give (${andList(capabilities)}): screens that use ${capabilities.length === 1 ? "it" : "them"} may fail or show nothing. Fake what they need in ${SETUP_FILE}.`,
+      `Motif builds the app for ${platform === "macos" ? "this Mac" : "the simulator"} without signing it, so it runs without what its entitlements give (${andList(capabilities)}): screens that use ${capabilities.length === 1 ? "it" : "them"} may fail or show nothing. Fake what they need in ${SETUP_FILE}.`,
     );
   }
 
@@ -895,7 +894,8 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
   const cache = swiftUICacheDir(deps.home ?? motifHome(), appDir, swift.name);
   const copyRoot = join(cache, "copy");
   const workDir = join(cache, "work");
-  const derivedData = join(cache, "DerivedData");
+  // One build a platform: a multiplatform app's iOS and macOS builds are kept apart, and each has its first run.
+  const derivedData = join(cache, platform === "macos" ? "DerivedData-macos" : "DerivedData");
   const lock = join(cache, "run.lock");
   mkdirSync(cache, { recursive: true });
   takeLock(lock);
@@ -941,6 +941,7 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
         settle: SETTLE_S,
         stateLimit: STATE_S,
         ...(inputs.setup ? { setupFile: inputs.setup.file.shown } : {}),
+        ...(platform === "macos" && process.env.MOTIF_SWIFTUI_APPKIT === "1" ? { appKitOnly: true } : {}),
       },
       derivedData,
       timeoutMs: Math.max(1, opts.timeoutMs - (Date.now() - started)),
@@ -948,6 +949,7 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
       ...(deps.exec ? { exec: deps.exec } : {}),
       ...(deps.remove ? { remove: deps.remove } : {}),
       ...(deps.onExit ? { onExit: deps.onExit } : {}),
+      ...(deps.host ? { host: deps.host } : {}),
     });
     if (!result.result) {
       const said = !result.timedOut ? result.output.split(/\r?\n/).find((l) => PACKAGES_FAILED.test(l))?.trim() : undefined;

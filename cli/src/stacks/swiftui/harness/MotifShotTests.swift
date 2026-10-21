@@ -7,11 +7,8 @@ import SwiftUI
 import XCTest
 #if os(macOS)
 import AppKit
-/// The window a screen is hosted and drawn in.
-typealias MotifWindow = NSWindow
 #else
 import UIKit
-typealias MotifWindow = UIWindow
 #endif
 
 struct MotifShotOptions: Decodable {
@@ -49,6 +46,8 @@ struct MotifShotOptions: Decodable {
     let stateLimit: Double?
     /// The setup file as Motif names it (design/states/Setup.swift, or an app's own), for messages.
     let setupFile: String?
+    /// macOS: draw with AppKit alone, never the window server (to test that way).
+    let appKitOnly: Bool?
     let shots: [Shot]
 }
 
@@ -104,7 +103,7 @@ final class MotifShotTests: XCTestCase {
             MotifAccessibility.enable()
             if MotifAccessibility.enabled != true { result.notes.append(MotifAccessibility.problem) }
         }
-        if let note = MotifShotDrawing.prepare() { result.notes.append(note) }
+        if let note = MotifShotDrawing.prepare(appKitOnly: options.appKitOnly ?? false) { result.notes.append(note) }
         let previews = MotifPreviews.all()
         result.previews = previews.map(\.info)
         try write(result, to: resultURL)
@@ -188,7 +187,7 @@ struct MotifShotError: Error, CustomStringConvertible {
 @MainActor
 enum MotifShotDrawing {
     /// Nothing to do before the first shot in the simulator: the app's own window stays behind the harness's.
-    static func prepare() -> String? { nil }
+    static func prepare(appKitOnly: Bool) -> String? { nil }
 
     /// Hosts the view in a window of its own at the shot's size and traits, waits for it to settle, and draws the window.
     static func draw(
@@ -303,6 +302,9 @@ final class MotifShotWindow: NSWindow {
     @objc func _hasKeyAppearance() -> Bool { true }
     @objc func hasKeyAppearance() -> Bool { true }
     @objc func _hasMainAppearance() -> Bool { true }
+
+    /// AppKit's own methods the active look rests on, for the note when one is missing.
+    static let activeLook = ["_hasActiveAppearance", "_hasActiveAppearanceIgnoringKeyFocus", "_hasKeyAppearance", "hasKeyAppearance", "_hasMainAppearance"]
 }
 
 @MainActor
@@ -311,13 +313,21 @@ enum MotifShotDrawing {
     /// the app leaves the Dock and gives the focus back if it had it, so a run stays out of the way of the Mac's screen.
     /// Accessibility is turned on for every run, not only those with a state: on CI's macOS 15 runner, only runs with
     /// it on got 2× pictures from the window server (decision 0010, §17).
-    static func prepare() -> String? {
+    /// When AppKit lacks one of the methods MotifShotWindow answers for the active look, the note says so: the shots'
+    /// controls may then be drawn as in a window behind the others.
+    static func prepare(appKitOnly: Bool) -> String? {
+        self.appKitOnly = appKitOnly
         for window in NSApp.windows where window.isVisible { window.orderOut(nil) }
         NSApp.setActivationPolicy(.accessory)
         if NSApp.isActive { NSApp.deactivate() }
         MotifAccessibility.enable()
-        return nil
+        let missing = MotifShotWindow.activeLook.filter { class_getInstanceMethod(NSWindow.self, NSSelectorFromString($0)) == nil }
+        guard !missing.isEmpty else { return nil }
+        return "This macOS's AppKit has no \(missing.joined(separator: ", ")), which Motif answers to draw its windows as the window in front: buttons, switches and the title bar's buttons may be drawn grey, as in a window behind the others. Tell Motif's maintainers which macOS you use."
     }
+
+    /// Draw with AppKit alone, never the window server (MOTIF_SWIFTUI_APPKIT=1, to test that way).
+    static var appKitOnly = false
 
     /// Said once when a shot couldn't be taken from the window server, with what it gave instead.
     static func withoutWindowServer(_ why: String) -> String {
@@ -368,8 +378,8 @@ enum MotifShotDrawing {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         // The window server takes the new scale, and the window's latest frame, a moment after AppKit: on a busy Mac
         // (CI's runner) its first picture can still be the 1× one, so it is asked again, for up to 2 s.
-        var why = "AppKit can't set the window's scale"
-        if scaled {
+        var why = appKitOnly ? "Motif was told to draw with AppKit alone, MOTIF_SWIFTUI_APPKIT=1" : "AppKit can't set the window's scale"
+        if scaled && !appKitOnly {
             let deadline = Date().addingTimeInterval(2)
             while true {
                 switch windowServerPicture(window, size: size, scale: shot.scale, dark: shot.dark) {
@@ -384,7 +394,7 @@ enum MotifShotDrawing {
                 RunLoop.main.run(until: Date().addingTimeInterval(0.1))
             }
         }
-        return (try viewsPicture(window, scale: shot.scale), withoutWindowServer(why), stateError)
+        return (try viewsPicture(window, scale: shot.scale, dark: shot.dark), withoutWindowServer(why), stateError)
     }
 
     /// Makes the window's surface the shot's scale (2× on a Mac whose screen is 1×), through AppKit's
@@ -428,27 +438,36 @@ enum MotifShotDrawing {
             let alphaFirst = image.alphaInfo == .premultipliedFirst || image.alphaInfo == .first
             if bytes[at + (alphaFirst ? 0 : 3)] == 0 { return .failure(MotifShotError("it gave an empty picture of the window")) }
         }
-        guard let cropped = image.cropping(to: CGRect(x: dx, y: dy, width: width, height: height)),
-              let space = CGColorSpace(name: CGColorSpace.sRGB),
+        guard let cropped = image.cropping(to: CGRect(x: dx, y: dy, width: width, height: height)) else {
+            return .failure(MotifShotError("its picture couldn't be cropped"))
+        }
+        guard let png = opaquePNG(cropped, dark: dark) else { return .failure(MotifShotError("its picture couldn't be made into a PNG")) }
+        return .success(png)
+    }
+
+    /// The picture as an opaque sRGB PNG: drawn over the window's background colour, so the window's rounded corners,
+    /// and anything see-through, read as the window, as the other stacks' shots do.
+    private static func opaquePNG(_ image: CGImage, dark: Bool) -> Data? {
+        let width = image.width
+        let height = image.height
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
                                       bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-        else { return .failure(MotifShotError("its picture couldn't be cropped")) }
+        else { return nil }
         var background = CGColor(gray: dark ? 0 : 1, alpha: 1)
         NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
             background = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)?.cgColor ?? background
         }
         context.setFillColor(background)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
-        guard let flat = context.makeImage(), let png = NSBitmapImageRep(cgImage: flat).representation(using: .png, properties: [:]) else {
-            return .failure(MotifShotError("its picture couldn't be made into a PNG"))
-        }
-        return .success(png)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let flat = context.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: flat).representation(using: .png, properties: [:])
     }
 
     /// The window's frame view (the content, with the title bar and toolbar over it) drawn by AppKit at the shot's
-    /// scale. Glass and translucent materials are drawn by the window server, so they are missing here.
-    private static func viewsPicture(_ window: NSWindow, scale: Double) throws -> Data {
+    /// scale, opaque. Glass and translucent materials are drawn by the window server, so they are missing here.
+    private static func viewsPicture(_ window: NSWindow, scale: Double, dark: Bool) throws -> Data {
         guard let frameView = window.contentView?.superview else { throw MotifShotError("The window has no frame view to draw.") }
         let bounds = frameView.bounds
         guard let rep = NSBitmapImageRep(
@@ -458,8 +477,7 @@ enum MotifShotDrawing {
         else { throw MotifShotError("Motif couldn't make a picture of \(Int(bounds.width))×\(Int(bounds.height)) at \(scale)×.") }
         rep.size = bounds.size
         frameView.cacheDisplay(in: bounds, to: rep)
-        let srgb = rep.converting(to: .sRGB, renderingIntent: .default) ?? rep
-        guard let png = srgb.representation(using: .png, properties: [:]) else { throw MotifShotError("The picture couldn't be made into a PNG.") }
+        guard let image = rep.cgImage, let png = opaquePNG(image, dark: dark) else { throw MotifShotError("The picture couldn't be made into a PNG.") }
         return png
     }
 
