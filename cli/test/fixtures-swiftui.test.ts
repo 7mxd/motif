@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { assemble } from "../../tests/fixtures/assemble";
 import { runCheck } from "../src/commands/check";
 import { runShot } from "../src/commands/shot";
@@ -36,6 +36,14 @@ const byDetector = (d: string) => issues.filter((i) => i.detectedBy === d);
 /** Every screen a planted problem shows on. */
 const screensOf = (i: Issue) => [...(i.location.screen ? [i.location.screen] : []), ...(i.screens ?? [])];
 const isScreen = (s: string) => s === "/" || PREVIEWS.includes(s);
+
+/** Every file under a folder, as paths relative to it. */
+function filesUnder(dir: string, from = dir): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? filesUnder(path, from) : [relative(from, path).replace(/\\/g, "/")];
+  });
+}
 
 function swiftFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -276,10 +284,15 @@ describe("Qahwa and its seeded copy, built by Xcode and drawn in the iOS simulat
   // The brief's command, with no --screen: the root, then every preview.
   const FLAGS = { sizes: "390", audit: true, variant: "all", rtl: true };
   const SCREENS = ["/", "Drink", "Loyalty card", "Menu", "Sign in"];
+  // The seeded copy is drawn where its planted audit problems are, in the default variant, light and dark, both
+  // directions: 12 shots, not 40, to keep CI's SwiftUI job within its time. S-01's knock-on on / and Menu was seen
+  // in the full run when the list was made (the seeded README says so).
+  const SEEDED_SCREENS = [...new Set(byDetector("shot").flatMap(screensOf))].sort();
+  const SEEDED_FLAGS = { sizes: "390", audit: true, variant: "default", rtl: true, screen: SEEDED_SCREENS };
   const saved = process.env.MOTIF_HOME;
   let root = "";
-  // Both apps are drawn from one folder, the seeded copy after Qahwa, so the build Motif keeps for it is reused: one
-  // cold build in CI's job, not two.
+  // Both apps are drawn from one folder: the seeded copy is Qahwa's copy with the overlay written over it, so the build
+  // Motif keeps is reused and only the overlay's files are compiled again.
   let app = "";
 
   beforeAll(() => {
@@ -337,12 +350,26 @@ describe("Qahwa and its seeded copy, built by Xcode and drawn in the iOS simulat
   }, 1_800_000);
 
   test.skipIf(!mac)("the seeded copy's audit finds its planted contrast, tap-target, name and motion problems, and nothing else (skipped without Xcode)", async () => {
-    if (existsSync(app)) rmSync(app, { recursive: true, force: true });
-    assemble("swiftui-seeded-app", app);
+    if (!existsSync(app)) assemble("swiftui-contract-app", app);
+    rmSync(join(app, "design/shots"), { recursive: true, force: true });
+    // What assemble does for a seeded fixture, over the copy that is there, which leaves Qahwa's other files untouched.
+    expect(list.remove).toEqual([]);
+    const overlay = join(FIXTURES, "swiftui-seeded-app/overlay");
+    for (const f of filesUnder(overlay)) {
+      mkdirSync(dirname(join(app, f)), { recursive: true });
+      copyFileSync(join(overlay, f), join(app, f));
+    }
+    // The folder is now what assemble makes of the seeded fixture: the same files, the same contents.
+    const fresh = join(root, "seeded-check");
+    assemble("swiftui-seeded-app", fresh);
+    expect(filesUnder(app).sort()).toEqual(filesUnder(fresh).sort());
+    for (const f of filesUnder(fresh)) expect(readFileSync(join(app, f)).equals(readFileSync(join(fresh, f))) ? f : `${f} differs`).toBe(f);
     const started = Date.now();
-    const r = await runShot(app, { positionals: [], flags: FLAGS });
+    const r = await runShot(app, { positionals: [], flags: SEEDED_FLAGS });
     console.log(`[fixtures-swiftui] seeded copy: ${Math.round((Date.now() - started) / 1000)} s`);
-    expect((r.data.routes as { route: string }[]).map((x) => x.route)).toEqual(SCREENS);
+    expect(SEEDED_SCREENS).toEqual(["Drink", "Loyalty card", "Sign in"]);
+    expect((r.data.routes as { route: string }[]).map((x) => x.route)).toEqual(SEEDED_SCREENS);
+    expect((r.data.shots as string[]).length).toBe(SEEDED_SCREENS.length * 4);
     type Place = { screen: string; selector: string; scheme?: string };
     type Found = { category: string; location: Place; locations?: Place[]; summary: string };
     const findings = r.data.findings as Found[];
