@@ -198,6 +198,7 @@
       - On Xcode 16.4 the macOS harness builds and runs hosted without signing. `-destination platform=macOS` works, as do states over `AXEnhancedUserInterface`, the Form-row label rule and the switch.
       - The macOS e2e took 91 s (64 shots), then 22 s warm and 32 s for the multiplatform target.
       - The settings switch's accent pixels: 792 with it on, 0 after the state.
+      - **Fix round 1** (run 39583005475, at `872eaa8`): every job green. The swiftui job ran 263 tests, 0 failing, in 2452 s, and took 42 minutes, within its 60. On macOS 15 and Xcode 16.4 the host's isolation held (the app's own defaults unchanged, the host's domain gone), and so did the crash's relaunch, the hang's time limit, Ctrl+C, Mac Catalyst's native destination and the AppKit-only picture. There was no appearance note, so macOS 15's AppKit has all five methods. The macOS e2e took 90 s (64 shots), 15 s warm, 30 s multiplatform, 36 s for the crash and 150 s for the hang.
 
 ## Consequences
 
