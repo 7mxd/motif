@@ -12,7 +12,7 @@ import { loadTokenDocument } from "../../contract/load";
 import { readVariants } from "../../contract/variants";
 import type { AppInfo } from "../../detect/stacks";
 import { motifHome } from "../../home";
-import { routeSlug, shotName, type RouteResult, type Scheme, type StateScript } from "../../shot/capture";
+import { NATIVE_VIEWPORTS, parseSizes, routeSlug, shotName, type RouteResult, type Scheme, type StateScript, type Viewport } from "../../shot/capture";
 import { andList } from "../../text";
 import { statesFile, type StatesFile } from "../flutter/inputs";
 import type { NativeShotOptions } from "../native";
@@ -26,6 +26,61 @@ import { discoverSwiftUIScreens, swiftUIRunName, swiftUIScreenProblem, type Swif
 
 /** Said before the first run on a computer starts, and in its notes. */
 export const SWIFTUI_FIRST_RUN = "The first SwiftUI screenshots build the app for a simulator, which takes a few minutes; later runs reuse the build.";
+/** The same, for a macOS app, which is built and drawn on the Mac itself. */
+export const SWIFTUI_FIRST_RUN_MAC = "The first SwiftUI screenshots of a macOS app build it, which takes a few minutes; later runs reuse the build.";
+
+/**
+ * A macOS app's sizes (decision 0010, §17): windows, not screens. The desktop's 1440×900 and a compact 900×700, both
+ * at 2× (a Retina Mac's), whatever the Mac's own screen is. In file names: desktop and desktop-900.
+ */
+export const MAC_WINDOWS: Viewport[] = [
+  { name: "desktop", width: 1440, height: 900, scale: 2, mobile: false },
+  { name: "desktop", file: "desktop-900", width: 900, height: 700, scale: 2, mobile: false },
+];
+
+/**
+ * Where a run draws the app: on the Mac for a macOS-only app, and for a multiplatform one when every size asked for
+ * is a window; else in the iOS simulator.
+ */
+export function swiftUIPlatform(app: Pick<SwiftUIApp, "platforms">, viewports: Viewport[]): "ios" | "macos" {
+  if (!app.platforms.includes("ios")) return "macos";
+  const windows = viewports.length > 0 && viewports.every((v) => MAC_WINDOWS.includes(v));
+  return app.platforms.includes("macos") && windows ? "macos" : "ios";
+}
+
+/**
+ * SWIFTUI.shotSizes: a macOS app's windows (both, without --sizes); for a multiplatform app, --sizes chooses: phone
+ * and tablet sizes are drawn in the iOS simulator (the default), window sizes on the Mac, and both at once is refused.
+ * Null for an iOS app, whose sizes are the native ones.
+ */
+export function swiftUIShotSizes(root: string, app: AppInfo, given: string | undefined): { viewports: Viewport[] } | { error: string } | null {
+  const swift = swiftUIApp(resolve(root, app.path));
+  if (!swift?.platforms.includes("macos")) return null;
+  if (!swift.platforms.includes("ios")) {
+    if (given === undefined) return { viewports: MAC_WINDOWS };
+    for (const part of given.split(",").map((p) => p.trim()).filter(Boolean)) {
+      const one = parseSizes(part, MAC_WINDOWS);
+      if ("error" in one || one.length === 0) {
+        return {
+          error: `--sizes: "${part}" isn't one of a macOS app's sizes. ${swift.name} is built for macOS only, so its screens are drawn in windows: 1440 (1440×900) and 900 (900×700), like --sizes 1440,900.`,
+        };
+      }
+    }
+    const sizes = parseSizes(given, MAC_WINDOWS);
+    return "error" in sizes ? sizes : { viewports: sizes };
+  }
+  if (given === undefined) return null;
+  const sizes = parseSizes(given, [...NATIVE_VIEWPORTS, ...MAC_WINDOWS]);
+  if ("error" in sizes) return sizes;
+  if (sizes.some((v) => MAC_WINDOWS.includes(v)) && sizes.some((v) => !MAC_WINDOWS.includes(v))) {
+    return {
+      error:
+        `--sizes: ${swift.name} runs on iPhone and on the Mac, and Motif draws one of them a run: phone and tablet sizes (${NATIVE_VIEWPORTS.map((v) => v.width).join(", ")}) in the iOS simulator, ` +
+        `windows (${MAC_WINDOWS.map((v) => v.width).join(", ")}) on the Mac. Run motif shot once for each, like --sizes 390 and --sizes 1440.`,
+    };
+  }
+  return { viewports: sizes };
+}
 
 /** How Motif sets a design variant on a SwiftUI app, for the note when a variant looks exactly like the default. */
 export const SWIFTUI_VARIANT_HOW = ".motifTheme(variant:), or design/states/Setup.swift for an app that switches its own palette";
@@ -54,8 +109,8 @@ const LEFT_OUT_NAMED = 5;
 // ---- Before the run ----
 
 /**
- * Why motif shot can't draw this SwiftUI app here: not a Mac, or Xcode (or its simulator) missing, in doctor's words; a
- * Swift package app, or an app for macOS only, which the simulator doesn't draw yet; a project Motif can't copy whole.
+ * Why motif shot can't draw this SwiftUI app here: not a Mac, or Xcode (or, for an iOS app, its simulator) missing, in
+ * doctor's words; a Swift package app; a project Motif can't copy whole. A macOS app is drawn on the Mac itself.
  */
 export function swiftUIShotRefusal(root: string, app: AppInfo, doctor: DoctorDeps): { error: string; text: string } | null {
   const [item] = swiftUIDoctor(doctor, { root, apps: [app] });
@@ -63,14 +118,6 @@ export function swiftUIShotRefusal(root: string, app: AppInfo, doctor: DoctorDep
   if (item?.status === "needed") return { error: "needs-xcode", text: `${item.detail} Then run motif shot again.` };
   const swift = swiftUIApp(resolve(root, app.path));
   if (swift?.kind === "package") return { error: "needs-xcode-project", text: packageText(swift.name) };
-  if (swift && !swift.platforms.includes("ios")) {
-    return {
-      error: "macos-not-yet",
-      text:
-        `${swift.name} is built for macOS only, and Motif draws SwiftUI screens in the iOS simulator; macOS apps can't be drawn yet. ` +
-        "If the app can run on iPhone or iPad too, add iPhone to its target's Supported Destinations in Xcode, then run motif shot again.",
-    };
-  }
   return swift?.kind === "xcodeproj" ? swiftUICopyProblem(root, resolve(root, app.path), swift) : null;
 }
 
@@ -299,9 +346,16 @@ export type PlannedShot = SwiftUIShot & { target: string };
 
 /**
  * Every screenshot of a run, in the web's order: per screen, size, scheme, then variant, direction and state. Phones
- * are drawn at 3×, as a phone's screen is, and get its safe area; the tablet and wider at 2× (decision 0010, §1).
+ * are drawn at 3×, as a phone's screen is, and get its safe area; the tablet and wider at 2× (decision 0010, §1). On
+ * the Mac, a window is drawn at its own scale (2×), with no safe area (§17).
  */
-export function planSwiftUIShots(opts: NativeShotOptions, targets: Target[], theme: { variants: boolean } | null, defaultId: string): PlannedShot[] {
+export function planSwiftUIShots(
+  opts: NativeShotOptions,
+  targets: Target[],
+  theme: { variants: boolean } | null,
+  defaultId: string,
+  platform: "ios" | "macos" = "ios",
+): PlannedShot[] {
   const shots: PlannedShot[] = [];
   for (const t of targets.filter((t) => t.screen)) {
     for (const v of opts.viewports) {
@@ -310,7 +364,7 @@ export function planSwiftUIShots(opts: NativeShotOptions, targets: Target[], the
           for (const lang of [undefined, ...(opts.rtl ? [opts.rtl] : [])]) {
             for (const state of [undefined, ...opts.states.map((s) => s.name)]) {
               const size = v.file ?? v.name;
-              const phone = v.mobile && v.width < 600;
+              const phone = platform === "ios" && v.mobile && v.width < 600;
               // The default's shots set the default too, so an app that passes its own variant is drawn in the guide's
               // default; a variant is always passed, so one the app's theme lacks fails with what to do.
               const id = variant ?? defaultId;
@@ -321,7 +375,7 @@ export function planSwiftUIShots(opts: NativeShotOptions, targets: Target[], the
                 file: shotName(state ? `${t.slug}@${state}` : t.slug, size, scheme, variant, Boolean(lang)),
                 width: v.width,
                 height: v.height,
-                scale: phone ? 3 : Math.max(v.scale, 2),
+                scale: platform === "macos" ? v.scale : phone ? 3 : Math.max(v.scale, 2),
                 dark: scheme === "dark",
                 locale: lang ?? "en_US",
                 rtl: Boolean(lang),
@@ -812,7 +866,8 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
   const defaultId = defaultVariant(root);
   const { previews } = discoverSwiftUIScreens(appDir);
   const targets = swiftUITargets(opts, previews);
-  const shots = planSwiftUIShots(opts, targets, theme, defaultId);
+  const platform = swiftUIPlatform(swift, opts.viewports);
+  const shots = planSwiftUIShots(opts, targets, theme, defaultId, platform);
   if (opts.rtl && !offersLanguage(appDir, opts.rtl)) {
     notes.push(`This app doesn't offer ${opts.rtl} (its string catalogues and .lproj folders have no ${opts.rtl} strings), so its RTL screenshots show its default strings, laid out right to left.`);
   }
@@ -831,7 +886,8 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
 
   const exec = deps.exec ?? execCommand;
   const remove = deps.remove ?? ((udid: string) => removeSimulator(udid));
-  const left = await removeLeftovers(exec, remove);
+  // A macOS app is drawn on the Mac itself: no simulator, so none to clean up.
+  const left = platform === "ios" ? await removeLeftovers(exec, remove) : 0;
   if (left > 0) notes.push(`Deleted ${left === 1 ? "a simulator" : `${left} simulators`} that an earlier motif shot left behind when it was stopped.`);
 
   // The copy, the work folder and the build go in Motif's own folder, outside the developer's project: inside it, an
@@ -847,8 +903,9 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
   notes.push(...prunedNotes(pruneSwiftUIBuilds(dirname(cache), cache, Date.now())));
   const firstRun = !existsSync(derivedData);
   if (firstRun) {
-    opts.progress?.(SWIFTUI_FIRST_RUN);
-    notes.unshift(SWIFTUI_FIRST_RUN);
+    const first = platform === "macos" ? SWIFTUI_FIRST_RUN_MAC : SWIFTUI_FIRST_RUN;
+    opts.progress?.(first);
+    notes.unshift(first);
   }
   const cleanup = () => {
     for (const dir of [copyRoot, workDir]) rmSync(dir, { recursive: true, force: true });
@@ -874,6 +931,7 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
       copyDir,
       workDir,
       app: swiftUIApp(copyDir) ?? swift,
+      platform,
       appStruct,
       theme: theme !== null,
       variants: theme?.variants ?? false,

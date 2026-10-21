@@ -1,10 +1,18 @@
 // Motif's screenshot harness for a SwiftUI app (decision 0010). Motif adds it to a copy of the app's project as a
-// unit-test target hosted by the app (MotifShots), runs it in an iOS simulator Motif creates, and deletes both
-// afterwards. It draws each shot the options list, writes the PNGs, and writes result.json next to the options.
+// unit-test target hosted by the app (MotifShots), runs it in an iOS simulator Motif creates (or, for a macOS app, in
+// the app on the Mac itself), and deletes both afterwards. It draws each shot the options list, writes the PNGs, and
+// writes result.json next to the options.
 import CoreText
 import SwiftUI
-import UIKit
 import XCTest
+#if os(macOS)
+import AppKit
+/// The window a screen is hosted and drawn in.
+typealias MotifWindow = NSWindow
+#else
+import UIKit
+typealias MotifWindow = UIWindow
+#endif
 
 struct MotifShotOptions: Decodable {
     struct Shot: Decodable {
@@ -96,6 +104,7 @@ final class MotifShotTests: XCTestCase {
             MotifAccessibility.enable()
             if MotifAccessibility.enabled != true { result.notes.append(MotifAccessibility.problem) }
         }
+        if let note = MotifShotDrawing.prepare() { result.notes.append(note) }
         let previews = MotifPreviews.all()
         result.previews = previews.map(\.info)
         try write(result, to: resultURL)
@@ -175,8 +184,12 @@ struct MotifShotError: Error, CustomStringConvertible {
     init(_ description: String) { self.description = description }
 }
 
+#if !os(macOS)
 @MainActor
 enum MotifShotDrawing {
+    /// Nothing to do before the first shot in the simulator: the app's own window stays behind the harness's.
+    static func prepare() -> String? { nil }
+
     /// Hosts the view in a window of its own at the shot's size and traits, waits for it to settle, and draws the window.
     static func draw(
         _ view: AnyView, shot: MotifShotOptions.Shot, settle: Double, state: (UIWindow) -> String? = { _ in nil }
@@ -268,3 +281,182 @@ enum MotifShotDrawing {
         return out
     }
 }
+#else
+/// The harness's window on the Mac: it stays where it is put, off every screen (AppKit moves a titled window back onto
+/// a screen otherwise), and can take the keyboard for a state's typing.
+final class MotifShotWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+    override var canBecomeKey: Bool { true }
+
+    /// The scale its views are laid out and drawn at, whatever the screen's (decision 0010, §17).
+    var drawingScale: CGFloat = 0
+    override var backingScaleFactor: CGFloat { drawingScale > 0 ? drawingScale : super.backingScaleFactor }
+
+    /// Drawn as the window in front is, though its app stays in the background: its controls in the accent colour
+    /// (a prominent button, a switch that's on), its title bar's buttons in colour, its sidebar's selection emphasised.
+    /// AppKit asks a window these (the last five are its own, not API); a later macOS that asks otherwise draws the
+    /// window as one behind the others, greyed, and nothing else changes.
+    override var isKeyWindow: Bool { true }
+    override var isMainWindow: Bool { true }
+    @objc func _hasActiveAppearance() -> Bool { true }
+    @objc func _hasActiveAppearanceIgnoringKeyFocus() -> Bool { true }
+    @objc func _hasKeyAppearance() -> Bool { true }
+    @objc func hasKeyAppearance() -> Bool { true }
+    @objc func _hasMainAppearance() -> Bool { true }
+}
+
+@MainActor
+enum MotifShotDrawing {
+    /// Before the first shot: the app's own windows (its WindowGroup's, opened at launch) are taken off the screen, and
+    /// the app leaves the Dock and gives the focus back if it had it, so a run stays out of the way of the Mac's screen.
+    static func prepare() -> String? {
+        for window in NSApp.windows where window.isVisible { window.orderOut(nil) }
+        NSApp.setActivationPolicy(.accessory)
+        if NSApp.isActive { NSApp.deactivate() }
+        return nil
+    }
+
+    /// Said once when a shot couldn't be taken from the window server.
+    static let withoutWindowServer = "Some screens were drawn by AppKit alone, without the window server: sidebars, toolbars and other glass or translucent materials may be missing from them."
+
+    /// Hosts the view in a window of its own, off the screen, at the shot's size (the window's whole frame: its title bar
+    /// and toolbar over the content, as a window with a full-size content view has them), in light or dark, left to
+    /// right or right to left; waits for it to settle; and takes the window's picture at the shot's scale.
+    static func draw(
+        _ view: AnyView, shot: MotifShotOptions.Shot, settle: Double, state: (NSWindow) -> String? = { _ in nil }
+    ) throws -> (png: Data, note: String?, stateError: String?) {
+        let size = NSSize(width: shot.width, height: shot.height)
+        let root = view
+            .environment(\.locale, Locale(identifier: shot.locale))
+            .environment(\.layoutDirection, shot.rtl ? .rightToLeft : .leftToRight)
+        let host = NSHostingView(rootView: AnyView(root))
+        host.sizingOptions = []
+        let window = MotifShotWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: shot.dark ? .darkAqua : .aqua)
+        window.contentView = host
+        host.userInterfaceLayoutDirection = shot.rtl ? .rightToLeft : .leftToRight
+        // Off every screen: nothing shows on the Mac, and the app isn't brought forward.
+        window.setFrame(NSRect(origin: NSPoint(x: -20000 - size.width, y: -20000 - size.height), size: size), display: false)
+        // After the window is placed: placing it sets its resolution from the screen again.
+        let scaled = setScale(window, shot.scale)
+        window.orderFrontRegardless()
+        defer {
+            window.makeFirstResponder(nil)
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
+        settleWindow(window, seconds: settle)
+        let stateError = state(window)
+        if stateError != nil || shot.state != nil { settleWindow(window, seconds: settle) }
+        // A field being edited is left, so the picture has no caret or focus ring the screen wouldn't show on its own.
+        if window.firstResponder is NSText {
+            window.makeFirstResponder(nil)
+            settleWindow(window, seconds: settle)
+        }
+        window.displayIfNeeded()
+        CATransaction.flush()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        if scaled, let png = windowServerPicture(window, size: size, scale: shot.scale, dark: shot.dark) {
+            return (png, nil, stateError)
+        }
+        return (try viewsPicture(window, scale: shot.scale), withoutWindowServer, stateError)
+    }
+
+    /// Makes the window's surface the shot's scale (2× on a Mac whose screen is 1×), through AppKit's
+    /// _setWindowResolution:, so the window server draws it at that scale; AppKit lays out and draws the views for that
+    /// scale too (MotifShotWindow.drawingScale). False when AppKit has no such method: then only the views are drawn at
+    /// the scale, by AppKit alone. Whether the window server took it shows in its picture's size.
+    private static func setScale(_ window: MotifShotWindow, _ scale: Double) -> Bool {
+        window.drawingScale = CGFloat(scale)
+        let selector = NSSelectorFromString("_setWindowResolution:")
+        guard let method = class_getInstanceMethod(NSWindow.self, selector) else { return false }
+        typealias Set = @convention(c) (NSWindow, Selector, CGFloat) -> Void
+        unsafeBitCast(method_getImplementation(method), to: Set.self)(window, selector, CGFloat(scale))
+        return true
+    }
+
+    /// The window as the window server composites it (glass, materials and the title bar included), at the shot's size
+    /// and scale, its frame's edge trimmed and its rounded corners filled with the window's background. A process may
+    /// take its own windows' pictures without the Screen Recording permission. CGWindowListCreateImage is asked for by
+    /// name: the macOS 15 SDK no longer declares it. Nil when it isn't there or gives another size.
+    private static func windowServerPicture(_ window: NSWindow, size: NSSize, scale: Double, dark: Bool) -> Data? {
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else { return nil }
+        typealias Create = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+        // kCGWindowListOptionIncludingWindow; kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution.
+        guard let image = unsafeBitCast(symbol, to: Create.self)(.null, 8, UInt32(window.windowNumber), 1 | 8)?.takeRetainedValue() else { return nil }
+        let width = Int((size.width * scale).rounded())
+        let height = Int((size.height * scale).rounded())
+        let dx = (image.width - width) / 2
+        let dy = (image.height - height) / 2
+        guard dx >= 0, dy >= 0, dx <= Int(scale) * 2, dy <= Int(scale) * 2,
+              let cropped = image.cropping(to: CGRect(x: dx, y: dy, width: width, height: height)),
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { return nil }
+        var background = CGColor(gray: dark ? 0 : 1, alpha: 1)
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+            background = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)?.cgColor ?? background
+        }
+        context.setFillColor(background)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let flat = context.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: flat).representation(using: .png, properties: [:])
+    }
+
+    /// The window's frame view (the content, with the title bar and toolbar over it) drawn by AppKit at the shot's
+    /// scale. Glass and translucent materials are drawn by the window server, so they are missing here.
+    private static func viewsPicture(_ window: NSWindow, scale: Double) throws -> Data {
+        guard let frameView = window.contentView?.superview else { throw MotifShotError("The window has no frame view to draw.") }
+        let bounds = frameView.bounds
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int((bounds.width * scale).rounded()), pixelsHigh: Int((bounds.height * scale).rounded()),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        else { throw MotifShotError("Motif couldn't make a picture of \(Int(bounds.width))×\(Int(bounds.height)) at \(scale)×.") }
+        rep.size = bounds.size
+        frameView.cacheDisplay(in: bounds, to: rep)
+        let srgb = rep.converting(to: .sRGB, renderingIntent: .default) ?? rep
+        guard let png = srgb.representation(using: .png, properties: [:]) else { throw MotifShotError("The picture couldn't be made into a PNG.") }
+        return png
+    }
+
+    /// Lets the main run loop turn until the window's views and layers stop changing (two quiet turns in a row), or the
+    /// time is up, as in the simulator: a view laid out anew, shown or hidden, faded, or given its contents.
+    private static func settleWindow(_ window: NSWindow, seconds: Double) {
+        let deadline = Date().addingTimeInterval(seconds)
+        var last = ""
+        var quiet = 0
+        while Date() < deadline {
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            let now = describe(window.contentView)
+            quiet = now == last ? quiet + 1 : 0
+            if quiet >= 2 { return }
+            last = now
+        }
+    }
+
+    /// A view's frames and layers, and its subviews', as a string that changes when any of them does.
+    static func describe(_ view: NSView?) -> String {
+        guard let view else { return "" }
+        var out = "\(view.frame)\(view.isHidden)\(view.alphaValue)"
+        if let layer = view.layer { out += describe(layer) }
+        for sub in view.subviews { out += describe(sub) }
+        return out
+    }
+
+    static func describe(_ layer: CALayer) -> String {
+        var out = "\(layer.frame)\(layer.sublayers?.count ?? 0)\(layer.isHidden)\(layer.opacity)\(layer.contents != nil)"
+        for sub in layer.sublayers ?? [] { out += describe(sub) }
+        return out
+    }
+}
+#endif

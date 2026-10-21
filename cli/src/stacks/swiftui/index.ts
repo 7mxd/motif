@@ -15,7 +15,7 @@ import { swiftUIFonts } from "./fonts";
 import { generateSwiftUI, THEME_FILE } from "./generate";
 import { swiftUIPaletteFile } from "./palette";
 import { appEntryFile, buildsWholeFolder, swiftUIApp } from "./project";
-import { shootSwiftUI, SWIFTUI_VARIANT_HOW, swiftUIInputsProblem, swiftUIRoutes, swiftUIShotRefusal, swiftUITimeLimit } from "./shot";
+import { shootSwiftUI, SWIFTUI_VARIANT_HOW, swiftUIInputsProblem, swiftUIRoutes, swiftUIShotRefusal, swiftUIShotSizes, swiftUITimeLimit } from "./shot";
 
 /** The app target's folder, root-relative. */
 const targetFolder = (app: AppInfo, sourceRoot: string) => prefixPath(app.path, sourceRoot);
@@ -116,6 +116,7 @@ export const SWIFTUI: NativeStack = {
   shoot: (opts) => shootSwiftUI(opts, { themeDir: SWIFTUI.themeDir(opts.root, opts.app) }),
   shotRefusal: (root, app, _which, doctor) => (doctor ? swiftUIShotRefusal(root, app, doctor) : null),
   shotInputsProblem: swiftUIInputsProblem,
+  shotSizes: swiftUIShotSizes,
   shotTimeLimit: swiftUITimeLimit,
   variantHow: SWIFTUI_VARIANT_HOW,
   routes: swiftUIRoutes,

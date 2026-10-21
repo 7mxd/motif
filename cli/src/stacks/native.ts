@@ -72,6 +72,12 @@ export interface NativeStack {
   shotRefusal?(root: string, app: AppInfo, which: (cmd: string) => string | null, doctor?: DoctorDeps): { error: string; text: string } | null;
   /** What's wrong with what shoot is given (--screen widgets, --state scripts, setup files), before anything is written. */
   shotInputsProblem?(root: string, app: AppInfo, given: { screens: string[]; states: StateScript[] }): string | null;
+  /**
+   * The sizes this app is drawn at when they aren't the native ones (a macOS SwiftUI app's windows), read from --sizes
+   * when it's given (`given`); or why those sizes can't be drawn. Null when the native sizes, and --sizes' usual
+   * reading, apply.
+   */
+  shotSizes?(root: string, app: AppInfo, given: string | undefined): { viewports: Viewport[] } | { error: string } | null;
   /** The size the reduced-motion check runs at, for the note when --sizes leaves it out (the desktop's on the web). */
   motionSize?: { width: number; text: string };
   /** How long a run of this many screenshots may take, in ms. */

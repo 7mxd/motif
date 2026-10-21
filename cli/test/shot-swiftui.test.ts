@@ -1,16 +1,16 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import type { DoctorDeps } from "../src/commands/doctor";
 import { runShot, type ShotDeps } from "../src/commands/shot";
 import { detectApps } from "../src/detect/stacks";
-import { NATIVE_VIEWPORTS, type RouteResult } from "../src/shot/capture";
+import { NATIVE_DESKTOP, NATIVE_VIEWPORTS, type RouteResult } from "../src/shot/capture";
 import type { NativeShotOptions } from "../src/stacks/native";
 import { SWIFTUI } from "../src/stacks/swiftui";
 import { swiftUIDoctor } from "../src/stacks/swiftui/doctor";
 import { hooksSource, RESULT_FILE, scriptSource, SOURCES_FOLDER, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot } from "../src/stacks/swiftui/harness";
 import {
-  appStructName, copyBase, KEEP_BUILDS, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, prunedNotes, pruneSwiftUIBuilds, readSwiftUIInputs, takeLock, screenError, shootSwiftUI, signedCapabilities,
+  appStructName, copyBase, KEEP_BUILDS, MAC_WINDOWS, SWIFTUI_FIRST_RUN_MAC, swiftUIPlatform, swiftUIShotSizes, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, prunedNotes, pruneSwiftUIBuilds, readSwiftUIInputs, takeLock, screenError, shootSwiftUI, signedCapabilities,
   SWIFTUI_FIRST_RUN, SWIFTUI_VARIANT_HOW, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
 } from "../src/stacks/swiftui/shot";
 import { discoverSwiftUIScreens } from "../src/stacks/swiftui/screens";
@@ -104,18 +104,6 @@ describe("motif shot's refusals for a SwiftUI app", () => {
       text:
         "Motif draws a SwiftUI app's screens through its Xcode project, and Rafiq is a Swift package (Package.swift), which motif shot can't draw yet. " +
         "Make an Xcode project for it (in Xcode: File › New › Project › App, then add the package and use its views), and run motif shot in that project's folder.",
-    });
-  });
-
-  test("an app for macOS only is refused until macOS apps are drawn", () => {
-    const pbx = readFileSync(join(xcodeRoot, "SwiftUIMin.xcodeproj/project.pbxproj"), "utf8").replace(/(INFOPLIST_FILE = [^;]+;)/g, "$1\n\t\t\t\tSDKROOT = macosx;");
-    const root = xcodeProject({ "SwiftUIMin.xcodeproj/project.pbxproj": pbx });
-    const [app] = detectApps(root).apps;
-    expect(swiftUIShotRefusal(root, app!, machine())).toEqual({
-      error: "macos-not-yet",
-      text:
-        "SwiftUIMin is built for macOS only, and Motif draws SwiftUI screens in the iOS simulator; macOS apps can't be drawn yet. " +
-        "If the app can run on iPhone or iPad too, add iPhone to its target's Supported Destinations in Xcode, then run motif shot again.",
     });
   });
 
@@ -513,8 +501,10 @@ async function fakeShoot(
     const c = cmd.join(" ");
     if (c === "xcrun simctl list -j devices") return ok(DEVICES);
     if (cmd[0] === "xcodebuild" && cmd[1] === "-showBuildSettings") {
-      fake.copyDir = dirname(cmd[cmd.indexOf("-project") + 1]!);
-      return ok(SETTINGS);
+      const project = cmd[cmd.indexOf("-project") + 1]!;
+      fake.copyDir = dirname(project);
+      // The app target's settings, named as the project is (SwiftUIMin, SwiftUIMac).
+      return ok(SETTINGS.replaceAll("SwiftUIMin", basename(project).replace(/\.xcodeproj$/, "")));
     }
     if (c === "xcrun --sdk iphonesimulator --show-sdk-version") return ok("18.5\n");
     if (c.startsWith("xcrun simctl list")) return ok(SIMS);
@@ -906,5 +896,201 @@ describe("motif shot on a SwiftUI app", () => {
     expect(r.text).toContain(
       "The partner variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (.motifTheme(variant:), or design/states/Setup.swift for an app that switches its own palette).",
     );
+  });
+});
+
+// ---- macOS apps (plan 2H, Task 9) ----
+
+/** A project whose app is a copy of swiftui-mac (Xcode 16's macOS App template), in a folder with a space and an "&". */
+function macProject(files: Record<string, string> = {}): string {
+  const root = join(tempDir("motif-shot-swiftui-mac-"), "my mac app & co");
+  cpSync(join(FIXTURES, "swiftui-mac"), root, { recursive: true });
+  for (const [rel, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, rel)), { recursive: true });
+    writeFileSync(join(root, rel), content);
+  }
+  return root;
+}
+
+/** swiftui-mac's project made multiplatform, as Xcode's Multiplatform App template has it: one target for iPhone, iPad and Mac. */
+function multiplatformPbx(): string {
+  return readFileSync(join(FIXTURES, "swiftui-mac/SwiftUIMac.xcodeproj/project.pbxproj"), "utf8")
+    .replace(/\r\n/g, "\n")
+    .replace(/(\t+)(INFOPLIST_FILE = [^;]+;)/g, '$1$2\n$1IPHONEOS_DEPLOYMENT_TARGET = 17.0;\n$1SDKROOT = auto;\n$1SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";\n$1TARGETED_DEVICE_FAMILY = "1,2";');
+}
+
+describe("macOS SwiftUI apps", () => {
+  const macRoot = macProject();
+  const [macApp] = detectApps(macRoot).apps;
+  const multiRoot = macProject({ "SwiftUIMac.xcodeproj/project.pbxproj": multiplatformPbx() });
+  const [multiApp] = detectApps(multiRoot).apps;
+
+  test("a macOS app is one whose target or project names macOS; a multiplatform target names both", () => {
+    // Xcode's macOS template sets SDKROOT on the project only.
+    expect(readFileSync(join(macRoot, "SwiftUIMac.xcodeproj/project.pbxproj"), "utf8")).not.toMatch(/INFOPLIST_FILE[^}]*SDKROOT/);
+    expect(swiftUIApp(macRoot)?.platforms).toEqual(["macos"]);
+    expect(swiftUIApp(multiRoot)?.platforms).toEqual(["ios", "macos"]);
+    // An iOS app's project-level SDKROOT still makes it an iOS app.
+    expect(swiftUIApp(xcodeRoot)?.platforms).toEqual(["ios"]);
+  });
+
+  test("a macOS app, or a multiplatform one, is not refused; a Swift package still is", () => {
+    expect(swiftUIShotRefusal(macRoot, macApp!, machine())).toBeNull();
+    // A macOS app needs no simulator.
+    expect(swiftUIShotRefusal(macRoot, macApp!, machine({ simulator: false }))).toBeNull();
+    expect(swiftUIShotRefusal(multiRoot, multiApp!, machine())).toBeNull();
+    const pkg = makeProject({
+      "Package.swift": '// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: "Desk", platforms: [.macOS(.v14)], targets: [.executableTarget(name: "Desk")])\n',
+      "Sources/Desk/DeskApp.swift": 'import SwiftUI\n@main struct DeskApp: App { var body: some Scene { WindowGroup { Text("x") } } }\n',
+    });
+    const [pkgApp] = detectApps(pkg).apps;
+    expect(swiftUIShotRefusal(pkg, pkgApp!, machine())?.error).toBe("needs-xcode-project");
+  });
+
+  test("a macOS app's sizes are windows: 1440×900 and a compact 900×700 by default, both at 2×", () => {
+    expect(MAC_WINDOWS).toEqual([
+      { name: "desktop", width: 1440, height: 900, scale: 2, mobile: false },
+      { name: "desktop", file: "desktop-900", width: 900, height: 700, scale: 2, mobile: false },
+    ]);
+    expect(SWIFTUI.shotSizes?.(macRoot, macApp!, undefined)).toEqual({ viewports: MAC_WINDOWS });
+    expect(swiftUIShotSizes(macRoot, macApp!, "1440")).toEqual({ viewports: [MAC_WINDOWS[0]!] });
+    expect(swiftUIShotSizes(macRoot, macApp!, "900")).toEqual({ viewports: [MAC_WINDOWS[1]!] });
+    expect(swiftUIShotSizes(macRoot, macApp!, "desktop")).toEqual({ viewports: [MAC_WINDOWS[0]!] });
+    expect(swiftUIShotSizes(macRoot, macApp!, "900, 1440")).toEqual({ viewports: MAC_WINDOWS });
+  });
+
+  test("a macOS app refuses a phone's size, or any other width, plainly, with the sizes it has", () => {
+    const refusal = (w: string) =>
+      `--sizes: "${w}" isn't one of a macOS app's sizes. SwiftUIMac is built for macOS only, so its screens are drawn in windows: 1440 (1440×900) and 900 (900×700), like --sizes 1440,900.`;
+    for (const given of ["390", "phones", "tablet", "1280"]) expect(swiftUIShotSizes(macRoot, macApp!, given)).toEqual({ error: refusal(given) });
+    expect(swiftUIShotSizes(macRoot, macApp!, "1440,390")).toEqual({ error: refusal("390") });
+  });
+
+  test("a multiplatform app is drawn on iOS unless --sizes asks only for windows; both at once is refused", () => {
+    expect(swiftUIShotSizes(multiRoot, multiApp!, undefined)).toBeNull();
+    expect(swiftUIShotSizes(multiRoot, multiApp!, "390")).toEqual({ viewports: [NATIVE_VIEWPORTS[1]!] });
+    expect(swiftUIShotSizes(multiRoot, multiApp!, "phones")).toEqual({ viewports: NATIVE_VIEWPORTS.slice(0, 3) });
+    expect(swiftUIShotSizes(multiRoot, multiApp!, "1440,900")).toEqual({ viewports: MAC_WINDOWS });
+    expect(swiftUIShotSizes(multiRoot, multiApp!, "desktop")).toEqual({ viewports: [MAC_WINDOWS[0]!] });
+    expect(swiftUIShotSizes(multiRoot, multiApp!, "390,1440")).toEqual({
+      error:
+        "--sizes: SwiftUIMac runs on iPhone and on the Mac, and Motif draws one of them a run: phone and tablet sizes (360, 390, 430, 768) in the iOS simulator, windows (1440, 900) on the Mac. Run motif shot once for each, like --sizes 390 and --sizes 1440.",
+    });
+    expect(swiftUIShotSizes(multiRoot, multiApp!, "1024")).toEqual({
+      error: "--sizes: \"1024\" isn't one of the sizes. Use widths (360, 390, 430, 768, 1440, 900) or names (phones, mobile, tablet, desktop), like --sizes 390,1440.",
+    });
+    // An iOS app keeps the native sizes, its desktop size included.
+    expect(swiftUIShotSizes(xcodeRoot, xcodeApp!, undefined)).toBeNull();
+    expect(swiftUIShotSizes(xcodeRoot, xcodeApp!, "1440")).toBeNull();
+    expect(swiftUIPlatform(swiftUIApp(xcodeRoot)!, [NATIVE_DESKTOP])).toBe("ios");
+    expect(swiftUIPlatform(swiftUIApp(multiRoot)!, MAC_WINDOWS)).toBe("macos");
+    expect(swiftUIPlatform(swiftUIApp(multiRoot)!, [NATIVE_VIEWPORTS[1]!])).toBe("ios");
+    expect(swiftUIPlatform(swiftUIApp(macRoot)!, MAC_WINDOWS)).toBe("macos");
+  });
+
+  test("a macOS app's shots: windows at 2× with no safe area, named desktop and desktop-900", () => {
+    const opts = phoneOpts({ root: macRoot, app: macApp!, viewports: MAC_WINDOWS, rtl: "ar", variants: ["partner"] });
+    const targets = swiftUITargets(opts, discoverSwiftUIScreens(macRoot).previews);
+    const shots = planSwiftUIShots(opts, targets, { variants: true }, "default", "macos");
+    expect(shots[0]).toEqual({
+      target: "/", screen: "/", file: "index.desktop.png", width: 1440, height: 900, scale: 2, dark: false, locale: "en_US", rtl: false, variant: "default", variantId: "default",
+    });
+    expect(shots.map((s) => s.file)).toContain("index+partner.desktop-900.rtl.dark.png");
+    expect(shots.find((s) => s.file === "index.desktop-900.png")).toMatchObject({ width: 900, height: 700, scale: 2 });
+    expect(shots.every((s) => s.insets === undefined)).toBe(true);
+  });
+
+  test("SWIFTUI.shoot draws a macOS app on the Mac: no simulator, the macOS destination, and only the build kept", async () => {
+    const root = macProject({
+      "design/tokens.json": JSON.stringify(partnerTokens()),
+      "design/states/opened.swift": STATE,
+      "SwiftUIMac/Design/MotifTheme.swift": "// Generated by Motif\nenum MotifTheme { @MainActor static var debugVariantOverride: MotifVariant? }\n",
+    });
+    const home = tempDir("motif-swiftui-home-");
+    const progress: string[] = [];
+    const states = [{ name: "opened", script: STATE, file: join(root, "design/states/opened.swift") }];
+    const { promise, fake } = await fakeShoot(root, { viewports: MAC_WINDOWS, states, progress: (l) => progress.push(l) }, home);
+    const r = await promise;
+    const cache = swiftUICacheDir(home, root, "SwiftUIMac");
+
+    // Not one simctl call: no simulator is listed, made, booted or deleted.
+    expect(fake.calls.filter((c) => c[0] === "xcrun")).toEqual([]);
+    expect(fake.removed).toEqual([]);
+    expect(fake.calls.map((c) => c[1])).toEqual(["-showBuildSettings", "build-for-testing", "test-without-building"]);
+    const settings = fake.calls[0]!;
+    expect(settings[settings.indexOf("-destination") + 1]).toBe("generic/platform=macOS");
+    const build = fake.calls[1]!;
+    const test = fake.calls[2]!;
+    expect(build.slice(2)).toEqual(test.slice(2));
+    expect(test.slice(0, 10)).toEqual([
+      "xcodebuild", "test-without-building", "-project", join(cache, "copy", "SwiftUIMac.xcodeproj"), "-scheme", "MotifShots", "-configuration", "Debug", "-destination", "platform=macOS",
+    ]);
+    expect(test[test.indexOf("-derivedDataPath") + 1]).toBe(join(cache, "DerivedData"));
+    expect(test).toContain("CODE_SIGNING_ALLOWED=NO");
+    expect(fake.options!.shots.map((s) => [s.file, s.scale, s.width])).toEqual([
+      ["index.desktop.png", 2, 1440],
+      ["index@opened.desktop.png", 2, 1440],
+      ["index.desktop.dark.png", 2, 1440],
+      ["index@opened.desktop.dark.png", 2, 1440],
+      ["index.desktop-900.png", 2, 900],
+      ["index@opened.desktop-900.png", 2, 900],
+      ["index.desktop-900.dark.png", 2, 900],
+      ["index@opened.desktop-900.dark.png", 2, 900],
+    ]);
+    expect(fake.sources["MotifState_opened.swift"]).toContain("@testable import SwiftUIMac\n");
+
+    // Drawn; the copy and the work folder are gone, the build is kept (none was made by the stand-in).
+    expect(r.routes.map((x) => [x.route, x.status, x.shots.length])).toEqual([["/", 200, 8]]);
+    expect(readdirSync(cache).sort()).toEqual(["last-used"]);
+    expect(fake.hooks).toEqual([]);
+    expect(progress).toEqual([SWIFTUI_FIRST_RUN_MAC]);
+    expect(r.notes).toEqual([SWIFTUI_FIRST_RUN_MAC]);
+  });
+
+  test("a multiplatform app drawn at window sizes goes to the Mac; at phone sizes, to the simulator", async () => {
+    const home = tempDir("motif-swiftui-home-");
+    const mac = await fakeShoot(multiRoot, { viewports: [MAC_WINDOWS[0]!] }, home);
+    await mac.promise;
+    expect(mac.fake.calls.filter((c) => c[0] === "xcrun")).toEqual([]);
+    expect(mac.fake.calls[2]).toContain("platform=macOS");
+    const phone = await fakeShoot(multiRoot, {}, home);
+    await phone.promise;
+    expect(phone.fake.calls.some((c) => c.join(" ").startsWith("xcrun simctl create"))).toBe(true);
+    expect(phone.fake.calls.find((c) => c[1] === "test-without-building")).toContain(`id=${UDID}`);
+  });
+
+  test("a macOS build that fails says so for the Mac, and the copy and the work folder are still removed", async () => {
+    const root = macProject();
+    const home = tempDir("motif-swiftui-home-");
+    const { promise, fake } = await fakeShoot(root, { viewports: MAC_WINDOWS }, home, drawsAll, {
+      code: 65, stdout: "/x/ContentView.swift:3:5: error: cannot find 'Foo' in scope\n** TEST BUILD FAILED **", stderr: "", timedOut: false,
+    });
+    await expect(promise).rejects.toThrow(
+      "The app didn't build with Motif's harness:\n/x/ContentView.swift:3:5: error: cannot find 'Foo' in scope\nCheck that the app builds for My Mac in Xcode, then run motif shot again.",
+    );
+    expect(readdirSync(swiftUICacheDir(home, root, "SwiftUIMac")).sort()).toEqual(["last-used"]);
+    expect(fake.hooks).toEqual([]);
+  });
+
+  test("motif shot on a macOS app draws its windows; --sizes with a phone's width is refused before anything runs", async () => {
+    const root = macProject({ "design/tokens.json": JSON.stringify(partnerTokens()) });
+    const { deps, calls } = shotDeps((o) => {
+      const shots = o.viewports.map((v) => join(o.outDir, `index.${v.file ?? v.name}.png`));
+      return [{ route: "/", url: "/", status: 200, shots }];
+    });
+    const r = await runShot(root, ctx({ routes: "/" }), deps);
+    if (r.exitCode !== 0) console.log(r.text);
+    expect(r.exitCode).toBe(0);
+    expect(calls[0]!.viewports).toEqual(MAC_WINDOWS);
+    expect(r.text).toContain("of 1 screen (1440 and 900 px wide, light and dark)");
+    // Its sizes are its own: no note that --sizes left anything out.
+    expect(r.text).not.toContain("--sizes left out");
+    const one = await runShot(root, ctx({ routes: "/", sizes: "900" }), deps);
+    expect(calls[1]!.viewports).toEqual([MAC_WINDOWS[1]!]);
+    expect(one.exitCode).toBe(0);
+    const phone = await runShot(root, ctx({ sizes: "390" }), deps);
+    expect(phone.exitCode).toBe(2);
+    expect(phone.text).toContain("--sizes: \"390\" isn't one of a macOS app's sizes.");
+    expect(calls).toHaveLength(2);
   });
 });

@@ -1,6 +1,7 @@
 // The runner for the SwiftUI screenshot harness (decision 0010): adds a hosted unit-test target (MotifShots) to a copy
 // of the app's Xcode project, creates an iOS simulator, runs xcodebuild test on it, and deletes the simulator whatever
-// happens. motif shot (Tasks 7–8) builds on it; it never touches the developer's own project folder.
+// happens; a macOS app is built and drawn on the Mac itself, with no simulator. motif shot (Tasks 7–9) builds on it;
+// it never touches the developer's own project folder.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { maskComments, maskStrings } from "../../check/mask";
@@ -548,6 +549,8 @@ export interface SwiftUIHarnessRun {
    */
   workDir: string;
   app: SwiftUIApp;
+  /** Where the app is drawn: in an iOS simulator Motif creates (the default), or on the Mac itself (a macOS app). */
+  platform?: SwiftUIPlatform;
   /** The @main App struct's name. */
   appStruct: string;
   /** Whether the copy has Motif's generated theme, and whether the theme has variants. */
@@ -707,7 +710,7 @@ const buildFailed = (output: string) => /Testing cancelled because the build fai
  * Why the build failed, in plain words: a setup or state file that doesn't compile is named (its errors give its path
  * and line), else the app's build with the compiler's errors.
  */
-function buildProblem(output: string, scripts: SwiftUIHarnessRun["scripts"]): string {
+function buildProblem(output: string, scripts: SwiftUIHarnessRun["scripts"], platform: SwiftUIPlatform = "ios"): string {
   const files = [...(scripts?.setup ? [scripts.setup] : []), ...(scripts?.states ?? [])].map((s) => s.file);
   const errors = compilerErrors(output);
   const theirs = files.filter((f) => errors.split("\n").some((l) => l.startsWith(`${f}:`)));
@@ -715,8 +718,15 @@ function buildProblem(output: string, scripts: SwiftUIHarnessRun["scripts"]): st
     const lines = errors.split("\n").filter((l) => theirs.some((f) => l.startsWith(`${f}:`)));
     return `${andList(theirs)} ${theirs.length === 1 ? "doesn't" : "don't"} compile:\n${lines.join("\n")}\nFix ${theirs.length === 1 ? "it" : "them"}, then run motif shot again.`;
   }
-  return `The app didn't build with Motif's harness:\n${errors}\nCheck that the app builds for the iOS simulator in Xcode, then run motif shot again.`;
+  return `The app didn't build with Motif's harness:\n${errors}\nCheck that the app builds for ${DESTINATION[platform]} in Xcode, then run motif shot again.`;
 }
+
+/** Where a run draws the app: in an iOS simulator Motif creates, or on the Mac itself (a macOS app). */
+export type SwiftUIPlatform = "ios" | "macos";
+/** The destination as Xcode's toolbar names it, for what to check there. */
+const DESTINATION: Record<SwiftUIPlatform, string> = { ios: "the iOS simulator", macos: "My Mac" };
+/** Where the app launches, for what to check when it doesn't. */
+const LAUNCHES: Record<SwiftUIPlatform, string> = { ios: "in the simulator", macos: "on this Mac" };
 
 function compilerErrors(output: string): string {
   const errors = [...new Set(output.split(/\r?\n/).filter((l) => /: error: /.test(l)).map((l) => l.trim()))];
@@ -800,15 +810,16 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
   const configuration = testConfiguration(original, run.app.name, sharedSchemes(project));
   const guess: SwiftUIAppBuild = { module: run.app.name, product: `${run.app.name}.app`, executable: run.app.name, appStruct: run.appStruct, variants: run.variants, theme: run.theme };
   writeHarness(run, guess, {}, configuration, original);
+  const platform: SwiftUIPlatform = run.platform ?? "ios";
   const shown = await step("settings", [
     "xcodebuild", "-showBuildSettings", "-json", "-project", project, "-scheme", TEST_TARGET, "-configuration", configuration,
-    "-destination", "generic/platform=iOS Simulator", "-derivedDataPath", derivedData,
+    "-destination", platform === "macos" ? "generic/platform=macOS" : "generic/platform=iOS Simulator", "-derivedDataPath", derivedData,
   ]);
   if (shown.timedOut) return tooLong("reading the app's build settings");
   const settings = shown.code === 0 ? appBuildSettings(shown.stdout, run.app.name) : null;
   if (!settings) {
     return done({
-      problem: `xcodebuild couldn't read the ${run.app.name} target's build settings:\n${tail(`${shown.stdout}\n${shown.stderr}`)}\nCheck that the ${run.app.name} scheme builds for the iOS simulator in Xcode, then run motif shot again.`,
+      problem: `xcodebuild couldn't read the ${run.app.name} target's build settings:\n${tail(`${shown.stdout}\n${shown.stderr}`)}\nCheck that the ${run.app.name} scheme builds for ${DESTINATION[platform]} in Xcode, then run motif shot again.`,
     });
   }
   const build: SwiftUIAppBuild = {
@@ -818,6 +829,87 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
     executable: settings.EXECUTABLE_NAME ?? guess.executable,
   };
   writeHarness(run, build, settings, configuration, original);
+
+  /** xcodebuild's command for an action (build-for-testing, test-without-building) on the run's destination. */
+  const xcodebuildOn = (destination: string) => (action: string) => [
+    "xcodebuild", action, "-project", project, "-scheme", TEST_TARGET, "-configuration", configuration,
+    "-destination", destination, "-derivedDataPath", derivedData, "-collect-test-diagnostics", "never",
+    "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO", "ENABLE_TESTABILITY=YES",
+  ];
+
+  /**
+   * Every launch of the built harness, until each shot is drawn or has failed: a screen that stops the app fails with
+   * its reason, and the screens left are drawn in a new launch.
+   */
+  const launches = async (xcodebuild: (action: string) => string[]): Promise<SwiftUIHarnessResult> => {
+    const merged: SwiftUIRunResult = { shots: [], previews: [], notes: [] };
+    let remaining = [...run.options.shots];
+    for (let launch = 0; remaining.length > 0; launch++) {
+      writeFileSync(join(run.workDir, OPTIONS_FILE), JSON.stringify({ ...run.options, shots: remaining }, null, 2));
+      rmSync(resultPath, { force: true });
+      const tested = await step("test", xcodebuild("test-without-building"), { ...(run.env ?? process.env), TEST_RUNNER_MOTIF_SHOT_OPTIONS: join(run.workDir, OPTIONS_FILE) });
+      // xcodebuild hands the variables that start with TEST_RUNNER_ to the test's process, without the prefix.
+      output = `${output}${tested.stdout}\n${tested.stderr}`.slice(-200_000);
+      lastCode = tested.code;
+      const written = readResult(resultPath);
+      if (written === "unreadable") return done({ result: merged.shots.length ? merged : null, problem: "The harness's result file is cut short; the run may have been stopped while writing it. Run motif shot again." });
+      if (written) {
+        if (merged.previews.length === 0) merged.previews = written.previews ?? [];
+        for (const n of written.notes ?? []) if (!merged.notes.includes(n)) merged.notes.push(n);
+        merged.shots.push(...written.shots);
+      }
+      if (tested.timedOut) {
+        // A screen that never finishes (an endless loop in body, a wait on the main thread) used up the time: the shots
+        // before it are kept, and the screen is named.
+        const hung = written?.current;
+        return done({
+          timedOut: true,
+          result: merged.shots.length ? merged : null,
+          problem: hung
+            ? `The screenshots took longer than ${Math.round(run.timeoutMs / 1000)} s and were stopped while drawing ${hung.screen} (${hung.file}); the shots before it were kept. Check that screen for work that never ends, or run motif shot again with a longer time limit.`
+            : `The screenshots took longer than ${Math.round(run.timeoutMs / 1000)} s and were stopped while drawing the screens. Run motif shot again with fewer screens, or a longer time limit.`,
+        });
+      }
+      if (!written && buildFailed(output)) {
+        return done({ problem: buildProblem(output, run.scripts, platform) });
+      }
+      if (!written) {
+        const skipped = /MOTIF_SHOT_OPTIONS isn't set/.test(output);
+        return done({
+          result: merged.shots.length ? merged : null,
+          problem: skipped
+            ? "The harness's test ran without its options and drew nothing. Run motif shot again; if it happens again, tell Motif's maintainers which Xcode you use."
+            : `xcodebuild ran the harness, but it wrote no result:\n${tail(output)}\n${crashReason(output) ? "The app stopped before the first screenshot. " : ""}Check that the app launches ${LAUNCHES[platform]}, then run motif shot again.`,
+        });
+      }
+      if (written.done) break;
+      // The app stopped (a fatalError in a screen, a missing environment object): the shot it was drawing names the
+      // screen. Its other shots fail with the same reason, and the other screens are drawn in a new launch.
+      const current = written.current;
+      const reason = crashReason(tested.stdout + tested.stderr) ?? "the app stopped without a reason Motif could read";
+      if (!current) {
+        return done({ result: merged.shots.length ? merged : null, problem: `The app stopped before drawing its first screen: ${reason}. Check that it launches ${LAUNCHES[platform]}, then run motif shot again.` });
+      }
+      const drawn = new Set(written.shots.map((s) => s.file));
+      const rest = remaining.filter((s) => !drawn.has(s.file));
+      const error = `${current.screen === "/" ? "The app's root view" : `The preview ${current.screen}`} stopped the app: ${reason}`;
+      for (const s of rest.filter((s) => s.screen === current.screen)) merged.shots.push({ file: s.file, error });
+      if (!merged.notes.includes(error)) merged.notes.push(error);
+      remaining = rest.filter((s) => s.screen !== current.screen);
+    }
+    return done({ result: merged });
+  };
+
+  // A macOS app is built for the Mac and drawn there, in the app's own process (decision 0010, §17): no simulator.
+  if (platform === "macos") {
+    const xcodebuild = xcodebuildOn("platform=macOS");
+    const built = await step("build", xcodebuild("build-for-testing"));
+    output = `${built.stdout}\n${built.stderr}`.slice(-200_000);
+    lastCode = built.code;
+    if (built.timedOut) return tooLong("building the app");
+    if (built.code !== 0) return done({ problem: buildProblem(output, run.scripts, platform) });
+    return launches(xcodebuild);
+  }
 
   if (!simulator) {
     const sdk = await step("sdk", ["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"]);
@@ -848,11 +940,7 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
   try {
     // The app and the harness are built while the simulator boots (decision 0010, §9): the build needs the simulator
     // to exist, not to run. Booted without Simulator.app, so no window opens.
-    const xcodebuild = (action: string) => [
-      "xcodebuild", action, "-project", project, "-scheme", TEST_TARGET, "-configuration", configuration,
-      "-destination", `id=${sim}`, "-derivedDataPath", derivedData, "-collect-test-diagnostics", "never",
-      "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO", "ENABLE_TESTABILITY=YES",
-    ];
+    const xcodebuild = xcodebuildOn(`id=${sim}`);
     const boot = async (): Promise<SwiftUIHarnessResult | null> => {
       const booted = await step("boot", ["xcrun", "simctl", "boot", sim]);
       if (booted.timedOut) return tooLong("booting the simulator");
@@ -894,63 +982,7 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
       return unbooted ? { ...failed, problem: `${failed.problem}\n\n${unbooted.problem}` } : failed;
     }
     if (unbooted) return unbooted;
-
-    const merged: SwiftUIRunResult = { shots: [], previews: [], notes: [] };
-    let remaining = [...run.options.shots];
-    for (let launch = 0; remaining.length > 0; launch++) {
-      writeFileSync(join(run.workDir, OPTIONS_FILE), JSON.stringify({ ...run.options, shots: remaining }, null, 2));
-      rmSync(resultPath, { force: true });
-      const tested = await step("test", xcodebuild("test-without-building"), { ...(run.env ?? process.env), TEST_RUNNER_MOTIF_SHOT_OPTIONS: join(run.workDir, OPTIONS_FILE) });
-      // xcodebuild hands the variables that start with TEST_RUNNER_ to the test's process, without the prefix.
-      output = `${output}${tested.stdout}\n${tested.stderr}`.slice(-200_000);
-      lastCode = tested.code;
-      const written = readResult(resultPath);
-      if (written === "unreadable") return done({ result: merged.shots.length ? merged : null, problem: "The harness's result file is cut short; the run may have been stopped while writing it. Run motif shot again." });
-      if (written) {
-        if (merged.previews.length === 0) merged.previews = written.previews ?? [];
-        for (const n of written.notes ?? []) if (!merged.notes.includes(n)) merged.notes.push(n);
-        merged.shots.push(...written.shots);
-      }
-      if (tested.timedOut) {
-        // A screen that never finishes (an endless loop in body, a wait on the main thread) used up the time: the shots
-        // before it are kept, and the screen is named.
-        const hung = written?.current;
-        return done({
-          timedOut: true,
-          result: merged.shots.length ? merged : null,
-          problem: hung
-            ? `The screenshots took longer than ${Math.round(run.timeoutMs / 1000)} s and were stopped while drawing ${hung.screen} (${hung.file}); the shots before it were kept. Check that screen for work that never ends, or run motif shot again with a longer time limit.`
-            : `The screenshots took longer than ${Math.round(run.timeoutMs / 1000)} s and were stopped while drawing the screens. Run motif shot again with fewer screens, or a longer time limit.`,
-        });
-      }
-      if (!written && buildFailed(output)) {
-        return done({ problem: buildProblem(output, run.scripts) });
-      }
-      if (!written) {
-        const skipped = /MOTIF_SHOT_OPTIONS isn't set/.test(output);
-        return done({
-          result: merged.shots.length ? merged : null,
-          problem: skipped
-            ? "The harness's test ran without its options and drew nothing. Run motif shot again; if it happens again, tell Motif's maintainers which Xcode you use."
-            : `xcodebuild ran the harness, but it wrote no result:\n${tail(output)}\n${crashReason(output) ? "The app stopped before the first screenshot. " : ""}Check that the app launches in the simulator, then run motif shot again.`,
-        });
-      }
-      if (written.done) break;
-      // The app stopped (a fatalError in a screen, a missing environment object): the shot it was drawing names the
-      // screen. Its other shots fail with the same reason, and the other screens are drawn in a new launch.
-      const current = written.current;
-      const reason = crashReason(tested.stdout + tested.stderr) ?? "the app stopped without a reason Motif could read";
-      if (!current) {
-        return done({ result: merged.shots.length ? merged : null, problem: `The app stopped before drawing its first screen: ${reason}. Check that it launches in the simulator, then run motif shot again.` });
-      }
-      const drawn = new Set(written.shots.map((s) => s.file));
-      const rest = remaining.filter((s) => !drawn.has(s.file));
-      const error = `${current.screen === "/" ? "The app's root view" : `The preview ${current.screen}`} stopped the app: ${reason}`;
-      for (const s of rest.filter((s) => s.screen === current.screen)) merged.shots.push({ file: s.file, error });
-      if (!merged.notes.includes(error)) merged.notes.push(error);
-      remaining = rest.filter((s) => s.screen !== current.screen);
-    }
-    return done({ result: merged });
+    return await launches(xcodebuild);
   } finally {
     cancelExitHook();
     const t = performance.now();

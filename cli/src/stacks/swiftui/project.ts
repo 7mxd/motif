@@ -166,14 +166,31 @@ function targetSettings(objs: Map<string, PbxObject>, target: PbxObject): string
   return configs.map((id) => objs.get(id)?.text ?? "").join("\n");
 }
 
-/** The platforms build settings (SDKROOT, SUPPORTED_PLATFORMS) name; iOS when they name none. */
-function settingsPlatforms(settings: string): ("ios" | "macos")[] {
+/** The platforms build settings (SDKROOT, SUPPORTED_PLATFORMS) name; none when they name none. */
+function namedPlatforms(settings: string): ("ios" | "macos")[] {
   const values = [...settings.matchAll(/\b(?:SDKROOT|SUPPORTED_PLATFORMS) = ("[^"]*"|[^;\s]+);/g)].map((m) => unquote(m[1]!));
   const words = values.flatMap((v) => v.split(/\s+/));
   const out: ("ios" | "macos")[] = [];
   if (words.includes("iphoneos") || words.includes("iphonesimulator")) out.push("ios");
   if (words.includes("macosx")) out.push("macos");
-  return out.length > 0 ? out : ["ios"];
+  return out;
+}
+
+/**
+ * The platforms a target is built for: those its own settings name, else the project's (Xcode's macOS and iOS
+ * templates set SDKROOT on the project only), else iOS.
+ */
+function settingsPlatforms(settings: string, projectSettings = ""): ("ios" | "macos")[] {
+  const own = namedPlatforms(settings);
+  if (own.length > 0) return own;
+  const inherited = namedPlatforms(projectSettings);
+  return inherited.length > 0 ? inherited : ["ios"];
+}
+
+/** The text of the project's own build settings: every configuration of its configuration list. */
+function projectSettings(pbx: string, objs: Map<string, PbxObject>): string {
+  const project = objs.get(pbx.match(/\brootObject = (\w+)/)?.[1] ?? "");
+  return project ? targetSettings(objs, project) : "";
 }
 
 /** True for a target built for the watch, the TV or Vision Pro only: never the app a design guide is for. */
@@ -225,7 +242,7 @@ function xcodeApp(dir: string, projectFolder: string): SwiftUIApp | null {
     folder = siblingFolders(dir, projectName).find((f) => hasAppEntry(join(dir, f)));
   }
   if (folder === undefined) return null;
-  return { kind: "xcodeproj", name: named(target) || projectName, project: projectFolder, platforms: settingsPlatforms(settings.get(target)!), sourceRoot: folder };
+  return { kind: "xcodeproj", name: named(target) || projectName, project: projectFolder, platforms: settingsPlatforms(settings.get(target)!, projectSettings(pbx, objs)), sourceRoot: folder };
 }
 
 /** A manifest's text without its comments. */

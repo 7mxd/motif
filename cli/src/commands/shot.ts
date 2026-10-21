@@ -286,7 +286,15 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     return usage("--screen opens a Flutter widget by its class name, a Jetpack Compose @Preview function by its name, or a SwiftUI #Preview by its title; this app is neither. Use --routes for its pages.", { error: "usage" });
   }
   let viewports: Viewport[] | undefined;
-  if (typeof flags.sizes === "string") {
+  // Sizes the stack draws this app at instead of the native ones (a macOS SwiftUI app's windows), from --sizes when
+  // given. They are what's drawn; --sizes' notes about what it left out are for phone and tablet sizes only.
+  let stackSizes: Viewport[] | undefined;
+  const own = shoot && native && app ? native.shotSizes?.(cwd, app, typeof flags.sizes === "string" ? flags.sizes : undefined) : null;
+  if (own && "error" in own) return usage(own.error, { error: "usage" });
+  if (own) {
+    stackSizes = own.viewports;
+    if (typeof flags.sizes === "string" && own.viewports.some((v) => v.mobile)) viewports = own.viewports;
+  } else if (typeof flags.sizes === "string") {
     const sizes = parseSizes(flags.sizes, shoot || rn ? [...NATIVE_VIEWPORTS, NATIVE_DESKTOP] : undefined);
     if ("error" in sizes) return usage(sizes.error, { error: "usage" });
     viewports = sizes;
@@ -443,7 +451,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       writeFileSync(ignore, "# Screenshots of the running app (motif shot). Not committed.\n*\n");
     }
     if (shoot && app) {
-      const sizes = viewports ?? NATIVE_VIEWPORTS;
+      const sizes = stackSizes ?? viewports ?? NATIVE_VIEWPORTS;
       // Each state is one more screenshot of every shot, after the screen has settled.
       const count = (routes.length + runScreens.length) * sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1) * (1 + states.length);
       const timeoutMs = native?.shotTimeLimit?.(count) ?? 240_000 + 3_000 * count;
@@ -473,7 +481,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const width = Math.max(...captured.routes.map((r) => r.route.length));
   const lines = [
     shots.length > 0
-      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? (shoot ? "screen" : "page") : shoot ? "screens" : "pages"} (${describeSizes(viewports ?? (shoot || rn ? NATIVE_VIEWPORTS : undefined))}, light and dark${rtl ? `, right to left in ${rtl}` : ""}${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
+      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? (shoot ? "screen" : "page") : shoot ? "screens" : "pages"} (${describeSizes(stackSizes ?? viewports ?? (shoot || rn ? NATIVE_VIEWPORTS : undefined))}, light and dark${rtl ? `, right to left in ${rtl}` : ""}${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
       : "✗ No screenshots were taken.",
     ...captured.routes.map((r) => routeLine(r, width)),
   ];
