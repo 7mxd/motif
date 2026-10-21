@@ -43,6 +43,8 @@ struct MotifAuditOutcome {
     var issues: [MotifIssue] = []
     var unjudged: [String] = []
     var error: String?
+    /// Something the run's notes should say once (the tap targets weren't checked).
+    var note: String?
 }
 
 /// An element of the screen, as VoiceOver reads it, with what the audit needs to know.
@@ -102,6 +104,9 @@ enum MotifAudit {
                     return issue
                 }
                 let pixels = checks.contains("contrast") || checks.contains("targets") ? MotifPixels(png: png, scale: scale) : nil
+                if checks.contains("targets") && pixels == nil {
+                    out.note = "Motif couldn't read some screenshots' pixels, so their tap targets weren't checked: it tells a button drawn on a shape of its own (bordered, glass) from a plain one by them."
+                }
                 if checks.contains("contrast") {
                     if let pixels {
                         for i in elements.indices {
@@ -162,10 +167,23 @@ enum MotifAudit {
     /// gives them, as Apple sizes them and the other stacks' stock controls pass: text fields, switches, sliders,
     /// steppers, pickers and menus (a control that says what it is set to), the system's own controls under SwiftUI, and
     /// a button drawn on a shape of its own (.bordered, .borderedProminent, .glass, .glassProminent).
+    /// Every test can only exempt: what Motif can't tell (no picture, a shape it doesn't see) is a missed finding, never a
+    /// false one.
     static func smallTarget(_ e: MotifElement, _ pixels: MotifPixels?) -> Bool {
         guard e.kind == .button || e.kind == .link, !e.system, (e.value ?? "").isEmpty else { return false }
         guard e.rect.width < minTarget - 0.01 || e.rect.height < minTarget - 0.01 else { return false }
-        return !(pixels?.onShape(e.rect) ?? false)
+        if tallerThanItsText(e) { return false }
+        guard let pixels else { return false }
+        return !pixels.onShape(e.rect)
+    }
+
+    /// True when a text button's frame is well taller than a line of its text: a system style's padding (a bordered
+    /// button is 36 points high for 17-point text, a plain one 22). Only when the element says its font, and not for a
+    /// button that shows a symbol, whose frame is its image's. A bordered button on a mid-grey background (its fill
+    /// nearly the background's) is told this way.
+    static func tallerThanItsText(_ e: MotifElement) -> Bool {
+        guard let font = e.font, e.symbol == nil else { return false }
+        return e.rect.height >= font.size * 1.2 + 12
     }
 
     private static func onScreen(_ rect: CGRect, _ window: MotifWindow) -> Bool {

@@ -181,6 +181,7 @@ final class MotifShotTests: XCTestCase {
                     entry.issues = audit.issues
                     if !audit.unjudged.isEmpty { entry.unjudged = audit.unjudged }
                     entry.auditError = audit.error
+                    if let note = audit.note, !result.notes.contains(note) { result.notes.append(note) }
                 }
                 try drawn.png.write(to: outDir.appendingPathComponent(shot.file))
                 if let note = drawn.note, !result.notes.contains(note) { result.notes.append(note) }

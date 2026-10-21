@@ -10,7 +10,8 @@ export const auditFile = (app: string) => `${app}/Screens/AuditScreen.swift`;
 /**
  * A screen with problems planted for the audit: a caption in a pale grey (#bfbfbf on white, 1.83:1), a 30 pt icon button
  * with no name of its own (its SF Symbol's, "Gear Shape", only), a field whose typed text is grey (#999999, 2.84:1), and
- * a 40 pt pulse that keeps going with reduce motion on. What should pass: the title; a decorative symbol beside its text
+ * a 40 pt pulse that keeps going with reduce motion on. What should pass: the title; a bordered button and (built with
+ * Xcode 26 or later) a glass one, both under 44 pt but sized by the system; a decorative symbol beside its text
  * and a row's chevron (images, not controls: no name finding); a 60 pt pulse that stops when the system's setting is on
  * (UIAccessibility's, NSWorkspace's) and an 80 pt one that stops when SwiftUI's environment says so. Either would lead
  * the motion finding if it moved, being larger.
@@ -42,6 +43,12 @@ struct AuditScreen: View {
             }
             TextField("Code", text: $code)
                 .foregroundStyle(Color(white: 0.6))
+            HStack {
+                Button("Edit") {}
+                    .buttonStyle(.bordered)
+                    .tint(.primary)
+                glass
+            }
             HStack {
                 Image(systemName: "leaf")
                 Text("Fresh today")
@@ -77,6 +84,17 @@ struct AuditScreen: View {
         .padding()
     }
 
+    /// A glass button, which Xcode 26's SDK (Swift 6.2) has and CI's Xcode 16.4 doesn't.
+    @ViewBuilder private var glass: some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, macOS 26, *) {
+            Button("Share") {}
+                .buttonStyle(.glass)
+                .tint(.primary)
+        }
+        #endif
+    }
+
     /// The system's setting, as an app that doesn't read SwiftUI's environment reads it.
     private var systemReducesMotion: Bool {
         #if os(macOS)
@@ -91,6 +109,16 @@ struct AuditScreen: View {
     AuditScreen()
 }
 `;
+
+/**
+ * True when the selected Swift compiler is 6.2 or later (Xcode 26 and later), whose SDKs have the glass button style:
+ * the planted screen draws its glass button only then, as swiftui-compile gates -default-isolation.
+ */
+export function hasGlass(): boolean {
+  const out = Bun.spawnSync(["xcrun", "swiftc", "--version"], { stdout: "pipe", stderr: "pipe" }).stdout.toString();
+  const m = /Swift version (\d+)\.(\d+)/.exec(out);
+  return Boolean(m && (Number(m[1]) > 6 || (Number(m[1]) === 6 && Number(m[2]) >= 2)));
+}
 
 /** A state that types into the planted field: the audit judges the typed text once editing has ended. */
 export const TYPED_STATE = `@MainActor func motifState(_ app: MotifHarness) async throws {
@@ -129,6 +157,13 @@ export function expectAudit(root: string, r: { text: string; data: Record<string
     if (states) expect(x.pageErrors?.[0]).toMatch(/^State "throws": There's nothing called "Nothing here" on the screen/);
     else expect(x.pageErrors).toBeUndefined();
   }
+  // The throwing state lists what the planted screen shows: its bordered button, and its glass one where the SDK has it.
+  if (states) {
+    const shown = routes.find((x) => x.route === "Audit")!.pageErrors![0]!;
+    expect(shown).toContain('"Edit"');
+    if (hasGlass()) expect(shown).toContain('"Share"');
+    else console.log("[audit] Swift is older than 6.2: the planted screen has no glass button.");
+  }
   expect(r.text).not.toContain("couldn't turn on accessibility");
   const review = JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8")) as { scope: string; findings: Finding[] };
   expect(review.scope).toBe("screens: /, Audit");
@@ -161,7 +196,8 @@ export function expectAudit(root: string, r: { text: string; data: Record<string
   expect(motion.fix).toContain("@Environment(\\.accessibilityReduceMotion)");
   expect(motion.fix).not.toContain("could turn on only");
   if (viewport === "mobile") {
-    // The plain 30 pt icon button, in SwiftUI's terms. The text field isn't one: its size is the system's.
+    // The plain 30 pt icon button, in SwiftUI's terms. The text field isn't one: its size is the system's; nor the
+    // bordered "Edit" (36 pt high) or, with Xcode 26 and later, the glass "Share": a system style sizes them.
     expect(of("target-size")).toEqual([["Button(gearshape)", null, 'The "gearshape" button is 30×30 px on a phone; 44×44 px is easier to tap.']]);
     expect(mine.find((f) => f.category === "target-size")!.fix).toContain(".frame(minWidth: 44, minHeight: 44)");
     // swiftui-min's stock home: the plain Greet button is too small; its field and its bordered prominent button aren't.
