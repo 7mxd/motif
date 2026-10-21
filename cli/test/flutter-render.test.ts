@@ -25,7 +25,10 @@ describe("the Flutter screenshot harness (decision 0007)", () => {
       filter: (src) => ![".dart_tool", "build"].includes(basename(src)),
     });
     if (run([flutter, "pub", "get", "--offline"], app).code !== 0) {
-      expect(run([flutter, "pub", "get"], app).out).toContain("Got dependencies");
+      // By its exit code: newer pub says "Changed 5 dependencies!" where older pub said "Got dependencies!".
+      const online = run([flutter, "pub", "get"], app);
+      if (online.code !== 0) console.log(online.out);
+      expect(online.code).toBe(0);
     }
     const outDir = tempDir("motif-flutter-shots-");
     const shots: FlutterShot[] = [

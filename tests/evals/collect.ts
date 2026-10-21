@@ -99,7 +99,8 @@ async function composeCompile(dir: string, k: Collectors, out: string): Promise<
     return failed("There's no Gradle wrapper (gradle/wrapper/gradle-wrapper.jar), so the app couldn't be compiled.");
   }
   const env: Record<string, string | undefined> = { ...withoutProviderKeys(process.env), JAVA_HOME: tools.javaHome };
-  if (tools.sdk) env.ANDROID_HOME ||= tools.sdk;
+  // The SDK doctor chose already prefers ANDROID_HOME, so it is passed as is: one answer to which SDK builds the app.
+  if (tools.sdk) env.ANDROID_HOME = tools.sdk;
   const task = `${gradleProjectPath(dir, join(dir, composeModule(dir)))}:compileDebugKotlin`;
   const r = await k.run(gradleTaskCommand(tools.java, [task, "--console=plain"], env), dir, 1_800_000, env);
   save(out, "compile.log", `${r.stdout}\n${r.stderr}`);

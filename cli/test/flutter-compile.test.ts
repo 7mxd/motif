@@ -61,8 +61,10 @@ describe("the generated Dart", () => {
     });
     // Offline once the packages have been fetched on this machine.
     if (run([flutter, "pub", "get", "--offline"], dir).code !== 0) {
+      // By its exit code: newer pub says "Changed 5 dependencies!" where older pub said "Got dependencies!".
       const online = run([flutter, "pub", "get"], dir);
-      expect(online.out).toContain("Got dependencies");
+      if (online.code !== 0) console.log(online.out);
+      expect(online.code).toBe(0);
     }
     mkdirSync(join(dir, "lib/design"), { recursive: true });
     // Two variants; a companion at two weights through _family; a family google_fonts may not have (Satoshi) through

@@ -7,7 +7,7 @@ import { HARNESS_AUDIT, HARNESS_HTTP, HARNESS_TEST, RESULT_FILE, withNoProxy, ty
 import { googleFamilies, resolvedPackages } from "../src/stacks/flutter/google";
 import { HOOKS_FILE } from "../src/stacks/flutter/hooks";
 import { findScreen, readHttpFixtures, screenSlug } from "../src/stacks/flutter/inputs";
-import { FLUTTER_VARIANT_HOW, screenNotes, shootFlutter } from "../src/stacks/flutter/shot";
+import { FLUTTER_VARIANT_HOW, screenNotes, shootFlutter, stoppedWhy } from "../src/stacks/flutter/shot";
 import { fontFileScripts, scriptName } from "../src/stacks/flutter/scripts";
 import type { NativeShotOptions } from "../src/stacks/native";
 import { partnerTokens } from "./helpers";
@@ -443,6 +443,16 @@ process.exit(1);`,
     expect(existsSync(join(root, HARNESS_HTTP))).toBe(false);
     expect(existsSync(join(root, HARNESS_AUDIT))).toBe(false);
     expect(existsSync(join(root, ".motif/shot/config.json"))).toBe(false);
+  });
+
+  test("a run that timed out still loading its test file, on a Mac, says macOS may be blocking flutter_tester (Mac mini, Oct 2026)", () => {
+    const loading = "00:00 +0: loading /tmp/app/.motif/shot/motif_shot_test.dart";
+    expect(stoppedWhy(252, loading, "darwin")).toBe(
+      "flutter test didn't finish within 252 s: it never got past loading its test file. On a Mac that usually means macOS is blocking Flutter's flutter_tester; run flutter test in the app yourself, and if it stalls there too, look for flutter_tester in System Settings › Privacy & Security.",
+    );
+    expect(stoppedWhy(252, loading, "linux")).toBe("flutter test didn't finish within 252 s.");
+    expect(stoppedWhy(252, `${loading}\n00:41 +1: home.mobile.png`, "darwin")).toBe("flutter test didn't finish within 252 s.");
+    expect(stoppedWhy(null, loading, "darwin")).toBe("flutter test stopped before drawing any screen.");
   });
 
   test("a result file cut short is a plain error, not a crash", async () => {
