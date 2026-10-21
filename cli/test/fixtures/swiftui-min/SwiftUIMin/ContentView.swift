@@ -5,15 +5,22 @@
 
 import SwiftUI
 
+/// The places the app's NavigationStack can open.
+enum Route: Hashable {
+    case settings
+}
+
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack {
+            HomeScreen()
+                .navigationDestination(for: Route.self) { route in
+                    switch route {
+                    case .settings:
+                        SettingsScreen()
+                    }
+                }
         }
-        .padding()
     }
 }
 
