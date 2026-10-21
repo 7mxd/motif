@@ -130,6 +130,74 @@ describe("discoverSwiftUIScreens", () => {
   });
 });
 
+describe("files with the same name in different folders", () => {
+  test("previews on different lines stay distinct, named by their folder", () => {
+    const dir = app({
+      "Sources/Rafiq/Screens/Home.swift": '#Preview { Text("a") }',
+      "Sources/Rafiq/Admin/Home.swift": '\n\n#Preview { Text("b") }',
+    });
+    const s = discoverSwiftUIScreens(dir);
+    expect(s.skippedPreviews).toEqual([]);
+    expect(s.previews.map((p) => [p.name, p.slug, p.screen])).toEqual([
+      ["Admin/Home-1", "admin-home-1", "Home.swift:3"],
+      ["Screens/Home-1", "screens-home-1", "Home.swift:1"],
+    ]);
+    expect(swiftUIScreenProblem(dir, ["Admin/Home-1", "Home.swift:3", "Screens/Home-1"])).toBeNull();
+    expect(swiftUIScreenProblem(dir, ["Home-1"])).toContain("isn't a #Preview");
+  });
+
+  test("the same line in both: both are left out, with what to do", () => {
+    const dir = app({
+      "Sources/Rafiq/Screens/Home.swift": '#Preview { Text("a") }',
+      "Sources/Rafiq/Admin/Home.swift": '#Preview { Text("b") }',
+      "Sources/Rafiq/Other.swift": '#Preview("Fine") { Text("c") }',
+    });
+    const s = discoverSwiftUIScreens(dir);
+    expect(s.previews.map((p) => p.name)).toEqual(["Fine"]);
+    expect(s.skippedPreviews.map((p) => p.name)).toEqual(["Admin/Home-1", "Screens/Home-1"]);
+    expect(s.skippedPreviews[0]!.reason).toBe(
+      "Another file named Home.swift has a preview on the same line, and the simulator can't tell them apart: move one of the previews, or rename one of the files.",
+    );
+    expect(s.notes?.[0]).toBe(
+      "Admin/Home-1 and Screens/Home-1 are on the same line of files both named Home.swift, which the simulator can't tell apart, so they were left out. Move one of the previews, or rename one of the files.",
+    );
+    expect(swiftUIScreenProblem(dir, ["Admin/Home-1"])).toBe(
+      "--screen Admin/Home-1 can't be drawn. Another file named Home.swift has a preview on the same line, and the simulator can't tell them apart: move one of the previews, or rename one of the files.",
+    );
+  });
+
+  test("equal titles across same-named files get the folder in front; slugs follow", () => {
+    const dir = app({
+      "Sources/Rafiq/Screens/Home.swift": '#Preview("Main") { Text("a") }',
+      "Sources/Rafiq/Admin/Home.swift": '\n#Preview("Main") { Text("b") }',
+      "Sources/Rafiq/Extra/Plain.swift": '#Preview("Main") { Text("c") }',
+    });
+    const s = discoverSwiftUIScreens(dir);
+    expect(s.previews.map((p) => [p.name, p.slug])).toEqual([
+      ["Admin/Main", "admin-main"],
+      ["Extra/Main", "extra-main"],
+      ["Screens/Main", "screens-main"],
+    ]);
+  });
+
+  test("folders with the same name are told apart by more of the path", () => {
+    const dir = app({
+      "Sources/Rafiq/A/Ui/Home.swift": '#Preview { Text("a") }',
+      "Sources/Rafiq/B/Ui/Home.swift": '\n#Preview { Text("b") }',
+    });
+    expect(discoverSwiftUIScreens(dir).previews.map((p) => p.name)).toEqual(["A/Ui/Home-1", "B/Ui/Home-1"]);
+  });
+});
+
+describe("lines", () => {
+  test("a preview after a multi-line string with interpolation has its exact line", () => {
+    const dir = app({
+      "Sources/Rafiq/L.swift": ["let n = 3", 'let t = """', "line \(n)", 'and \(n + 1) "quoted"', '"""', "", '#Preview("After") { Text("x") }'].join("\n"),
+    });
+    expect(discoverSwiftUIScreens(dir).previews.map((p) => [p.name, p.line])).toEqual([["After", 7]]);
+  });
+});
+
 describe("swiftUIScreenProblem", () => {
   const dir = app({
     "Sources/Rafiq/A.swift": '#Preview("Settings") { Text("a") }\nstruct S_Previews: PreviewProvider { static var previews: some View { Text("s") } }',

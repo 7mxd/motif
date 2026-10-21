@@ -126,27 +126,79 @@ function targetSources(appDir: string): { path: string; text: string }[] {
  * address in SwiftUI, so the routes are "/" only. A PreviewProvider is listed in skippedPreviews, with its reason.
  */
 export function discoverSwiftUIScreens(appDir: string): SwiftUIScreens {
-  const previews: SwiftUIPreview[] = [];
-  const skippedPreviews: SwiftUIPreview[] = [];
-  const used = new Set<string>();
+  const drawn: SwiftUIPreview[] = [];
+  const providers: SwiftUIPreview[] = [];
   for (const f of targetSources(appDir)) {
     for (const { preview, provider } of previewsIn(f.path, f.text)) {
-      const base = previewSlug(preview.name) || "preview";
-      let slug = base;
-      for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
-      used.add(slug);
-      (provider ? skippedPreviews : previews).push({ ...preview, slug });
+      (provider ? providers : drawn).push(preview);
     }
   }
-  const notes =
-    skippedPreviews.length > 0
-      ? [
-          `${andList(skippedPreviews.map((p) => p.name))} ${skippedPreviews.length === 1 ? "is a PreviewProvider" : "are PreviewProviders"}, which Motif doesn't draw yet, so ${
-            skippedPreviews.length === 1 ? "it was" : "they were"
-          } left out. Put ${skippedPreviews.length === 1 ? "its view in a #Preview block" : "their views in #Preview blocks"} to screenshot ${skippedPreviews.length === 1 ? "it" : "them"}.`,
-        ]
-      : [];
-  return { routes: ["/"], skipped: [], previews, skippedPreviews, ...(notes.length > 0 ? { notes } : {}) };
+  nameApart(drawn);
+  // The harness sees only <File>.swift:<line>, so two previews on one line of same-named files can't be told apart.
+  const byScreen = new Map<string, SwiftUIPreview[]>();
+  for (const p of drawn) byScreen.set(p.screen, [...(byScreen.get(p.screen) ?? []), p]);
+  const previews: SwiftUIPreview[] = [];
+  const clashing: SwiftUIPreview[] = [];
+  for (const p of drawn) {
+    if (byScreen.get(p.screen)!.length > 1) clashing.push({ ...p, reason: sameLineReason(p) });
+    else previews.push(p);
+  }
+  const skippedPreviews = [...providers, ...clashing].sort(bySource);
+  // Slugs, unique in the app, in source order.
+  const used = new Set<string>();
+  const slugged = new Map<SwiftUIPreview, string>();
+  for (const p of [...previews, ...skippedPreviews].sort(bySource)) {
+    const base = previewSlug(p.name) || "preview";
+    let slug = base;
+    for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
+    used.add(slug);
+    slugged.set(p, slug);
+  }
+  const done = (list: SwiftUIPreview[]) => list.map((p) => ({ ...p, slug: slugged.get(p)! }));
+  const notes: string[] = [];
+  if (providers.length > 0) {
+    const one = providers.length === 1;
+    notes.push(
+      `${andList(providers.map((p) => p.name))} ${one ? "is a PreviewProvider" : "are PreviewProviders"}, which Motif doesn't draw yet, so ${one ? "it was" : "they were"} left out. Put ${
+        one ? "its view in a #Preview block" : "their views in #Preview blocks"
+      } to screenshot ${one ? "it" : "them"}.`,
+    );
+  }
+  if (clashing.length > 0) {
+    const files = andList([...new Set(clashing.map((p) => basename(p.file)))]);
+    notes.push(
+      `${andList(clashing.map((p) => p.name))} are on the same line of files both named ${files}, which the simulator can't tell apart, so they were left out. Move one of the previews, or rename one of the files.`,
+    );
+  }
+  return { routes: ["/"], skipped: [], previews: done(previews), skippedPreviews: done(skippedPreviews), ...(notes.length > 0 ? { notes } : {}) };
+}
+
+const bySource = (a: SwiftUIPreview, b: SwiftUIPreview) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line);
+
+const sameLineReason = (p: SwiftUIPreview) =>
+  `Another file named ${basename(p.file)} has a preview on the same line, and the simulator can't tell them apart: move one of the previews, or rename one of the files.`;
+
+/**
+ * Gives previews whose names collide across files a folder in front (Screens/Home-1), with as much of the path as it takes
+ * to tell the files apart. Files in one folder (A.swift and B.swift) keep their names: --screen takes File.swift:line.
+ */
+function nameApart(list: SwiftUIPreview[]): void {
+  const groups = new Map<string, SwiftUIPreview[]>();
+  for (const p of list) groups.set(p.name, [...(groups.get(p.name) ?? []), p]);
+  for (const group of groups.values()) {
+    const files = [...new Set(group.map((p) => p.file))];
+    if (files.length < 2) continue;
+    const prefix = (file: string, depth: number) => file.split("/").slice(0, -1).slice(-depth).join("/");
+    const deepest = Math.max(...files.map((f) => f.split("/").length - 1));
+    for (let depth = 1; depth <= deepest; depth++) {
+      if (new Set(files.map((f) => prefix(f, depth))).size < files.length) continue;
+      for (const p of group) {
+        const pre = prefix(p.file, depth);
+        if (pre) p.name = `${pre}/${p.name}`;
+      }
+      break;
+    }
+  }
 }
 
 /** A preview as a run names it: its name, or <File>.swift:<line> when two previews share the name. */
@@ -170,8 +222,12 @@ export function swiftUIScreenProblem(appDir: string, screens: string[]): string 
     if (matches.length > 1) {
       return `--screen ${screen} is the name of ${matches.length} previews (${andList(matches.map((p) => p.screen))}). Use File.swift:line for one.`;
     }
-    if (skippedPreviews.some(hit)) {
-      return `--screen ${screen} is a PreviewProvider, which Motif doesn't draw yet.${list} Put its view in a #Preview block${found ? ", or name one of those" : ""}.`;
+    const skipped = skippedPreviews.filter(hit);
+    if (skipped.length > 0) {
+      if (skipped.every((p) => p.reason === PROVIDER_REASON)) {
+        return `--screen ${screen} is a PreviewProvider, which Motif doesn't draw yet.${list} Put its view in a #Preview block${found ? ", or name one of those" : ""}.`;
+      }
+      return `--screen ${screen} can't be drawn. ${skipped[0]!.reason}`;
     }
     return `--screen ${screen} isn't a #Preview Motif found in this app.${list}${found ? " Name one of those." : ""}`;
   }
