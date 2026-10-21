@@ -15,6 +15,7 @@ import { swiftUIFonts } from "./fonts";
 import { generateSwiftUI, THEME_FILE } from "./generate";
 import { swiftUIPaletteFile } from "./palette";
 import { appEntryFile, buildsWholeFolder, swiftUIApp } from "./project";
+import { swiftUIInputsProblem, swiftUIShotRefusal } from "./shot";
 
 /** The app target's folder, root-relative. */
 const targetFolder = (app: AppInfo, sourceRoot: string) => prefixPath(app.path, sourceRoot);
@@ -109,4 +110,8 @@ export const SWIFTUI: NativeStack = {
   fix: swiftUIFix,
   paletteFile: swiftUIPaletteFile,
   role: swiftUIRole,
+
+  // Screens are drawn by a test Motif adds to a copy of the app (decision 0010); Task 8 adds shoot.
+  shotRefusal: (root, app, _which, doctor) => (doctor ? swiftUIShotRefusal(root, app, doctor) : null),
+  shotInputsProblem: swiftUIInputsProblem,
 };
