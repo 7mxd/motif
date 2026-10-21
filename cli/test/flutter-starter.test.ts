@@ -82,7 +82,8 @@ beforeAll(() => {
   mkdirSync(join(app, "design"), { recursive: true });
   writeFileSync(join(app, "design", "tokens.json"), JSON.stringify(withCompanion(twoVariantTokens())));
   process.env.MOTIF_HOME = join(import.meta.dir, ".tmp", "flutter-home");
-});
+  // flutter create and pub add take longer than a hook's default 5 s, and a hook that times out has its processes killed.
+}, 300_000);
 
 afterAll(() => {
   if (savedHome === undefined) delete process.env.MOTIF_HOME;

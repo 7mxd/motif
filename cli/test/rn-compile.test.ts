@@ -6,7 +6,8 @@ import { REACT_NATIVE } from "../src/stacks/react-native";
 import { docFrom, FIXTURES, heavyStackTests, partnerTokens, validTokens, withCompanion } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
-afterAll(cleanupTempDirs);
+// Removing an installed node_modules takes longer than a hook's default 5 s on Windows.
+afterAll(cleanupTempDirs, 120_000);
 
 const node = Bun.which("node");
 const npm = Bun.which("npm");

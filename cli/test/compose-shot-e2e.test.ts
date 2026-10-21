@@ -41,7 +41,9 @@ beforeAll(async () => {
   const made = await runTokens(root, { positionals: [], flags: {} });
   if (made.exitCode !== 0) throw new Error(made.text);
   // The app wraps its screens in MotifTheme and asks for the partner variant itself, and has a route with a value.
+  // LF, whatever the checkout wrote (a Windows checkout has CRLF).
   const main = readFileSync(join(root, MAIN), "utf8")
+    .replace(/\r\n/g, "\n")
     .replace('        composable("settings") {', '        composable("detail/{id}") { entry -> Text("Detail ${entry.arguments?.getString("id")}") }\n        composable("settings") {')
     .replace("import dev.motif.composemin.ui.theme.ComposeMinTheme", "import dev.motif.composemin.ui.theme.ComposeMinTheme\nimport dev.motif.composemin.ui.motif.MotifTheme\nimport dev.motif.composemin.ui.motif.MotifVariant")
     .replace("            ComposeMinTheme {\n                App()\n            }", "            MotifTheme(variant = MotifVariant.Partner) {\n                App()\n            }");
