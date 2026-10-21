@@ -178,9 +178,10 @@ describe("the SwiftUI screenshot harness (decision 0010)", () => {
       const result = run.result!;
       const byFile = new Map(result.shots.map((s) => [s.file, s]));
       // The titled WindowGroup's content, not its title (a Text).
-      expect(byFile.get("root.png")).toMatchObject({ view: expect.stringContaining("ContentView") });
-      expect(byFile.get("root.png")?.error).toBeUndefined();
-      expect(byFile.get("root.png")?.view).not.toMatch(/^Text/);
+      const rootShot = byFile.get("root.png")!;
+      expect(rootShot.error).toBeUndefined();
+      expect(rootShot.view).toContain("ContentView");
+      expect(rootShot.view).not.toMatch(/^Text/);
       expect(byFile.get("previewable.png")?.error).toBeUndefined();
       // The broken preview stops the app: its two shots fail with SwiftUI's reason, and the others are still drawn.
       for (const file of ["broken.png", "broken.dark.png"]) {
