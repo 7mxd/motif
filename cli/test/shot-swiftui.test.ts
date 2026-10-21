@@ -8,7 +8,7 @@ import { describeSizes, NATIVE_DESKTOP, NATIVE_VIEWPORTS, type RouteResult } fro
 import type { NativeShotOptions } from "../src/stacks/native";
 import { SWIFTUI } from "../src/stacks/swiftui";
 import { swiftUIDoctor } from "../src/stacks/swiftui/doctor";
-import { hooksSource, MAC_HOST_SUFFIX, RESULT_FILE, scriptSource, SOURCES_FOLDER, stopMacHost, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot } from "../src/stacks/swiftui/harness";
+import { hooksSource, MAC_HOST_SUFFIX, RESULT_FILE, scriptSource, SOURCES_FOLDER, stopMacHost, withHostIds, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot } from "../src/stacks/swiftui/harness";
 import {
   appStructName, copyBase, KEEP_BUILDS, MAC_WINDOWS, SWIFTUI_FIRST_RUN_MAC, swiftUIPlatform, swiftUIShotSizes, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, prunedNotes, pruneSwiftUIBuilds, readSwiftUIInputs, takeLock, screenError, shootSwiftUI, signedCapabilities,
   SWIFTUI_FIRST_RUN, SWIFTUI_VARIANT_HOW, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
@@ -502,7 +502,10 @@ async function fakeShoot(
   test: (options: { shots: SwiftUIShot[] }, resultPath: string, fake: Fake) => ExecResult = drawsAll,
   build: ExecResult = ok("** TEST BUILD SUCCEEDED **"),
   ps = "",
+  builtId?: string,
 ) {
+  // The id in a built app's Info.plist: Motif's own (dev.motif.<App>.motif-shots) unless the test says otherwise.
+  const idOf = (plist: string) => builtId ?? `dev.motif.${basename(dirname(dirname(plist))).replace(/\.app$/, "")}.motif-shots`;
   const fake: Fake = {
     calls: [], removed: [], hooks: [], sources: {}, options: null, copyDir: "", pbx: "", env: null,
     host: { spawned: [], killed: [], home: tempDir("motif-swiftui-user-"), ps },
@@ -522,6 +525,7 @@ async function fakeShoot(
     if (c.startsWith("xcrun simctl create")) return ok(`${UDID}\n`);
     if (cmd[0] === "xcrun") return ok();
     if (cmd[0] === "xcodebuild" && cmd[1] === "build-for-testing") return build;
+    if (cmd[0] === "plutil") return ok(`${idOf(cmd[cmd.length - 1]!)}\n`);
     if (cmd[0] === "xcodebuild") {
       const path = o.env!.TEST_RUNNER_MOTIF_SHOT_OPTIONS!;
       const folder = join(dirname(path), SOURCES_FOLDER);
@@ -551,7 +555,7 @@ async function fakeShoot(
       host: {
         spawn: (cmd) => {
           fake.host.spawned.push(cmd);
-          return { exitCode: 0, stdout: cmd[0] === "ps" ? fake.host.ps : "" };
+          return { exitCode: 0, stdout: cmd[0] === "ps" ? fake.host.ps : cmd[0] === "plutil" ? `${idOf(cmd[cmd.length - 1]!)}\n` : "" };
         },
         kill: (pid) => void fake.host.killed.push(pid),
         home: fake.host.home,
@@ -1037,11 +1041,12 @@ describe("macOS SwiftUI apps", () => {
     // Not one simctl call: no simulator is listed, made, booted or deleted.
     expect(fake.calls.filter((c) => c[0] === "xcrun")).toEqual([]);
     expect(fake.removed).toEqual([]);
-    expect(fake.calls.map((c) => c[1])).toEqual(["-showBuildSettings", "build-for-testing", "test-without-building"]);
+    // xcodebuild's settings, build and test, and in between the built app's id read back (plutil).
+    expect(fake.calls.map((c) => `${c[0]} ${c[1]}`)).toEqual(["xcodebuild -showBuildSettings", "xcodebuild build-for-testing", "plutil -extract", "xcodebuild test-without-building"]);
     const settings = fake.calls[0]!;
     expect(settings[settings.indexOf("-destination") + 1]).toBe("generic/platform=macOS");
     const build = fake.calls[1]!;
-    const test = fake.calls[2]!;
+    const test = fake.calls[3]!;
     expect(build.slice(2)).toEqual(test.slice(2));
     expect(test.slice(0, 10)).toEqual([
       "xcodebuild", "test-without-building", "-project", join(cache, "copy", "SwiftUIMac.xcodeproj"), "-scheme", "MotifShots", "-configuration", "Debug", "-destination", "platform=macOS",
@@ -1073,7 +1078,7 @@ describe("macOS SwiftUI apps", () => {
     const mac = await fakeShoot(multiRoot, { viewports: [MAC_WINDOWS[0]!] }, home);
     await mac.promise;
     expect(mac.fake.calls.filter((c) => c[0] === "xcrun")).toEqual([]);
-    expect(mac.fake.calls[2]).toContain("platform=macOS");
+    expect(mac.fake.calls.find((c) => c[1] === "test-without-building")).toContain("platform=macOS");
     const phone = await fakeShoot(multiRoot, {}, home);
     await phone.promise;
     expect(phone.fake.calls.some((c) => c.join(" ").startsWith("xcrun simctl create"))).toBe(true);
@@ -1288,5 +1293,112 @@ describe("macOS runs, fix round 1 (Task 9): sizes, notes and the refusal", () =>
     expect(describeSizes([MAC_WINDOWS[0]!])).toBe("a 1440×900 window");
     // The other stacks' desktop size reads as before.
     expect(describeSizes([NATIVE_DESKTOP])).toBe("1440 px wide");
+  });
+});
+
+// ---- macOS apps, fix round 2 (plan 2H, Task 9) ----
+
+/** A target of the project's own, with its bundle id as written (an extension the app embeds, say). */
+function withTarget(pbx: string, n: number, name: string, id: string): string {
+  const hex = (k: number) => `B4000000000000000000${(n * 16 + k).toString(16).toUpperCase().padStart(4, "0")}`;
+  const config = (k: number, config: string) =>
+    `\t\t${hex(k)} = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbuildSettings = {\n\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = ${id};\n\t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";\n\t\t\t};\n\t\t\tname = ${config};\n\t\t};\n`;
+  const objects =
+    `\t\t${hex(1)} = {\n\t\t\tisa = PBXNativeTarget;\n\t\t\tbuildConfigurationList = ${hex(2)};\n\t\t\tbuildPhases = (\n\t\t\t);\n\t\t\tname = ${name};\n\t\t\tproductType = "com.apple.product-type.app-extension";\n\t\t};\n` +
+    `\t\t${hex(2)} = {\n\t\t\tisa = XCConfigurationList;\n\t\t\tbuildConfigurations = (\n\t\t\t\t${hex(3)},\n\t\t\t\t${hex(4)},\n\t\t\t);\n\t\t};\n` +
+    config(3, "Debug") +
+    config(4, "Release");
+  const end = pbx.lastIndexOf("\t};\n\trootObject");
+  return `${pbx.slice(0, end)}${objects}${pbx.slice(end)}`;
+}
+
+const MAC_PBX = () => readFileSync(join(FIXTURES, "swiftui-mac/SwiftUIMac.xcodeproj/project.pbxproj"), "utf8").replace(/\r\n/g, "\n");
+const ids = (pbx: string): string[] => [...(pbx.match(/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/g) ?? [])].sort();
+
+describe("a macOS run's bundle ids, and what it leaves (Task 9, fix round 2)", () => {
+  const HOST = "dev.motif.SwiftUIMac.motif-shots";
+
+  test("the app's id and every id written under it (an embedded extension's) get the suffix; others are left alone", () => {
+    let pbx = withTarget(MAC_PBX(), 1, "SwiftUIMacWidget", "dev.motif.SwiftUIMac.SwiftUIMacWidget");
+    pbx = withTarget(pbx, 2, "Elsewhere", "com.example.other");
+    pbx = withTarget(pbx, 3, "FromXcconfig", '"$(BASE_ID).share"');
+    pbx = withTarget(pbx, 4, "LookAlike", "dev.motif.SwiftUIMacintosh");
+    expect(ids(withHostIds(pbx, "SwiftUIMac", "dev.motif.SwiftUIMac", HOST))).toEqual(
+      [
+        `PRODUCT_BUNDLE_IDENTIFIER = "${HOST}";`,
+        `PRODUCT_BUNDLE_IDENTIFIER = "${HOST}";`,
+        `PRODUCT_BUNDLE_IDENTIFIER = "${HOST}.SwiftUIMacWidget";`,
+        `PRODUCT_BUNDLE_IDENTIFIER = "${HOST}.SwiftUIMacWidget";`,
+        "PRODUCT_BUNDLE_IDENTIFIER = com.example.other;",
+        "PRODUCT_BUNDLE_IDENTIFIER = com.example.other;",
+        'PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_ID).share";',
+        'PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_ID).share";',
+        "PRODUCT_BUNDLE_IDENTIFIER = dev.motif.SwiftUIMacintosh;",
+        "PRODUCT_BUNDLE_IDENTIFIER = dev.motif.SwiftUIMacintosh;",
+      ].sort(),
+    );
+  });
+
+  test("SWIFTUI.shoot gives an embedded extension's id the suffix in the copy", async () => {
+    const root = macProject({ "SwiftUIMac.xcodeproj/project.pbxproj": withTarget(MAC_PBX(), 1, "SwiftUIMacWidget", "dev.motif.SwiftUIMac.SwiftUIMacWidget") });
+    const { promise, fake } = await fakeShoot(root, { viewports: MAC_WINDOWS }, tempDir("motif-swiftui-home-"));
+    await promise;
+    expect(fake.pbx).toContain(`PRODUCT_BUNDLE_IDENTIFIER = "${HOST}.SwiftUIMacWidget";`);
+    expect(fake.pbx).not.toContain("PRODUCT_BUNDLE_IDENTIFIER = dev.motif.SwiftUIMac.SwiftUIMacWidget;");
+  });
+
+  test("an embedded binary whose id Motif couldn't change stops the build at Xcode's check: refused, with what to do", async () => {
+    const root = macProject();
+    const failed: ExecResult = {
+      code: 65,
+      stdout:
+        "error: Embedded binary's bundle identifier is not prefixed with the parent app's bundle identifier.\n** TEST BUILD FAILED **\n\nThe following build commands failed:\n\tValidateEmbeddedBinary /x/SwiftUIMac.app/Contents/PlugIns/Share.appex (in target 'SwiftUIMac' from project 'SwiftUIMac')\n",
+      stderr: "",
+      timedOut: false,
+    };
+    const { promise } = await fakeShoot(root, { viewports: MAC_WINDOWS }, tempDir("motif-swiftui-home-"), drawsAll, failed);
+    await expect(promise).rejects.toThrow(
+      `Motif gives SwiftUIMac a bundle id of its own for its screenshots (${HOST}), and it embeds Share.appex, whose bundle id Motif couldn't change to match: its id isn't written in its target as one that starts with dev.motif.SwiftUIMac. (it may come from an xcconfig or a variable). Write it that way in the extension target's build settings (Product Bundle Identifier), then run motif shot again.`,
+    );
+  });
+
+  test("a built app whose bundle id isn't Motif's own is never launched: refused, with what to do", async () => {
+    const root = macProject();
+    const home = tempDir("motif-swiftui-home-");
+    const { promise, fake } = await fakeShoot(root, { viewports: MAC_WINDOWS }, home, drawsAll, ok("** TEST BUILD SUCCEEDED **"), "", "dev.motif.SwiftUIMac");
+    await expect(promise).rejects.toThrow(
+      `Motif couldn't give SwiftUIMac a bundle id of its own for its screenshots: the app it built is dev.motif.SwiftUIMac, not ${HOST}, so its screens would read and write your own SwiftUIMac's settings, and Motif stopped before launching it. Set the SwiftUIMac target's Product Bundle Identifier in its build settings, and its Info.plist's CFBundleIdentifier to $(PRODUCT_BUNDLE_IDENTIFIER), then run motif shot again.`,
+    );
+    expect(fake.calls.some((c) => c[1] === "test-without-building")).toBe(false);
+    const read = fake.calls.find((c) => c[0] === "plutil")!;
+    expect(read.slice(0, 6)).toEqual(["plutil", "-extract", "CFBundleIdentifier", "raw", "-o", "-"]);
+    expect(read[6]).toBe(join(swiftUICacheDir(home, root, "SwiftUIMac"), "DerivedData-macos", "Build", "Products", "Debug", "SwiftUIMac.app", "Contents", "Info.plist"));
+  });
+
+  test("an iOS run of an app with a macOS build stops the host and removes the domain a killed macOS run left", async () => {
+    const root = macProject({ "SwiftUIMac.xcodeproj/project.pbxproj": multiplatformPbx() });
+    const home = tempDir("motif-swiftui-home-");
+    const macBuild = join(swiftUICacheDir(home, root, "SwiftUIMac"), "DerivedData-macos", "Build", "Products", "Debug");
+    mkdirSync(join(macBuild, "SwiftUIMac.app", "Contents"), { recursive: true });
+    const ps = `  6161 ${join(macBuild, "SwiftUIMac.app", "Contents", "MacOS", "SwiftUIMac")}`;
+    const { promise, fake } = await fakeShoot(root, {}, home, drawsAll, ok("** TEST BUILD SUCCEEDED **"), ps);
+    const r = await promise;
+    expect(fake.host.killed).toEqual([6161]);
+    expect(fake.host.spawned.filter((c) => c[0] === "defaults")).toEqual([["defaults", "delete", HOST]]);
+    expect(r.notes).toContain("Stopped a copy of the app that an earlier motif shot left running when it was stopped.");
+    // An iOS run of an app with no macOS build looks for none.
+    const plain = await fakeShoot(xcodeProject(), {}, tempDir("motif-swiftui-home-"));
+    await plain.promise;
+    expect(plain.fake.host.spawned).toEqual([]);
+  });
+
+  test("a --sizes the app can't be drawn at is said before any refusal, as before", async () => {
+    const root = macProject();
+    const { deps, calls } = shotDeps();
+    deps.doctor = () => machine({ platform: "win32" });
+    const r = await runShot(root, ctx({ sizes: "390" }), deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("--sizes: \"390\" isn't one of a macOS app's sizes.");
+    expect(calls).toEqual([]);
   });
 });

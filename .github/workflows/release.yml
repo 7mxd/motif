@@ -121,7 +121,7 @@ jobs:
   # what is installed if the image drops it.
   swiftui:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       MOTIF_STACK_JOB: swiftui
       XCODE: "16.4"

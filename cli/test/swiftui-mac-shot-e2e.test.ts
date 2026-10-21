@@ -317,7 +317,20 @@ struct HangScreen: View {
 `;
 
 /** The test host Motif built for the shared copy, still running: its path is inside Motif's own folder. */
-const ownHosts = () => Bun.spawnSync(["pgrep", "-f", join(swiftUICacheDir(home, root, "SwiftUIMac"), "DerivedData-macos")], { stdout: "pipe" }).stdout.toString().trim();
+const ownHosts = () => {
+  // The app's own executable in Motif's build (xcodebuild, whose arguments name the build folder, doesn't match).
+  const executable = join(swiftUICacheDir(home, root, "SwiftUIMac"), "DerivedData-macos", "Build", "Products", "Debug", "SwiftUIMac.app", "Contents", "MacOS", "SwiftUIMac");
+  return Bun.spawnSync(["pgrep", "-f", `^${executable}`], { stdout: "pipe" }).stdout.toString().trim();
+};
+/** The screen the harness is drawing now, from its result file in the run's work folder. */
+const drawing = (): string => {
+  try {
+    const result = JSON.parse(readFileSync(join(swiftUICacheDir(home, root, "SwiftUIMac"), "work", "result.json"), "utf8")) as { current?: { screen: string } };
+    return result.current?.screen ?? "";
+  } catch {
+    return "";
+  }
+};
 
 describe("a macOS run that fails, is stopped, or draws with AppKit alone (Task 9, fix round 1)", () => {
   test.skipIf(!heavy.run)("a preview that stops the app fails alone; the others are drawn in a new launch (skipped without Xcode)", async () => {
@@ -344,7 +357,7 @@ describe("a macOS run that fails, is stopped, or draws with AppKit alone (Task 9
     const started = Date.now();
     // The build is kept from the run before: the time goes to the launch and the hang.
     const run = shootSwiftUI({
-      root, app: app!, routes: [], screens: ["Hang"], outDir, viewports: [MAC_WINDOWS[1]!], variants: [], states: [], audit: false, timeoutMs: 150_000,
+      root, app: app!, routes: [], screens: ["Hang"], outDir, viewports: [MAC_WINDOWS[1]!], variants: [], states: [], audit: false, timeoutMs: 90_000,
     });
     await expect(run).rejects.toThrow(/The screenshots took longer than \d+ s and were stopped while drawing Probes\.swift:\d+/);
     console.log(`[swiftui-mac-shot-e2e] a preview that never finishes: ${Math.round((Date.now() - started) / 1000)} s`);
@@ -359,11 +372,13 @@ describe("a macOS run that fails, is stopped, or draws with AppKit alone (Task 9
       stdout: "pipe",
       stderr: "pipe",
     });
-    // Waits for the host to be up (it hangs in the preview's body), then sends Ctrl+C.
+    // Waits for the host to be up and drawing the preview that hangs, then sends Ctrl+C.
     const deadline = Date.now() + 600_000;
-    while (ownHosts() === "" && Date.now() < deadline && proc.exitCode === null) await Bun.sleep(500);
+    while ((ownHosts() === "" || !/Probes\.swift/.test(drawing())) && Date.now() < deadline && proc.exitCode === null) await Bun.sleep(500);
     expect(ownHosts()).not.toBe("");
+    expect(drawing()).toMatch(/Probes\.swift:\d+/);
     await Bun.sleep(1_000);
+    expect(ownHosts()).not.toBe("");
     proc.kill("SIGINT");
     const code = await Promise.race([proc.exited, Bun.sleep(60_000).then(() => "still running")]);
     expect(code).toBe(130);

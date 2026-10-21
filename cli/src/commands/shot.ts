@@ -280,7 +280,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     // The stack's own sizes first: a multiplatform SwiftUI app drawn at window sizes needs no iOS simulator.
     own = native.shotSizes?.(cwd, app, typeof flags.sizes === "string" ? flags.sizes : undefined) ?? null;
-    const chosen = own && !("error" in own) ? own.viewports : undefined;
+    // A --sizes the app can't be drawn at is a usage error, said first, as for every app.
+    if (own && "error" in own) return usage(own.error, { error: "usage" });
+    const chosen = own ? own.viewports : undefined;
     const refusal = native.shotRefusal?.(cwd, app, deps.which ?? ((cmd) => Bun.which(cmd)), (deps.doctor ?? defaultDoctorDeps)(), chosen);
     if (refusal) return usage(refusal.text, { error: refusal.error });
     // A widget or a state script that can't be used is a usage error, found before anything is written.
@@ -294,8 +296,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   // Sizes the stack draws this app at instead of the native ones (a macOS SwiftUI app's windows), from --sizes when
   // given. They are what's drawn; --sizes' notes about what it left out are for phone and tablet sizes only.
   let stackSizes: Viewport[] | undefined;
-  if (own && "error" in own) return usage(own.error, { error: "usage" });
-  if (own) {
+  if (own && !("error" in own)) {
     stackSizes = own.viewports;
     if (typeof flags.sizes === "string" && own.viewports.some((v) => v.mobile)) viewports = own.viewports;
   } else if (typeof flags.sizes === "string") {

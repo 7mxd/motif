@@ -19,7 +19,7 @@ import type { NativeShotOptions } from "../native";
 import { swiftUIDoctor } from "./doctor";
 import { THEME_FILE } from "./generate";
 import {
-  execCommand, removeSimulator, runSwiftUIHarness, stateFunction, type Exec, type MacHostIO, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
+  execCommand, removeSimulator, runSwiftUIHarness, stateFunction, sweepMacLeftovers, type Exec, type MacHostIO, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
 } from "./harness";
 import { appEntryFile, field, idsIn, pbxObjects, swiftUIApp, unquote, type SwiftUIApp } from "./project";
 import { discoverSwiftUIScreens, swiftUIRunName, swiftUIScreenProblem, type SwiftUIPreview } from "./screens";
@@ -901,6 +901,12 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
   takeLock(lock);
   writeFileSync(join(cache, LAST_USED), new Date().toISOString());
   notes.push(...prunedNotes(pruneSwiftUIBuilds(dirname(cache), cache, Date.now())));
+  // A macOS run of this app that was killed may have left its host running and its defaults behind: an iOS run of a
+  // multiplatform app stops them too (a macOS run does so itself, in the harness).
+  const macBuild = join(cache, "DerivedData-macos");
+  if (platform === "ios" && existsSync(macBuild) && sweepMacLeftovers(macBuild, deps.host).killed > 0) {
+    notes.push("Stopped a copy of the app that an earlier motif shot left running when it was stopped.");
+  }
   const firstRun = !existsSync(derivedData);
   if (firstRun) {
     const first = platform === "macos" ? SWIFTUI_FIRST_RUN_MAC : SWIFTUI_FIRST_RUN;

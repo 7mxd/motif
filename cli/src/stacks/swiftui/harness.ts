@@ -639,6 +639,35 @@ export function stopMacHost(derivedData: string, hostId: string | undefined, io:
   return { killed };
 }
 
+/**
+ * What a macOS run that was killed may have left, found from its build and stopped, for any later run of the app (an
+ * iOS run of a multiplatform app too): every host running from `derivedData`, and the defaults domain of each app built
+ * there whose bundle id is a host's (read from the built app's Info.plist). How many processes it stopped.
+ */
+export function sweepMacLeftovers(derivedData: string, io: MacHostIO = {}): { killed: number } {
+  const products = join(derivedData, "Build", "Products");
+  if (!existsSync(products)) return { killed: 0 };
+  const spawn = io.spawn ?? hostSpawn;
+  const list = (dir: string) => {
+    try {
+      return readdirSync(dir).sort();
+    } catch {
+      return [];
+    }
+  };
+  const ids = new Set<string>();
+  for (const config of list(products)) {
+    for (const app of list(join(products, config)).filter((n) => n.endsWith(".app"))) {
+      const plist = join(products, config, app, "Contents", "Info.plist");
+      const id = spawn(["plutil", "-extract", "CFBundleIdentifier", "raw", "-o", "-", plist]).stdout.trim();
+      if (id.endsWith(MAC_HOST_SUFFIX)) ids.add(id);
+    }
+  }
+  let killed = stopMacHost(derivedData, [...ids][0], io).killed;
+  for (const id of [...ids].slice(1)) killed += stopMacHost(derivedData, id, io).killed;
+  return { killed };
+}
+
 /** How long each `simctl shutdown` and `simctl delete` may take (3.5 s on the Mac mini, 10 s on CI's runner). */
 export const SIMCTL_TIMEOUT_MS = 30_000;
 
@@ -718,7 +747,6 @@ function sharedSchemes(projectDir: string): string[] {
   }
 }
 
-/** Writes the harness's sources and options into the work folder, and the scheme and the patched project into the copy. */
 /**
  * The project file with build settings set on one target, in each of its configurations: replaced where the target
  * sets them, added where it doesn't (so they win over an xcconfig's). For the copy only: a macOS host's bundle id.
@@ -746,13 +774,43 @@ export function withTargetSettings(pbx: string, target: string, values: Record<s
   return out;
 }
 
+/**
+ * The project file with a macOS host's bundle ids (decision 0010, §17): the app target's is `hostId`, and every other
+ * target's that is written under the app's (`<realId>.Widget`, an extension the app embeds) moves under the host's
+ * (`<hostId>.Widget`), as Xcode's check of embedded binaries needs. Ids written otherwise (an xcconfig's, a variable)
+ * are left; the build says when one of them is embedded.
+ */
+export function withHostIds(pbx: string, target: string, realId: string, hostId: string): string {
+  let out = withTargetSettings(pbx, target, { PRODUCT_BUNDLE_IDENTIFIER: hostId });
+  const objs = pbxObjects(out);
+  const configs: PbxObject[] = [];
+  for (const o of objs.values()) {
+    if (!/\bisa = PBXNativeTarget;/.test(o.own) || unquote(field(o.own, "name") ?? "") === target) continue;
+    const list = objs.get(unquote(field(o.own, "buildConfigurationList") ?? ""));
+    for (const id of list ? listIds(out, list, "buildConfigurations") : []) {
+      const config = objs.get(id);
+      if (config) configs.push(config);
+    }
+  }
+  const setting = /(\bPRODUCT_BUNDLE_IDENTIFIER = )("(?:[^"\\]|\\.)*"|[^;\s]+);/;
+  for (const config of configs.sort((a, b) => b.start - a.start)) {
+    const m = setting.exec(config.text);
+    const id = m ? unquote(m[2]!) : "";
+    if (!m || !id.startsWith(`${realId}.`) || id.startsWith(`${hostId}.`) || id.includes("$")) continue;
+    const text = config.text.replace(setting, `$1${pbxString(`${hostId}${id.slice(realId.length)}`)};`);
+    out = `${out.slice(0, config.start)}${text}${out.slice(config.end + 1)}`;
+  }
+  return out;
+}
+
+/** Writes the harness's sources and options into the work folder, and the scheme and the patched project into the copy. */
 export function writeHarness(
   run: Pick<SwiftUIHarnessRun, "copyDir" | "workDir" | "app" | "options" | "scripts">,
   build: SwiftUIAppBuild,
   settings: Record<string, string>,
   configuration: string,
   pbx: string,
-  appSettings: Record<string, string> = {},
+  hostIds?: { real: string; host: string },
 ): void {
   const project = join(run.copyDir, run.app.project);
   const folder = join(run.workDir, SOURCES_FOLDER);
@@ -771,7 +829,7 @@ export function writeHarness(
   for (const [name, text] of Object.entries(sources)) writeFileSync(join(folder, name), text);
   writeFileSync(join(run.workDir, OPTIONS_FILE), JSON.stringify(run.options, null, 2));
   const copied = Object.fromEntries(COPIED.filter((k) => settings[k]).map((k) => [k, settings[k]!]));
-  const base = Object.keys(appSettings).length > 0 ? withTargetSettings(pbx, run.app.name, appSettings) : pbx;
+  const base = hostIds ? withHostIds(pbx, run.app.name, hostIds.real, hostIds.host) : pbx;
   const patched = addTestTarget(base, run.app.name, Object.keys(sources), build, copied, folder.replace(/\\/g, "/"));
   writeFileSync(join(project, "project.pbxproj"), patched.pbx);
   const schemes = join(project, "xcshareddata", "xcschemes");
@@ -926,7 +984,7 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
   // Motif's, deleted after), with its home in the work folder (decision 0010, §17).
   const realId = settings.PRODUCT_BUNDLE_IDENTIFIER;
   const hostId = platform === "macos" && realId && !realId.includes("$") ? `${realId}${MAC_HOST_SUFFIX}` : undefined;
-  writeHarness(run, build, settings, configuration, original, hostId ? { PRODUCT_BUNDLE_IDENTIFIER: hostId } : {});
+  writeHarness(run, build, settings, configuration, original, hostId && realId ? { real: realId, host: hostId } : undefined);
   const hostHome = join(run.workDir, "home");
   const testEnv: Record<string, string> = platform === "macos" ? { TEST_RUNNER_CFFIXED_USER_HOME: hostHome, TEST_RUNNER_HOME: hostHome } : {};
 
@@ -1018,7 +1076,29 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
       output = `${built.stdout}\n${built.stderr}`.slice(-200_000);
       lastCode = built.code;
       if (built.timedOut) return tooLong("building the app");
+      // An extension the app embeds whose id Motif couldn't move under the host's: Xcode's check of embedded binaries.
+      const embedded = /ValidateEmbeddedBinary \S*\/([^/\s]+\.(?:appex|app|xpc))\b/.exec(output);
+      if (built.code !== 0 && embedded && hostId && realId) {
+        return done({
+          problem:
+            `Motif gives ${run.app.name} a bundle id of its own for its screenshots (${hostId}), and it embeds ${embedded[1]}, whose bundle id Motif couldn't change to match: ` +
+            `its id isn't written in its target as one that starts with ${realId}. (it may come from an xcconfig or a variable). ` +
+            "Write it that way in the extension target's build settings (Product Bundle Identifier), then run motif shot again.",
+        });
+      }
       if (built.code !== 0) return done({ problem: buildProblem(output, run.scripts, platform) });
+      // Never launched as the developer's own app: its screens would read and write that app's settings.
+      const plist = join(settings.BUILT_PRODUCTS_DIR ?? join(derivedData, "Build", "Products", configuration), build.product, "Contents", "Info.plist");
+      const read = await step("id", ["plutil", "-extract", "CFBundleIdentifier", "raw", "-o", "-", plist]);
+      const builtId = read.code === 0 ? read.stdout.trim() : "";
+      if (!builtId.endsWith(MAC_HOST_SUFFIX)) {
+        return done({
+          problem:
+            `Motif couldn't give ${run.app.name} a bundle id of its own for its screenshots: the app it built is ${builtId || "unreadable"}, not ${hostId ?? `<its id>${MAC_HOST_SUFFIX}`}, ` +
+            `so its screens would read and write your own ${run.app.name}'s settings, and Motif stopped before launching it. ` +
+            `Set the ${run.app.name} target's Product Bundle Identifier in its build settings, and its Info.plist's CFBundleIdentifier to $(PRODUCT_BUNDLE_IDENTIFIER), then run motif shot again.`,
+        });
+      }
       return await launches(xcodebuild);
     } finally {
       cancelHostHook();

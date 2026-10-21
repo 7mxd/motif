@@ -237,6 +237,8 @@ describe("each stack job and its heavy tests agree on its name", () => {
         expect([name, at > -1]).toEqual([name, true]);
         const job = wf.slice(at).split(/\n  \w[\w-]*:\n/)[1] ?? "";
         expect(job).toContain(`MOTIF_STACK_JOB: ${stack}\n`);
+        // The SwiftUI job draws iOS and macOS apps, with several first builds: it has 75 minutes (plan 2H, Task 9).
+        if (stack === "swiftui") expect([name, job.includes("timeout-minutes: 75\n")]).toEqual([name, true]);
         const run = job.split("\n").find((l) => l.includes("bun test")) ?? "";
         const globs = run.split(/\s+/).filter((w) => w.startsWith("test/")).map((g) => new RegExp(`^${g.replace(/\./g, "\\.").replace(/\*/g, ".*")}$`));
         for (const f of files) expect([name, f, globs.some((g) => g.test(`test/${f}.test.ts`))]).toEqual([name, f, true]);
