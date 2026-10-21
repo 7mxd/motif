@@ -44,6 +44,8 @@ export interface NativeStack {
   /** The one step that puts the theme file (root-relative) to use, or null when the app already uses it. */
   wiring?(root: string, app: AppInfo, file: string, set?: ThemeSet): string | null;
   sourceFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
+  /** Files besides sourceFiles that motif extract reads (SwiftUI's asset catalogue colour sets); check never scans them. */
+  extractFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
   /** The hits in one file; `ctx` is the app being checked (React Native reads its package.json for nativewind). */
   scan?(file: SourceFile, scale: Scale, ctx?: { root: string; app: AppInfo }): Hit[];
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];

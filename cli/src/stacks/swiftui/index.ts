@@ -1,5 +1,5 @@
 import { basename, join, relative, resolve } from "node:path";
-import { listSwiftFiles } from "../../check/files";
+import { listAssetCatalogFiles, listSwiftFiles } from "../../check/files";
 import { maskComments } from "../../check/mask";
 import type { AppInfo } from "../../detect/stacks";
 import { isMotifGenerated } from "../../generate/header";
@@ -9,6 +9,7 @@ import { andList } from "../../text";
 import { swiftIdentifier } from "../naming";
 import type { NativeStack } from "../native";
 import { swiftUIDoctor } from "./doctor";
+import { collectSwiftUI } from "./extract";
 import { scanSwift, swiftUIFix, swiftUIReducedMotion, swiftUIRole } from "./rules";
 import { swiftUIFonts } from "./fonts";
 import { generateSwiftUI, THEME_FILE } from "./generate";
@@ -100,6 +101,8 @@ export const SWIFTUI: NativeStack = {
   },
 
   sourceFiles: (root, app, { ignore }) => listSwiftFiles(root, app.path, { ignore }),
+  extractFiles: (root, app, { ignore }) => listAssetCatalogFiles(root, app.path, { ignore }),
+  collect: collectSwiftUI,
   scan: scanSwift,
   // Motif's own file defines MotifMotion: only the app's code says whether it respects Reduce Motion.
   appWide: (files) => swiftUIReducedMotion(files),
