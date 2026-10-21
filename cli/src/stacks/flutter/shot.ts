@@ -129,6 +129,17 @@ export const MOTION_WIDTH = 390;
  * The audit's checks on one screenshot, as on the web: contrast and names everywhere; tap targets on phones and tablets,
  * in light (they're the same in dark); reduced motion in light at the 390 phone size, once for each variant, direction and state.
  */
+/** Why flutter test stopped without a result. A run that timed out still loading its test file, on a Mac, is most
+ *  often macOS refusing to start flutter_tester: it waits on an approval nobody sees, and flutter test prints nothing. */
+export function stoppedWhy(timedOutSeconds: number | null, tail: string, platform: string = process.platform): string {
+  if (timedOutSeconds === null) return "flutter test stopped before drawing any screen.";
+  const last = tail.split("\n").at(-1) ?? "";
+  if (platform === "darwin" && /^\d+:\d+ \+0: loading /.test(last)) {
+    return `flutter test didn't finish within ${timedOutSeconds} s: it never got past loading its test file. On a Mac that usually means macOS is blocking Flutter's flutter_tester; run flutter test in the app yourself, and if it stalls there too, look for flutter_tester in System Settings › Privacy & Security.`;
+  }
+  return `flutter test didn't finish within ${timedOutSeconds} s.`;
+}
+
 export function auditChecks(v: Viewport, scheme: Scheme): AuditCheck[] {
   const light = scheme === "light";
   return ["contrast", "names", ...(light && v.mobile ? (["targets"] as const) : []), ...(light && v.mobile && v.width === MOTION_WIDTH ? (["motion"] as const) : [])];
@@ -384,8 +395,8 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
   });
 
   if (!result.result) {
-    const why = result.problem ?? (result.timedOut ? `flutter test didn't finish within ${Math.round(opts.timeoutMs / 1000)} s.` : "flutter test stopped before drawing any screen.");
     const tail = flutterTail(result.output);
+    const why = result.problem ?? stoppedWhy(result.timedOut ? Math.round(opts.timeoutMs / 1000) : null, tail);
     throw new Error(tail ? `${why} The last lines it printed:\n${tail}` : why);
   }
   const flutter = deps.flutter ?? Bun.which("flutter");
