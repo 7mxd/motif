@@ -659,7 +659,13 @@ export function pruneSwiftUIBuilds(
   const remove = (n: string): boolean => {
     const folder = join(dir, n);
     io.beforeClaim?.(folder);
-    if ("busy" in claimLock(join(folder, "run.lock"))) return false;
+    // A folder another run's pruning removed meanwhile is gone already; one Motif can't write to is a note, not a failed run.
+    try {
+      if ("busy" in claimLock(join(folder, "run.lock"))) return false;
+    } catch (e) {
+      if (existsSync(folder)) out.failed.push({ name: n, path: folder, error: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
     try {
       (io.remove ?? ((f: string) => rmSync(f, { recursive: true, force: true })))(folder);
       return true;

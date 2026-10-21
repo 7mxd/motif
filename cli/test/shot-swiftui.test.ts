@@ -757,6 +757,25 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     ]);
   });
 
+  test("pruning goes on when a folder vanishes before its lock is taken (another run pruned it), and doesn't fail the run", () => {
+    const dir = tempDir("motif-swiftui-builds-");
+    const now = Date.parse("2026-10-21T12:00:00Z");
+    for (const name of ["Vanished-1", "Old-2"]) {
+      mkdirSync(join(dir, name, "DerivedData"), { recursive: true });
+      const stamp = join(dir, name, "last-used");
+      writeFileSync(stamp, "");
+      utimesSync(stamp, new Date(now - 30 * 86_400_000), new Date(now - 30 * 86_400_000));
+    }
+    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-0"), now, KEEP_DAYS, KEEP_BUILDS, {
+      beforeClaim: (folder) => {
+        if (folder.endsWith("Vanished-1")) rmSync(folder, { recursive: true, force: true });
+      },
+    });
+    expect(removed.old).toEqual(["Old-2"]);
+    expect(removed.failed).toEqual([]);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
   test("a stale lock is taken over by moving it aside: a run that took it meanwhile keeps it, and this one stops", () => {
     const dir = tempDir("motif-swiftui-lock-");
     const lock = join(dir, "run.lock");
