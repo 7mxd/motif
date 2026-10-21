@@ -866,19 +866,23 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
       }
       // A freshly booted simulator does its first-launch work when the first app starts: an app of its own is started
       // (and stopped) here, while the app builds, so the harness's launch doesn't wait for it (0010, §16). What it
-      // answers doesn't matter.
-      await step("warm", ["xcrun", "simctl", "launch", sim, "com.apple.Preferences"]);
-      await step("warm", ["xcrun", "simctl", "terminate", sim, "com.apple.Preferences"]);
+      // answers doesn't matter, and once the build is done it is stopped: it never makes the run longer.
+      if (!stopWarm.signal.aborted) await step("warm", ["xcrun", "simctl", "launch", sim, "com.apple.Preferences"], undefined, stopWarm.signal);
+      if (!stopWarm.signal.aborted) await step("warm", ["xcrun", "simctl", "terminate", sim, "com.apple.Preferences"], undefined, stopWarm.signal);
       return null;
     };
-    // A simulator that can't boot stops the build: there's nothing to draw on.
+    // A simulator that can't boot stops the build: there's nothing to draw on. A build that is done stops the warm-up.
     const stopBuild = new AbortController();
+    const stopWarm = new AbortController();
     const [unbooted, built] = await Promise.all([
       boot().then((r) => {
         if (r) stopBuild.abort();
         return r;
       }),
-      step("build", xcodebuild("build-for-testing"), undefined, stopBuild.signal),
+      step("build", xcodebuild("build-for-testing"), undefined, stopBuild.signal).then((r) => {
+        stopWarm.abort();
+        return r;
+      }),
     ]);
     output = `${built.stdout}\n${built.stderr}`.slice(-200_000);
     lastCode = built.code;

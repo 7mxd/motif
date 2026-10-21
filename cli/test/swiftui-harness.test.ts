@@ -371,9 +371,6 @@ describe("runSwiftUIHarness (with stand-ins for xcodebuild and simctl)", () => {
     expect(calls.find((c) => c[1] === "-showBuildSettings")).toContain("-derivedDataPath");
     // Booted, and waited for.
     expect(calls.filter((c) => c[2] === "boot" || c[2] === "bootstatus").map((c) => c[2])).toEqual(["boot", "bootstatus"]);
-    // Then warmed up with an app of the simulator's own, started and stopped, while the build runs.
-    const simctl = calls.filter((c) => c[1] === "simctl").map((c) => c.slice(2, 3).concat(c.slice(4)).join(" "));
-    expect(simctl.slice(simctl.indexOf("bootstatus -b"), simctl.indexOf("bootstatus -b") + 3)).toEqual(["bootstatus -b", "launch com.apple.Preferences", "terminate com.apple.Preferences"]);
   });
 
   test("a screen that stops the app fails with its reason, and the other screens are drawn in a new launch", async () => {
@@ -589,5 +586,51 @@ describe("fix round 1 (Task 8): the build alongside the boot, and the states' co
     expect(r.problem).toBe(
       "/p/my app/design/states/opened.swift doesn't compile:\n/p/my app/design/states/opened.swift:1:63: error: cannot find 'nope' in scope\nFix it, then run motif shot again.",
     );
+  });
+});
+
+describe("fix round 1 (Task 8): the warm-up never makes the run longer", () => {
+  test("while the build runs, the booted simulator is warmed up with an app of its own, started and stopped", async () => {
+    let built: () => void = () => {};
+    const { calls } = await fakeRun(
+      [shot("/", "home.png")],
+      (cmd) => {
+        // The build finishes once the warm-up has stopped its app.
+        if (cmd[1] === "build-for-testing") return new Promise<ExecResult>((done) => (built = () => done(ok("** TEST BUILD SUCCEEDED **"))));
+        if (cmd[2] === "terminate") setTimeout(() => built(), 10);
+        return undefined;
+      },
+      drawsAll,
+    );
+    const simctl = calls.filter((c) => c[1] === "simctl").map((c) => [c[2], ...c.slice(4)].join(" "));
+    const at = simctl.indexOf("bootstatus -b");
+    expect(simctl.slice(at, at + 3)).toEqual(["bootstatus -b", "launch com.apple.Preferences", "terminate com.apple.Preferences"]);
+  });
+
+  test("a warm-up still running when the build is done is stopped; a build done before the boot means none", async () => {
+    let stopped = false;
+    let built: () => void = () => {};
+    const { r } = await fakeRun(
+      [shot("/", "home.png")],
+      (cmd, opts) => {
+        if (cmd[1] === "build-for-testing") return new Promise<ExecResult>((done) => (built = () => done(ok("** TEST BUILD SUCCEEDED **"))));
+        if (cmd[2] !== "launch") return undefined;
+        // The app the warm-up starts never answers; the build finishes meanwhile.
+        setTimeout(() => built(), 10);
+        return new Promise<ExecResult>((done) => {
+          opts.signal?.addEventListener("abort", () => {
+            stopped = true;
+            done({ code: null, stdout: "", stderr: "", timedOut: false });
+          });
+        });
+      },
+      drawsAll,
+    );
+    expect(stopped).toBe(true);
+    expect(r.problem).toBeUndefined();
+    expect(r.result?.shots).toEqual([{ file: "home.png", ms: 200 }]);
+    // The stand-ins' build is done at once, before the boot: no warm-up at all.
+    const quick = await fakeRun([shot("/", "home.png")], () => undefined, drawsAll);
+    expect(quick.calls.some((c) => c[2] === "launch")).toBe(false);
   });
 });
