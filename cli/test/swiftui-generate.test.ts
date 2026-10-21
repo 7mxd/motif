@@ -81,29 +81,68 @@ describe("generateSwiftUI, the test guide (no variants)", () => {
     expect(swift).toContain("@Environment(\\.accessibilityReduceMotion)");
   });
 
+  test("each curve also runs over another duration, and the comments say so in names motif check allows (fix round 1)", () => {
+    expect(swift).toContain(
+      "    /// The standard curve over another duration.\n    static func standard(over duration: Double) -> Animation {\n        Animation.timingCurve(0.2, 0, 0, 1, duration: duration)\n    }\n",
+    );
+    expect(swift).toContain("    static func exit(over duration: Double) -> Animation {\n        Animation.timingCurve(0.3, 0, 1, 1, duration: duration)\n    }\n");
+    expect(swift).toContain("/// Easing curves, for withAnimation(MotifCurves.standard), over the base duration.\n/// Over another: MotifCurves.standard(over: MotifDurations.slow).\n");
+    // motif check reports any typed .timingCurve(…) in the app: the comments never suggest one.
+    expect(swift).not.toContain("Animation.timingCurve(…");
+  });
+
   test("a curve takes the first duration that isn't zero when the guide has no base duration", () => {
     const t = validTokens();
     delete t.duration.base;
-    expect(swiftFor(t)).toContain("Animation.timingCurve(0.2, 0, 0, 1, duration: MotifDurations.fast)");
+    const out = swiftFor(t);
+    expect(out).toContain("Animation.timingCurve(0.2, 0, 0, 1, duration: MotifDurations.fast)");
+    expect(out).toContain("over the fast duration.\n/// Over another: MotifCurves.standard(over: MotifDurations.slow).\n");
   });
 
-  test("type: each role in its family, sized relative to the nearest text style, with its weight, line spacing and tracking", () => {
+  test("with no duration but zero, a curve runs over 0.25 seconds, and the comment names no duration it lacks", () => {
+    const t = validTokens();
+    for (const k of Object.keys(t.duration)) if (!k.startsWith("$") && k !== "instant") delete t.duration[k];
+    const out = swiftFor(t);
+    expect(out).toContain("Animation.timingCurve(0.2, 0, 0, 1, duration: 0.25)");
+    expect(out).toContain("over 0.25 seconds.\nenum MotifCurves {");
+    expect(out).not.toContain("Over another");
+  });
+
+  test("type: each role's family, size, line height, tracking, weight and the text style it scales with", () => {
     expect(swift).toContain("struct MotifType: Sendable {");
     expect(swift).toContain(
-      "    static let display = MotifType(\n        size: 40,\n        lineSpacing: 0,\n        tracking: 0,\n        latin: Font.custom(\"Inter\", size: 40, relativeTo: .largeTitle).weight(.bold),\n        arabic: nil\n    )",
+      "    static let display = MotifType(\n        size: 40,\n        lineHeight: 1.1,\n        tracking: 0,\n        weight: .bold,\n        textStyle: .largeTitle,\n" +
+        '        family: "Inter",\n        design: .default,\n        arabicFamily: nil\n    )',
     );
-    // 16 × 1.5 = 24, less the usual 1.2 × 16.
-    expect(swift).toContain("        size: 16,\n        lineSpacing: 4.8,\n");
-    expect(swift).toContain('Font.custom("Inter", size: 16, relativeTo: .callout).weight(.regular)');
-    expect(swift).toContain('Font.custom("Inter", size: 20, relativeTo: .title3).weight(.semibold)');
-    expect(swift).toContain('Font.custom("Inter", size: 14, relativeTo: .subheadline).weight(.medium)');
-    expect(swift).toContain('Font.custom("Inter", size: 12, relativeTo: .caption).weight(.regular)');
-    // Only a role in a named font scales with Dynamic Type: Font.system(size:) keeps its size.
-    expect(swift).toContain("A role in a named font (Font.custom) scales with Dynamic Type");
-    expect(swift).toContain("a role in the system font (Font.system(size:)) keeps its size.");
+    expect(swift).toContain("        size: 16,\n        lineHeight: 1.5,\n        tracking: 0,\n        weight: .regular,\n        textStyle: .callout,\n");
+    expect(swift).toContain("        size: 20,\n        lineHeight: 1.3,\n        tracking: 0,\n        weight: .semibold,\n        textStyle: .title3,\n");
+    expect(swift).toContain("        weight: .medium,\n        textStyle: .subheadline,\n");
+    expect(swift).toContain("        size: 12,\n        lineHeight: 1.4,\n        tracking: 0,\n        weight: .regular,\n        textStyle: .caption,\n");
+    // The role's own font, as before: a named font scales by itself; the system font can't.
+    expect(swift).toContain("            return Font.custom(name, size: size, relativeTo: textStyle).weight(weight)");
+    expect(swift).toContain("        return Font.system(size: size, weight: weight, design: design)");
     expect(swift).toContain("    func motifFont(_ type: MotifType) -> some View {");
-    expect(swift).toContain(".lineSpacing(type.lineSpacing)");
-    expect(swift).toContain(".tracking(type.tracking)");
+  });
+
+  test("Dynamic Type: .motifFont scales every role, the system font's too, with its line spacing and tracking (fix round 1)", () => {
+    expect(swift).toContain("    @ScaledMetric private var size: CGFloat\n");
+    expect(swift).toContain("        _size = ScaledMetric(wrappedValue: type.size, relativeTo: type.textStyle)\n");
+    expect(swift).toContain("            .font(type.font(size: size))\n            .lineSpacing(type.lineSpacing(size: size))\n            .tracking(type.tracking(size: size))\n");
+    // At a size .motifFont gives, a named font is fixed (the metric already scaled it) and the system font takes it as it is.
+    expect(swift).toContain("            return Font.custom(name, fixedSize: size).weight(weight)");
+    expect(swift).toContain("        tracking * size / max(self.size, 1)");
+    // MotifType.body.font() alone can't scale a system role: the comment says so.
+    expect(swift).toContain(".motifFont(.body) scales every role with Dynamic Type");
+    expect(swift).toContain("MotifType.body.font() alone scales a role in a named font, not one in the system font");
+  });
+
+  test("line spacing comes from the font's own line height at run time, 1.2 times the size only when it can't be loaded (fix round 1)", () => {
+    expect(swift).toContain("#if canImport(UIKit)\nimport UIKit\n#elseif canImport(AppKit)\nimport AppKit\n#endif\n");
+    expect(swift).toContain("        max(0, lineHeight * size - (naturalLineHeight(size: size, arabic: useArabic) ?? 1.2 * size))");
+    expect(swift).toContain("UIFont(name: name, size: size)");
+    expect(swift).toContain("NSFont(name: name, size: size)");
+    expect(swift).toContain("font.ascender - font.descender + font.leading");
+    expect(swift).not.toContain("lineSpacing:");
   });
 
   test("letter spacing in points, from px or rem", () => {
@@ -111,7 +150,7 @@ describe("generateSwiftUI, the test guide (no variants)", () => {
     t.font.display.$value.letterSpacing = { value: -0.5, unit: "px" };
     t.font.caption.$value.letterSpacing = { value: 0.05, unit: "rem" };
     const out = swiftFor(t);
-    expect(out).toContain("        size: 40,\n        lineSpacing: 0,\n        tracking: -0.5,\n");
+    expect(out).toContain("        size: 40,\n        lineHeight: 1.1,\n        tracking: -0.5,\n");
     expect(out).toContain("        tracking: 0.8,\n");
   });
 
@@ -123,13 +162,13 @@ describe("generateSwiftUI, the test guide (no variants)", () => {
     t.font.caption.$value.fontFamily = ["Georgia", "serif"];
     t.font.label.$value.fontFamily = ["Times", "serif"];
     const out = swiftFor(t);
-    expect(out).toContain('Font.custom("Times", size: 14, relativeTo: .subheadline).weight(.medium)');
-    expect(out).toContain("Font.system(size: 40, weight: .bold, design: .serif)");
-    expect(out).toContain("Font.system(size: 28, weight: .bold, design: .monospaced)");
+    expect(out).toContain('        weight: .medium,\n        textStyle: .subheadline,\n        family: "Times",\n        design: .default,\n');
+    expect(out).toContain("        size: 40,\n        lineHeight: 1.1,\n        tracking: 0,\n        weight: .bold,\n        textStyle: .largeTitle,\n        family: nil,\n        design: .serif,\n");
+    expect(out).toContain("        weight: .bold,\n        textStyle: .title,\n        family: nil,\n        design: .monospaced,\n");
     // Segoe UI isn't on Apple's platforms: the next family in the list.
-    expect(out).toContain("Font.system(size: 20, weight: .semibold, design: .rounded)");
+    expect(out).toContain("        weight: .semibold,\n        textStyle: .title3,\n        family: nil,\n        design: .rounded,\n");
     // Georgia ships with iOS and macOS.
-    expect(out).toContain('Font.custom("Georgia", size: 12, relativeTo: .caption).weight(.regular)');
+    expect(out).toContain('        textStyle: .caption,\n        family: "Georgia",\n        design: .default,\n');
   });
 
   test("no Arabic companion: the modifier doesn't look at the locale", () => {
@@ -173,14 +212,15 @@ describe("generateSwiftUI, two variants and an Arabic companion", () => {
   });
 
   test("a role with an Arabic companion has both fonts, and .motifFont picks by direction and language", () => {
-    expect(swift).toContain(
-      '        latin: Font.custom("Onest", size: 16, relativeTo: .callout).weight(.regular),\n        arabic: Font.custom("Readex Pro", size: 16, relativeTo: .callout).weight(.regular)\n',
-    );
+    expect(swift).toContain('        family: "Onest",\n        design: .default,\n        arabicFamily: "Readex Pro"\n');
     expect(swift).toContain('    private static let arabicScript: Set<String> = ["ar", "fa", "ur", "ps", "ckb", "sd", "ug"]');
     expect(swift).toContain("locale.language.languageCode?.identifier");
     expect(swift).toContain("@Environment(\\.layoutDirection) private var direction");
     expect(swift).toContain("@Environment(\\.locale) private var locale");
-    expect(swift).toContain(".font(type.font(arabic: direction == .rightToLeft || MotifType.isArabic(locale)))");
+    expect(swift).toContain("        let arabic = direction == .rightToLeft || MotifType.isArabic(locale)\n");
+    expect(swift).toContain(
+      "            .font(type.font(size: size, arabic: arabic))\n            .lineSpacing(type.lineSpacing(size: size, arabic: arabic))\n            .tracking(type.tracking(size: size))\n",
+    );
   });
 
   test("the whole file", () => {

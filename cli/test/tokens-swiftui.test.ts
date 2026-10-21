@@ -63,7 +63,7 @@ describe("motif tokens for a SwiftUI app", () => {
     expect(statuses(r)).toEqual({ [THEME]: "created", "design/motif.json": "created" });
     const swift = readFileSync(join(root, THEME), "utf8");
     expect(swift.startsWith(`${TS_HEADER}\n\nimport SwiftUI\n`)).toBe(true);
-    expect(swift).toContain('Font.custom("Inter", size: 16, relativeTo: .callout)');
+    expect(swift).toContain('        textStyle: .callout,\n        family: "Inter",\n');
     expect(notes(r)).toContain(WIRING);
     expect(notes(r)).not.toContain("coming soon");
     expect(notes(r).match(/Next: /g)).toHaveLength(1);
@@ -145,7 +145,7 @@ describe("motif tokens for a SwiftUI app", () => {
     expect(statuses(r)["SwiftUIMin/Fonts/BrandSans-Regular.ttf"]).toBe("created");
     expect(statuses(r)["SwiftUIMin/Fonts/BrandSans-Bold.otf"]).toBe("created");
     expect(readFileSync(join(root, "SwiftUIMin/Fonts/BrandSans-Bold.otf"), "utf8")).toBe("bold");
-    expect(readFileSync(join(root, THEME), "utf8")).toContain('Font.custom("Brand Sans", size: 16, relativeTo: .callout).weight(.regular)');
+    expect(readFileSync(join(root, THEME), "utf8")).toContain('        weight: .regular,\n        textStyle: .callout,\n        family: "Brand Sans",\n');
     expect(notes(r)).toContain(
       [
         'Register the theme\'s fonts: in Xcode, open the SwiftUIMin target\'s Info tab and add "Fonts provided by application" (UIAppFonts) with these items, or add these lines to its Info.plist:',

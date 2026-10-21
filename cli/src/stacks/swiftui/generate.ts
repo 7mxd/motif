@@ -86,36 +86,31 @@ const APPLE_FONTS = new Set(["arial", "helvetica", "helvetica neue", "georgia", 
 /** Languages written in Arabic script, whose text takes the type roles' Arabic companion. */
 const ARABIC_SCRIPT = ["ar", "fa", "ur", "ps", "ckb", "sd", "ug"];
 
-/** SwiftUI sets the space between lines, not the line height: a font's own line is about 1.2 times its size. */
+/** The natural line a font has when it can't be loaded: about 1.2 times its size, as San Francisco's (decision 0010, §7). */
 const NATURAL_LINE = 1.2;
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
-/** How a type role draws: its font in its first family Apple can draw, and its Arabic companion's. */
+/** How a type role draws: its first family Apple can draw (null for the system font, in its design), and its Arabic companion's. */
 function typePlan(t: Theme) {
   const uses = new Map<string, ThemeFontUse>(themeFonts(t).map((u) => [u.family.toLowerCase(), u]));
-  const custom = (family: string, font: ThemeFont) =>
-    `Font.custom(${swiftString(family)}, size: ${num(font.sizePx)}, relativeTo: .${textStyleFor(font.sizePx)}).weight(${fontWeight(font.weight)})`;
-  const system = (design: string, font: ThemeFont) => `Font.system(size: ${num(font.sizePx)}, weight: ${fontWeight(font.weight)}, design: .${design})`;
 
-  const primary = (font: ThemeFont): { expr: string; family: string | null } => {
+  const primary = (font: ThemeFont): { family: string | null; design: string } => {
     for (const raw of font.family.split(",")) {
       const name = raw.trim().replace(/^(["'])(.*)\1$/, "$2").trim();
       const key = name.toLowerCase();
-      if (SYSTEM_DESIGN[key]) return { expr: system(SYSTEM_DESIGN[key]!, font), family: null };
-      if (APPLE_FONTS.has(key)) return { expr: custom(name, font), family: key };
+      if (SYSTEM_DESIGN[key]) return { family: null, design: SYSTEM_DESIGN[key]! };
+      if (APPLE_FONTS.has(key)) return { family: name, design: "default" };
       const use = uses.get(key);
-      if (use && use.source !== "system") return { expr: custom(use.family, font), family: key };
+      if (use && use.source !== "system") return { family: use.family, design: "default" };
     }
-    return { expr: system("default", font), family: null };
+    return { family: null, design: "default" };
   };
 
   return t.fonts.map((font) => {
     const first = primary(font);
     const second = stackFamilies(font.family)[1];
     const use = second ? uses.get(second.toLowerCase()) : undefined;
-    const companion = use && use.source !== "system" && use.family.toLowerCase() !== first.family ? custom(use.family, font) : null;
-    return { font, latin: first.expr, arabic: companion };
+    const arabic = use && use.source !== "system" && use.family.toLowerCase() !== first.family?.toLowerCase() ? use.family : null;
+    return { font, family: first.family, design: first.design, arabic };
   });
 }
 
@@ -282,6 +277,10 @@ function motionBlock(t: Theme): string[] {
   const durations = t.durations.map((d) => ({ ...d, member: swiftMember(d.name, "d") }));
   const base = durations.find((d) => d.name === "base") ?? durations.find((d) => d.ms > 0);
   const curveDuration = base ? `MotifDurations.${base.member}` : "0.25";
+  // Another of the guide's durations for the comment: the longest that isn't the curves' own.
+  const other = durations.filter((d) => d.ms > 0 && d !== base).sort((a, b) => b.ms - a.ms)[0];
+  const curves = t.easings.map((e) => ({ member: swiftMember(e.name, "e"), name: e.name, points: e.points.map(num).join(", ") }));
+  const first = curves[0]?.member ?? "standard";
   return [
     "",
     ...doc(["Durations, in seconds."]),
@@ -290,11 +289,18 @@ function motionBlock(t: Theme): string[] {
     "}",
     "",
     ...doc([
-      `Easing curves, for withAnimation(MotifCurves.standard), over ${base ? `the ${base.name} duration` : "0.25 seconds"}.`,
-      "For another duration, use the same points: Animation.timingCurve(…, duration: MotifDurations.slow).",
+      `Easing curves, for withAnimation(MotifCurves.${first}), over ${base ? `the ${base.name} duration` : "0.25 seconds"}.`,
+      ...(other ? [`Over another: MotifCurves.${first}(over: MotifDurations.${other.member}).`] : []),
     ]),
     "enum MotifCurves {",
-    ...t.easings.map((e) => `    static let ${swiftMember(e.name, "e")} = Animation.timingCurve(${e.points.map(num).join(", ")}, duration: ${curveDuration})`),
+    ...curves.flatMap((c, i) => [
+      ...(i > 0 ? [""] : []),
+      `    static let ${c.member} = Animation.timingCurve(${c.points}, duration: ${curveDuration})`,
+      ...doc([`The ${c.name} curve over another duration.`], 4),
+      `    static func ${c.member}(over duration: Double) -> Animation {`,
+      `        Animation.timingCurve(${c.points}, duration: duration)`,
+      "    }",
+    ]),
     "}",
     "",
     ...doc(["Springs, for withAnimation(MotifSprings.snappy): the guide's own duration and bounce."]),
@@ -318,45 +324,134 @@ function motionBlock(t: Theme): string[] {
 }
 
 /** The members of MotifType itself, which a role's name mustn't take. */
-const TYPE_MEMBERS = new Set(["size", "lineSpacing", "tracking", "latin", "arabic", "font", "isArabic", "arabicScript"]);
+export const TYPE_MEMBERS = new Set([
+  "size", "lineHeight", "tracking", "weight", "textStyle", "family", "design", "arabicFamily", "font", "lineSpacing", "naturalLineHeight",
+  "systemDesign", "isArabic", "arabicScript",
+]);
+
+/** How the font's own line height is read, on iOS (UIKit) and on the Mac (AppKit): decision 0010, §7. */
+const NATURAL_LINE_HEIGHT = [
+  "    /// The font's own line height at a size (its ascender, descender and leading), or nil when it can't be loaded.",
+  "    func naturalLineHeight(size: CGFloat, arabic useArabic: Bool = false) -> CGFloat? {",
+  "        let name = useArabic ? (arabicFamily ?? family) : family",
+  "        #if canImport(UIKit)",
+  "        if let name {",
+  "            if let font = UIFont(name: name, size: size) { return font.lineHeight }",
+  "            let font = UIFont(descriptor: UIFontDescriptor(fontAttributes: [.family: name]), size: size)",
+  "            return font.familyName.caseInsensitiveCompare(name) == .orderedSame ? font.lineHeight : nil",
+  "        }",
+  "        let system = UIFont.systemFont(ofSize: size)",
+  "        return (system.fontDescriptor.withDesign(systemDesign).map { UIFont(descriptor: $0, size: size) } ?? system).lineHeight",
+  "        #elseif canImport(AppKit)",
+  "        let font: NSFont?",
+  "        if let name {",
+  "            let byFamily = NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: name]), size: size)",
+  "            font = NSFont(name: name, size: size) ?? (byFamily?.familyName?.caseInsensitiveCompare(name) == .orderedSame ? byFamily : nil)",
+  "        } else {",
+  "            let system = NSFont.systemFont(ofSize: size)",
+  "            font = system.fontDescriptor.withDesign(systemDesign).flatMap { NSFont(descriptor: $0, size: size) } ?? system",
+  "        }",
+  "        guard let font else { return nil }",
+  "        return font.ascender - font.descender + font.leading",
+  "        #else",
+  "        return nil",
+  "        #endif",
+  "    }",
+  "",
+  "    #if canImport(UIKit)",
+  "    private var systemDesign: UIFontDescriptor.SystemDesign {",
+  "        design == .serif ? .serif : design == .rounded ? .rounded : design == .monospaced ? .monospaced : .default",
+  "    }",
+  "    #elseif canImport(AppKit)",
+  "    private var systemDesign: NSFontDescriptor.SystemDesign {",
+  "        design == .serif ? .serif : design == .rounded ? .rounded : design == .monospaced ? .monospaced : .default",
+  "    }",
+  "    #endif",
+];
 
 function typeBlock(t: Theme): string[] {
   const plan = typePlan(t);
   const arabic = plan.some((r) => r.arabic);
-  const roles = plan.flatMap(({ font, latin, arabic: companion }, i) => [
+  const roles = plan.flatMap(({ font, family, design, arabic: companion }, i) => [
     ...(i > 0 ? [""] : []),
     `    static let ${swiftMember(font.name, "t", TYPE_MEMBERS)} = MotifType(`,
     `        size: ${num(font.sizePx)},`,
-    `        lineSpacing: ${num(Math.max(0, round2(font.sizePx * (font.lineHeight - NATURAL_LINE))))},`,
+    `        lineHeight: ${num(font.lineHeight)},`,
     `        tracking: ${num(tracking(font.letterSpacing))},`,
-    `        latin: ${latin},`,
-    `        arabic: ${companion ?? "nil"}`,
+    `        weight: ${fontWeight(font.weight)},`,
+    `        textStyle: .${textStyleFor(font.sizePx)},`,
+    `        family: ${family === null ? "nil" : swiftString(family)},`,
+    `        design: .${design},`,
+    `        arabicFamily: ${companion === null ? "nil" : swiftString(companion)}`,
     "    )",
   ]);
+  const scaled = (a: string) => [
+    `            .font(type.font(size: size${a}))`,
+    `            .lineSpacing(type.lineSpacing(size: size${a}))`,
+    "            .tracking(type.tracking(size: size))",
+  ];
   return [
     "",
     ...doc([
-      "A type role: its font, its line spacing and its letter spacing. It carries no colour, so the view's",
-      "foreground style applies. A role in a named font (Font.custom) scales with Dynamic Type, relative to the nearest",
-      "text style; a role in the system font (Font.system(size:)) keeps its size.",
+      "A type role: its font, its line height and its letter spacing. It carries no colour, so the view's foreground",
+      "style applies.",
       "",
-      "Use it with .motifFont(.body), which sets all three, or as a Font: MotifType.body.font().",
+      "Use it with .motifFont(.body), which sets all three. .motifFont(.body) scales every role with Dynamic Type",
+      "(relative to the role's text style), the system font's too, with its line spacing and letter spacing; the line",
+      `spacing comes from the font's own line height (${NATURAL_LINE} times the size when the font can't be loaded).`,
+      "Where a Font is needed: MotifType.body.font(), which sets neither spacing.",
+      "MotifType.body.font() alone scales a role in a named font, not one in the system font: prefer .motifFont.",
       ...(arabic ? ["A role with an Arabic companion uses it when the layout is right to left or the language is written in Arabic script."] : []),
     ]),
     "struct MotifType: Sendable {",
     ...doc(["The size in points, before Dynamic Type."], 4),
     "    let size: CGFloat",
-    ...doc([`The space between lines, in points: the guide's line height less the font's own (about ${NATURAL_LINE} times its size).`], 4),
-    "    let lineSpacing: CGFloat",
-    ...doc(["Letter spacing, in points."], 4),
+    ...doc(["The guide's line height, as a multiple of the size."], 4),
+    "    let lineHeight: CGFloat",
+    ...doc(["Letter spacing in points, before Dynamic Type."], 4),
     "    let tracking: CGFloat",
-    "    private let latin: Font",
-    "    private let arabic: Font?",
+    "    let weight: Font.Weight",
+    ...doc(["The Dynamic Type text style the role scales with."], 4),
+    "    let textStyle: Font.TextStyle",
+    ...doc(["The font's family, or nil for the system font in its design."], 4),
+    "    let family: String?",
+    "    let design: Font.Design",
+    ...doc(["The Arabic companion's family, when the role has one."], 4),
+    "    let arabicFamily: String?",
     "",
-    ...doc(["The role's font, or its Arabic companion's (the role's own font when it has none)."], 4),
+    ...doc([
+      "The role's font at its own size, or its Arabic companion's (the role's own font when it has none). A named font",
+      "scales with Dynamic Type by itself; the system font keeps its size: use .motifFont for that.",
+    ], 4),
     "    func font(arabic useArabic: Bool = false) -> Font {",
-    "        useArabic ? (arabic ?? latin) : latin",
+    "        if let name = useArabic ? (arabicFamily ?? family) : family {",
+    "            return Font.custom(name, size: size, relativeTo: textStyle).weight(weight)",
+    "        }",
+    "        return Font.system(size: size, weight: weight, design: design)",
     "    }",
+    "",
+    ...doc(["The role's font at a size Dynamic Type has already scaled, as .motifFont gives it."], 4),
+    "    func font(size: CGFloat, arabic useArabic: Bool = false) -> Font {",
+    "        if let name = useArabic ? (arabicFamily ?? family) : family {",
+    "            return Font.custom(name, fixedSize: size).weight(weight)",
+    "        }",
+    "        return Font.system(size: size, weight: weight, design: design)",
+    "    }",
+    "",
+    ...doc(["Letter spacing at a scaled size."], 4),
+    "    func tracking(size: CGFloat) -> CGFloat {",
+    "        tracking * size / max(self.size, 1)",
+    "    }",
+    "",
+    ...doc([
+      "The space between lines at a scaled size: the guide's line height less the font's own, read from the font",
+      `(${NATURAL_LINE} times the size when it can't be loaded).`,
+    ], 4),
+    "    func lineSpacing(size: CGFloat, arabic useArabic: Bool = false) -> CGFloat {",
+    `        max(0, lineHeight * size - (naturalLineHeight(size: size, arabic: useArabic) ?? ${NATURAL_LINE} * size))`,
+    "    }",
+    "",
+    ...NATURAL_LINE_HEIGHT,
     ...(arabic
       ? [
           "",
@@ -374,7 +469,7 @@ function typeBlock(t: Theme): string[] {
     "}",
     "",
     "extension View {",
-    ...doc(["The type role's font, line spacing and letter spacing.", ...(arabic ? ["Its Arabic companion when the layout is right to left or the language is written in Arabic script."] : [])], 4),
+    ...doc(["The type role's font, line spacing and letter spacing, scaled with Dynamic Type.", ...(arabic ? ["Its Arabic companion when the layout is right to left or the language is written in Arabic script."] : [])], 4),
     "    func motifFont(_ type: MotifType) -> some View {",
     "        modifier(MotifFontModifier(type: type))",
     "    }",
@@ -382,13 +477,19 @@ function typeBlock(t: Theme): string[] {
     "",
     "private struct MotifFontModifier: ViewModifier {",
     "    let type: MotifType",
+    ...doc(["The role's size, scaled with Dynamic Type relative to its text style."], 4),
+    "    @ScaledMetric private var size: CGFloat",
     ...(arabic ? ["    @Environment(\\.layoutDirection) private var direction", "    @Environment(\\.locale) private var locale"] : []),
     "",
+    "    init(type: MotifType) {",
+    "        self.type = type",
+    "        _size = ScaledMetric(wrappedValue: type.size, relativeTo: type.textStyle)",
+    "    }",
+    "",
     "    func body(content: Content) -> some View {",
-    "        content",
-    arabic ? "            .font(type.font(arabic: direction == .rightToLeft || MotifType.isArabic(locale)))" : "            .font(type.font())",
-    "            .lineSpacing(type.lineSpacing)",
-    "            .tracking(type.tracking)",
+    ...(arabic
+      ? ["        let arabic = direction == .rightToLeft || MotifType.isArabic(locale)", "        return content", ...scaled(", arabic: arabic")]
+      : ["        content", ...scaled("")]),
     "    }",
     "}",
   ];
@@ -403,6 +504,11 @@ export function generateSwiftUI(set: ThemeSet): GeneratedFile[] {
     TS_HEADER,
     "",
     "import SwiftUI",
+    "#if canImport(UIKit)",
+    "import UIKit",
+    "#elseif canImport(AppKit)",
+    "import AppKit",
+    "#endif",
     ...(variants ? variantsBlock(set) : []),
     ...colorsBlock(set, variants),
     ...environmentBlock(set, variants, accent),

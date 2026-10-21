@@ -31,6 +31,7 @@ struct MotifExample: View {
         .onTapGesture {
             withAnimation(MotifMotion.animation(MotifSprings.snappy, reduceMotion: reduceMotion)) { open.toggle() }
             withAnimation(MotifCurves.standard) { open.toggle() }
+            withAnimation(MotifCurves.standard(over: MotifDurations.slow)) { open.toggle() }
             withAnimation(.easeOut(duration: MotifDurations.base)) { open.toggle() }
         }
     }
@@ -47,7 +48,9 @@ struct MotifRoot: View {
                 _ = all.map { MotifColors.resolve(.dark, variant: $0) } == [MotifColors.dark, MotifColors.partnerDark]
                 _ = MotifColors.resolve(.light) == MotifColors.light && MotifColors.partnerLight != MotifColors.light
                 _ = MotifVariant(rawValue: "default") ?? .defaultVariant
-                _ = MotifType.isArabic(Locale(identifier: "ar")) && MotifType.body.size > MotifType.body.lineSpacing + MotifType.body.tracking
+                _ = MotifType.isArabic(Locale(identifier: "ar")) && MotifType.body.size > MotifType.body.lineHeight + MotifType.body.tracking(size: 20) + MotifType.body.lineSpacing(size: 20, arabic: true)
+                _ = MotifType.heading.naturalLineHeight(size: 20) ?? 0
+                _ = MotifType.body.font(size: 20, arabic: true)
             }
     }
 }
@@ -162,6 +165,8 @@ describe("the generated Swift", () => {
     const plainTokens = validTokens();
     plainTokens.$extensions["dev.motif"].fonts = [{ family: "Brand Sans", files: [{ path: "design/fonts/Brand.ttf", weight: 400, style: "normal" }] }];
     plainTokens.font.body.$value.fontFamily = ["Brand Sans", "sans-serif"];
+    // A role in the system font, in a design of its own: .motifFont scales it with a ScaledMetric.
+    plainTokens.font.caption.$value.fontFamily = ["ui-serif", "serif"];
     const [plain] = generateSwiftUI(buildThemeSet(docFrom(plainTokens)));
     expect(plain!.content).not.toContain("MotifVariant");
     mkdirSync(join(dir, "plain"));

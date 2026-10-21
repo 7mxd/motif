@@ -4,7 +4,7 @@ import type { SourceFile } from "../../check/files";
 import { maskComments, maskStrings } from "../../check/mask";
 import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../../check/types";
 import { locator } from "../../text";
-import { swiftMember } from "./generate";
+import { swiftMember, TYPE_MEMBERS } from "./generate";
 
 const FIX = {
   color: "Use colors.<role> from @Environment(\\.motifColors).",
@@ -37,8 +37,6 @@ export function swiftUIFix(hit: Hit): string {
 
 /** The members MotifColors itself declares, which a colour role's name mustn't take. */
 const COLOR_MEMBERS = new Set(["resolve", "light", "dark"]);
-/** The members of MotifType itself, which a role's name mustn't take. */
-const TYPE_MEMBERS = new Set(["size", "lineSpacing", "tracking", "latin", "arabic", "font", "isArabic", "arabicScript"]);
 
 /** A theme role as MotifTheme.swift declares it (colors.textSecondary, MotifSpace.s4), for "Closest:" suggestions. */
 export function swiftUIRole(kind: ValueKind, name: string): string {
