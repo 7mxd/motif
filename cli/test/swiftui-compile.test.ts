@@ -132,7 +132,7 @@ describe("the generated Swift", () => {
     const [theme] = generateSwiftUI(buildThemeSet(docFrom(tokens)));
     expect(theme!.content).toContain('case defaultVariant = "default"');
     expect(theme!.content).toContain("@Entry var motifVariant");
-    expect(theme!.content).toContain('arabic: Font.custom("Readex Pro"');
+    expect(theme!.content).toContain('arabicFamily: "Readex Pro"');
     const dir = tempDir("motif-swiftui-");
     cpSync(join(FIXTURES, "swiftui-min"), dir, { recursive: true });
     mkdirSync(join(dir, "SwiftUIMin/Design"), { recursive: true });
