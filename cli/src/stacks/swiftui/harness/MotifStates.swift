@@ -5,7 +5,7 @@ import UIKit
 
 /// What a state script acts on: the screen Motif drew, in a window of its own. It finds things the way VoiceOver does:
 /// by their accessibility label (a Button's or a TextField's title, an .accessibilityLabel) or their
-/// .accessibilityIdentifier. The keyboard isn't drawn: a field being typed into is shown without it.
+/// .accessibilityIdentifier. The keyboard isn't drawn: a field typed into is drawn as it is once editing ends.
 @MainActor
 final class MotifHarness {
     /// The window the screen is drawn in.
@@ -165,6 +165,23 @@ final class MotifHarness {
         let middle = CGPoint(x: frame.midX, y: frame.midY)
         if let input = textInputs().first(where: { $0.convert($0.bounds, to: nil).contains(middle) }) { return input }
         throw MotifShotError("\"\(label)\" is on the screen, but it isn't a text field.")
+    }
+}
+
+/// SwiftUI makes its views' accessibility elements only while an assistive technology (or UI automation) is on. The
+/// harness turns automation on for the simulator, as UI test tools do (KIF), before the first screen that needs them.
+@MainActor
+enum MotifAccessibility {
+    private static var enabled = false
+
+    static func enable() {
+        if enabled { return }
+        enabled = true
+        guard let library = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW) else { return }
+        typealias SetEnabled = @convention(c) (Int32) -> Void
+        if let symbol = dlsym(library, "_AXSSetAutomationEnabled") {
+            unsafeBitCast(symbol, to: SetEnabled.self)(1)
+        }
     }
 }
 

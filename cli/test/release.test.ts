@@ -219,7 +219,7 @@ describe("each stack job and its heavy tests agree on its name", () => {
   const HEAVY: Record<string, string[]> = {
     compose: ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose", "compose-agp9", "compose-flavors", "compose-junit-platform"],
     "react-native": ["rn-compile", "rn-shot-e2e", "fixtures-rn"],
-    swiftui: ["swiftui-compile", "swiftui-render"],
+    swiftui: ["swiftui-compile", "swiftui-render", "swiftui-shot-e2e"],
   };
 
   test("every heavy test is one of these: no other test file calls heavyStackTests", () => {

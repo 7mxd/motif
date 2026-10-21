@@ -92,6 +92,7 @@ final class MotifShotTests: XCTestCase {
         let settle = options.settle ?? 5
         let limit = options.stateLimit ?? 15
         let setupFile = options.setupFile ?? "design/states/Setup.swift"
+        if options.shots.contains(where: { $0.state != nil }) { MotifAccessibility.enable() }
         let previews = MotifPreviews.all()
         result.previews = previews.map(\.info)
         try write(result, to: resultURL)
@@ -202,6 +203,14 @@ enum MotifShotDrawing {
         settleWindow(window, seconds: settle)
         let stateError = state(window)
         if stateError != nil || shot.state != nil { settleWindow(window, seconds: settle) }
+        // The keyboard isn't drawn, and while it is up the screen is laid out above it: a field being edited (typed into
+        // by a state, or focused by the screen itself) is left before the screen is drawn.
+        if editing(window) {
+            window.endEditing(true)
+            // The keyboard goes away with an animation, after which the screen gets its height back.
+            RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+            settleWindow(window, seconds: settle)
+        }
         let format = UIGraphicsImageRendererFormat()
         format.scale = shot.scale
         format.opaque = true
@@ -222,8 +231,8 @@ enum MotifShotDrawing {
     }
 
     /// Lets the main run loop turn until the window's layers stop changing (two quiet turns in a row), or the time is up.
-    /// A layer is changing while it is laid out anew, shown or hidden, faded, given its contents (an image loaded) or
-    /// animated: a screen that animates for ever (a spinner) is drawn when the time is up.
+    /// A layer is changing while it is laid out anew, shown or hidden, faded or given its contents (an image loaded).
+    /// Running animations aren't waited for: a text field's blinking caret, or a spinner, never stops.
     private static func settleWindow(_ window: UIWindow, seconds: Double) {
         let deadline = Date().addingTimeInterval(seconds)
         var last = ""
@@ -238,9 +247,13 @@ enum MotifShotDrawing {
         }
     }
 
+    private static func editing(_ view: UIView) -> Bool {
+        if view.isFirstResponder, view is UITextField || view is UITextView { return true }
+        return view.subviews.contains { editing($0) }
+    }
+
     static func describe(_ layer: CALayer) -> String {
-        let animating = layer.animationKeys()?.isEmpty == false
-        var out = "\(layer.frame)\(layer.sublayers?.count ?? 0)\(layer.isHidden)\(layer.opacity)\(layer.contents != nil)\(animating ? "~\(Date().timeIntervalSince1970)" : "")"
+        var out = "\(layer.frame)\(layer.sublayers?.count ?? 0)\(layer.isHidden)\(layer.opacity)\(layer.contents != nil)"
         for sub in layer.sublayers ?? [] { out += describe(sub) }
         return out
     }
