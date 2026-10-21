@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { maskComments, maskStrings } from "../../check/mask";
 import { onExit } from "../../cleanup";
+import { andList } from "../../text";
 import { killTree } from "../../shot/devserver";
 import appSource from "./harness/MotifShotApp.swift" with { type: "text" };
 import previewsSource from "./harness/MotifPreviews.swift" with { type: "text" };
@@ -387,7 +388,11 @@ export interface ExecResult {
   timedOut: boolean;
 }
 
-export type Exec = (cmd: string[], opts: { timeoutMs: number; env?: Record<string, string | undefined>; cwd?: string }) => Promise<ExecResult>;
+/** How Motif runs a command: `signal` stops it early (with everything it started), as the time running out does. */
+export type Exec = (
+  cmd: string[],
+  opts: { timeoutMs: number; env?: Record<string, string | undefined>; cwd?: string; signal?: AbortSignal },
+) => Promise<ExecResult>;
 
 /** Reads a stream into text as it arrives (the last 200,000 characters); cancel() stops reading. */
 function collect(stream: ReadableStream<Uint8Array>): { text: () => string; done: Promise<void>; cancel: () => void } {
@@ -424,6 +429,7 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
  */
 export const execCommand: Exec = async (cmd, opts) => {
   if (opts.timeoutMs <= 0) return { code: null, stdout: "", stderr: "", timedOut: true };
+  if (opts.signal?.aborted) return { code: null, stdout: "", stderr: "", timedOut: false };
   let proc: ReturnType<typeof Bun.spawn>;
   try {
     proc = Bun.spawn(cmd, { cwd: opts.cwd, env: opts.env ?? process.env, stdin: "ignore", stdout: "pipe", stderr: "pipe", detached: true });
@@ -434,18 +440,22 @@ export const execCommand: Exec = async (cmd, opts) => {
   const out = collect(proc.stdout as ReadableStream<Uint8Array>);
   const err = collect(proc.stderr as ReadableStream<Uint8Array>);
   let timer: Timer | undefined;
+  const stop = () => killTree(proc.pid, true);
+  opts.signal?.addEventListener("abort", stop);
   try {
     const timedOut = await new Promise<boolean>((done) => {
       timer = setTimeout(() => done(true), opts.timeoutMs);
       void proc.exited.then(() => done(false));
     });
     if (timedOut) killTree(proc.pid, true);
+    const stopped = opts.signal?.aborted ?? false;
     const code = await within(proc.exited, GRACE_MS);
     await within(Promise.all([out.done, err.done]), GRACE_MS);
     out.cancel();
     err.cancel();
-    return { code: timedOut ? null : code, stdout: out.text(), stderr: err.text(), timedOut };
+    return { code: timedOut || stopped ? null : code, stdout: out.text(), stderr: err.text(), timedOut };
   } finally {
+    opts.signal?.removeEventListener("abort", stop);
     clearTimeout(timer);
     cancelHook();
   }
@@ -693,6 +703,21 @@ function readResult(path: string): WrittenResult | null | "unreadable" {
 const buildFailed = (output: string) => /Testing cancelled because the build failed|\*\* BUILD FAILED \*\*|The following build commands failed/.test(output);
 
 /** The compiler's errors in xcodebuild's output, each once (the first ten), or its last lines when it gave none. */
+/**
+ * Why the build failed, in plain words: a setup or state file that doesn't compile is named (its errors give its path
+ * and line), else the app's build with the compiler's errors.
+ */
+function buildProblem(output: string, scripts: SwiftUIHarnessRun["scripts"]): string {
+  const files = [...(scripts?.setup ? [scripts.setup] : []), ...(scripts?.states ?? [])].map((s) => s.file);
+  const errors = compilerErrors(output);
+  const theirs = files.filter((f) => errors.split("\n").some((l) => l.startsWith(`${f}:`)));
+  if (theirs.length > 0) {
+    const lines = errors.split("\n").filter((l) => theirs.some((f) => l.startsWith(`${f}:`)));
+    return `${andList(theirs)} ${theirs.length === 1 ? "doesn't" : "don't"} compile:\n${lines.join("\n")}\nFix ${theirs.length === 1 ? "it" : "them"}, then run motif shot again.`;
+  }
+  return `The app didn't build with Motif's harness:\n${errors}\nCheck that the app builds for the iOS simulator in Xcode, then run motif shot again.`;
+}
+
 function compilerErrors(output: string): string {
   const errors = [...new Set(output.split(/\r?\n/).filter((l) => /: error: /.test(l)).map((l) => l.trim()))];
   return errors.length > 0 ? errors.slice(0, 10).join("\n") : tail(output);
@@ -742,9 +767,9 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
     udid,
     ...fields,
   });
-  const step = async (name: string, cmd: string[], env?: Record<string, string | undefined>) => {
+  const step = async (name: string, cmd: string[], env?: Record<string, string | undefined>, signal?: AbortSignal) => {
     const t = performance.now();
-    const r = await exec(cmd, { timeoutMs: left(), env: env ?? run.env, cwd: run.copyDir });
+    const r = await exec(cmd, { timeoutMs: left(), env: env ?? run.env, cwd: run.copyDir, ...(signal ? { signal } : {}) });
     timings[name] = (timings[name] ?? 0) + Math.round(performance.now() - t);
     return r;
   };
@@ -841,12 +866,23 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
       }
       return null;
     };
-    const [unbooted, built] = await Promise.all([boot(), step("build", xcodebuild("build-for-testing"))]);
+    // A simulator that can't boot stops the build: there's nothing to draw on.
+    const stopBuild = new AbortController();
+    const [unbooted, built] = await Promise.all([
+      boot().then((r) => {
+        if (r) stopBuild.abort();
+        return r;
+      }),
+      step("build", xcodebuild("build-for-testing"), undefined, stopBuild.signal),
+    ]);
     output = `${built.stdout}\n${built.stderr}`.slice(-200_000);
     lastCode = built.code;
-    if (built.timedOut) return tooLong("building the app");
+    if (unbooted && stopBuild.signal.aborted && built.code === null) return unbooted;
+    if (built.timedOut) return unbooted ?? tooLong("building the app");
     if (built.code !== 0) {
-      return done({ problem: `The app didn't build with Motif's harness:\n${compilerErrors(output)}\nCheck that the app builds for the iOS simulator in Xcode, then run motif shot again.` });
+      const failed = done({ problem: buildProblem(output, run.scripts) });
+      // Both failed: both are said.
+      return unbooted ? { ...failed, problem: `${failed.problem}\n\n${unbooted.problem}` } : failed;
     }
     if (unbooted) return unbooted;
 
@@ -879,7 +915,7 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
         });
       }
       if (!written && buildFailed(output)) {
-        return done({ problem: `The app didn't build with Motif's harness:\n${compilerErrors(output)}\nCheck that the app builds for the iOS simulator in Xcode, then run motif shot again.` });
+        return done({ problem: buildProblem(output, run.scripts) });
       }
       if (!written) {
         const skipped = /MOTIF_SHOT_OPTIONS isn't set/.test(output);

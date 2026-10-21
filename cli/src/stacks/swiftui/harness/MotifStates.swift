@@ -15,6 +15,12 @@ final class MotifHarness {
     let locale: Locale
     let dark: Bool
     private let settleSeconds: Double
+    /// Set when the state ran out of time: it was cancelled, and nothing it still asks for touches a later screen.
+    var abandoned = false
+
+    private func live() throws {
+        if abandoned { throw MotifShotError("The state ran out of time and was stopped.") }
+    }
 
     init(window: UIWindow, variant: String, locale: Locale, dark: Bool, settle: Double) {
         self.window = window
@@ -27,6 +33,7 @@ final class MotifHarness {
     /// Taps what is called `label` once it's on the screen (waiting at most `timeout` seconds), then lets the screen settle.
     func tap(_ label: String, timeout: Double = 5) async throws {
         let element = try await find(label, timeout: timeout)
+        try live()
         guard activate(element) else {
             throw MotifShotError("\"\(label)\" is on the screen, but tapping it did nothing: it isn't a button or a control.")
         }
@@ -37,6 +44,7 @@ final class MotifHarness {
     /// else the screen's first. Then lets the screen settle.
     func type(_ text: String, into label: String? = nil, timeout: Double = 5) async throws {
         let input = try await textInput(label, timeout: timeout)
+        try live()
         window.makeKey()
         _ = input.becomeFirstResponder()
         guard let keys = input as? UIKeyInput else { throw MotifShotError("The text field can't be typed into.") }
@@ -46,6 +54,7 @@ final class MotifHarness {
 
     /// Lets the screen run for `seconds`.
     func wait(_ seconds: Double) async {
+        if abandoned { return }
         try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
     }
 
@@ -124,10 +133,13 @@ final class MotifHarness {
     private func find(_ label: String, timeout: Double) async throws -> NSObject {
         let deadline = Date().addingTimeInterval(timeout)
         while true {
+            try live()
             if let found = element(label) { return found }
             if Date() >= deadline { break }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
+        // Nothing at all on the screen, or accessibility never turned on: the state can't see the screen, whatever it asks for.
+        if MotifAccessibility.enabled != true || elements().isEmpty { throw MotifShotError(MotifAccessibility.problem) }
         let shown = labels.prefix(12).map { "\"\($0)\"" }.joined(separator: ", ")
         throw MotifShotError("There's nothing called \"\(label)\" on the screen\(shown.isEmpty ? "" : " (it shows \(shown))").")
     }
@@ -172,16 +184,24 @@ final class MotifHarness {
 /// harness turns automation on for the simulator, as UI test tools do (KIF), before the first screen that needs them.
 @MainActor
 enum MotifAccessibility {
-    private static var enabled = false
+    /// Whether automation is on: nil until tried.
+    private(set) static var enabled: Bool?
 
     static func enable() {
-        if enabled { return }
-        enabled = true
-        guard let library = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW) else { return }
+        if enabled != nil { return }
+        enabled = false
+        guard let library = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW),
+              let set = dlsym(library, "_AXSSetAutomationEnabled") else { return }
         typealias SetEnabled = @convention(c) (Int32) -> Void
-        if let symbol = dlsym(library, "_AXSSetAutomationEnabled") {
-            unsafeBitCast(symbol, to: SetEnabled.self)(1)
-        }
+        unsafeBitCast(set, to: SetEnabled.self)(1)
+        // Read back when the runtime says; a runtime without the getter is taken at its word.
+        typealias IsEnabled = @convention(c) () -> Int32
+        enabled = dlsym(library, "_AXSAutomationEnabled").map { unsafeBitCast($0, to: IsEnabled.self)() != 0 } ?? true
+    }
+
+    /// Why a state finds nothing at all, when accessibility isn't on: the runtime named.
+    static var problem: String {
+        "Motif couldn't turn on accessibility automation in this simulator runtime (iOS \(UIDevice.current.systemVersion)), so a state can't find anything on the screen. Tell Motif's maintainers which Xcode and runtime you use."
     }
 }
 

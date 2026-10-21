@@ -157,20 +157,32 @@ enum MotifMirror {
         return nil
     }
 
-    /// A modifier of the App's scene, applied to its root view when it means something there.
+    /// The scene's modifiers that couldn't be given to the root view and may matter to it (their types), for the notes.
+    static var unapplied: [String] = []
+
+    /// A modifier of the App's scene, applied to its root view when it means something there. A view modifier is applied
+    /// as it is (an environment value or object, SwiftData's .modelContainer): an object passed with .environment that
+    /// happens to hold a ModelContainer stays that object. Only a modifier that isn't one is looked into, shallowly, for
+    /// a container of its own.
     private static func sceneModifier(_ modifier: Any, on view: AnyView) -> AnyView {
-        if let container = first(ModelContainer.self, in: modifier) { return AnyView(view.modelContainer(container)) }
         func apply<M: ViewModifier>(_ m: M) -> AnyView { AnyView(view.modifier(m)) }
         if let viewModifier = modifier as? any ViewModifier { return apply(viewModifier) }
+        if let container = ownContainer(modifier) { return AnyView(view.modelContainer(container)) }
+        let name = String(describing: type(of: modifier))
+        if name.range(of: "Environment|Container|Model|Object|Store|Data", options: .regularExpression) != nil, !unapplied.contains(name) {
+            unapplied.append(name)
+        }
         return view
     }
 
-    /// The first value of a type inside a value, depth first.
-    static func first<T>(_ type: T.Type, in value: Any, depth: Int = 0) -> T? {
-        if let found = value as? T { return found }
-        if depth > 6 { return nil }
+    /// A ModelContainer the modifier keeps in its own fields (or one level inside them: an Optional, an enum case).
+    private static func ownContainer(_ value: Any) -> ModelContainer? {
+        if let found = value as? ModelContainer { return found }
         for c in Mirror(reflecting: value).children {
-            if let found = first(type, in: c.value, depth: depth + 1) { return found }
+            if let found = c.value as? ModelContainer { return found }
+            for g in Mirror(reflecting: c.value).children {
+                if let found = g.value as? ModelContainer { return found }
+            }
         }
         return nil
     }

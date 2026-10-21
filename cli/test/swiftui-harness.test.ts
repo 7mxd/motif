@@ -300,9 +300,10 @@ const drawsAll = (_: number, options: { shots: SwiftUIShot[] }, path: string) =>
 /** A run of the harness on a copy of swiftui-min; `answer` overrides commands, and `launch` plays the test's part. */
 async function fakeRun(
   shots: SwiftUIShot[],
-  answer: (cmd: string[]) => ExecResult | undefined,
+  answer: (cmd: string[], opts: Parameters<Exec>[1]) => ExecResult | Promise<ExecResult> | undefined,
   launch: (n: number, options: { shots: SwiftUIShot[] }, resultPath: string) => ExecResult,
   remove: (udid: string) => { code: number; stderr: string } = () => ({ code: 0, stderr: "" }),
+  extra: Partial<Parameters<typeof runSwiftUIHarness>[0]> = {},
 ) {
   const root = tempDir("motif-swiftui-run-");
   const copyDir = join(root, "app");
@@ -313,7 +314,7 @@ async function fakeRun(
   let launches = 0;
   const exec: Exec = async (cmd, opts) => {
     calls.push(cmd);
-    const answered = answer(cmd);
+    const answered = await answer(cmd, opts);
     if (answered) return answered;
     if (cmd[0] === "xcodebuild" && cmd[1] === "-showBuildSettings") return ok(SETTINGS);
     if (cmd.join(" ") === "xcrun --sdk iphonesimulator --show-sdk-version") return ok("18.5\n");
@@ -341,6 +342,7 @@ async function fakeRun(
       removed.push(udid);
       return remove(udid);
     },
+    ...extra,
   });
   return { r, calls, removed, copyDir, workDir };
 }
@@ -542,5 +544,47 @@ describe("fix round 2", () => {
     expect(crashReason(out)).toBe("Terminating app due to uncaught exception 'NSInvalidArgumentException', reason: '-[NSNull length]: unrecognized selector sent to instance 0x1'");
     // A Swift fatal error is still read first.
     expect(crashReason(`Fatal error: first\n${out}`)).toBe("Fatal error: first");
+  });
+});
+
+describe("fix round 1 (Task 8): the build alongside the boot, and the states' compile errors", () => {
+  test("a simulator that can't boot stops the build at once; when both fail, both are said", async () => {
+    let stopped = false;
+    // A build that runs until it's stopped.
+    const waits = (opts: Parameters<Exec>[1]) =>
+      new Promise<ExecResult>((done) => {
+        opts.signal?.addEventListener("abort", () => {
+          stopped = true;
+          done({ code: null, stdout: "", stderr: "", timedOut: false });
+        });
+      });
+    const boot = await fakeRun(
+      [shot("/", "home.png")],
+      (cmd, opts) => (cmd[2] === "boot" ? failed(149, "Unable to boot device") : cmd[1] === "build-for-testing" ? waits(opts) : undefined),
+      drawsAll,
+    );
+    expect(stopped).toBe(true);
+    expect(boot.r.problem).toContain("couldn't start:\nUnable to boot device\nFree some disk space");
+    expect(boot.r.problem).not.toContain("didn't build");
+    expect(boot.removed).toEqual([UDID]);
+
+    const both = await fakeRun(
+      [shot("/", "home.png")],
+      (cmd) => (cmd[2] === "boot" ? failed(149, "Unable to boot device") : cmd[1] === "build-for-testing" ? failed(65, "", "/a/X.swift:1:1: error: nope\n** TEST BUILD FAILED **") : undefined),
+      drawsAll,
+    );
+    expect(both.r.problem).toContain("The app didn't build with Motif's harness:\n/a/X.swift:1:1: error: nope");
+    expect(both.r.problem).toContain("couldn't start:\nUnable to boot device");
+  });
+
+  test("a state or setup that doesn't compile is named, with the compiler's errors, not the app", async () => {
+    const state = { name: "opened", file: "/p/my app/design/states/opened.swift", text: "@MainActor func motifState(_ app: MotifHarness) async throws { nope }\n" };
+    const out = `/p/my app/design/states/opened.swift:1:63: error: cannot find 'nope' in scope\n** TEST BUILD FAILED **`;
+    const { r } = await fakeRun([shot("/", "home.png")], (cmd) => (cmd[1] === "build-for-testing" ? failed(65, "", out) : undefined), drawsAll, undefined, {
+      scripts: { states: [state] },
+    });
+    expect(r.problem).toBe(
+      "/p/my app/design/states/opened.swift doesn't compile:\n/p/my app/design/states/opened.swift:1:63: error: cannot find 'nope' in scope\nFix it, then run motif shot again.",
+    );
   });
 });

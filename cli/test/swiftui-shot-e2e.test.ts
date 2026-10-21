@@ -24,6 +24,40 @@ let home = "";
 const saved = process.env.MOTIF_HOME;
 const HOME = "SwiftUIMin/Screens/HomeScreen.swift";
 const APP = "SwiftUIMin/SwiftUIMinApp.swift";
+const CONTENT = "SwiftUIMin/ContentView.swift";
+
+/**
+ * A store the App gives its scene with .environment, which owns a SwiftData container of its own, and a .modelContainer
+ * on the scene too: the root needs both (NotesBadge reads the store and inserts into the context, which stops the app
+ * without a container).
+ */
+const NOTES = String.raw`import SwiftData
+import SwiftUI
+
+@Model final class Note {
+    var text: String
+    init(text: String) { self.text = text }
+}
+
+@Observable final class Store {
+    let container: ModelContainer
+    var title = "Store ready"
+    init() {
+        container = try! ModelContainer(for: Note.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    }
+}
+
+struct NotesBadge: View {
+    @Environment(Store.self) private var store
+    @Environment(\.modelContext) private var context
+    @Query private var notes: [Note]
+
+    var body: some View {
+        Text("\(store.title): \(notes.count) notes")
+            .onAppear { context.insert(Note(text: "first")) }
+    }
+}
+`;
 
 const SETUP = `import Foundation
 
@@ -38,6 +72,7 @@ const STATE = `@MainActor func motifState(_ app: MotifHarness) async throws {
     try await app.type("Sam", into: "Name")
     try await app.tap("Greet")
     try await app.waitFor("Hello, Sam")
+    try await app.waitFor("Store ready: 1 notes")
 }
 `;
 
@@ -71,9 +106,23 @@ beforeAll(async () => {
     .replace("        .padding()\n", "        .padding()\n        .background(colors.background)\n");
   expect(screen).toContain(".background(colors.background)");
   writeFileSync(join(root, HOME), screen);
-  const app = readFileSync(join(root, APP), "utf8").replace(/\r\n/g, "\n").replace("            ContentView()\n", "            ContentView()\n                .motifTheme(variant: .partner)\n");
+  const app = readFileSync(join(root, APP), "utf8")
+    .replace(/\r\n/g, "\n")
+    .replace("import SwiftUI\n", "import SwiftData\nimport SwiftUI\n")
+    .replace("struct SwiftUIMinApp: App {\n", "struct SwiftUIMinApp: App {\n    @State private var store = Store()\n\n")
+    .replace(
+      "            ContentView()\n        }\n",
+      "            ContentView()\n                .motifTheme(variant: .partner)\n        }\n        .environment(store)\n        .modelContainer(for: Note.self, inMemory: true)\n",
+    );
   expect(app).toContain(".motifTheme(variant: .partner)");
+  expect(app).toContain(".modelContainer(for: Note.self, inMemory: true)");
   writeFileSync(join(root, APP), app);
+  writeFileSync(join(root, "SwiftUIMin/Notes.swift"), NOTES);
+  const content = readFileSync(join(root, CONTENT), "utf8")
+    .replace(/\r\n/g, "\n")
+    .replace("        }\n    }\n}\n\n#Preview", "        }\n        .safeAreaInset(edge: .bottom) { NotesBadge() }\n    }\n}\n\n#Preview");
+  expect(content).toContain("NotesBadge()");
+  writeFileSync(join(root, CONTENT), content);
 }, 120_000);
 
 afterAll(() => {
@@ -112,7 +161,22 @@ function background(file: string): number[] {
   return [rgba[at]!, rgba[at + 1]!, rgba[at + 2]!];
 }
 
-const XCODE_DERIVED = join(homedir(), "Library/Developer/Xcode/DerivedData");
+/** How many pixels in rows y0..y1 differ (by more than a little) between one PNG flipped left to right and another. */
+function mirroredDifference(ltr: string, rtl: string, y0: number, y1: number): number {
+  const a = decodePng(png(ltr));
+  const b = decodePng(png(rtl));
+  let n = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = 0; x < a.width; x++) {
+      const p = (y * a.width + (a.width - 1 - x)) * 4;
+      const q = (y * b.width + x) * 4;
+      if ([0, 1, 2].some((k) => Math.abs(a.rgba[p + k]! - b.rgba[q + k]!) > 40)) n++;
+    }
+  }
+  return n;
+}
+
+const XCODE_DERIVED =join(homedir(), "Library/Developer/Xcode/DerivedData");
 const derivedFolders = () => (existsSync(XCODE_DERIVED) ? readdirSync(XCODE_DERIVED) : []);
 
 describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
@@ -149,6 +213,10 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
       expect(near("#FDE68A")(background("index.mobile.png"))).toBe(false);
       expect(Buffer.compare(png("index.mobile.dark.png"), png("index+partner.mobile.dark.png"))).not.toBe(0);
       expect(r.text).not.toContain("looks exactly like the default");
+      // The App's .environment(store) and .modelContainer(for:) on its scene both reached the root: the state found the
+      // store's title and the note inserted into the context (the root would have stopped the app otherwise).
+      expect(r.text).not.toContain("couldn't be given to the root view");
+      expect(r.text).toContain(`Motif keeps this app's build in ${join(swiftUICacheDir(home, root, "SwiftUIMin"), "DerivedData")} (`);
 
       // The setup's signed-in flag shows the red square: on the left, and on the right when the screen is right to left.
       const left = { x0: 0, x1: 585, y0: 300, y1: 2400 };
@@ -157,6 +225,8 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
       expect(count("index.mobile.png", right, red)).toBe(0);
       expect(count("index.mobile.rtl.png", right, red)).toBeGreaterThan(100_000);
       expect(count("index.mobile.rtl.png", left, red)).toBe(0);
+      // Arabic glyphs, not the English mirrored: the RTL screen's titles differ from the LTR ones flipped left to right.
+      expect(mirroredDifference("index.mobile.png", "index.mobile.rtl.png", 300, 1100)).toBeGreaterThan(20_000);
 
       // The state typed, tapped and found the greeting (it would have failed otherwise): its screenshot differs.
       expect(Buffer.compare(png("index.mobile.png"), png("index@greeted.mobile.png"))).not.toBe(0);
@@ -164,7 +234,7 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
 
       // Nothing left behind but the build: no copy, no work folder, no simulator, nothing in Xcode's own DerivedData.
       const cache = swiftUICacheDir(home, root, "SwiftUIMin");
-      expect(readdirSync(cache)).toEqual(["DerivedData"]);
+      expect(readdirSync(cache).sort()).toEqual(["DerivedData", "last-used"]);
       const devices = Bun.spawnSync(["xcrun", "simctl", "list", "-j", "devices"], { stdout: "pipe" }).stdout.toString();
       expect(motifSimulators(devices).length).toBe(0);
       expect(derivedFolders().filter((d) => d.startsWith("SwiftUIMin-") && !before.includes(d))).toEqual([]);
@@ -181,6 +251,51 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
     expect(r.exitCode).toBe(0);
     expect(r.text).toContain("✓ 2 screenshots of 1 screen");
     expect(r.text).not.toContain(SWIFTUI_FIRST_RUN);
-    expect(readdirSync(swiftUICacheDir(home, root, "SwiftUIMin"))).toEqual(["DerivedData"]);
+    expect(readdirSync(swiftUICacheDir(home, root, "SwiftUIMin")).sort()).toEqual(["DerivedData", "last-used"]);
+  }, 1_800_000);
+
+  test.skipIf(!heavy.run)("a setup that throws fails its shots; a state that never finishes is stopped after 15 s (skipped without Xcode)", async () => {
+    writeFileSync(
+      join(root, "design/states/Setup.swift"),
+      `import Foundation
+
+struct NoDarkToday: Error, CustomStringConvertible {
+    var description: String { "no dark today" }
+}
+
+func motifSetup(variant: String, locale: Locale, dark: Bool) throws {
+    UserDefaults.standard.set(true, forKey: "signedIn")
+    if dark { throw NoDarkToday() }
+}
+`,
+    );
+    writeFileSync(
+      join(root, "design/states/stuck.swift"),
+      `@MainActor func motifState(_ app: MotifHarness) async throws {
+    await app.wait(60)
+    try await app.tap("Sign out")
+}
+`,
+    );
+    const started = Date.now();
+    const r = await shot({ screen: "Settings", sizes: "390", state: "design/states/stuck.swift" });
+    console.log(`[swiftui-shot-e2e] setup and stuck state: ${Math.round((Date.now() - started) / 1000)} s`);
+    console.log(r.text);
+    writeFileSync(join(root, "design/states/Setup.swift"), SETUP);
+    // Light is drawn, the stuck state's shot as it was when stopped; dark fails in the setup.
+    const [settings] = routesOf(r.data);
+    expect(settings!.status).toBe(200);
+    expect(settings!.shots.map((s) => s.split("/").pop())).toEqual(["settings.mobile.png", "settings@stuck.mobile.png"]);
+    expect(settings!.pageErrors).toEqual(["design/states/Setup.swift failed: no dark today", 'State "stuck": it was still running after 15 seconds.']);
+  }, 1_800_000);
+
+  test.skipIf(!heavy.run)("a state that doesn't compile is named, with its path and line (skipped without Xcode)", async () => {
+    const broken = join(root, "design/states/broken.swift");
+    writeFileSync(broken, `@MainActor func motifState(_ app: MotifHarness) async throws {\n    try await app.tap(42)\n}\n`);
+    const r = await shot({ screen: "Settings", sizes: "390", state: "design/states/broken.swift" });
+    console.log(r.text);
+    expect(r.exitCode).not.toBe(0);
+    expect(r.text).toContain(`${broken} doesn't compile:\n${broken}:2:`);
+    expect(r.text).toContain("Fix it, then run motif shot again.");
   }, 1_800_000);
 });

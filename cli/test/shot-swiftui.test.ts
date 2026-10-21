@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import type { DoctorDeps } from "../src/commands/doctor";
 import { runShot, type ShotDeps } from "../src/commands/shot";
@@ -10,7 +10,7 @@ import { SWIFTUI } from "../src/stacks/swiftui";
 import { swiftUIDoctor } from "../src/stacks/swiftui/doctor";
 import { hooksSource, RESULT_FILE, scriptSource, SOURCES_FOLDER, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot } from "../src/stacks/swiftui/harness";
 import {
-  appStructName, copyBase, mapSwiftUIResult, offersLanguage, planSwiftUIShots, readSwiftUIInputs, screenError, shootSwiftUI, signedCapabilities,
+  appStructName, copyBase, KEEP_BUILDS, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, pruneSwiftUIBuilds, readSwiftUIInputs, screenError, shootSwiftUI, signedCapabilities,
   SWIFTUI_FIRST_RUN, SWIFTUI_VARIANT_HOW, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
 } from "../src/stacks/swiftui/shot";
 import { discoverSwiftUIScreens } from "../src/stacks/swiftui/screens";
@@ -145,6 +145,10 @@ describe("what motif shot is given for a SwiftUI app", () => {
     expect(readSwiftUIInputs(root, root, { screens: [], states: [state("design/states/opened.swift", '// func motifState(\nlet s = "func motifState("\n')] })).toEqual({
       error: "--state: opened.swift must define @MainActor func motifState(_ app: MotifHarness) async throws, which Motif runs on each screen once it has settled. Add it, then run motif shot again.",
     });
+    // Two states whose Swift names would be one are refused, naming both.
+    expect(
+      readSwiftUIInputs(root, root, { screens: [], states: [{ ...state("design/states/signed-in.swift", STATE), name: "signed-in" }, { ...state("design/states/signed_in.swift", STATE), name: "signed_in" }] }),
+    ).toEqual({ error: "--state: signed-in.swift and signed_in.swift would be compiled under one name (motifState_signed_in). Rename one of them." });
     const ok = readSwiftUIInputs(root, root, { screens: [], states: [state("design/states/opened.swift", STATE)] });
     expect(ok).toEqual({ states: [{ name: "opened", file: join(root, "design/states/opened.swift"), text: STATE }], setup: null });
 
@@ -187,15 +191,84 @@ describe("what motif shot is given for a SwiftUI app", () => {
     expect(appStructName("// @main struct Nope: App\n@main\nstruct ShopApp: App {\n}")).toBe("ShopApp");
     expect(appStructName("@main @MainActor final class Shop: App {}")).toBe("Shop");
     expect(appStructName("struct Nope: App {}")).toBeNull();
-    const root = "/r";
-    expect(copyBase(root, "/r/apps/ios", "path = Shared;")).toBe(resolve("/r/apps/ios"));
-    // A local package beside the app, two levels up: the copy takes the folder that holds both, within the project.
-    expect(copyBase(root, "/r/apps/ios", 'relativePath = "../../Packages/Core";')).toBe(resolve("/r"));
-    expect(copyBase(root, "/r/apps/ios", 'relativePath = "../Core";')).toBe(resolve("/r/apps"));
-    expect(copyBase(root, "/r/apps/ios", "path = ../../../../x;")).toBe(resolve("/r"));
     const a = swiftUICacheDir("/home/.motif", "/r/apps/ios", "Shop App");
     expect(a).toMatch(/[\\/]home[\\/]\.motif[\\/]swiftui[\\/]ShopApp-[0-9a-f]{12}$/);
     expect(swiftUICacheDir("/home/.motif", "/r/apps/other", "Shop App")).not.toBe(a);
+  });
+
+  test("what the project refers to: groups' paths added up, packages, settings and xcconfig includes", () => {
+    // The app is /r/apps/ios; its project is there.
+    const pbx = `// !$*UTF8*$!
+{
+	objects = {
+		R0 = {isa = PBXProject; mainGroup = G0; targets = ( ); };
+		G0 = {isa = PBXGroup; children = ( G1, F3, G5 ); sourceTree = "<group>"; };
+		G1 = {isa = PBXGroup; children = ( F1, F2, G2 ); path = Sources; sourceTree = "<group>"; };
+		G2 = {isa = PBXGroup; children = ( F5 ); path = Deep; sourceTree = "<group>"; };
+		F1 = {isa = PBXFileReference; path = "../../Shared/Model.swift"; sourceTree = "<group>"; };
+		F2 = {isa = PBXFileReference; path = ../Resources/a.png; sourceTree = "<group>"; };
+		F3 = {isa = PBXFileReference; path = ..; sourceTree = "<group>"; };
+		F5 = {isa = PBXFileReference; path = ../../../Kit/Kit.swift; sourceTree = "<group>"; };
+		G5 = {isa = PBXGroup; children = ( ); path = Config; sourceTree = SOURCE_ROOT; };
+		P1 = {isa = PBXFileReference; path = Product.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		X1 = {isa = XCLocalSwiftPackageReference; relativePath = ../Packages/Core; };
+		C1 = {isa = XCBuildConfiguration; baseConfigurationReference = F4; buildSettings = { INFOPLIST_FILE = "$(SRCROOT)/../Plists/Info.plist"; CODE_SIGN_ENTITLEMENTS = ../App.entitlements; }; name = Debug; };
+		F4 = {isa = PBXFileReference; path = Config/Base.xcconfig; sourceTree = SOURCE_ROOT; };
+	};
+	rootObject = R0;
+}`;
+    const files: Record<string, string> = {
+      [resolve("/r/apps/ios/Config/Base.xcconfig")]: '#include "../../Shared/Common.xcconfig"\nTOOLS = $(SRCROOT)/../../Tools/x\n',
+      [resolve("/r/apps/Shared/Common.xcconfig")]: '#include? "Local.xcconfig"\n',
+    };
+    const refs = projectReferences(pbx, resolve("/r/apps/ios"), (p) => files[resolve(p)] ?? null);
+    expect(refs.filter((r) => !r.startsWith(resolve("/r/apps/ios")))).toEqual(
+      [
+        "/r/apps",
+        "/r/apps/App.entitlements",
+        "/r/apps/Kit/Kit.swift",
+        "/r/apps/Packages/Core",
+        "/r/apps/Plists/Info.plist",
+        "/r/apps/Shared/Common.xcconfig",
+        "/r/apps/Shared/Local.xcconfig",
+        "/r/apps/Shared/Model.swift",
+        "/r/Tools/x",
+      ].map((p) => resolve(p)).sort(),
+    );
+    // Those back inside the app don't make the copy climb; the others take it to the folder that holds them all.
+    expect(refs).toContain(resolve("/r/apps/ios/Resources/a.png"));
+    expect(copyBase("/r", "/r/apps/ios", [resolve("/r/apps/ios/Resources/a.png")])).toEqual({ base: resolve("/r/apps/ios") });
+    expect(copyBase("/r", "/r/apps/ios", [resolve("/r/apps/Shared/Model.swift")])).toEqual({ base: resolve("/r/apps") });
+    expect(copyBase("/r", "/r/apps/ios", refs)).toEqual({ base: resolve("/r") });
+    // Outside the folder motif runs in, the copy can't take it: the first such path is named.
+    expect(copyBase("/r/apps", "/r/apps/ios", refs)).toEqual({ outside: resolve("/r/Tools/x") });
+  });
+
+  test("a project that refers to files outside the folder motif runs in is refused before anything runs, with the path", () => {
+    const pbx = readFileSync(join(xcodeRoot, "SwiftUIMin.xcodeproj/project.pbxproj"), "utf8").replace(
+      /(mainGroup = \w+)/,
+      "$1;\n\t\t\tpackageReferences = ( 4D4F54494600AAAAAAAAAAAA )",
+    ).replace("/* End PBXProject section */", '/* End PBXProject section */\n\t\t4D4F54494600AAAAAAAAAAAA = {isa = XCLocalSwiftPackageReference; relativePath = "../../Kit"; };');
+    const root = xcodeProject({ "SwiftUIMin.xcodeproj/project.pbxproj": pbx });
+    const [app] = detectApps(root).apps;
+    const kit = resolve(root, "../../Kit");
+    expect(swiftUIShotRefusal(root, app!, machine())).toEqual({
+      error: "outside-project",
+      text:
+        `SwiftUIMin's project uses ${kit}, outside the folder motif runs in (${resolve(root)}), and Motif's copy of the app can't take it. ` +
+        `Run motif shot from a folder that holds both (${resolve(root, "../..")}), with --app pointing at the app.`,
+    });
+  });
+
+  test("a CocoaPods app is refused: Motif builds the Xcode project alone", () => {
+    const root = xcodeProject({ Podfile: "platform :ios, '17.0'\ntarget 'SwiftUIMin' do\n  pod 'Alamofire'\nend\n" });
+    const [app] = detectApps(root).apps;
+    expect(swiftUIShotRefusal(root, app!, machine())).toEqual({
+      error: "needs-workspace",
+      text:
+        "SwiftUIMin gets libraries from CocoaPods (its Podfile), which build only through its workspace, and Motif builds the Xcode project alone, so its screens can't be drawn yet. " +
+        "If the libraries are also Swift packages, move to those (in Xcode: File › Add Package Dependencies…), then run motif shot again.",
+    });
   });
 
   test("whether the app offers a language: its string catalogue, or a .lproj folder", () => {
@@ -458,7 +531,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
 
     // Drawn; the copy and the work folder are gone, the build is kept; the simulators it made and a killed run's are deleted.
     expect(r.routes).toEqual([{ route: "/", url: "/", status: 200, shots: fake.options!.shots.map((s) => join(root, "design/shots", s.file)) }]);
-    expect(readdirSync(cache)).toEqual([]);
+    expect(readdirSync(cache)).toEqual(["last-used"]);
     expect(fake.removed).toEqual([LEFTOVER, UDID]);
     expect(fake.hooks).toEqual([]);
     expect(progress).toEqual([SWIFTUI_FIRST_RUN]);
@@ -468,7 +541,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     mkdirSync(join(cache, "DerivedData"));
     const again = await fakeShoot(root, {}, home);
     expect((await again.promise).notes).not.toContain(SWIFTUI_FIRST_RUN);
-    expect(readdirSync(cache)).toEqual(["DerivedData"]);
+    expect(readdirSync(cache)).toEqual(["DerivedData", "last-used"]);
   });
 
   test("a build that fails says so, and the copy, the work folder and the simulator are still removed", async () => {
@@ -479,7 +552,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     });
     await expect(promise).rejects.toThrow("The app didn't build with Motif's harness:\n/x/ContentView.swift:3:5: error: cannot find 'Foo' in scope");
     const cache = swiftUICacheDir(home, root, "SwiftUIMin");
-    expect(readdirSync(cache)).toEqual([]);
+    expect(readdirSync(cache)).toEqual(["last-used"]);
     expect(fake.removed).toContain(UDID);
     expect(fake.hooks).toEqual([]);
   });
@@ -497,7 +570,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     });
     await promise.catch(() => {});
     expect(fake.removed).toContain(UDID);
-    expect(seen).toEqual([]);
+    expect(seen).toEqual(["last-used"]);
   });
 
   test("another run on the same app is refused while it draws; a lock left by a run that died is taken over", async () => {
@@ -508,10 +581,89 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     // A live process that isn't this one: the test runner's parent.
     writeFileSync(join(cache, "run.lock"), String(process.ppid));
     const busy = await fakeShoot(root, {}, home);
-    await expect(busy.promise).rejects.toThrow(`Another motif shot (process ${process.ppid}) is drawing this app's screens. Wait for it to finish, then run motif shot again.`);
+    await expect(busy.promise).rejects.toThrow(
+      `Another motif shot (process ${process.ppid}) is drawing this app's screens. Wait for it to finish, then run motif shot again. If none is running, delete ${join(cache, "run.lock")}.`,
+    );
+    // The lock is taken with an exclusive create, so two runs starting together can't both take it.
+    expect(readFileSync(join(cache, "run.lock"), "utf8")).toBe(String(process.ppid));
     writeFileSync(join(cache, "run.lock"), "99999999");
     const free = await fakeShoot(root, {}, home);
     expect((await free.promise).routes[0]!.status).toBe(200);
+  });
+
+  test("the copy leaves out build output at the app's top and version control, but keeps a source folder named build", async () => {
+    const root = xcodeProject({
+      "build/Debug/junk.o": "x",
+      "DerivedData/x": "x",
+      ".git/HEAD": "ref",
+      "SwiftUIMin/build/Builder.swift": "struct Builder {}\n",
+      "SwiftUIMin/DerivedData/Kept.swift": "struct Kept {}\n",
+    });
+    const home = tempDir("motif-swiftui-home-");
+    const seen: Record<string, boolean> = {};
+    const { promise } = await fakeShoot(root, {}, home, (options, path, f) => {
+      for (const p of ["build", "DerivedData", ".git", "SwiftUIMin/build/Builder.swift", "SwiftUIMin/DerivedData/Kept.swift", "SwiftUIMin/ContentView.swift"]) seen[p] = existsSync(join(f.copyDir, p));
+      return drawsAll(options, path);
+    });
+    await promise;
+    expect(seen).toEqual({
+      build: false,
+      DerivedData: false,
+      ".git": false,
+      "SwiftUIMin/build/Builder.swift": true,
+      "SwiftUIMin/DerivedData/Kept.swift": true,
+      "SwiftUIMin/ContentView.swift": true,
+    });
+  });
+
+  test("the kept builds are bounded: unused for 14 days, or beyond the 3 most recent, they're removed; a running one never", () => {
+    const dir = tempDir("motif-swiftui-builds-");
+    const now = Date.parse("2026-10-21T12:00:00Z");
+    const day = 86_400_000;
+    const make = (name: string, daysAgo: number, lock?: number) => {
+      mkdirSync(join(dir, name, "DerivedData"), { recursive: true });
+      const stamp = join(dir, name, "last-used");
+      writeFileSync(stamp, "");
+      utimesSync(stamp, new Date(now - daysAgo * day), new Date(now - daysAgo * day));
+      if (lock) writeFileSync(join(dir, name, "run.lock"), String(lock));
+    };
+    make("Current-1", 0);
+    make("Old-2", 20);
+    make("OldButRunning-3", 30, process.ppid);
+    make("Recent-4", 1);
+    make("Recent-5", 2);
+    make("Recent-6", 3);
+    make("DeadLock-7", 15, 99999999);
+    expect([KEEP_DAYS, KEEP_BUILDS]).toEqual([14, 3]);
+    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-1"), now);
+    // Unused for 14 days (a lock whose process is gone doesn't save it); then the current app and the running one count
+    // toward the three, so of the rest only the one used most recently is kept.
+    expect({ old: removed.old.sort(), extra: removed.extra.sort() }).toEqual({ old: ["DeadLock-7", "Old-2"], extra: ["Recent-5", "Recent-6"] });
+    expect(readdirSync(dir).sort()).toEqual(["Current-1", "OldButRunning-3", "Recent-4"]);
+    expect(pruneSwiftUIBuilds(join(dir, "none"), join(dir, "none", "x"), now)).toEqual({ old: [], extra: [] });
+  });
+
+  test("the first run says where the build is kept, how big it is, and when Motif removes it; others it removed are named", async () => {
+    const root = xcodeProject();
+    const home = tempDir("motif-swiftui-home-");
+    const old = join(home, "swiftui", "Old-abc");
+    mkdirSync(join(old, "DerivedData"), { recursive: true });
+    utimesSync(old, new Date(Date.now() - 30 * 86_400_000), new Date(Date.now() - 30 * 86_400_000));
+    const { promise } = await fakeShoot(root, {}, home, (options, path, f) => {
+      // xcodebuild fills DerivedData: 3 MB.
+      const dd = join(dirname(f.copyDir), "DerivedData");
+      mkdirSync(dd, { recursive: true });
+      writeFileSync(join(dd, "big"), Buffer.alloc(3 * 1024 * 1024));
+      return drawsAll(options, path);
+    });
+    const r = await promise;
+    const cache = swiftUICacheDir(home, root, "SwiftUIMin");
+    expect(existsSync(old)).toBe(false);
+    expect(r.notes).toContain("Removed Motif's kept build of an app not drawn in the last 14 days (Old).");
+    expect(r.notes).toContain(
+      `Motif keeps this app's build in ${join(cache, "DerivedData")} (3.0 MB), so later runs are quicker. It removes a build that goes 14 days without a run, and keeps those of the 3 apps drawn most recently.`,
+    );
+    expect(existsSync(join(cache, "last-used"))).toBe(true);
   });
 
   test("a screen that stops the app fails alone; the others are drawn in a new launch; RTL without the language says so", async () => {

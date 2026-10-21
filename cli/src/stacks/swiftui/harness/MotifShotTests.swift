@@ -92,7 +92,10 @@ final class MotifShotTests: XCTestCase {
         let settle = options.settle ?? 5
         let limit = options.stateLimit ?? 15
         let setupFile = options.setupFile ?? "design/states/Setup.swift"
-        if options.shots.contains(where: { $0.state != nil }) { MotifAccessibility.enable() }
+        if options.shots.contains(where: { $0.state != nil }) {
+            MotifAccessibility.enable()
+            if MotifAccessibility.enabled != true { result.notes.append(MotifAccessibility.problem) }
+        }
         let previews = MotifPreviews.all()
         result.previews = previews.map(\.info)
         try write(result, to: resultURL)
@@ -118,6 +121,10 @@ final class MotifShotTests: XCTestCase {
                 let view: AnyView
                 if shot.screen == "/" {
                     view = try MotifShotApp.root()
+                    for name in MotifMirror.unapplied {
+                        let note = "The App's scene modifier \(name) couldn't be given to the root view: what it gives (an environment value, a container) is missing there, and a screen that needs it may fail or draw differently. Give it inside the WindowGroup instead."
+                        if !result.notes.contains(note) { result.notes.append(note) }
+                    }
                 } else if let preview = MotifPreviews.matching(previews, shot.screen) {
                     view = try preview.make()
                 } else {
@@ -129,7 +136,10 @@ final class MotifShotTests: XCTestCase {
                     guard let state = shot.state else { return nil }
                     let app = MotifHarness(window: window, variant: shot.variantId ?? "", locale: locale, dark: shot.dark, settle: settle)
                     switch MotifAsync.run(seconds: limit, { try await MotifHooks.state(state, app) }) {
-                    case nil: return "State \"\(state)\": it was still running after \(Int(limit)) seconds."
+                    case nil:
+                        // Cancelled, and kept from acting on the screens after this one.
+                        app.abandoned = true
+                        return "State \"\(state)\": it was still running after \(Int(limit)) seconds."
                     case .failure(let error)?: return "State \"\(state)\": \(error)"
                     case .success?: return nil
                     }

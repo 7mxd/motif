@@ -4,7 +4,7 @@
 // the simulator are deleted whatever happens; the build (DerivedData) is kept in Motif's own folder for the next run.
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { maskComments, maskStrings } from "../../check/mask";
 import { onExit } from "../../cleanup";
 import type { DoctorDeps } from "../../commands/doctor";
@@ -19,7 +19,7 @@ import type { NativeShotOptions } from "../native";
 import { swiftUIDoctor } from "./doctor";
 import { THEME_FILE } from "./generate";
 import {
-  execCommand, removeSimulator, runSwiftUIHarness, type Exec, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
+  execCommand, removeSimulator, runSwiftUIHarness, stateFunction, type Exec, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
 } from "./harness";
 import { appEntryFile, field, idsIn, pbxObjects, swiftUIApp, unquote, type SwiftUIApp } from "./project";
 import { discoverSwiftUIScreens, swiftUIRunName, swiftUIScreenProblem, type SwiftUIPreview } from "./screens";
@@ -55,7 +55,7 @@ const LEFT_OUT_NAMED = 5;
 
 /**
  * Why motif shot can't draw this SwiftUI app here: not a Mac, or Xcode (or its simulator) missing, in doctor's words; a
- * Swift package app, or an app for macOS only, which the simulator doesn't draw yet.
+ * Swift package app, or an app for macOS only, which the simulator doesn't draw yet; a project Motif can't copy whole.
  */
 export function swiftUIShotRefusal(root: string, app: AppInfo, doctor: DoctorDeps): { error: string; text: string } | null {
   const [item] = swiftUIDoctor(doctor, { root, apps: [app] });
@@ -71,7 +71,7 @@ export function swiftUIShotRefusal(root: string, app: AppInfo, doctor: DoctorDep
         "If the app can run on iPhone or iPad too, add iPhone to its target's Supported Destinations in Xcode, then run motif shot again.",
     };
   }
-  return null;
+  return swift?.kind === "xcodeproj" ? swiftUICopyProblem(root, resolve(root, app.path), swift) : null;
 }
 
 /**
@@ -103,6 +103,10 @@ export function readSwiftUIInputs(root: string, appDir: string, given: { screens
     if (!/\.swift$/i.test(file)) return { error: `--state: ${file} isn't a Swift file; a SwiftUI app's states are Swift files, like design/states/${state.name}.swift.` };
     if (!declares(state.script, "motifState")) {
       return { error: `--state: ${file} must define ${STATE_SIGNATURE}, which Motif runs on each screen once it has settled. Add it, then run motif shot again.` };
+    }
+    const twin = states.find((s) => stateFunction(s.name!) === stateFunction(state.name));
+    if (twin) {
+      return { error: `--state: ${basename(twin.file)} and ${file} would be compiled under one name (${stateFunction(state.name)}). Rename one of them.` };
     }
     states.push({ name: state.name, file: state.file ?? resolve(root, file), text: state.script });
   }
@@ -406,16 +410,127 @@ export function swiftUICacheDir(home: string, appDir: string, name: string): str
   return join(home, "swiftui", `${name.replace(/[^A-Za-z0-9_-]+/g, "") || "app"}-${hash}`);
 }
 
+const readText = (path: string): string | null => {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+};
+
+/** A path a setting or an xcconfig names from the project's folder ($(SRCROOT)/…, $(PROJECT_DIR)/…, or a plain relative one). */
+const SRCROOT_PATH = /\$[({](?:SRCROOT|PROJECT_DIR)[)}]\/([^"\s;,)]+)/g;
+
 /**
- * The folder to copy: the app's, or the one above it that holds what its project names outside it (a local Swift
- * package beside the app, ../Shared), never above the project's root.
+ * Every file and folder the project names, as absolute paths: its groups and file references (each `<group>` path added
+ * to its parents', `SOURCE_ROOT` ones from the project's folder, absolute ones as they are), local Swift packages, paths
+ * in build settings ($(SRCROOT)/…, INFOPLIST_FILE, CODE_SIGN_ENTITLEMENTS) and the xcconfig files they use, with their
+ * #includes. Products and SDK files (other source trees) aren't the project's.
  */
-export function copyBase(root: string, appDir: string, pbx: string): string {
-  const ups = Math.max(0, ...[...pbx.matchAll(/\b(?:path|relativePath) = "?((?:\.\.\/)+)/g)].map((m) => m[1]!.length / 3));
-  let base = resolve(appDir);
+export function projectReferences(pbx: string, projectDir: string, read: (path: string) => string | null = readText): string[] {
+  const objs = pbxObjects(pbx);
+  const parent = new Map<string, string>();
+  for (const [id, o] of objs) for (const child of idsIn(o.own.match(/\bchildren = \(([^)]*)\)/)?.[1])) parent.set(child, id);
+  const found = new Set<string>();
+  const memo = new Map<string, string | null>();
+  const where = (id: string, depth = 0): string | null => {
+    if (memo.has(id)) return memo.get(id)!;
+    const o = objs.get(id);
+    if (!o || depth > 64) return null;
+    const path = field(o.own, "path");
+    const tree = unquote(field(o.own, "sourceTree") ?? '"<group>"');
+    let base: string | null;
+    if (tree === "<group>") {
+      const up = parent.get(id);
+      base = up ? where(up, depth + 1) : projectDir;
+    } else if (tree === "SOURCE_ROOT") base = projectDir;
+    else if (tree === "<absolute>") base = "/";
+    else base = null;
+    const at = base === null ? null : path ? resolve(base, unquote(path)) : base;
+    memo.set(id, at);
+    return at;
+  };
+  const xcconfigs: string[] = [];
+  for (const [id, o] of objs) {
+    const isa = field(o.own, "isa");
+    if (isa && /^(PBXGroup|PBXFileReference|PBXVariantGroup|XCVersionGroup|PBXFileSystemSynchronizedRootGroup)$/.test(isa)) {
+      const at = where(id);
+      if (at) found.add(at);
+    } else if (isa === "XCLocalSwiftPackageReference") {
+      const rel = field(o.own, "relativePath");
+      if (rel) found.add(resolve(projectDir, unquote(rel)));
+    } else if (isa === "XCBuildConfiguration") {
+      for (const m of o.text.matchAll(SRCROOT_PATH)) found.add(resolve(projectDir, m[1]!));
+      for (const key of ["INFOPLIST_FILE", "CODE_SIGN_ENTITLEMENTS"]) {
+        const value = field(o.text, key);
+        if (value && !unquote(value).includes("$")) found.add(resolve(projectDir, unquote(value)));
+      }
+      const config = field(o.own, "baseConfigurationReference");
+      const at = config ? where(config) : null;
+      if (at) xcconfigs.push(at);
+    }
+  }
+  // An xcconfig's #include is relative to the xcconfig.
+  const seen = new Set<string>();
+  while (xcconfigs.length > 0) {
+    const file = xcconfigs.pop()!;
+    if (seen.has(file)) continue;
+    seen.add(file);
+    found.add(file);
+    const text = read(file);
+    if (text === null) continue;
+    for (const m of text.matchAll(/^\s*#include\??\s+"([^"]+)"/gm)) {
+      if (!m[1]!.startsWith("<")) xcconfigs.push(resolve(dirname(file), m[1]!));
+    }
+    for (const m of text.matchAll(SRCROOT_PATH)) found.add(resolve(projectDir, m[1]!));
+  }
+  return [...found].sort();
+}
+
+/** True when `path` is `dir` or inside it. */
+const within = (dir: string, path: string) => {
+  const rel = relative(resolve(dir), resolve(path));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+};
+
+/**
+ * The folder to copy: the app's, or the one above it that holds everything its project names (a local Swift package
+ * beside the app, ../Shared). What lies outside the folder motif runs in can't be copied: the first such path.
+ */
+export function copyBase(root: string, appDir: string, references: string[]): { base: string } | { outside: string } {
   const top = resolve(root);
-  for (let i = 0; i < ups && base !== top && relative(top, base) !== "" && !relative(top, base).startsWith(".."); i++) base = dirname(base);
-  return base;
+  const outside = references.find((r) => !within(top, r));
+  if (outside) return { outside };
+  let base = resolve(appDir);
+  for (const r of references) while (!within(base, r) && base !== top) base = dirname(base);
+  return { base };
+}
+
+/**
+ * Why Motif can't copy the app whole, or null: a project that names files outside the folder motif runs in, or one
+ * whose libraries come from CocoaPods (they build only through the workspace, and Motif builds the project alone).
+ */
+export function swiftUICopyProblem(root: string, appDir: string, swift: SwiftUIApp): { error: string; text: string } | null {
+  if (existsSync(join(appDir, "Podfile"))) {
+    return {
+      error: "needs-workspace",
+      text:
+        `${swift.name} gets libraries from CocoaPods (its Podfile), which build only through its workspace, and Motif builds the Xcode project alone, so its screens can't be drawn yet. ` +
+        "If the libraries are also Swift packages, move to those (in Xcode: File › Add Package Dependencies…), then run motif shot again.",
+    };
+  }
+  const pbx = readText(join(appDir, swift.project, "project.pbxproj"));
+  if (pbx === null) return null;
+  const copy = copyBase(root, appDir, projectReferences(pbx, dirname(join(appDir, swift.project))));
+  if (!("outside" in copy)) return null;
+  let common = dirname(copy.outside);
+  while (!within(common, root)) common = dirname(common);
+  return {
+    error: "outside-project",
+    text:
+      `${swift.name}'s project uses ${copy.outside}, outside the folder motif runs in (${resolve(root)}), and Motif's copy of the app can't take it. ` +
+      `Run motif shot from a folder that holds both (${common}), with --app pointing at the app.`,
+  };
 }
 
 const alive = (pid: number) => {
@@ -460,6 +575,127 @@ async function removeLeftovers(exec: Exec, remove: (udid: string) => { code: num
 }
 
 /** SWIFTUI.shoot: copies the app, adds the harness, draws in a simulator, reads what it drew, and deletes all but the build. */
+/** How long a kept build may go without a run, and how many apps' builds Motif keeps (decision 0010, §16). */
+export const KEEP_DAYS = 14;
+export const KEEP_BUILDS = 3;
+/** The file whose time says when an app's folder was last used. */
+const LAST_USED = "last-used";
+
+/** When an app's folder was last used: its last-used file's time, else the folder's own. */
+function lastUsed(dir: string): number {
+  for (const path of [join(dir, LAST_USED), dir]) {
+    try {
+      return statSync(path).mtimeMs;
+    } catch {
+      // Not there: the next.
+    }
+  }
+  return 0;
+}
+
+/** True when the folder's run.lock names a process that is still running. */
+function running(dir: string): boolean {
+  const pid = Number(readText(join(dir, "run.lock"))?.trim());
+  return Boolean(pid) && alive(pid);
+}
+
+/**
+ * Removes the kept builds (`<home>/swiftui/<app>-<hash>/`) of other apps: those unused for KEEP_DAYS days, then the least
+ * recently used beyond KEEP_BUILDS (this app's counts as one). A folder a running motif shot holds is never removed.
+ */
+export function pruneSwiftUIBuilds(dir: string, current: string, now: number, days = KEEP_DAYS, max = KEEP_BUILDS): { old: string[]; extra: string[] } {
+  let names: string[];
+  try {
+    names = readdirSync(dir).filter((n) => statSync(join(dir, n)).isDirectory());
+  } catch {
+    return { old: [], extra: [] };
+  }
+  const others = names.filter((n) => resolve(dir, n) !== resolve(current)).map((n) => ({ n, used: lastUsed(join(dir, n)), live: running(join(dir, n)) }));
+  const remove = (n: string) => rmSync(join(dir, n), { recursive: true, force: true });
+  const old = others.filter((o) => !o.live && now - o.used > days * 86_400_000);
+  for (const o of old) remove(o.n);
+  const left = others.filter((o) => !old.includes(o));
+  const room = Math.max(0, max - 1 - left.filter((o) => o.live).length);
+  const extra = left.filter((o) => !o.live).sort((a, b) => b.used - a.used).slice(room);
+  for (const o of extra) remove(o.n);
+  return { old: old.map((o) => o.n), extra: extra.map((o) => o.n) };
+}
+
+/** The apps whose builds were removed, in plain words. */
+function prunedNotes(pruned: { old: string[]; extra: string[] }): string[] {
+  const app = (names: string[]) => (names.length === 1 ? "build of an app" : `builds of ${names.length} apps`);
+  const named = (names: string[]) => andList(names.map((n) => n.replace(/-[0-9a-f]+$/, "")));
+  return [
+    ...(pruned.old.length > 0 ? [`Removed Motif's kept ${app(pruned.old)} not drawn in the last ${KEEP_DAYS} days (${named(pruned.old)}).`] : []),
+    ...(pruned.extra.length > 0 ? [`Removed Motif's kept ${app(pruned.extra)} drawn less recently than the ${KEEP_BUILDS} it keeps (${named(pruned.extra)}).`] : []),
+  ];
+}
+
+/** The bytes in a folder, its subfolders' included. */
+function folderSize(dir: string): number {
+  let total = 0;
+  const visit = (d: string) => {
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) visit(p);
+      else if (e.isFile()) {
+        try {
+          total += statSync(p).size;
+        } catch {
+          // Gone.
+        }
+      }
+    }
+  };
+  visit(dir);
+  return total;
+}
+
+const sizeText = (bytes: number) => (bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`);
+
+/**
+ * Takes the app's run.lock, created exclusively so two runs starting together can't both take it. A lock whose process
+ * is gone is taken over; a running one refuses the run, naming the file for when it's wrong.
+ */
+function takeLock(lock: string): void {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      writeFileSync(lock, String(process.pid), { flag: "wx" });
+      return;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    }
+    const pid = Number(readText(lock)?.trim());
+    if (pid && pid !== process.pid && alive(pid)) {
+      throw new Error(`Another motif shot (process ${pid}) is drawing this app's screens. Wait for it to finish, then run motif shot again. If none is running, delete ${lock}.`);
+    }
+    rmSync(lock, { force: true });
+  }
+  throw new Error(`Motif couldn't take ${lock}. Delete it, then run motif shot again.`);
+}
+
+/** Build output folders, left out of the copy at the top of the app's folder (or the copied folder), not deeper. */
+const TOP_OUTPUT = new Set(["build", ".build", "DerivedData"]);
+/** Left out wherever they are: version control, Motif's own, Xcode's per-user state, JavaScript dependencies. */
+const ANYWHERE = new Set([".git", ".motif", "xcuserdata", "node_modules"]);
+
+/** What the copy takes: not build output at the top, version control or the screenshots' folder. */
+export function copyFilter(base: string, appDir: string, outDir: string): (src: string) => boolean {
+  const tops = new Set([resolve(base), resolve(appDir)]);
+  return (src) => {
+    const name = basename(src);
+    if (ANYWHERE.has(name)) return false;
+    if (TOP_OUTPUT.has(name) && tops.has(dirname(resolve(src)))) return false;
+    return resolve(src) !== resolve(outDir);
+  };
+}
+
 export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDeps = {}): Promise<{ routes: RouteResult[]; issues: []; notes: string[] }> {
   const started = Date.now();
   const root = resolve(opts.root);
@@ -507,14 +743,11 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
   const derivedData = join(cache, "DerivedData");
   const lock = join(cache, "run.lock");
   mkdirSync(cache, { recursive: true });
-  if (existsSync(lock)) {
-    const pid = Number(readFileSync(lock, "utf8").trim());
-    if (pid && pid !== process.pid && alive(pid)) {
-      throw new Error(`Another motif shot (process ${pid}) is drawing this app's screens. Wait for it to finish, then run motif shot again.`);
-    }
-  }
-  writeFileSync(lock, String(process.pid));
-  if (!existsSync(derivedData)) {
+  takeLock(lock);
+  writeFileSync(join(cache, LAST_USED), new Date().toISOString());
+  notes.push(...prunedNotes(pruneSwiftUIBuilds(dirname(cache), cache, Date.now())));
+  const firstRun = !existsSync(derivedData);
+  if (firstRun) {
     opts.progress?.(SWIFTUI_FIRST_RUN);
     notes.unshift(SWIFTUI_FIRST_RUN);
   }
@@ -528,14 +761,13 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
     // developer's own again (the harness refuses a project that already has its target).
     rmSync(copyRoot, { recursive: true, force: true });
     rmSync(workDir, { recursive: true, force: true });
+    const refused = swiftUICopyProblem(root, appDir, swift);
+    if (refused) throw new Error(refused.text);
     const pbx = readFileSync(join(appDir, swift.project, "project.pbxproj"), "utf8");
-    const base = copyBase(root, appDir, pbx);
+    const copy = copyBase(root, appDir, projectReferences(pbx, dirname(join(appDir, swift.project))));
+    const base = "base" in copy ? copy.base : appDir;
     const outDir = resolve(opts.outDir);
-    cpSync(base, copyRoot, {
-      recursive: true,
-      preserveTimestamps: true,
-      filter: (src) => !SKIP.has(basename(src)) && resolve(src) !== outDir,
-    });
+    cpSync(base, copyRoot, { recursive: true, preserveTimestamps: true, filter: copyFilter(base, appDir, outDir) });
     const copyDir = join(copyRoot, relative(base, appDir).split(sep).join("/"));
     const copied = Date.now();
     const run = deps.run ?? runSwiftUIHarness;
@@ -572,6 +804,12 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
     const mapped = mapSwiftUIResult(targets, shots, outDir, result, opts.timeoutMs);
     if (process.env.MOTIF_DEBUG) notes.push(`How long each step took, in ms: ${JSON.stringify({ copy: copied - started, ...result.timings })}`);
     const routes = opts.audit ? mapped.routes.map((r) => (r.status === 200 ? { ...r, auditError: "Motif doesn't audit SwiftUI screens yet" } : r)) : mapped.routes;
+    if (firstRun && existsSync(derivedData)) {
+      notes.push(
+        `Motif keeps this app's build in ${derivedData} (${sizeText(folderSize(derivedData))}), so later runs are quicker. ` +
+          `It removes a build that goes ${KEEP_DAYS} days without a run, and keeps those of the ${KEEP_BUILDS} apps drawn most recently.`,
+      );
+    }
     return { routes, issues: [], notes: [...notes, ...mapped.notes] };
   } finally {
     cancel();

@@ -6,6 +6,7 @@ import SwiftUI
 enum MotifShotApp {
     /// The app's root view: what the first WindowGroup in its App's body shows.
     static func root() throws -> AnyView {
+        MotifMirror.unapplied = []
         guard let view = MotifMirror.windowContent(__APP__().body) else {
             throw MotifShotError("Motif couldn't find the view inside __APP__'s WindowGroup. Draw its screens from previews (--screen) instead.")
         }
