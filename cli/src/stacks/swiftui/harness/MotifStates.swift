@@ -39,10 +39,27 @@ final class MotifHarness {
     func tap(_ label: String, timeout: Double = 5) async throws {
         let element = try await find(label, timeout: timeout)
         try live()
-        guard MotifAX.bool(element, "accessibilityPerformPress") == true else {
+        // A Form row's label names the control after it (a switch, a picker): that is what is clicked.
+        var pressed = await press(element)
+        if !pressed, let control = labelled(element) { pressed = await press(control) }
+        guard pressed else {
             throw MotifShotError("\"\(label)\" is on the screen, but clicking it did nothing: it isn't a button or a control.")
         }
         await settle()
+    }
+
+    /// Presses an element as VoiceOver does; true when that did something. AppKit's switch toggles a moment later yet
+    /// answers no, so a press that answers no counts when the element's value changed once the screen settled. An
+    /// AppKit control that neither answers nor changes is clicked as a person would.
+    private func press(_ element: NSObject) async -> Bool {
+        let value = { String(describing: MotifAX.object(element, "accessibilityValue") ?? "") }
+        let before = value()
+        if MotifAX.bool(element, "accessibilityPerformPress") == true { return true }
+        await settle()
+        if value() != before { return true }
+        guard let control = element as? NSControl, control.isEnabled else { return false }
+        control.performClick(nil)
+        return true
     }
 
     /// Types the text into the text field called `label` (its title or prompt); without one, into the field being edited,
@@ -110,14 +127,28 @@ final class MotifHarness {
         return text(MotifAX.object(element, "accessibilityPlaceholderValue"))
     }
 
-    /// Every accessibility element in the window, depth first: AppKit's views and SwiftUI's elements inside them.
-    private func elements() -> [NSObject] {
+    private func role(_ element: NSObject) -> String? {
+        MotifAX.object(element, "accessibilityRole") as? String
+    }
+
+    /// The control a Form row's label stands for: in a grouped Form, a TextField's or a Toggle's title is a text of its
+    /// own, read just before the control, which has no name. Nil for anything but such a text.
+    private func labelled(_ element: NSObject) -> NSObject? {
+        guard role(element) == NSAccessibility.Role.staticText.rawValue else { return nil }
+        let all = elements(named: false)
+        guard let at = all.firstIndex(where: { $0 === element }) else { return nil }
+        return all[(at + 1)...].prefix(2).first { role($0) != NSAccessibility.Role.staticText.rawValue && name($0) == nil }
+    }
+
+    /// Every accessibility element in the window, depth first: AppKit's views and SwiftUI's elements inside them; with
+    /// `named`, only those that have a name.
+    private func elements(named: Bool = true) -> [NSObject] {
         var out: [NSObject] = []
         var seen = Set<ObjectIdentifier>()
         func visit(_ object: NSObject, depth: Int) {
             guard depth < 64, seen.insert(ObjectIdentifier(object)).inserted else { return }
             if let view = object as? NSView, view.isHidden || view.alphaValue == 0 { return }
-            if MotifAX.bool(object, "isAccessibilityElement") == true, name(object) != nil { out.append(object) }
+            if MotifAX.bool(object, "isAccessibilityElement") == true, !named || name(object) != nil { out.append(object) }
             for case let child as NSObject in MotifAX.object(object, "accessibilityChildren") as? [Any] ?? [] {
                 visit(child, depth: depth + 1)
             }
@@ -168,9 +199,18 @@ final class MotifHarness {
             if let field = fields.first(where: { $0.currentEditor() != nil }) ?? fields.first { return field }
             throw MotifShotError("There's no text field on the screen to type into.")
         }
-        let element = try await find(label, timeout: timeout)
+        // A text field called `label` first: in a Form, a TextField's title is also its row's label.
+        let found = try await find(label, timeout: timeout)
+        let isField = { (o: NSObject) in self.role(o) == NSAccessibility.Role.textField.rawValue }
+        let all = elements()
+        let element = all.first { isField($0) && name($0) == label }
+            ?? all.first { isField($0) && name($0)?.caseInsensitiveCompare(label) == .orderedSame }
+            ?? labelled(found).flatMap { isField($0) ? $0 : nil }
+            ?? found
         if let field = element as? NSTextField, field.isEditable { return field }
-        // SwiftUI's element for a TextField may stand in front of AppKit's field: the field under its middle.
+        // SwiftUI's TextField is AppKit's field, whose cell is the element.
+        if let field = (element as? NSCell)?.controlView as? NSTextField, field.isEditable { return field }
+        // An element standing in front of AppKit's field: the field under its middle.
         let frame = MotifAX.rect(element, "accessibilityFrame")
         let middle = NSPoint(x: frame.midX, y: frame.midY)
         if let field = textFields().first(where: { field in

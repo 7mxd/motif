@@ -31,12 +31,16 @@ func motifSetup(variant: String, locale: Locale, dark: Bool) {
 }
 `;
 
-// Only the home screen has the field: on the others the state leaves the screen as it is.
+// The home screen is greeted; on the settings form, a row's label stands for its field and its switch.
 const STATE = `@MainActor func motifState(_ app: MotifHarness) async throws {
-    guard app.exists("Name") else { return }
-    try await app.type("Sam", into: "Name")
-    try await app.tap("Greet")
-    try await app.waitFor("Hello, Sam")
+    if app.exists("Greet") {
+        try await app.type("Sam", into: "Name")
+        try await app.tap("Greet")
+        try await app.waitFor("Hello, Sam")
+    } else if app.exists("Notifications") {
+        try await app.type("Sam", into: "Name")
+        try await app.tap("Notifications")
+    }
 }
 `;
 
@@ -183,6 +187,12 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
 
       // The state typed, clicked and found the greeting (it would have failed otherwise): its screenshot differs.
       expect(Buffer.compare(png("index.desktop.png"), png("index@greeted.desktop.png"))).not.toBe(0);
+      expect(Buffer.compare(png("settings.desktop.png"), png("settings@greeted.desktop.png"))).not.toBe(0);
+      // On the settings form the state switched Notifications off: the switch, in the guide's indigo when on, is grey.
+      const toggle = { x0: 2020, x1: 2140, y0: 110, y1: 170 };
+      const indigo = ([r, g, b]: number[]) => b! > 150 && r! < 120 && g! < 100;
+      expect(count("settings.desktop.png", toggle, indigo)).toBeGreaterThan(1_000);
+      expect(count("settings@greeted.desktop.png", toggle, indigo)).toBe(0);
       expect(existsSync(join(root, "design/shots/settings@greeted+partner.desktop-900.rtl.dark.png"))).toBe(true);
 
       // Nothing left behind but the build: no copy, no work folder, no simulator, no app still running, nothing in
