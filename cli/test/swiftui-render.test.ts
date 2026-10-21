@@ -182,6 +182,10 @@ describe("the SwiftUI screenshot harness (decision 0010)", () => {
       expect(rootShot.error).toBeUndefined();
       expect(rootShot.view).toContain("ContentView");
       expect(rootShot.view).not.toMatch(/^Text/);
+      // The App's .modelContainer, on its scene outside the WindowGroup, is given to the root view too (Task 8): its
+      // @Query has a context, and SwiftData no longer warns.
+      expect(rootShot.view).toMatch(/^ModifiedContent<ModifiedContent<ContentView, .*>, \w*ModelContainer\w*>$/);
+      expect(run.output).not.toContain("Set a .modelContext in view's environment to use Query");
       expect(byFile.get("previewable.png")?.error).toBeUndefined();
       // The broken preview stops the app: its two shots fail with SwiftUI's reason, and the others are still drawn.
       for (const file of ["broken.png", "broken.dark.png"]) {

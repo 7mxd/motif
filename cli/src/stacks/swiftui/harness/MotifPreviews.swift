@@ -190,8 +190,22 @@ enum MotifMirror {
 
     /// The type of the view inside an AnyView (ContentView, ModifiedContent<…>), for result.json.
     static func typeName(_ view: AnyView) -> String {
-        let inner = child(view, "view")
-        return String(String(describing: inner.map { type(of: $0) } ?? type(of: view)).prefix(300))
+        String(describe(view).prefix(300))
+    }
+
+    /// A view's type, looking through AnyView (the scene's modifiers are applied to the root inside one).
+    private static func describe(_ value: Any, depth: Int = 0) -> String {
+        let name = String(describing: type(of: value))
+        guard depth < 8 else { return name }
+        if name == "AnyView", let inner = child(value, "view") { return describe(inner, depth: depth + 1) }
+        if name.hasPrefix("ModifiedContent<AnyView, ") {
+            let children = Mirror(reflecting: value).children
+            if let content = children.first(where: { $0.label == "content" })?.value,
+               let modifier = children.first(where: { $0.label == "modifier" })?.value {
+                return "ModifiedContent<\(describe(content, depth: depth + 1)), \(type(of: modifier))>"
+            }
+        }
+        return name
     }
 
     /// The first View inside the value, depth first; with `calling`, closures that take nothing are called and their
