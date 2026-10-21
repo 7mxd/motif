@@ -1231,6 +1231,19 @@ describe("a macOS run is isolated from the developer's own app (Task 9, fix roun
     expect(spawned.filter((c) => c[0] === "defaults")).toEqual([]);
     expect(MAC_HOST_SUFFIX).toBe(".motif-shots");
   });
+
+  test("stopMacHost: a host running from the build's real path (/private/var/… for /var/…) is stopped too (fix round 2)", () => {
+    const derived = join(tempDir("motif-swiftui-dd-"), "DerivedData-macos");
+    const real = `${derived}-real`;
+    const killed: number[] = [];
+    const io = {
+      spawn: (cmd: string[]) => ({ exitCode: 0, stdout: cmd[0] === "ps" ? `  9 ${join(real, "Build", "Products", "Debug", "A.app", "Contents", "MacOS", "A")}` : "" }),
+      kill: (pid: number) => void killed.push(pid),
+      realpath: (p: string) => (p === derived ? real : p),
+    };
+    expect(stopMacHost(derived, undefined, io)).toEqual({ killed: 1 });
+    expect(killed).toEqual([9]);
+  });
 });
 
 describe("macOS runs, fix round 1 (Task 9): sizes, notes and the refusal", () => {

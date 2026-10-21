@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { detectApps } from "../src/detect/stacks";
@@ -319,7 +319,9 @@ struct HangScreen: View {
 /** The test host Motif built for the shared copy, still running: its path is inside Motif's own folder. */
 const ownHosts = () => {
   // The app's own executable in Motif's build (xcodebuild, whose arguments name the build folder, doesn't match).
-  const executable = join(swiftUICacheDir(home, root, "SwiftUIMac"), "DerivedData-macos", "Build", "Products", "Debug", "SwiftUIMac.app", "Contents", "MacOS", "SwiftUIMac");
+  // It runs from the folder's real path (a temporary folder's /var/folders/… is /private/var/folders/…).
+  const cache = swiftUICacheDir(home, root, "SwiftUIMac");
+  const executable = join(existsSync(cache) ? realpathSync(cache) : cache, "DerivedData-macos", "Build", "Products", "Debug", "SwiftUIMac.app", "Contents", "MacOS", "SwiftUIMac");
   return Bun.spawnSync(["pgrep", "-f", `^${executable}`], { stdout: "pipe" }).stdout.toString().trim();
 };
 /** The screen the harness is drawing now, from its result file in the run's work folder. */

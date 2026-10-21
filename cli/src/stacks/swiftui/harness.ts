@@ -2,7 +2,7 @@
 // of the app's Xcode project, creates an iOS simulator, runs xcodebuild test on it, and deletes the simulator whatever
 // happens; a macOS app is built and drawn on the Mac itself, with no simulator. motif shot (Tasks 7–9) builds on it;
 // it never touches the developer's own project folder.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { maskComments, maskStrings } from "../../check/mask";
@@ -590,6 +590,8 @@ export interface MacHostIO {
   spawn?: (cmd: string[]) => { exitCode: number | null; stdout: string };
   kill?: (pid: number) => void;
   home?: string;
+  /** A folder's path with its symbolic links resolved (the host runs from it: /private/var/…, not /var/…). */
+  realpath?: (path: string) => string;
 }
 
 const hostSpawn = (cmd: string[]) => {
@@ -618,7 +620,16 @@ const hostKill = (pid: number) => {
 export function stopMacHost(derivedData: string, hostId: string | undefined, io: MacHostIO = {}): { killed: number } {
   const spawn = io.spawn ?? hostSpawn;
   const kill = io.kill ?? hostKill;
-  const prefix = `${resolve(derivedData)}${sep}`;
+  // The host's command line names the build's real path: a temporary folder's /var/folders/… runs as
+  // /private/var/folders/…. Both are Motif's own.
+  const real = (() => {
+    try {
+      return (io.realpath ?? ((p: string) => realpathSync.native(p)))(derivedData);
+    } catch {
+      return resolve(derivedData);
+    }
+  })();
+  const prefixes = [...new Set([resolve(derivedData), real])].map((p) => `${p}${sep}`);
   let killed = 0;
   const listed = spawn(["ps", "-axww", "-o", "pid=,command="]);
   for (const line of listed.stdout.split("\n")) {
@@ -626,7 +637,7 @@ export function stopMacHost(derivedData: string, hostId: string | undefined, io:
     if (!m) continue;
     const pid = Number(m[1]);
     const command = m[2]!;
-    if (pid === process.pid || !command.startsWith(prefix) || !/\.app[\\/]Contents[\\/]MacOS[\\/]/.test(command)) continue;
+    if (pid === process.pid || !prefixes.some((p) => command.startsWith(p)) || !/\.app[\\/]Contents[\\/]MacOS[\\/]/.test(command)) continue;
     kill(pid);
     killed++;
   }
