@@ -3,7 +3,7 @@
 // to left, after an optional setup (design/states/Setup.swift) and with --state scripts. The copy, the work folder and
 // the simulator are deleted whatever happens; the build (DerivedData) is kept in Motif's own folder for the next run.
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { maskComments, maskStrings } from "../../check/mask";
 import { onExit } from "../../cleanup";
@@ -364,6 +364,7 @@ export function mapSwiftUIResult(
   const results = new Map((run.result?.shots ?? []).map((s) => [s.file, s]));
   const why = run.timedOut ? `The run reached its time limit (${Math.round(timeoutMs / 1000)} s) before drawing it.` : (run.problem ?? "xcodebuild stopped before drawing it.");
   const errorsSeen = new Set<string>();
+  const more: string[] = [];
   const routes = targets.map((t): RouteResult => {
     const base = { route: t.key, url: t.key };
     if (t.error) return { ...base, status: 0, error: t.error, shots: [] };
@@ -387,17 +388,26 @@ export function mapSwiftUIResult(
       if (r.stateError && !soft.includes(r.stateError)) soft.push(r.stateError);
       if (existsSync(join(outDir, s.file))) drawn.push(join(outDir, s.file));
     }
-    if (missing && drawn.length === 0 && errors.length === 0) errors.push(why);
+    if (missing && errors.length === 0) errors.push(why);
+    // The screen's line shows its first error, as on the other stacks; the others (a state that ran out of time, say)
+    // are in the notes rather than lost.
+    const also = (rest: string[]) => {
+      if (rest.length > 0) more.push(`${t.key} also had: ${rest.join(" ")}`);
+    };
     if (drawn.length > 0) {
       const pageErrors = [...errors, ...soft];
-      return { ...base, status: 200, shots: drawn, ...(pageErrors.length > 0 ? { pageErrors } : {}) };
+      also(pageErrors.slice(1));
+      // Shots that weren't drawn (a setup that failed): the line says how many, not that the screenshots show it.
+      const undrawn = mine.length - drawn.length;
+      return { ...base, status: 200, shots: drawn, ...(undrawn > 0 && errors.length > 0 ? { missing: undrawn } : {}), ...(pageErrors.length > 0 ? { pageErrors } : {}) };
     }
     const [first, ...rest] = errors.length > 0 ? errors : [why];
     const pageErrors = [...rest, ...soft];
+    also(pageErrors);
     return { ...base, status: 0, error: first!, shots: [], ...(pageErrors.length > 0 ? { pageErrors } : {}) };
   });
   // A screen that stopped the app is in its own error already.
-  const notes = (run.result?.notes ?? []).filter((n) => !errorsSeen.has(n));
+  const notes = [...(run.result?.notes ?? []).filter((n) => !errorsSeen.has(n)), ...more];
   if (run.problem && run.result) notes.push(run.problem);
   return { routes, notes: [...notes, ...run.notes] };
 }
@@ -422,12 +432,19 @@ const readText = (path: string): string | null => {
 const SRCROOT_PATH = /\$[({](?:SRCROOT|PROJECT_DIR)[)}]\/([^"\s;,)]+)/g;
 
 /**
- * Every file and folder the project names, as absolute paths: its groups and file references (each `<group>` path added
- * to its parents', `SOURCE_ROOT` ones from the project's folder, absolute ones as they are), local Swift packages, paths
- * in build settings ($(SRCROOT)/…, INFOPLIST_FILE, CODE_SIGN_ENTITLEMENTS) and the xcconfig files they use, with their
- * #includes. Products and SDK files (other source trees) aren't the project's.
+ * Every file and folder the project names, as absolute paths: its file references and synchronized folders (each
+ * `<group>` path added to its groups', `SOURCE_ROOT` ones from the project's folder), local Swift packages, paths in
+ * build settings ($(SRCROOT)/…, $(PROJECT_DIR)/…, and any plain one that climbs out, ../x.h) and the xcconfig files they
+ * use (by reference, or Xcode 16's anchor in a synchronized folder), with their #includes and paths. A plain group counts
+ * only through what's in it (an empty group's stale path names nothing); absolute paths work the same from the copy, and
+ * products and SDK files (other source trees) aren't the project's; paths to nothing that exists are left out.
  */
-export function projectReferences(pbx: string, projectDir: string, read: (path: string) => string | null = readText): string[] {
+export function projectReferences(
+  pbx: string,
+  projectDir: string,
+  read: (path: string) => string | null = readText,
+  exists: (path: string) => boolean = existsSync,
+): string[] {
   const objs = pbxObjects(pbx);
   const parent = new Map<string, string>();
   for (const [id, o] of objs) for (const child of idsIn(o.own.match(/\bchildren = \(([^)]*)\)/)?.[1])) parent.set(child, id);
@@ -444,23 +461,27 @@ export function projectReferences(pbx: string, projectDir: string, read: (path: 
       const up = parent.get(id);
       base = up ? where(up, depth + 1) : projectDir;
     } else if (tree === "SOURCE_ROOT") base = projectDir;
-    else if (tree === "<absolute>") base = "/";
     else base = null;
     const at = base === null ? null : path ? resolve(base, unquote(path)) : base;
     memo.set(id, at);
     return at;
   };
+  // A path a setting's value climbs out of the project's folder by, from the project's folder as Xcode reads it.
+  const upward = (text: string) => {
+    for (const m of text.matchAll(SRCROOT_PATH)) found.add(resolve(projectDir, m[1]!));
+    for (const m of text.matchAll(/=\s*"?(\.\.\/[^"\s;]*)/g)) found.add(resolve(projectDir, m[1]!));
+  };
   const xcconfigs: string[] = [];
   for (const [id, o] of objs) {
     const isa = field(o.own, "isa");
-    if (isa && /^(PBXGroup|PBXFileReference|PBXVariantGroup|XCVersionGroup|PBXFileSystemSynchronizedRootGroup)$/.test(isa)) {
+    if (isa && /^(PBXFileReference|XCVersionGroup|PBXFileSystemSynchronizedRootGroup)$/.test(isa)) {
       const at = where(id);
       if (at) found.add(at);
     } else if (isa === "XCLocalSwiftPackageReference") {
       const rel = field(o.own, "relativePath");
       if (rel) found.add(resolve(projectDir, unquote(rel)));
     } else if (isa === "XCBuildConfiguration") {
-      for (const m of o.text.matchAll(SRCROOT_PATH)) found.add(resolve(projectDir, m[1]!));
+      upward(o.text);
       for (const key of ["INFOPLIST_FILE", "CODE_SIGN_ENTITLEMENTS"]) {
         const value = field(o.text, key);
         if (value && !unquote(value).includes("$")) found.add(resolve(projectDir, unquote(value)));
@@ -468,9 +489,14 @@ export function projectReferences(pbx: string, projectDir: string, read: (path: 
       const config = field(o.own, "baseConfigurationReference");
       const at = config ? where(config) : null;
       if (at) xcconfigs.push(at);
+      // Xcode 16: an xcconfig inside a synchronized folder, named by the folder and a path in it.
+      const anchor = field(o.own, "baseConfigurationReferenceAnchor");
+      const rel = field(o.own, "baseConfigurationReferenceRelativePath");
+      const folder = anchor ? where(unquote(anchor)) : null;
+      if (folder && rel) xcconfigs.push(resolve(folder, unquote(rel)));
     }
   }
-  // An xcconfig's #include is relative to the xcconfig.
+  // An xcconfig's #include is relative to the xcconfig; its settings' paths are the project's.
   const seen = new Set<string>();
   while (xcconfigs.length > 0) {
     const file = xcconfigs.pop()!;
@@ -482,9 +508,10 @@ export function projectReferences(pbx: string, projectDir: string, read: (path: 
     for (const m of text.matchAll(/^\s*#include\??\s+"([^"]+)"/gm)) {
       if (!m[1]!.startsWith("<")) xcconfigs.push(resolve(dirname(file), m[1]!));
     }
-    for (const m of text.matchAll(SRCROOT_PATH)) found.add(resolve(projectDir, m[1]!));
+    upward(text.replace(/^\s*#include.*$/gm, ""));
   }
-  return [...found].sort();
+  return [...found].filter((p) => exists(p)).sort();
+
 }
 
 /** True when `path` is `dir` or inside it. */
@@ -599,35 +626,67 @@ function running(dir: string): boolean {
   return Boolean(pid) && alive(pid);
 }
 
+/** What pruning removed, and what it couldn't (with why). */
+export interface Pruned {
+  old: string[];
+  extra: string[];
+  failed: { name: string; path: string; error: string }[];
+}
+
 /**
  * Removes the kept builds (`<home>/swiftui/<app>-<hash>/`) of other apps: those unused for KEEP_DAYS days, then the least
- * recently used beyond KEEP_BUILDS (this app's counts as one). A folder a running motif shot holds is never removed.
+ * recently used beyond KEEP_BUILDS (this app's counts as one). A folder a running motif shot holds is never removed:
+ * each folder's run.lock is taken (as a run takes it) right before the folder goes, and one a run holds is left. A
+ * removal that fails is reported, never the run's failure. `io` stands in for removal and the moment before the lock is
+ * taken, for tests.
  */
-export function pruneSwiftUIBuilds(dir: string, current: string, now: number, days = KEEP_DAYS, max = KEEP_BUILDS): { old: string[]; extra: string[] } {
+export function pruneSwiftUIBuilds(
+  dir: string,
+  current: string,
+  now: number,
+  days = KEEP_DAYS,
+  max = KEEP_BUILDS,
+  io: { remove?: (folder: string) => void; beforeClaim?: (folder: string) => void } = {},
+): Pruned {
+  const out: Pruned = { old: [], extra: [], failed: [] };
   let names: string[];
   try {
     names = readdirSync(dir).filter((n) => statSync(join(dir, n)).isDirectory());
   } catch {
-    return { old: [], extra: [] };
+    return out;
   }
   const others = names.filter((n) => resolve(dir, n) !== resolve(current)).map((n) => ({ n, used: lastUsed(join(dir, n)), live: running(join(dir, n)) }));
-  const remove = (n: string) => rmSync(join(dir, n), { recursive: true, force: true });
+  const remove = (n: string): boolean => {
+    const folder = join(dir, n);
+    io.beforeClaim?.(folder);
+    if ("busy" in claimLock(join(folder, "run.lock"))) return false;
+    try {
+      (io.remove ?? ((f: string) => rmSync(f, { recursive: true, force: true })))(folder);
+      return true;
+    } catch (e) {
+      out.failed.push({ name: n, path: folder, error: e instanceof Error ? e.message : String(e) });
+      rmSync(join(folder, "run.lock"), { force: true });
+      return false;
+    }
+  };
   const old = others.filter((o) => !o.live && now - o.used > days * 86_400_000);
-  for (const o of old) remove(o.n);
+  for (const o of old) if (remove(o.n)) out.old.push(o.n);
   const left = others.filter((o) => !old.includes(o));
   const room = Math.max(0, max - 1 - left.filter((o) => o.live).length);
   const extra = left.filter((o) => !o.live).sort((a, b) => b.used - a.used).slice(room);
-  for (const o of extra) remove(o.n);
-  return { old: old.map((o) => o.n), extra: extra.map((o) => o.n) };
+  for (const o of extra) if (remove(o.n)) out.extra.push(o.n);
+  return out;
 }
 
-/** The apps whose builds were removed, in plain words. */
-function prunedNotes(pruned: { old: string[]; extra: string[] }): string[] {
+/** The apps whose builds were removed, or couldn't be, in plain words. */
+export function prunedNotes(pruned: Pruned): string[] {
   const app = (names: string[]) => (names.length === 1 ? "build of an app" : `builds of ${names.length} apps`);
-  const named = (names: string[]) => andList(names.map((n) => n.replace(/-[0-9a-f]+$/, "")));
+  const short = (n: string) => n.replace(/-[0-9a-f]+$/, "");
+  const named = (names: string[]) => andList(names.map(short));
   return [
     ...(pruned.old.length > 0 ? [`Removed Motif's kept ${app(pruned.old)} not drawn in the last ${KEEP_DAYS} days (${named(pruned.old)}).`] : []),
     ...(pruned.extra.length > 0 ? [`Removed Motif's kept ${app(pruned.extra)} drawn less recently than the ${KEEP_BUILDS} it keeps (${named(pruned.extra)}).`] : []),
+    ...pruned.failed.map((f) => `Motif couldn't remove its kept build of ${short(f.name)} (${f.path}): ${f.error}. Delete the folder to free its space.`),
   ];
 }
 
@@ -660,24 +719,52 @@ function folderSize(dir: string): number {
 const sizeText = (bytes: number) => (bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`);
 
 /**
- * Takes the app's run.lock, created exclusively so two runs starting together can't both take it. A lock whose process
- * is gone is taken over; a running one refuses the run, naming the file for when it's wrong.
+ * Takes a run.lock: created exclusively (`wx`), so two runs starting together can't both take it. A lock whose process
+ * is gone is taken over by moving it aside, which only one run can do; what was moved is read again, and if it names a
+ * running process (a run took it over in between) it is put back, and that run keeps it. A lock just created and not
+ * written yet (empty, under 5 s old) is busy. `hooks` stands in for the moment before the takeover, for tests.
  */
-function takeLock(lock: string): void {
+export function claimLock(lock: string, hooks: { beforeTakeover?: () => void } = {}): { taken: true } | { busy: number } {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       writeFileSync(lock, String(process.pid), { flag: "wx" });
-      return;
+      return { taken: true };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
-    const pid = Number(readText(lock)?.trim());
-    if (pid && pid !== process.pid && alive(pid)) {
-      throw new Error(`Another motif shot (process ${pid}) is drawing this app's screens. Wait for it to finish, then run motif shot again. If none is running, delete ${lock}.`);
+    const text = readText(lock)?.trim() ?? "";
+    const pid = Number(text);
+    if (pid && pid !== process.pid && alive(pid)) return { busy: pid };
+    if (!text && Date.now() - lastUsed(lock) < 5_000) return { busy: 0 };
+    hooks.beforeTakeover?.();
+    const aside = `${lock}.${process.pid}-${attempt}.stale`;
+    try {
+      renameSync(lock, aside);
+    } catch {
+      continue;
     }
-    rmSync(lock, { force: true });
+    const moved = Number(readText(aside)?.trim());
+    rmSync(aside, { force: true });
+    if (moved && moved !== pid && moved !== process.pid && alive(moved)) {
+      try {
+        writeFileSync(lock, String(moved), { flag: "wx" });
+      } catch {
+        // Taken again meanwhile: whoever has it keeps it.
+      }
+      return { busy: moved };
+    }
   }
-  throw new Error(`Motif couldn't take ${lock}. Delete it, then run motif shot again.`);
+  return { busy: 0 };
+}
+
+/** Takes the app's run.lock for this run, or refuses it, naming the process and the file for when it's wrong. */
+export function takeLock(lock: string, hooks: { beforeTakeover?: () => void } = {}): void {
+  const claim = claimLock(lock, hooks);
+  if (!("busy" in claim)) return;
+  if (claim.busy) {
+    throw new Error(`Another motif shot (process ${claim.busy}) is drawing this app's screens. Wait for it to finish, then run motif shot again. If none is running, delete ${lock}.`);
+  }
+  throw new Error(`Motif couldn't take ${lock}. If no motif shot is running, delete it, then run motif shot again.`);
 }
 
 /** Build output folders, left out of the copy at the top of the app's folder (or the copied folder), not deeper. */

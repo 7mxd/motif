@@ -159,22 +159,24 @@ function background(file: string): number[] {
   return [rgba[at]!, rgba[at + 1]!, rgba[at + 2]!];
 }
 
-/** How many pixels in rows y0..y1 differ (by more than a little) between one PNG flipped left to right and another. */
-function mirroredDifference(ltr: string, rtl: string, y0: number, y1: number): number {
-  const a = decodePng(png(ltr));
-  const b = decodePng(png(rtl));
+/** How many pixels in rows y0..y1 differ (by more than a little) between two PNGs of one size. */
+function difference(one: Buffer, other: Buffer, y0: number, y1: number): number {
+  const a = decodePng(one);
+  const b = decodePng(other);
   let n = 0;
   for (let y = y0; y < y1; y++) {
     for (let x = 0; x < a.width; x++) {
-      const p = (y * a.width + (a.width - 1 - x)) * 4;
-      const q = (y * b.width + x) * 4;
-      if ([0, 1, 2].some((k) => Math.abs(a.rgba[p + k]! - b.rgba[q + k]!) > 40)) n++;
+      const at = (y * a.width + x) * 4;
+      if ([0, 1, 2].some((k) => Math.abs(a.rgba[at + k]! - b.rgba[at + k]!) > 40)) n++;
     }
   }
   return n;
 }
 
-const XCODE_DERIVED =join(homedir(), "Library/Developer/Xcode/DerivedData");
+/** The root right to left in Arabic, from the first run, which the second (in Hebrew) draws over. */
+let arabicRoot: Buffer | null = null;
+
+const XCODE_DERIVED = join(homedir(), "Library/Developer/Xcode/DerivedData");
 const derivedFolders = () => (existsSync(XCODE_DERIVED) ? readdirSync(XCODE_DERIVED) : []);
 
 describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
@@ -215,7 +217,10 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
       // found its title (the root would have stopped the app otherwise). The .modelContainer(for:) on the scene, which
       // SwiftData keeps as a provider, isn't given to the root, and the run says so; nothing else is left out.
       const unapplied = r.text.split("\n").filter((l) => l.includes("couldn't be given to the root view"));
-      for (const line of unapplied) expect(line).toMatch(/scene modifier \w*ModelContainer\w* couldn't/);
+      expect(unapplied).toHaveLength(1);
+      expect(unapplied[0]).toMatch(/scene modifier \w*ModelContainer\w* couldn't/);
+      // This runtime turns accessibility automation on: no state was told otherwise.
+      expect(r.text).not.toContain("couldn't turn on accessibility automation");
       expect(r.text).toContain(`Motif keeps this app's build in ${join(swiftUICacheDir(home, root, "SwiftUIMin"), "DerivedData")} (`);
 
       // The setup's signed-in flag shows the red square: on the left, and on the right when the screen is right to left.
@@ -225,8 +230,7 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
       expect(count("index.mobile.png", right, red)).toBe(0);
       expect(count("index.mobile.rtl.png", right, red)).toBeGreaterThan(100_000);
       expect(count("index.mobile.rtl.png", left, red)).toBe(0);
-      // Arabic glyphs, not the English mirrored: the RTL screen's titles differ from the LTR ones flipped left to right.
-      expect(mirroredDifference("index.mobile.png", "index.mobile.rtl.png", 300, 1100)).toBeGreaterThan(20_000);
+      arabicRoot = png("index.mobile.rtl.png");
 
       // The state typed, tapped and found the greeting (it would have failed otherwise): its screenshot differs.
       expect(Buffer.compare(png("index.mobile.png"), png("index@greeted.mobile.png"))).not.toBe(0);
@@ -243,14 +247,19 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
     1_800_000,
   );
 
-  test.skipIf(!heavy.run)("a second run reuses the build and says nothing about a first run (skipped without Xcode)", async () => {
+  test.skipIf(!heavy.run)("a second run reuses the build; right to left in a language the app lacks, its titles stay English (skipped without Xcode)", async () => {
     const started = Date.now();
-    const r = await shot({ screen: "Settings", sizes: "390" });
+    const r = await shot({ routes: "/", sizes: "390", rtl: "he" });
     console.log(`[swiftui-shot-e2e] second run: ${Math.round((Date.now() - started) / 1000)} s`);
     console.log(r.text);
     expect(r.exitCode).toBe(0);
-    expect(r.text).toContain("✓ 2 screenshots of 1 screen");
+    expect(r.text).toContain("✓ 4 screenshots of 1 screen");
     expect(r.text).not.toContain(SWIFTUI_FIRST_RUN);
+    expect(r.text).toContain("This app doesn't offer he (its string catalogues and .lproj folders have no he strings)");
+    // Arabic glyphs: the title rows (the large title and "Welcome") right to left in Arabic differ from the same rows
+    // right to left in Hebrew, which the app lacks, so they stay English. Without the Arabic strings they'd be the same.
+    expect(arabicRoot).not.toBeNull();
+    expect(difference(arabicRoot!, png("index.mobile.rtl.png"), 350, 700)).toBeGreaterThan(5_000);
     expect(readdirSync(swiftUICacheDir(home, root, "SwiftUIMin")).sort()).toEqual(["DerivedData", "last-used"]);
   }, 1_800_000);
 
@@ -287,6 +296,9 @@ func motifSetup(variant: String, locale: Locale, dark: Bool) throws {
     expect(settings!.status).toBe(200);
     expect(settings!.shots.map((s) => s.split("/").pop())).toEqual(["settings.mobile.png", "settings@stuck.mobile.png"]);
     expect(settings!.pageErrors).toEqual(["design/states/Setup.swift failed: no dark today", 'State "stuck": it was still running after 15 seconds.']);
+    // The line says the dark shots weren't drawn; the stuck state, the screen's second error, is in the notes.
+    expect(r.text).toContain("Settings  ✗ 2 of its 4 screenshots weren't drawn: design/states/Setup.swift failed: no dark today");
+    expect(r.text).toContain('Settings also had: State "stuck": it was still running after 15 seconds.');
   }, 1_800_000);
 
   test.skipIf(!heavy.run)("a state that doesn't compile is named, with its path and line (skipped without Xcode)", async () => {

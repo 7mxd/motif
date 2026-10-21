@@ -138,8 +138,12 @@ final class MotifHarness {
             if Date() >= deadline { break }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
-        // Nothing at all on the screen, or accessibility never turned on: the state can't see the screen, whatever it asks for.
-        if MotifAccessibility.enabled != true || elements().isEmpty { throw MotifShotError(MotifAccessibility.problem) }
+        // Accessibility never turned on: the state can't see the screen, whatever it asks for.
+        if MotifAccessibility.enabled != true { throw MotifShotError(MotifAccessibility.problem) }
+        // On, but the screen has nothing to read yet: blank, or still loading.
+        if elements().isEmpty {
+            throw MotifShotError("There's nothing called \"\(label)\" on the screen: it has nothing VoiceOver can read yet, so it may be blank or still loading. Wait for something on it first (app.waitFor(\"…\")), or check the screen.")
+        }
         let shown = labels.prefix(12).map { "\"\($0)\"" }.joined(separator: ", ")
         throw MotifShotError("There's nothing called \"\(label)\" on the screen\(shown.isEmpty ? "" : " (it shows \(shown))").")
     }

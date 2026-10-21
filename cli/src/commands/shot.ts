@@ -138,7 +138,9 @@ function routeLine(r: RouteResult, width: number): string {
     ? `${r.shots.length} screenshots${r.landedOn ? ` (went to ${r.landedOn})` : r.finalUrl ? ` (went to ${new URL(r.finalUrl).pathname})` : ""}${r.cropped ? ` (cropped at ${MAX_HEIGHT} px)` : ""}`
     : r.loading && !r.error && !r.pageErrors?.length
       ? `✗ ${r.loading}`
-      : `✗ ${r.error ?? (r.pageErrors?.length ? `the page threw an error: ${r.pageErrors[0]}` : `HTTP ${r.status}`)}${r.shots.length > 0 ? " (the screenshots show what it looked like)" : ""}`;
+      : r.missing && r.pageErrors?.length
+        ? `✗ ${r.missing} of its ${r.missing + r.shots.length} screenshots weren't drawn: ${r.pageErrors[0]}`
+        : `✗ ${r.error ??(r.pageErrors?.length ? `the page threw an error: ${r.pageErrors[0]}` : `HTTP ${r.status}`)}${r.shots.length > 0 ? " (the screenshots show what it looked like)" : ""}`;
   return `  ${r.route.padEnd(width)}  ${what}`;
 }
 

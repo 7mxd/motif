@@ -132,6 +132,8 @@ export interface RouteResult {
   shots: string[];
   /** Set when the audit of this page couldn't finish. */
   auditError?: string;
+  /** How many of the page's screenshots weren't drawn while others were (a native stack's setup failed for them). */
+  missing?: number;
   /** Set when the page didn't turn right to left by itself in the --rtl language, so Motif set dir="rtl" on <html>. */
   rtlForced?: boolean;
   /** A native app's screen that redirected (to a sign-in screen, say): the route it was drawn at. */

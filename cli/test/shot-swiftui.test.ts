@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import type { DoctorDeps } from "../src/commands/doctor";
 import { runShot, type ShotDeps } from "../src/commands/shot";
@@ -10,7 +10,7 @@ import { SWIFTUI } from "../src/stacks/swiftui";
 import { swiftUIDoctor } from "../src/stacks/swiftui/doctor";
 import { hooksSource, RESULT_FILE, scriptSource, SOURCES_FOLDER, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot } from "../src/stacks/swiftui/harness";
 import {
-  appStructName, copyBase, KEEP_BUILDS, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, pruneSwiftUIBuilds, readSwiftUIInputs, screenError, shootSwiftUI, signedCapabilities,
+  appStructName, copyBase, KEEP_BUILDS, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, prunedNotes, pruneSwiftUIBuilds, readSwiftUIInputs, takeLock, screenError, shootSwiftUI, signedCapabilities,
   SWIFTUI_FIRST_RUN, SWIFTUI_VARIANT_HOW, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
 } from "../src/stacks/swiftui/shot";
 import { discoverSwiftUIScreens } from "../src/stacks/swiftui/screens";
@@ -221,7 +221,7 @@ describe("what motif shot is given for a SwiftUI app", () => {
       [resolve("/r/apps/ios/Config/Base.xcconfig")]: '#include "../../Shared/Common.xcconfig"\nTOOLS = $(SRCROOT)/../../Tools/x\n',
       [resolve("/r/apps/Shared/Common.xcconfig")]: '#include? "Local.xcconfig"\n',
     };
-    const refs = projectReferences(pbx, resolve("/r/apps/ios"), (p) => files[resolve(p)] ?? null);
+    const refs = projectReferences(pbx, resolve("/r/apps/ios"), (p) => files[resolve(p)] ?? null, () => true);
     expect(refs.filter((r) => !r.startsWith(resolve("/r/apps/ios")))).toEqual(
       [
         "/r/apps",
@@ -244,19 +244,61 @@ describe("what motif shot is given for a SwiftUI app", () => {
     expect(copyBase("/r/apps", "/r/apps/ios", refs)).toEqual({ outside: resolve("/r/Tools/x") });
   });
 
+  test("what isn't a reference the copy must take: absolute paths, a plain group's own path, files that don't exist", () => {
+    const pbx = `{
+	objects = {
+		R0 = {isa = PBXProject; mainGroup = G0; targets = ( ); };
+		G0 = {isa = PBXGroup; children = ( A1, G7, S1, G8 ); sourceTree = "<group>"; };
+		A1 = {isa = PBXFileReference; path = /Users/someone/Shared/Theme.swift; sourceTree = "<absolute>"; };
+		G7 = {isa = PBXGroup; children = ( ); path = ../../Old; sourceTree = "<group>"; };
+		G8 = {isa = PBXGroup; children = ( F8 ); path = ../Kit; sourceTree = "<group>"; };
+		F8 = {isa = PBXFileReference; path = Kit.swift; sourceTree = "<group>"; };
+		S1 = {isa = PBXFileSystemSynchronizedRootGroup; path = ../Feature; sourceTree = "<group>"; };
+		F9 = {isa = PBXFileReference; path = ../Gone.swift; sourceTree = "<group>"; };
+	};
+	rootObject = R0;
+}`;
+    const exists = (p: string) => p !== resolve("/r/apps/Gone.swift");
+    const refs = projectReferences(pbx, resolve("/r/apps/ios"), () => null, exists);
+    // An absolute path works the same from the copy; an empty group's stale path names nothing; a group counts through
+    // its files, and a synchronized folder is itself what the project builds.
+    expect(refs).toEqual([resolve("/r/apps/Feature"), resolve("/r/apps/Kit/Kit.swift")].sort());
+  });
+
+  test("Xcode 16's xcconfig in a synchronized folder, and any build setting that climbs out of the project's folder", () => {
+    const pbx = `{
+	objects = {
+		R0 = {isa = PBXProject; mainGroup = G0; targets = ( ); };
+		G0 = {isa = PBXGroup; children = ( S1 ); sourceTree = "<group>"; };
+		S1 = {isa = PBXFileSystemSynchronizedRootGroup; path = Config; sourceTree = "<group>"; };
+		C1 = {isa = XCBuildConfiguration; baseConfigurationReferenceAnchor = S1; baseConfigurationReferenceRelativePath = App.xcconfig; buildSettings = { SWIFT_OBJC_BRIDGING_HEADER = ../Bridge/App-Bridging-Header.h; OTHER = "x"; }; name = Debug; };
+	};
+	rootObject = R0;
+}`;
+    const files: Record<string, string> = { [resolve("/r/apps/ios/Config/App.xcconfig")]: "ASSETS = ../../Assets\n" };
+    const refs = projectReferences(pbx, resolve("/r/apps/ios"), (p) => files[resolve(p)] ?? null, () => true);
+    expect(refs).toContain(resolve("/r/apps/ios/Config/App.xcconfig"));
+    expect(refs).toContain(resolve("/r/apps/Bridge/App-Bridging-Header.h"));
+    // An xcconfig's own upward setting, from the project's folder as Xcode reads it.
+    expect(refs).toContain(resolve("/r/Assets"));
+  });
+
   test("a project that refers to files outside the folder motif runs in is refused before anything runs, with the path", () => {
     const pbx = readFileSync(join(xcodeRoot, "SwiftUIMin.xcodeproj/project.pbxproj"), "utf8").replace(
       /(mainGroup = \w+)/,
       "$1;\n\t\t\tpackageReferences = ( 4D4F54494600AAAAAAAAAAAA )",
-    ).replace("/* End PBXProject section */", '/* End PBXProject section */\n\t\t4D4F54494600AAAAAAAAAAAA = {isa = XCLocalSwiftPackageReference; relativePath = "../../Kit"; };');
+    ).replace("/* End PBXProject section */", '/* End PBXProject section */\n\t\t4D4F54494600AAAAAAAAAAAA = {isa = XCLocalSwiftPackageReference; relativePath = "../Kit"; };');
     const root = xcodeProject({ "SwiftUIMin.xcodeproj/project.pbxproj": pbx });
     const [app] = detectApps(root).apps;
-    const kit = resolve(root, "../../Kit");
+    const kit = resolve(root, "../Kit");
+    // A package that isn't there isn't one the copy must take.
+    expect(swiftUIShotRefusal(root, app!, machine())).toBeNull();
+    mkdirSync(kit);
     expect(swiftUIShotRefusal(root, app!, machine())).toEqual({
       error: "outside-project",
       text:
         `SwiftUIMin's project uses ${kit}, outside the folder motif runs in (${resolve(root)}), and Motif's copy of the app can't take it. ` +
-        `Run motif shot from a folder that holds both (${resolve(root, "../..")}), with --app pointing at the app.`,
+        `Run motif shot from a folder that holds both (${resolve(root, "..")}), with --app pointing at the app.`,
     });
   });
 
@@ -389,6 +431,36 @@ describe("the screenshots of a SwiftUI run", () => {
     });
     expect(home).toEqual({ route: "HomeScreen-1", url: "HomeScreen-1", status: 0, shots: [], error: "The run reached its time limit (60 s) before drawing it." });
     expect(mapped.notes).toEqual(["Screens were drawn from their layers.", run.problem!, "No iOS 27.0 simulator is installed."]);
+  });
+
+  test("a screen some of whose shots weren't drawn says how many; its other errors (a stuck state) are in the notes", () => {
+    const outDir = tempDir("motif-swiftui-map-");
+    const opts = phoneOpts({ outDir, viewports: [NATIVE_VIEWPORTS[1]!], routes: [], screens: ["Settings"], states: [{ name: "stuck", script: STATE }] });
+    const targets = swiftUITargets(opts, previews);
+    const shots = planSwiftUIShots(opts, targets, null, "");
+    for (const f of ["settings.mobile.png", "settings@stuck.mobile.png"]) writeFileSync(join(outDir, f), "png");
+    const setup = "design/states/Setup.swift failed: no dark today";
+    const stuck = 'State "stuck": it was still running after 15 seconds.';
+    const mapped = mapSwiftUIResult(targets, shots as PlannedShot[], outDir, {
+      timedOut: false,
+      notes: [],
+      result: {
+        shots: [
+          { file: "settings.mobile.png", ms: 200 },
+          { file: "settings@stuck.mobile.png", ms: 15_200, stateError: stuck },
+          { file: "settings.mobile.dark.png", error: setup },
+          { file: "settings@stuck.mobile.dark.png", error: setup },
+        ],
+        previews: [],
+        notes: [],
+      },
+    }, 60_000);
+    expect(mapped.routes[0]).toEqual({
+      route: "Settings", url: "Settings", status: 200, missing: 2,
+      shots: [join(outDir, "settings.mobile.png"), join(outDir, "settings@stuck.mobile.png")],
+      pageErrors: [setup, stuck],
+    });
+    expect(mapped.notes).toEqual([`Settings also had: ${stuck}`]);
   });
 
   test("a root view that stops the app for want of what the App gives it says how to give it", () => {
@@ -648,7 +720,55 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     // toward the three, so of the rest only the one used most recently is kept.
     expect({ old: removed.old.sort(), extra: removed.extra.sort() }).toEqual({ old: ["DeadLock-7", "Old-2"], extra: ["Recent-5", "Recent-6"] });
     expect(readdirSync(dir).sort()).toEqual(["Current-1", "OldButRunning-3", "Recent-4"]);
-    expect(pruneSwiftUIBuilds(join(dir, "none"), join(dir, "none", "x"), now)).toEqual({ old: [], extra: [] });
+    expect(pruneSwiftUIBuilds(join(dir, "none"), join(dir, "none", "x"), now)).toEqual({ old: [], extra: [], failed: [] });
+  });
+
+  test("pruning takes each folder's lock before removing it: one a run took meanwhile is kept; a removal that fails is a note", () => {
+    const dir = tempDir("motif-swiftui-builds-");
+    const now = Date.parse("2026-10-21T12:00:00Z");
+    const make = (name: string) => {
+      mkdirSync(join(dir, name, "DerivedData"), { recursive: true });
+      const stamp = join(dir, name, "last-used");
+      writeFileSync(stamp, "");
+      utimesSync(stamp, new Date(now - 30 * 86_400_000), new Date(now - 30 * 86_400_000));
+    };
+    make("Raced-1");
+    make("Stuck-2");
+    make("Gone-3");
+    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-0"), now, KEEP_DAYS, KEEP_BUILDS, {
+      // A run starts on Raced-1 between the listing and its removal; Stuck-2 can't be removed.
+      beforeClaim: (folder) => {
+        if (folder.endsWith("Raced-1")) writeFileSync(join(folder, "run.lock"), String(process.ppid));
+      },
+      remove: (folder) => {
+        if (folder.endsWith("Stuck-2")) throw new Error("EBUSY: resource busy or locked");
+        rmSync(folder, { recursive: true, force: true });
+      },
+    });
+    expect(removed.old).toEqual(["Gone-3"]);
+    expect(removed.failed).toEqual([{ name: "Stuck-2", path: join(dir, "Stuck-2"), error: "EBUSY: resource busy or locked" }]);
+    expect(readdirSync(dir).sort()).toEqual(["Raced-1", "Stuck-2"]);
+    // The raced run's lock is its own, untouched; the folder that couldn't be removed isn't left locked.
+    expect(readFileSync(join(dir, "Raced-1", "run.lock"), "utf8")).toBe(String(process.ppid));
+    expect(existsSync(join(dir, "Stuck-2", "run.lock"))).toBe(false);
+    expect(prunedNotes(removed)).toEqual([
+      "Removed Motif's kept build of an app not drawn in the last 14 days (Gone).",
+      `Motif couldn't remove its kept build of Stuck (${join(dir, "Stuck-2")}): EBUSY: resource busy or locked. Delete the folder to free its space.`,
+    ]);
+  });
+
+  test("a stale lock is taken over by moving it aside: a run that took it meanwhile keeps it, and this one stops", () => {
+    const dir = tempDir("motif-swiftui-lock-");
+    const lock = join(dir, "run.lock");
+    writeFileSync(lock, "99999999");
+    // Between reading the dead process and moving the lock aside, another run takes it over.
+    expect(() => takeLock(lock, { beforeTakeover: () => writeFileSync(lock, String(process.ppid)) })).toThrow(`Another motif shot (process ${process.ppid})`);
+    expect(readFileSync(lock, "utf8")).toBe(String(process.ppid));
+    expect(readdirSync(dir)).toEqual(["run.lock"]);
+    // Without a race, the stale lock is this run's now.
+    writeFileSync(lock, "99999999");
+    takeLock(lock);
+    expect(readFileSync(lock, "utf8")).toBe(String(process.pid));
   });
 
   test("the first run says where the build is kept, how big it is, and when Motif removes it; others it removed are named", async () => {
@@ -740,6 +860,19 @@ describe("motif shot on a SwiftUI app", () => {
     const b = await runShot(root, ctx({ state: "design/states/b.swift" }), deps);
     expect(b.text).toContain("--state: b.swift must define @MainActor func motifState(_ app: MotifHarness) async throws");
     expect(calls).toEqual([]);
+  });
+
+  test("a screen with shots that weren't drawn says how many, without saying the screenshots show it", async () => {
+    const root = xcodeProject();
+    const { deps } = shotDeps((o) => {
+      const shots = [join(o.outDir, "settings.mobile.png")];
+      mkdirSync(o.outDir, { recursive: true });
+      writeFileSync(shots[0]!, "png");
+      return [{ route: "Settings", url: "Settings", status: 200, shots, missing: 1, pageErrors: ["design/states/Setup.swift failed: no dark today"] }];
+    });
+    const r = await runShot(root, ctx({ screen: "Settings", sizes: "390" }), deps);
+    expect(r.text).toContain("Settings  ✗ 1 of its 2 screenshots weren't drawn: design/states/Setup.swift failed: no dark today");
+    expect(r.text).not.toContain("the screenshots show what it looked like");
   });
 
   test("a variant drawn exactly like the default gets SwiftUI's hint", async () => {
