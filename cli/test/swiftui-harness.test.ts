@@ -196,5 +196,18 @@ describe("the simulator", () => {
     ]);
     expect(appBuildSettings(two, "SwiftUIMin")).toEqual({ PRODUCT_MODULE_NAME: "SwiftUIMin" });
     expect(appBuildSettings(two, "Nope")).toBeNull();
+    // xcodebuild's warnings on stderr come after the JSON, with brackets of their own.
+    const warned = `[
+  {
+    "buildSettings" : {
+      "PRODUCT_MODULE_NAME" : "SwiftUIMin"
+    },
+    "target" : "SwiftUIMin"
+  }
+]
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], name:My Mac }
+`;
+    expect(appBuildSettings(warned, "SwiftUIMin")).toEqual({ PRODUCT_MODULE_NAME: "SwiftUIMin" });
   });
 });

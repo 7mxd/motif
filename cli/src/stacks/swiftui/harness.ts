@@ -394,7 +394,10 @@ export interface SwiftUIHarnessResult {
 /** The app target's build settings, from `xcodebuild -showBuildSettings -json` (whatever xcodebuild printed before the JSON is skipped). */
 export function appBuildSettings(output: string, target?: string): Record<string, string> | null {
   try {
-    const parsed = JSON.parse(output.slice(output.indexOf("["))) as { target?: string; buildSettings?: Record<string, string> }[];
+    // The JSON is the first "[" to the first line that is only "]"; warnings on stderr may follow it.
+    const start = output.indexOf("[");
+    const end = output.indexOf("\n]", start);
+    const parsed = JSON.parse(output.slice(start, end < 0 ? undefined : end + 2)) as { target?: string; buildSettings?: Record<string, string> }[];
     return (target === undefined ? parsed[0] : parsed.find((t) => t.target === target))?.buildSettings ?? null;
   } catch {
     return null;
@@ -481,7 +484,7 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
   const guess: SwiftUIAppBuild = { module: run.app.name, product: `${run.app.name}.app`, executable: run.app.name, appStruct: run.appStruct, variants: run.variants, theme: run.theme };
   writeHarness(run, guess, {});
   const shown = timed("settings", () =>
-    spawn(["xcodebuild", "-showBuildSettings", "-json", "-project", project, "-scheme", TEST_TARGET, "-configuration", "Debug", "-derivedDataPath", derivedData]),
+    spawn(["xcodebuild", "-showBuildSettings", "-json", "-project", project, "-scheme", TEST_TARGET, "-configuration", "Debug", "-destination", "generic/platform=iOS Simulator", "-derivedDataPath", derivedData]),
   );
   const settings = shown.code === 0 ? appBuildSettings(shown.out, run.app.name) : null;
   if (!settings) throw new Error(`xcodebuild couldn't read the ${run.app.name} target's settings:\n${shown.out.split("\n").slice(-20).join("\n")}`);
