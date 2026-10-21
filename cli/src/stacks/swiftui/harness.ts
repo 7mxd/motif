@@ -392,10 +392,10 @@ export interface SwiftUIHarnessResult {
 }
 
 /** The app target's build settings, from `xcodebuild -showBuildSettings -json` (whatever xcodebuild printed before the JSON is skipped). */
-export function appBuildSettings(output: string): Record<string, string> | null {
+export function appBuildSettings(output: string, target?: string): Record<string, string> | null {
   try {
-    const parsed = JSON.parse(output.slice(output.indexOf("["))) as { buildSettings?: Record<string, string> }[];
-    return parsed[0]?.buildSettings ?? null;
+    const parsed = JSON.parse(output.slice(output.indexOf("["))) as { target?: string; buildSettings?: Record<string, string> }[];
+    return (target === undefined ? parsed[0] : parsed.find((t) => t.target === target))?.buildSettings ?? null;
   } catch {
     return null;
   }
@@ -467,20 +467,31 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
   };
   if (run.app.kind !== "xcodeproj") throw new Error("The harness draws apps with an Xcode project; a Swift package app isn't drawn yet.");
   const project = join(run.copyDir, run.app.project);
-  const shown = timed("settings", () => spawn(["xcodebuild", "-showBuildSettings", "-json", "-project", project, "-target", run.app.name, "-configuration", "Debug"]));
-  const settings = shown.code === 0 ? appBuildSettings(shown.out) : null;
-  if (!settings) throw new Error(`xcodebuild couldn't read the ${run.app.name} target's settings:\n${shown.out.split("\n").slice(-20).join("\n")}`);
-  const build: SwiftUIAppBuild = {
-    module: settings.PRODUCT_MODULE_NAME ?? run.app.name,
-    product: settings.FULL_PRODUCT_NAME ?? `${run.app.name}.app`,
-    executable: settings.EXECUTABLE_NAME ?? run.app.name,
-    appStruct: run.appStruct,
-    variants: run.variants,
-    theme: run.theme,
-  };
+  const derivedData = run.derivedData ?? join(run.copyDir, ".motif-derived-data");
   const resultPath = join(run.copyDir, RESULT_FILE);
   rmSync(resultPath, { force: true });
   for (const s of run.options.shots) rmSync(join(run.options.outDir, s.file), { force: true });
+
+  // The app's settings are read through the harness's own scheme: xcodebuild takes -derivedDataPath only with a scheme,
+  // and without it would leave a folder in ~/Library/Developer/Xcode/DerivedData for every copy. So the harness is
+  // written first with the target's name for its module and product, then again, from the untouched project file,
+  // with what xcodebuild says.
+  const pbxPath = join(project, "project.pbxproj");
+  const original = readFileSync(pbxPath, "utf8");
+  const guess: SwiftUIAppBuild = { module: run.app.name, product: `${run.app.name}.app`, executable: run.app.name, appStruct: run.appStruct, variants: run.variants, theme: run.theme };
+  writeHarness(run, guess, {});
+  const shown = timed("settings", () =>
+    spawn(["xcodebuild", "-showBuildSettings", "-json", "-project", project, "-scheme", TEST_TARGET, "-configuration", "Debug", "-derivedDataPath", derivedData]),
+  );
+  const settings = shown.code === 0 ? appBuildSettings(shown.out, run.app.name) : null;
+  if (!settings) throw new Error(`xcodebuild couldn't read the ${run.app.name} target's settings:\n${shown.out.split("\n").slice(-20).join("\n")}`);
+  const build: SwiftUIAppBuild = {
+    ...guess,
+    module: settings.PRODUCT_MODULE_NAME ?? guess.module,
+    product: settings.FULL_PRODUCT_NAME ?? guess.product,
+    executable: settings.EXECUTABLE_NAME ?? guess.executable,
+  };
+  writeFileSync(pbxPath, original);
   writeHarness(run, build, settings);
 
   const simulator = run.simulator ?? pickSimulator(spawn(["xcrun", "simctl", "list", "-j", "runtimes", "devicetypes"]).out);
@@ -504,7 +515,7 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
     const proc = Bun.spawn(
       [
         "xcodebuild", "test", "-project", project, "-scheme", TEST_TARGET, "-destination", `id=${udid}`,
-        "-derivedDataPath", run.derivedData ?? join(run.copyDir, ".motif-derived-data"), "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO",
+        "-derivedDataPath", derivedData, "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO",
       ],
       {
         cwd: run.copyDir,

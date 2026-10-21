@@ -189,5 +189,12 @@ describe("the simulator", () => {
     const out = 'Command line invocation:\n    xcodebuild -showBuildSettings\n[\n  {"target": "SwiftUIMin", "buildSettings": {"PRODUCT_MODULE_NAME": "SwiftUIMin", "FULL_PRODUCT_NAME": "SwiftUIMin.app"}}\n]\n';
     expect(appBuildSettings(out)).toEqual({ PRODUCT_MODULE_NAME: "SwiftUIMin", FULL_PRODUCT_NAME: "SwiftUIMin.app" });
     expect(appBuildSettings("error")).toBeNull();
+    // Through a scheme, xcodebuild lists every target it builds: the app's are the ones asked for.
+    const two = JSON.stringify([
+      { target: "Widgets", buildSettings: { PRODUCT_MODULE_NAME: "Widgets" } },
+      { target: "SwiftUIMin", buildSettings: { PRODUCT_MODULE_NAME: "SwiftUIMin" } },
+    ]);
+    expect(appBuildSettings(two, "SwiftUIMin")).toEqual({ PRODUCT_MODULE_NAME: "SwiftUIMin" });
+    expect(appBuildSettings(two, "Nope")).toBeNull();
   });
 });

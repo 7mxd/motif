@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
 import { pngSize } from "../src/browser/png";
@@ -70,6 +71,8 @@ describe("the SwiftUI screenshot harness (decision 0010)", () => {
       { ...phone, screen: "SwiftUIMin/SettingsScreen.swift:20", file: "settings.mobile.rtl.png", dark: false, locale: "ar", rtl: true },
       { screen: "SwiftUIMin/HomeScreen.swift:26", file: "home-preview.tablet.png", width: 768, height: 1024, scale: 2, dark: false, locale: "en", rtl: false },
     ];
+    const xcodeDerived = join(homedir(), "Library/Developer/Xcode/DerivedData");
+    const derivedBefore = existsSync(xcodeDerived) ? readdirSync(xcodeDerived) : [];
     const run = await runSwiftUIHarness({ copyDir: root, app, appStruct: "SwiftUIMinApp", theme: false, variants: false, options: { outDir, shots }, timeoutMs: 1_500_000 });
     if (run.code !== 0 || !run.result) console.log(run.output.split(/\r?\n/).slice(-60).join("\n"));
     console.log(`[swiftui-render] ${run.simulator.runtime}, ${run.simulator.deviceType}: ${JSON.stringify(run.timings)}`);
@@ -98,5 +101,8 @@ describe("the SwiftUI screenshot harness (decision 0010)", () => {
     expect(motifSimulators(devices)).not.toContain(run.udid);
     expect(readFileSync(join(FIXTURES, "swiftui-min/SwiftUIMin.xcodeproj/project.pbxproj"), "utf8")).not.toContain("MotifShots");
     expect(existsSync(join(FIXTURES, "swiftui-min/.motif-shots"))).toBe(false);
+    // Every xcodebuild call names its DerivedData in the copy: none is left in Xcode's own folder for the copy.
+    const derivedAfter = existsSync(xcodeDerived) ? readdirSync(xcodeDerived) : [];
+    expect(derivedAfter.filter((d) => d.startsWith("SwiftUIMin-") && !derivedBefore.includes(d))).toEqual([]);
   }, 1_600_000);
 });
