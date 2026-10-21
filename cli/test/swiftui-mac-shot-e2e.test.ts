@@ -188,11 +188,15 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
       // The state typed, clicked and found the greeting (it would have failed otherwise): its screenshot differs.
       expect(Buffer.compare(png("index.desktop.png"), png("index@greeted.desktop.png"))).not.toBe(0);
       expect(Buffer.compare(png("settings.desktop.png"), png("settings@greeted.desktop.png"))).not.toBe(0);
-      // On the settings form the state switched Notifications off: the switch, in the guide's indigo when on, is grey.
-      const toggle = { x0: 2020, x1: 2140, y0: 110, y1: 170 };
-      const indigo = ([r, g, b]: number[]) => b! > 150 && r! < 120 && g! < 100;
-      expect(count("settings.desktop.png", toggle, indigo)).toBeGreaterThan(1_000);
-      expect(count("settings@greeted.desktop.png", toggle, indigo)).toBe(0);
+      // On the settings form the state switched Notifications off. The switch, the only thing in an accent colour in the
+      // form's top right (the guide's indigo, or the system blue where macOS doesn't tint switches), is grey after it.
+      const toggle = { x0: 1440, x1: 2880, y0: 0, y1: 600 };
+      const accent = ([r, , b]: number[]) => b! > 150 && r! < 120;
+      const on = count("settings.desktop.png", toggle, accent);
+      const off = count("settings@greeted.desktop.png", toggle, accent);
+      console.log(`[swiftui-mac-shot-e2e] the settings switch's accent pixels: ${on} on, ${off} after the state`);
+      expect(on).toBeGreaterThan(400);
+      expect(off).toBeLessThan(on / 10);
       expect(existsSync(join(root, "design/shots/settings@greeted+partner.desktop-900.rtl.dark.png"))).toBe(true);
 
       // Nothing left behind but the build: no copy, no work folder, no simulator, no app still running, nothing in

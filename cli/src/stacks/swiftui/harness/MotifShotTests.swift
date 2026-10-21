@@ -316,8 +316,10 @@ enum MotifShotDrawing {
         return nil
     }
 
-    /// Said once when a shot couldn't be taken from the window server.
-    static let withoutWindowServer = "Some screens were drawn by AppKit alone, without the window server: sidebars, toolbars and other glass or translucent materials may be missing from them."
+    /// Said once when a shot couldn't be taken from the window server, with what it gave instead.
+    static func withoutWindowServer(_ why: String) -> String {
+        "Some screens were drawn by AppKit alone, without the window server (\(why)): sidebars, toolbars and other glass or translucent materials may be missing from them."
+    }
 
     /// Hosts the view in a window of its own, off the screen, at the shot's size (the window's whole frame: its title bar
     /// and toolbar over the content, as a window with a full-size content view has them), in light or dark, left to
@@ -361,10 +363,21 @@ enum MotifShotDrawing {
         window.displayIfNeeded()
         CATransaction.flush()
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        if scaled, let png = windowServerPicture(window, size: size, scale: shot.scale, dark: shot.dark) {
-            return (png, nil, stateError)
+        // The window server takes the new scale, and the window's latest frame, a moment after AppKit: on a busy Mac
+        // (CI's runner) its first picture can still be the 1× one, so it is asked again, for up to 2 s.
+        var why = "AppKit can't set the window's scale"
+        if scaled {
+            let deadline = Date().addingTimeInterval(2)
+            while true {
+                switch windowServerPicture(window, size: size, scale: shot.scale, dark: shot.dark) {
+                case .success(let png): return (png, nil, stateError)
+                case .failure(let reason): why = reason.description
+                }
+                if Date() >= deadline { break }
+                RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+            }
         }
-        return (try viewsPicture(window, scale: shot.scale), withoutWindowServer, stateError)
+        return (try viewsPicture(window, scale: shot.scale), withoutWindowServer(why), stateError)
     }
 
     /// Makes the window's surface the shot's scale (2× on a Mac whose screen is 1×), through AppKit's
@@ -383,22 +396,36 @@ enum MotifShotDrawing {
     /// The window as the window server composites it (glass, materials and the title bar included), at the shot's size
     /// and scale, its frame's edge trimmed and its rounded corners filled with the window's background. A process may
     /// take its own windows' pictures without the Screen Recording permission. CGWindowListCreateImage is asked for by
-    /// name: the macOS 15 SDK no longer declares it. Nil when it isn't there or gives another size.
-    private static func windowServerPicture(_ window: NSWindow, size: NSSize, scale: Double, dark: Bool) -> Data? {
-        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else { return nil }
+    /// name: the macOS 15 SDK no longer declares it. Fails, saying what it got, when it isn't there, gives nothing, or
+    /// gives another size or an empty picture.
+    private static func windowServerPicture(_ window: NSWindow, size: NSSize, scale: Double, dark: Bool) -> Result<Data, MotifShotError> {
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else {
+            return .failure(MotifShotError("this macOS has no CGWindowListCreateImage"))
+        }
         typealias Create = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
         // kCGWindowListOptionIncludingWindow; kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution.
-        guard let image = unsafeBitCast(symbol, to: Create.self)(.null, 8, UInt32(window.windowNumber), 1 | 8)?.takeRetainedValue() else { return nil }
+        guard let image = unsafeBitCast(symbol, to: Create.self)(.null, 8, UInt32(window.windowNumber), 1 | 8)?.takeRetainedValue() else {
+            return .failure(MotifShotError("it gave no picture of the window"))
+        }
         let width = Int((size.width * scale).rounded())
         let height = Int((size.height * scale).rounded())
         let dx = (image.width - width) / 2
         let dy = (image.height - height) / 2
-        guard dx >= 0, dy >= 0, dx <= Int(scale) * 2, dy <= Int(scale) * 2,
-              let cropped = image.cropping(to: CGRect(x: dx, y: dy, width: width, height: height)),
+        guard dx >= 0, dy >= 0, dx <= Int(scale) * 2, dy <= Int(scale) * 2 else {
+            return .failure(MotifShotError("it gave a \(image.width)×\(image.height) picture of a \(Int(size.width))×\(Int(size.height)) window at \(Int(scale))×"))
+        }
+        // A surface not drawn yet is see-through in the middle.
+        if let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data), image.bitsPerPixel == 32, image.alphaInfo != .none,
+           image.alphaInfo != .noneSkipFirst, image.alphaInfo != .noneSkipLast {
+            let at = (image.height / 2) * image.bytesPerRow + (image.width / 2) * 4
+            let alphaFirst = image.alphaInfo == .premultipliedFirst || image.alphaInfo == .first
+            if bytes[at + (alphaFirst ? 0 : 3)] == 0 { return .failure(MotifShotError("it gave an empty picture of the window")) }
+        }
+        guard let cropped = image.cropping(to: CGRect(x: dx, y: dy, width: width, height: height)),
               let space = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
                                       bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-        else { return nil }
+        else { return .failure(MotifShotError("its picture couldn't be cropped")) }
         var background = CGColor(gray: dark ? 0 : 1, alpha: 1)
         NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
             background = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)?.cgColor ?? background
@@ -406,8 +433,10 @@ enum MotifShotDrawing {
         context.setFillColor(background)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
-        guard let flat = context.makeImage() else { return nil }
-        return NSBitmapImageRep(cgImage: flat).representation(using: .png, properties: [:])
+        guard let flat = context.makeImage(), let png = NSBitmapImageRep(cgImage: flat).representation(using: .png, properties: [:]) else {
+            return .failure(MotifShotError("its picture couldn't be made into a PNG"))
+        }
+        return .success(png)
     }
 
     /// The window's frame view (the content, with the title bar and toolbar over it) drawn by AppKit at the shot's
