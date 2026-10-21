@@ -864,6 +864,11 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
       if (ready.code !== 0) {
         return done({ problem: `The simulator didn't finish booting:\n${tail(ready.stderr || ready.stdout, 5)}\nRun motif shot again; if it happens again, restart the Mac's simulator service (killall -9 com.apple.CoreSimulator.CoreSimulatorService).` });
       }
+      // A freshly booted simulator does its first-launch work when the first app starts: an app of its own is started
+      // (and stopped) here, while the app builds, so the harness's launch doesn't wait for it (0010, §16). What it
+      // answers doesn't matter.
+      await step("warm", ["xcrun", "simctl", "launch", sim, "com.apple.Preferences"]);
+      await step("warm", ["xcrun", "simctl", "terminate", sim, "com.apple.Preferences"]);
       return null;
     };
     // A simulator that can't boot stops the build: there's nothing to draw on.

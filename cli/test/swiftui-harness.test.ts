@@ -371,6 +371,9 @@ describe("runSwiftUIHarness (with stand-ins for xcodebuild and simctl)", () => {
     expect(calls.find((c) => c[1] === "-showBuildSettings")).toContain("-derivedDataPath");
     // Booted, and waited for.
     expect(calls.filter((c) => c[2] === "boot" || c[2] === "bootstatus").map((c) => c[2])).toEqual(["boot", "bootstatus"]);
+    // Then warmed up with an app of the simulator's own, started and stopped, while the build runs.
+    const simctl = calls.filter((c) => c[1] === "simctl").map((c) => c.slice(2, 3).concat(c.slice(4)).join(" "));
+    expect(simctl.slice(simctl.indexOf("bootstatus -b"), simctl.indexOf("bootstatus -b") + 3)).toEqual(["bootstatus -b", "launch com.apple.Preferences", "terminate com.apple.Preferences"]);
   });
 
   test("a screen that stops the app fails with its reason, and the other screens are drawn in a new launch", async () => {

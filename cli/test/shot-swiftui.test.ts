@@ -531,7 +531,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
 
     // Drawn; the copy and the work folder are gone, the build is kept; the simulators it made and a killed run's are deleted.
     expect(r.routes).toEqual([{ route: "/", url: "/", status: 200, shots: fake.options!.shots.map((s) => join(root, "design/shots", s.file)) }]);
-    expect(readdirSync(cache)).toEqual(["last-used"]);
+    expect(readdirSync(cache).sort()).toEqual(["last-used"]);
     expect(fake.removed).toEqual([LEFTOVER, UDID]);
     expect(fake.hooks).toEqual([]);
     expect(progress).toEqual([SWIFTUI_FIRST_RUN]);
@@ -541,7 +541,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     mkdirSync(join(cache, "DerivedData"));
     const again = await fakeShoot(root, {}, home);
     expect((await again.promise).notes).not.toContain(SWIFTUI_FIRST_RUN);
-    expect(readdirSync(cache)).toEqual(["DerivedData", "last-used"]);
+    expect(readdirSync(cache).sort()).toEqual(["DerivedData", "last-used"]);
   });
 
   test("a build that fails says so, and the copy, the work folder and the simulator are still removed", async () => {
@@ -552,7 +552,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     });
     await expect(promise).rejects.toThrow("The app didn't build with Motif's harness:\n/x/ContentView.swift:3:5: error: cannot find 'Foo' in scope");
     const cache = swiftUICacheDir(home, root, "SwiftUIMin");
-    expect(readdirSync(cache)).toEqual(["last-used"]);
+    expect(readdirSync(cache).sort()).toEqual(["last-used"]);
     expect(fake.removed).toContain(UDID);
     expect(fake.hooks).toEqual([]);
   });
@@ -565,7 +565,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     const { promise, fake } = await fakeShoot(root, {}, home, (options, path, f) => {
       // Motif exits while xcodebuild runs: what its exit hooks do.
       for (const hook of [...f.hooks]) hook();
-      seen = readdirSync(cache);
+      seen = readdirSync(cache).sort();
       return drawsAll(options, path);
     });
     await promise.catch(() => {});
