@@ -39,3 +39,13 @@ declare module "*.gradle" {
   const text: string;
   export default text;
 }
+
+declare module "*.swift" {
+  const text: string;
+  export default text;
+}
+
+declare module "*.xcscheme" {
+  const text: string;
+  export default text;
+}
