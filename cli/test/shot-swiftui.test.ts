@@ -12,7 +12,7 @@ import { swiftUIDoctor } from "../src/stacks/swiftui/doctor";
 import { hooksSource, MAC_HOST_SUFFIX, RESULT_FILE, scriptSource, SOURCES_FOLDER, stopMacHost, withHostIds, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot, type SwiftUIShotResult } from "../src/stacks/swiftui/harness";
 import {
   appStructName, copyBase, KEEP_BUILDS, MAC_WINDOWS, SWIFTUI_FIRST_RUN_MAC, swiftUIPlatform, swiftUIShotSizes, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, prunedNotes, pruneSwiftUIBuilds, readSwiftUIInputs, takeLock, screenError, shootSwiftUI, signedCapabilities,
-  SWIFTUI_FIRST_RUN, SWIFTUI_FIXES, SWIFTUI_VARIANT_HOW, swiftUIAuditChecks, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
+  SWIFTUI_FIRST_RUN, SWIFTUI_FIXES, ENVIRONMENT_ONLY, SWIFTUI_VARIANT_HOW, swiftUIAuditChecks, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
 } from "../src/stacks/swiftui/shot";
 import { discoverSwiftUIScreens } from "../src/stacks/swiftui/screens";
 import { swiftUIApp } from "../src/stacks/swiftui/project";
@@ -1482,12 +1482,12 @@ describe("--audit on a SwiftUI app (Task 10)", () => {
     const shot = (f: string) => join(outDir, f);
     const at = { route: "/", viewport: "mobile" as const, size: "mobile", scheme: "light" as const };
     expect(mapped.issues).toEqual([
-      { ...caption, ...at, shot: shot("index.mobile.png") },
+      { ...caption, ...at, shot: shot("index.mobile.png"), fix: SWIFTUI_FIXES["color-contrast"] },
       { rule: "name", selector: "Button(gearshape)[2]", label: "", kind: "button", ...at, shot: shot("index.mobile.png"), fix: SWIFTUI_FIXES.name },
       { ...small, ...at, shot: shot("index.mobile.png"), fix: SWIFTUI_FIXES["target-mobile"] },
       { ...pulse, ...at, shot: shot("index.mobile.png"), fix: SWIFTUI_FIXES.motion },
-      { ...caption, ...at, shot: shot("index@typed.mobile.png"), state: "typed" },
-      { ...icon, ...at, shot: shot("index+partner.mobile.rtl.png"), variant: "partner", rtl: true },
+      { ...caption, ...at, shot: shot("index@typed.mobile.png"), state: "typed", fix: SWIFTUI_FIXES["color-contrast"] },
+      { ...icon, ...at, shot: shot("index+partner.mobile.rtl.png"), variant: "partner", rtl: true, fix: SWIFTUI_FIXES.icon },
     ]);
 
     // As audit.json has them: the caption once, with its state's place; the fixes in SwiftUI's terms.
@@ -1505,6 +1505,48 @@ describe("--audit on a SwiftUI app (Task 10)", () => {
     expect(findings[3]!.fix).toContain("@Environment(\\.accessibilityReduceMotion)");
     expect(findings[4]!.fix).toContain(".frame(minWidth: 44, minHeight: 44)");
     expect(findings[4]!.fix).toContain(".contentShape(Rectangle())");
+    // Contrast in SwiftUI's terms too: the tokens, and a system colour replaced with .foregroundStyle or .tint.
+    expect(findings[0]!.fix).toContain("design/tokens.json");
+    expect(findings[0]!.fix).toContain(".foregroundStyle(…)");
+    expect(findings[0]!.fix).toContain(".tint(…)");
+    expect(findings[1]!.fix).toContain(".tint(…) on its button");
+  });
+
+  test("each kind of target gets its own fix, and a motion finding drawn with SwiftUI's environment alone says what it couldn't turn on (fix round 1)", () => {
+    const outDir = tempDir("motif-swiftui-audit-");
+    const ios = phoneOpts({ outDir, viewports: [NATIVE_VIEWPORTS[1]!], audit: true });
+    const iosTargets = swiftUITargets(ios, previews);
+    const iosShots = planSwiftUIShots(ios, iosTargets, null, "");
+    for (const s of iosShots) writeFileSync(join(outDir, s.file), "png");
+    const link = { rule: "target-mobile" as const, selector: 'Link("Site")', label: "Site", kind: "link" as const, width: 29, height: 22 };
+    const button = { rule: "target-mobile" as const, selector: 'Button("Greet")', label: "Greet", kind: "button" as const, width: 43, height: 22 };
+    const pulse = { rule: "motion" as const, selector: "View(40×40)", label: "", kind: "element" as const, reducedBy: "environment" as const };
+    const result = (shots: PlannedShot[], issues: SwiftUIShotResult["issues"]) => ({
+      timedOut: false, notes: [], result: { previews: [], notes: [], shots: shots.map((s, n) => ({ file: s.file, issues: n === 0 ? issues : [] })) },
+    });
+    const mapped = mapSwiftUIResult(iosTargets, iosShots, outDir, result(iosShots, [link, button, pulse]), 60_000);
+    expect(mapped.issues.map((i) => [i.selector, i.fix])).toEqual([
+      ['Link("Site")', SWIFTUI_FIXES["target-link"]],
+      ['Button("Greet")', SWIFTUI_FIXES["target-mobile"]],
+      ["View(40×40)", `${SWIFTUI_FIXES.motion} ${ENVIRONMENT_ONLY.ios}`],
+    ]);
+    expect("reducedBy" in mapped.issues[2]!).toBe(false);
+    expect(SWIFTUI_FIXES["target-link"]).toContain("inside a sentence of Text needs none");
+    expect(SWIFTUI_FIXES["target-mobile"]).toContain(".buttonStyle(.bordered)");
+    expect(SWIFTUI_FIXES["target-mobile"]).toContain(".onTapGesture");
+    expect(ENVIRONMENT_ONLY.ios).toContain("UIAccessibility.isReduceMotionEnabled");
+
+    // On the Mac, NSWorkspace's setting is named.
+    const mac = phoneOpts({ root: macProject(), outDir, viewports: [MAC_WINDOWS[0]!], audit: true });
+    const macTargets = swiftUITargets(mac, []);
+    const macShots = planSwiftUIShots(mac, macTargets, null, "", "macos");
+    for (const s of macShots) writeFileSync(join(outDir, s.file), "png");
+    const onMac = mapSwiftUIResult(macTargets, macShots, outDir, result(macShots, [pulse, { ...pulse, reducedBy: undefined, selector: "View(80×80)" }]), 60_000);
+    expect(onMac.issues.map((i) => [i.viewport, i.fix])).toEqual([
+      ["desktop", `${SWIFTUI_FIXES.motion} ${ENVIRONMENT_ONLY.macos}`],
+      ["desktop", SWIFTUI_FIXES.motion],
+    ]);
+    expect(ENVIRONMENT_ONLY.macos).toContain("NSWorkspace");
   });
 
   test("SWIFTUI.shoot passes the checks to the harness (not where findings are seen), returns what it found, and no longer says it can't audit", async () => {

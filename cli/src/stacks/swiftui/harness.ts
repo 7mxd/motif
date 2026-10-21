@@ -76,7 +76,12 @@ export interface SwiftUIShot {
 export type AuditCheck = "contrast" | "names" | "targets" | "motion";
 
 /** A problem the harness's audit found on a shot (audit.json's RawIssue), with which of its like it is. */
-export type SwiftUIRawIssue = RawIssue & { nth?: number; of?: number };
+export type SwiftUIRawIssue = RawIssue & {
+  nth?: number;
+  of?: number;
+  /** A motion finding's: "environment" when only SwiftUI's accessibilityReduceMotion could be turned on for the shot. */
+  reducedBy?: "environment";
+};
 
 export interface SwiftUIHarnessOptions {
   outDir: string;

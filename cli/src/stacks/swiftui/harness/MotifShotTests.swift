@@ -114,6 +114,8 @@ final class MotifShotTests: XCTestCase {
             if MotifAccessibility.enabled != true { result.notes.append(MotifAccessibility.problem) }
         }
         if let note = MotifShotDrawing.prepare(appKitOnly: options.appKitOnly ?? false) { result.notes.append(note) }
+        // Reduce motion off to start with: a launch after one that stopped mid-shot finds the simulator as that left it.
+        if options.shots.contains(where: { $0.reduceMotion == true }) { MotifReduceMotion.set(false) }
         let previews = MotifPreviews.all()
         result.previews = previews.map(\.info)
         try write(result, to: resultURL)
@@ -123,6 +125,11 @@ final class MotifShotTests: XCTestCase {
             try write(result, to: resultURL)
             let started = Date()
             var entry = ShotResult(file: shot.file, error: nil, ms: 0)
+            // Reduce motion on as the app reads it, before the screen is made (SwiftUI's environment value is set too, when
+            // it is hosted), and off again after it.
+            let reduced = shot.reduceMotion == true
+            let systemReduced = reduced ? MotifReduceMotion.set(true) : true
+            defer { if reduced { MotifReduceMotion.set(false) } }
             do {
                 // Before the view is made and hosted: the generated theme reads it when its modifier first runs, and
                 // a view already drawn doesn't see it change.
@@ -155,7 +162,7 @@ final class MotifShotTests: XCTestCase {
                     // The audit reads the window the screen was drawn in, and the picture just taken: after a state,
                     // once its editing has ended.
                     guard !checks.isEmpty else { return }
-                    audit = MotifAudit.run(checks, window: window, png: png, scale: shot.scale)
+                    audit = MotifAudit.run(checks, window: window, png: png, scale: shot.scale, systemReduceMotion: systemReduced)
                 }) { window in
                     // The state runs on the settled screen, with its own time limit; the screen is drawn as it leaves it.
                     guard let state = shot.state else { return nil }

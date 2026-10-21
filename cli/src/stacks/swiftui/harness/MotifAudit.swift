@@ -32,6 +32,9 @@ struct MotifIssue: Encodable {
     /// Which of the screen's elements with this selector it is (1-based), and how many there are, when more than one.
     var nth: Int?
     var of: Int?
+    /// A motion finding's: "environment" when only SwiftUI's accessibilityReduceMotion could be turned on, not the
+    /// system's setting the app may read instead.
+    var reducedBy: String?
 }
 
 /// What the audit found on one screenshot: its problems, the texts whose contrast it couldn't judge (no one colour
@@ -63,6 +66,11 @@ struct MotifElement {
     let color: [Double]?
     /// A field's text, typed in it (not its prompt).
     let typed: String?
+    /// The system draws and sizes it (a UIKit or AppKit control under SwiftUI: a menu picker, a stepper's buttons), not
+    /// SwiftUI's own button.
+    var system = false
+    /// What it says it is set to (a picker's choice, a menu's), when it says.
+    var value: String?
 }
 
 @MainActor
@@ -71,7 +79,9 @@ enum MotifAudit {
     static let minTarget = 44.0
 
     /// The checks asked for, on the window just drawn and its picture (`png`, at `scale`).
-    static func run(_ checks: Set<String>, window: MotifWindow, png: Data, scale: Double) -> MotifAuditOutcome {
+    /// `systemReduceMotion`: the system's reduce motion was on too for the shot (UIAccessibility's, NSWorkspace's), not
+    /// only SwiftUI's environment value.
+    static func run(_ checks: Set<String>, window: MotifWindow, png: Data, scale: Double, systemReduceMotion: Bool = true) -> MotifAuditOutcome {
         var out = MotifAuditOutcome()
         var elements: [MotifElement] = []
         let tree = checks.contains("contrast") || checks.contains("names") || checks.contains("targets")
@@ -91,8 +101,9 @@ enum MotifAudit {
                     }
                     return issue
                 }
+                let pixels = checks.contains("contrast") || checks.contains("targets") ? MotifPixels(png: png, scale: scale) : nil
                 if checks.contains("contrast") {
-                    if let pixels = MotifPixels(png: png, scale: scale) {
+                    if let pixels {
                         for i in elements.indices {
                             guard let judged = contrast(elements[i], pixels) else { continue }
                             switch judged {
@@ -119,15 +130,16 @@ enum MotifAudit {
                 for i in elements.indices {
                     let e = elements[i]
                     guard e.enabled, onScreen(e.rect, window) else { continue }
-                    let control = [.button, .link, .toggle, .field, .adjustable].contains(e.kind)
-                    if checks.contains("names"), control || e.kind == .image, e.symbolOnly || (e.name ?? "").isEmpty {
+                    // Names: what can be tapped, as on Flutter and Compose. An image that only decorates is read by
+                    // VoiceOver by the name SwiftUI gives it, and isn't a control.
+                    let tappable = [.button, .link, .toggle, .field, .adjustable].contains(e.kind)
+                    if checks.contains("names"), tappable, e.symbolOnly || (e.name ?? "").isEmpty {
                         var issue = described(i)
                         issue.rule = "name"
                         issue.label = ""
                         out.issues.append(issue)
                     }
-                    if checks.contains("targets"), control, e.kind != .link,
-                       e.rect.width < minTarget - 0.01 || e.rect.height < minTarget - 0.01 {
+                    if checks.contains("targets"), smallTarget(e, pixels) {
                         var issue = described(i)
                         issue.rule = "target-mobile"
                         issue.width = Int(e.rect.width.rounded())
@@ -138,10 +150,22 @@ enum MotifAudit {
             }
         }
         // Last, as it lets the screen run on for two seconds.
-        if checks.contains("motion"), let moving = MotifMotionCheck.moving(window, elements: elements) {
+        if checks.contains("motion"), var moving = MotifMotionCheck.moving(window, elements: elements) {
+            if !systemReduceMotion { moving.reducedBy = "environment" }
             out.issues.append(moving)
         }
         return out
+    }
+
+    /// A tap target under 44 × 44 points that the app sizes itself: SwiftUI's own button drawn plain or borderless (a
+    /// label alone, or a view with a tap gesture that says it is a button), or a link. Exempt at the size the system
+    /// gives them, as Apple sizes them and the other stacks' stock controls pass: text fields, switches, sliders,
+    /// steppers, pickers and menus (a control that says what it is set to), the system's own controls under SwiftUI, and
+    /// a button drawn on a shape of its own (.bordered, .borderedProminent, .glass, .glassProminent).
+    static func smallTarget(_ e: MotifElement, _ pixels: MotifPixels?) -> Bool {
+        guard e.kind == .button || e.kind == .link, !e.system, (e.value ?? "").isEmpty else { return false }
+        guard e.rect.width < minTarget - 0.01 || e.rect.height < minTarget - 0.01 else { return false }
+        return !(pixels?.onShape(e.rect) ?? false)
     }
 
     private static func onScreen(_ rect: CGRect, _ window: MotifWindow) -> Bool {
@@ -213,10 +237,11 @@ enum MotifAudit {
         return sameName(name, symbol) || description.map { sameName(name, $0) } == true
     }
 
-    /// A control's or an image's name that is itself an SF Symbol's raw name (gearshape, bell.badge): what an older
-    /// SwiftUI may say for an unlabelled symbol, without naming the symbol in the element's identifier.
+    /// A control's name that is itself an SF Symbol's raw name (gearshape, bell.badge): what an older SwiftUI may say
+    /// for an unlabelled symbol, without naming the symbol in the element's identifier. A control truly called by a
+    /// lowercase word that is also a symbol's name ("star") is read as having no name of its own.
     static func rawSymbol(_ name: String?, kind: MotifElement.Kind, exists: (String) -> Bool) -> String? {
-        guard [.button, .link, .toggle, .image].contains(kind), let name,
+        guard [.button, .link, .toggle].contains(kind), let name,
               name.range(of: #"^[a-z0-9]+(\.[a-z0-9]+)*$"#, options: .regularExpression) != nil, exists(name) else { return nil }
         return name
     }
@@ -271,8 +296,11 @@ enum MotifAudit {
 
     /// WCAG's large text: 18 pt (24 px), or 14 pt (about 18.66 px) in bold, as axe-core judges it on the web. From the
     /// element's font when it says; else from the height of its lines in the picture (a line is about 1.2 times its size).
+    /// A control's frame holds its padding (a bordered button's shape), so its size is read from its ink instead: the
+    /// tallest line of its text's rows, about 0.95 times the size (ascenders to descenders).
     static func large(_ e: MotifElement, pixels: MotifPixels, drawn: MotifPixels.Drawn) -> Bool {
         if let font = e.font { return font.size >= 24 || (font.size >= 18.66 && font.bold) }
+        if e.kind != .text { return pixels.tallestLine(in: e.rect, drawn: drawn) / 0.95 >= 24 }
         let lines = max(1, pixels.lines(in: e.rect, drawn: drawn))
         return e.rect.height / Double(lines) / 1.2 >= 24
     }
@@ -350,15 +378,19 @@ struct MotifPixels {
         let others = common.filter { MotifColor.distance(MotifColor.components($0.key), bg) > Self.tolerance }
         guard let most = others.first else { return nil }
         var fg: [Double]?
+        // Drawn often enough to be a glyph's core rather than its edge.
+        let floor = max(2, most.value / 10)
         if let hint {
-            // Its own colour, blended on the background when it is see-through.
+            // Its own colour, blended on the background when it is see-through: taken only when it isn't the background
+            // itself, and the picture has it as a glyph's core.
             let alpha = hint.count > 3 ? hint[3] : 1
             let own = (0..<3).map { bg[$0] * (1 - alpha) + hint[$0] * 255 * alpha }
             let near = others.filter { MotifColor.distance(MotifColor.components($0.key), own) <= 2 * Self.tolerance }
-            if near.reduce(0, { $0 + $1.value }) >= 3 { fg = MotifColor.components(near[0].key) }
+            if MotifColor.distance(own, bg) > 2 * Self.tolerance, let core = near.first, core.value >= floor {
+                fg = MotifColor.components(core.key)
+            }
         }
         if fg == nil && !strict {
-            let floor = max(2, most.value / 10)
             fg = others.filter { $0.value >= floor }
                 .map { MotifColor.components($0.key) }
                 .max { MotifColor.ratio($0, bg) < MotifColor.ratio($1, bg) }
@@ -378,18 +410,61 @@ struct MotifPixels {
         return Drawn(bg: bg, fg: fg)
     }
 
+    /// The rows of the rectangle with the text's colour in them, top to bottom.
+    private func inkRows(in rect: CGRect, drawn: Drawn) -> [Bool] {
+        guard let b = box(rect) else { return [] }
+        return (b.y0..<b.y1).map { y in
+            (b.x0..<b.x1).contains { x in
+                let c = MotifColor.components(rgb(x, y))
+                return MotifColor.distance(c, drawn.bg) > Self.tolerance && MotifColor.toSegment(c, drawn.bg, drawn.fg) <= Self.tolerance
+            }
+        }
+    }
+
+    /// The height of the tallest run of rows with the text's colour in them, in points.
+    func tallestLine(in rect: CGRect, drawn: Drawn) -> Double {
+        var tallest = 0
+        var run = 0
+        for ink in inkRows(in: rect, drawn: drawn) {
+            run = ink ? run + 1 : 0
+            tallest = max(tallest, run)
+        }
+        return Double(tallest) / scale
+    }
+
+    /// The colour most pixels in a rectangle have.
+    private func dominant(_ rect: CGRect) -> [Double]? {
+        guard let b = box(rect) else { return nil }
+        var counts: [UInt32: Int] = [:]
+        for y in b.y0..<b.y1 {
+            for x in b.x0..<b.x1 { counts[rgb(x, y), default: 0] += 1 }
+        }
+        return counts.max { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }.map { MotifColor.components($0.key) }
+    }
+
+    /// True when a control is drawn on a shape of its own the size of its frame (a bordered, prominent or glass
+    /// button): just inside the middle of its frame's top or bottom edge, the picture's most common colour isn't the one
+    /// just outside it. A plain button's frame is its label's, on the screen's own background, which is the same colour
+    /// to the pixel on both sides. Glass on white differs only a little (#fcfcfc on #ffffff, its shadow below it), so
+    /// any difference beyond rounding counts, on either edge.
+    func onShape(_ rect: CGRect) -> Bool {
+        let x = rect.minX + rect.width / 4
+        let w = rect.width / 2
+        let bands = [
+            (CGRect(x: x, y: rect.minY + 1, width: w, height: 2), CGRect(x: x, y: rect.minY - 3, width: w, height: 2)),
+            (CGRect(x: x, y: rect.maxY - 3, width: w, height: 2), CGRect(x: x, y: rect.maxY + 1, width: w, height: 2)),
+        ]
+        return bands.contains { inside, outside in
+            guard let a = dominant(inside), let b = dominant(outside) else { return false }
+            return MotifColor.distance(a, b) > 2
+        }
+    }
+
     /// How many lines of text the rectangle holds: runs of rows with the text's colour in them, apart.
     func lines(in rect: CGRect, drawn: Drawn) -> Int {
-        guard let b = box(rect) else { return 0 }
         var lines = 0
         var inLine = false
-        for y in b.y0..<b.y1 {
-            var ink = false
-            for x in b.x0..<b.x1 where MotifColor.distance(MotifColor.components(rgb(x, y)), drawn.bg) > Self.tolerance
-                && MotifColor.toSegment(MotifColor.components(rgb(x, y)), drawn.bg, drawn.fg) <= Self.tolerance {
-                ink = true
-                break
-            }
+        for ink in inkRows(in: rect, drawn: drawn) {
             if ink && !inLine { lines += 1 }
             inLine = ink
         }
@@ -463,13 +538,15 @@ enum MotifColor {
 }
 
 /// What keeps moving on a screen that has settled, with reduce motion on: after two more seconds, the layers whose place,
-/// size or turn still change over the next half second (only movement counts, as on the web: a
-/// fade or a colour change is fine). The platform's own spinner (an activity indicator,
-/// which the system keeps turning) and a text field's own drawing (its caret) aren't the app's motion and are left out.
+/// size or turn change in two samples in a row (0.1 s apart, over half a second), so a one-off change (an image landing,
+/// a task's result) isn't motion. Only movement counts, as on the web: a fade or a colour change is fine. The platform's
+/// own spinner (an activity indicator, which the system keeps turning) and a text field's own drawing (its caret) aren't
+/// the app's motion and are left out. Layers are told apart by identity, so one added or removed doesn't shift others.
 @MainActor
 enum MotifMotionCheck {
     struct Layer {
-        let key: String
+        /// Kept, so its identity isn't another layer's while the samples are compared.
+        let layer: CALayer
         let state: String
         let rect: CGRect
         let size: CGSize
@@ -477,14 +554,19 @@ enum MotifMotionCheck {
 
     static func moving(_ window: MotifWindow, elements: [MotifElement]) -> MotifIssue? {
         RunLoop.main.run(until: Date().addingTimeInterval(2))
-        let first = MotifAuditTree.layers(of: window)
-        var changed: [Layer] = []
-        for _ in 0..<5 {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
-            let now = Dictionary(MotifAuditTree.layers(of: window).map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
-            changed = first.filter { layer in now[layer.key].map { $0.state != layer.state } ?? false }
-            if !changed.isEmpty { break }
+        var samples: [[ObjectIdentifier: Layer]] = []
+        for i in 0..<6 {
+            if i > 0 { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+            samples.append(Dictionary(MotifAuditTree.layers(of: window).map { (ObjectIdentifier($0.layer), $0) }, uniquingKeysWith: { a, _ in a }))
         }
+        var moved = Set<ObjectIdentifier>()
+        for i in 0..<(samples.count - 2) {
+            for (id, a) in samples[i] {
+                guard let b = samples[i + 1][id], let c = samples[i + 2][id], a.state != b.state, b.state != c.state else { continue }
+                moved.insert(id)
+            }
+        }
+        let changed = moved.compactMap { samples.last?[$0] }
         // The largest thing that moves stands for them all.
         guard let lead = changed.max(by: { $0.size.width * $0.size.height < $1.size.width * $1.size.height }) else { return nil }
         // The element it is part of, when it is one: the smallest whose frame takes in the middle of what moves (not a
@@ -579,10 +661,11 @@ enum MotifAuditTree {
             }
             color = MotifColor.srgb(attributed["AXForegroundColor"])
         }
+        let control = [.button, .link, .toggle].contains(kind)
         return MotifElement(
-            kind: kind, name: name, rect: rect, symbol: symbol, symbolOnly: symbolOnly, identifier: symbol == nil ? id : nil,
+            kind: kind, name: name, rect: rect, symbol: symbol, symbolOnly: control && symbolOnly, identifier: symbol == nil ? id : nil,
             enabled: MotifAX.bool(object, "isAccessibilityEnabled") ?? true, font: font, color: color,
-            typed: kind == .field ? value : nil)
+            typed: kind == .field ? value : nil, system: object is NSView, value: kind == .field ? nil : value)
     }
 
     /// The attributes of an element's text at its first character (accessibilityAttributedStringForRange:).
@@ -600,15 +683,15 @@ enum MotifAuditTree {
     static func layers(of window: NSWindow) -> [MotifMotionCheck.Layer] {
         guard let content = window.contentView, let root = content.layer else { return [] }
         var out: [MotifMotionCheck.Layer] = []
-        func visit(_ layer: CALayer, _ key: String) {
+        func visit(_ layer: CALayer) {
             // The system's spinner, and a field's caret, aren't the app's motion.
             if layer.delegate is NSProgressIndicator || layer.delegate is NSText || layer.delegate is NSTextField { return }
             let r = layer.convert(layer.bounds, to: root)
             let rect = content.isFlipped ? r : CGRect(x: r.minX, y: root.bounds.height - r.maxY, width: r.width, height: r.height)
-            out.append(MotifMotionCheck.Layer(key: key, state: MotifMotionCheck.state(layer), rect: rect, size: layer.bounds.size))
-            for (i, sub) in (layer.sublayers ?? []).enumerated() { visit(sub, "\(key)/\(i)") }
+            out.append(MotifMotionCheck.Layer(layer: layer, state: MotifMotionCheck.state(layer), rect: rect, size: layer.bounds.size))
+            for sub in layer.sublayers ?? [] { visit(sub) }
         }
-        visit(root, "")
+        visit(root)
         return out
     }
 }
@@ -694,23 +777,77 @@ enum MotifAuditTree {
             color = MotifColor.srgb(value("UIAccessibilityTokenForegroundColor"))
         }
         let typed = kind == .field ? string(field?.text ?? (object as? UITextView)?.text) : nil
+        let control = [.button, .link, .toggle].contains(kind)
+        // UIKit's own controls under SwiftUI (a menu picker's button, a stepper's two halves) are the system's, sized by it.
+        let system = object is UIView || object is UIAccessibilityElement
         return MotifElement(
-            kind: kind, name: name, rect: rect, symbol: symbol, symbolOnly: symbolOnly, identifier: symbol == nil ? id : nil,
-            enabled: !traits.contains(.notEnabled), font: font, color: color, typed: typed)
+            kind: kind, name: name, rect: rect, symbol: symbol, symbolOnly: control && symbolOnly, identifier: symbol == nil ? id : nil,
+            enabled: !traits.contains(.notEnabled), font: font, color: color, typed: typed, system: system,
+            value: kind == .field ? nil : string(object.accessibilityValue))
     }
 
     /// Every layer in the window, with its state now and where it is; the layers of an activity indicator (the system's
     /// spinner) are left out.
     static func layers(of window: UIWindow) -> [MotifMotionCheck.Layer] {
         var out: [MotifMotionCheck.Layer] = []
-        func visit(_ layer: CALayer, _ key: String) {
+        func visit(_ layer: CALayer) {
             // The system's spinner, and a field's caret, aren't the app's motion.
             if layer.delegate is UIActivityIndicatorView || layer.delegate is UITextField || layer.delegate is UITextView { return }
-            out.append(MotifMotionCheck.Layer(key: key, state: MotifMotionCheck.state(layer), rect: layer.convert(layer.bounds, to: window.layer), size: layer.bounds.size))
-            for (i, sub) in (layer.sublayers ?? []).enumerated() { visit(sub, "\(key)/\(i)") }
+            out.append(MotifMotionCheck.Layer(layer: layer, state: MotifMotionCheck.state(layer), rect: layer.convert(layer.bounds, to: window.layer), size: layer.bounds.size))
+            for sub in layer.sublayers ?? [] { visit(sub) }
         }
-        visit(window.layer, "")
+        visit(window.layer)
         return out
     }
 }
 #endif
+
+/// Reduce motion as the app reads it, besides SwiftUI's environment value: UIAccessibility's setting in the simulator
+/// Motif owns (libAccessibility's _AXSSetReduceMotionEnabled, as the automation switch), or NSWorkspace's in the app on
+/// the Mac (its getter answers yes while a shot asks for it; nothing outside the app changes). `set` says whether the
+/// app now reads the setting as asked; when it doesn't, only SwiftUI's accessibilityReduceMotion is on.
+@MainActor
+enum MotifReduceMotion {
+    #if os(macOS)
+    private static var installed: Bool?
+
+    @discardableResult
+    static func set(_ on: Bool) -> Bool {
+        if installed == nil { installed = install() }
+        guard installed == true else { return false }
+        MotifReduceMotionFlag.on = on
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: NSWorkspace.shared)
+        return !on || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private static func install() -> Bool {
+        let selector = NSSelectorFromString("accessibilityDisplayShouldReduceMotion")
+        guard let method = class_getInstanceMethod(NSWorkspace.self, selector) else { return false }
+        typealias Get = @convention(c) (NSObject, Selector) -> Bool
+        let original = unsafeBitCast(method_getImplementation(method), to: Get.self)
+        let replacement: @convention(block) (NSObject) -> Bool = { workspace in MotifReduceMotionFlag.on || original(workspace, selector) }
+        method_setImplementation(method, imp_implementationWithBlock(replacement))
+        return true
+    }
+    #else
+    private typealias SetEnabled = @convention(c) (Int32) -> Void
+    private static let setter: SetEnabled? = {
+        guard let library = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW),
+              let symbol = dlsym(library, "_AXSSetReduceMotionEnabled") else { return nil }
+        return unsafeBitCast(symbol, to: SetEnabled.self)
+    }()
+
+    @discardableResult
+    static func set(_ on: Bool) -> Bool {
+        guard let setter else { return false }
+        setter(on ? 1 : 0)
+        NotificationCenter.default.post(name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        return UIAccessibility.isReduceMotionEnabled == on
+    }
+    #endif
+}
+
+/// Whether NSWorkspace's reduce motion answers yes in the app (read by its replaced getter, on any thread).
+enum MotifReduceMotionFlag {
+    static var on = false
+}

@@ -10,14 +10,22 @@ export const auditFile = (app: string) => `${app}/Screens/AuditScreen.swift`;
 /**
  * A screen with problems planted for the audit: a caption in a pale grey (#bfbfbf on white, 1.83:1), a 30 pt icon button
  * with no name of its own (its SF Symbol's, "Gear Shape", only), a field whose typed text is grey (#999999, 2.84:1), and
- * a pulse that keeps going with reduce motion on. What should pass: the title, and a second pulse that stops when reduce
- * motion is on, as the theme's MotifMotion asks.
+ * a 40 pt pulse that keeps going with reduce motion on. What should pass: the title; a decorative symbol beside its text
+ * and a row's chevron (images, not controls: no name finding); a 60 pt pulse that stops when the system's setting is on
+ * (UIAccessibility's, NSWorkspace's) and an 80 pt one that stops when SwiftUI's environment says so. Either would lead
+ * the motion finding if it moved, being larger.
  */
 export const AUDIT_SCREEN = `import SwiftUI
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 struct AuditScreen: View {
     @Environment(\\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
+    @State private var system = false
     @State private var calm = false
     @State private var code = ""
 
@@ -34,22 +42,48 @@ struct AuditScreen: View {
             }
             TextField("Code", text: $code)
                 .foregroundStyle(Color(white: 0.6))
-            Circle()
-                .fill(Color.indigo)
-                .frame(width: 40, height: 40)
-                .scaleEffect(pulse ? 1.3 : 0.7)
-                .animation(.easeInOut(duration: 0.8).repeatForever(), value: pulse)
-                .onAppear { pulse = true }
-            Circle()
-                .fill(Color.teal)
-                .frame(width: 40, height: 40)
-                .scaleEffect(calm ? 1.3 : 0.7)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(), value: calm)
-                .onAppear { calm = !reduceMotion }
+            HStack {
+                Image(systemName: "leaf")
+                Text("Fresh today")
+            }
+            HStack {
+                Text("Delivery")
+                Spacer()
+                Image(systemName: "chevron.right")
+            }
+            HStack(spacing: 32) {
+                Circle()
+                    .fill(Color.indigo)
+                    .frame(width: 40, height: 40)
+                    .scaleEffect(pulse ? 1.3 : 0.7)
+                    .animation(.easeInOut(duration: 0.8).repeatForever(), value: pulse)
+                    .onAppear { pulse = true }
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 60, height: 60)
+                    .scaleEffect(system ? 1.3 : 0.7)
+                    .animation(systemReducesMotion ? nil : .easeInOut(duration: 0.8).repeatForever(), value: system)
+                    .onAppear { system = !systemReducesMotion }
+                Circle()
+                    .fill(Color.teal)
+                    .frame(width: 80, height: 80)
+                    .scaleEffect(calm ? 1.3 : 0.7)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(), value: calm)
+                    .onAppear { calm = !reduceMotion }
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
+    }
+
+    /// The system's setting, as an app that doesn't read SwiftUI's environment reads it.
+    private var systemReducesMotion: Bool {
+        #if os(macOS)
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #else
+        UIAccessibility.isReduceMotionEnabled
+        #endif
     }
 }
 
@@ -85,8 +119,8 @@ export type Finding = {
 /**
  * What --audit says of the planted screen, the same in the simulator and on the Mac but for tap targets, which only a
  * phone or a tablet gets. With the states: the throwing state is its screen's error and its shots are audited as drawn;
- * the typed text is judged once editing has ended. The pulse that keeps going is found, the one that stops for reduce
- * motion isn't.
+ * the typed text is judged once editing has ended. The pulse that keeps going is found, the ones that stop for reduce
+ * motion (the system's setting, or SwiftUI's environment) aren't.
  */
 export function expectAudit(root: string, r: { text: string; data: Record<string, unknown> }, viewport: "mobile" | "desktop", states: boolean): void {
   const routes = r.data.routes as { route: string; status: number; pageErrors?: string[]; auditError?: string }[];
@@ -115,18 +149,25 @@ export function expectAudit(root: string, r: { text: string; data: Record<string
   expect([caption.location, ...(caption.locations ?? [])].map((l) => [l.state ?? null, l.scheme, l.rtl ?? false]).sort()).toEqual(
     (states ? [[null, "light", false], ["throws", "light", false], ["typed", "light", false]] : [[null, "light", false]]).sort(),
   );
+  // Names are for what can be tapped: the leaf beside its text and the row's chevron are images, read by the name
+  // SwiftUI gives them, and aren't findings.
   expect(of("accessibility")).toEqual([["Button(gearshape)", null, "The button has no name a screen reader can say."]]);
   expect(mine.find((f) => f.category === "accessibility")!.fix).toContain('.accessibilityLabel("…")');
+  // Only the 40 pt pulse: the 60 pt one that reads the system's setting and the 80 pt one that reads SwiftUI's
+  // environment stopped (either would lead the finding, being larger). The system's setting was on, so the fix doesn't
+  // say only SwiftUI's could be turned on.
   expect(of("reduced-motion")).toEqual([["View(40×40)", null, "An element keeps moving when the viewer asks for reduced motion."]]);
-  expect(mine.find((f) => f.category === "reduced-motion")!.fix).toContain("@Environment(\\.accessibilityReduceMotion)");
+  const motion = mine.find((f) => f.category === "reduced-motion")!;
+  expect(motion.fix).toContain("@Environment(\\.accessibilityReduceMotion)");
+  expect(motion.fix).not.toContain("could turn on only");
   if (viewport === "mobile") {
-    // The 30 pt button, and the field, a line of text high; the fix in SwiftUI's terms.
-    expect(of("target-size")).toEqual([
-      ["Button(gearshape)", null, 'The "gearshape" button is 30×30 px on a phone; 44×44 px is easier to tap.'],
-      ['TextField("Code")', null, expect.stringMatching(/^The "Code" field is \d+×\d+ px on a phone; 44×44 px is easier to tap\.$/)],
-    ]);
+    // The plain 30 pt icon button, in SwiftUI's terms. The text field isn't one: its size is the system's.
+    expect(of("target-size")).toEqual([["Button(gearshape)", null, 'The "gearshape" button is 30×30 px on a phone; 44×44 px is easier to tap.']]);
     expect(mine.find((f) => f.category === "target-size")!.fix).toContain(".frame(minWidth: 44, minHeight: 44)");
+    // swiftui-min's stock home: the plain Greet button is too small; its field and its bordered prominent button aren't.
+    const home = review.findings.filter((f) => f.location.screen === "/" && f.category === "target-size").map((f) => f.location.selector);
+    expect(home).toEqual(['Button("Greet")']);
   } else {
-    expect(of("target-size")).toEqual([]);
+    expect(review.findings.filter((f) => f.category === "target-size")).toEqual([]);
   }
 }

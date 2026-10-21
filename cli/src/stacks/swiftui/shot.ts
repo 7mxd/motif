@@ -21,7 +21,7 @@ import type { NativeShotOptions } from "../native";
 import { swiftUIDoctor } from "./doctor";
 import { THEME_FILE } from "./generate";
 import {
-  execCommand, removeSimulator, runSwiftUIHarness, stateFunction, sweepMacLeftovers, type AuditCheck, type Exec, type MacHostIO, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
+  execCommand, removeSimulator, runSwiftUIHarness, stateFunction, sweepMacLeftovers, type AuditCheck, type Exec, type SwiftUIRawIssue, type MacHostIO, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
 } from "./harness";
 import { appEntryFile, field, idsIn, pbxObjects, swiftUIApp, unquote, type SwiftUIApp } from "./project";
 import { discoverSwiftUIScreens, swiftUIRunName, swiftUIScreenProblem, type SwiftUIPreview } from "./screens";
@@ -347,13 +347,40 @@ export function swiftUITargets(opts: Pick<NativeShotOptions, "routes" | "screens
 export type PlannedShot = SwiftUIShot & { target: string; seen?: { size: string; variant?: string } };
 
 /** What to do about each problem in a SwiftUI app, in its own terms (the web's fixes name CSS and ARIA). */
-export const SWIFTUI_FIXES: Partial<Record<RawIssue["rule"], string>> = {
+export const SWIFTUI_FIXES = {
+  "color-contrast":
+    "Use a text colour role with more contrast on this background, or adjust the role in design/tokens.json (motif validate checks the pairs). A system colour (the default tint, .secondary) is replaced with .foregroundStyle(…) on the text, or .tint(…) on a button or link.",
+  icon: "Give the icon a colour with at least 3:1 contrast on this background: .foregroundStyle(…) on the image, or .tint(…) on its button; or adjust the role in design/tokens.json (motif validate checks the pairs).",
   "target-mobile":
-    "Give it at least 44×44 pt where people tap it: .frame(minWidth: 44, minHeight: 44) on the button's label with .contentShape(Rectangle()) so all of it takes taps, or padding inside the label.",
+    "Give it at least 44×44 pt where people tap it: a system style (.buttonStyle(.bordered) or .borderedProminent) has Apple's size; a plain or borderless button, or a view with .onTapGesture, needs .frame(minWidth: 44, minHeight: 44) and .contentShape(Rectangle()) on its label, or padding inside it.",
+  "target-link":
+    "Give the link at least 44×44 pt where people tap it: .frame(minHeight: 44) and .contentShape(Rectangle()) on it, or padding; a link inside a sentence of Text needs none.",
   motion:
     "Stop this animation, or keep it still, when reduce motion is on: read @Environment(\\.accessibilityReduceMotion) and leave the movement (a .repeatForever(), a moving offset or scale) out then; MotifMotion.animation(…, reduceMotion:) gives no animation then.",
-  name: 'Give it a name VoiceOver can say: .accessibilityLabel("…") (an SF Symbol\'s own name, like "Gear Shape", doesn\'t say what it does), a visible title (Label("Settings", systemImage: "gearshape")), or .accessibilityHidden(true) for an image that only decorates.',
+  name: `Give it a name VoiceOver can say: .accessibilityLabel("…") (an SF Symbol's own name, like "gearshape", doesn't say what it does), or a visible title (Label("Settings", systemImage: "gearshape")).`,
+} as const;
+
+/** Said with a motion finding when only SwiftUI's environment value could be turned on, not the setting the app reads. */
+export const ENVIRONMENT_ONLY = {
+  ios: "Motif could turn on only SwiftUI's accessibilityReduceMotion here, not UIAccessibility.isReduceMotionEnabled: an animation that reads that was drawn as with reduce motion off, so check it by eye.",
+  macos: "Motif could turn on only SwiftUI's accessibilityReduceMotion here, not NSWorkspace's accessibilityDisplayShouldReduceMotion: an animation that reads that was drawn as with reduce motion off, so check it by eye.",
 };
+
+/** The fix for a finding of the harness's, by its rule and kind (a link's target, an icon's colour). */
+export function swiftUIFix(i: SwiftUIRawIssue, desktop: boolean): string | undefined {
+  switch (i.rule) {
+    case "color-contrast":
+      return i.kind === "icon" ? SWIFTUI_FIXES.icon : SWIFTUI_FIXES["color-contrast"];
+    case "target-mobile":
+      return i.kind === "link" ? SWIFTUI_FIXES["target-link"] : SWIFTUI_FIXES["target-mobile"];
+    case "motion":
+      return i.reducedBy === "environment" ? `${SWIFTUI_FIXES.motion} ${ENVIRONMENT_ONLY[desktop ? "macos" : "ios"]}` : SWIFTUI_FIXES.motion;
+    case "name":
+      return SWIFTUI_FIXES.name;
+    default:
+      return undefined;
+  }
+}
 
 /**
  * The audit's checks on one screenshot. In the simulator, as on the other native stacks: contrast and names everywhere;
@@ -482,9 +509,9 @@ export function mapSwiftUIResult(
       // The audit's findings on this screenshot, named by where they were seen, as on the other stacks.
       auditError ??= r.auditError;
       for (const text of r.unjudged ?? []) notJudged.add(text);
-      for (const { nth, of, ...i } of r.issues ?? []) {
-        const fix = SWIFTUI_FIXES[i.rule];
+      for (const { nth, of, reducedBy, ...i } of r.issues ?? []) {
         const size = s.seen?.size ?? "";
+        const fix = swiftUIFix({ ...i, ...(reducedBy ? { reducedBy } : {}) }, size.startsWith("desktop"));
         issues.push({
           ...i,
           // Two unnamed buttons on one screen are two places, not one.
