@@ -104,6 +104,15 @@ function run(cmd: string[], cwd: string): { code: number; out: string } {
 
 const sdk = (name: string) => run(["xcrun", "--sdk", name, "--show-sdk-path"], "/").out.trim();
 
+/**
+ * True when the selected Swift compiler is 6.2 or later: -default-isolation (the main actor by default, as Xcode 26's
+ * template builds) arrived in Swift 6.2. Swift 6.1 (Xcode 16.4, the floor) answers "unknown argument".
+ */
+function hasDefaultIsolation(): boolean {
+  const m = /Swift version (\d+)\.(\d+)/.exec(run(["xcrun", "swiftc", "--version"], "/").out);
+  return m !== null && (Number(m[1]) > 6 || (Number(m[1]) === 6 && Number(m[2]) >= 2));
+}
+
 /** Warnings and errors the compiler gives for these files. */
 const diagnostics = (out: string, files: RegExp) => out.split(/\r?\n/).filter((l) => files.test(l) && /: (warning|error): /.test(l));
 
@@ -143,7 +152,7 @@ describe("the generated Swift", () => {
     }
   }, 900_000);
 
-  test.skipIf(!heavy.run)("typechecks for macOS 14 and iOS 17, with and without variants (and a default not called default), with no warnings", () => {
+  test.skipIf(!heavy.run)("typechecks for macOS 14 and iOS 17, with and without variants (and a default not called default), with no warnings; the main actor by default from Swift 6.2", () => {
     const dir = tempDir("motif-swiftui-tc-");
     const [full] = generateSwiftUI(buildThemeSet(docFrom(tokens)));
     mkdirSync(join(dir, "full"));
@@ -171,9 +180,12 @@ describe("the generated Swift", () => {
       ["iphonesimulator", "arm64-apple-ios17.0-simulator"],
     ];
     const usage: Record<string, string> = { full: "MotifUsage.swift", plain: "PlainUsage.swift", women: "WomenUsage.swift" };
+    // The main actor by default only where the compiler has it (Swift 6.2, Xcode 26); Xcode 16.4's Swift 6.1 has not.
+    const modes = [["-swift-version", "5"], ["-swift-version", "6"], ...(hasDefaultIsolation() ? [["-swift-version", "6", "-default-isolation", "MainActor"]] : [])];
+    if (modes.length < 3) console.log("[swiftui-compile] Swift is older than 6.2: the main-actor-by-default typecheck is skipped.");
     for (const shape of ["full", "plain", "women"]) {
       for (const [name, target] of targets) {
-        for (const mode of [["-swift-version", "5"], ["-swift-version", "6"], ["-swift-version", "6", "-default-isolation", "MainActor"]]) {
+        for (const mode of modes) {
           const files = ["MotifTheme.swift", usage[shape]!];
           const tc = run(["xcrun", "swiftc", "-typecheck", "-sdk", sdk(name!), "-target", target!, ...mode, ...files], join(dir, shape));
           if (tc.code !== 0) console.log(`${shape} ${target} ${mode.join(" ")}\n${tc.out}`);

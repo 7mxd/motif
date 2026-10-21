@@ -97,15 +97,18 @@ export function appEntryFile(appDir: string, app: SwiftUIApp): string | null {
   return findSwiftFile(join(appDir, app.sourceRoot), (text) => APP_ENTRY.test(text));
 }
 
-interface PbxObject {
+export interface PbxObject {
   /** The whole object, braces included. */
   text: string;
   /** The object without the objects nested in it (buildSettings = { … }). */
   own: string;
+  /** Where its opening and closing braces are in the project file. */
+  start: number;
+  end: number;
 }
 
 /** Every `ID /* name *\/ = { … }` in a project file, by id; nested ones (buildSettings) too. */
-function pbxObjects(pbx: string): Map<string, PbxObject> {
+export function pbxObjects(pbx: string): Map<string, PbxObject> {
   const out = new Map<string, PbxObject>();
   for (const m of pbx.matchAll(/\b(\w+)(?:\s*\/\*[^*]*\*\/)?\s*=\s*\{/g)) {
     const open = m.index! + m[0].length - 1;
@@ -134,15 +137,22 @@ function pbxObjects(pbx: string): Map<string, PbxObject> {
       }
     }
     if (end === -1 || !/\bisa = /.test(own)) continue;
-    out.set(m[1]!, { text: pbx.slice(open, end + 1), own });
+    out.set(m[1]!, { text: pbx.slice(open, end + 1), own, start: open, end });
   }
   return out;
 }
 
-const unquote = (v: string) => v.trim().replace(/^"(.*)"$/s, "$1");
-const field = (block: string, name: string) => block.match(new RegExp(`\\b${name} = ("[^"]*"|[^;\\s]+)(?:\\s*\\/\\*[^;]*?\\*\\/)?\\s*;`))?.[1];
+/** A project file's string as it means it: without its quotes, and with \" and \\ read as " and \. */
+export const unquote = (v: string) => {
+  const t = v.trim();
+  const m = /^"(.*)"$/s.exec(t);
+  return m ? m[1]!.replace(/\\(.)/gs, "$1") : t;
+};
+/** A field's value as written, quotes and escapes included; unquote() reads it. */
+export const field = (block: string, name: string) =>
+  block.match(new RegExp(`\\b${name} = ("(?:[^"\\\\]|\\\\.)*"|[^;\\s]+)(?:\\s*\\/\\*[^;]*?\\*\\/)?\\s*;`))?.[1];
 /** The ids in a parenthesised list (`ID1 /* Debug *\/, ID2 /* Release *\/,`), not the words of its comments. */
-const idsIn = (list: string | undefined) => (list ?? "").replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((s) => s.trim()).filter(Boolean);
+export const idsIn =(list: string | undefined) => (list ?? "").replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((s) => s.trim()).filter(Boolean);
 
 /** The text of a target's own build settings: every configuration of its configuration list. */
 function targetSettings(objs: Map<string, PbxObject>, target: PbxObject): string {

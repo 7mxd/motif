@@ -40,12 +40,23 @@ private struct ShotResult: Encodable {
     let file: String
     var error: String?
     var ms: Int
+    /// The type of the view drawn (ContentView, ModifiedContent<…>).
+    var view: String?
 }
 
+private struct Current: Encodable {
+    let screen: String
+    let file: String
+}
+
+/// What the harness has done so far. It is written before the first shot, before each shot is drawn (with that shot as
+/// `current`) and after it, so a screen that stops the app leaves the shots before it, and its own name, behind.
 private struct RunResult: Encodable {
     var shots: [ShotResult] = []
     var previews: [MotifPreviewInfo] = []
     var notes: [String] = []
+    var current: Current?
+    var done = false
 }
 
 @MainActor
@@ -58,6 +69,7 @@ final class MotifShotTests: XCTestCase {
         let options = try JSONDecoder().decode(MotifShotOptions.self, from: Data(contentsOf: optionsURL))
         let outDir = URL(fileURLWithPath: options.outDir, isDirectory: true)
         try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        let resultURL = optionsURL.deletingLastPathComponent().appendingPathComponent("result.json")
 
         var result = RunResult()
         for font in options.fonts ?? [] {
@@ -69,22 +81,26 @@ final class MotifShotTests: XCTestCase {
         }
         let previews = MotifPreviews.all()
         result.previews = previews.map(\.info)
+        try write(result, to: resultURL)
 
         for shot in options.shots {
+            result.current = Current(screen: shot.screen, file: shot.file)
+            try write(result, to: resultURL)
             let started = Date()
             var entry = ShotResult(file: shot.file, error: nil, ms: 0)
             do {
                 // Before the view is made and hosted: the generated theme reads it when its modifier first runs, and
                 // a view already drawn doesn't see it change.
-                MotifShotApp.setVariant(shot.variant)
+                try MotifShotApp.setVariant(shot.variant)
                 let view: AnyView
                 if shot.screen == "/" {
                     view = try MotifShotApp.root()
-                } else if let preview = previews.first(where: { $0.info.id == shot.screen }) {
+                } else if let preview = MotifPreviews.matching(previews, shot.screen) {
                     view = try preview.make()
                 } else {
-                    throw MotifShotError("No preview \(shot.screen) in the app.")
+                    throw MotifShotError("The app has no #Preview at \(shot.screen).")
                 }
+                entry.view = MotifMirror.typeName(view)
                 let drawn = try MotifShotDrawing.draw(MotifShotApp.themed(view), shot: shot, settle: options.settle ?? 5)
                 try drawn.png.write(to: outDir.appendingPathComponent(shot.file))
                 if let note = drawn.note, !result.notes.contains(note) { result.notes.append(note) }
@@ -93,14 +109,21 @@ final class MotifShotTests: XCTestCase {
             }
             entry.ms = Int(Date().timeIntervalSince(started) * 1000)
             result.shots.append(entry)
+            try write(result, to: resultURL)
         }
+        result.current = nil
+        result.done = true
+        try write(result, to: resultURL)
+    }
+
+    /// Writes the result whole: to result.json.part, then moved over result.json.
+    private func write(_ result: RunResult, to url: URL) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let resultURL = optionsURL.deletingLastPathComponent().appendingPathComponent("result.json")
-        let part = resultURL.appendingPathExtension("part")
+        let part = url.appendingPathExtension("part")
         try encoder.encode(result).write(to: part)
-        _ = try? FileManager.default.removeItem(at: resultURL)
-        try FileManager.default.moveItem(at: part, to: resultURL)
+        _ = try? FileManager.default.removeItem(at: url)
+        try FileManager.default.moveItem(at: part, to: url)
     }
 }
 

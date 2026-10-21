@@ -43,6 +43,12 @@ enum MotifPreviews {
         return out.sorted { key($0) < key($1) }
     }
 
+    /// The preview a shot names: by its id ("SwiftUIMin/HomeScreen.swift:26"), or by its file and line alone
+    /// ("HomeScreen.swift:26"; a module can't have two files of one name).
+    static func matching(_ previews: [MotifPreview], _ screen: String) -> MotifPreview? {
+        previews.first { $0.info.id == screen } ?? previews.first { $0.info.id.hasSuffix("/" + screen) }
+    }
+
     private static func preview(_ type: any PreviewRegistry.Type) -> MotifPreview {
         let id = "\(type.fileID):\(type.line)"
         let made = try? type.makePreview()
@@ -123,16 +129,38 @@ enum MotifMirror {
         return nil
     }
 
-    /// The view the first WindowGroup in a scene shows: WindowGroup keeps its content as a closure, which is called.
+    /// The view the first WindowGroup in a scene shows. Only its `content` is read: a titled WindowGroup also keeps its
+    /// title, a Text, which must never be taken for the screen. The content is the view itself, or (as SwiftUI keeps
+    /// it) a closure that makes it, perhaps inside an enum case; the closure is called.
     static func windowContent(_ scene: Any, depth: Int = 0) -> AnyView? {
         if String(describing: type(of: scene)).hasPrefix("WindowGroup<") {
-            return firstView(scene, calling: true)
+            guard let content = Mirror(reflecting: scene).children.first(where: { $0.label == "content" })?.value else { return nil }
+            return contentView(content)
         }
         if depth > 8 { return nil }
         for c in Mirror(reflecting: scene).children {
             if let found = windowContent(c.value, depth: depth + 1) { return found }
         }
         return nil
+    }
+
+    private static func contentView(_ content: Any, depth: Int = 0) -> AnyView? {
+        // An Optional is a View too (when its value is); it is looked through, never taken for the screen.
+        if Mirror(reflecting: content).displayStyle != .optional, let view = content as? any View {
+            return AnyView(view)
+        }
+        if depth >= 3 { return nil }
+        if let result = call(content) { return contentView(result, depth: depth + 1) }
+        for c in Mirror(reflecting: content).children {
+            if let view = contentView(c.value, depth: depth + 1) { return view }
+        }
+        return nil
+    }
+
+    /// The type of the view inside an AnyView (ContentView, ModifiedContent<…>), for result.json.
+    static func typeName(_ view: AnyView) -> String {
+        let inner = child(view, "view")
+        return String(String(describing: inner.map { type(of: $0) } ?? type(of: view)).prefix(300))
     }
 
     /// The first View inside the value, depth first; with `calling`, closures that take nothing are called and their
