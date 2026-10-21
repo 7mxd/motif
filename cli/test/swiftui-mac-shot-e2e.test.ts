@@ -284,7 +284,9 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
     expect(hosts()).toBe("");
     // With Mac Catalyst on too, the destination is the Mac's own: the app was built for macOS, not for Catalyst.
     const products = join(swiftUICacheDir(home, multi, "SwiftUIMac"), "DerivedData-macos", "Build", "Products");
-    expect(readdirSync(products).sort()).toEqual(["Debug"]);
+    const built = readdirSync(products).sort();
+    expect(built.filter((f) => !f.endsWith(".xctestrun"))).toEqual(["Debug"]);
+    expect(built.filter((f) => f.endsWith(".xctestrun")).every((f) => /_macosx[\d.]+-/.test(f))).toBe(true);
   }, 1_800_000);
 });
 
