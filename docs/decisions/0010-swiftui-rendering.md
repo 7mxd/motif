@@ -228,6 +228,7 @@
       |---|---|---|
       | 39607650480 | `d485252` | Failed 1 of 276, in 36.6 minutes: the Mac's audit found no unnamed gear button on macOS 15, and its caption was 1.7:1 (the window server draws the grey a little lighter there). The simulator's audit passed on iOS 18.5 as on iOS 27. |
       | **39614685782** | **`5f5d3a9`** | **Green**: 276 pass, 0 fail, tests 2549 s, the job 43 minutes of its 75. The raw symbol name counted as none; the e2e takes the caption's ratio from the pixels. |
+      | **39626074183** | **`c35b3be`** | **Green** after review fix round 1: 277 pass, 0 fail, tests 2153 s, the job 36 minutes. On iOS 18.5 and macOS 15 the pulses that read the system's setting and the environment stopped (so `_AXSSetReduceMotionEnabled` and the NSWorkspace getter work there), decorative symbols weren't findings, and `/`'s only target was the plain Greet button (43×20). |
 
       - Xcode 16.4 built `_accessibilityReduceMotion`, and iOS 18.5 and macOS 15 found the pulse. On iOS 18.5 the gear button was found through its identifier before the raw-name rule existed, and the planted findings are the same as on iOS 27. Whether the font tokens and the label storage are there on iOS 18.5 and macOS 15 wasn't checked separately: the planted title would pass either way (34 pt by its tokens, or by its line height).
       - On iOS 18.5 the root's bordered prominent "Open settings" was also "hard to read in dark mode (2.98:1, needs 4.5:1)": white on the theme's lighter dark indigo, a real finding the e2e doesn't assert.
