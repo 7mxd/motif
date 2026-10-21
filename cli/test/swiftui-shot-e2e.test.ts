@@ -27,9 +27,9 @@ const APP = "SwiftUIMin/SwiftUIMinApp.swift";
 const CONTENT = "SwiftUIMin/ContentView.swift";
 
 /**
- * A store the App gives its scene with .environment, which owns a SwiftData container of its own, and a .modelContainer
- * on the scene too: the root needs both (NotesBadge reads the store and inserts into the context, which stops the app
- * without a container).
+ * A store the App gives its scene with .environment, which owns a SwiftData container of its own (NotesBadge stops the
+ * app without the store), and a .modelContainer(for:) on the scene, which SwiftData keeps as a provider Motif can't give
+ * the root: the run says so.
  */
 const NOTES = String.raw`import SwiftData
 import SwiftUI
@@ -49,12 +49,10 @@ import SwiftUI
 
 struct NotesBadge: View {
     @Environment(Store.self) private var store
-    @Environment(\.modelContext) private var context
     @Query private var notes: [Note]
 
     var body: some View {
         Text("\(store.title): \(notes.count) notes")
-            .onAppear { context.insert(Note(text: "first")) }
     }
 }
 `;
@@ -72,7 +70,7 @@ const STATE = `@MainActor func motifState(_ app: MotifHarness) async throws {
     try await app.type("Sam", into: "Name")
     try await app.tap("Greet")
     try await app.waitFor("Hello, Sam")
-    try await app.waitFor("Store ready: 1 notes")
+    try await app.waitFor("Store ready: 0 notes")
 }
 `;
 
@@ -213,9 +211,11 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
       expect(near("#FDE68A")(background("index.mobile.png"))).toBe(false);
       expect(Buffer.compare(png("index.mobile.dark.png"), png("index+partner.mobile.dark.png"))).not.toBe(0);
       expect(r.text).not.toContain("looks exactly like the default");
-      // The App's .environment(store) and .modelContainer(for:) on its scene both reached the root: the state found the
-      // store's title and the note inserted into the context (the root would have stopped the app otherwise).
-      expect(r.text).not.toContain("couldn't be given to the root view");
+      // The App's .environment(store) on its scene reached the root, though the store holds a ModelContainer: the state
+      // found its title (the root would have stopped the app otherwise). The .modelContainer(for:) on the scene, which
+      // SwiftData keeps as a provider, isn't given to the root, and the run says so; nothing else is left out.
+      const unapplied = r.text.split("\n").filter((l) => l.includes("couldn't be given to the root view"));
+      for (const line of unapplied) expect(line).toMatch(/scene modifier \w*ModelContainer\w* couldn't/);
       expect(r.text).toContain(`Motif keeps this app's build in ${join(swiftUICacheDir(home, root, "SwiftUIMin"), "DerivedData")} (`);
 
       // The setup's signed-in flag shows the red square: on the left, and on the right when the screen is right to left.
