@@ -5,6 +5,7 @@
 // (SwiftUI's _PreviewHost.makeHost(providerType:) answers nil for these types: it reads PreviewProvider only.)
 import DeveloperToolsSupport
 import MachO
+import SwiftData
 import SwiftUI
 
 struct MotifPreviewInfo: Encodable {
@@ -132,14 +133,44 @@ enum MotifMirror {
     /// The view the first WindowGroup in a scene shows. Only its `content` is read: a titled WindowGroup also keeps its
     /// title, a Text, which must never be taken for the screen. The content is the view itself, or (as SwiftUI keeps
     /// it) a closure that makes it, perhaps inside an enum case; the closure is called.
+    ///
+    /// The modifiers the App puts on the scene around the WindowGroup are applied to the view too, where they can be:
+    /// an environment value or object (.environment, .environmentObject, which are view modifiers as well) and a
+    /// SwiftData container (.modelContainer). Others (window sizes, commands) don't apply to a view and are left out.
     static func windowContent(_ scene: Any, depth: Int = 0) -> AnyView? {
-        if String(describing: type(of: scene)).hasPrefix("WindowGroup<") {
-            guard let content = Mirror(reflecting: scene).children.first(where: { $0.label == "content" })?.value else { return nil }
+        let name = String(describing: type(of: scene))
+        let children = Mirror(reflecting: scene).children
+        if name.hasPrefix("WindowGroup<") {
+            guard let content = children.first(where: { $0.label == "content" })?.value else { return nil }
             return contentView(content)
         }
         if depth > 8 { return nil }
-        for c in Mirror(reflecting: scene).children {
+        if name.hasPrefix("ModifiedContent<"),
+           let content = children.first(where: { $0.label == "content" })?.value,
+           let view = windowContent(content, depth: depth + 1) {
+            guard let modifier = children.first(where: { $0.label == "modifier" })?.value else { return view }
+            return sceneModifier(modifier, on: view)
+        }
+        for c in children {
             if let found = windowContent(c.value, depth: depth + 1) { return found }
+        }
+        return nil
+    }
+
+    /// A modifier of the App's scene, applied to its root view when it means something there.
+    private static func sceneModifier(_ modifier: Any, on view: AnyView) -> AnyView {
+        if let container = first(ModelContainer.self, in: modifier) { return AnyView(view.modelContainer(container)) }
+        func apply<M: ViewModifier>(_ m: M) -> AnyView { AnyView(view.modifier(m)) }
+        if let viewModifier = modifier as? any ViewModifier { return apply(viewModifier) }
+        return view
+    }
+
+    /// The first value of a type inside a value, depth first.
+    static func first<T>(_ type: T.Type, in value: Any, depth: Int = 0) -> T? {
+        if let found = value as? T { return found }
+        if depth > 6 { return nil }
+        for c in Mirror(reflecting: value).children {
+            if let found = first(type, in: c.value, depth: depth + 1) { return found }
         }
         return nil
     }

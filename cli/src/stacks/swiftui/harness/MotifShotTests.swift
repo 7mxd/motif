@@ -22,6 +22,10 @@ struct MotifShotOptions: Decodable {
         let rtl: Bool
         /// The variant as the guide names it (partner), when the app's theme has variants.
         let variant: String?
+        /// The variant as design/states/Setup.swift is told it: the guide's id, also when the theme has none ("" without variants).
+        let variantId: String?
+        /// The --state to run on the settled screen before it is drawn.
+        let state: String?
         /// A UIContentSizeCategory raw value (UICTContentSizeCategoryAccessibilityL), when not the default.
         let contentSize: String?
         /// The safe area's top and bottom in points (a phone's status bar and home indicator); none when not given.
@@ -33,6 +37,10 @@ struct MotifShotOptions: Decodable {
     let fonts: [String]?
     /// How long a screen may take to settle, in seconds.
     let settle: Double?
+    /// How long design/states/Setup.swift's motifSetup and a state may run, in seconds (15).
+    let stateLimit: Double?
+    /// The setup file as Motif names it (design/states/Setup.swift, or an app's own), for messages.
+    let setupFile: String?
     let shots: [Shot]
 }
 
@@ -42,6 +50,8 @@ private struct ShotResult: Encodable {
     var ms: Int
     /// The type of the view drawn (ContentView, ModifiedContent<…>).
     var view: String?
+    /// What went wrong in the shot's state: the screen is drawn as the state left it.
+    var stateError: String?
 }
 
 private struct Current: Encodable {
@@ -79,6 +89,9 @@ final class MotifShotTests: XCTestCase {
                 result.notes.append("The font \(font) couldn't be registered: \(reason)")
             }
         }
+        let settle = options.settle ?? 5
+        let limit = options.stateLimit ?? 15
+        let setupFile = options.setupFile ?? "design/states/Setup.swift"
         let previews = MotifPreviews.all()
         result.previews = previews.map(\.info)
         try write(result, to: resultURL)
@@ -92,6 +105,15 @@ final class MotifShotTests: XCTestCase {
                 // Before the view is made and hosted: the generated theme reads it when its modifier first runs, and
                 // a view already drawn doesn't see it change.
                 try MotifShotApp.setVariant(shot.variant)
+                let locale = Locale(identifier: shot.locale)
+                if MotifHooks.hasSetup {
+                    let variant = shot.variantId ?? ""
+                    switch MotifAsync.run(seconds: limit, { try await MotifHooks.setup(variant: variant, locale: locale, dark: shot.dark) }) {
+                    case nil: throw MotifShotError("\(setupFile) didn't finish within \(Int(limit)) s.")
+                    case .failure(let error)?: throw MotifShotError("\(setupFile) failed: \(error)")
+                    case .success?: break
+                    }
+                }
                 let view: AnyView
                 if shot.screen == "/" {
                     view = try MotifShotApp.root()
@@ -101,7 +123,17 @@ final class MotifShotTests: XCTestCase {
                     throw MotifShotError("The app has no #Preview at \(shot.screen).")
                 }
                 entry.view = MotifMirror.typeName(view)
-                let drawn = try MotifShotDrawing.draw(MotifShotApp.themed(view), shot: shot, settle: options.settle ?? 5)
+                let drawn = try MotifShotDrawing.draw(MotifShotApp.themed(view), shot: shot, settle: settle) { window in
+                    // The state runs on the settled screen, with its own time limit; the screen is drawn as it leaves it.
+                    guard let state = shot.state else { return nil }
+                    let app = MotifHarness(window: window, variant: shot.variantId ?? "", locale: locale, dark: shot.dark, settle: settle)
+                    switch MotifAsync.run(seconds: limit, { try await MotifHooks.state(state, app) }) {
+                    case nil: return "State \"\(state)\": it was still running after \(Int(limit)) seconds."
+                    case .failure(let error)?: return "State \"\(state)\": \(error)"
+                    case .success?: return nil
+                    }
+                }
+                entry.stateError = drawn.stateError
                 try drawn.png.write(to: outDir.appendingPathComponent(shot.file))
                 if let note = drawn.note, !result.notes.contains(note) { result.notes.append(note) }
             } catch {
@@ -135,7 +167,9 @@ struct MotifShotError: Error, CustomStringConvertible {
 @MainActor
 enum MotifShotDrawing {
     /// Hosts the view in a window of its own at the shot's size and traits, waits for it to settle, and draws the window.
-    static func draw(_ view: AnyView, shot: MotifShotOptions.Shot, settle: Double) throws -> (png: Data, note: String?) {
+    static func draw(
+        _ view: AnyView, shot: MotifShotOptions.Shot, settle: Double, state: (UIWindow) -> String? = { _ in nil }
+    ) throws -> (png: Data, note: String?, stateError: String?) {
         let insets = shot.insets ?? [0, 0]
         // The window's own safe area comes from the simulator's screen; the shot's is given to SwiftUI instead.
         let root = view
@@ -161,10 +195,13 @@ enum MotifShotDrawing {
         window.rootViewController = host
         window.isHidden = false
         defer {
+            window.endEditing(true)
             window.isHidden = true
             window.rootViewController = nil
         }
         settleWindow(window, seconds: settle)
+        let stateError = state(window)
+        if stateError != nil || shot.state != nil { settleWindow(window, seconds: settle) }
         let format = UIGraphicsImageRendererFormat()
         format.scale = shot.scale
         format.opaque = true
@@ -175,16 +212,18 @@ enum MotifShotDrawing {
             let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
                 drawn = window.drawHierarchy(in: bounds, afterScreenUpdates: true)
             }
-            if drawn, let png = image.pngData() { return (png, nil) }
+            if drawn, let png = image.pngData() { return (png, nil, stateError) }
         }
         let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { context in
             window.layer.render(in: context.cgContext)
         }
         guard let png = image.pngData() else { throw MotifShotError("The picture couldn't be made into a PNG.") }
-        return (png, "Screens were drawn from their layers, without the render server: blurs and materials may be missing.")
+        return (png, "Screens were drawn from their layers, without the render server: blurs and materials may be missing.", stateError)
     }
 
     /// Lets the main run loop turn until the window's layers stop changing (two quiet turns in a row), or the time is up.
+    /// A layer is changing while it is laid out anew, shown or hidden, faded, given its contents (an image loaded) or
+    /// animated: a screen that animates for ever (a spinner) is drawn when the time is up.
     private static func settleWindow(_ window: UIWindow, seconds: Double) {
         let deadline = Date().addingTimeInterval(seconds)
         var last = ""
@@ -199,8 +238,9 @@ enum MotifShotDrawing {
         }
     }
 
-    private static func describe(_ layer: CALayer) -> String {
-        var out = "\(layer.frame)\(layer.sublayers?.count ?? 0)"
+    static func describe(_ layer: CALayer) -> String {
+        let animating = layer.animationKeys()?.isEmpty == false
+        var out = "\(layer.frame)\(layer.sublayers?.count ?? 0)\(layer.isHidden)\(layer.opacity)\(layer.contents != nil)\(animating ? "~\(Date().timeIntervalSince1970)" : "")"
         for sub in layer.sublayers ?? [] { out += describe(sub) }
         return out
     }

@@ -3,10 +3,12 @@
 // happens. motif shot (Tasks 7–8) builds on it; it never touches the developer's own project folder.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { maskComments, maskStrings } from "../../check/mask";
 import { onExit } from "../../cleanup";
 import { killTree } from "../../shot/devserver";
 import appSource from "./harness/MotifShotApp.swift" with { type: "text" };
 import previewsSource from "./harness/MotifPreviews.swift" with { type: "text" };
+import statesSource from "./harness/MotifStates.swift" with { type: "text" };
 import testSource from "./harness/MotifShotTests.swift" with { type: "text" };
 import schemeSource from "./harness/MotifShots.xcscheme" with { type: "text" };
 import { field, idsIn, pbxObjects, type PbxObject, type SwiftUIApp, unquote } from "./project";
@@ -26,6 +28,7 @@ const lf = (text: string) => text.replace(/\r\n/g, "\n");
 /** The test bundle's own sources, the same in every run. */
 export const TEST_SOURCE: string = lf(testSource);
 export const PREVIEWS_SOURCE: string = lf(previewsSource);
+export const STATES_SOURCE: string = lf(statesSource);
 /** How long Motif waits for a stopped command's output and exit before giving up on them. */
 export const GRACE_MS = 3000;
 
@@ -49,6 +52,10 @@ export interface SwiftUIShot {
    * has no variants: the app's MotifTheme.swift then has none, and any id (even "default") fails the shot.
    */
   variant?: string;
+  /** The variant as design/states/Setup.swift is told it: the guide's id, also when `variant` is left out; "" without variants. */
+  variantId?: string;
+  /** The --state (its name) the harness runs on the settled screen before drawing it. */
+  state?: string;
   /** A UIContentSizeCategory raw value (UICTContentSizeCategoryXXXL). */
   contentSize?: string;
   /** The safe area's top and bottom, in points: a phone's status bar and home indicator. */
@@ -62,6 +69,19 @@ export interface SwiftUIHarnessOptions {
   fonts?: string[];
   /** Seconds a screen may take to settle. */
   settle?: number;
+  /** Seconds design/states/Setup.swift's motifSetup and each state may run (15). */
+  stateLimit?: number;
+  /** The setup file as messages name it (design/states/Setup.swift, or an app's own). */
+  setupFile?: string;
+}
+
+/** A Swift file of the developer's that the harness compiles in: design/states/Setup.swift or a --state. */
+export interface SwiftUIScript {
+  /** The state's name (signed-in); none for the setup. */
+  name?: string;
+  /** Where it is (absolute), for the compiler's messages. */
+  file: string;
+  text: string;
 }
 
 /** What the harness needs to know about the app, beyond SwiftUIApp: from the project and xcodebuild. */
@@ -311,6 +331,52 @@ export function appSourceFor(build: SwiftUIAppBuild): string {
     .replace("// __THEMED__\n        view", build.theme ? "AnyView(view.motifTheme())" : "view");
 }
 
+/** The Swift function a state's motifState becomes in the run, so each state has its own: motifState_signed_in. */
+export const stateFunction = (name: string) => `motifState_${name.replace(/[^A-Za-z0-9_]/g, "_")}`;
+
+/** A Swift string literal. */
+const swiftString = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
+/**
+ * A setup or state file as the harness compiles it: the app's module imported (@testable, so its internal types can be
+ * set up), the file's own lines kept for the compiler's messages (#sourceLocation), and a state's motifState renamed.
+ */
+export function scriptSource(script: SwiftUIScript, module: string): string {
+  let text = lf(script.text).replace(/^\uFEFF/, "");
+  if (script.name !== undefined) {
+    const code = maskStrings(maskComments(text, "swift"), "swift");
+    const at = [...code.matchAll(/\bfunc\s+motifState\b/g)].map((m) => ({ index: m.index!, length: m[0].length }));
+    for (const m of at.reverse()) text = `${text.slice(0, m.index)}func ${stateFunction(script.name)}${text.slice(m.index + m.length)}`;
+  }
+  return `import Foundation\n@testable import ${module}\n#sourceLocation(file: ${swiftString(script.file)}, line: 1)\n${text}\n#sourceLocation()\n`;
+}
+
+/** The run's MotifHooks.swift: how the harness calls the setup and the states it was given. */
+export function hooksSource(scripts: { setup?: SwiftUIScript; states?: SwiftUIScript[] } = {}): string {
+  const states = scripts.states ?? [];
+  return [
+    "// Written by Motif for one screenshot run: the app's design/states/Setup.swift and --state scripts, as the harness calls them.",
+    "import Foundation",
+    "",
+    "@MainActor",
+    "enum MotifHooks {",
+    `    static let hasSetup = ${scripts.setup ? "true" : "false"}`,
+    "",
+    "    static func setup(variant: String, locale: Locale, dark: Bool) async throws {",
+    ...(scripts.setup ? ["        try await motifSetup(variant: variant, locale: locale, dark: dark)"] : []),
+    "    }",
+    "",
+    "    static func state(_ name: String, _ app: MotifHarness) async throws {",
+    "        switch name {",
+    ...states.map((s) => `        case ${swiftString(s.name!)}: try await ${stateFunction(s.name!)}(app)`),
+    '        default: throw MotifShotError("Motif didn\'t compile the state \\(name) into the run.")',
+    "        }",
+    "    }",
+    "}",
+    "",
+  ].join("\n");
+}
+
 // ---- Commands ----
 
 export interface ExecResult {
@@ -489,6 +555,10 @@ export interface SwiftUIHarnessRun {
   exec?: Exec;
   /** How Motif shuts a simulator down and deletes it, synchronously, as the exit hook needs (for tests). */
   remove?: (udid: string) => { code: number; stderr: string };
+  /** design/states/Setup.swift and the --state files, compiled into the harness. */
+  scripts?: { setup?: SwiftUIScript; states?: SwiftUIScript[] };
+  /** How Motif runs work when it exits, Ctrl+C included (for tests): cleanup's onExit by default. */
+  onExit?: (fn: () => void) => () => void;
 }
 
 /** How long each `simctl shutdown` and `simctl delete` may take (3.5 s on the Mac mini, 10 s on CI's runner). */
@@ -517,6 +587,8 @@ export interface SwiftUIShotResult {
   ms?: number;
   /** The type of the view drawn (ContentView, ModifiedContent<…>), for Motif's tests. */
   view?: string;
+  /** What went wrong in the shot's state; the screen was drawn as the state left it. */
+  stateError?: string;
 }
 
 export interface SwiftUIRunResult {
@@ -570,7 +642,7 @@ function sharedSchemes(projectDir: string): string[] {
 
 /** Writes the harness's sources and options into the work folder, and the scheme and the patched project into the copy. */
 export function writeHarness(
-  run: Pick<SwiftUIHarnessRun, "copyDir" | "workDir" | "app" | "options">,
+  run: Pick<SwiftUIHarnessRun, "copyDir" | "workDir" | "app" | "options" | "scripts">,
   build: SwiftUIAppBuild,
   settings: Record<string, string>,
   configuration: string,
@@ -579,7 +651,17 @@ export function writeHarness(
   const project = join(run.copyDir, run.app.project);
   const folder = join(run.workDir, SOURCES_FOLDER);
   mkdirSync(folder, { recursive: true });
-  const sources: Record<string, string> = { "MotifShotTests.swift": TEST_SOURCE, "MotifPreviews.swift": PREVIEWS_SOURCE, "MotifShotApp.swift": appSourceFor(build) };
+  const sources: Record<string, string> = {
+    "MotifShotTests.swift": TEST_SOURCE,
+    "MotifPreviews.swift": PREVIEWS_SOURCE,
+    "MotifShotApp.swift": appSourceFor(build),
+    "MotifStates.swift": STATES_SOURCE,
+    "MotifHooks.swift": hooksSource(run.scripts),
+  };
+  if (run.scripts?.setup) sources["MotifSetup.swift"] = scriptSource(run.scripts.setup, build.module);
+  for (const state of run.scripts?.states ?? []) sources[`MotifState_${stateFunction(state.name!).slice("motifState_".length)}.swift`] = scriptSource(state, build.module);
+  rmSync(folder, { recursive: true, force: true });
+  mkdirSync(folder, { recursive: true });
   for (const [name, text] of Object.entries(sources)) writeFileSync(join(folder, name), text);
   writeFileSync(join(run.workDir, OPTIONS_FILE), JSON.stringify(run.options, null, 2));
   const copied = Object.fromEntries(COPIED.filter((k) => settings[k]).map((k) => [k, settings[k]!]));
@@ -737,7 +819,7 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
   const sim = made;
   udid = sim;
   const removeNow = () => (run.remove ?? removeSimulator)(sim);
-  const cancelExitHook = onExit(() => void removeNow());
+  const cancelExitHook = (run.onExit ?? onExit)(() => void removeNow());
   try {
     // Booted without Simulator.app, so no window opens.
     const booted = await step("boot", ["xcrun", "simctl", "boot", sim]);
