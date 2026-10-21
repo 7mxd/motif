@@ -723,6 +723,12 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
   if (opts.rtl && !offersLanguage(appDir, opts.rtl)) {
     notes.push(`This app doesn't offer ${opts.rtl} (its string catalogues and .lproj folders have no ${opts.rtl} strings), so its RTL screenshots show its default strings, laid out right to left.`);
   }
+  const workspace = readdirSync(appDir).find((n) => n.endsWith(".xcworkspace"));
+  if (workspace) {
+    notes.push(
+      `This app has a workspace (${workspace}), and Motif builds ${swift.project} alone: projects only the workspace brings in aren't built, and if the app needs them its build fails.`,
+    );
+  }
   const capabilities = signedCapabilities(appDir, swift);
   if (capabilities.length > 0) {
     notes.push(

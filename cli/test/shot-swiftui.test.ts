@@ -616,6 +616,14 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     });
   });
 
+  test("an app with a workspace (no CocoaPods) is drawn from its project alone, and the run says so", async () => {
+    const root = xcodeProject({ "Shop.xcworkspace/contents.xcworkspacedata": '<?xml version="1.0"?><Workspace version="1.0"></Workspace>' });
+    const { promise } = await fakeShoot(root, {}, tempDir("motif-swiftui-home-"));
+    expect((await promise).notes).toContain(
+      "This app has a workspace (Shop.xcworkspace), and Motif builds SwiftUIMin.xcodeproj alone: projects only the workspace brings in aren't built, and if the app needs them its build fails.",
+    );
+  });
+
   test("the kept builds are bounded: unused for 14 days, or beyond the 3 most recent, they're removed; a running one never", () => {
     const dir = tempDir("motif-swiftui-builds-");
     const now = Date.parse("2026-10-21T12:00:00Z");
