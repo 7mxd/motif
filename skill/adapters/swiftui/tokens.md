@@ -16,7 +16,7 @@ One Swift file: `MotifTheme.swift` in `Design/` inside the app target's folder (
 | `MotifType` | The type roles: font, line spacing and letter spacing, with the Arabic companion | `.motifFont(.body)` |
 | `MotifDurations`, `MotifCurves`, `MotifSprings` | The motion roles ([motion](motion.md)) | `MotifSprings.snappy` |
 | `MotifMotion` | The Reduce Motion helper | `MotifMotion.animation(MotifCurves.standard, reduceMotion: reduceMotion)` |
-| `MotifVariant` | The design variants, when the guide has them | `.motifTheme(variant: .partner)` |
+| `MotifVariant` | The design variants, when the guide has them | `.motifTheme(variant: .men)` |
 
 Names are the guide's roles in lowerCamelCase (`text-secondary` is `textSecondary`). A spacing step starts with `s` (`4` is `s4`, `0-5` is `s0p5`). A name Swift reserves, or one the type already uses, gets `Value` added. The file lists exactly the roles the guide has: read it when unsure which exist; don't guess one.
 
@@ -40,7 +40,7 @@ struct MyAppApp: App {
 }
 ```
 
-Put it on the view, not after the `WindowGroup`'s closing brace: a modifier on the scene doesn't reach the views. The same goes for what the root view needs (an `.environment(store)`, a `.modelContainer(container)`): give it inside the `WindowGroup`, where Motif's screenshots get it too ([checks](checks.md#the-setup-file)). In a project made before Xcode 16, add `MotifTheme.swift` to the app target first, as `motif tokens` says.
+`.motifTheme()` is a view modifier, so it goes on the root view inside the `WindowGroup`; a scene has none. What the app gives its scene (`.environment(store)`, `.modelContainer(container)`) reaches the views as usual, and Motif's screenshots give it to the root view too. Two things don't reach the screenshots: SwiftData's `.modelContainer(for:)` on the scene (the run's note says so: make the container yourself and pass `.modelContainer(container)`, or give it inside the `WindowGroup`), and what the `App` sets up in its `init` or `.onAppear` (do that in `design/states/Setup.swift`, [checks](checks.md#the-setup-file)). In a project made before Xcode 16, add `MotifTheme.swift` to the app target first, as `motif tokens` says.
 
 Add `.motifTheme()` to each `#Preview` too, so Xcode's canvas shows the guide's look. Motif's screenshots add it themselves.
 
@@ -72,15 +72,15 @@ struct PriceTag: View {
 - Colours: only roles, paired as the guide pairs them (`textPrimary` on `surface`, `onActionPrimary` on `actionPrimary`). No `Color(red:…)`, `Color.white` or `.foregroundStyle(.blue)`, and not SwiftUI's own `.primary`, `.secondary` or `Color(.systemBackground)` either: they are Apple's colours, not the guide's.
 - Sizes: `MotifSpace.sN` for padding and `spacing:`; `MotifRadius` for corners. Sizes that aren't spacing (an avatar's 40-point frame, a 1-point border) can stay numbers.
 - Shadows: `.motifShadow(MotifShadows.<role>)` after the background. A card has a border or a shadow, not both.
-- Text: `.motifFont(.<role>)` (`display`, `title`, `heading`, `body`, `label`, `caption`, or whatever the guide names), which sets the font, its line spacing and its letter spacing. Where a `Font` is needed, `MotifType.body.font()`. The roles carry no colour: set it with `.foregroundStyle(colors.<role>)`. Never `.font(.system(size:))` or `Font.custom(…)` yourself.
+- Text: `.motifFont(.<role>)` (`display`, `title`, `heading`, `body`, `label`, `caption`, or whatever the guide names), which sets the font, its line spacing and its letter spacing, scaled with Dynamic Type. Use it first. Where only a `Font` will do (`Text` pieces joined with `+`, say), `MotifType.body.font()`, which sets neither spacing. The roles carry no colour: set it with `.foregroundStyle(colors.<role>)`. Never `.font(.system(size:))` or `Font.custom(…)` yourself.
 
-A role's line spacing is the guide's line height less the font's own line, which the theme takes to be 1.2 times the size, true of the system font. A font with a taller line of its own (many Arabic fonts) gets a little more space than the guide asks.
+A role's line spacing is the guide's line height less the font's own line height, which `.motifFont` reads from the font when it draws, so a font with a taller line of its own (many Arabic fonts) gets the line height the guide asks for. Only a font the app can't load (a Google family it doesn't bundle yet) is taken to be 1.2 times its size, as San Francisco is.
 
 ## Text and the Arabic companion
 
 When a role's font list has an **Arabic companion** (the second font), `.motifFont(.<role>)` switches to it whenever the layout is right to left or the locale's language is written in Arabic script (Arabic, Persian, Urdu and the like). Text set with `.motifFont` changes fonts with the language by itself. `MotifType.body.font()` alone always gives the first font; `MotifType.body.font(arabic: true)` gives the companion.
 
-A role in a named font scales with Dynamic Type, relative to the nearest of Apple's text styles. A role in the system font keeps its size ([platform rules](platform.md#dynamic-type)).
+`.motifFont` scales every role with Dynamic Type, relative to the nearest of Apple's text styles, the system font's roles too, and its line spacing and letter spacing with it. `MotifType.body.font()` alone scales a role in a named font, but not one in the system font: another reason to reach for `.motifFont` ([platform rules](platform.md#dynamic-type)).
 
 ## Fonts
 
@@ -93,15 +93,15 @@ SwiftUI finds a font by its family name when it draws, so the theme's fonts have
 
 ## Switching variants
 
-When the guide has design variants, `motif tokens` also writes `enum MotifVariant` (the default first, each id in lowerCamelCase: `partner-store` is `partnerStore`, and `default` becomes `defaultVariant`), a colour set per variant, and a `variant` argument on `.motifTheme`. The default is used when you pass nothing: `.motifTheme()` is `.motifTheme(variant: .defaultVariant)`. Another is chosen by its case:
+When the guide has design variants, `motif tokens` also writes `enum MotifVariant`, a colour set per variant, and a `variant` argument on `.motifTheme`. Each variant's id becomes a case in lowerCamelCase (`partner-store` is `partnerStore`; an id Swift reserves gets `Variant` added, so `default` is `defaultVariant`), and the default variant comes first: the one the guide marks `"default": true`, whatever its id. `motif tokens` names the cases and the default in its output. The examples below use a guide whose variants are `women` (the default) and `men`, as in [the format](../../contract/spec.md#variants); use your guide's own cases. The default is used when you pass nothing: `.motifTheme()` is `.motifTheme(variant: .women)` there. Another is chosen by its case:
 
 ```swift
 import SwiftUI
 
-struct PartnerRoot: View {
+struct MenRoot: View {
     var body: some View {
         ContentView()
-            .motifTheme(variant: .partner)
+            .motifTheme(variant: .men)
     }
 }
 ```
@@ -113,23 +113,23 @@ import SwiftUI
 
 @main
 struct MyAppApp: App {
-    @AppStorage("variant") private var variant = MotifVariant.defaultVariant.rawValue
+    @AppStorage("variant") private var variant = MotifVariant.women.rawValue
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .motifTheme(variant: MotifVariant(rawValue: variant) ?? .defaultVariant)
+                .motifTheme(variant: MotifVariant(rawValue: variant) ?? .women)
         }
     }
 }
 
 struct LookPicker: View {
-    @AppStorage("variant") private var variant = MotifVariant.defaultVariant.rawValue
+    @AppStorage("variant") private var variant = MotifVariant.women.rawValue
 
     var body: some View {
         Picker("Look", selection: $variant) {
-            Text("Standard").tag(MotifVariant.defaultVariant.rawValue)
-            Text("Partner").tag(MotifVariant.partner.rawValue)
+            Text("Women").tag(MotifVariant.women.rawValue)
+            Text("Men").tag(MotifVariant.men.rawValue)
         }
     }
 }

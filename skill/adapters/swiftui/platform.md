@@ -8,7 +8,7 @@ The app should feel at home on Apple's platforms: **Apple's Human Interface Guid
 
 - **Navigation**: a `NavigationStack` with the system's back button; never hide it to draw your own. A `TabView` for three to five top-level places on iPhone, and a `NavigationSplitView` with a sidebar on iPad and the Mac.
 - **Sheets, alerts and menus**: `.sheet` (with `.presentationDetents` for a half-height one), `.alert`, `.confirmationDialog` and `Menu`, as the system draws them.
-- **Touch targets**: at least 44 by 44 points, Apple's size. System controls have it; Motif's audit reports smaller ones on phones and tablets ([checks](checks.md#target-size)).
+- **Touch targets**: at least 44 by 44 points, Apple's size, for what the app sizes itself. For system controls the system sizes them, and the audit doesn't flag them; Motif's audit reports smaller targets the app sizes on phones and tablets ([checks](checks.md#target-size)).
 - **Type**: the guide's fonts through `.motifFont`, not San Francisco on top of them.
 - **Haptics**: `.sensoryFeedback(.success, trigger: saved)` when something finishes or a toggle changes; never on every tap.
 
@@ -102,7 +102,7 @@ Text goes in the string catalogue, `Localizable.xcstrings`, never in code as the
 
 ## Dynamic Type
 
-Text grows when people raise the text size, past 300 percent at the accessibility sizes. The theme's roles in a named font scale with it. A role in the system font keeps its size: when the guide's fonts are the system font, the theme's text doesn't follow Dynamic Type, so tell the developer once. Either way:
+Text grows when people raise the text size, past 300 percent at the accessibility sizes. `.motifFont` scales every role with Dynamic Type, in a named font or the system font, with its line spacing and letter spacing; `MotifType.<role>.font()` used on its own doesn't scale a role in the system font, so set text with `.motifFont`. Then:
 
 - Don't give text a fixed height or a fixed-size container, and let it wrap; where it can't, end it with `.lineLimit(2)`, not by cutting it off.
 - A row of text and a value that no longer fits side by side becomes a column at the accessibility sizes.

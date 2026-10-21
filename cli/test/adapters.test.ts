@@ -395,7 +395,7 @@ describe("the SwiftUI guide", () => {
       "**App**", "no command-line starter", "swift package init --type executable", "xcodebuild", "-destination", "a Mac",
       "`Xcode`", "SwiftUI screenshots need a Mac with Xcode.", "Xcode isn't installed.", "is older than 16", "install an iOS simulator in Xcode › Settings › Components",
       "A macOS app needs no simulator.", "not only its command-line tools",
-      "Xcode 16", "iOS 17", "macOS 14", "Swift 5.9", "design/motif.json", "themeDir", "## Monorepos", "one guide for the web dashboard and the iPhone app", "platform notes", "--app",
+      "Xcode 16", "iOS 17", "macOS 14", "**Swift 5**", "**Swift 6**", "design/motif.json", "themeDir", "## Monorepos", "one guide for the web dashboard and the iPhone app", "platform notes", "--app",
       "#Preview", "synchronized folder", "Podfile", "Package.swift",
     ]);
   });

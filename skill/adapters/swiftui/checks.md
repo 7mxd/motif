@@ -127,7 +127,7 @@ struct OrderNumber: View {
 A curve, duration or spring typed into an animation.
 
 - Example: `.easeInOut(duration: 0.3)`, `.easeOut`, `.linear`, `.timingCurve(0.4, 0, 0.2, 1)`, `.spring(response: 0.3, dampingFraction: 0.8)`, `.spring(duration: 0.4, bounce: 0.2)`, `.bouncy(duration: 0.5)`, `withAnimation(.default)`.
-- Fix: `MotifCurves.<role>`, `MotifSprings.<role>`, and `MotifDurations.<role>` in seconds ([motion](motion.md)).
+- Fix: `MotifCurves.<role>`, or `MotifCurves.<role>(over: MotifDurations.<role>)` for another of the guide's durations, and `MotifSprings.<role>` ([motion](motion.md)).
 - Not findings: `.spring()` with SwiftUI's own values, `.linear` given to something that isn't an animation (`.progressViewStyle(.linear)`), a `Task.sleep`, and how long a message stays up.
 
 ```swift
@@ -330,7 +330,7 @@ func motifSetup(variant: String, locale: Locale, dark: Bool) {
 ```
 
 - It has 15 seconds. If it fails, that screenshot fails: "design/states/Setup.swift failed: …".
-- The app really launches first, as the host of Motif's test, and then each screen is made again on its own. So what the `App` sets up in its `init` or `.onAppear`, and modifiers on the scene outside the `WindowGroup` (other than view modifiers such as `.environment`), don't reach the screens: give them inside the `WindowGroup` ([theme code](tokens.md#wiring-it-in)) or here. A screen that stops the app (an `@EnvironmentObject` nobody gives, a missing `modelContext`) fails alone, says what to give, and the other screens are drawn.
+- The app really launches first, as the host of Motif's test, and then each screen is made again on its own. The scene's modifiers (`.environment(store)`, `.modelContainer(container)`) are given to the root view, but SwiftData's `.modelContainer(for:)` on the scene isn't, and the run's note names it; nor is what the `App` sets up in its `init` or `.onAppear`. Give those inside the `WindowGroup` ([theme code](tokens.md#wiring-it-in)) or here. A screen that stops the app (an `@EnvironmentObject` nobody gives, a missing `modelContext`) fails alone, says what to give, and the other screens are drawn.
 - Motif doesn't answer network requests: point the app at its mock data here, never at a back end.
 - The app is built without signing, so its capabilities (iCloud, App Groups, Keychain sharing, push notifications) aren't there; the run's notes name them. Fake what they give here.
 - On the Mac the app runs as a copy of its own (its bundle id with `.motif-shots` added, its home in Motif's work folder), so `UserDefaults` and `@AppStorage` written here never reach the developer's own app, and Motif deletes them afterwards. The Keychain is still the developer's: fake it rather than write to it.

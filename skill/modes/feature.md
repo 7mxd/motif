@@ -27,14 +27,14 @@ Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show 
 - Reuse existing components first; extend one with a new variant before creating a new component.
 - Use theme values only ([the four rules](../contract/spec.md#the-four-rules)).
 - If the feature truly needs something the design guide doesn't have (a new component, a new value), stop and propose the change ⏸: what changes, from what to what, and why, in plain words. Once approved, update `design/tokens.json` and `DESIGN.md` (the component in section 5, a change-log line), run `motif validate` and `motif tokens`, and continue.
-- While you build, compare the app with the approved mockup whenever a screen takes shape: `motif shot --routes <route> --against design/previews/<feature>-<screen>.html` puts them side by side. For a quick look while you iterate, add `--sizes 390,1440` (a phone and a desktop); the final checks below use every size. Show the images if you can display them.
+- While you build, compare the app with the approved mockup whenever a screen takes shape: `motif shot --routes <route> --against design/previews/<feature>-<screen>.html` puts them side by side (a SwiftUI app opens no route but `/`: name its new screens' previews with `--screen <preview>` instead, here and below). For a quick look while you iterate, add `--sizes 390,1440` (a phone and a desktop); the final checks below use every size. Show the images if you can display them.
 
 ## 6. Verify
 
 1. Run `motif check` (no findings apart from justified `motif-ok` exceptions) and the project's build and type check.
-2. Run `motif shot --audit --routes <the new routes>` (it covers every variant), adding `--state` for each new screen behind a form or a click. Fix the critical and major findings and run it again.
+2. Run `motif shot --audit --routes <the new routes>` (`--screen <preview>` for each new screen of a SwiftUI app; it covers every variant), adding `--state` for each new screen behind a form or a click. Fix the critical and major findings and run it again.
 3. For each screen, run `motif shot --routes <route> --state design/states/<state>.js --against design/previews/<feature>-<screen>.html`, with a `--state` for each state the mockup shows (`.dart` for a Flutter app, `.kt` for a Compose app, `.swift` for a SwiftUI app, whose new screens are its previews, named with `--screen <preview>` instead of `--routes`): each frame is put next to the same state of the app, and the output names any state you left out. Fix differences that change the design.
-4. Confirm every state from the mockup exists in the app: loading, empty, error, disabled. With variants, look at the screen in each: `motif shot --routes <route> --variant all`.
+4. Confirm every state from the mockup exists in the app: loading, empty, error, disabled. With variants, look at the screen in each: `motif shot --routes <route> --variant all` (`--screen <preview>` for a SwiftUI app).
 5. Show the developer the side-by-side images and a short summary of what was built and checked.
 
 Delete `design/.progress.json`.

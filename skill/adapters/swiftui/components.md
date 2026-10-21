@@ -119,7 +119,7 @@ struct SettingsButton: View {
 }
 ```
 
-Apple's minimum is 44 by 44 points. A button in a system style (`.bordered`, `.borderedProminent`), a `Toggle`, a `TextField` and a `Picker` already have it. A plain or borderless button, a `Link` and an icon are as small as what they show: give the label `.frame(minWidth: 44, minHeight: 44)` and `.contentShape(Rectangle())`, so the whole frame takes taps. A view with `.onTapGesture` isn't a button to VoiceOver at all: make it a `Button`.
+Apple asks for 44 by 44 points. For a button in a system style (`.bordered`, `.borderedProminent`), a `Toggle`, a `TextField` and a `Picker`, the system sizes them, and the audit doesn't flag them. A plain or borderless button, a `Link` and an icon are as small as what they show: give the label `.frame(minWidth: 44, minHeight: 44)` and `.contentShape(Rectangle())`, so the whole frame takes taps. A view with `.onTapGesture` isn't a button to VoiceOver at all: make it a `Button`.
 
 Something drawn from several pieces (icons, numbers) gets one name:
 

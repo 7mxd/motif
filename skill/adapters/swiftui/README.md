@@ -6,7 +6,7 @@ How Motif works with an iPhone or Mac app built with SwiftUI: what it expects, h
 
 - An app in Swift with SwiftUI: an Xcode project whose app target has the `@main` `App` struct, for iOS, macOS or both (Xcode's Multiplatform template). Motif's generated theme is applied to the root view with `.motifTheme()`.
 - These versions or newer:
-  - **Xcode 16**, with **Swift 5.9** language mode or Swift 6. The theme uses the `@Entry` macro, which Xcode 16 brings.
+  - **Xcode 16**, in either of its Swift language modes, **Swift 5** or **Swift 6**. A theme with design variants uses the `@Entry` macro, which Xcode 16 brings.
   - A deployment target of **iOS 17** and **macOS 14**. The theme's springs are `Animation.spring(duration:bounce:)`, which arrived there. With an older target the app doesn't build: Xcode says `spring(duration:bounce:)` is only available in iOS 17.0 or newer. Raise **Minimum Deployments** in the target's **General** tab.
 - **A Mac for screenshots.** Theme code, checks and drafts work on any computer; `motif shot` draws the screens in an iOS simulator, or in a window on the Mac for a macOS app, so it needs a Mac with Xcode.
 - One design guide for the whole project. An app for iPhone and the Mac shares one theme; [platform rules](platform.md) says what to keep different on purpose.
@@ -31,7 +31,7 @@ An Xcode project has no command-line starter, and its project file isn't text yo
 
 1. **File › New › Project**, then **iOS › App** (or **Multiplatform › App** for iPhone and the Mac, **macOS › App** for the Mac alone).
 2. Name the app, and set the organization identifier to their own reverse-domain name (`com.example` only for a test). Keep **SwiftUI** and **Swift**, and **None** for storage unless the brief needs saved data.
-3. Save it in a new folder named after the app. Xcode makes `MyApp/MyApp.xcodeproj` and the app's code in `MyApp/MyApp/`.
+3. Choose where to keep it; Xcode makes the `MyApp` folder there, with `MyApp.xcodeproj` and the app's code in `MyApp/MyApp/`.
 
 The outer `MyApp` folder is the project: move the `design/` folder into it (the `motif` commands run from there), then run `motif tokens`.
 

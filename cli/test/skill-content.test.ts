@@ -240,18 +240,53 @@ describe("the SwiftUI guide matches the tool", () => {
     }
   });
 
-  test("its wiring and fonts are the theme's own names", async () => {
+  test("its wiring and variants are the theme's own names; the default variant is the guide's own, not one called default (fix round 1)", async () => {
     const { generateSwiftUI } = await import("../src/stacks/swiftui/generate");
     const { buildThemeSet } = await import("../src/generate/theme");
-    const { docFrom, partnerTokens } = await import("./helpers");
-    const theme = generateSwiftUI(buildThemeSet(docFrom(partnerTokens())))[0]!.content;
+    const { docFrom, twoVariantTokens } = await import("./helpers");
+    // women is the default, as in the format's own example.
+    const theme = generateSwiftUI(buildThemeSet(docFrom(twoVariantTokens())))[0]!.content;
     const tokens = read("adapters/swiftui/tokens.md");
-    for (const s of ["@Environment(\\.motifColors) private var colors", "func motifTheme(variant: MotifVariant = .defaultVariant)", "func motifFont(_ type: MotifType)", "@MainActor static var debugVariantOverride", "@Entry var motifVariant"]) {
+    for (const s of [
+      "@Environment(\\.motifColors) private var colors", "func motifTheme(variant: MotifVariant = .women)", "case women\n    case men", "func motifFont(_ type: MotifType)",
+      "@MainActor static var debugVariantOverride", "@Entry var motifVariant", "static func standard(over duration: Double) -> Animation",
+    ]) {
       expect([s, theme.includes(s)]).toEqual([s, true]);
     }
-    for (const s of ["@Environment(\\.motifColors) private var colors", ".motifTheme(variant: .defaultVariant)", ".motifFont(.body)", "MotifTheme.debugVariantOverride", "@Environment(\\.motifVariant)"]) {
+    for (const s of [
+      "@Environment(\\.motifColors) private var colors", ".motifTheme(variant: .women)", "MotifVariant(rawValue: variant) ?? .women", 'marks `"default": true`, whatever its id',
+      ".motifFont(.body)", "MotifTheme.debugVariantOverride", "@Environment(\\.motifVariant)",
+    ]) {
       expect(tokens).toContain(s);
     }
+    expect(tokens).not.toContain("MotifVariant.defaultVariant");
+    expect(read("adapters/swiftui/motion.md")).toContain("MotifCurves.standard(over: MotifDurations.slow)");
+  });
+
+  test("Dynamic Type, line spacing, scene modifiers and the Xcode steps say what the theme and the tool do now (fix round 1)", () => {
+    const tokens = read("adapters/swiftui/tokens.md");
+    const platform = read("adapters/swiftui/platform.md");
+    // .motifFont scales every role, the system font's too; MotifType.x.font() alone doesn't scale a system role.
+    for (const s of ["`.motifFont` scales every role with Dynamic Type", "`MotifType.body.font()` alone", "the font's own line height"]) expect(tokens).toContain(s);
+    expect(platform).toContain("`.motifFont` scales every role with Dynamic Type");
+    for (const text of [tokens, platform]) {
+      expect(text).not.toContain("A role in the system font keeps its size");
+      expect(text).not.toContain("1.2 times the size, true of the system font");
+    }
+    // Scene modifiers reach the views; only .modelContainer(for:) and the App's own setup don't reach the screenshots.
+    expect(tokens).not.toContain("a modifier on the scene doesn't reach the views");
+    expect(tokens).toContain("`.modelContainer(for:)`");
+    // Xcode makes the app's folder itself; its language modes are Swift 5 and Swift 6.
+    const readme = read("adapters/swiftui/README.md");
+    expect(readme).toContain("Xcode makes the `MyApp` folder there");
+    expect(readme).not.toContain("Swift 5.9");
+    expect(read("modes/init.md")).toContain("Xcode makes the app's folder there");
+    // System controls aren't all 44 points: the system sizes them, and the audit doesn't flag them.
+    expect(read("adapters/swiftui/components.md")).toContain("the system sizes them, and the audit doesn't flag them");
+    expect(platform).toContain("the system sizes them, and the audit doesn't flag them");
+    // A SwiftUI app's other screens are previews: feature names --screen beside --routes.
+    const feature = read("modes/feature.md");
+    expect((feature.match(/--screen <preview>/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
   test("every SwiftUI guide file stays under the line limit and links only to files that exist", () => {

@@ -9,12 +9,12 @@ How to use the design guide's motion roles with SwiftUI's animations, the common
 | Enum | Roles | Swift type |
 |---|---|---|
 | `MotifDurations.` | `instant`, `fast`, `base`, `slow` (the guide's own names) | `Double`, in seconds |
-| `MotifCurves.` | `standard`, `enter`, `exit` | `Animation`: the guide's curve over the `base` duration |
+| `MotifCurves.` | `standard`, `enter`, `exit` | `Animation`: the guide's curve over its `base` duration |
 | `MotifSprings.` | `snappy`, `smooth`, `bouncy` | `Animation`: a spring with the guide's duration and bounce |
 
 Use a curve for a change between two values, and a spring for movement that follows a finger or should feel physical. Never type `.easeInOut(duration: 0.3)`, `.linear`, `.timingCurve(…)`, `.spring(response: …)` or `withAnimation(.default)`: `motif check` reports them as `raw-motion`. `withAnimation { }` without an animation is SwiftUI's default curve too: always pass a role.
 
-A curve over another of the guide's durations is the same curve at another speed: `MotifCurves.standard.speed(MotifDurations.base / MotifDurations.slow)` runs over `slow`.
+A curve runs over the guide's `base` duration; a guide without one gets its first duration that isn't zero, or 0.25 seconds when it has none (the comment above `MotifCurves` in `MotifTheme.swift` says which). Over another of the guide's durations, each curve has a function of the same name: `MotifCurves.standard(over: MotifDurations.slow)`. The names are the guide's own: read `MotifTheme.swift` for the curves and durations yours has.
 
 SwiftUI doesn't stop animations by itself when Reduce Motion is on, so every animation goes through `MotifMotion.animation(_:reduceMotion:)`, which gives none then. Read the setting in the view:
 
@@ -124,8 +124,7 @@ struct Skeleton: View {
             .onAppear {
                 guard !reduceMotion else { return }
                 // The standard curve over the slow duration, back and forth.
-                let pulse = MotifCurves.standard.speed(MotifDurations.base / MotifDurations.slow)
-                withAnimation(pulse.repeatForever(autoreverses: true)) {
+                withAnimation(MotifCurves.standard(over: MotifDurations.slow).repeatForever(autoreverses: true)) {
                     dim = true
                 }
             }
