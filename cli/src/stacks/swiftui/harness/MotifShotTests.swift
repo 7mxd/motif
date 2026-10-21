@@ -309,10 +309,13 @@ final class MotifShotWindow: NSWindow {
 enum MotifShotDrawing {
     /// Before the first shot: the app's own windows (its WindowGroup's, opened at launch) are taken off the screen, and
     /// the app leaves the Dock and gives the focus back if it had it, so a run stays out of the way of the Mac's screen.
+    /// Accessibility is turned on for every run, not only those with a state: on CI's macOS 15 runner, only runs with
+    /// it on got 2× pictures from the window server (decision 0010, §17).
     static func prepare() -> String? {
         for window in NSApp.windows where window.isVisible { window.orderOut(nil) }
         NSApp.setActivationPolicy(.accessory)
         if NSApp.isActive { NSApp.deactivate() }
+        MotifAccessibility.enable()
         return nil
     }
 
@@ -374,6 +377,10 @@ enum MotifShotDrawing {
                 case .failure(let reason): why = reason.description
                 }
                 if Date() >= deadline { break }
+                // Asked again: the window server may have kept the window's first scale.
+                _ = setScale(window, shot.scale)
+                window.display()
+                CATransaction.flush()
                 RunLoop.main.run(until: Date().addingTimeInterval(0.1))
             }
         }
