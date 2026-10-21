@@ -821,28 +821,41 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
   const removeNow = () => (run.remove ?? removeSimulator)(sim);
   const cancelExitHook = (run.onExit ?? onExit)(() => void removeNow());
   try {
-    // Booted without Simulator.app, so no window opens.
-    const booted = await step("boot", ["xcrun", "simctl", "boot", sim]);
-    if (booted.timedOut) return tooLong("booting the simulator");
-    if (booted.code !== 0) {
-      return done({ problem: `The simulator (${simulator.deviceType.split(".").pop()}, iOS ${simulator.version}) couldn't start:\n${tail(booted.stderr || booted.stdout, 5)}\nFree some disk space, or reinstall the runtime in Xcode › Settings › Components, then run motif shot again.` });
+    // The app and the harness are built while the simulator boots (decision 0010, §9): the build needs the simulator
+    // to exist, not to run. Booted without Simulator.app, so no window opens.
+    const xcodebuild = (action: string) => [
+      "xcodebuild", action, "-project", project, "-scheme", TEST_TARGET, "-configuration", configuration,
+      "-destination", `id=${sim}`, "-derivedDataPath", derivedData, "-collect-test-diagnostics", "never",
+      "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO", "ENABLE_TESTABILITY=YES",
+    ];
+    const boot = async (): Promise<SwiftUIHarnessResult | null> => {
+      const booted = await step("boot", ["xcrun", "simctl", "boot", sim]);
+      if (booted.timedOut) return tooLong("booting the simulator");
+      if (booted.code !== 0) {
+        return done({ problem: `The simulator (${simulator!.deviceType.split(".").pop()}, iOS ${simulator!.version}) couldn't start:\n${tail(booted.stderr || booted.stdout, 5)}\nFree some disk space, or reinstall the runtime in Xcode › Settings › Components, then run motif shot again.` });
+      }
+      const ready = await step("boot", ["xcrun", "simctl", "bootstatus", sim, "-b"]);
+      if (ready.timedOut) return tooLong("waiting for the simulator to boot");
+      if (ready.code !== 0) {
+        return done({ problem: `The simulator didn't finish booting:\n${tail(ready.stderr || ready.stdout, 5)}\nRun motif shot again; if it happens again, restart the Mac's simulator service (killall -9 com.apple.CoreSimulator.CoreSimulatorService).` });
+      }
+      return null;
+    };
+    const [unbooted, built] = await Promise.all([boot(), step("build", xcodebuild("build-for-testing"))]);
+    output = `${built.stdout}\n${built.stderr}`.slice(-200_000);
+    lastCode = built.code;
+    if (built.timedOut) return tooLong("building the app");
+    if (built.code !== 0) {
+      return done({ problem: `The app didn't build with Motif's harness:\n${compilerErrors(output)}\nCheck that the app builds for the iOS simulator in Xcode, then run motif shot again.` });
     }
-    const ready = await step("boot", ["xcrun", "simctl", "bootstatus", sim, "-b"]);
-    if (ready.timedOut) return tooLong("waiting for the simulator to boot");
-    if (ready.code !== 0) {
-      return done({ problem: `The simulator didn't finish booting:\n${tail(ready.stderr || ready.stdout, 5)}\nRun motif shot again; if it happens again, restart the Mac's simulator service (killall -9 com.apple.CoreSimulator.CoreSimulatorService).` });
-    }
+    if (unbooted) return unbooted;
 
     const merged: SwiftUIRunResult = { shots: [], previews: [], notes: [] };
     let remaining = [...run.options.shots];
     for (let launch = 0; remaining.length > 0; launch++) {
       writeFileSync(join(run.workDir, OPTIONS_FILE), JSON.stringify({ ...run.options, shots: remaining }, null, 2));
       rmSync(resultPath, { force: true });
-      const tested = await step("test", [
-        "xcodebuild", launch === 0 ? "test" : "test-without-building", "-project", project, "-scheme", TEST_TARGET, "-configuration", configuration,
-        "-destination", `id=${sim}`, "-derivedDataPath", derivedData, "-collect-test-diagnostics", "never",
-        "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO", "ENABLE_TESTABILITY=YES",
-      ], { ...(run.env ?? process.env), TEST_RUNNER_MOTIF_SHOT_OPTIONS: join(run.workDir, OPTIONS_FILE) });
+      const tested = await step("test", xcodebuild("test-without-building"), { ...(run.env ?? process.env), TEST_RUNNER_MOTIF_SHOT_OPTIONS: join(run.workDir, OPTIONS_FILE) });
       // xcodebuild hands the variables that start with TEST_RUNNER_ to the test's process, without the prefix.
       output = `${output}${tested.stdout}\n${tested.stderr}`.slice(-200_000);
       lastCode = tested.code;

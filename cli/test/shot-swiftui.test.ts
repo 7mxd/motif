@@ -360,6 +360,7 @@ async function fakeShoot(
   opts: Partial<NativeShotOptions>,
   home: string,
   test: (options: { shots: SwiftUIShot[] }, resultPath: string, fake: Fake) => ExecResult = drawsAll,
+  build: ExecResult = ok("** TEST BUILD SUCCEEDED **"),
 ) {
   const fake: Fake = { calls: [], removed: [], hooks: [], sources: {}, options: null, copyDir: "" };
   const exec: Exec = async (cmd, o) => {
@@ -374,6 +375,7 @@ async function fakeShoot(
     if (c.startsWith("xcrun simctl list")) return ok(SIMS);
     if (c.startsWith("xcrun simctl create")) return ok(`${UDID}\n`);
     if (cmd[0] === "xcrun") return ok();
+    if (cmd[0] === "xcodebuild" && cmd[1] === "build-for-testing") return build;
     if (cmd[0] === "xcodebuild") {
       const path = o.env!.TEST_RUNNER_MOTIF_SHOT_OPTIONS!;
       const folder = join(dirname(path), SOURCES_FOLDER);
@@ -430,8 +432,9 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     // The copy and the build are in Motif's own folder, outside the project; the developer's project is untouched.
     expect(fake.copyDir).toBe(join(cache, "copy"));
     expect(relative(root, fake.copyDir).startsWith("..")).toBe(true);
-    const test = fake.calls.find((c) => c[0] === "xcodebuild" && c[1] === "test")!;
-    expect(test.slice(0, 8)).toEqual(["xcodebuild", "test", "-project", join(cache, "copy", "SwiftUIMin.xcodeproj"), "-scheme", "MotifShots", "-configuration", "Debug"]);
+    expect(fake.calls.filter((c) => c[0] === "xcodebuild").map((c) => c[1])).toEqual(["-showBuildSettings", "build-for-testing", "test-without-building"]);
+    const test = fake.calls.find((c) => c[0] === "xcodebuild" && c[1] === "test-without-building")!;
+    expect(test.slice(0, 8)).toEqual(["xcodebuild", "test-without-building", "-project", join(cache, "copy", "SwiftUIMin.xcodeproj"), "-scheme", "MotifShots", "-configuration", "Debug"]);
     expect(test).toContain(`id=${UDID}`);
     expect(test[test.indexOf("-derivedDataPath") + 1]).toBe(join(cache, "DerivedData"));
     expect(test).toContain("CODE_SIGNING_ALLOWED=NO");
@@ -471,9 +474,9 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
   test("a build that fails says so, and the copy, the work folder and the simulator are still removed", async () => {
     const root = xcodeProject();
     const home = tempDir("motif-swiftui-home-");
-    const { promise, fake } = await fakeShoot(root, {}, home, () => ({
-      code: 65, stdout: "/x/ContentView.swift:3:5: error: cannot find 'Foo' in scope\n** TEST FAILED **\nTesting cancelled because the build failed.", stderr: "", timedOut: false,
-    }));
+    const { promise, fake } = await fakeShoot(root, {}, home, drawsAll, {
+      code: 65, stdout: "/x/ContentView.swift:3:5: error: cannot find 'Foo' in scope\n** TEST BUILD FAILED **", stderr: "", timedOut: false,
+    });
     await expect(promise).rejects.toThrow("The app didn't build with Motif's harness:\n/x/ContentView.swift:3:5: error: cannot find 'Foo' in scope");
     const cache = swiftUICacheDir(home, root, "SwiftUIMin");
     expect(readdirSync(cache)).toEqual([]);

@@ -537,6 +537,7 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
       filter: (src) => !SKIP.has(basename(src)) && resolve(src) !== outDir,
     });
     const copyDir = join(copyRoot, relative(base, appDir).split(sep).join("/"));
+    const copied = Date.now();
     const run = deps.run ?? runSwiftUIHarness;
     const result = await run({
       copyDir,
@@ -569,6 +570,7 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
       throw new Error(result.problem ?? "xcodebuild stopped before drawing any screen.");
     }
     const mapped = mapSwiftUIResult(targets, shots, outDir, result, opts.timeoutMs);
+    if (process.env.MOTIF_DEBUG) notes.push(`How long each step took, in ms: ${JSON.stringify({ copy: copied - started, ...result.timings })}`);
     const routes = opts.audit ? mapped.routes.map((r) => (r.status === 200 ? { ...r, auditError: "Motif doesn't audit SwiftUI screens yet" } : r)) : mapped.routes;
     return { routes, issues: [], notes: [...notes, ...mapped.notes] };
   } finally {

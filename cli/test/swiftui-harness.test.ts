@@ -320,6 +320,7 @@ async function fakeRun(
     if (cmd.slice(0, 3).join(" ") === "xcrun simctl list") return ok(SIMS);
     if (cmd.slice(0, 3).join(" ") === "xcrun simctl create") return ok(`${UDID}\n`);
     if (cmd[0] === "xcrun") return ok();
+    if (cmd[0] === "xcodebuild" && cmd[1] === "build-for-testing") return ok("** TEST BUILD SUCCEEDED **");
     if (cmd[0] === "xcodebuild") {
       const optionsPath = opts.env!.TEST_RUNNER_MOTIF_SHOT_OPTIONS!;
       return launch(launches++, JSON.parse(readFileSync(optionsPath, "utf8")), join(dirname(optionsPath), RESULT_FILE));
@@ -357,7 +358,10 @@ describe("runSwiftUIHarness (with stand-ins for xcodebuild and simctl)", () => {
     expect(existsSync(join(workDir, SOURCES_FOLDER, "MotifShotTests.swift"))).toBe(true);
     expect(existsSync(join(copyDir, SOURCES_FOLDER))).toBe(false);
     expect(readFileSync(join(copyDir, "SwiftUIMin.xcodeproj/project.pbxproj"), "utf8")).toContain('sourceTree = "<absolute>";');
-    const test = calls.find((c) => c[1] === "test")!;
+    // Built while the simulator boots, then tested without building again.
+    expect(calls.filter((c) => c[0] === "xcodebuild").map((c) => c[1])).toEqual(["-showBuildSettings", "build-for-testing", "test-without-building"]);
+    const test = calls.find((c) => c[1] === "test-without-building")!;
+    expect(calls.find((c) => c[1] === "build-for-testing")!.slice(2)).toEqual(test.slice(2));
     expect(test).toContain("-collect-test-diagnostics");
     expect(test).toContain("ENABLE_TESTABILITY=YES");
     expect(test[test.indexOf("-configuration") + 1]).toBe("Debug");
@@ -383,7 +387,7 @@ describe("runSwiftUIHarness (with stand-ins for xcodebuild and simctl)", () => {
       return failed(65, "", "SwiftUICore/EnvironmentObject.swift:93: Fatal error: No ObservableObject of type Needed found.\n** TEST FAILED **");
     });
     expect(launched).toEqual([["home.png", "crash.png", "crash.dark.png", "settings.png"], ["settings.png"]]);
-    expect(calls.filter((c) => c[0] === "xcodebuild" && c[1] !== "-showBuildSettings").map((c) => c[1])).toEqual(["test", "test-without-building"]);
+    expect(calls.filter((c) => c[0] === "xcodebuild" && c[1] !== "-showBuildSettings").map((c) => c[1])).toEqual(["build-for-testing", "test-without-building", "test-without-building"]);
     const error = "The preview Crash.swift:12 stopped the app: Fatal error: No ObservableObject of type Needed found.";
     expect(r.result?.shots).toEqual([
       { file: "home.png", ms: 200 },
@@ -422,7 +426,8 @@ describe("runSwiftUIHarness (with stand-ins for xcodebuild and simctl)", () => {
       "\tTesting cancelled because the build failed.",
       "** TEST FAILED **",
     ].join("\n");
-    const { r } = await fakeRun([shot("/", "home.png")], () => undefined, () => failed(65, "", out));
+    const { r, calls } = await fakeRun([shot("/", "home.png")], (cmd) => (cmd[1] === "build-for-testing" ? failed(65, "", out) : undefined), drawsAll);
+    expect(calls.some((c) => c[1] === "test-without-building")).toBe(false);
     expect(r.result).toBeNull();
     expect(r.problem).toBe(
       "The app didn't build with Motif's harness:\n/tmp/x/app/SwiftUI26/BrokenPreview.swift:9:7: error: type 'Session' does not conform to protocol 'ObservableObject'\nCheck that the app builds for the iOS simulator in Xcode, then run motif shot again.",
@@ -433,7 +438,7 @@ describe("runSwiftUIHarness (with stand-ins for xcodebuild and simctl)", () => {
     const boot = await fakeRun([shot("/", "home.png")], (cmd) => (cmd[2] === "boot" ? failed(149, "Unable to boot device in current state: Booted") : undefined), drawsAll);
     expect(boot.r.problem).toContain("couldn't start:\nUnable to boot device in current state: Booted\nFree some disk space");
     expect(boot.removed).toEqual([UDID]);
-    expect(boot.calls.some((c) => c[1] === "test")).toBe(false);
+    expect(boot.calls.some((c) => c[1] === "test-without-building")).toBe(false);
     const status = await fakeRun([shot("/", "home.png")], (cmd) => (cmd[2] === "bootstatus" ? failed(1, "timed out") : undefined), drawsAll);
     expect(status.r.problem).toContain("didn't finish booting");
     expect(status.removed).toEqual([UDID]);

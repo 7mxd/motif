@@ -77,6 +77,8 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(() => {
+  // MOTIF_KEEP_SHOTS=<folder> keeps the screenshots, to look at them.
+  if (root && process.env.MOTIF_KEEP_SHOTS) cpSync(join(root, "design", "shots"), process.env.MOTIF_KEEP_SHOTS, { recursive: true });
   if (saved === undefined) delete process.env.MOTIF_HOME;
   else process.env.MOTIF_HOME = saved;
   cleanupTempDirs();
@@ -121,7 +123,7 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
       const started = Date.now();
       const r = await shot({ routes: "/", screen: "Settings", sizes: "390", variant: "all", rtl: "ar", state: "design/states/greeted.swift" });
       console.log(`[swiftui-shot-e2e] first run: ${Math.round((Date.now() - started) / 1000)} s`);
-      if (r.exitCode !== 0) console.log(r.text);
+      console.log(r.text);
       expect(r.exitCode).toBe(0);
       // 2 screens × 1 size × 2 schemes × 2 variants × 2 directions × 2 (without and with the state).
       expect(r.text).toContain("✓ 32 screenshots of 2 screens (390 px wide, light and dark, right to left in ar, 2 design variants)");
@@ -175,7 +177,7 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
     const started = Date.now();
     const r = await shot({ screen: "Settings", sizes: "390" });
     console.log(`[swiftui-shot-e2e] second run: ${Math.round((Date.now() - started) / 1000)} s`);
-    if (r.exitCode !== 0) console.log(r.text);
+    console.log(r.text);
     expect(r.exitCode).toBe(0);
     expect(r.text).toContain("✓ 2 screenshots of 1 screen");
     expect(r.text).not.toContain(SWIFTUI_FIRST_RUN);
