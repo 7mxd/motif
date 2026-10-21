@@ -213,6 +213,8 @@ describe.skipIf(!browser)("captureScreens: from the review of batch B", () => {
     const time = async (route: string) => {
       const started = Date.now();
       const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: [route], outDir: tempDir("motif-shots-"), settleMs: 50, viewports: DESKTOP });
+      // On a slow CI runner a capture has come back empty (Oct 2026); say why if it does again.
+      if (routes[0]!.shots.length !== 2) console.log(JSON.stringify(routes[0], null, 2));
       expect(routes[0]!.shots).toHaveLength(2);
       return Date.now() - started;
     };
@@ -252,6 +254,7 @@ describe.skipIf(!browser)("the default variant's attribute (needs Chrome, Edge o
     try {
       const out = join(root, "shots");
       const r = await captureScreens({ browserPath: browser!.path, baseUrl: site.url, routes: ["/"], outDir: out, settleMs: 50, viewports: PHONE, variants: ["men"], defaultVariant: "women" });
+      if (r.routes[0]!.shots.length !== 4) console.log(JSON.stringify(r.routes[0], null, 2));
       expect(r.routes[0]!.shots.map((s) => s.slice(out.length + 1)).sort()).toEqual(["index+men.mobile.dark.png", "index+men.mobile.png", "index.mobile.dark.png", "index.mobile.png"]);
       expect(readFileSync(join(out, "index.mobile.png")).equals(readFileSync(join(out, "index+men.mobile.png")))).toBe(false);
 
