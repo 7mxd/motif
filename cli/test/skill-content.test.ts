@@ -214,3 +214,50 @@ describe("the Compose guide matches the tool", () => {
     expect(files.filter((f) => f.startsWith("adapters/compose/")).length).toBe(6);
   });
 });
+
+describe("the SwiftUI guide matches the tool", () => {
+  const read = (p: string) => readFileSync(join(SKILL, p), "utf8").replace(/\r\n/g, "\n");
+
+  test("doctor's lines are the tool's own, on a Mac and elsewhere", async () => {
+    const { swiftUIDoctor } = await import("../src/stacks/swiftui/doctor");
+    const readme = read("adapters/swiftui/README.md");
+    const deps = (platform: NodeJS.Platform, run?: (cmd: string[]) => { code: number; stdout: string }) =>
+      ({ platform, arch: "arm64", home: "/Users/you", findBrowser: () => null, which: () => null, ...(run ? { run } : {}) });
+    expect(readme).toContain(swiftUIDoctor(deps("win32"), { root: ".", apps: [] })[0]!.detail);
+    expect(readme).toContain(swiftUIDoctor(deps("darwin", () => ({ code: 127, stdout: "" })), { root: ".", apps: [] })[0]!.detail);
+    const tools = (cmd: string[]) => (cmd[0] === "xcode-select" ? { code: 0, stdout: "/Library/Developer/CommandLineTools\n" } : { code: 0, stdout: "" });
+    expect(readme).toContain(swiftUIDoctor(deps("darwin", tools), { root: ".", apps: [] })[0]!.detail);
+  });
+
+  test("its setup file, first-run lines, variant hint and audit fixes are the tool's own", async () => {
+    const { SETUP_FILE, SWIFTUI_FIRST_RUN, SWIFTUI_FIRST_RUN_MAC, SWIFTUI_FIXES } = await import("../src/stacks/swiftui/shot");
+    const checks = read("adapters/swiftui/checks.md");
+    for (const s of [SETUP_FILE, SWIFTUI_FIRST_RUN, SWIFTUI_FIRST_RUN_MAC]) expect(checks).toContain(s);
+    // The audit's advice and the guide's agree: each fix's code is in both.
+    const fixes = Object.values(SWIFTUI_FIXES).join("\n");
+    for (const s of [".accessibilityLabel(", ".frame(minWidth: 44, minHeight: 44)", ".contentShape(Rectangle())", "@Environment(\\.accessibilityReduceMotion)", ".foregroundStyle(", ".tint(", "MotifMotion.animation("]) {
+      expect([s, fixes.includes(s), checks.includes(s)]).toEqual([s, true, true]);
+    }
+  });
+
+  test("its wiring and fonts are the theme's own names", async () => {
+    const { generateSwiftUI } = await import("../src/stacks/swiftui/generate");
+    const { buildThemeSet } = await import("../src/generate/theme");
+    const { docFrom, partnerTokens } = await import("./helpers");
+    const theme = generateSwiftUI(buildThemeSet(docFrom(partnerTokens())))[0]!.content;
+    const tokens = read("adapters/swiftui/tokens.md");
+    for (const s of ["@Environment(\\.motifColors) private var colors", "func motifTheme(variant: MotifVariant = .defaultVariant)", "func motifFont(_ type: MotifType)", "@MainActor static var debugVariantOverride", "@Entry var motifVariant"]) {
+      expect([s, theme.includes(s)]).toEqual([s, true]);
+    }
+    for (const s of ["@Environment(\\.motifColors) private var colors", ".motifTheme(variant: .defaultVariant)", ".motifFont(.body)", "MotifTheme.debugVariantOverride", "@Environment(\\.motifVariant)"]) {
+      expect(tokens).toContain(s);
+    }
+  });
+
+  test("every SwiftUI guide file stays under the line limit and links only to files that exist", () => {
+    for (const f of files.filter((f) => f.startsWith("adapters/swiftui/"))) {
+      expect(lintSkillMarkdown(f, readFileSync(join(SKILL, f), "utf8"), opts)).toEqual([]);
+    }
+    expect(files.filter((f) => f.startsWith("adapters/swiftui/")).length).toBe(6);
+  });
+});

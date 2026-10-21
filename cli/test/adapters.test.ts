@@ -12,6 +12,7 @@ import { dartReducedMotion, scanDart } from "../src/stacks/flutter/rules";
 import { composeReducedMotion, scanKotlin } from "../src/stacks/compose/rules";
 import { NO_ANDROID_SDK } from "../src/stacks/compose/doctor";
 import { rnReducedMotion, scanReactNative } from "../src/stacks/react-native/rules";
+import { scanSwift, swiftUIReducedMotion } from "../src/stacks/swiftui/rules";
 import { docFrom, validTokens } from "./helpers";
 
 const ADAPTERS = join(import.meta.dir, "../../skill/adapters");
@@ -376,6 +377,93 @@ describe("the React Native guide", () => {
         expect(hits.map((h) => `${path}: ${h.rule} ${h.text}`)).toEqual([]);
       }
     }
+  });
+});
+
+describe("the SwiftUI guide", () => {
+  const has = (file: string, strings: string[]) => {
+    const text = read(`swiftui/${file}`);
+    for (const s of strings) expect([file, s, text.includes(s)]).toEqual([file, s, true]);
+  };
+
+  test("has exactly the template's files", () => {
+    expect(readdirSync(join(ADAPTERS, "swiftui")).sort()).toEqual(GUIDE_FILES);
+  });
+
+  test("README: Xcode's App template, no command-line starter, xcodebuild, the Mac, doctor's lines, the floors and monorepos", () => {
+    has("README.md", [
+      "**App**", "no command-line starter", "swift package init --type executable", "xcodebuild", "-destination", "a Mac",
+      "`Xcode`", "SwiftUI screenshots need a Mac with Xcode.", "Xcode isn't installed.", "is older than 16", "install an iOS simulator in Xcode › Settings › Components",
+      "A macOS app needs no simulator.", "not only its command-line tools",
+      "Xcode 16", "iOS 17", "macOS 14", "Swift 5.9", "design/motif.json", "themeDir", "## Monorepos", "one guide for the web dashboard and the iPhone app", "platform notes", "--app",
+      "#Preview", "synchronized folder", "Podfile", "Package.swift",
+    ]);
+  });
+
+  test("tokens.md: wiring .motifTheme in, reading the colours from the environment, type, sizes, fonts and switching variants", () => {
+    has("tokens.md", [
+      ".motifTheme(", "@Environment(\\.motifColors)", ".motifFont(", "MotifSpace.", "MotifRadius.", ".motifShadow(", "MotifType.", "Arabic companion",
+      "UIAppFonts", "ATSApplicationFontsPath", "fonts.google.com", "Info.plist", "AccentColor",
+      "## Switching variants", "@AppStorage", "MotifVariant(rawValue:", ".motifTheme(variant:", "MotifTheme.debugVariantOverride", "colours only",
+    ]);
+  });
+
+  test("components.md: where views live, private views, button styles, every state, names, 44 pt and focus", () => {
+    has("components.md", [
+      "Components/", "Features/<Feature>/", "`private` views are parts of a screen", "ButtonStyle", "configuration.isPressed", "@Environment(\\.isEnabled)",
+      "@FocusState", ".accessibilityLabel", ".contentShape", "44", ".frame(minWidth: 44, minHeight: 44)", "Label(",
+    ]);
+    for (const c of ["Button", "IconButton", "Field", "Checkbox", "Switch", "Card", "ListItem", "TopBar", "TabBar", "Sheet", "Dialog", "Toast", "Skeleton", "EmptyState", "ErrorState", "Avatar", "Badge"]) {
+      expect(read("swiftui/components.md")).toContain(`\`${c}\``);
+    }
+  });
+
+  test("motion.md: the roles in SwiftUI's animation API, springs, and reduced motion", () => {
+    has("motion.md", ["MotifSprings.", "MotifCurves.", "MotifDurations.", "withAnimation(", "accessibilityReduceMotion", "MotifMotion.animation(", "isReduceMotionEnabled", ".repeatForever("]);
+  });
+
+  test("platform.md: right to left, leading and trailing, Dynamic Type, safe areas, iOS and the Mac, languages", () => {
+    has("platform.md", [
+      ".environment(\\.layoutDirection", "leading", "trailing", ".flipsForRightToLeftLayoutDirection(true)", "Dynamic Type", "safe area", ".safeAreaInset(",
+      "Localizable.xcstrings", "NavigationStack", "the Mac", "DESIGN.md",
+    ]);
+  });
+
+  test("checks.md: every rule, the audit, the setup and state files with their exact signatures, and the screenshot flags", () => {
+    const checks = read("swiftui/checks.md");
+    for (const id of RULE_IDS.filter((r) => !r.startsWith("tailwind") && r !== "primitive-use")) expect(checks).toContain(`## \`${id}\``);
+    has("checks.md", [
+      "## Contrast", "## Target size", "## Names", "## Reduced motion", "// motif-ok:",
+      "design/states/Setup.swift", "func motifSetup(variant: String, locale: Locale, dark: Bool)", "@MainActor func motifState(_ app: MotifHarness) async throws",
+      "MotifHarness", "app.tap(", "app.type(", "app.waitFor(", "app.exists(", "15 seconds", "top-level",
+      "--screen", "#Preview", "--rtl", "--state", "a Mac", "1440×900", "900×700", "--sizes 1440",
+    ]);
+  });
+
+  test("the Swift examples pass motif check as they are, and each rule's bad example is reported by it", () => {
+    const scale = buildScale(buildTheme(docFrom(validTokens())), "MyApp/Design");
+    const reported = new Set<string>();
+    for (const file of GUIDE_FILES) {
+      const text = read(`swiftui/${file}`);
+      const blocks = [...text.matchAll(/```swift\n([\s\S]*?)```/g)].map((m) => m[1]!);
+      if (file !== "README.md") expect([file, blocks.length > 0]).toEqual([file, true]);
+      for (const [i, code] of blocks.entries()) {
+        const path = `${file}-example-${i + 1}.swift`;
+        const source = { path, abs: path, text: code, lang: "swift" as const };
+        const lines = code.split("\n");
+        const hits = [...scanSwift(source, scale), ...swiftUIReducedMotion([source])].filter((h) => h.violation && !("reason" in (exceptionFor(lines, h.line) ?? {})));
+        // A bad example starts with "// Reported as <rule>:", and motif check reports it as that rule, and only that.
+        const bad = /^\/\/ Reported as ([a-z-]+):/.exec(code)?.[1];
+        if (bad) {
+          expect([path, file]).toEqual([path, "checks.md"]);
+          expect([path, hits.length > 0, [...new Set(hits.map((h): string => h.rule))]]).toEqual([path, true, [bad]]);
+          reported.add(bad);
+        } else {
+          expect(hits.map((h) => `${path}: ${h.rule} ${h.text}`)).toEqual([]);
+        }
+      }
+    }
+    expect([...reported].sort()).toEqual(["off-scale", "raw-color", "raw-font", "raw-motion", "reduced-motion"]);
   });
 });
 

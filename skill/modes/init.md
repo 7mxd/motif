@@ -8,7 +8,7 @@ Ask one round of questions, each with choices and a default. Skip any the develo
 
 1. What is the app? (one sentence, in their words)
 2. Who is it for?
-3. Platform and stack: a web app (React, the default), a simple web page or site with no framework (plain web), a mobile app in Flutter or in React Native with Expo, an Android app in Jetpack Compose, or another stack. Pre-fill what `motif doctor --json` found.
+3. Platform and stack: a web app (React, the default), a simple web page or site with no framework (plain web), a mobile app in Flutter or in React Native with Expo, an Android app in Jetpack Compose, an iPhone or Mac app in SwiftUI, or another stack. Pre-fill what `motif doctor --json` found.
 4. Brand: a name, a logo, colours or fonts they must use (optional).
 5. Feel: offer the 8 starting styles. Run `motif preview --gallery --png-only --out design/directions/gallery` and show the PNGs (light and dark); if you can't show images, describe each from `presets/<style>/about.md` in the skill folder. Words work too ("calm and premium").
 6. Apps or sites they like (optional; links are enough).
@@ -17,7 +17,7 @@ Save the answers in the progress file's `notes`, so a later session doesn't ask 
 
 ## 2. Scaffold
 
-- **No project yet:** create it in a new folder named after the app, with the starter in the stack guide ([React web](../adapters/react-web/README.md): Next.js by default, Vite for a single-page app; [plain web](../adapters/plain-web/README.md): a few files and no build step; [Flutter](../adapters/flutter/README.md): `flutter create --org <the developer's reverse-domain name> <app>`, which adds `flutter_test` to `dev_dependencies`; `motif shot` needs it, so add it to an existing app that lacks it; [Jetpack Compose](../adapters/compose/README.md): Android Studio's Empty Activity template, which has no command-line starter, so ask the developer to create it in Android Studio, or write the template's files yourself when they prefer, as the guide lists them, starting with the Gradle wrapper, which the guide makes without Gradle installed; [React Native](../adapters/react-native/README.md): `npx create-expo-app@latest <app>`, which includes the web packages screenshots use). Starters need an empty folder, so the brief's files can't go first: once the project exists, move the `design/` folder from step 1 into it, and run every later command (`motif` included) from the new folder. Ask before installing anything the starter command doesn't install.
+- **No project yet:** create it in a new folder named after the app, with the starter in the stack guide ([React web](../adapters/react-web/README.md): Next.js by default, Vite for a single-page app; [plain web](../adapters/plain-web/README.md): a few files and no build step; [Flutter](../adapters/flutter/README.md): `flutter create --org <the developer's reverse-domain name> <app>`, which adds `flutter_test` to `dev_dependencies`; `motif shot` needs it, so add it to an existing app that lacks it; [Jetpack Compose](../adapters/compose/README.md): Android Studio's Empty Activity template, which has no command-line starter, so ask the developer to create it in Android Studio, or write the template's files yourself when they prefer, as the guide lists them, starting with the Gradle wrapper, which the guide makes without Gradle installed; [SwiftUI](../adapters/swiftui/README.md): Xcode's App template, which has no command-line starter either, so ask the developer to create it in Xcode, and say that its screenshots need a Mac with Xcode; [React Native](../adapters/react-native/README.md): `npx create-expo-app@latest <app>`, which includes the web packages screenshots use). Starters need an empty folder, so the brief's files can't go first: once the project exists, move the `design/` folder from step 1 into it, and run every later command (`motif` included) from the new folder. Ask before installing anything the starter command doesn't install.
 - **An existing project:** keep it. Add Motif's files beside what's there and change nothing else yet.
 
 ## 3. Research
@@ -57,7 +57,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
 
 ## 6. Build
 
-1. Run `motif tokens` to write the theme code, and do the wiring its output asks for (for example importing the CSS once, linking `motif.css` in each page, or wrapping a Compose app's `setContent` in `MotifTheme`). Load the theme's fonts in the app as the stack guide shows; `motif tokens --json` lists them in `fonts`.
+1. Run `motif tokens` to write the theme code, and do the wiring its output asks for (for example importing the CSS once, linking `motif.css` in each page, wrapping a Compose app's `setContent` in `MotifTheme`, or adding `.motifTheme()` to a SwiftUI app's root view). Load the theme's fonts in the app as the stack guide shows; `motif tokens --json` lists them in `fonts`.
 2. Build the stack guide's starter components, each with every state from `DESIGN.md` section 5 (default, hover where it applies, pressed, focused, disabled, loading, error) and motion from the motion roles.
 3. Build the app shell (the navigation model in `DESIGN.md` section 6) and the first screens, with mock data from one clearly named file:
    - Web apps: welcome or landing, sign-in, home.

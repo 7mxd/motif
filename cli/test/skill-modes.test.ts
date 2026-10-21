@@ -398,3 +398,34 @@ describe("Jetpack Compose in the skill and the modes", () => {
     }
   });
 });
+
+describe("SwiftUI in the skill and the modes", () => {
+  test("SKILL.md sends SwiftUI apps to their guide, and the toolchain row names a Mac with Xcode", () => {
+    const skill = read("SKILL.md");
+    for (const s of ["(adapters/swiftui/README.md)", "SwiftUI", "a Mac with Xcode for SwiftUI apps' screenshots"]) expect(skill).toContain(s);
+  });
+
+  test("init offers SwiftUI, starts it from Xcode's App template, which has no command-line starter, and says screenshots need a Mac", () => {
+    const init = read("modes/init.md");
+    for (const s of ["an iPhone or Mac app in SwiftUI", "(../adapters/swiftui/README.md)", "Xcode's App template", "no command-line starter", "a Mac with Xcode"]) {
+      expect(init).toContain(s);
+    }
+  });
+
+  test("feature lists a SwiftUI app's views from its guide", () => {
+    const feature = read("modes/feature.md");
+    for (const s of ["(../adapters/swiftui/components.md)", "Components/", "`.swift` for a SwiftUI app"]) expect(feature).toContain(s);
+  });
+
+  test("review links SwiftUI's checks and state files, which are Swift, and says screenshots need a Mac", () => {
+    const review = read("modes/review.md");
+    for (const s of ["(../adapters/swiftui/checks.md)", "(../adapters/swiftui/checks.md#screens-behind-a-form-or-a-tap)", "`.swift` for a SwiftUI app", "on a Mac"]) {
+      expect(review).toContain(s);
+    }
+  });
+
+  test("variants: switching a SwiftUI app's variant from @AppStorage, and what SwiftUI varies", () => {
+    const variants = read("knowledge/variants.md");
+    for (const s of [".motifTheme(variant: .", "@AppStorage", "(../adapters/swiftui/tokens.md#switching-variants)"]) expect(variants).toContain(s);
+  });
+});

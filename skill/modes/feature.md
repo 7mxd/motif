@@ -5,7 +5,7 @@ A new feature that looks as if it was always part of the app: built from the des
 ## 1. Read what exists
 
 1. Read `DESIGN.md`, `design/tokens.json` and `design/motif.json`.
-2. List the existing components. The stack guide says where they live (React web: [components](../adapters/react-web/components.md); plain web: the `Component:` lines in `components.css`, [components](../adapters/plain-web/components.md); Flutter: the public widgets in `lib/widgets/` and `lib/features/*/widgets/`, [components](../adapters/flutter/components.md); Jetpack Compose: the public composables in `ui/components/` and the feature folders under `ui/`, [components](../adapters/compose/components.md); React Native: the exported components in `components/` and `features/*/components/`, [components](../adapters/react-native/components.md)). Note each one's name, variants and states, so you reuse them rather than rebuild them.
+2. List the existing components. The stack guide says where they live (React web: [components](../adapters/react-web/components.md); plain web: the `Component:` lines in `components.css`, [components](../adapters/plain-web/components.md); Flutter: the public widgets in `lib/widgets/` and `lib/features/*/widgets/`, [components](../adapters/flutter/components.md); Jetpack Compose: the public composables in `ui/components/` and the feature folders under `ui/`, [components](../adapters/compose/components.md); SwiftUI: the views that aren't `private` in `Components/` and `Features/*/`, [components](../adapters/swiftui/components.md); React Native: the exported components in `components/` and `features/*/components/`, [components](../adapters/react-native/components.md)). Note each one's name, variants and states, so you reuse them rather than rebuild them.
 3. No design guide yet? Run [review's extract step](review.md#2-extract-only-when-there-is-no-design-guide) first, then come back here.
 
 ## 2. Understand the feature
@@ -33,7 +33,7 @@ Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show 
 
 1. Run `motif check` (no findings apart from justified `motif-ok` exceptions) and the project's build and type check.
 2. Run `motif shot --audit --routes <the new routes>` (it covers every variant), adding `--state` for each new screen behind a form or a click. Fix the critical and major findings and run it again.
-3. For each screen, run `motif shot --routes <route> --state design/states/<state>.js --against design/previews/<feature>-<screen>.html`, with a `--state` for each state the mockup shows (`.dart` for a Flutter app, `.kt` for a Compose app): each frame is put next to the same state of the app, and the output names any state you left out. Fix differences that change the design.
+3. For each screen, run `motif shot --routes <route> --state design/states/<state>.js --against design/previews/<feature>-<screen>.html`, with a `--state` for each state the mockup shows (`.dart` for a Flutter app, `.kt` for a Compose app, `.swift` for a SwiftUI app, whose new screens are its previews, named with `--screen <preview>` instead of `--routes`): each frame is put next to the same state of the app, and the output names any state you left out. Fix differences that change the design.
 4. Confirm every state from the mockup exists in the app: loading, empty, error, disabled. With variants, look at the screen in each: `motif shot --routes <route> --variant all`.
 5. Show the developer the side-by-side images and a short summary of what was built and checked.
 

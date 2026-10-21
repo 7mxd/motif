@@ -27,7 +27,7 @@ Vary more only when the research shows it should, and say why in the Variants se
 
 Roles a variant doesn't mention keep the default's value, so leave out everything that stays the same.
 
-On Flutter, a variant changes colours only: the theme code gives each variant its own colours and keeps the default's fonts, corners and motion. The app switches with `MotifTheme.light(variant: MotifVariant.women)` and the same for `dark`, from its own state ([how](../adapters/flutter/tokens.md#switching-variants)). Jetpack Compose is the same: the app passes `MotifTheme(variant = MotifVariant.Women)` from its state (`rememberSaveable`, or a ViewModel's `StateFlow`) ([how](../adapters/compose/tokens.md#switching-variants)).
+On Flutter, a variant changes colours only: the theme code gives each variant its own colours and keeps the default's fonts, corners and motion. The app switches with `MotifTheme.light(variant: MotifVariant.women)` and the same for `dark`, from its own state ([how](../adapters/flutter/tokens.md#switching-variants)). Jetpack Compose is the same: the app passes `MotifTheme(variant = MotifVariant.Women)` from its state (`rememberSaveable`, or a ViewModel's `StateFlow`) ([how](../adapters/compose/tokens.md#switching-variants)). SwiftUI too: the app gives its root view `.motifTheme(variant: .women)`, with the choice kept in `@AppStorage` ([how](../adapters/swiftui/tokens.md#switching-variants)).
 
 On React Native, a variant changes colours only too. The app switches with `<MotifProvider variant="women">`, from its own state ([how](../adapters/react-native/tokens.md#switching-variants)).
 
