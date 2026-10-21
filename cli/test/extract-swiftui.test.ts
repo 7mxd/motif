@@ -1,5 +1,7 @@
+import { cpSync, readFileSync } from "node:fs";
 import { afterAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { runExtract } from "../src/commands/extract";
 import { buildDraft } from "../src/extract/draft";
 import { SWIFTUI } from "../src/stacks/swiftui";
 import { collectSwiftUI } from "../src/stacks/swiftui/extract";
@@ -103,17 +105,17 @@ describe("collectSwiftUI on a catalogue with a namespaced pair", () => {
     expect(occ.followVariables).toBe(true);
   });
 
-  test("the Color constant's own definition is not counted as a use", () => {
-    expect(occ.colors.find((c) => c.value === "#336699")).toBeUndefined();
+  test("a Color constant is one sample at its definition, not counted again for the literal", () => {
+    expect(occ.colors.find((c) => c.value === "#336699")?.count).toBe(1);
   });
 });
 
 describe("collectSwiftUI on parallel catalogues and unrelated namespaces", () => {
-  const set = (name: string, hex: [string, string, string], dark?: [string, string, string]) => colorset(srgb(...hex), dark && srgb(...dark));
+  const set = (hex: [string, string, string], dark?: [string, string, string]) => colorset(srgb(...hex), dark && srgb(...dark));
   test("a second catalogue is a variant named after it", () => {
     const root = makeProject({
-      "A/Assets.xcassets/Primary.colorset/Contents.json": set("p", ["0.1", "0.2", "0.3"]),
-      "A/PartnerAssets.xcassets/Primary.colorset/Contents.json": set("p", ["0.5", "0.5", "0.5"]),
+      "A/Assets.xcassets/Primary.colorset/Contents.json": set(["0.1", "0.2", "0.3"]),
+      "A/PartnerAssets.xcassets/Primary.colorset/Contents.json": set(["0.5", "0.5", "0.5"]),
       "A/V.swift": "import SwiftUI\n",
     });
     const occ = collect(root);
@@ -124,11 +126,117 @@ describe("collectSwiftUI on parallel catalogues and unrelated namespaces", () =>
   test("a namespace whose colours nothing else shares just prefixes the names", () => {
     const root = makeProject({
       "A/Assets.xcassets/Brand/Contents.json": JSON.stringify({ properties: { "provides-namespace": true } }),
-      "A/Assets.xcassets/Brand/Ink.colorset/Contents.json": set("i", ["0", "0", "0"]),
+      "A/Assets.xcassets/Brand/Ink.colorset/Contents.json": set(["0", "0", "0"]),
       "A/V.swift": "import SwiftUI\n",
     });
     const occ = collect(root);
     expect(occ.variables).toEqual([{ name: "--brand-ink", light: "#000000" }]);
     expect(occ.variantLabels).toBeUndefined();
+  });
+});
+
+describe("collectSwiftUI: Any, Light and Dark appearances", () => {
+  test("the explicit Light colour wins over the Any one", () => {
+    const entry = (color: object, appearances?: object[]) => ({ idiom: "universal", ...(appearances ? { appearances } : {}), color });
+    const json = JSON.stringify({
+      colors: [
+        entry(srgb("1.000", "0.000", "0.000")),
+        entry(srgb("0.000", "1.000", "0.000"), [{ appearance: "luminosity", value: "light" }]),
+        entry(srgb("0.000", "0.000", "1.000"), [{ appearance: "luminosity", value: "dark" }]),
+      ],
+    });
+    const root = makeProject({ "A/Assets.xcassets/Tone.colorset/Contents.json": json, "A/V.swift": "import SwiftUI\n" });
+    expect(collect(root).variables).toEqual([{ name: "--tone", light: "#00ff00", dark: "#0000ff" }]);
+  });
+
+  test("with no Light entry, the Any colour is the light one", () => {
+    const root = makeProject({ "A/Assets.xcassets/Tone.colorset/Contents.json": colorset(srgb("1.000", "0.000", "0.000"), srgb("0.000", "0.000", "1.000")), "A/V.swift": "import SwiftUI\n" });
+    expect(collect(root).variables).toEqual([{ name: "--tone", light: "#ff0000", dark: "#0000ff" }]);
+  });
+});
+
+describe("collectSwiftUI: Color constants name roles", () => {
+  const root = makeProject({
+    "A/Colors.swift": [
+      "import SwiftUI",
+      "extension Color {",
+      "    static let primary = Color(red: 0.4, green: 0.31, blue: 0.64)",
+      "    static let background = Color(red: 0.97, green: 0.97, blue: 0.98)",
+      "    static let surface = Color(red: 1, green: 1, blue: 1)",
+      "}",
+    ].join("\n"),
+  });
+  const occ = collect(root);
+  const { report } = buildDraft(occ);
+
+  test("they are role-name candidates with a sample each", () => {
+    expect(occ.roleNames).toEqual(expect.arrayContaining(["--primary", "--background", "--surface"]));
+    expect(values(occ.colors)).toEqual(expect.arrayContaining(["#664fa3", "#f7f7fa", "#ffffff"]));
+  });
+
+  test("primary, background and surface become action-primary, background and surface", () => {
+    const role = (name: string) => report.variables.find((v) => v.name === name)?.role;
+    expect([role("--primary"), role("--background"), role("--surface")]).toEqual(["color.action-primary", "color.background", "color.surface"]);
+  });
+});
+
+describe("collectSwiftUI: colour sets named Surface and Background name roles", () => {
+  test("the fixture's Surface and Background sets", () => {
+    const { report } = buildDraft(collect(join(FIXTURES, "swiftui-palettes")));
+    const role = (name: string) => report.variables.find((v) => v.name === name)?.role;
+    expect([role("--surface"), role("--background")]).toEqual(["color.surface", "color.background"]);
+  });
+});
+
+describe("collectSwiftUI notes", () => {
+  test("Display P3 counts each name once and names the namespace", () => {
+    const text = buildDraft(collect(join(FIXTURES, "swiftui-palettes"))).report.notes.join("\n");
+    expect(text).toContain("Men/Primary, Women/Primary are written in Display P3");
+  });
+
+  test("a default that is a namespace reads once", () => {
+    const set = colorset(srgb("0.1", "0.1", "0.1"), srgb("0.9", "0.9", "0.9"));
+    const root = makeProject({
+      "A/Assets.xcassets/Men/Contents.json": JSON.stringify({ properties: { "provides-namespace": true } }),
+      "A/Assets.xcassets/Women/Contents.json": JSON.stringify({ properties: { "provides-namespace": true } }),
+      "A/Assets.xcassets/Men/Primary.colorset/Contents.json": set,
+      "A/Assets.xcassets/Women/Primary.colorset/Contents.json": set,
+      "A/V.swift": "import SwiftUI\n",
+    });
+    const notes = collect(root).notes!.join("\n");
+    expect(notes).toContain("Men colours became the default");
+    expect(notes).not.toContain("Men colours/Men colours");
+  });
+
+  test("extended linear sRGB is noted", () => {
+    const root = makeProject({ "A/Assets.xcassets/Glow.colorset/Contents.json": colorset(srgb("0.5", "0.5", "0.5", "1.000", "extended-linear-srgb")), "A/V.swift": "import SwiftUI\n" });
+    expect(collect(root).notes!.join("\n")).toContain("Glow is written in extended linear sRGB");
+  });
+
+  test("out-of-range values are clamped to 0 and noted, not dropped or malformed", () => {
+    const root = makeProject({
+      "A/Assets.xcassets/Neg.colorset/Contents.json": colorset(srgb("-0.100", "0.500", "1.200", "1.000", "extended-srgb")),
+      "A/Assets.xcassets/NegNum.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal", color: { "color-space": "srgb", components: { red: -1, green: 0, blue: 0, alpha: 1 } } }] }),
+      "A/V.swift": "import SwiftUI\n",
+    });
+    const occ = collect(root);
+    const by = Object.fromEntries(occ.variables!.map((x) => [x.name, x.light]));
+    expect(by["--neg"]).toBe("#0080ff");
+    expect(by["--neg-num"]).toBe("#000000");
+    expect(occ.notes!.join("\n")).toContain("outside 0 to 1");
+  });
+});
+
+describe("motif extract on a SwiftUI app", () => {
+  test("asset catalogue colours reach the draft and its notes", async () => {
+    const root = makeProject({});
+    cpSync(join(FIXTURES, "swiftui-min"), root, { recursive: true });
+    cpSync(join(FIXTURES, "swiftui-palettes", "Shop"), join(root, "SwiftUIMin"), { recursive: true });
+    const r = await runExtract(root, { positionals: [], flags: {} });
+    expect(r.exitCode).toBe(0);
+    const report = JSON.parse(readFileSync(join(root, "design", "extract-report.json"), "utf8"));
+    expect(report.variables.find((v: any) => v.name === "--primary")).toMatchObject({ light: "#6750a4", dark: "#d0bcff", role: "color.action-primary" });
+    expect(report.designVariants.map((v: any) => v.id)).toEqual(["default", "men", "women"]);
+    expect(r.text).toContain("your Swift theme code");
   });
 });

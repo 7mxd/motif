@@ -317,8 +317,8 @@ const ROLE_NAMES: { role: string; words: string[]; exact: boolean; usedAs?: stri
 ];
 /**
  * React Native palettes name their action colour tint (create-expo-app's Colors) or accent (HiSalon), and read it in
- * props such as tabBarActiveTintColor, which say nothing of its use: the name is enough. On the web, shadcn's --accent is
- * a hover fill, so these words stay React Native's.
+ * props such as tabBarActiveTintColor, which say nothing of its use: the name is enough. SwiftUI's asset catalogue names
+ * its default AccentColor the same way. On the web, shadcn's --accent is a hover fill, so these words stay with those two.
  */
 const SCRIPT_ROLE_NAMES: typeof ROLE_NAMES = [...ROLE_NAMES, { role: "action-primary", words: ["tint", "accent"], exact: true }];
 
@@ -679,7 +679,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const named: Record<string, ColorCluster> = {};
   /** The variable whose name gave a role its colour. */
   const namedVar: Record<string, string> = {};
-  /** The role names this app's code uses: React Native's add tint and accent. */
+  /** The role names this app's code uses: React Native's and SwiftUI's add tint and accent. */
   const roleNames = occ.source === "script" || occ.source === "swift" ? SCRIPT_ROLE_NAMES : ROLE_NAMES;
   for (const entry of roleNames) {
     // A later entry for a role only names it when the earlier ones didn't (React Native's tint after primary).

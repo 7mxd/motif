@@ -9,7 +9,7 @@ import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
 import { locator } from "../../text";
 import { kebab as dartKebab, pairInstances, title, type Paired } from "../flutter/extract";
-import { scanSwift } from "./rules";
+import { CUSTOM_FONT, scanSwift } from "./rules";
 
 const MAX_EXAMPLES = 5;
 const IDENT = "[A-Za-z_][\\w]*";
@@ -30,22 +30,24 @@ const EASINGS: Record<string, number[]> = {
   linear: [0, 0, 1, 1],
 };
 
-/** One colour's channel from a colour set: "0.200" (0-1), "51" (0-255) or "0x33" (hex), as 0-1. Alpha 0 and 1 are fractions. */
+/** One colour's channel from a colour set: "0.200" (0-1), "51" (0-255) or "0x33" (hex), as a fraction (not yet clamped). Alpha 0 and 1 are fractions. */
 function channel(raw: unknown, alpha = false): number | undefined {
-  if (typeof raw === "number") return Number.isFinite(raw) ? Math.min(1, raw <= 1 ? raw : raw / 255) : undefined;
+  if (typeof raw === "number") return Number.isFinite(raw) ? (raw >= -1 && raw <= 1 ? raw : raw / 255) : undefined;
   if (typeof raw !== "string") return undefined;
   const s = raw.trim();
-  if (/^0x[0-9a-f]{1,2}$/i.test(s)) return parseInt(s, 16) / 255;
-  if (/^\d+$/.test(s)) {
-    const n = Number(s);
-    return alpha && n <= 1 ? n : Math.min(1, n / 255);
+  const sign = s.startsWith("-") ? -1 : 1;
+  const body = s.replace(/^[-+]/, "");
+  if (/^0x[0-9a-f]{1,2}$/i.test(body)) return (sign * parseInt(body, 16)) / 255;
+  if (/^\d+$/.test(body)) {
+    const n = Number(body);
+    return sign * (alpha && n <= 1 ? n : n / 255);
   }
-  if (/^\d*\.\d+$/.test(s)) return Math.min(1, Number(s));
+  if (/^\d*\.\d+$/.test(body)) return sign * Number(body);
   return undefined;
 }
 
-/** A colour set's colour as a hex string (#rrggbb, or #rrggbbaa when see-through), and the space it is written in. */
-function hexOfColor(color: any): { hex: string; space: string } | undefined {
+/** A colour set's colour as a hex string (#rrggbb, or #rrggbbaa when see-through), the space it is written in, and whether a value had to be clamped to 0-1. */
+function hexOfColor(color: any): { hex: string; space: string; clamped: boolean } | undefined {
   const c = color?.components;
   if (!c || typeof c !== "object") return undefined;
   const space = String(color["color-space"] ?? "srgb").toLowerCase();
@@ -54,8 +56,10 @@ function hexOfColor(color: any): { hex: string; space: string } | undefined {
   if (rgb.some((v) => v === undefined)) return undefined;
   const a = c.alpha === undefined ? 1 : channel(c.alpha, true);
   if (a === undefined) return undefined;
-  const two = (v: number) => Math.round(v * 255).toString(16).padStart(2, "0");
-  return { hex: `#${rgb.map((v) => two(v!)).join("")}${a < 1 ? two(a) : ""}`, space };
+  const all = [...rgb, a] as number[];
+  const clamped = all.some((v) => v < 0 || v > 1);
+  const two = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0");
+  return { hex: `#${rgb.map((v) => two(v!)).join("")}${a < 1 ? two(a) : ""}`, space, clamped };
 }
 
 interface Entry {
@@ -66,8 +70,13 @@ interface Entry {
   path: string;
   light?: string;
   dark?: string;
-  /** Written in Display P3, whose numbers are read as sRGB. */
+  /** The name as the catalogue shows it, with the namespace folders that prefix it: Men/Primary. */
+  shown: string;
+  /** Written in Display P3 or in linear sRGB, whose numbers are read as sRGB. */
   p3: boolean;
+  linear: boolean;
+  /** A value outside 0 to 1 (extended sRGB) was clamped. */
+  clamped: boolean;
 }
 
 /** The colour sets of every asset catalogue the files hold, with the namespaces their folders provide. */
@@ -90,30 +99,42 @@ function readCatalogues(files: SourceFile[]): Entry[] {
     if (catalogue < 0) continue;
     const keyWords = kebab(parts[catalogue]!.replace(/\.xcassets$/, "")).split("-").filter((w) => w && !GENERIC_WORDS.has(w));
     // A folder prefixes its colours' names only when it says so (provides-namespace).
+    const shown: string[] = [];
     for (let i = catalogue + 1; i < parts.length - 2; i++) {
       const own = json.get([...parts.slice(0, i + 1), "Contents.json"].join("/"));
-      if (own?.properties?.["provides-namespace"] === true) keyWords.push(...kebab(parts[i]!).split("-").filter(Boolean));
+      if (own?.properties?.["provides-namespace"] === true) {
+        keyWords.push(...kebab(parts[i]!).split("-").filter(Boolean));
+        shown.push(parts[i]!);
+      }
     }
     const given: any[] = Array.isArray(contents?.colors) ? contents.colors : [];
     // Universal entries first; high-contrast and other appearances are not the plain colours.
     const ranked = [...given].sort((a, b) => Number(b?.idiom === "universal") - Number(a?.idiom === "universal"));
     const appearance = (e: any) => (Array.isArray(e?.appearances) ? e.appearances : []) as { appearance?: string; value?: string }[];
     const plain = (e: any) => appearance(e).every((a) => a.appearance === "luminosity");
-    const modeOf = (e: any) => (appearance(e).some((a) => a.value === "dark") ? "dark" : "light");
-    const read = (mode: "light" | "dark") => {
-      const e = ranked.find((x) => plain(x) && modeOf(x) === mode && hexOfColor(x?.color));
-      return e ? hexOfColor(e.color) : undefined;
+    // Xcode's "Any, Light, Dark" writes the Any entry (no appearances) before the explicit Light one; iOS shows the Light one.
+    const modeOf = (e: any) => (appearance(e).length === 0 ? "any" : appearance(e).some((a) => a.value === "dark") ? "dark" : "light");
+    const read = (...modes: string[]) => {
+      for (const mode of modes) {
+        const e = ranked.find((x) => plain(x) && modeOf(x) === mode && hexOfColor(x?.color));
+        if (e) return hexOfColor(e.color);
+      }
+      return undefined;
     };
-    const light = read("light");
+    const light = read("light", "any");
     const dark = read("dark");
     if (!light && !dark) continue;
+    const name = folder.replace(/\.colorset$/, "");
     entries.push({
-      name: folder.replace(/\.colorset$/, ""),
+      name,
+      shown: [...shown, name].join("/"),
       key: keyWords.join("-"),
       path,
       ...(light ? { light: light.hex } : {}),
       ...(dark ? { dark: dark.hex } : {}),
       p3: [light, dark].some((c) => c?.space === "display-p3"),
+      linear: [light, dark].some((c) => c?.space === "extended-linear-srgb"),
+      clamped: [light, dark].some((c) => c?.clamped),
     });
   }
   return entries;
@@ -199,15 +220,17 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
     for (const i of [half(false), half(true)]) if (i) instances.push(i);
     for (const e of group) fieldNames.add(e.field);
   }
-  if (placed.some((e) => e.p3)) {
-    notes.push(
-      `${[...new Set(placed.filter((e) => e.p3).map((e) => e.name))].join(", ")} ${placed.filter((e) => e.p3).length === 1 ? "is" : "are"} written in Display P3. The draft reads their numbers as sRGB, so check them.`,
-    );
-  }
+  const colourNote = (pick: (e: Entry) => boolean, what: string) => {
+    const names = [...new Set(entries.filter(pick).map((e) => e.shown))];
+    if (names.length > 0) notes.push(`${names.join(", ")} ${names.length === 1 ? "is" : "are"} ${what}`);
+  };
+  colourNote((e) => e.p3, "written in Display P3. The draft reads their numbers as sRGB, so check them.");
+  colourNote((e) => e.linear, "written in extended linear sRGB. The draft reads their numbers as ordinary sRGB, so check them.");
+  colourNote((e) => e.clamped, "written with a value outside 0 to 1 (extended sRGB). The draft clamps it to 0 or 1, so check it.");
   if (instances.length > 0) {
     const { defaultPair, variants, unpaired } = pairInstances(instances);
     if (defaultPair && !instances.some((i) => i.key === "" && (defaultPair.light === i || defaultPair.dark === i))) {
-      const halves = [defaultPair.light?.name, defaultPair.dark?.name].filter(Boolean).join("/");
+      const halves = [...new Set([defaultPair.light?.name, defaultPair.dark?.name].filter(Boolean))].join(" and ");
       notes.push(`No colour set sits outside a namespace or an extra catalogue, so ${halves} became the default.`);
     }
     for (const i of unpaired) {
@@ -235,20 +258,24 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
 
   // ---------- Color constants: extension Color { static let brand = Color(red: …) } ----------
   const declared = new RegExp(`(?<![\\w$.])static\\s+(?:let|var)\\s+(${IDENT})\\s*(?::\\s*Color\\s*)?(?:=\\s*|\\{\\s*(?:return\\s+)?)`, "g");
-  const constants: { name: string; value: string }[] = [];
+  const constants: { name: string; value: string; at: string }[] = [];
   for (const file of swift) {
     for (const m of file.code.matchAll(declared)) {
       const end = m.index! + m[0].length;
       const value = file.colorAt.get(end);
       if (!value) continue;
       definitions.set(file, [...(definitions.get(file) ?? []), [m.index!, end + 1]]);
-      if (!constants.some((c) => c.name === m[1])) constants.push({ name: m[1]!, value });
+      if (!constants.some((c) => c.name === m[1])) constants.push({ name: m[1]!, value, at: `${file.source.path}:${file.lineOf(m.index!)}` });
     }
   }
   // A name a colour set already took is left to the colour set.
+  // Like a default colour set, a constant is a role-name candidate with one sample: its uses (Color.brand) aren't traced.
   for (const c of constants) {
     const name = `--${kebab(c.name)}`;
-    if (!variables.has(name)) variables.set(name, { name, light: c.value });
+    if (variables.has(name)) continue;
+    variables.set(name, { name, light: c.value });
+    roleNames.add(name);
+    add("colors", c.value, c.at, nameContext(name));
   }
 
   // ---------- what the views use ----------
@@ -286,7 +313,7 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
       }
     }
     // Font.custom("Inter", size: 22) gives a size as well as a family.
-    for (const m of file.code.matchAll(/(?:(?<![\w$])Font)?\.custom\s*\(/g)) {
+    for (const m of file.code.matchAll(CUSTOM_FONT)) {
       const call = callArgs(file.code, m.index! + m[0].length - 1, ":");
       const size = call?.args.find((a) => a.name === "size" && NUMBER.test(a.value));
       if (size) add("fontSize", `${Number(size.value.replace(/_/g, ""))}px`, `${file.source.path}:${file.lineOf(m.index!)}`);
