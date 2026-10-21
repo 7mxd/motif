@@ -52,12 +52,28 @@ function swiftFiles(dir: string): string[] {
   });
 }
 
+type Unit = { state: string; value: string };
+type Plural = Record<string, { stringUnit: Unit }>;
+type Localization = { stringUnit?: Unit; variations?: { plural?: Plural }; substitutions?: Record<string, { argNum: number; formatSpecifier: string; variations: { plural: Plural } }> };
+type Catalogue = Record<string, { shouldTranslate?: boolean; localizations?: Record<string, Localization> }>;
+
+/** Every string a localization holds: its own, its plural forms, and its substitutions' plural forms. */
+function unitsOf(l: Localization | undefined): Unit[] {
+  if (!l) return [];
+  const forms = (p: Plural | undefined) => Object.values(p ?? {}).map((f) => f.stringUnit);
+  return [...(l.stringUnit ? [l.stringUnit] : []), ...forms(l.variations?.plural), ...Object.values(l.substitutions ?? {}).flatMap((x) => forms(x.variations.plural))];
+}
+
 /** The string catalogue's keys, and the ones with no Arabic (leaving out those marked not to translate). */
-function catalogue(rel: string): { keys: string[]; untranslated: string[] } {
-  const strings = JSON.parse(read(rel)).strings as Record<string, { shouldTranslate?: boolean; localizations?: Record<string, { stringUnit?: { state: string; value: string } }> }>;
+function catalogue(rel: string): { strings: Catalogue; keys: string[]; untranslated: string[] } {
+  const strings = JSON.parse(read(rel)).strings as Catalogue;
   const keys = Object.keys(strings).sort();
-  const untranslated = keys.filter((k) => strings[k]!.shouldTranslate !== false && strings[k]!.localizations?.ar?.stringUnit?.state !== "translated");
-  return { keys, untranslated };
+  const untranslated = keys.filter((k) => {
+    if (strings[k]!.shouldTranslate === false) return false;
+    const units = unitsOf(strings[k]!.localizations?.ar);
+    return units.length === 0 || units.some((u) => u.state !== "translated");
+  });
+  return { strings, keys, untranslated };
 }
 
 describe("the SwiftUI contract app (Qahwa)", () => {
@@ -132,6 +148,28 @@ describe("the SwiftUI contract app (Qahwa)", () => {
     const strings = catalogue(`${SOURCES}/Localizable.xcstrings`);
     expect(strings.keys.length).toBeGreaterThan(20);
     expect(strings.untranslated).toEqual([]);
+  });
+
+  test("counted strings have plural forms: English one and other, Arabic zero, one, two, few, many and other", () => {
+    const { strings } = catalogue(`${SOURCES}/Localizable.xcstrings`);
+    const AR = ["few", "many", "one", "other", "two", "zero"];
+    const counted = Object.keys(strings).filter((k) => /%(\d\$)?lld/.test(k)).sort();
+    expect(counted).toEqual(["%lld more drinks until a free one", "%lld of %lld stamps"]);
+    // A count in the sentence: the sentence's own plural forms.
+    const drinks = strings["%lld more drinks until a free one"]!.localizations!;
+    expect(Object.keys(drinks.en!.variations!.plural!).sort()).toEqual(["one", "other"]);
+    expect(drinks.en!.variations!.plural!.other!.stringUnit.value).toBe("%lld more drinks until a free one");
+    expect(Object.keys(drinks.ar!.variations!.plural!).sort()).toEqual(AR);
+    // Two counts, the noun after the second: a substitution for it, as Xcode writes one.
+    const stamps = strings["%lld of %lld stamps"]!.localizations!;
+    for (const [lang, forms] of [["en", ["one", "other"]], ["ar", AR]] as const) {
+      const l = stamps[lang]!;
+      expect(l.stringUnit!.value).toContain("%1$lld");
+      expect(l.stringUnit!.value).toContain("%2$#@stamps@");
+      expect(l.substitutions!.stamps).toMatchObject({ argNum: 2, formatSpecifier: "lld" });
+      expect(Object.keys(l.substitutions!.stamps!.variations.plural).sort()).toEqual([...forms]);
+      for (const u of unitsOf(l)) expect(u.state).toBe("translated");
+    }
   });
 
   test("its screens are the root (the menu) and a preview each for the menu, a drink, the loyalty card and sign-in; nothing for orders or rewards history yet", () => {
@@ -209,6 +247,9 @@ describe("the SwiftUI seeded app's list of planted problems", () => {
         expect(c.note.length).toBeGreaterThan(10);
       }
     }
+    // The Mac run draws the seeded copy only where its audit problems are, so S-01's knock-on on / and Menu is pinned here.
+    expect(issues.find((i) => i.id === "S-01")!.consequences?.length ?? 0).toBeGreaterThan(0);
+    expect(issues.find((i) => i.id === "S-01")!.consequences![0]).toMatchObject({ category: "contrast", screens: ["/", "Menu"], schemes: ["dark"] });
   });
 
   test("the tests README and the seeded README list the SwiftUI fixtures and every problem", () => {

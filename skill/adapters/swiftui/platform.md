@@ -53,12 +53,14 @@ struct CheckoutScreen: View {
 
 ## Right to left
 
-Arabic and Hebrew read right to left. SwiftUI mirrors a screen by itself when the app's language is one of them, as long as the layout is written in terms of *leading* and *trailing*, which SwiftUI's own words already are (`.padding(.leading)`, `alignment: .leading`, `HStack`'s order). What doesn't mirror:
+Arabic and Hebrew read right to left. SwiftUI mirrors a screen by itself when the app's language is one of them, as long as the layout is written in terms of *leading* and *trailing*, which SwiftUI's own words already are (`.padding(.leading)`, `alignment: .leading`, `HStack`'s order).
+
+**Symbols that point** are named by reading order: `chevron.forward`, not `chevron.right`, and `arrow.backward`, not `arrow.left`. The forward and backward names are the ones Apple documents as mirroring right to left. Today's systems also flip the left and right names, but only through a compatibility list in the system's symbol data, which can differ between OS and SDK versions, so don't rely on it.
+
+What doesn't mirror by itself:
 
 | Instead of | Use |
 |---|---|
-| `Image(systemName: "chevron.right")` | `Image(systemName: "chevron.forward")` |
-| `Image(systemName: "arrow.left")` | `Image(systemName: "arrow.backward")` |
 | A picture of your own that points | `.flipsForRightToLeftLayoutDirection(true)` on it |
 | `.offset(x: 8)` | `.padding(.leading, MotifSpace.s2)` |
 | `.position(x: …)`, a `Path` or a `Canvas` | Draw it the other way when `@Environment(\.layoutDirection)` is `.rightToLeft` |

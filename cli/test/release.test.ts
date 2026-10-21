@@ -89,7 +89,7 @@ describe("the release workflow", () => {
 
   test("publishes with written notes and the notices, only after checking the notes exist", () => {
     const publish = section("publish");
-    expect(publish).toContain("needs: [build, plugin, test, flutter, compose, react-native, swiftui]");
+    expect(publish).toContain("needs: [build, plugin, test, flutter, compose, react-native, swiftui, swiftui-fixtures]");
     expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre');
     expect(publish).not.toContain("--generate-notes");
     expect(publish).toContain("cp THIRD-PARTY-NOTICES.txt dist/");
@@ -216,42 +216,83 @@ describe("the agents workflow", () => {
 });
 
 describe("each stack job and its heavy tests agree on its name", () => {
-  const HEAVY: Record<string, string[]> = {
-    compose: ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose", "compose-agp9", "compose-flavors", "compose-junit-platform"],
-    "react-native": ["rn-compile", "rn-shot-e2e", "fixtures-rn"],
-    swiftui: ["swiftui-compile", "swiftui-guide-compile", "swiftui-render", "swiftui-shot-e2e", "swiftui-mac-shot-e2e", "fixtures-swiftui"],
+  // Each job that runs heavy tests: the stack its MOTIF_STACK_JOB names (what heavyStackTests reads), and its files. The
+  // SwiftUI fixtures have a job of their own beside the swiftui job, with the same stack, to keep both within their time
+  // (plan 2H, Task 12 follow-up).
+  const HEAVY: Record<string, { stack: string; files: string[] }> = {
+    compose: { stack: "compose", files: ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose", "compose-agp9", "compose-flavors", "compose-junit-platform"] },
+    "react-native": { stack: "react-native", files: ["rn-compile", "rn-shot-e2e", "fixtures-rn"] },
+    swiftui: { stack: "swiftui", files: ["swiftui-compile", "swiftui-guide-compile", "swiftui-render", "swiftui-shot-e2e", "swiftui-mac-shot-e2e"] },
+    "swiftui-fixtures": { stack: "swiftui", files: ["fixtures-swiftui"] },
+  };
+  /** How long each of these jobs may run, in minutes. */
+  const TIMEOUT: Record<string, number> = { swiftui: 75, "swiftui-fixtures": 45 };
+
+  const workflow = (name: string) => readFileSync(join(REPO, ".github/workflows", name), "utf8").replace(/\r\n/g, "\n");
+  /** Every job of a workflow by its id, with its body. */
+  const jobsOf = (wf: string) => {
+    const body = wf.slice(wf.indexOf("\njobs:\n"));
+    const ids = [...body.matchAll(/\n {2}(\w[\w-]*):\n/g)];
+    return ids.map((m, i) => ({ id: m[1]!, body: body.slice(m.index!, ids[i + 1]?.index ?? body.length) }));
+  };
+  /** The test files a job's bun test names (none for a job that runs every test). */
+  const globsOf = (job: string) => {
+    const run = job.split("\n").find((l) => l.includes("bun test")) ?? "";
+    return run.split(/\s+/).filter((w) => w.startsWith("test/")).map((g) => new RegExp(`^${g.replace(/\./g, "\\.").replace(/\*/g, ".*")}$`));
   };
 
   test("every heavy test is one of these: no other test file calls heavyStackTests", () => {
     const source = (f: string) => readFileSync(join(REPO, "cli/test", f), "utf8");
     const callers = readdirSync(join(REPO, "cli/test")).filter((f) => f.endsWith(".test.ts") && f !== "release.test.ts" && source(f).includes("heavyStackTests("));
-    expect(callers.map((f) => f.replace(/\.test\.ts$/, "")).sort()).toEqual(Object.values(HEAVY).flat().sort());
+    expect(callers.map((f) => f.replace(/\.test\.ts$/, "")).sort()).toEqual(Object.values(HEAVY).flatMap((j) => j.files).sort());
   });
 
-  for (const [stack, files] of Object.entries(HEAVY)) {
-    test(`MOTIF_STACK_JOB in both workflows' ${stack} job is the stack name its heavy tests pass to heavyStackTests, and the job runs them`, () => {
+  for (const [id, { stack, files }] of Object.entries(HEAVY)) {
+    test(`MOTIF_STACK_JOB in both workflows' ${id} job is the stack name its heavy tests pass to heavyStackTests, and the job runs them`, () => {
       for (const f of files) expect([f, readFileSync(join(REPO, "cli/test", `${f}.test.ts`), "utf8").includes(`heavyStackTests("${stack}", `)]).toEqual([f, true]);
       for (const name of ["ci.yml", "release.yml"]) {
-        const wf = readFileSync(join(REPO, ".github/workflows", name), "utf8").replace(/\r\n/g, "\n");
-        const at = wf.indexOf(`\n  ${stack}:\n`);
-        expect([name, at > -1]).toEqual([name, true]);
-        const job = wf.slice(at).split(/\n  \w[\w-]*:\n/)[1] ?? "";
+        const job = jobsOf(workflow(name)).find((j) => j.id === id)?.body ?? "";
+        expect([name, id, job !== ""]).toEqual([name, id, true]);
         expect(job).toContain(`MOTIF_STACK_JOB: ${stack}\n`);
-        // The SwiftUI job draws iOS and macOS apps, with several first builds: it has 75 minutes (plan 2H, Task 9).
-        if (stack === "swiftui") expect([name, job.includes("timeout-minutes: 75\n")]).toEqual([name, true]);
-        const run = job.split("\n").find((l) => l.includes("bun test")) ?? "";
-        const globs = run.split(/\s+/).filter((w) => w.startsWith("test/")).map((g) => new RegExp(`^${g.replace(/\./g, "\\.").replace(/\*/g, ".*")}$`));
+        // The SwiftUI jobs draw iOS and macOS apps, with several first builds (plan 2H, Tasks 9 and 12).
+        if (TIMEOUT[id]) expect([name, id, job.includes(`timeout-minutes: ${TIMEOUT[id]}\n`)]).toEqual([name, id, true]);
+        const globs = globsOf(job);
         for (const f of files) expect([name, f, globs.some((g) => g.test(`test/${f}.test.ts`))]).toEqual([name, f, true]);
       }
     });
   }
+
+  test("in both workflows, every heavy test is run by exactly one job that names test files, the one above", () => {
+    for (const name of ["ci.yml", "release.yml"]) {
+      const jobs = jobsOf(workflow(name));
+      for (const [id, { files }] of Object.entries(HEAVY)) {
+        for (const f of files) {
+          const runners = jobs.filter((j) => globsOf(j.body).some((g) => g.test(`test/${f}.test.ts`))).map((j) => j.id);
+          expect([name, f, runners]).toEqual([name, f, [id]]);
+        }
+      }
+    }
+  });
+
+  test("the SwiftUI fixtures' job runs on the swiftui job's image with the same Xcode, and the release waits for it", () => {
+    for (const name of ["ci.yml", "release.yml"]) {
+      const jobs = jobsOf(workflow(name));
+      const main = jobs.find((j) => j.id === "swiftui")!.body;
+      const fixtures = jobs.find((j) => j.id === "swiftui-fixtures")!.body;
+      for (const s of ["runs-on: macos-15\n", 'XCODE: "16.4"\n', "sudo xcode-select -s"]) {
+        expect([name, s, main.includes(s), fixtures.includes(s)]).toEqual([name, s, true, true]);
+      }
+      expect(globsOf(fixtures).length).toBe(1);
+    }
+    expect(workflow("release.yml")).toMatch(/\n {2}publish:\n {4}needs: \[[^\]]*\bswiftui-fixtures\b/);
+  });
 });
 
 describe("the release workflows are hardened (backlog)", () => {
   test("a tag publishes only after the tests pass", () => {
     const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
     expect(wf).toContain("\n  test:\n");
-    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose, react-native, swiftui]/);
+    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose, react-native, swiftui, swiftui-fixtures]/);
   });
 
   test("every action is pinned to a commit, with its version beside it", () => {

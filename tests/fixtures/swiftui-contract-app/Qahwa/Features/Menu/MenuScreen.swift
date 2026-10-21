@@ -34,7 +34,7 @@ struct MenuScreen: View {
     }
 
     private func section(_ title: LocalizedStringKey, kind: Drink.Kind) -> some View {
-        VStack(alignment: .leading, spacing: MotifSpace.s3) {
+        VStack(alignment: .leading, spacing: MotifSpace.s4) {
             Text(title)
                 .motifFont(.heading)
                 .foregroundStyle(colors.textPrimary)

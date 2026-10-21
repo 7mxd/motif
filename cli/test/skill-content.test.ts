@@ -289,6 +289,13 @@ describe("the SwiftUI guide matches the tool", () => {
     expect((feature.match(/--screen <preview>/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
+  test("symbols that point are named by reading order, for the documented reason: the left and right names flip only through a compatibility list (Task 12)", () => {
+    const platform = read("adapters/swiftui/platform.md");
+    for (const s of ["`chevron.forward`, not `chevron.right`", "`arrow.backward`, not `arrow.left`", "only through a compatibility list"]) expect(platform).toContain(s);
+    // Qahwa's seeded copy showed chevron.right drawn pointing left in Arabic: the guide no longer says it doesn't mirror.
+    expect(platform).not.toContain('| `Image(systemName: "chevron.right")` |');
+  });
+
   test("every SwiftUI guide file stays under the line limit and links only to files that exist", () => {
     for (const f of files.filter((f) => f.startsWith("adapters/swiftui/"))) {
       expect(lintSkillMarkdown(f, readFileSync(join(SKILL, f), "utf8"), opts)).toEqual([]);
