@@ -4,16 +4,15 @@ import SwiftUI
 
 @MainActor
 enum MotifShotApp {
-    /// The app's root view: the content of the first WindowGroup in its App's body, found with Mirror.
+    /// The app's root view: what the first WindowGroup in its App's body shows.
     static func root() throws -> AnyView {
-        let app = __APP__()
-        guard let view = MotifMirror.firstView(in: app.body) else {
+        guard let view = MotifMirror.windowContent(__APP__().body) else {
             throw MotifShotError("Motif couldn't find the view in __APP__'s WindowGroup. Draw its screens from previews (--screen).")
         }
         return view
     }
 
-    /// Sets the generated theme's variant for the next view hosted: the guide's id (partner), or nil without variants.
+    /// Sets the generated theme's variant for the views hosted from now on: the guide's id (partner).
     static func setVariant(_ id: String?) {
         // __VARIANT__
     }
@@ -22,19 +21,5 @@ enum MotifShotApp {
     static func themed(_ view: AnyView) -> AnyView {
         // __THEMED__
         view
-    }
-}
-
-enum MotifMirror {
-    /// The first value inside the scene (or the value) that is a View, depth first.
-    static func firstView(in value: Any, depth: Int = 0) -> AnyView? {
-        if depth > 0, let view = value as? any View {
-            return AnyView(view)
-        }
-        if depth > 8 { return nil }
-        for child in Mirror(reflecting: value).children {
-            if let view = firstView(in: child.value, depth: depth + 1) { return view }
-        }
-        return nil
     }
 }

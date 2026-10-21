@@ -1,7 +1,8 @@
 // The app's #Preview bodies, found at run time (decision 0010). The #Preview macro expands to a type conforming to
 // DeveloperToolsSupport's PreviewRegistry, with a name no source can spell. Swift lists every conformance in the
-// __swift5_proto section of the image that declares it, so the harness reads the app's images' sections, keeps the
-// conformances to PreviewRegistry, and asks SwiftUI's preview host for each one's view.
+// __swift5_proto section of the image that declares it, so the harness reads the app's images' sections and keeps the
+// conformances to PreviewRegistry. A Preview keeps its body as a closure; MotifMirror finds it and calls it.
+// (SwiftUI's _PreviewHost.makeHost(providerType:) answers nil for these types: it reads PreviewProvider only.)
 import DeveloperToolsSupport
 import MachO
 import SwiftUI
@@ -21,33 +22,39 @@ struct MotifPreview {
 
 @MainActor
 enum MotifPreviews {
-    /// Every #Preview of the app's own images (its executable and, in a debug build, its .debug.dylib), in file and line order.
+    /// Every #Preview of the app's own images, in file and line order: those in the app's bundle (its executable and, in
+    /// a debug build, its .debug.dylib), and the test bundle's (a Swift package's code is linked into it).
     static func all() -> [MotifPreview] {
         var out: [MotifPreview] = []
-        let appFolder = Bundle.main.bundlePath + "/"
+        let folders = [Bundle.main.bundlePath, Bundle(for: MotifShotTests.self).bundlePath].map { $0 + "/" }
         for index in 0..<_dyld_image_count() {
-            guard let cName = _dyld_get_image_name(index), String(cString: cName).hasPrefix(appFolder) else { continue }
+            guard let cName = _dyld_get_image_name(index) else { continue }
+            let name = String(cString: cName)
+            guard folders.contains(where: { name.hasPrefix($0) }) else { continue }
             guard let header = _dyld_get_image_header(index) else { continue }
             for type in registryTypes(UnsafeRawPointer(header)) {
                 out.append(preview(type))
             }
         }
-        return out.sorted { ($0.info.id.split(separator: ":").first ?? "", line($0)) < ($1.info.id.split(separator: ":").first ?? "", line($1)) }
-    }
-
-    private static func line(_ p: MotifPreview) -> Int {
-        Int(p.info.id.split(separator: ":").last ?? "") ?? 0
+        let key = { (p: MotifPreview) -> (String, Int) in
+            let parts = p.info.id.split(separator: ":")
+            return (String(parts.first ?? ""), Int(parts.last ?? "") ?? 0)
+        }
+        return out.sorted { key($0) < key($1) }
     }
 
     private static func preview(_ type: any PreviewRegistry.Type) -> MotifPreview {
         let id = "\(type.fileID):\(type.line)"
-        let host = _PreviewHost.makeHost(providerType: type)
-        let first = host?.previews.first
-        return MotifPreview(info: MotifPreviewInfo(id: id, name: first?.displayName)) {
-            guard let content = _PreviewHost.makeHost(providerType: type)?.previews.first?.content else {
-                throw MotifShotError("SwiftUI couldn't make the preview at \(id).")
+        let made = try? type.makePreview()
+        let name = made.flatMap { MotifMirror.child($0, "displayName") as? String }
+        return MotifPreview(info: MotifPreviewInfo(id: id, name: name)) {
+            // Preview keeps its body as a closure (dataSource.preview.structure.singlePreview.makeBody) whose result
+            // holds the view; Mirror reaches both, and MotifMirror.call calls the closure.
+            let preview = try type.makePreview()
+            guard let view = MotifMirror.firstView(preview, calling: true) else {
+                throw MotifShotError("Motif couldn't find the view in the preview at \(id). Tell Motif's maintainers which Xcode you use.")
             }
-            return content
+            return view
         }
     }
 
@@ -97,5 +104,67 @@ enum MotifPreviews {
         // ProtocolDescriptor: flags, parent, name.
         let name = relative(target + 8)
         return String(cString: name.assumingMemoryBound(to: CChar.self))
+    }
+}
+
+/// Finding views inside SwiftUI's own values (a scene, a preview) with Mirror.
+@MainActor
+enum MotifMirror {
+    /// The value of a stored property, by name, found depth first.
+    static func child(_ value: Any, _ label: String, depth: Int = 0) -> Any? {
+        if depth > 6 { return nil }
+        for c in Mirror(reflecting: value).children {
+            if c.label == label {
+                let inner = Mirror(reflecting: c.value)
+                return inner.displayStyle == .optional ? inner.children.first?.value : c.value
+            }
+            if let found = child(c.value, label, depth: depth + 1) { return found }
+        }
+        return nil
+    }
+
+    /// The view the first WindowGroup in a scene shows: WindowGroup keeps its content as a closure, which is called.
+    static func windowContent(_ scene: Any, depth: Int = 0) -> AnyView? {
+        if String(describing: type(of: scene)).hasPrefix("WindowGroup<") {
+            return firstView(scene, calling: true)
+        }
+        if depth > 8 { return nil }
+        for c in Mirror(reflecting: scene).children {
+            if let found = windowContent(c.value, depth: depth + 1) { return found }
+        }
+        return nil
+    }
+
+    /// The first View inside the value, depth first; with `calling`, closures that take nothing are called and their
+    /// results looked in. An Optional is looked through, not taken for a view.
+    static func firstView(_ value: Any, calling: Bool, depth: Int = 0) -> AnyView? {
+        let mirror = Mirror(reflecting: value)
+        if depth > 0, mirror.displayStyle != .optional, let view = value as? any View {
+            return AnyView(view)
+        }
+        if depth > 10 { return nil }
+        if calling, let result = call(value) {
+            return firstView(result, calling: calling, depth: depth + 1)
+        }
+        for c in mirror.children {
+            if let view = firstView(c.value, calling: calling, depth: depth + 1) { return view }
+        }
+        return nil
+    }
+
+    /// Calls a closure that takes nothing, whatever it returns; nil for anything else. The result's type comes from the
+    /// closure's function type metadata (kind 0x302: flags, then the result type), so the closure can be cast to it.
+    static func call(_ closure: Any) -> Any? {
+        let metadata = unsafeBitCast(type(of: closure) as Any.Type, to: UnsafeRawPointer.self)
+        guard metadata.load(as: Int.self) == 0x302 else { return nil }
+        let flags = (metadata + MemoryLayout<Int>.size).load(as: Int.self)
+        guard flags & 0xFFFF == 0 else { return nil }
+        let result = (metadata + 2 * MemoryLayout<Int>.size).load(as: Any.Type.self)
+        func open<T>(_: T.Type) -> Any? {
+            if let f = closure as? @MainActor () -> T { return f() }
+            if let f = closure as? () -> T { return f() }
+            return nil
+        }
+        return _openExistential(result, do: open)
     }
 }

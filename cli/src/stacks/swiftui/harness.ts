@@ -18,9 +18,11 @@ export const HARNESS_FOLDER = ".motif-shots";
 export const OPTIONS_FILE = `${HARNESS_FOLDER}/options.json`;
 /** Where the harness writes what it did, next to the options. */
 export const RESULT_FILE = `${HARNESS_FOLDER}/result.json`;
+/** Line ends as Swift and Xcode write them, whatever the checkout did to the embedded files. */
+const lf = (text: string) => text.replace(/\r\n/g, "\n");
 /** The test bundle's own sources, the same in every run. */
-export const TEST_SOURCE: string = testSource;
-export const PREVIEWS_SOURCE: string = previewsSource;
+export const TEST_SOURCE: string = lf(testSource);
+export const PREVIEWS_SOURCE: string = lf(previewsSource);
 /** How long Motif waits for a stopped run's output and exit before giving up on them. */
 export const GRACE_MS = 3000;
 
@@ -181,6 +183,13 @@ export function addTestTarget(pbx: string, target: string, files: string[], buil
     return t !== null && unquote(field(t.text, "name") ?? "") === target;
   });
   if (!app) throw new Error(`The project has no target named ${target}.`);
+  const named = (name: string) =>
+    listIds(project.text, "targets").some((id) => {
+      const t = objectBlock(pbx, id);
+      return t !== null && unquote(field(t.text, "name") ?? "") === name;
+    });
+  // The harness goes into a fresh copy each run; a project that has it already would get a second target of that name.
+  if (named(TEST_TARGET)) throw new Error(`The project already has a ${TEST_TARGET} target: Motif adds its harness to a fresh copy of the project.`);
   const mainGroup = unquote(field(project.text, "mainGroup") ?? "");
   const projectConfigs = objectBlock(pbx, unquote(field(project.text, "buildConfigurationList") ?? ""));
   const configNames = (projectConfigs ? listIds(projectConfigs.text, "buildConfigurations") : [])
@@ -193,7 +202,7 @@ export function addTestTarget(pbx: string, target: string, files: string[], buil
   let n = 0;
   const id = () => {
     for (;;) {
-      const candidate = `4D4F54494600${(++n).toString(16).toUpperCase().padStart(14, "0")}`;
+      const candidate = `4D4F54494600${(++n).toString(16).toUpperCase().padStart(12, "0")}`;
       if (!pbx.includes(candidate)) return candidate;
     }
   };
@@ -258,7 +267,7 @@ export function addTestTarget(pbx: string, target: string, files: string[], buil
 /** The scheme Motif runs: it builds the app and the harness, and tests the harness, in Debug. */
 export function schemeFor(projectFile: string, patched: PatchedProject, target: string, build: SwiftUIAppBuild): string {
   const attr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return schemeSource
+  return lf(schemeSource)
     .replaceAll("__PROJECT__", attr(projectFile))
     .replaceAll("__APP_ID__", patched.appTarget)
     .replaceAll("__APP_TARGET__", attr(target))
@@ -269,7 +278,7 @@ export function schemeFor(projectFile: string, patched: PatchedProject, target: 
 
 /** The run's own Swift file: the app's module and App struct, and the theme's variant and modifier when it has them. */
 export function appSourceFor(build: SwiftUIAppBuild): string {
-  return appSource
+  return lf(appSource)
     .replaceAll("__MODULE__", build.module)
     .replaceAll("__APP__", build.appStruct)
     .replace("// __VARIANT__", build.variants ? "MotifTheme.debugVariantOverride = id.flatMap(MotifVariant.init(rawValue:))" : "_ = id")
@@ -378,6 +387,8 @@ export interface SwiftUIHarnessResult {
   /** How long each step took, in ms: settings, create, boot, test (xcodebuild's build and the shots), delete. */
   timings: Record<string, number>;
   simulator: Simulator;
+  /** The simulator the run created (and deleted). */
+  udid: string;
 }
 
 /** The app target's build settings, from `xcodebuild -showBuildSettings -json` (whatever xcodebuild printed before the JSON is skipped). */
@@ -533,7 +544,7 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
         problem = "The harness's result file is cut short; the run may have been stopped while writing it.";
       }
     }
-    return { code, timedOut, output: `${out.text()}\n${err.text()}`, result, ...(problem ? { problem } : {}), timings, simulator };
+    return { code, timedOut, output: `${out.text()}\n${err.text()}`, result, ...(problem ? { problem } : {}), timings, simulator, udid };
   } finally {
     clearTimeout(timer);
     cancelExitHook();
