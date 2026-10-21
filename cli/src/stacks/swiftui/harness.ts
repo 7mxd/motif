@@ -2,7 +2,7 @@
 // of the app's Xcode project, creates an iOS simulator, runs xcodebuild test on it, and deletes the simulator whatever
 // happens. motif shot (Tasks 7–8) builds on it; it never touches the developer's own project folder.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { onExit } from "../../cleanup";
 import { killTree } from "../../shot/devserver";
 import appSource from "./harness/MotifShotApp.swift" with { type: "text" };
@@ -44,7 +44,10 @@ export interface SwiftUIShot {
   dark: boolean;
   locale: string;
   rtl: boolean;
-  /** The variant as the guide names it (partner); the default's id for the default's shots. */
+  /**
+   * The variant as the guide names it (partner); the default's id for the default's shots. Leave it out when the guide
+   * has no variants: the app's MotifTheme.swift then has none, and any id (even "default") fails the shot.
+   */
   variant?: string;
   /** A UIContentSizeCategory raw value (UICTContentSizeCategoryXXXL). */
   contentSize?: string;
@@ -200,6 +203,8 @@ export function addTestTarget(
   const app = named(target)?.id;
   if (!app) throw new Error(`The project has no target named ${target}.`);
   // The harness goes into a fresh copy each run; a project that has it already would get a second target of that name.
+  // A copy kept between runs (for a warm DerivedData) must have its project.pbxproj and MotifShots.xcscheme restored
+  // from the developer's project before each run, or this refuses.
   if (named(TEST_TARGET)) throw new Error(`The project already has a ${TEST_TARGET} target: Motif adds its harness to a fresh copy of the project.`);
   const mainGroup = unquote(field(project.own, "mainGroup") ?? "");
   const configNames = configurationsOf(pbx, objs, unquote(field(project.own, "buildConfigurationList") ?? "")).names;
@@ -486,12 +491,21 @@ export interface SwiftUIHarnessRun {
   remove?: (udid: string) => { code: number; stderr: string };
 }
 
-/** Shuts the simulator down and deletes it, synchronously: it also runs from the exit hook, where nothing asynchronous finishes. */
-export function removeSimulator(udid: string): { code: number; stderr: string } {
+/** How long each `simctl shutdown` and `simctl delete` may take (3.5 s on the Mac mini, 10 s on CI's runner). */
+export const SIMCTL_TIMEOUT_MS = 30_000;
+
+type SyncSpawn = (cmd: string[], opts: { timeout?: number; stdout: "pipe" | "ignore"; stderr: "pipe" | "ignore" }) => { exitCode: number | null; stderr: Buffer | Uint8Array | undefined };
+
+/**
+ * Shuts the simulator down and deletes it, synchronously: it also runs from the exit hook, where nothing asynchronous
+ * finishes. Each call is stopped after SIMCTL_TIMEOUT_MS; a delete stopped so counts as failed.
+ */
+export function removeSimulator(udid: string, spawn: SyncSpawn = (cmd, opts) => Bun.spawnSync(cmd, opts)): { code: number; stderr: string } {
   try {
-    Bun.spawnSync(["xcrun", "simctl", "shutdown", udid], { stdout: "ignore", stderr: "ignore" });
-    const r = Bun.spawnSync(["xcrun", "simctl", "delete", udid], { stdout: "pipe", stderr: "pipe" });
-    return { code: r.exitCode ?? 1, stderr: r.stderr.toString().trim() };
+    spawn(["xcrun", "simctl", "shutdown", udid], { timeout: SIMCTL_TIMEOUT_MS, stdout: "ignore", stderr: "ignore" });
+    const r = spawn(["xcrun", "simctl", "delete", udid], { timeout: SIMCTL_TIMEOUT_MS, stdout: "pipe", stderr: "pipe" });
+    const stderr = r.stderr ? Buffer.from(r.stderr).toString().trim() : "";
+    return { code: r.exitCode ?? 1, stderr: r.exitCode === null && !stderr ? `xcrun simctl delete took longer than ${SIMCTL_TIMEOUT_MS / 1000} s` : stderr };
   } catch (e) {
     return { code: 1, stderr: e instanceof Error ? e.message : String(e) };
   }
@@ -602,10 +616,21 @@ function compilerErrors(output: string): string {
   return errors.length > 0 ? errors.slice(0, 10).join("\n") : tail(output);
 }
 
-/** The reason Swift gave for stopping the app (`Fatal error: …`), from xcodebuild's output, or null. */
+/**
+ * Why the app stopped, from xcodebuild's output: Swift's `Fatal error: …`, else an Objective-C exception's
+ * `Terminating app due to uncaught exception '…', reason: '…'`; null when it gave neither.
+ */
 export function crashReason(output: string): string | null {
-  const m = /(?:^|\n)(?:[^\n]*?: )?(Fatal error: [^\n]*)/.exec(output);
-  return m ? m[1]!.trim() : null;
+  const fatal = /(?:^|\n)(?:[^\n]*?: )?(Fatal error: [^\n]*)/.exec(output);
+  if (fatal) return fatal[1]!.trim();
+  const exception = /(Terminating app due to uncaught exception [^\n]*)/.exec(output);
+  return exception ? exception[1]!.trim() : null;
+}
+
+/** True when `dir` is `parent` or inside it. */
+function isInside(parent: string, dir: string): boolean {
+  const rel = relative(resolve(parent), resolve(dir));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
 /**
@@ -648,6 +673,13 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
   const project = join(run.copyDir, run.app.project);
   const pbxPath = join(project, "project.pbxproj");
   const derivedData = run.derivedData ?? join(run.workDir, DERIVED_DATA);
+  // Inside the copy, a synchronized folder (Xcode 16's) would build the harness's sources, or DerivedData's generated
+  // Swift, into the app: it takes every file under it, hidden folders too.
+  for (const [what, dir] of [["work folder", run.workDir], ["DerivedData", derivedData]] as const) {
+    if (isInside(run.copyDir, dir)) {
+      return done({ problem: `Motif's ${what} (${dir}) is inside the copy of the app, where a synchronized folder could build it into the app. Put it outside the copy.` });
+    }
+  }
   const resultPath = join(run.workDir, RESULT_FILE);
   mkdirSync(run.workDir, { recursive: true });
   rmSync(resultPath, { force: true });
@@ -739,7 +771,18 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
         for (const n of written.notes ?? []) if (!merged.notes.includes(n)) merged.notes.push(n);
         merged.shots.push(...written.shots);
       }
-      if (tested.timedOut) return tooLong("drawing the screens");
+      if (tested.timedOut) {
+        // A screen that never finishes (an endless loop in body, a wait on the main thread) used up the time: the shots
+        // before it are kept, and the screen is named.
+        const hung = written?.current;
+        return done({
+          timedOut: true,
+          result: merged.shots.length ? merged : null,
+          problem: hung
+            ? `The screenshots took longer than ${Math.round(run.timeoutMs / 1000)} s and were stopped while drawing ${hung.screen} (${hung.file}); the shots before it were kept. Check that screen for work that never ends, or run motif shot again with a longer time limit.`
+            : `The screenshots took longer than ${Math.round(run.timeoutMs / 1000)} s and were stopped while drawing the screens. Run motif shot again with fewer screens, or a longer time limit.`,
+        });
+      }
       if (!written && buildFailed(output)) {
         return done({ problem: `The app didn't build with Motif's harness:\n${compilerErrors(output)}\nCheck that the app builds for the iOS simulator in Xcode, then run motif shot again.` });
       }

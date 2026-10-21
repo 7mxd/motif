@@ -142,17 +142,22 @@ export function pbxObjects(pbx: string): Map<string, PbxObject> {
   return out;
 }
 
-/** A project file's string as it means it: without its quotes, and with \" and \\ read as " and \. */
+const ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r", '"': '"', "\\": "\\" };
+
+/**
+ * A project file's string as it means it: without its quotes, with \n, \t, \r, \" and \\ decoded. Any other escape
+ * (rare in project files: \U followed by hex digits, octal) is kept as written.
+ */
 export const unquote = (v: string) => {
   const t = v.trim();
   const m = /^"(.*)"$/s.exec(t);
-  return m ? m[1]!.replace(/\\(.)/gs, "$1") : t;
+  return m ? m[1]!.replace(/\\(.)/gs, (all, c: string) => ESCAPES[c] ?? all) : t;
 };
 /** A field's value as written, quotes and escapes included; unquote() reads it. */
 export const field = (block: string, name: string) =>
   block.match(new RegExp(`\\b${name} = ("(?:[^"\\\\]|\\\\.)*"|[^;\\s]+)(?:\\s*\\/\\*[^;]*?\\*\\/)?\\s*;`))?.[1];
 /** The ids in a parenthesised list (`ID1 /* Debug *\/, ID2 /* Release *\/,`), not the words of its comments. */
-export const idsIn =(list: string | undefined) => (list ?? "").replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((s) => s.trim()).filter(Boolean);
+export const idsIn = (list: string | undefined) => (list ?? "").replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((s) => s.trim()).filter(Boolean);
 
 /** The text of a target's own build settings: every configuration of its configuration list. */
 function targetSettings(objs: Map<string, PbxObject>, target: PbxObject): string {

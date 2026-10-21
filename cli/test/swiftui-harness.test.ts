@@ -13,8 +13,10 @@ import {
   pbxString,
   pickSimulator,
   RESULT_FILE,
+  removeSimulator,
   runSwiftUIHarness,
   schemeFor,
+  SIMCTL_TIMEOUT_MS,
   SOURCES_FOLDER,
   type SwiftUIAppBuild,
   type SwiftUIShot,
@@ -466,5 +468,74 @@ describe("runSwiftUIHarness (with stand-ins for xcodebuild and simctl)", () => {
     expect(r.notes[0]).toBe(
       "No iOS 27.0 simulator is installed, the version of Xcode's iOS SDK, so the screenshots were drawn on iOS 18.5. Install iOS 27.0 in Xcode › Settings › Components to draw them as your Xcode builds them.",
     );
+  });
+});
+
+describe("fix round 2", () => {
+  test("a screen that hangs until the time runs out keeps the shots before it, and the problem names it", async () => {
+    const { r, removed } = await fakeRun([shot("/", "home.png"), shot("Hang.swift:5", "hang.png"), shot("SettingsScreen.swift:20", "settings.png")], () => undefined, (_, __, path) => {
+      writeResult(path, { shots: [{ file: "home.png", ms: 200 }], previews: [], notes: [], current: { screen: "Hang.swift:5", file: "hang.png" }, done: false });
+      return { code: null, stdout: "", stderr: "", timedOut: true };
+    });
+    expect(r.timedOut).toBe(true);
+    expect(r.result?.shots).toEqual([{ file: "home.png", ms: 200 }]);
+    expect(r.problem).toBe(
+      "The screenshots took longer than 60 s and were stopped while drawing Hang.swift:5 (hang.png); the shots before it were kept. Check that screen for work that never ends, or run motif shot again with a longer time limit.",
+    );
+    expect(removed).toEqual([UDID]);
+  });
+
+  test("a work folder or DerivedData inside the copy is refused before anything runs", async () => {
+    const root = tempDir("motif-swiftui-inside-");
+    const copyDir = join(root, "app");
+    cpSync(join(FIXTURES, "swiftui-min"), copyDir, { recursive: true });
+    const calls: string[][] = [];
+    const exec: Exec = async (cmd) => {
+      calls.push(cmd);
+      return ok();
+    };
+    const base = { copyDir, app: swiftUIApp(copyDir)!, appStruct: "SwiftUIMinApp", theme: false, variants: false, options: { outDir: join(root, "shots"), shots: [shot("/", "a.png")] }, timeoutMs: 60_000, exec };
+    const work = await runSwiftUIHarness({ ...base, workDir: join(copyDir, ".motif-work") });
+    expect(work.problem).toBe(
+      `Motif's work folder (${join(copyDir, ".motif-work")}) is inside the copy of the app, where a synchronized folder could build it into the app. Put it outside the copy.`,
+    );
+    const derived = await runSwiftUIHarness({ ...base, workDir: join(root, "work"), derivedData: join(copyDir, "DerivedData") });
+    expect(derived.problem).toContain(`Motif's DerivedData (${join(copyDir, "DerivedData")}) is inside the copy of the app`);
+    expect(calls).toEqual([]);
+    expect(readFileSync(join(copyDir, "SwiftUIMin.xcodeproj/project.pbxproj"), "utf8")).not.toContain("MotifShots");
+  });
+
+  test("removing the simulator is bounded: each simctl call has a time limit", () => {
+    const seen: { cmd: string[]; timeout?: number }[] = [];
+    const spawn = (cmd: string[], opts: { timeout?: number }) => {
+      seen.push({ cmd, timeout: opts.timeout });
+      return { exitCode: cmd[2] === "delete" ? 0 : 0, stderr: Buffer.from("") };
+    };
+    expect(removeSimulator(UDID, spawn)).toEqual({ code: 0, stderr: "" });
+    expect(seen.map((s) => [s.cmd.slice(0, 3).join(" "), s.timeout])).toEqual([
+      ["xcrun simctl shutdown", SIMCTL_TIMEOUT_MS],
+      ["xcrun simctl delete", SIMCTL_TIMEOUT_MS],
+    ]);
+    expect(SIMCTL_TIMEOUT_MS).toBe(30_000);
+    // A delete stopped at its limit has no exit code: it failed.
+    expect(removeSimulator(UDID, (cmd) => ({ exitCode: cmd[2] === "delete" ? null : 0, stderr: Buffer.from("") })).code).not.toBe(0);
+  });
+
+  test("a project file's escapes are decoded: \\n, \\t, \\\\ and \\\" (and others kept as written)", () => {
+    expect(unquote('"line one\\nline two"')).toBe("line one\nline two");
+    expect(unquote('"a\\tb"')).toBe("a\tb");
+    expect(unquote('"C:\\\\new"')).toBe("C:\\new");
+    expect(unquote('"say \\"hi\\""')).toBe('say "hi"');
+    expect(unquote('"odd \\q"')).toBe("odd \\q");
+  });
+
+  test("a crash's reason: an uncaught exception too", () => {
+    const out = [
+      "2026-10-21 03:00:00.000 SwiftUIMin[1:2] *** Terminating app due to uncaught exception 'NSInvalidArgumentException', reason: '-[NSNull length]: unrecognized selector sent to instance 0x1'",
+      "*** First throw call stack:",
+    ].join("\n");
+    expect(crashReason(out)).toBe("Terminating app due to uncaught exception 'NSInvalidArgumentException', reason: '-[NSNull length]: unrecognized selector sent to instance 0x1'");
+    // A Swift fatal error is still read first.
+    expect(crashReason(`Fatal error: first\n${out}`)).toBe("Fatal error: first");
   });
 });
