@@ -6,6 +6,7 @@ export const FIXTURE_NAMES = [
   "react-contract-app", "react-seeded-app", "plain-contract-site", "plain-seeded-site", "flutter-contract-app", "flutter-seeded-app",
   "compose-contract-app", "compose-seeded-app",
   "rn-contract-app", "rn-seeded-app",
+  "swiftui-contract-app", "swiftui-seeded-app",
 ] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
 
@@ -16,6 +17,7 @@ const BASES: Partial<Record<FixtureName, FixtureName>> = {
   "flutter-seeded-app": "flutter-contract-app",
   "compose-seeded-app": "compose-contract-app",
   "rn-seeded-app": "rn-contract-app",
+  "swiftui-seeded-app": "swiftui-contract-app",
 };
 
 const FIXTURES = import.meta.dir;
