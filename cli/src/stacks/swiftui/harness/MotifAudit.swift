@@ -213,6 +213,14 @@ enum MotifAudit {
         return sameName(name, symbol) || description.map { sameName(name, $0) } == true
     }
 
+    /// A control's or an image's name that is itself an SF Symbol's raw name (gearshape, bell.badge): what an older
+    /// SwiftUI may say for an unlabelled symbol, without naming the symbol in the element's identifier.
+    static func rawSymbol(_ name: String?, kind: MotifElement.Kind, exists: (String) -> Bool) -> String? {
+        guard [.button, .link, .toggle, .image].contains(kind), let name,
+              name.range(of: #"^[a-z0-9]+(\.[a-z0-9]+)*$"#, options: .regularExpression) != nil, exists(name) else { return nil }
+        return name
+    }
+
     /// True when SwiftUI made an element's label from an SF Symbol alone (an Image(systemName:) the app gave no label):
     /// every text its label storage holds is a symbol's. Nil when SwiftUI's element doesn't show that.
     static func labelIsSymbol(_ object: NSObject) -> Bool? {
@@ -556,8 +564,12 @@ enum MotifAuditTree {
         // SwiftUI gives an element that shows an SF Symbol the symbol's name as its identifier.
         let id = string(MotifAX.object(object, "accessibilityIdentifier"))
         let image = id.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
-        let symbol = image != nil ? id : nil
-        let symbolOnly = symbol.map { MotifAudit.symbolOnly(object, name, symbol: $0, description: image?.accessibilityDescription) } ?? false
+        var symbol = image != nil ? id : nil
+        var symbolOnly = symbol.map { MotifAudit.symbolOnly(object, name, symbol: $0, description: image?.accessibilityDescription) } ?? false
+        if symbol == nil, let raw = MotifAudit.rawSymbol(name, kind: kind, exists: { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) {
+            symbol = raw
+            symbolOnly = true
+        }
         // A static text's own font and colour, as its attributed value says them.
         var font: (Double, Bool)?
         var color: [Double]?
@@ -664,8 +676,12 @@ enum MotifAuditTree {
         let getter = NSSelectorFromString("accessibilityIdentifier")
         let id = object.responds(to: getter) ? string(object.perform(getter)?.takeUnretainedValue() as? String) : nil
         let image = id.flatMap { UIImage(systemName: $0) }
-        let symbol = image != nil ? id : nil
-        let symbolOnly = symbol.map { MotifAudit.symbolOnly(object, name, symbol: $0, description: image?.accessibilityLabel) } ?? false
+        var symbol = image != nil ? id : nil
+        var symbolOnly = symbol.map { MotifAudit.symbolOnly(object, name, symbol: $0, description: image?.accessibilityLabel) } ?? false
+        if symbol == nil, let raw = MotifAudit.rawSymbol(name, kind: kind, exists: { UIImage(systemName: $0) != nil }) {
+            symbol = raw
+            symbolOnly = true
+        }
         // SwiftUI's elements carry their text's font and colour in their attributed label.
         var font: (Double, Bool)?
         var color: [Double]?

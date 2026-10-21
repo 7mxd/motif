@@ -104,9 +104,11 @@ export function expectAudit(root: string, r: { text: string; data: Record<string
   expect(JSON.stringify(mine)).not.toMatch(/\p{Script=Hebrew}/u);
   const of = (category: string) => mine.filter((f) => f.category === category).map((f) => [f.location.selector, f.location.state ?? null, f.summary]);
   // The caption, light only (#bfbfbf on the dark background is fine), wherever it was drawn; the typed text only once typed.
+  // The ratios are the pixels': 1.83:1 and 2.84:1 in the simulator and on macOS 27, and the caption 1.7:1 on macOS 15,
+  // whose window server gives the grey a little lighter.
   expect(of("contrast")).toEqual([
-    ['Text("Prices include tax")', null, 'Text "Prices include tax" is hard to read in light mode (1.83:1, needs 4.5:1).'],
-    ...(states ? [['TextField("Code")', "typed", 'The "Code" field is hard to read in light mode (2.84:1, needs 4.5:1).']] : []),
+    ['Text("Prices include tax")', null, expect.stringMatching(/^Text "Prices include tax" is hard to read in light mode \(1\.\d+:1, needs 4\.5:1\)\.$/)],
+    ...(states ? [['TextField("Code")', "typed", expect.stringMatching(/^The "Code" field is hard to read in light mode \(2\.\d+:1, needs 4\.5:1\)\.$/)]] : []),
   ]);
   const caption = mine.find((f) => f.location.selector === 'Text("Prices include tax")')!;
   expect(caption.severity).toBe("critical");
