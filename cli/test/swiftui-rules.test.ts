@@ -242,10 +242,17 @@ describe("raw-motion in Swift", () => {
     expect(one("v.animation(.default, value: x)").rule).toBe("raw-motion");
   });
 
+  test("SwiftUI's own curve on Animation is still a hard-coded easing; only MotifCurves' are the theme's", () => {
+    expect(scan("withAnimation(Animation.easeIn(duration: 0.3)) { }")).toContainEqual(expect.objectContaining({ rule: "raw-motion", kind: "easing" }));
+  });
+
   test("not findings: the theme's own, a sleep, a spring with no numbers", () => {
     const src = [
       "withAnimation(MotifSprings.snappy) { }",
       "v.animation(MotifCurves.standard, value: x)",
+      // A curve role named like SwiftUI's own, run over another duration as the guide teaches (Task 11 re-review).
+      "withAnimation(MotifCurves.linear(over: MotifDurations.slow)) { }",
+      "v.animation(MotifCurves .easeInOut(over: MotifDurations.base), value: x)",
       "withAnimation(MotifMotion.animation(MotifSprings.smooth, reduceMotion: reduceMotion)) { }",
       "try await Task.sleep(for: .seconds(2))",
       "v.animation(.spring, value: x)",

@@ -74,7 +74,7 @@ struct PriceTag: View {
 - Shadows: `.motifShadow(MotifShadows.<role>)` after the background. A card has a border or a shadow, not both.
 - Text: `.motifFont(.<role>)` (`display`, `title`, `heading`, `body`, `label`, `caption`, or whatever the guide names), which sets the font, its line spacing and its letter spacing, scaled with Dynamic Type. Use it first. Where only a `Font` will do (`Text` pieces joined with `+`, say), `MotifType.body.font()`, which sets neither spacing. The roles carry no colour: set it with `.foregroundStyle(colors.<role>)`. Never `.font(.system(size:))` or `Font.custom(…)` yourself.
 
-A role's line spacing is the guide's line height less the font's own line height, which `.motifFont` reads from the font when it draws, so a font with a taller line of its own (many Arabic fonts) gets the line height the guide asks for. Only a font the app can't load (a Google family it doesn't bundle yet) is taken to be 1.2 times its size, as San Francisco is.
+A role's line spacing is the guide's line height less the font's own line height, which `.motifFont` reads from the font when it draws, so a font with a taller line of its own (many Arabic fonts) gets the line height the guide asks for, unless the guide asks for less than the font's own line: SwiftUI can't tighten lines, so the font's own line is used then. Only a font the app can't load (a Google family it doesn't bundle yet) is taken to be 1.2 times its size, as San Francisco is.
 
 ## Text and the Arabic companion
 

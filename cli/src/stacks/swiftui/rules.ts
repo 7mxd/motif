@@ -318,6 +318,8 @@ export function scanSwift(source: SourceFile, scale: Scale | null): Hit[] {
     push(index, { rule: "raw-motion", kind: "easing", text: literal, value, violation: true, message: `Hard-coded easing ${literal}.` });
   const durationOf = (call: { args: Arg[] }) => call.args.find((a) => a.name === "duration" && NUMBER.test(a.value));
   for (const m of text.matchAll(CURVE_CALL)) {
+    // MotifCurves.linear(over:) is the theme's own curve run over another duration, not SwiftUI's.
+    if (/MotifCurves\s*$/.test(text.slice(Math.max(0, m.index! - 40), m.index!))) continue;
     const call = callAt(m);
     if (!call) continue;
     const literal = oneLine(text.slice(m.index!, call.close + 1));
