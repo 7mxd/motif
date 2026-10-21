@@ -165,8 +165,8 @@ describe("the SwiftUI screenshot harness (decision 0010)", () => {
       const outDir = join(root, "shots");
       const shots: SwiftUIShot[] = [
         { ...phone, screen: "/", file: "root.png", dark: false },
-        { ...phone, screen: "BrokenPreview.swift:22", file: "broken.png", dark: false },
-        { ...phone, screen: "BrokenPreview.swift:22", file: "broken.dark.png", dark: true },
+        { ...phone, screen: "BrokenPreview.swift:23", file: "broken.png", dark: false },
+        { ...phone, screen: "BrokenPreview.swift:23", file: "broken.dark.png", dark: true },
         { ...phone, screen: "ContentView.swift:26", file: "previewable.png", dark: false },
       ];
       const before = derivedFolders();
@@ -184,7 +184,7 @@ describe("the SwiftUI screenshot harness (decision 0010)", () => {
       expect(byFile.get("previewable.png")?.error).toBeUndefined();
       // The broken preview stops the app: its two shots fail with SwiftUI's reason, and the others are still drawn.
       for (const file of ["broken.png", "broken.dark.png"]) {
-        expect(byFile.get(file)?.error).toStartWith("The preview BrokenPreview.swift:22 stopped the app: Fatal error: No ObservableObject of type Session found.");
+        expect(byFile.get(file)?.error).toStartWith("The preview BrokenPreview.swift:23 stopped the app: Fatal error: No ObservableObject of type Session found.");
         expect(existsSync(join(outDir, file))).toBe(false);
       }
       expect(result.previews.map((p) => p.name ?? p.id)).toEqual(["Broken", "Previewable"]);

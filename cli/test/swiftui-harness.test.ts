@@ -412,6 +412,21 @@ describe("runSwiftUIHarness (with stand-ins for xcodebuild and simctl)", () => {
     );
   });
 
+  test("a build that fails says so, with the compiler's errors", async () => {
+    const out = [
+      "/tmp/x/app/SwiftUI26/BrokenPreview.swift:9:7: error: type 'Session' does not conform to protocol 'ObservableObject'",
+      "/tmp/x/app/SwiftUI26/BrokenPreview.swift:9:7: error: type 'Session' does not conform to protocol 'ObservableObject'",
+      "Testing failed:",
+      "\tTesting cancelled because the build failed.",
+      "** TEST FAILED **",
+    ].join("\n");
+    const { r } = await fakeRun([shot("/", "home.png")], () => undefined, () => failed(65, "", out));
+    expect(r.result).toBeNull();
+    expect(r.problem).toBe(
+      "The app didn't build with Motif's harness:\n/tmp/x/app/SwiftUI26/BrokenPreview.swift:9:7: error: type 'Session' does not conform to protocol 'ObservableObject'\nCheck that the app builds for the iOS simulator in Xcode, then run motif shot again.",
+    );
+  });
+
   test("boot, settings and listing failures are refused in plain words, and the simulator is still deleted", async () => {
     const boot = await fakeRun([shot("/", "home.png")], (cmd) => (cmd[2] === "boot" ? failed(149, "Unable to boot device in current state: Booted") : undefined), drawsAll);
     expect(boot.r.problem).toContain("couldn't start:\nUnable to boot device in current state: Booted\nFree some disk space");

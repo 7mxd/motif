@@ -3,6 +3,7 @@
 //  SwiftUI26
 //
 
+import Combine
 import SwiftUI
 
 /// A preview that stops the app: its view needs an environment object nobody gives it. Motif's harness must fail this

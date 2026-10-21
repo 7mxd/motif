@@ -593,6 +593,15 @@ function readResult(path: string): WrittenResult | null | "unreadable" {
   }
 }
 
+/** True when xcodebuild stopped because the build failed, before any test ran. */
+const buildFailed = (output: string) => /Testing cancelled because the build failed|\*\* BUILD FAILED \*\*|The following build commands failed/.test(output);
+
+/** The compiler's errors in xcodebuild's output, each once (the first ten), or its last lines when it gave none. */
+function compilerErrors(output: string): string {
+  const errors = [...new Set(output.split(/\r?\n/).filter((l) => /: error: /.test(l)).map((l) => l.trim()))];
+  return errors.length > 0 ? errors.slice(0, 10).join("\n") : tail(output);
+}
+
 /** The reason Swift gave for stopping the app (`Fatal error: …`), from xcodebuild's output, or null. */
 export function crashReason(output: string): string | null {
   const m = /(?:^|\n)(?:[^\n]*?: )?(Fatal error: [^\n]*)/.exec(output);
@@ -731,6 +740,9 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
         merged.shots.push(...written.shots);
       }
       if (tested.timedOut) return tooLong("drawing the screens");
+      if (!written && buildFailed(output)) {
+        return done({ problem: `The app didn't build with Motif's harness:\n${compilerErrors(output)}\nCheck that the app builds for the iOS simulator in Xcode, then run motif shot again.` });
+      }
       if (!written) {
         const skipped = /MOTIF_SHOT_OPTIONS isn't set/.test(output);
         return done({
