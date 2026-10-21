@@ -49,6 +49,18 @@ struct AuditScreen: View {
                     .tint(.primary)
                 glass
             }
+            // A bordered button with no tint (the theme's taken off) on a flat mid grey: its neutral fill is nearly the
+            // background's, so the picture can't see its shape, and only its height (36 pt for 17 pt text) tells it is
+            // styled. A tinted one is seen by the picture. Light whatever the scheme.
+            HStack {
+                Button("Save") {}
+                    .buttonStyle(.bordered)
+                    .tint(nil as Color?)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(white: 0.5))
+            .environment(\\.colorScheme, .light)
             HStack {
                 Image(systemName: "leaf")
                 Text("Fresh today")
@@ -161,6 +173,7 @@ export function expectAudit(root: string, r: { text: string; data: Record<string
   if (states) {
     const shown = routes.find((x) => x.route === "Audit")!.pageErrors![0]!;
     expect(shown).toContain('"Edit"');
+    expect(shown).toContain('"Save"');
     if (hasGlass()) expect(shown).toContain('"Share"');
     else console.log("[audit] Swift is older than 6.2: the planted screen has no glass button.");
   }
@@ -171,7 +184,10 @@ export function expectAudit(root: string, r: { text: string; data: Record<string
   const mine = review.findings.filter((f) => f.location.screen === "Audit");
   // Right to left in Hebrew, SwiftUI says the symbol's name in Hebrew: still the symbol's own name, the same place.
   expect(JSON.stringify(mine)).not.toMatch(/\p{Script=Hebrew}/u);
-  const of = (category: string) => mine.filter((f) => f.category === category).map((f) => [f.location.selector, f.location.state ?? null, f.summary]);
+  // The bordered "Save" on mid grey is there for the tap-target check; its blue on grey is a contrast finding of its own,
+  // whose ratio is the system's fill's, so contrast leaves it out.
+  const of = (category: string) =>
+    mine.filter((f) => f.category === category && !(category === "contrast" && f.location.selector === 'Button("Save")')).map((f) => [f.location.selector, f.location.state ?? null, f.summary]);
   // The caption, light only (#bfbfbf on the dark background is fine), wherever it was drawn; the typed text only once typed.
   // The ratios are the pixels': 1.83:1 and 2.84:1 in the simulator and on macOS 27, and the caption 1.7:1 on macOS 15,
   // whose window server gives the grey a little lighter.
@@ -197,7 +213,8 @@ export function expectAudit(root: string, r: { text: string; data: Record<string
   expect(motion.fix).not.toContain("could turn on only");
   if (viewport === "mobile") {
     // The plain 30 pt icon button, in SwiftUI's terms. The text field isn't one: its size is the system's; nor the
-    // bordered "Edit" (36 pt high) or, with Xcode 26 and later, the glass "Share": a system style sizes them.
+    // bordered "Edit" (36 pt high) or, with Xcode 26 and later, the glass "Share": a system style sizes them. Nor the
+    // bordered "Save" on mid grey, which only its height tells (it was flagged before tallerThanItsText).
     expect(of("target-size")).toEqual([["Button(gearshape)", null, 'The "gearshape" button is 30×30 px on a phone; 44×44 px is easier to tap.']]);
     expect(mine.find((f) => f.category === "target-size")!.fix).toContain(".frame(minWidth: 44, minHeight: 44)");
     // swiftui-min's stock home: the plain Greet button is too small; its field and its bordered prominent button aren't.
