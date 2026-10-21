@@ -15,7 +15,7 @@ import { swiftUIFonts } from "./fonts";
 import { generateSwiftUI, THEME_FILE } from "./generate";
 import { swiftUIPaletteFile } from "./palette";
 import { appEntryFile, buildsWholeFolder, swiftUIApp } from "./project";
-import { shootSwiftUI, SWIFTUI_VARIANT_HOW, swiftUIInputsProblem, swiftUIRoutes, swiftUIShotRefusal, swiftUIShotSizes, swiftUITimeLimit } from "./shot";
+import { shootSwiftUI, SWIFTUI_MOTION, SWIFTUI_VARIANT_HOW, swiftUIInputsProblem, swiftUIRoutes, swiftUIShotRefusal, swiftUIShotSizes, swiftUITimeLimit } from "./shot";
 
 /** The app target's folder, root-relative. */
 const targetFolder = (app: AppInfo, sourceRoot: string) => prefixPath(app.path, sourceRoot);
@@ -118,6 +118,8 @@ export const SWIFTUI: NativeStack = {
   shotInputsProblem: swiftUIInputsProblem,
   shotSizes: swiftUIShotSizes,
   shotTimeLimit: swiftUITimeLimit,
+  // In the simulator, as on the other native stacks; a macOS app's run says so itself (its windows aren't --sizes').
+  motionSize: SWIFTUI_MOTION,
   variantHow: SWIFTUI_VARIANT_HOW,
   routes: swiftUIRoutes,
 };

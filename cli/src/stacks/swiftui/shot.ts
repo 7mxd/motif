@@ -14,12 +14,14 @@ import type { AppInfo } from "../../detect/stacks";
 import { motifHome } from "../../home";
 import { MAC_WINDOWS, NATIVE_VIEWPORTS, parseSizes, routeSlug, shotName, type RouteResult, type Scheme, type StateScript, type Viewport } from "../../shot/capture";
 import { andList } from "../../text";
+import type { AuditIssue, RawIssue } from "../../shot/audit";
 import { statesFile, type StatesFile } from "../flutter/inputs";
+import { auditChecks, MOTION_WIDTH } from "../flutter/shot";
 import type { NativeShotOptions } from "../native";
 import { swiftUIDoctor } from "./doctor";
 import { THEME_FILE } from "./generate";
 import {
-  execCommand, removeSimulator, runSwiftUIHarness, stateFunction, sweepMacLeftovers, type Exec, type MacHostIO, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
+  execCommand, removeSimulator, runSwiftUIHarness, stateFunction, sweepMacLeftovers, type AuditCheck, type Exec, type MacHostIO, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
 } from "./harness";
 import { appEntryFile, field, idsIn, pbxObjects, swiftUIApp, unquote, type SwiftUIApp } from "./project";
 import { discoverSwiftUIScreens, swiftUIRunName, swiftUIScreenProblem, type SwiftUIPreview } from "./screens";
@@ -338,8 +340,37 @@ export function swiftUITargets(opts: Pick<NativeShotOptions, "routes" | "screens
   return targets;
 }
 
-/** A planned screenshot, with the screen it belongs to. */
-export type PlannedShot = SwiftUIShot & { target: string };
+/**
+ * A planned screenshot, with the screen it belongs to; with --audit, the size and variant its findings name (the
+ * variant only when it isn't the default), which stay with Motif.
+ */
+export type PlannedShot = SwiftUIShot & { target: string; seen?: { size: string; variant?: string } };
+
+/** What to do about each problem in a SwiftUI app, in its own terms (the web's fixes name CSS and ARIA). */
+export const SWIFTUI_FIXES: Partial<Record<RawIssue["rule"], string>> = {
+  "target-mobile":
+    "Give it at least 44×44 pt where people tap it: .frame(minWidth: 44, minHeight: 44) on the button's label with .contentShape(Rectangle()) so all of it takes taps, or padding inside the label.",
+  motion:
+    "Stop this animation, or keep it still, when reduce motion is on: read @Environment(\\.accessibilityReduceMotion) and leave the movement (a .repeatForever(), a moving offset or scale) out then; MotifMotion.animation(…, reduceMotion:) gives no animation then.",
+  name: 'Give it a name VoiceOver can say: .accessibilityLabel("…") (an SF Symbol\'s own name, like "Gear Shape", doesn\'t say what it does), a visible title (Label("Settings", systemImage: "gearshape")), or .accessibilityHidden(true) for an image that only decorates.',
+};
+
+/**
+ * The audit's checks on one screenshot. In the simulator, as on the other native stacks: contrast and names everywhere;
+ * tap targets on phones and tablets, in light; reduced motion in light at the 390 phone size. On the Mac: contrast and
+ * names in every window, reduced motion in light in the 1440 window, and no tap-target check (a Mac is clicked with a
+ * pointer, and 44 points is a touch screen's size).
+ */
+export function swiftUIAuditChecks(v: Viewport, scheme: Scheme, platform: "ios" | "macos"): AuditCheck[] {
+  if (platform === "ios") return auditChecks(v, scheme);
+  return ["contrast", "names", ...(scheme === "light" && v.width === MAC_MOTION_WIDTH ? (["motion"] as const) : [])];
+}
+
+/** The phone size the reduced-motion check runs at in the simulator, for the note when --sizes leaves it out. */
+export const SWIFTUI_MOTION = { width: MOTION_WIDTH, text: `the ${MOTION_WIDTH} pt phone size` };
+
+/** The window the reduced-motion check runs in on the Mac: the desktop's. */
+export const MAC_MOTION_WIDTH = MAC_WINDOWS[0]!.width;
 
 /**
  * Every screenshot of a run, in the web's order: per screen, size, scheme, then variant, direction and state. Phones
@@ -366,6 +397,7 @@ export function planSwiftUIShots(
               // default; a variant is always passed, so one the app's theme lacks fails with what to do.
               const id = variant ?? defaultId;
               const set = variant ?? (theme?.variants && defaultId ? defaultId : undefined);
+              const checks = opts.audit ? swiftUIAuditChecks(v, scheme, platform) : undefined;
               shots.push({
                 target: t.key,
                 screen: t.screen!,
@@ -380,6 +412,10 @@ export function planSwiftUIShots(
                 ...(set ? { variant: set } : {}),
                 variantId: id,
                 ...(state ? { state } : {}),
+                ...(checks ? { checks } : {}),
+                // The reduced-motion check looks at the screen with reduce motion on, as someone who turned it on sees it.
+                ...(checks?.includes("motion") ? { reduceMotion: true } : {}),
+                ...(checks ? { seen: { size, ...(variant ? { variant } : {}) } } : {}),
               });
             }
           }
@@ -411,8 +447,10 @@ export function mapSwiftUIResult(
   outDir: string,
   run: Pick<SwiftUIHarnessResult, "result" | "problem" | "timedOut" | "notes">,
   timeoutMs: number,
-): { routes: RouteResult[]; notes: string[] } {
+): { routes: RouteResult[]; issues: AuditIssue[]; notes: string[] } {
   const results = new Map((run.result?.shots ?? []).map((s) => [s.file, s]));
+  const issues: AuditIssue[] = [];
+  const unjudged: string[] = [];
   const why = run.timedOut ? `The run reached its time limit (${Math.round(timeoutMs / 1000)} s) before drawing it.` : (run.problem ?? "xcodebuild stopped before drawing it.");
   const errorsSeen = new Set<string>();
   const more: string[] = [];
@@ -424,6 +462,8 @@ export function mapSwiftUIResult(
     const errors: string[] = [];
     const soft: string[] = [];
     let missing = false;
+    let auditError: string | undefined;
+    const notJudged = new Set<string>();
     for (const s of mine) {
       const r = results.get(s.file);
       if (!r) {
@@ -437,7 +477,34 @@ export function mapSwiftUIResult(
         continue;
       }
       if (r.stateError && !soft.includes(r.stateError)) soft.push(r.stateError);
-      if (existsSync(join(outDir, s.file))) drawn.push(join(outDir, s.file));
+      if (!existsSync(join(outDir, s.file))) continue;
+      drawn.push(join(outDir, s.file));
+      // The audit's findings on this screenshot, named by where they were seen, as on the other stacks.
+      auditError ??= r.auditError;
+      for (const text of r.unjudged ?? []) notJudged.add(text);
+      for (const { nth, of, ...i } of r.issues ?? []) {
+        const fix = SWIFTUI_FIXES[i.rule];
+        const size = s.seen?.size ?? "";
+        issues.push({
+          ...i,
+          // Two unnamed buttons on one screen are two places, not one.
+          ...(nth && of && of > 1 ? { selector: `${i.selector}[${nth}]` } : {}),
+          route: t.key,
+          viewport: size.startsWith("desktop") ? "desktop" : "mobile",
+          size,
+          scheme: s.dark ? "dark" : "light",
+          shot: join(outDir, s.file),
+          ...(s.state ? { state: s.state } : {}),
+          ...(s.seen?.variant ? { variant: s.seen.variant } : {}),
+          ...(s.rtl ? { rtl: true as const } : {}),
+          ...(fix ? { fix } : {}),
+        });
+      }
+    }
+    // A screen the contrast check couldn't fully judge says so, so nobody takes it as clean.
+    if (notJudged.size > 0) {
+      const n = notJudged.size;
+      unjudged.push(`Contrast on ${t.key} wasn't judged for ${n === 1 ? "1 text" : `${n} texts`} with no one colour behind ${n === 1 ? "it" : "them"} (a picture or a gradient): check ${n === 1 ? "it" : "them"} by eye.`);
     }
     if (missing && errors.length === 0) errors.push(why);
     // The screen's line shows its first error, as on the other stacks; the others (a state that ran out of time, say)
@@ -450,7 +517,10 @@ export function mapSwiftUIResult(
       also(pageErrors.slice(1));
       // Shots that weren't drawn (a setup that failed): the line says how many, not that the screenshots show it.
       const undrawn = mine.length - drawn.length;
-      return { ...base, status: 200, shots: drawn, ...(undrawn > 0 && errors.length > 0 ? { missing: undrawn } : {}), ...(pageErrors.length > 0 ? { pageErrors } : {}) };
+      return {
+        ...base, status: 200, shots: drawn, ...(undrawn > 0 && errors.length > 0 ? { missing: undrawn } : {}), ...(pageErrors.length > 0 ? { pageErrors } : {}),
+        ...(auditError ? { auditError } : {}),
+      };
     }
     const [first, ...rest] = errors.length > 0 ? errors : [why];
     const pageErrors = [...rest, ...soft];
@@ -458,9 +528,9 @@ export function mapSwiftUIResult(
     return { ...base, status: 0, error: first!, shots: [], ...(pageErrors.length > 0 ? { pageErrors } : {}) };
   });
   // A screen that stopped the app is in its own error already.
-  const notes = [...(run.result?.notes ?? []).filter((n) => !errorsSeen.has(n)), ...more];
+  const notes = [...(run.result?.notes ?? []).filter((n) => !errorsSeen.has(n)), ...more, ...unjudged];
   if (run.problem && run.result) notes.push(run.problem);
-  return { routes, notes: [...notes, ...run.notes] };
+  return { routes, issues, notes: [...notes, ...run.notes] };
 }
 
 // ---- Motif's folder for the app ----
@@ -842,7 +912,7 @@ export function copyFilter(base: string, appDir: string, outDir: string): (src: 
   };
 }
 
-export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDeps = {}): Promise<{ routes: RouteResult[]; issues: []; notes: string[] }> {
+export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDeps = {}): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }> {
   const started = Date.now();
   const root = resolve(opts.root);
   const appDir = resolve(root, opts.app.path);
@@ -867,6 +937,10 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
   const targets = swiftUITargets(opts, previews);
   const platform = swiftUIPlatform(swift, opts.viewports);
   const shots = planSwiftUIShots(opts, targets, theme, defaultId, platform);
+  // On the Mac, the reduced-motion check runs in the desktop's window, which a run with --sizes 900 leaves out.
+  if (opts.audit && platform === "macos" && !opts.viewports.some((v) => v.width === MAC_MOTION_WIDTH)) {
+    notes.push(`The reduced-motion check runs in the ${MAC_MOTION_WIDTH}×${MAC_WINDOWS[0]!.height} window, which --sizes left out.`);
+  }
   if (opts.rtl && !offersLanguage(appDir, opts.rtl)) {
     notes.push(`This app doesn't offer ${opts.rtl} (its string catalogues and .lproj folders have no ${opts.rtl} strings), so its RTL screenshots show its default strings, laid out right to left.`);
   }
@@ -943,7 +1017,7 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
       variants: theme?.variants ?? false,
       options: {
         outDir,
-        shots: shots.map(({ target: _, ...s }) => s),
+        shots: shots.map(({ target: _, seen: __, ...s }) => s),
         settle: SETTLE_S,
         stateLimit: STATE_S,
         ...(inputs.setup ? { setupFile: inputs.setup.file.shown } : {}),
@@ -968,14 +1042,13 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
     }
     const mapped = mapSwiftUIResult(targets, shots, outDir, result, opts.timeoutMs);
     if (process.env.MOTIF_DEBUG) notes.push(`How long each step took, in ms: ${JSON.stringify({ copy: copied - started, ...result.timings })}`);
-    const routes = opts.audit ? mapped.routes.map((r) => (r.status === 200 ? { ...r, auditError: "Motif doesn't audit SwiftUI screens yet" } : r)) : mapped.routes;
     if (firstRun && existsSync(derivedData)) {
       notes.push(
         `Motif keeps this app's build in ${derivedData} (${sizeText(folderSize(derivedData))}), so later runs are quicker. ` +
           `It removes a build that goes ${KEEP_DAYS} days without a run, and keeps those of the ${KEEP_BUILDS} apps drawn most recently.`,
       );
     }
-    return { routes, issues: [], notes: [...notes, ...mapped.notes] };
+    return { routes: mapped.routes, issues: mapped.issues, notes: [...notes, ...mapped.notes] };
   } finally {
     cancel();
     cleanup();

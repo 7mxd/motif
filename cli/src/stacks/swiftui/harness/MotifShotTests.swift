@@ -35,6 +35,10 @@ struct MotifShotOptions: Decodable {
         let contentSize: String?
         /// The safe area's top and bottom in points (a phone's status bar and home indicator); none when not given.
         let insets: [Double]?
+        /// The audit's checks on the drawn screen (contrast, names, targets, motion), with --audit.
+        let checks: [String]?
+        /// Drawn with reduce motion on (SwiftUI's accessibilityReduceMotion), for the reduced-motion check.
+        let reduceMotion: Bool?
     }
 
     let outDir: String
@@ -59,6 +63,10 @@ private struct ShotResult: Encodable {
     var view: String?
     /// What went wrong in the shot's state: the screen is drawn as the state left it.
     var stateError: String?
+    /// What the audit found on the drawn screen, the texts whose contrast it couldn't judge, and why it couldn't finish.
+    var issues: [MotifIssue]?
+    var unjudged: [String]?
+    var auditError: String?
 }
 
 private struct Current: Encodable {
@@ -99,7 +107,9 @@ final class MotifShotTests: XCTestCase {
         let settle = options.settle ?? 5
         let limit = options.stateLimit ?? 15
         let setupFile = options.setupFile ?? "design/states/Setup.swift"
-        if options.shots.contains(where: { $0.state != nil }) {
+        // States find things, and the audit reads the screen, through the accessibility elements SwiftUI makes only
+        // while accessibility is on.
+        if options.shots.contains(where: { $0.state != nil || !($0.checks ?? []).isEmpty }) {
             MotifAccessibility.enable()
             if MotifAccessibility.enabled != true { result.notes.append(MotifAccessibility.problem) }
         }
@@ -139,7 +149,14 @@ final class MotifShotTests: XCTestCase {
                     throw MotifShotError("The app has no #Preview at \(shot.screen).")
                 }
                 entry.view = MotifMirror.typeName(view)
-                let drawn = try MotifShotDrawing.draw(MotifShotApp.themed(view), shot: shot, settle: settle) { window in
+                let checks = Set(shot.checks ?? [])
+                var audit: MotifAuditOutcome?
+                let drawn = try MotifShotDrawing.draw(MotifShotApp.themed(view), shot: shot, settle: settle, after: { window, png in
+                    // The audit reads the window the screen was drawn in, and the picture just taken: after a state,
+                    // once its editing has ended.
+                    guard !checks.isEmpty else { return }
+                    audit = MotifAudit.run(checks, window: window, png: png, scale: shot.scale)
+                }) { window in
                     // The state runs on the settled screen, with its own time limit; the screen is drawn as it leaves it.
                     guard let state = shot.state else { return nil }
                     let app = MotifHarness(window: window, variant: shot.variantId ?? "", locale: locale, dark: shot.dark, settle: settle)
@@ -153,6 +170,11 @@ final class MotifShotTests: XCTestCase {
                     }
                 }
                 entry.stateError = drawn.stateError
+                if let audit {
+                    entry.issues = audit.issues
+                    if !audit.unjudged.isEmpty { entry.unjudged = audit.unjudged }
+                    entry.auditError = audit.error
+                }
                 try drawn.png.write(to: outDir.appendingPathComponent(shot.file))
                 if let note = drawn.note, !result.notes.contains(note) { result.notes.append(note) }
             } catch {
@@ -178,6 +200,19 @@ final class MotifShotTests: XCTestCase {
     }
 }
 
+extension View {
+    /// Reduce motion on for this screen alone when `on`, as SwiftUI's previews set it (accessibilityReduceMotion reads
+    /// it): nothing on the simulator or the Mac changes.
+    @ViewBuilder
+    func motifReduceMotion(_ on: Bool) -> some View {
+        if on {
+            environment(\._accessibilityReduceMotion, true)
+        } else {
+            self
+        }
+    }
+}
+
 struct MotifShotError: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
@@ -191,7 +226,8 @@ enum MotifShotDrawing {
 
     /// Hosts the view in a window of its own at the shot's size and traits, waits for it to settle, and draws the window.
     static func draw(
-        _ view: AnyView, shot: MotifShotOptions.Shot, settle: Double, state: (UIWindow) -> String? = { _ in nil }
+        _ view: AnyView, shot: MotifShotOptions.Shot, settle: Double, after: (UIWindow, Data) -> Void = { _, _ in },
+        state: (UIWindow) -> String? = { _ in nil }
     ) throws -> (png: Data, note: String?, stateError: String?) {
         let insets = shot.insets ?? [0, 0]
         // The window's own safe area comes from the simulator's screen; the shot's is given to SwiftUI instead.
@@ -199,6 +235,7 @@ enum MotifShotDrawing {
             .safeAreaPadding(EdgeInsets(top: insets.first ?? 0, leading: 0, bottom: insets.last ?? 0, trailing: 0))
             .environment(\.locale, Locale(identifier: shot.locale))
             .environment(\.layoutDirection, shot.rtl ? .rightToLeft : .leftToRight)
+            .motifReduceMotion(shot.reduceMotion == true)
         let host = UIHostingController(rootView: AnyView(root))
         host.safeAreaRegions = []
         let bounds = CGRect(x: 0, y: 0, width: shot.width, height: shot.height)
@@ -243,12 +280,16 @@ enum MotifShotDrawing {
             let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
                 drawn = window.drawHierarchy(in: bounds, afterScreenUpdates: true)
             }
-            if drawn, let png = image.pngData() { return (png, nil, stateError) }
+            if drawn, let png = image.pngData() {
+                after(window, png)
+                return (png, nil, stateError)
+            }
         }
         let image = UIGraphicsImageRenderer(bounds: bounds, format: format).image { context in
             window.layer.render(in: context.cgContext)
         }
         guard let png = image.pngData() else { throw MotifShotError("The picture couldn't be made into a PNG.") }
+        after(window, png)
         return (png, "Screens were drawn from their layers, without the render server: blurs and materials may be missing.", stateError)
     }
 
@@ -338,12 +379,14 @@ enum MotifShotDrawing {
     /// and toolbar over the content, as a window with a full-size content view has them), in light or dark, left to
     /// right or right to left; waits for it to settle; and takes the window's picture at the shot's scale.
     static func draw(
-        _ view: AnyView, shot: MotifShotOptions.Shot, settle: Double, state: (NSWindow) -> String? = { _ in nil }
+        _ view: AnyView, shot: MotifShotOptions.Shot, settle: Double, after: (NSWindow, Data) -> Void = { _, _ in },
+        state: (NSWindow) -> String? = { _ in nil }
     ) throws -> (png: Data, note: String?, stateError: String?) {
         let size = NSSize(width: shot.width, height: shot.height)
         let root = view
             .environment(\.locale, Locale(identifier: shot.locale))
             .environment(\.layoutDirection, shot.rtl ? .rightToLeft : .leftToRight)
+            .motifReduceMotion(shot.reduceMotion == true)
         let host = NSHostingView(rootView: AnyView(root))
         host.sizingOptions = []
         let window = MotifShotWindow(
@@ -383,7 +426,9 @@ enum MotifShotDrawing {
             let deadline = Date().addingTimeInterval(2)
             while true {
                 switch windowServerPicture(window, size: size, scale: shot.scale, dark: shot.dark) {
-                case .success(let png): return (png, nil, stateError)
+                case .success(let png):
+                    after(window, png)
+                    return (png, nil, stateError)
                 case .failure(let reason): why = reason.description
                 }
                 if Date() >= deadline { break }
@@ -394,7 +439,9 @@ enum MotifShotDrawing {
                 RunLoop.main.run(until: Date().addingTimeInterval(0.1))
             }
         }
-        return (try viewsPicture(window, scale: shot.scale, dark: shot.dark), withoutWindowServer(why), stateError)
+        let png = try viewsPicture(window, scale: shot.scale, dark: shot.dark)
+        after(window, png)
+        return (png, withoutWindowServer(why), stateError)
     }
 
     /// Makes the window's surface the shot's scale (2× on a Mac whose screen is 1×), through AppKit's

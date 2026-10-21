@@ -1,0 +1,130 @@
+// What the SwiftUI e2e tests plant for motif shot --audit (plan 2H, Task 10), on iOS and on the Mac alike, and what they
+// expect it to find.
+import { expect } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+/** Where the planted screen goes in the app (swiftui-min's or swiftui-mac's Screens folder). */
+export const auditFile = (app: string) => `${app}/Screens/AuditScreen.swift`;
+
+/**
+ * A screen with problems planted for the audit: a caption in a pale grey (#bfbfbf on white, 1.83:1), a 30 pt icon button
+ * with no name of its own (its SF Symbol's, "Gear Shape", only), a field whose typed text is grey (#999999, 2.84:1), and
+ * a pulse that keeps going with reduce motion on. What should pass: the title, and a second pulse that stops when reduce
+ * motion is on, as the theme's MotifMotion asks.
+ */
+export const AUDIT_SCREEN = `import SwiftUI
+
+struct AuditScreen: View {
+    @Environment(\\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
+    @State private var calm = false
+    @State private var code = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Your order")
+                .font(.largeTitle.bold())
+            Text("Prices include tax")
+                .font(.caption)
+                .foregroundStyle(Color(white: 0.75))
+            Button {} label: {
+                Image(systemName: "gearshape")
+                    .frame(width: 30, height: 30)
+            }
+            TextField("Code", text: $code)
+                .foregroundStyle(Color(white: 0.6))
+            Circle()
+                .fill(Color.indigo)
+                .frame(width: 40, height: 40)
+                .scaleEffect(pulse ? 1.3 : 0.7)
+                .animation(.easeInOut(duration: 0.8).repeatForever(), value: pulse)
+                .onAppear { pulse = true }
+            Circle()
+                .fill(Color.teal)
+                .frame(width: 40, height: 40)
+                .scaleEffect(calm ? 1.3 : 0.7)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(), value: calm)
+                .onAppear { calm = !reduceMotion }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+    }
+}
+
+#Preview("Audit") {
+    AuditScreen()
+}
+`;
+
+/** A state that types into the planted field: the audit judges the typed text once editing has ended. */
+export const TYPED_STATE = `@MainActor func motifState(_ app: MotifHarness) async throws {
+    guard app.exists("Code") else { return }
+    try await app.type("1234", into: "Code")
+}
+`;
+
+/** A state that throws: its screen's error says so, and the screen is still drawn and audited as it was left. */
+export const THROWS_STATE = `@MainActor func motifState(_ app: MotifHarness) async throws {
+    try await app.tap("Nothing here", timeout: 1)
+}
+`;
+
+/** A finding of audit.json, as the e2e tests read them. */
+export type Finding = {
+  severity: string;
+  category: string;
+  summary: string;
+  fix: string;
+  shot: string;
+  location: { screen: string; selector: string; scheme?: string; state?: string; rtl?: true };
+  locations?: { screen: string; selector: string; scheme?: string; state?: string; rtl?: true }[];
+};
+
+/**
+ * What --audit says of the planted screen, the same in the simulator and on the Mac but for tap targets, which only a
+ * phone or a tablet gets. With the states: the throwing state is its screen's error and its shots are audited as drawn;
+ * the typed text is judged once editing has ended. The pulse that keeps going is found, the one that stops for reduce
+ * motion isn't.
+ */
+export function expectAudit(root: string, r: { text: string; data: Record<string, unknown> }, viewport: "mobile" | "desktop", states: boolean): void {
+  const routes = r.data.routes as { route: string; status: number; pageErrors?: string[]; auditError?: string }[];
+  expect(routes.map((x) => [x.route, x.status, x.auditError ?? null])).toEqual([["/", 200, null], ["Audit", 200, null]]);
+  for (const x of routes) {
+    if (states) expect(x.pageErrors?.[0]).toMatch(/^State "throws": There's nothing called "Nothing here" on the screen/);
+    else expect(x.pageErrors).toBeUndefined();
+  }
+  expect(r.text).not.toContain("couldn't turn on accessibility");
+  const review = JSON.parse(readFileSync(join(root, "design", "shots", "audit.json"), "utf8")) as { scope: string; findings: Finding[] };
+  expect(review.scope).toBe("screens: /, Audit");
+  for (const f of review.findings) console.log(`[audit] ${f.severity} ${f.location.screen} ${f.location.selector}${f.location.state ? ` @${f.location.state}` : ""}: ${f.summary}`);
+  const mine = review.findings.filter((f) => f.location.screen === "Audit");
+  // Right to left in Hebrew, SwiftUI says the symbol's name in Hebrew: still the symbol's own name, the same place.
+  expect(JSON.stringify(mine)).not.toMatch(/\p{Script=Hebrew}/u);
+  const of = (category: string) => mine.filter((f) => f.category === category).map((f) => [f.location.selector, f.location.state ?? null, f.summary]);
+  // The caption, light only (#bfbfbf on the dark background is fine), wherever it was drawn; the typed text only once typed.
+  expect(of("contrast")).toEqual([
+    ['Text("Prices include tax")', null, 'Text "Prices include tax" is hard to read in light mode (1.83:1, needs 4.5:1).'],
+    ...(states ? [['TextField("Code")', "typed", 'The "Code" field is hard to read in light mode (2.84:1, needs 4.5:1).']] : []),
+  ]);
+  const caption = mine.find((f) => f.location.selector === 'Text("Prices include tax")')!;
+  expect(caption.severity).toBe("critical");
+  expect([caption.location, ...(caption.locations ?? [])].map((l) => [l.state ?? null, l.scheme, l.rtl ?? false]).sort()).toEqual(
+    (states ? [[null, "light", false], ["throws", "light", false], ["typed", "light", false]] : [[null, "light", false]]).sort(),
+  );
+  expect(of("accessibility")).toEqual([["Button(gearshape)", null, "The button has no name a screen reader can say."]]);
+  expect(mine.find((f) => f.category === "accessibility")!.fix).toContain('.accessibilityLabel("…")');
+  expect(of("reduced-motion")).toEqual([["View(40×40)", null, "An element keeps moving when the viewer asks for reduced motion."]]);
+  expect(mine.find((f) => f.category === "reduced-motion")!.fix).toContain("@Environment(\\.accessibilityReduceMotion)");
+  if (viewport === "mobile") {
+    // The 30 pt button, and the field, a line of text high; the fix in SwiftUI's terms.
+    expect(of("target-size")).toEqual([
+      ["Button(gearshape)", null, 'The "gearshape" button is 30×30 px on a phone; 44×44 px is easier to tap.'],
+      ['TextField("Code")', null, expect.stringMatching(/^The "Code" field is \d+×\d+ px on a phone; 44×44 px is easier to tap\.$/)],
+    ]);
+    expect(mine.find((f) => f.category === "target-size")!.fix).toContain(".frame(minWidth: 44, minHeight: 44)");
+  } else {
+    expect(of("target-size")).toEqual([]);
+  }
+}

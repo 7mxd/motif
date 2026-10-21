@@ -8,6 +8,7 @@ import { runTokens } from "../src/commands/tokens";
 import { motifSimulators } from "../src/stacks/swiftui/harness";
 import { SWIFTUI_FIRST_RUN, swiftUICacheDir } from "../src/stacks/swiftui/shot";
 import { FIXTURES, heavyStackTests, hexColor, isMacWithXcode, partnerTokens } from "./helpers";
+import { AUDIT_SCREEN, auditFile, expectAudit, THROWS_STATE, TYPED_STATE } from "./swiftui-audit-screen";
 import { decodePng } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -85,6 +86,10 @@ beforeAll(async () => {
   writeFileSync(join(root, "design", "tokens.json"), JSON.stringify(tokens, null, 2));
   writeFileSync(join(root, "design", "states", "Setup.swift"), SETUP);
   writeFileSync(join(root, "design", "states", "greeted.swift"), STATE);
+  // The audit's planted problems (Task 10), drawn only where a test names the screen.
+  writeFileSync(join(root, auditFile("SwiftUIMin")), AUDIT_SCREEN);
+  writeFileSync(join(root, "design", "states", "typed.swift"), TYPED_STATE);
+  writeFileSync(join(root, "design", "states", "throws.swift"), THROWS_STATE);
   home = tempDir("motif-swiftui-home-");
   process.env.MOTIF_HOME = home;
   const made = await runTokens(root, { positionals: [], flags: {} });
@@ -247,13 +252,18 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
     1_800_000,
   );
 
-  test.skipIf(!heavy.run)("a second run reuses the build; right to left in a language the app lacks, its titles stay English (skipped without Xcode)", async () => {
+  test.skipIf(!heavy.run)("a second run reuses the build and audits what it draws: the planted problems, after a state that types and one that throws; right to left in a language the app lacks, its titles stay English (skipped without Xcode)", async () => {
     const started = Date.now();
-    const r = await shot({ routes: "/", sizes: "390", rtl: "he" });
-    console.log(`[swiftui-shot-e2e] second run: ${Math.round((Date.now() - started) / 1000)} s`);
+    const r = await shot({
+      routes: "/", screen: "Audit", sizes: "390", rtl: "he", variant: "default", audit: true, state: ["design/states/typed.swift", "design/states/throws.swift"],
+    });
+    console.log(`[swiftui-shot-e2e] second run, with the audit: ${Math.round((Date.now() - started) / 1000)} s`);
     console.log(r.text);
-    expect(r.exitCode).toBe(0);
-    expect(r.text).toContain("✓ 4 screenshots of 1 screen");
+    // The audit found problems.
+    expect(r.exitCode).toBe(1);
+    // 2 screens × 2 schemes × 2 directions × 3 (without a state, typed, throws).
+    expect(r.text).toContain("✓ 24 screenshots of 2 screens");
+    expectAudit(root, r, "mobile", true);
     expect(r.text).not.toContain(SWIFTUI_FIRST_RUN);
     expect(r.text).toContain("This app doesn't offer he (its string catalogues and .lproj folders have no he strings)");
     // Arabic glyphs: the title rows (the large title and "Welcome") right to left in Arabic differ from the same rows

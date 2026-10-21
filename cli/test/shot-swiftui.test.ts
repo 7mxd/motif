@@ -4,14 +4,15 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import type { DoctorDeps } from "../src/commands/doctor";
 import { runShot, type ShotDeps } from "../src/commands/shot";
 import { detectApps } from "../src/detect/stacks";
+import { toFindings } from "../src/shot/audit";
 import { describeSizes, NATIVE_DESKTOP, NATIVE_VIEWPORTS, type RouteResult } from "../src/shot/capture";
 import type { NativeShotOptions } from "../src/stacks/native";
 import { SWIFTUI } from "../src/stacks/swiftui";
 import { swiftUIDoctor } from "../src/stacks/swiftui/doctor";
-import { hooksSource, MAC_HOST_SUFFIX, RESULT_FILE, scriptSource, SOURCES_FOLDER, stopMacHost, withHostIds, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot } from "../src/stacks/swiftui/harness";
+import { hooksSource, MAC_HOST_SUFFIX, RESULT_FILE, scriptSource, SOURCES_FOLDER, stopMacHost, withHostIds, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot, type SwiftUIShotResult } from "../src/stacks/swiftui/harness";
 import {
   appStructName, copyBase, KEEP_BUILDS, MAC_WINDOWS, SWIFTUI_FIRST_RUN_MAC, swiftUIPlatform, swiftUIShotSizes, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, prunedNotes, pruneSwiftUIBuilds, readSwiftUIInputs, takeLock, screenError, shootSwiftUI, signedCapabilities,
-  SWIFTUI_FIRST_RUN, SWIFTUI_VARIANT_HOW, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
+  SWIFTUI_FIRST_RUN, SWIFTUI_FIXES, SWIFTUI_VARIANT_HOW, swiftUIAuditChecks, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
 } from "../src/stacks/swiftui/shot";
 import { discoverSwiftUIScreens } from "../src/stacks/swiftui/screens";
 import { swiftUIApp } from "../src/stacks/swiftui/project";
@@ -1413,5 +1414,136 @@ describe("a macOS run's bundle ids, and what it leaves (Task 9, fix round 2)", (
     expect(r.exitCode).toBe(2);
     expect(r.text).toContain("--sizes: \"390\" isn't one of a macOS app's sizes.");
     expect(calls).toEqual([]);
+  });
+});
+
+// ---- The audit (plan 2H, Task 10) ----
+
+describe("--audit on a SwiftUI app (Task 10)", () => {
+  const previews = discoverSwiftUIScreens(xcodeRoot).previews;
+
+  test("each shot gets the other native stacks' checks in the simulator; on the Mac, no tap targets and motion in the 1440 window", () => {
+    const opts = phoneOpts({ viewports: [NATIVE_VIEWPORTS[0]!, NATIVE_VIEWPORTS[1]!, NATIVE_VIEWPORTS[3]!], variants: ["partner"], audit: true });
+    const shots = planSwiftUIShots(opts, swiftUITargets(opts, previews), { variants: true }, "default");
+    const checks = (file: string) => {
+      const s = shots.find((x) => x.file === file)!;
+      return [s.checks, s.reduceMotion ?? false, s.seen];
+    };
+    expect(checks("index.mobile-360.png")).toEqual([["contrast", "names", "targets"], false, { size: "mobile-360" }]);
+    expect(checks("index.mobile.png")).toEqual([["contrast", "names", "targets", "motion"], true, { size: "mobile" }]);
+    expect(checks("index+partner.mobile.png")).toEqual([["contrast", "names", "targets", "motion"], true, { size: "mobile", variant: "partner" }]);
+    expect(checks("index.mobile.dark.png")).toEqual([["contrast", "names"], false, { size: "mobile" }]);
+    expect(checks("index.tablet.png")).toEqual([["contrast", "names", "targets"], false, { size: "tablet" }]);
+    // Without --audit, nothing changes.
+    expect(planSwiftUIShots(phoneOpts(), swiftUITargets(phoneOpts(), previews), null, "").every((s) => !("checks" in s) && !("seen" in s) && !("reduceMotion" in s))).toBe(true);
+
+    const mac = phoneOpts({ root: macProject(), viewports: MAC_WINDOWS, audit: true });
+    const macShots = planSwiftUIShots(mac, swiftUITargets(mac, []), null, "", "macos");
+    expect(macShots.map((s) => [s.file, s.checks, s.reduceMotion ?? false])).toEqual([
+      ["index.desktop.png", ["contrast", "names", "motion"], true],
+      ["index.desktop.dark.png", ["contrast", "names"], false],
+      ["index.desktop-900.png", ["contrast", "names"], false],
+      ["index.desktop-900.dark.png", ["contrast", "names"], false],
+    ]);
+    expect(swiftUIAuditChecks(MAC_WINDOWS[0]!, "light", "macos")).toEqual(["contrast", "names", "motion"]);
+    expect(SWIFTUI.motionSize).toEqual({ width: 390, text: "the 390 pt phone size" });
+  });
+
+  test("what the harness's audit found becomes issues named by where they were seen, with SwiftUI's fixes; its failure is the screen's", () => {
+    const outDir = tempDir("motif-swiftui-audit-");
+    const opts = phoneOpts({ outDir, viewports: [NATIVE_VIEWPORTS[1]!], routes: ["/"], screens: ["Settings"], variants: ["partner"], rtl: "ar", states: [{ name: "typed", script: STATE }], audit: true });
+    const targets = swiftUITargets(opts, previews);
+    const shots = planSwiftUIShots(opts, targets, { variants: true }, "default");
+    for (const s of shots) writeFileSync(join(outDir, s.file), "png");
+    const caption = { rule: "color-contrast" as const, selector: 'Text("Prices include tax")', label: "Prices include tax", kind: "element" as const, ratio: 1.83, expected: 4.5, fg: "#bfbfbf", bg: "#ffffff" };
+    const unnamed = { rule: "name" as const, selector: "Button(gearshape)", label: "", kind: "button" as const, nth: 2, of: 2 };
+    const small = { rule: "target-mobile" as const, selector: "Button(gearshape)", label: "gearshape", kind: "button" as const, width: 30, height: 30 };
+    const pulse = { rule: "motion" as const, selector: "View(40×40)", label: "", kind: "element" as const };
+    const icon = { rule: "color-contrast" as const, selector: "Button(bell.badge)", label: "", kind: "icon" as const, icon: "bell.badge", ratio: 2.1, expected: 3, fg: "#c7c7cc", bg: "#ffffff" };
+    const throws = `State "typed": There's nothing called "Code" on the screen.`;
+    const accessibility = "Motif couldn't turn on accessibility automation in this simulator runtime (iOS 18.5), so it couldn't read the screen's text, names and controls.";
+    const found: SwiftUIShotResult[] = [
+          { file: "index.mobile.png", issues: [caption, unnamed, small, pulse] },
+          { file: "index@typed.mobile.png", issues: [caption], stateError: throws },
+          { file: "index+partner.mobile.rtl.png", issues: [icon], unjudged: ["Over the photo", "Over the photo"] },
+          { file: "index.mobile.dark.png", issues: [] },
+          { file: "settings.mobile.png", auditError: accessibility },
+          { file: "settings.mobile.dark.png", auditError: "a later one" },
+    ];
+    // The other shots found nothing.
+    for (const s of shots) if (!found.some((f) => f.file === s.file)) found.push({ file: s.file, issues: [] });
+    const mapped = mapSwiftUIResult(targets, shots, outDir, { timedOut: false, notes: [], result: { previews: [], notes: [], shots: found } }, 60_000);
+    const [root, settings] = mapped.routes;
+    expect(root).toMatchObject({ route: "/", status: 200, pageErrors: [throws] });
+    expect(root!.auditError).toBeUndefined();
+    expect(settings).toMatchObject({ route: "Settings", status: 200, auditError: accessibility });
+    expect(mapped.notes).toContain("Contrast on / wasn't judged for 1 text with no one colour behind it (a picture or a gradient): check it by eye.");
+
+    const shot = (f: string) => join(outDir, f);
+    const at = { route: "/", viewport: "mobile" as const, size: "mobile", scheme: "light" as const };
+    expect(mapped.issues).toEqual([
+      { ...caption, ...at, shot: shot("index.mobile.png") },
+      { rule: "name", selector: "Button(gearshape)[2]", label: "", kind: "button", ...at, shot: shot("index.mobile.png"), fix: SWIFTUI_FIXES.name },
+      { ...small, ...at, shot: shot("index.mobile.png"), fix: SWIFTUI_FIXES["target-mobile"] },
+      { ...pulse, ...at, shot: shot("index.mobile.png"), fix: SWIFTUI_FIXES.motion },
+      { ...caption, ...at, shot: shot("index@typed.mobile.png"), state: "typed" },
+      { ...icon, ...at, shot: shot("index+partner.mobile.rtl.png"), variant: "partner", rtl: true },
+    ]);
+
+    // As audit.json has them: the caption once, with its state's place; the fixes in SwiftUI's terms.
+    const findings = toFindings(mapped.issues);
+    expect(findings.map((f) => [f.severity, f.summary])).toEqual([
+      ["critical", 'Text "Prices include tax" is hard to read in light mode (1.83:1, needs 4.5:1).'],
+      ["critical", "An icon (bell.badge) is hard to see in light mode in the partner variant (2.1:1, needs 3:1)."],
+      ["major", "The button has no name a screen reader can say."],
+      ["major", "An element keeps moving when the viewer asks for reduced motion."],
+      ["minor", 'The "gearshape" button is 30×30 px on a phone; 44×44 px is easier to tap.'],
+    ]);
+    expect(findings[0]!.locations).toEqual([{ screen: "/", selector: 'Text("Prices include tax")', viewport: "mobile", scheme: "light", state: "typed" }]);
+    expect(findings[1]!.location).toMatchObject({ variant: "partner", rtl: true });
+    expect(findings[2]!.fix).toContain('.accessibilityLabel("…")');
+    expect(findings[3]!.fix).toContain("@Environment(\\.accessibilityReduceMotion)");
+    expect(findings[4]!.fix).toContain(".frame(minWidth: 44, minHeight: 44)");
+    expect(findings[4]!.fix).toContain(".contentShape(Rectangle())");
+  });
+
+  test("SWIFTUI.shoot passes the checks to the harness (not where findings are seen), returns what it found, and no longer says it can't audit", async () => {
+    const root = xcodeProject();
+    const finds = (options: { shots: SwiftUIShot[] }, path: string): ExecResult => {
+      const outDir = (options as unknown as { outDir: string }).outDir;
+      mkdirSync(outDir, { recursive: true });
+      for (const s of options.shots) writeFileSync(join(outDir, s.file), "png");
+      const issue = { rule: "name", selector: "Button(gearshape)", label: "", kind: "button" };
+      writeFileSync(path, JSON.stringify({ shots: options.shots.map((s) => ({ file: s.file, ms: 200, issues: s.checks?.includes("names") ? [issue] : [] })), previews: [], notes: [], done: true }));
+      return ok("** TEST SUCCEEDED **");
+    };
+    const { promise, fake } = await fakeShoot(root, { audit: true }, tempDir("motif-swiftui-home-"), finds);
+    const r = await promise;
+    expect(fake.options!.shots.map((s) => [s.file, s.checks, s.reduceMotion])).toEqual([
+      ["index.mobile.png", ["contrast", "names", "targets", "motion"], true],
+      ["index.mobile.dark.png", ["contrast", "names"], undefined],
+    ]);
+    expect(fake.options!.shots.some((s) => "seen" in s)).toBe(false);
+    expect(fake.sources["MotifAudit.swift"]).toContain("enum MotifAudit");
+    expect(r.routes[0]!.auditError).toBeUndefined();
+    expect(r.issues.map((i) => [i.route, i.rule, i.selector, i.scheme])).toEqual([
+      ["/", "name", "Button(gearshape)", "light"],
+      ["/", "name", "Button(gearshape)", "dark"],
+    ]);
+  });
+
+  test("on the Mac, a run without the 1440 window says the reduced-motion check didn't run", async () => {
+    const { promise } = await fakeShoot(macProject(), { viewports: [MAC_WINDOWS[1]!], audit: true }, tempDir("motif-swiftui-home-"));
+    expect((await promise).notes).toContain("The reduced-motion check runs in the 1440×900 window, which --sizes left out.");
+    const all = await fakeShoot(macProject(), { viewports: MAC_WINDOWS, audit: true }, tempDir("motif-swiftui-home-"));
+    expect((await all.promise).notes.join("\n")).not.toContain("reduced-motion check");
+  });
+
+  test("motif shot --audit on an iOS app at --sizes 360 says where the reduced-motion check runs", async () => {
+    const root = xcodeProject();
+    const { deps } = shotDeps();
+    const r = await runShot(root, ctx({ sizes: "360", audit: true, routes: "/" }), deps);
+    expect(r.text).toContain("The reduced-motion check runs at the 390 pt phone size, which --sizes left out.");
+    expect(r.text).toContain("✓ Audit: no contrast, tap-target or reduced-motion problems found");
   });
 });

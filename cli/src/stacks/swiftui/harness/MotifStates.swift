@@ -274,6 +274,11 @@ enum MotifAccessibility {
     static var problem: String {
         "Motif couldn't turn on accessibility in the app on this Mac (macOS \(ProcessInfo.processInfo.operatingSystemVersionString)), so a state can't find anything on the screen. Tell Motif's maintainers which Xcode and macOS you use."
     }
+
+    /// Why the audit couldn't read a screen, when accessibility isn't on.
+    static var auditProblem: String {
+        "Motif couldn't turn on accessibility in the app on this Mac (macOS \(ProcessInfo.processInfo.operatingSystemVersionString)), so it couldn't read the screen's text, names and controls. Tell Motif's maintainers which Xcode and macOS you use."
+    }
 }
 #else
 /// What a state script acts on: the screen Motif drew, in a window of its own. It finds things the way VoiceOver does:
@@ -479,6 +484,11 @@ enum MotifAccessibility {
     /// Why a state finds nothing at all, when accessibility isn't on: the runtime named.
     static var problem: String {
         "Motif couldn't turn on accessibility automation in this simulator runtime (iOS \(UIDevice.current.systemVersion)), so a state can't find anything on the screen. Tell Motif's maintainers which Xcode and runtime you use."
+    }
+
+    /// Why the audit couldn't read a screen, when automation isn't on.
+    static var auditProblem: String {
+        "Motif couldn't turn on accessibility automation in this simulator runtime (iOS \(UIDevice.current.systemVersion)), so it couldn't read the screen's text, names and controls. Tell Motif's maintainers which Xcode and runtime you use."
     }
 }
 

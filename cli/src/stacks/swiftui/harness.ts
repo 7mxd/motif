@@ -8,8 +8,10 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { maskComments, maskStrings } from "../../check/mask";
 import { onExit } from "../../cleanup";
 import { andList } from "../../text";
+import type { RawIssue } from "../../shot/audit";
 import { killTree } from "../../shot/devserver";
 import appSource from "./harness/MotifShotApp.swift" with { type: "text" };
+import auditSource from "./harness/MotifAudit.swift" with { type: "text" };
 import previewsSource from "./harness/MotifPreviews.swift" with { type: "text" };
 import statesSource from "./harness/MotifStates.swift" with { type: "text" };
 import testSource from "./harness/MotifShotTests.swift" with { type: "text" };
@@ -32,6 +34,7 @@ const lf = (text: string) => text.replace(/\r\n/g, "\n");
 export const TEST_SOURCE: string = lf(testSource);
 export const PREVIEWS_SOURCE: string = lf(previewsSource);
 export const STATES_SOURCE: string = lf(statesSource);
+export const AUDIT_SOURCE: string = lf(auditSource);
 /** How long Motif waits for a stopped command's output and exit before giving up on them. */
 export const GRACE_MS = 3000;
 
@@ -63,7 +66,17 @@ export interface SwiftUIShot {
   contentSize?: string;
   /** The safe area's top and bottom, in points: a phone's status bar and home indicator. */
   insets?: [number, number];
+  /** The audit's checks on the drawn screen (--audit): contrast, names, targets (phones and tablets), motion. */
+  checks?: AuditCheck[];
+  /** Drawn with reduce motion on (SwiftUI's accessibilityReduceMotion), for the reduced-motion check. */
+  reduceMotion?: boolean;
 }
+
+/** One of the audit's checks, as the harness names it. */
+export type AuditCheck = "contrast" | "names" | "targets" | "motion";
+
+/** A problem the harness's audit found on a shot (audit.json's RawIssue), with which of its like it is. */
+export type SwiftUIRawIssue = RawIssue & { nth?: number; of?: number };
 
 export interface SwiftUIHarnessOptions {
   outDir: string;
@@ -707,6 +720,12 @@ export interface SwiftUIShotResult {
   view?: string;
   /** What went wrong in the shot's state; the screen was drawn as the state left it. */
   stateError?: string;
+  /** What the audit found on the drawn screen (with checks). */
+  issues?: SwiftUIRawIssue[];
+  /** The texts whose contrast the audit couldn't judge: no one colour is behind them (a picture, a gradient). */
+  unjudged?: string[];
+  /** Why the audit couldn't finish on the shot. */
+  auditError?: string;
 }
 
 export interface SwiftUIRunResult {
@@ -831,6 +850,7 @@ export function writeHarness(
     "MotifPreviews.swift": PREVIEWS_SOURCE,
     "MotifShotApp.swift": appSourceFor(build),
     "MotifStates.swift": STATES_SOURCE,
+    "MotifAudit.swift": AUDIT_SOURCE,
     "MotifHooks.swift": hooksSource(run.scripts),
   };
   if (run.scripts?.setup) sources["MotifSetup.swift"] = scriptSource(run.scripts.setup, build.module);

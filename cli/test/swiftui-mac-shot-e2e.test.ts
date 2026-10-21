@@ -10,6 +10,7 @@ import { runTokens } from "../src/commands/tokens";
 import { motifSimulators } from "../src/stacks/swiftui/harness";
 import { shootSwiftUI, SWIFTUI_FIRST_RUN_MAC, swiftUICacheDir } from "../src/stacks/swiftui/shot";
 import { FIXTURES, heavyStackTests, hexColor, isMacWithXcode, partnerTokens } from "./helpers";
+import { AUDIT_SCREEN, auditFile, expectAudit, THROWS_STATE, TYPED_STATE } from "./swiftui-audit-screen";
 import { decodePng } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -82,6 +83,10 @@ beforeAll(async () => {
   writeFileSync(join(root, "design", "tokens.json"), JSON.stringify(tokens, null, 2));
   writeFileSync(join(root, "design", "states", "Setup.swift"), SETUP);
   writeFileSync(join(root, "design", "states", "greeted.swift"), STATE);
+  // The audit's planted problems (Task 10), drawn only where a test names the screen.
+  writeFileSync(join(root, auditFile("SwiftUIMac")), AUDIT_SCREEN);
+  writeFileSync(join(root, "design", "states", "typed.swift"), TYPED_STATE);
+  writeFileSync(join(root, "design", "states", "throws.swift"), THROWS_STATE);
   home = tempDir("motif-swiftui-mac-home-");
   process.env.MOTIF_HOME = home;
   const made = await runTokens(root, { positionals: [], flags: {} });
@@ -254,6 +259,21 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
     expect(arabicRoot).not.toBeNull();
     expect(difference(arabicRoot!, png("index.desktop.rtl.png"), 150, 500)).toBeGreaterThan(5_000);
     expect(readdirSync(swiftUICacheDir(home, root, "SwiftUIMac")).sort()).toEqual(["DerivedData-macos", "last-used"]);
+    expect(hosts()).toBe("");
+  }, 1_800_000);
+
+  test.skipIf(!heavy.run)("--audit on the Mac: the planted problems, right to left too; no tap-target check (skipped without Xcode)", async () => {
+    const started = Date.now();
+    // The states' part (typing, throwing) is the simulator e2e's: the same harness code runs them on the Mac. Each shot
+    // of the planted screen waits out the settle cap (5 s), as its pulse never stops, so this run keeps to 8 shots.
+    const r = await shot(root, { routes: "/", screen: "Audit", sizes: "1440", rtl: "he", variant: "default", audit: true });
+    console.log(`[swiftui-mac-shot-e2e] the audit: ${Math.round((Date.now() - started) / 1000)} s`);
+    console.log(r.text);
+    expect(r.exitCode).toBe(1);
+    // 2 screens × 2 schemes × 2 directions.
+    expect(r.text).toContain("✓ 8 screenshots of 2 screens (a 1440×900 window");
+    expect(r.text).not.toContain("without the window server");
+    expectAudit(root, r, "desktop", false);
     expect(hosts()).toBe("");
   }, 1_800_000);
 
