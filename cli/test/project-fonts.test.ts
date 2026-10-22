@@ -89,11 +89,17 @@ describe("checkProjectFontFiles", () => {
     const f = checkProjectFontFiles(projectWithFont(), readProjectFonts(doc).fonts, doc);
     expect(f.map((x) => [x.code, x.severity])).toEqual([["font-not-used", "warning"]]);
   });
-  test("a companion after the system font is in use (v0.5.0 sweep)", () => {
+  test("an Arabic companion after the system font is in use (v0.5.0 sweep)", () => {
+    const t = withFonts([entry({ family: "Readex Pro" })]);
+    t.primitive.font.sans.$value = ["system-ui", "Readex Pro", "sans-serif"];
+    const doc = docFrom(t);
+    expect(checkProjectFontFiles(projectWithFont(), readProjectFonts(doc).fonts, doc)).toEqual([]);
+  });
+  test("a project font Motif can't tell covers Arabic, after the system font, is still unused, as before (fix round 1)", () => {
     const t = withFonts([entry()]);
     t.primitive.font.sans.$value = ["system-ui", "Thmanyah Sans", "sans-serif"];
     const doc = docFrom(t);
-    expect(checkProjectFontFiles(projectWithFont(), readProjectFonts(doc).fonts, doc)).toEqual([]);
+    expect(checkProjectFontFiles(projectWithFont(), readProjectFonts(doc).fonts, doc).map((x) => x.code)).toEqual(["font-not-used"]);
   });
 });
 

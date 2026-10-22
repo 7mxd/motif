@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { buildTheme, type Theme } from "../src/generate/theme";
-import { firstFamily, fontStylesheets, googleFontsUrl, stackFamilies, themeFonts } from "../src/generate/theme-fonts";
+import { buildTheme, buildThemeSet, type Theme } from "../src/generate/theme";
+import { firstFamily, fontStylesheets, googleFontsUrl, skippedCompanions, stackFamilies, themeFonts } from "../src/generate/theme-fonts";
+import { generateCompose } from "../src/stacks/compose/generate";
+import { generateFlutter } from "../src/stacks/flutter/generate";
+import { generateReactNative } from "../src/stacks/react-native/generate";
+import { generateSwiftUI } from "../src/stacks/swiftui/generate";
 import { presetTheme } from "../src/preview/presets";
 import { docFrom, validTokens } from "./helpers";
 
@@ -102,11 +106,64 @@ describe("companions (final review)", () => {
   });
 });
 
+/** Generic-first stacks whose later families are fallbacks Motif can't call Arabic: they stay nothing to load. */
+const GUARD_STACKS = [
+  "system-ui, Avenir, Helvetica, Arial, sans-serif",
+  "ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, sans-serif",
+  "system-ui, Roboto, sans-serif",
+  "ui-monospace, 'JetBrains Mono', monospace",
+];
+
 describe("a list that starts with the system font (v0.5.0 sweep)", () => {
   test("stackFamilies: null for the system font first, then the named families after it", () => {
     expect(stackFamilies("system-ui, Readex Pro")).toEqual([null, "Readex Pro"]);
     expect(stackFamilies('system-ui, "Readex Pro", sans-serif')).toEqual([null, "Readex Pro"]);
-    expect(stackFamilies("serif, Amiri, Georgia, serif")).toEqual([null, "Amiri"]);
+    expect(stackFamilies("serif, Markazi Text, Georgia, serif")).toEqual([null, "Markazi Text"]);
+  });
+
+  test("after a generic family, only a family Motif knows covers Arabic is a companion (fix round 1)", () => {
+    // Vite's default stack, a rounded Japanese one, Roboto and a code font: fallbacks, never companions.
+    for (const css of GUARD_STACKS) expect(stackFamilies(css)).toEqual([]);
+    // Amiri covers Arabic, but Motif's kit doesn't ship it, so Motif can't tell.
+    expect(stackFamilies("serif, Amiri, Georgia, serif")).toEqual([]);
+    for (const css of GUARD_STACKS) {
+      const theme = withFonts(css.split(",").map((f) => f.trim().replace(/^'(.*)'$/, "$1")));
+      expect(themeFonts(theme)).toEqual([]);
+      expect(fontStylesheets(theme)).toEqual([]);
+    }
+  });
+
+  test("a stack whose fallbacks aren't companions generates what its generic family alone does, on every native stack (fix round 1)", () => {
+    const outputs = (fontFamily: string[]) => {
+      const t = validTokens();
+      t.font.body.$value.fontFamily = fontFamily;
+      const set = buildThemeSet(docFrom(t));
+      return [
+        generateSwiftUI(set)[0]!.content,
+        generateCompose(set, { packageName: "com.example.ui.motif", rPackage: "com.example", googleFonts: true, resFonts: new Map() })[0]!.content,
+        generateFlutter(set, { googleFonts: true })[0]!.content,
+        generateReactNative(set, { googlePackages: new Map(), projectFonts: [] })[0]!.content,
+      ];
+    };
+    for (const css of GUARD_STACKS) {
+      const families = css.split(",").map((f) => f.trim().replace(/^'(.*)'$/, "$1"));
+      expect(outputs(families)).toEqual(outputs([families[0]!]));
+    }
+  });
+
+  test("skippedCompanions: a project font after a generic family, and a known Arabic font after more than one (fix round 1)", () => {
+    const tokens = validTokens();
+    tokens.$extensions["dev.motif"].fonts = [{ family: "Thmanyah Sans", files: [{ path: "design/fonts/T.ttf", weight: 400, style: "normal" }] }];
+    tokens.font.body.$value.fontFamily = ["system-ui", "Thmanyah Sans"];
+    tokens.font.caption.$value.fontFamily = ["system-ui", "Thmanyah Sans", "sans-serif"];
+    tokens.font.heading.$value.fontFamily = ["-apple-system", "BlinkMacSystemFont", "Readex Pro", "sans-serif"];
+    tokens.font.title.$value.fontFamily = ["system-ui", "Readex Pro"];
+    tokens.font.label.$value.fontFamily = ["system-ui", "Avenir", "Helvetica", "sans-serif"];
+    expect(skippedCompanions(buildTheme(docFrom(tokens)))).toEqual([
+      { family: "Readex Pro", after: "-apple-system", roles: ["heading"], kind: "after-generics" },
+      { family: "Thmanyah Sans", after: "system-ui", roles: ["body", "caption"], kind: "project" },
+    ]);
+    expect(skippedCompanions(buildTheme(docFrom(validTokens())))).toEqual([]);
   });
 
   test("a generic family with no named family after it is still nothing to load", () => {

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runTokens } from "../src/commands/tokens";
 import { TS_HEADER } from "../src/generate/header";
-import { twoVariantTokens, validTokens } from "./helpers";
+import { READEX_FILE, systemCompanionTokens, twoVariantTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -120,6 +120,44 @@ describe("motif tokens for a Flutter app", () => {
     const again = await runTokens(root, ctx);
     expect(statuses(again)["app/assets/fonts/BrandSans-Bold.ttf"]).toBe("protected");
     expect(readFileSync(join(root, "app/assets/fonts/BrandSans-Bold.ttf"), "utf8")).toBe("mine");
+  });
+
+  test("an Arabic project font after the system font is copied, listed in the pubspec block, and the role's fallback (v0.5.0 sweep)", async () => {
+    const root = makeProject({
+      "design/tokens.json": JSON.stringify(systemCompanionTokens()),
+      [READEX_FILE]: "readex",
+      "app/pubspec.yaml": pubspec("shop"),
+      "app/lib/main.dart": "void main() {}\n",
+    });
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(statuses(r)["app/assets/fonts/ReadexPro-Regular.ttf"]).toBe("created");
+    expect(readFileSync(join(root, "app/assets/fonts/ReadexPro-Regular.ttf"), "utf8")).toBe("readex");
+    expect(notes(r)).toContain(["  fonts:", "    - family: Readex Pro", "      fonts:", "        - asset: assets/fonts/ReadexPro-Regular.ttf"].join("\n"));
+    const dart = readFileSync(join(root, "app/lib/design/motif_theme.dart"), "utf8");
+    expect(dart).toContain("static TextStyle get body => TextStyle(\n    fontFamily: _systemFamily,\n    fontFamilyFallback: ['Readex Pro'],");
+  });
+
+  test("a font list that hides a later family from native apps gets a note on how to write it (fix round 1)", async () => {
+    const t = validTokens();
+    t.$extensions["dev.motif"].fonts = [{ family: "Thmanyah Sans", files: [{ path: "design/fonts/T.ttf", weight: 400, style: "normal" }] }];
+    t.font.body.$value.fontFamily = ["system-ui", "Thmanyah Sans"];
+    t.font.heading.$value.fontFamily = ["-apple-system", "BlinkMacSystemFont", "Readex Pro", "sans-serif"];
+    const root = flutterApp({ "design/tokens.json": JSON.stringify(t), "design/fonts/T.ttf": "t" });
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(notes(r)).toContain(
+      'Readex Pro comes after more than one generic family in the heading role\'s font list, so native apps never use it. If it\'s meant for Arabic text, start the list with one: "system-ui, Readex Pro".',
+    );
+    expect(notes(r)).toContain(
+      'Thmanyah Sans comes after system-ui in the body role\'s font list. Motif can\'t tell whether a project font covers Arabic, so native apps draw the role in the system font and skip Thmanyah Sans. To use it for Arabic text, name a Latin font first, as in "Inter, Thmanyah Sans".',
+    );
+    // Vite's default list names fallbacks, not companions: no note.
+    t.font.body.$value.fontFamily = ["system-ui", "Avenir", "Helvetica", "Arial", "sans-serif"];
+    t.font.heading.$value.fontFamily = ["system-ui", "sans-serif"];
+    t.$extensions["dev.motif"].fonts = [];
+    writeFileSync(join(root, "design/tokens.json"), JSON.stringify(t));
+    expect(notes(await runTokens(root, ctx))).not.toContain("native apps");
   });
 
   test("font files already inside the app stay where they are", async () => {

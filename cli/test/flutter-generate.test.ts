@@ -241,14 +241,25 @@ describe("generateFlutter, an Arabic companion", () => {
     expect(dart).not.toContain("getFont('Satoshi'");
   });
 
-  test("after the system font: no family of its own, so Latin text keeps the platform's, and Arabic falls back to the companion (v0.5.0 sweep)", () => {
+  test("after the system font: Latin text in the platform's own family, named at run time, and Arabic in the companion (v0.5.0 sweep, fix round 1)", () => {
     const t = validTokens();
     t.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
     const dart = dartFor(t);
-    expect(dart).toContain("static TextStyle get body => TextStyle(\n    fontFamilyFallback: [_family('Readex Pro')],\n    fontSize: 16,");
+    // Without a family, Flutter would take the first fallback as the preferred family, for Latin text too.
+    expect(dart).toContain("static TextStyle get body => TextStyle(\n    fontFamily: _systemFamily,\n    fontFamilyFallback: [_family('Readex Pro')],\n    fontSize: 16,");
     expect(dart).toContain("import 'package:google_fonts/google_fonts.dart';");
+    expect(dart).toContain("import 'package:flutter/foundation.dart' show defaultTargetPlatform;\n");
+    expect(dart).toContain(
+      "  static String? get _systemFamily => Typography.material2021(\n    platform: defaultTargetPlatform,\n  ).black.bodyMedium?.fontFamily;",
+    );
     const plain = dartFor(t, false);
-    expect(plain).toContain("static TextStyle get body => const TextStyle(\n    fontFamilyFallback: ['Readex Pro'],\n    fontSize: 16,");
+    expect(plain).toContain("static TextStyle get body => TextStyle(\n    fontFamily: _systemFamily,\n    fontFamilyFallback: ['Readex Pro'],\n    fontSize: 16,");
+  });
+
+  test("a guide with no role in the system font and a companion has no system family helper (fix round 1)", () => {
+    const dart = dartFor(withCompanion(validTokens()));
+    expect(dart).not.toContain("_systemFamily");
+    expect(dart).not.toContain("package:flutter/foundation.dart");
   });
 
   test("without google_fonts, both are plain family names", () => {

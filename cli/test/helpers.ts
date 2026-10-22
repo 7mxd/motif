@@ -70,6 +70,17 @@ export function withCompanion(t: any): any {
   return t;
 }
 
+/** The font file systemCompanionTokens declares, inside the project. */
+export const READEX_FILE = "design/fonts/ReadexPro-Regular.ttf";
+
+/** Tokens whose body is the system font with Readex Pro, a project font, as its Arabic companion. */
+export function systemCompanionTokens(): any {
+  const t = validTokens();
+  t.$extensions["dev.motif"].fonts = [{ family: "Readex Pro", files: [{ path: READEX_FILE, weight: 400, style: "normal" }] }];
+  t.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+  return t;
+}
+
 let flutterFound: boolean | undefined;
 
 /** True when the flutter command runs here. It runs flutter --version once and remembers the answer. */

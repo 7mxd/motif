@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runTokens } from "../src/commands/tokens";
 import { TS_HEADER } from "../src/generate/header";
-import { FIXTURES, twoVariantTokens, validTokens, withCompanion } from "./helpers";
+import { FIXTURES, READEX_FILE, systemCompanionTokens, twoVariantTokens, validTokens, withCompanion } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -159,6 +159,16 @@ describe("motif tokens for a SwiftUI app", () => {
     );
     expect(notes(r)).not.toContain("draws Brand Sans");
     expect(statuses(await runTokens(root, ctx))["SwiftUIMin/Fonts/BrandSans-Bold.otf"]).toBe("unchanged");
+  });
+
+  test("an Arabic project font after the system font is copied into Fonts, registered, and the role's Arabic family (v0.5.0 sweep)", async () => {
+    const root = swiftApp({ "design/tokens.json": JSON.stringify(systemCompanionTokens()), [READEX_FILE]: "readex" });
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(statuses(r)["SwiftUIMin/Fonts/ReadexPro-Regular.ttf"]).toBe("created");
+    expect(readFileSync(join(root, "SwiftUIMin/Fonts/ReadexPro-Regular.ttf"), "utf8")).toBe("readex");
+    expect(notes(r)).toContain(["<key>UIAppFonts</key>", "<array>", "    <string>ReadexPro-Regular.ttf</string>", "</array>"].join("\n"));
+    expect(readFileSync(join(root, THEME), "utf8")).toContain('        family: nil,\n        design: .default,\n        arabicFamily: "Readex Pro"\n');
   });
 
   test("font files already in the target are registered where they are, and an Info.plist that lists them gets no note", async () => {

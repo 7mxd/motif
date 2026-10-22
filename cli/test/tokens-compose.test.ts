@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { runTokens } from "../src/commands/tokens";
 import { TS_HEADER, XML_HEADER } from "../src/generate/header";
-import { twoVariantTokens, validTokens } from "./helpers";
+import { READEX_FILE, systemCompanionTokens, twoVariantTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -230,6 +230,18 @@ describe("motif tokens for a Compose app", () => {
     expect(kt).toContain("Font(R.font.thmanyah_sans_regular, FontWeight.W400),");
     expect(kt).toContain("Font(R.font.thmanyah_sans_bold, FontWeight.W700),");
     expect(statuses(await runTokens(root, ctx))["app/src/main/res/font/thmanyah_sans_bold.ttf"]).toBe("unchanged");
+  });
+
+  test("an Arabic project font after the system font is copied to res/font and is the role's Arabic style (v0.5.0 sweep)", async () => {
+    const root = composeApp({ "design/tokens.json": JSON.stringify(systemCompanionTokens()), [READEX_FILE]: "readex" });
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(statuses(r)["app/src/main/res/font/readexpro_regular.ttf"]).toBe("created");
+    expect(readFileSync(join(root, "app/src/main/res/font/readexpro_regular.ttf"), "utf8")).toBe("readex");
+    const kt = readFileSync(join(root, THEME), "utf8");
+    expect(kt).toContain("Font(R.font.readexpro_regular, FontWeight.W400),");
+    expect(kt).toContain("    val bodyLatin: TextStyle\n        get() = TextStyle(\n            fontFamily = FontFamily.Default,");
+    expect(kt).toContain("    val bodyArabic: TextStyle\n        get() = TextStyle(\n            fontFamily = MotifFonts.readexPro,");
   });
 
   test("font files with the same name from different folders get different resource names", async () => {
