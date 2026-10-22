@@ -12,7 +12,9 @@ export const auditFile = (app: string) => `${app}/Screens/AuditScreen.swift`;
  * with no name of its own (its SF Symbol's, "Gear Shape", only), a field whose typed text is grey (#999999, 2.84:1), and
  * a 40 pt pulse that keeps going with reduce motion on. What should pass: the title; a bordered button and (built with
  * Xcode 26 or later) a glass one, both under 44 pt but sized by the system; a decorative symbol beside its text
- * and a row's chevron (images, not controls: no name finding); a 60 pt pulse that stops when the system's setting is on
+ * and a row's chevron (images, not controls: no name finding); a segmented picker, whose selected segment's frame holds
+ * more of the grey track than of its black label's cores, so the track isn't taken for the label's colour (seen on
+ * Apple's Landmarks, hands-on of plan 2H Task 15); a 60 pt pulse that stops when the system's setting is on
  * (UIAccessibility's, NSWorkspace's) and an 80 pt one that stops when SwiftUI's environment says so. Either would lead
  * the motion finding if it moved, being larger.
  */
@@ -29,11 +31,17 @@ struct AuditScreen: View {
     @State private var system = false
     @State private var calm = false
     @State private var code = ""
+    @State private var tab = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Your order")
                 .font(.largeTitle.bold())
+            Picker("Show", selection: $tab) {
+                Text("Map").tag(0)
+                Text("Activities").tag(1)
+            }
+            .pickerStyle(.segmented)
             Text("Prices include tax")
                 .font(.caption)
                 .foregroundStyle(Color(white: 0.75))

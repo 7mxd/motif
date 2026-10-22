@@ -379,11 +379,14 @@ struct MotifPixels {
     /// The share of the pixels under a text (its glyphs and their edges left out) that one colour must cover to be its
     /// background. Under a photo or a gradient no colour does, and a ratio would be a guess: such text isn't judged.
     static let backgroundShare = 0.5
+    /// Under this ratio to the background, a colour found without the element's own is taken for a second background when
+    /// something else drawn there stands out more (Landmarks's segmented control and glass "Edit" button, plan 2H Task 15).
+    static let secondBackground = 1.5
 
     /// The background under the rectangle (its most common colour) and the colour drawn on it: the element's own colour
     /// when it says one and that colour is in the picture; else, of the colours drawn there often enough to be a glyph's
     /// core rather than its edge, the one that stands out most. With `strict`, only the element's own colour counts.
-    /// Nil when nothing is drawn on the background, or no one colour is clearly the background.
+    /// Nil when nothing is drawn on the background, or no one colour is clearly the background, or the text's.
     func drawn(in rect: CGRect, hint: [Double]?, strict: Bool = false) -> Drawn? {
         guard let b = box(rect) else { return nil }
         var counts: [UInt32: Int] = [:]
@@ -412,6 +415,16 @@ struct MotifPixels {
             fg = others.filter { $0.value >= floor }
                 .map { MotifColor.components($0.key) }
                 .max { MotifColor.ratio($0, bg) < MotifColor.ratio($1, bg) }
+            // A colour barely apart from the background, while colours that stand out more (and aren't its edges) add up
+            // to a glyph's core: a second background (a segmented control's track, a glass button's sheen) with the text
+            // drawn in shades none of which is common enough alone. No one colour is the text's, so it isn't judged.
+            if let found = fg, MotifColor.ratio(found, bg) < Self.secondBackground {
+                let brighter = others.filter {
+                    let c = MotifColor.components($0.key)
+                    return MotifColor.ratio(c, bg) > MotifColor.ratio(found, bg) && MotifColor.toSegment(c, bg, found) > Self.tolerance
+                }
+                if brighter.reduce(0, { $0 + $1.value }) >= floor { return nil }
+            }
         }
         guard let fg else { return nil }
         var background = 0
