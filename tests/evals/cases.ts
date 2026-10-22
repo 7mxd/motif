@@ -57,9 +57,14 @@ export const isSwiftUI = (c: EvalCase): boolean => c.stack === "swiftui";
 
 export const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
 
-/** Why a Mac-only case is skipped elsewhere, and how to run it, as a skipped case's note in the run's record. */
-export const macOnlyNote = (runId: string) =>
-  `It needs a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Resume this run on a Mac to run it: bun tests/evals/run.ts --resume ${runId}`;
+/**
+ * Why a Mac-only case is skipped elsewhere, and how to finish it, as a skipped case's note in the run's record: one whose
+ * session already finished is only to be graded there, from the folder kept.
+ */
+export const macOnlyNote = (runId: string, sessionDone = false) =>
+  sessionDone
+    ? `Its session finished; grading it needs a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Resume this run on a Mac to grade it from the folder kept: bun tests/evals/run.ts --resume ${runId}`
+    : `It needs a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Resume this run on a Mac to run it: bun tests/evals/run.ts --resume ${runId}`;
 
 /** The cases that can run on this platform, and the Mac-only ones set aside off macOS with the reason (empty when none are). */
 export function macOnly(cases: EvalCase[], platform: NodeJS.Platform): { run: EvalCase[]; skipped: EvalCase[]; reason: string } {

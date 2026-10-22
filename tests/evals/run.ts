@@ -140,20 +140,35 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   }
 
   // Off macOS the Mac-only cases (SwiftUI) are skipped with the reason (spec §9) and recorded as skipped, so the
-  // verdicts leave them out and name them; on a Mac, resuming the run turns them back into cases to do.
+  // verdicts leave them out and name them; on a Mac, resuming the run gives each back what it was (a finished session
+  // is graded from its kept folder, not run again).
   const platform = deps.platform ?? process.platform;
   if (platform === "darwin") {
     for (const cs of Object.values(state.cases)) {
       if (cs.status !== "skipped") continue;
-      cs.status = "pending";
-      delete cs.note;
+      cs.status = cs.skippedFrom ?? "pending";
+      if (cs.noteBefore === undefined) delete cs.note;
+      else cs.note = cs.noteBefore;
+      delete cs.skippedFrom;
+      delete cs.noteBefore;
     }
   }
   const here = macOnly(remaining(state).map((id) => CASES.find((c) => c.id === id)).filter((c): c is EvalCase => Boolean(c)), platform);
   const todo = here.run;
-  /** Records the skipped cases with why, under the run's settled id (the note says how to resume it on a Mac). */
+  /**
+   * Records the skipped cases with why, under the run's settled id (the note says how to resume it on a Mac), keeping
+   * everything they had: a finished session's folder and summary, and the status and note to give back on a Mac.
+   */
   const markSkipped = () => {
-    for (const c of here.skipped) state.cases[c.id] = { status: "skipped", attempts: state.cases[c.id]?.attempts ?? 0, note: macOnlyNote(state.id) };
+    for (const c of here.skipped) {
+      const prev = state.cases[c.id] ?? { status: "pending" as const, attempts: 0 };
+      if (prev.status === "skipped") continue;
+      const { note, ...rest } = prev;
+      state.cases[c.id] = {
+        ...rest, status: "skipped", note: macOnlyNote(state.id, prev.status === "session-done"),
+        ...(prev.status !== "pending" ? { skippedFrom: prev.status } : {}), ...(note !== undefined ? { noteBefore: note } : {}),
+      };
+    }
   };
   if (here.skipped.length > 0) {
     deps.log(here.reason);

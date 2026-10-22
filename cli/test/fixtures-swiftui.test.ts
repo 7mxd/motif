@@ -369,6 +369,28 @@ describe("Qahwa and its seeded copy, built by Xcode and drawn in the iOS simulat
     rmSync(join(root, "build-check-dd"), { recursive: true, force: true });
   }, 1_800_000);
 
+  test.skipIf(!mac)("test D's Masar starter (Xcode's iOS App template) builds for the iOS simulator with the evals' type check (skipped without Xcode)", () => {
+    const copy = join(root, "masar-starter");
+    assemble("swiftui-starter-masar", copy);
+    const dd = join(root, "masar-starter-dd");
+    const started = Date.now();
+    // The command tests/evals/collect.ts runs as a SwiftUI app's type check.
+    const build = Bun.spawnSync(
+      [
+        "xcodebuild", "build", "-project", "Masar.xcodeproj", "-scheme", "Masar", "-destination", "generic/platform=iOS Simulator",
+        "-derivedDataPath", dd, "-quiet", "CODE_SIGNING_ALLOWED=NO",
+      ],
+      { cwd: copy, stdout: "pipe", stderr: "pipe" },
+    );
+    const out = `${build.stdout.toString()}\n${build.stderr.toString()}`;
+    console.log(`[fixtures-swiftui] Masar starter build: ${Math.round((Date.now() - started) / 1000)} s`);
+    if (build.exitCode !== 0) console.log(out.split("\n").filter((l) => /error|warning/.test(l)).join("\n") || out.slice(-4000));
+    expect(build.exitCode).toBe(0);
+    expect(existsSync(join(dd, "Build", "Products", "Debug-iphonesimulator", "Masar.app"))).toBe(true);
+    rmSync(dd, { recursive: true, force: true });
+    rmSync(copy, { recursive: true, force: true });
+  }, 1_800_000);
+
   test.skipIf(!mac)("Qahwa's root and previews have no audit findings, in both variants, light and dark, left to right and right to left (skipped without Xcode)", async () => {
     assemble("swiftui-contract-app", app);
     const started = Date.now();

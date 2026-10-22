@@ -567,6 +567,49 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
     expect(state.cases["b-swiftui-orders"]!.note).toBeUndefined();
   });
 
+  test("a case whose session finished on a Mac keeps its session and folder off a Mac, and is graded, not run again, back on one", async () => {
+    // On the Mac the session finishes, then grading fails: the folder is kept for --resume to grade again.
+    let grading = 0;
+    const collect: RunDeps["collect"] = async (c) => {
+      if (c.id === "c-swiftui" && grading++ === 0) throw new Error("the simulator didn't start");
+      return PASS;
+    };
+    const mac = harness({ platform: "darwin", collect });
+    expect(await runEvals(["--cases", "b-search,c-swiftui", "--work", mac.work], mac.deps, mac.where)).toBe(1);
+    const before = (loadRun(mac.where.results, RUN) as RunState).cases["c-swiftui"]!;
+    expect(before).toMatchObject({ status: "session-done", attempts: 1, note: expect.stringContaining("Grading failed: the simulator didn't start") });
+    expect(before.workspace).toBeDefined();
+    expect(mac.calls.removed).not.toContain(before.workspace!.dir);
+
+    // Resumed off a Mac: skipped, but nothing is lost, and it isn't counted as a failure.
+    const pc = harness({ platform: "win32", collect });
+    pc.where.results = mac.where.results;
+    expect(await runEvals(["--resume", RUN], pc.deps, pc.where)).toBe(0);
+    expect(pc.calls.prepare.length + pc.calls.removed.length).toBe(0);
+    expect(grading).toBe(1);
+    const off = (loadRun(mac.where.results, RUN) as RunState).cases["c-swiftui"]!;
+    expect(off).toEqual({
+      ...before, status: "skipped", skippedFrom: "session-done", noteBefore: before.note,
+      note: `Its session finished; grading it needs a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Resume this run on a Mac to grade it from the folder kept: bun tests/evals/run.ts --resume ${RUN}`,
+    });
+    const { verdicts } = JSON.parse(readFileSync(join(mac.where.results, RUN, "report.json"), "utf8"));
+    expect(verdicts[1].detail).toContain("c-swiftui was skipped (it needs a Mac)");
+    expect(readFileSync(join(mac.where.results, RUN, "report.md"), "utf8")).toContain(`Skipped: ${off.note}`);
+
+    // Back on the Mac: graded from the kept folder; the session isn't run again.
+    const again = harness({ platform: "darwin", collect });
+    again.where.results = mac.where.results;
+    expect(await runEvals(["--resume", RUN], again.deps, again.where)).toBe(0);
+    expect(again.calls.prepare).toEqual([]);
+    expect(again.calls.session).toEqual([]);
+    // Graded once on the first Mac leg (it failed), not off the Mac, and once again here.
+    expect(grading).toBe(2);
+    const done = (loadRun(mac.where.results, RUN) as RunState).cases["c-swiftui"]!;
+    expect(done).toMatchObject({ status: "graded", attempts: 1, session: before.session });
+    expect(done.skippedFrom).toBeUndefined();
+    expect(done.noteBefore).toBeUndefined();
+  });
+
   test("resuming off a Mac with only skipped cases left writes the report without running anything", async () => {
     const pc = harness({ platform: "win32" });
     await runEvals(["--cases", "b-search,b-swiftui-orders", "--work", pc.work], pc.deps, pc.where);

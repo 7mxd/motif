@@ -945,6 +945,29 @@ describe("new components on SwiftUI, from the session's diff", () => {
     expect(swiftUIComponents(diff)).toEqual({ newComponents: ["DebugBadge", "ReleaseBadge", "AfterAll"], screens: [], screenParts: ["Row"] });
   });
 
+  test("each hunk is read from depth 0: a brace hunk 1's context leaves open doesn't make a top-level struct in hunk 2 a part", () => {
+    const path = `${APP}/Features/Menu/MenuScreen.swift`;
+    const diff = [
+      `diff --git a/${path} b/${path}`, "index 1111111..2222222 100644", `--- a/${path}`, `+++ b/${path}`,
+      "@@ -9,3 +9,4 @@",
+      " struct MenuScreen: View {",
+      "     var card = LoyaltyCard.current",
+      "+    @State private var showOrders = false",
+      "     var drinks = MenuData.drinks",
+      "@@ -70,2 +71,6 @@",
+      " // The menu's own previews are above.",
+      " ",
+      "+struct OrdersLink: View {",
+      "+    var body: some View { NavigationLink(\"Orders\") { Text(\"o\") } }",
+      "+}",
+      "+",
+    ].join("\n");
+    expect(swiftUIComponents(diff)).toEqual({ newComponents: ["OrdersLink"], screens: [], screenParts: [] });
+    // Within one hunk the braces still count: a struct added inside the type the hunk opens is its part.
+    const inside = diff.replace("+    @State private var showOrders = false", "+    struct Badge: View { var body: some View { Text(\"b\") } }");
+    expect(swiftUIComponents(inside)).toEqual({ newComponents: ["OrdersLink"], screens: [], screenParts: ["Badge"] });
+  });
+
   test("componentFacts uses the SwiftUI rule for a SwiftUI case, and the guide's lines for what's recorded", () => {
     const diff = [
       newFile(`${APP}/Components/OrderRow.swift`, "struct OrderRow: View {\n    var body: some View { Text(\"o\") }\n}"),
