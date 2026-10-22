@@ -78,6 +78,9 @@ struct MotifElement {
     var value: String?
     /// Drawn by the system itself, not the app: MapKit's map and what is on it, UIKit's split-view dividers.
     var systemPart: String?
+    /// A segment of a segmented control (UIKit's, AppKit's): its selected segment's fill and the control's track are
+    /// two backgrounds, so its text is judged only by its own colour, as a switch's label is.
+    var segment = false
 }
 
 @MainActor
@@ -309,7 +312,7 @@ enum MotifAudit {
         if !icon && text.range(of: "[\\p{L}\\p{N}]", options: .regularExpression) == nil { return nil }
         // A switch's row holds the switch too: only its label's own colour, when the element says it, is looked for.
         if e.kind == .toggle && !icon && e.color == nil { return nil }
-        guard let drawn = pixels.drawn(in: e.rect, hint: icon ? nil : e.color, strict: e.kind == .toggle && !icon) else {
+        guard let drawn = pixels.drawn(in: e.rect, hint: icon ? nil : e.color, strict: (e.kind == .toggle || e.segment) && !icon) else {
             return pixels.covers(e.rect) ? .unjudged(short(icon ? (e.symbol ?? "") : text)) : nil
         }
         let ratio = MotifColor.ratio(drawn.fg, drawn.bg)
@@ -709,7 +712,19 @@ enum MotifAuditTree {
             kind: kind, name: name, rect: rect, symbol: symbol, symbolOnly: control && symbolOnly, identifier: symbol == nil ? id : nil,
             enabled: MotifAX.bool(object, "isAccessibilityEnabled") ?? true, font: font, color: color,
             typed: kind == .field ? value : nil, system: object is NSView, value: kind == .field ? nil : value,
-            systemPart: (object as? NSView).flatMap { inMap($0) })
+            systemPart: (object as? NSView).flatMap { inMap($0) }, segment: inSegmentedControl(object))
+    }
+
+    /// True for a segment of an AppKit segmented control (SwiftUI's segmented Picker on the Mac): the control itself, or
+    /// an element whose parent, a level or two up, is one.
+    static func inSegmentedControl(_ object: NSObject) -> Bool {
+        var at: NSObject? = object
+        for _ in 0..<3 {
+            guard let o = at else { return false }
+            if o is NSSegmentedControl { return true }
+            at = MotifAX.object(o, "accessibilityParent") as? NSObject
+        }
+        return false
     }
 
     /// MapKit's, when the view is a map or inside one (its attribution, its markers): the system draws it.
@@ -849,7 +864,19 @@ enum MotifAuditTree {
         return MotifElement(
             kind: kind, name: name, rect: rect, symbol: symbol, symbolOnly: control && symbolOnly, identifier: symbol == nil ? id : nil,
             enabled: !traits.contains(.notEnabled), font: font, color: color, typed: typed, system: system,
-            value: kind == .field ? nil : string(object.accessibilityValue), systemPart: systemPart(object, kind: kind))
+            value: kind == .field ? nil : string(object.accessibilityValue), systemPart: systemPart(object, kind: kind),
+            segment: inSegmentedControl(object))
+    }
+
+    /// True for a segment of a UIKit segmented control (SwiftUI's segmented Picker): a view inside a UISegmentedControl.
+    static func inSegmentedControl(_ object: NSObject) -> Bool {
+        var at = object as? UIView
+        for _ in 0..<4 {
+            guard let v = at else { return false }
+            if v is UISegmentedControl { return true }
+            at = v.superview
+        }
+        return false
     }
 
     /// What the system draws itself, which the app can't change: a split view's column divider (UIKit's own private
