@@ -14,7 +14,20 @@ import { CUSTOM_FONT, scanSwift } from "./rules";
 const MAX_EXAMPLES = 5;
 const IDENT = "[A-Za-z_][\\w]*";
 const NUMBER = /^-?\d[\d_]*(?:\.\d[\d_]*)?$/;
-const sortedSamples = (m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+/** `static let standardPadding: CGFloat = 14` (CGFloat, Double, Float or no type), a plain number and nothing after it. */
+const SIZE_CONSTANT = new RegExp(`(?<![\\w$.])static\\s+(?:let|var)\\s+(${IDENT})\\s*(?::\\s*(?:CGFloat|Double|Float)\\s*)?=\\s*(-?\\d[\\d_]*(?:\\.\\d[\\d_]*)?)(?=[ \\t]*(?:[;}\\r\\n]|$))`, "g");
+const SHOWN_CONSTANTS = 5;
+const SPACE_WORDS = new Set(["padding", "paddings", "spacing", "inset", "insets", "gap", "gaps", "margin", "margins"]);
+const RADIUS_WORDS = new Set(["radius", "radii", "corner", "corners"]);
+
+/** Which samples a size constant's name puts it in: a corner (cornerRadius), a spacing (standardPadding), or none. */
+function sizeBucket(name: string): "radius" | "space" | undefined {
+  const words = name.replace(/([a-z\d])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase().split(/\s+/);
+  if (words.some((w) => RADIUS_WORDS.has(w))) return "radius";
+  if (words.some((w) => SPACE_WORDS.has(w))) return "space";
+  return undefined;
+}
+const sortedSamples =(m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 
 /** A Swift or asset name in kebab case: AccentColor → accent-color, Purple80 → purple-80. */
 const kebab = (name: string) => dartKebab(name.replace(/[\s.]+/g, "_")).replace(/([a-z])(\d)/g, "$1-$2");
@@ -299,6 +312,24 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
     variables.set(name, { name, light: c.value });
     roleNames.add(name);
     add("colors", c.value, c.at, nameContext(name));
+  }
+
+  // ---------- sizes kept in a constants type: struct Constants { static let standardPadding: CGFloat = 14 } ----------
+  // Like a Color constant, each is one sample at its definition: its uses (Constants.standardPadding) aren't traced.
+  const sizes: string[] = [];
+  for (const file of swift) {
+    for (const m of file.code.matchAll(SIZE_CONSTANT)) {
+      const bucket = sizeBucket(m[1]!);
+      if (!bucket) continue;
+      add(bucket, `${Math.abs(Number(m[2]!.replace(/_/g, "")))}px`, `${file.source.path}:${file.lineOf(m.index!)}`);
+      sizes.push(m[1]!);
+    }
+  }
+  if (sizes.length > 0) {
+    const shown = sizes.length > SHOWN_CONSTANTS ? `${sizes.slice(0, SHOWN_CONSTANTS).join(", ")} and ${sizes.length - SHOWN_CONSTANTS} more` : sizes.join(", ");
+    notes.push(
+      `${sizes.length === 1 ? "1 size is" : `${sizes.length} sizes are`} kept as named constants (${shown}), so each counts once, where it is defined: neither extract nor motif check sees where the views use them. Once the app uses Motif's theme, replace them with MotifSpace and MotifRadius roles.`,
+    );
   }
 
   // ---------- what the views use ----------

@@ -204,6 +204,53 @@ describe("collectSwiftUI: Color constants name roles", () => {
   });
 });
 
+describe("collectSwiftUI: sizes kept in a constants type (Landmarks's Constants, v0.5.0 sweep)", () => {
+  const root = makeProject({
+    "A/Constants.swift": [
+      "import SwiftUI",
+      "struct Constants {",
+      "    static let cornerRadius: CGFloat = 15.0",
+      "    static let leadingContentInset: CGFloat = 26.0",
+      "    static let standardPadding: CGFloat = 14.0 // the app's padding",
+      "    static let safeAreaPadding: CGFloat = 30",
+      "    @MainActor static var itemSpacing: Double = 6.5",
+      "    static let gridGap = 12",
+      "    static let titleBottomMargin: CGFloat = -4",
+      "    static let cardCorner: Float = 20",
+      "    static let badgeImageSize: CGFloat = 46",
+      "    static let animationDuration = 0.3",
+      "    static let doublePadding: CGFloat = standardPadding * 2",
+      "    let instancePadding: CGFloat = 99",
+      "}",
+    ].join("\n"),
+  });
+  const occ = collect(root);
+  const sample = (samples: { value: string; count: number; examples: string[] }[], value: string) => samples.find((s) => s.value === value);
+
+  test("a static size whose name says padding, spacing, inset, gap or margin is a spacing sample at its definition", () => {
+    expect(sample(occ.space, "26px")).toMatchObject({ count: 1, examples: [expect.stringMatching(/A\/Constants\.swift:4$/)] });
+    expect(sample(occ.space, "14px")).toMatchObject({ count: 1, examples: [expect.stringMatching(/Constants\.swift:5$/)] });
+    for (const v of ["30px", "6.5px", "12px", "4px"]) expect([v, sample(occ.space, v)?.count]).toEqual([v, 1]);
+  });
+
+  test("one whose name says radius or corner is a corner sample", () => {
+    expect(values(occ.radius).sort()).toEqual(["15px", "20px"]);
+    expect(sample(occ.radius, "15px")?.examples[0]).toMatch(/Constants\.swift:3$/);
+  });
+
+  test("other names, other values, and instance properties aren't samples", () => {
+    expect(values(occ.space).sort()).toEqual(["12px", "14px", "26px", "30px", "4px", "6.5px"]);
+    expect(occ.space.some((s) => ["46px", "99px", "28px"].includes(s.value))).toBe(false);
+    expect(values(occ.duration)).toEqual([]);
+  });
+
+  test("a note names them and says to use the theme's roles, since their uses aren't traced", () => {
+    expect(occ.notes).toEqual([
+      "8 sizes are kept as named constants (cornerRadius, leadingContentInset, standardPadding, safeAreaPadding, itemSpacing and 3 more), so each counts once, where it is defined: neither extract nor motif check sees where the views use them. Once the app uses Motif's theme, replace them with MotifSpace and MotifRadius roles.",
+    ]);
+  });
+});
+
 describe("collectSwiftUI: colour sets named Surface and Background name roles", () => {
   test("the fixture's Surface and Background sets", () => {
     const { report } = buildDraft(collect(join(FIXTURES, "swiftui-palettes")));
