@@ -610,8 +610,6 @@ export interface MacHostIO {
   spawn?: (cmd: string[]) => { exitCode: number | null; stdout: string };
   kill?: (pid: number) => void;
   home?: string;
-  /** The user's temporary folder ($TMPDIR), where macOS also keeps an app's saved window state. */
-  tmp?: string;
   /** A folder's path with its symbolic links resolved (the host runs from it: /private/var/…, not /var/…). */
   realpath?: (path: string) => string;
 }
@@ -669,7 +667,12 @@ export function stopMacHost(derivedData: string, hostId: string | undefined, io:
     const library = join(io.home ?? homedir(), "Library");
     rmSync(join(library, "Preferences", `${hostId}.plist`), { force: true });
     rmSync(join(library, "Saved Application State", `${hostId}.savedState`), { recursive: true, force: true });
-    rmSync(join(io.tmp ?? tmpdir(), `${hostId}.savedState`), { recursive: true, force: true });
+    // macOS 27 keeps it in the user's own temporary folder (DARWIN_USER_TEMP_DIR), which is $TMPDIR unless something
+    // set another (an eval runner does); both are looked in, for the host's own state only.
+    const userTemp = spawn(["getconf", "DARWIN_USER_TEMP_DIR"]).stdout.trim();
+    for (const folder of new Set([userTemp, tmpdir()].filter((f) => f !== "").map((f) => resolve(f)))) {
+      rmSync(join(folder, `${hostId}.savedState`), { recursive: true, force: true });
+    }
   }
   return { killed };
 }

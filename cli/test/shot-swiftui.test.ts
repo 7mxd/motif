@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import type { DoctorDeps } from "../src/commands/doctor";
 import { runShot, type ShotDeps } from "../src/commands/shot";
 import { detectApps } from "../src/detect/stacks";
@@ -1293,18 +1294,26 @@ describe("a macOS run is isolated from the developer's own app (Task 9, fix roun
     expect(MAC_HOST_SUFFIX).toBe(".motif-shots");
   });
 
-  test("stopMacHost: the window state macOS saves in the temporary folder ($TMPDIR/<id>.savedState) goes too, only the host's (Task 15 hands-on)", () => {
+  test("stopMacHost: the window state macOS saves in the user's own temporary folder (DARWIN_USER_TEMP_DIR/<id>.savedState) goes too, only the host's, whatever TMPDIR says (Task 15 and its final review)", () => {
     const derived = join(tempDir("motif-swiftui-dd-"), "DerivedData-macos");
+    // macOS's per-user temporary folder, which getconf gives (with a trailing slash), not $TMPDIR (an eval runner sets its own).
     const tmp = tempDir("motif-swiftui-tmp-");
+    expect(resolve(tmp)).not.toBe(resolve(tmpdir()));
     for (const id of ["dev.example.A.motif-shots", "dev.example.A"]) {
       mkdirSync(join(tmp, `${id}.savedState`), { recursive: true });
       writeFileSync(join(tmp, `${id}.savedState`, "windows.plist"), "state");
     }
-    const io = { spawn: () => ({ exitCode: 0, stdout: "" }), kill: () => {}, home: tempDir("motif-swiftui-user-"), tmp };
+    const asked: string[][] = [];
+    const spawn = (cmd: string[]) => {
+      asked.push(cmd);
+      return { exitCode: 0, stdout: cmd.join(" ") === "getconf DARWIN_USER_TEMP_DIR" ? `${tmp}/\n` : "" };
+    };
+    const io = { spawn, kill: () => {}, home: tempDir("motif-swiftui-user-") };
     stopMacHost(derived, "dev.example.A", io);
     expect(readdirSync(tmp).sort()).toEqual(["dev.example.A.motif-shots.savedState", "dev.example.A.savedState"]);
     stopMacHost(derived, "dev.example.A.motif-shots", io);
     expect(readdirSync(tmp)).toEqual(["dev.example.A.savedState"]);
+    expect(asked).toContainEqual(["getconf", "DARWIN_USER_TEMP_DIR"]);
   });
 
   test("stopMacHost: a host running from the build's real path (/private/var/… for /var/…) is stopped too (fix round 2)", () => {
