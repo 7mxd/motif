@@ -125,6 +125,29 @@ describe("modes/review.md", () => {
     expect(outOfOrder(review, ["## 1. Scope", "## 2. Extract (only when there is no design guide)", "⏸", "## 3. Audit", "## 4. Report ⏸", "## 5. Rebuild", "## 6. A new look instead"])).toBeNull();
   });
 
+  // The 2H SwiftUI evals: two reviews opened the loyalty card and menu screenshots and still missed Sign out drawn as the
+  // main button and cards with no space between them, both rules written in the guide. Judgement is a written pass.
+  test("judgement is a written pass per screen against the guide's own rules: the one main action, spacing, words, direction", () => {
+    const judgement = review.slice(review.indexOf("**Judgement**"), review.indexOf("Two things screenshots hide"));
+    for (const s of [
+      "before writing the report",
+      "**The one main action.**",
+      "sign out",
+      "`hierarchy` finding",
+      "**Spacing between things.**",
+      "touch",
+      "`spacing` findings",
+      "**Words.**",
+      "\"Submit\"",
+      "`copy` finding",
+      "**Direction.**",
+      "`platform-convention` findings",
+      "still gets its line",
+    ]) {
+      expect(judgement).toContain(s);
+    }
+  });
+
   test("merges the exact checks into one report, naming every category and check rule", () => {
     for (const c of CATEGORIES) expect(review).toContain(`\`${c}\``);
     for (const id of RULE_IDS) expect(review).toContain(`\`${id}\``);

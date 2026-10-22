@@ -23,6 +23,15 @@ Ask whether to review the whole app or named screens or features (default: the w
 
 **Judgement**, screen by screen and state by state, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, whether things people use together (a live preview and the controls that change it, a form and its result) fit on one screen, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's checks ([React web](../adapters/react-web/checks.md), [plain web](../adapters/plain-web/checks.md), [Flutter](../adapters/flutter/checks.md), [Jetpack Compose](../adapters/compose/checks.md), [SwiftUI](../adapters/swiftui/checks.md), [React Native](../adapters/react-native/checks.md)).
 
+Make it a written pass, not a glance: open each screen's screenshots (light at a phone size, and the right-to-left one) and, before writing the report, note for each screen what you checked against the design guide's own rules, at least these four:
+
+- **The one main action.** Which action is drawn loudest (filled, full width, in the action colour)? It should be the screen's main task, and there should be one. A rarely used or final action (sign out, delete, cancel) drawn as the loudest thing on its screen, or two actions drawn as main, is a `hierarchy` finding.
+- **Spacing between things.** Against the guide's spacing rules: repeated items (cards, rows, tiles) that touch or sit at uneven gaps, and a heading pressed against what it heads, are `spacing` findings.
+- **Words.** Every visible label in each language the app offers: one left untranslated in the other language's screenshot, or a button that doesn't name what it does ("Submit", "OK", "Click here"), is a `copy` finding.
+- **Direction.** In the right-to-left screenshots, parts that don't mirror (a row that stays left to right, an arrow that points the wrong way) are `platform-convention` findings.
+
+A screen where you found nothing still gets its line in your notes ("Loyalty card: one main action, spacing on the scale, every string translated, mirrors"), so no screen is skipped.
+
 When the design guide has variants, look at every variant's screenshots: `motif shot --routes <routes> --variant all` (files like `index+men.mobile.png`). A finding that applies to one variant says which in `location` (`"variant": "men"`) and in its summary; one that applies to all is reported once.
 
 Two things screenshots hide, so check them in the code too:
