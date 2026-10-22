@@ -566,10 +566,10 @@ export function mapSwiftUIResult(
 
 // ---- Motif's folder for the app ----
 
-/** Where Motif keeps an app's copy, work folder and build: under its own home, named by the app's folder. */
 /** The name swiftUICacheDir gives an app's folder: the only folders pruning may remove. */
 const CACHE_NAME = /^[A-Za-z0-9_-]+-[0-9a-f]{12}$/;
 
+/** Where Motif keeps an app's copy, work folder and build: under its own home, named by the app's folder. */
 export function swiftUICacheDir(home: string, appDir: string, name: string): string {
   const hash = createHash("sha256").update(resolve(appDir)).digest("hex").slice(0, 12);
   return join(home, "swiftui", `${name.replace(/[^A-Za-z0-9_-]+/g, "") || "app"}-${hash}`);

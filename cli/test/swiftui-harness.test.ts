@@ -177,7 +177,7 @@ describe("the harness's scheme and its own Swift file", () => {
   test("names the app's module and App struct; a variant the theme lacks fails the shot", () => {
     const full = appSourceFor(BUILD);
     expect(full).toContain("@testable import SwiftUIMin\n");
-    // One App for the launch, its @State installed for each root view by a view that holds it (Task 15 follow-up).
+    // A new App for each root view, its @State installed by the view that holds it (final review).
     expect(full).toContain("extension SwiftUIMinApp: DynamicProperty {}");
     // A new App for each root view, so each screenshot of / starts from a fresh model on every SDK (final review).
     expect(full).toContain("let made = SwiftUIMinApp()");

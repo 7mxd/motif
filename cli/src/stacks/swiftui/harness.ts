@@ -901,7 +901,8 @@ function readResult(path: string): WrittenResult | null | "unreadable" {
 const buildFailed = (output: string) => /Testing cancelled because the build failed|\*\* BUILD FAILED \*\*|The following build commands failed/.test(output);
 
 /** A build step that needed git: Motif's copy of the project has no .git folder. */
-const NEEDS_GIT = /not a git repository|fatal: [^\n]*\bgit\b|git: command not found/i;
+// Only git's own complaint: a package fetch that fails names an address ending in .git, which isn't this.
+const NEEDS_GIT = /not a git repository/i;
 
 /**
  * Why the build failed, in plain words: a setup or state file that doesn't compile is named (its errors give its path

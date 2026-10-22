@@ -672,6 +672,11 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
       code: 65, stdout: "/x/ContentView.swift:3:5: error: cannot find 'Foo' in scope\n** TEST BUILD FAILED **", stderr: "", timedOut: false,
     });
     expect(await other.promise.then(() => "", (e: Error) => e.message)).not.toContain(".git folder");
+    // Nor does a package that can't be fetched, whose address ends in .git (final review's re-review).
+    const fetch = await fakeShoot(xcodeProject(), {}, tempDir("motif-swiftui-home-"), drawsAll, {
+      code: 74, stdout: "fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host: github.com\n** TEST BUILD FAILED **", stderr: "", timedOut: false,
+    });
+    expect(await fetch.promise.then(() => "", (e: Error) => e.message)).not.toContain(".git folder");
   });
 
   test("interrupted (Ctrl+C, a termination signal): the exit hooks stop and delete the simulator first, then the copy and the lock", async () => {
