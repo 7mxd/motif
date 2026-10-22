@@ -38,7 +38,7 @@ export interface EvalCase {
 }
 
 export const UNATTENDED =
-  "Don't stop for approval on this task, and don't ask me anything: choose the recommended option whenever there's a choice, carry on through every step that would wait for me, and show me everything at the end. If something can't be done here (no browser for screenshots, say), skip only that part and keep going.";
+  "Don't stop for approval on this task, and don't ask me anything: choose the recommended option whenever there's a choice, carry on through every step that would wait for me, and show me everything at the end. Don't end your turn while a command you started is still running: wait for it to finish (a screenshot run can take many minutes), since ending your turn ends this session and stops it. If something can't be done here (no browser for screenshots, say), skip only that part and keep going.";
 
 /** A case on a plain web site: nothing to install or build. */
 export const isPlain = (c: EvalCase): boolean => c.fixture?.startsWith("plain-") ?? false;

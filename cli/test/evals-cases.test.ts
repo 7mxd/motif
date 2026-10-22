@@ -133,6 +133,8 @@ describe("the eval cases (spec §13.2)", () => {
   test("every prompt starts a Motif command and switches approvals off in the skill's own words", () => {
     expect(readFileSync(join(REPO, "skill/SKILL.md"), "utf8")).toContain("don't stop for approval");
     expect(UNATTENDED.toLowerCase()).toContain("don't stop for approval");
+    // A session that ends its turn to wait on a job it put in the background is over: the run ends and kills the job (2H c-swiftui).
+    expect(UNATTENDED).toContain("Don't end your turn while a command you started is still running");
     expect(UNATTENDED).not.toContain("skip previews"); // mockups are part of what's evaluated
     for (const c of CASES) {
       expect(c.prompt).toMatch(/^\/motif:(feature|review|init) /);
