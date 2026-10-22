@@ -934,14 +934,15 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
       if (launch++ > 0) return drawsAll(options, path);
       const first = options.shots.find((s) => s.screen === "/")!;
       writeFileSync(path, JSON.stringify({ shots: [], previews: [], notes: [], current: { screen: "/", file: first.file } }));
-      const exception = "*** Terminating app due to uncaught exception 'com.firebase.core', reason: 'Default app has already been configured.'";
-      return { code: 65, stdout: `${exception}\n`, stderr: "", timedOut: false };
+      // What xcodebuild printed on the Mac mini: XCTest catches the exception in the harness's test, which ends the launch.
+      const caught = "/x/work/MotifShots/MotifShotApp.swift:26: error: -[MotifShots.MotifShotTests testShots] : Default app has already been configured. (com.firebase.core)";
+      return { code: 65, stdout: `${caught}\n** TEST EXECUTE FAILED **\n`, stderr: "", timedOut: false };
     });
     const r = await promise;
     const home_ = r.routes.find((x) => x.route === "/")!;
     expect(home_).toMatchObject({ status: 0 });
     expect(home_.error).toBe(
-      "The app's root view stopped the app: Terminating app due to uncaught exception 'com.firebase.core', reason: 'Default app has already been configured.' The App's init runs again for each screenshot of the root, as Motif makes a new App for each, and work in it that can't run twice stops the app. Guard it in the App's init (if FirebaseApp.app() == nil { FirebaseApp.configure() }), or move it to the app's delegate, then run motif shot again.",
+      "The app's root view stopped the app: An exception was raised: Default app has already been configured. (com.firebase.core) The App's init runs again for each screenshot of the root, as Motif makes a new App for each, and work in it that can't run twice stops the app. Guard it in the App's init (if FirebaseApp.app() == nil { FirebaseApp.configure() }), or move it to the app's delegate, then run motif shot again.",
     );
     expect(r.routes.find((x) => x.route === "Settings")).toMatchObject({ status: 200 });
   });

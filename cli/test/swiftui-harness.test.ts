@@ -552,6 +552,17 @@ describe("fix round 2", () => {
     // A Swift fatal error is still read first.
     expect(crashReason(`Fatal error: first\n${out}`)).toBe("Fatal error: first");
   });
+
+  test("a crash's reason: an exception XCTest caught in the harness's test (FirebaseApp.configure() a second time, seen on the Mac mini)", () => {
+    // What xcodebuild printed when the App's init raised Firebase's exception on the root's screenshot (v0.5.0 sweep).
+    const out = [
+      "Test Case '-[MotifShots.MotifShotTests testShots]' started.",
+      "/tmp/home/swiftui/SwiftUIMin-d4bc7e56ce91/work/MotifShots/MotifShotApp.swift:26: error: -[MotifShots.MotifShotTests testShots] : Default app has already been configured. (com.firebase.core)",
+      "Test Case '-[MotifShots.MotifShotTests testShots]' failed (0.233 seconds).",
+    ].join("\n");
+    expect(crashReason(out)).toBe("An exception was raised: Default app has already been configured. (com.firebase.core)");
+    expect(crashReason(`Fatal error: first\n${out}`)).toBe("Fatal error: first");
+  });
 });
 
 describe("fix round 1 (Task 8): the build alongside the boot, and the states' compile errors", () => {

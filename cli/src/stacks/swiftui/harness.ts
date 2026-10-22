@@ -941,13 +941,17 @@ function compilerErrors(output: string): string {
 
 /**
  * Why the app stopped, from xcodebuild's output: Swift's `Fatal error: …`, else an Objective-C exception's
- * `Terminating app due to uncaught exception '…', reason: '…'`; null when it gave neither.
+ * `Terminating app due to uncaught exception '…', reason: '…'`, else an exception XCTest caught in the harness's test
+ * (`<file>:<line>: error: -[MotifShots.MotifShotTests testShots] : <reason> (<name>)`, as Firebase's second
+ * `FirebaseApp.configure()` in an App's init gives); null when it gave none of them.
  */
 export function crashReason(output: string): string | null {
   const fatal = /(?:^|\n)(?:[^\n]*?: )?(Fatal error: [^\n]*)/.exec(output);
   if (fatal) return fatal[1]!.trim();
   const exception = /(Terminating app due to uncaught exception [^\n]*)/.exec(output);
-  return exception ? exception[1]!.trim() : null;
+  if (exception) return exception[1]!.trim();
+  const caught = /: error: -\[MotifShots\.MotifShotTests testShots\] : ([^\n]+)/.exec(output);
+  return caught ? `An exception was raised: ${caught[1]!.trim()}` : null;
 }
 
 /** True when `dir` is `parent` or inside it. */
