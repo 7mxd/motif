@@ -528,6 +528,28 @@ describe("motif shot --variant", () => {
     }
   });
 
+  test("all on a guide with one palette draws the default and says so once; a name is refused; no flag adds no note", async () => {
+    const one = () => makeProject({ ...NEXT_APP, "design/tokens.json": JSON.stringify(validTokens()) });
+    const NOTE = "This design guide has one palette, so --variant all drew it.";
+    const all = fakes();
+    const r = await runShot(one(), ctx({ url: URL_, variant: "all" }), all.deps);
+    expect(r.exitCode).toBe(0);
+    expect(all.calls.captured[0]!.variants ?? []).toEqual([]);
+    expect(r.text.split(NOTE)).toHaveLength(2);
+    expect(r.text).toContain(`• ${NOTE}`);
+    expect(r.data.notes).toContain(NOTE);
+    const named = fakes();
+    const refused = await runShot(one(), ctx({ url: URL_, variant: "men" }), named.deps);
+    expect(refused.exitCode).toBe(2);
+    expect(refused.text).toContain("Leave out --variant to use its one look.");
+    expect(named.calls.captured).toEqual([]);
+    const none = fakes();
+    const plain = await runShot(one(), ctx({ url: URL_ }), none.deps);
+    expect(plain.exitCode).toBe(0);
+    expect(plain.text).not.toContain("one palette");
+    expect(plain.data.notes ?? []).not.toContain(NOTE);
+  });
+
   test("a variants block motif validate rejects: refused, with or without --variant on an audit", async () => {
     const t = twoVariantTokens();
     t.$extensions["dev.motif"].variants.push({ id: "../../../escaped", label: "X" });

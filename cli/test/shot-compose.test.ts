@@ -11,7 +11,7 @@ import {
   COMPOSE_FIRST_RUN, COMPOSE_OFFLINE, COMPOSE_VARIANT_HOW, composeShotRefusal, composeTimeLimit, shootCompose, type ComposeShotDeps,
 } from "../src/stacks/compose/shot";
 import type { NativeShotOptions } from "../src/stacks/native";
-import { partnerTokens } from "./helpers";
+import { partnerTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -139,6 +139,37 @@ function fakes(answer?: (o: NativeShotOptions) => { routes: RouteResult[]; notes
   };
   return { deps, calls };
 }
+
+describe("motif shot --variant on a Compose app with one palette", () => {
+  const NOTE = "This design guide has one palette, so --variant all drew it.";
+  const oneLook = () => makeProject({ ...COMPOSE_APP, "design/tokens.json": JSON.stringify(validTokens()) });
+
+  test("all draws the default and says so once, in text and in --json notes", async () => {
+    const { deps, calls } = fakes();
+    const r = await runShot(oneLook(), ctx({ variant: "all" }), deps);
+    expect(r.exitCode).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.variants ?? []).toEqual([]);
+    expect(r.text.split(NOTE)).toHaveLength(2);
+    expect(r.data.notes).toContain(NOTE);
+  });
+
+  test("a name the guide lacks is refused with the next step, and nothing runs", async () => {
+    const { deps, calls } = fakes();
+    const r = await runShot(oneLook(), ctx({ variant: "partner" }), deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("Leave out --variant to use its one look.");
+    expect(calls).toEqual([]);
+  });
+
+  test("no flag: no note", async () => {
+    const { deps, calls } = fakes();
+    const r = await runShot(oneLook(), ctx(), deps);
+    expect(r.exitCode).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(r.text).not.toContain("one palette");
+  });
+});
 
 describe("motif shot on a Compose app", () => {
   test("takes /, the routes (the start destination is /) and every preview, at the four native sizes, with Compose's time limit", async () => {

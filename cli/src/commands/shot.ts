@@ -3,7 +3,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { loadTokenDocument } from "../contract/load";
 import { readVariants } from "../contract/variants";
-import { brokenVariants, variantRefusal, type VariantRefusal } from "./variant-flag";
+import { brokenVariants, ONE_PALETTE_NOTE, variantRefusal, type VariantRefusal } from "./variant-flag";
 import { defaultDoctorDeps, type DoctorDeps } from "./doctor";
 import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
@@ -214,7 +214,7 @@ function guideVariants(cwd: string): { ids: string[]; broken: boolean } {
  * What --variant asks for: the variants to capture besides the default, or the refusal; and the default's id when the
  * guide has variants that validate, which the default's screenshots set too.
  */
-function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): { variants: string[]; defaultId?: string } | { error: CommandResult } {
+function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): { variants: string[]; defaultId?: string; note?: string } | { error: CommandResult } {
   const { ids, broken } = guideVariants(cwd);
   const refuse = (r: VariantRefusal): { error: CommandResult } => ({ error: { command: "shot", ...r } });
   // An audit with no --variant checks what people see in every variant.
@@ -223,6 +223,7 @@ function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): 
   if (flag === undefined) return { variants: audit ? ids.slice(1) : [], ...defaultId };
   const refusal = variantRefusal("This design guide", flag, ids);
   if (refusal) return refuse(refusal);
+  if (flag === "all" && ids.length === 0) return { variants: [], note: ONE_PALETTE_NOTE };
   return { variants: flag === "all" ? ids.slice(1) : flag === ids[0] ? [] : [flag], ...defaultId };
 }
 
@@ -378,6 +379,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const all = reordered ? signInFirst(discovery.routes) : discovery.routes;
   const routes = all.slice(0, MAX_ROUTES);
   const notes: string[] = settingProblems.map((f) => f.message);
+  if (chosen.note) notes.push(chosen.note);
   if (all.length > routes.length) {
     const left = all.slice(MAX_ROUTES);
     const named = left.length > LEFT_OUT_NAMED + 1 ? `${left.slice(0, LEFT_OUT_NAMED).join(", ")} and ${left.length - LEFT_OUT_NAMED} more` : andList(left);

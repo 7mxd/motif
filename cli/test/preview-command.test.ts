@@ -517,6 +517,24 @@ describe("motif preview --variant", () => {
     expect(f.calls.render).toHaveLength(0);
   });
 
+  test("all on a guide with one palette renders the default and says so once; a name is refused; no flag adds no note", async () => {
+    const NOTE = "This design guide has one palette, so --variant all drew it.";
+    const all = fakes();
+    const r = await runPreview(project(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "all" }), all.deps);
+    expect(r.exitCode).toBe(0);
+    expect(variantsOf(all)).toEqual([undefined]);
+    expect(r.text.split(NOTE)).toHaveLength(2);
+    expect((r.data as { notes: string[] }).notes).toContain(NOTE);
+    const named = fakes();
+    const refused = await runPreview(project(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "men" }), named.deps);
+    expect(refused.exitCode).toBe(2);
+    expect(refused.text).toContain("Leave out --variant to use its one look.");
+    expect(named.calls.render).toHaveLength(0);
+    const none = fakes();
+    const plain = await runPreview(project(), ctx(["design/previews/home.html"], pngOnly), none.deps);
+    expect(plain.text).not.toContain("one palette");
+  });
+
   test("a design direction uses its own variants", async () => {
     const f = fakes();
     const root = makeProject({ "design/tokens.json": JSON.stringify(validTokens()), "design/directions/a/home.html": MOCKUP, "design/directions/a/tokens.json": JSON.stringify(twoVariantTokens()) });
