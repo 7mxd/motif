@@ -437,6 +437,8 @@ describe("the SwiftUI guide", () => {
       "design/states/Setup.swift", "func motifSetup(variant: String, locale: Locale, dark: Bool)", "@MainActor func motifState(_ app: MotifHarness) async throws",
       "MotifHarness", "app.tap(", "app.type(", "app.waitFor(", "app.exists(", "15 seconds", "top-level",
       "--screen", "#Preview", "--rtl", "--state", "a Mac", "1440×900", "900×700", "--sizes 1440",
+      // The App's own @State is made again each time the root reads it (seen on Apple's Landmarks, Task 15).
+      "a new model each time", "@Previewable @State",
     ]);
   });
 
