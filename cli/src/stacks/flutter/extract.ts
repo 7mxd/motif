@@ -530,6 +530,8 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
   }
 
   // ---------- what the widgets use ----------
+  /** Families the app loads with google_fonts (GoogleFonts.inter(…), GoogleFonts.getFont('Inter')). */
+  const googleFonts = new Set<string>();
   for (const file of dart) {
     const defs = definitions.get(file) ?? [];
     for (const hit of file.hits) {
@@ -553,6 +555,7 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
           break;
         case "font-family":
           add("fontFamily", hit.value!, example);
+          if (hit.text.startsWith("GoogleFonts.")) googleFonts.add(hit.value!);
           break;
         case "duration":
           add("duration", hit.value!, example);
@@ -573,11 +576,10 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
   // The family the app uses most (not a code font) is its main one, never the companion.
   const main = sortedSamples(buckets.fontFamily).find((f) => !isMonospace(f.value) && !/^(?:system-ui|sans-serif|serif|monospace)$/i.test(f.value))?.value;
   const companion = companionFamily(dart, [...new Set(bundled.map((b) => b.family))], main);
+  // Every family a pubspec bundles is the app's own (the draft keeps those its roles use); the first pubspec's, when two name it.
   const projectFonts = bundled
-    .filter((b) => b.family === companion)
     .map((b) => ({ family: b.family, files: b.files.filter((f) => /\.(ttf|otf)$/i.test(f.path)) }))
-    .filter((b) => b.files.length > 0)
-    .slice(0, 1);
+    .filter((b, i, all) => b.files.length > 0 && all.findIndex((o) => o.family.toLowerCase() === b.family.toLowerCase() && o.files.length > 0) === i);
 
   const sorted = sortedSamples;
   return {
@@ -594,5 +596,6 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
     ...(typeRoles ? { typeRoles } : {}),
     ...(companion ? { companion } : {}),
     ...(projectFonts.length ? { projectFonts } : {}),
+    ...(googleFonts.size ? { googleFonts: [...googleFonts] } : {}),
   };
 }

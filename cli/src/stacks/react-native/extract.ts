@@ -1,10 +1,13 @@
 // motif extract for React Native: a draft design guide from an Expo app's code — the colour objects with light and dark
 // halves (the starter's constants/Colors.ts), parallel ones as design variants, and the values its styles and animations use.
+import { existsSync } from "node:fs";
+import { posix } from "node:path";
 import type { SourceFile } from "../../check/files";
 import { inRanges, maskComments } from "../../check/mask";
 import { colorContext } from "../../check/rules/colors";
 import { parseColor, type Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
+import { rootOf, weightStyleOf } from "../../extract/own-fonts";
 import { locator } from "../../text";
 import { GENERIC_WORDS, kebab, pairInstances, title, words, type Paired } from "../flutter/extract";
 import { scanReactNative } from "./rules";
@@ -166,6 +169,33 @@ const EASE = "cubic-bezier(0.42, 0, 1, 1)";
 /** A font family from an Expo font key: Onest_400Regular → Onest, Inter-Bold → Inter; other names as written. */
 function familyOf(name: string): string {
   return name.replace(/_\d{3}\w*$/, "").replace(/-(?:Thin|ExtraLight|Light|Regular|Medium|SemiBold|Bold|ExtraBold|Black)(?:Italic)?$/, "");
+}
+
+type ProjectFontEntry = NonNullable<Occurrences["projectFonts"]>[number];
+type UnfoundFontEntry = NonNullable<Occurrences["unfoundFonts"]>[number];
+
+/**
+ * A font file the app ships, root-relative, from the path a require() names: relative to the file, or, with Expo's @/
+ * alias, to the app's folder (the nearest one above the file with a package.json). Undefined when it isn't there.
+ */
+function shippedFont(source: SourceFile, required: string): string | undefined {
+  const root = rootOf(source);
+  if (root === null) return undefined;
+  const dir = posix.dirname(source.path);
+  const inside = (p: string) => (p === "." || p.startsWith("..") || posix.isAbsolute(p) ? undefined : p);
+  if (required.startsWith("./") || required.startsWith("../")) {
+    const path = inside(posix.normalize(posix.join(dir, required)));
+    return path && existsSync(root + path) ? path : undefined;
+  }
+  if (!required.startsWith("@/")) return undefined;
+  for (let d = dir; ; d = posix.dirname(d)) {
+    const base = d === "." ? "" : `${d}/`;
+    if (existsSync(`${root}${base}package.json`)) {
+      const path = inside(posix.normalize(base + required.slice(2)));
+      return path && existsSync(root + path) ? path : undefined;
+    }
+    if (d === "." || d === "/" || d === "") return undefined;
+  }
 }
 
 /** Colour properties of a React Native style, which a palette's roles aren't called. */
@@ -382,6 +412,10 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
 
   // ---------- what the styles and animations use ----------
   const fontNames = new Set<string>();
+  /** Families loaded from the app's own font files, by name in lower case: with the files found, or how the code names them. */
+  const ownFonts = new Map<string, ProjectFontEntry | UnfoundFontEntry>();
+  /** Families loaded from @expo-google-fonts. */
+  const googleFonts = new Set<string>();
   for (const file of scripts) {
     const defs = definitions.get(file) ?? [];
     const lines = [0];
@@ -425,11 +459,25 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
           fontNames.add(family);
           add("fontFamily", family, where(file, e.keyStart));
         }
+        // A font loaded from a file the app ships ('Inter-Bold': require('../assets/fonts/Inter-Bold.ttf')) is its own.
+        const required = "text" in e.value ? e.value.text.match(/^require\s*\(\s*(["'])([^"'\n]+\.(?:ttf|otf))\1\s*\)$/i)?.[2] : undefined;
+        if (!family || !required) continue;
+        const path = shippedFont(file.source, required);
+        const key = family.toLowerCase();
+        if (!path) {
+          if (!ownFonts.has(key)) ownFonts.set(key, { family, from: `require("${required}")` });
+          continue;
+        }
+        const own = ownFonts.get(key);
+        const entry = own && "files" in own ? own : { family, files: [] };
+        if (!entry.files.some((f) => f.path === path)) entry.files.push({ path, ...weightStyleOf(e.key) });
+        ownFonts.set(key, entry);
       }
     }
     for (const m of file.source.text.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']@expo-google-fonts\/[\w-]+["']/g)) {
       for (const name of m[1]!.split(",").map((s) => s.trim().split(/\s+as\s+/)[0]!.trim()).filter((s) => /^[A-Z]/.test(s))) {
         const family = familyOf(name);
+        googleFonts.add(family);
         if (!fontNames.has(family)) {
           fontNames.add(family);
           add("fontFamily", family, where(file, m.index!));
@@ -437,6 +485,8 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
       }
     }
   }
+  const projectFonts = [...ownFonts.values()].filter((f): f is ProjectFontEntry => "files" in f);
+  const unfoundFonts = [...ownFonts.values()].filter((f): f is UnfoundFontEntry => "from" in f);
 
   return {
     colors: sortedSamples(buckets.colors), space: sortedSamples(buckets.space), radius: sortedSamples(buckets.radius), fontSize: sortedSamples(buckets.fontSize),
@@ -449,5 +499,8 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
     source: "script",
     ...(Object.keys(variantLabels).length ? { variantLabels } : {}),
     ...(notes.length ? { notes } : {}),
+    ...(projectFonts.length ? { projectFonts } : {}),
+    ...(googleFonts.size ? { googleFonts: [...googleFonts] } : {}),
+    ...(unfoundFonts.length ? { unfoundFonts } : {}),
   };
 }

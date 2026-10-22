@@ -12,6 +12,7 @@ import { contrastRatio } from "../contract/color";
 import { MIN_RATIO } from "../contract/contrast";
 import { FONT_ROLES, FULL_RADIUS_PX, MONO_ROLE, MONO_STACK, SPACE_SCALE, STANDARD_PAIRS, defaultShadows, isMonospace, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { clusterColors, parseColor, type ColorCluster, type Sample } from "./cluster";
+import { webFonts } from "./own-fonts";
 import type { TailwindDefaults } from "./tailwind-theme";
 
 /** A colour variable: its :root values, and the values a design variant's block gives it (by variant id). */
@@ -57,6 +58,10 @@ export interface Occurrences {
   companion?: string;
   /** Fonts the project bundles itself, for the guide's fonts list (paths from the project's root). */
   projectFonts?: { family: string; files: { path: string; weight: number; style: "normal" | "italic" }[] }[];
+  /** Families the app loads from Google Fonts: google_fonts, @expo-google-fonts, a Google Fonts link or @import, GoogleFont(…). */
+  googleFonts?: string[];
+  /** Families the app's code loads from its own font files, though the files weren't found (`from` is how the code names them). */
+  unfoundFonts?: { family: string; from: string }[];
 }
 
 export interface ExtractReport {
@@ -80,7 +85,7 @@ const MAX_EXAMPLES = 5;
 /** The lists of samples collected; variables and the settings are kept apart. */
 type Bucket = Exclude<
   keyof Occurrences,
-  "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables" | "source" | "variantLabels" | "notes" | "typeRoles" | "companion" | "projectFonts"
+  "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables" | "source" | "variantLabels" | "notes" | "typeRoles" | "companion" | "projectFonts" | "googleFonts" | "unfoundFonts"
 >;
 
 // ---------- collecting ----------
@@ -551,6 +556,7 @@ export function collectOccurrences(
       return { ...v, ...(light ? { light } : {}), ...(dark ? { dark } : {}) };
     }),
     ...(files.some(followFor) ? { aliases: Object.fromEntries(aliases), roleNames: [...roleNames], variableUses, followVariables: true } : {}),
+    ...webFonts(files),
   };
 }
 
@@ -596,12 +602,27 @@ export function mergeOccurrences(parts: Occurrences[]): Occurrences {
     ...(notes.length ? { notes } : {}),
     ...firstOf(parts, "typeRoles"),
     ...firstOf(parts, "companion"),
-    ...firstOf(parts, "projectFonts"),
+    ...listOf(parts, "projectFonts"),
+    ...listOf(parts, "googleFonts"),
+    ...listOf(parts, "unfoundFonts"),
   };
 }
 
+/** Every part's fonts of one kind, each family once (the first part's). */
+function listOf<K extends "projectFonts" | "googleFonts" | "unfoundFonts">(parts: Occurrences[], key: K): Pick<Occurrences, K> | Record<string, never> {
+  const seen = new Set<string>();
+  const list: unknown[] = [];
+  for (const item of parts.flatMap((o) => (o[key] ?? []) as unknown[])) {
+    const family = (typeof item === "string" ? item : (item as { family: string }).family).toLowerCase();
+    if (seen.has(family)) continue;
+    seen.add(family);
+    list.push(item);
+  }
+  return list.length > 0 ? ({ [key]: list } as Pick<Occurrences, K>) : {};
+}
+
 /** The first part's value of a setting one stack gives (a Flutter app's text theme), as a spreadable object. */
-function firstOf<K extends "typeRoles" | "companion" | "projectFonts">(parts: Occurrences[], key: K): Pick<Occurrences, K> | Record<string, never> {
+function firstOf<K extends "typeRoles" | "companion">(parts: Occurrences[], key: K): Pick<Occurrences, K> | Record<string, never> {
   const found = parts.find((o) => o[key] !== undefined);
   return found ? ({ [key]: found[key] } as Pick<Occurrences, K>) : {};
 }
@@ -1239,9 +1260,16 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     : [120, 200, 320];
   const standard = occ.easing[0]?.value.match(/\(([^)]*)\)/)?.[1]?.split(",").map((n) => Number(n.trim())) ?? [0.2, 0, 0, 1];
 
-  // The fonts the project bundles that a role uses (the companion, or the main family), for the guide's fonts list.
-  const usedFamilies = new Set([family, ...(companion ? [companion] : [])].map((f) => f.toLowerCase()));
+  // The fonts the project bundles that a role uses (the main family, the companion or the code font), for the guide's
+  // fonts list: a family the app ships is its own, even when it also loads it from Google.
+  const usedFamilies = new Set([family, ...(companion ? [companion] : []), ...(code !== undefined && !GENERIC.has(code.toLowerCase()) ? [code] : [])].map((f) => f.toLowerCase()));
   const projectFonts = (occ.projectFonts ?? []).filter((f) => usedFamilies.has(f.family.toLowerCase()) && f.files.length > 0);
+  const ownFamily = (f: string) => projectFonts.some((p) => p.family.toLowerCase() === f.toLowerCase());
+  /** Google's name and the app's for one family can differ in spaces and case (Readex Pro, ReadexPro). */
+  const fontKey = (f: string) => f.toLowerCase().replace(/[\s_-]+/g, "");
+  const fromGoogle = new Set((occ.googleFonts ?? []).map(fontKey));
+  const alsoGoogle = projectFonts.filter((f) => fromGoogle.has(fontKey(f.family))).map((f) => f.family);
+  const unfound = (occ.unfoundFonts ?? []).filter((f) => usedFamilies.has(f.family.toLowerCase()) && !ownFamily(f.family));
   const designVariants =
     variantIds.length > 0 ? ["default", ...variantIds].map((id) => ({ id, label: occ.variantLabels?.[id] ?? id[0]!.toUpperCase() + id.slice(1) })) : [];
   const tokens: Record<string, unknown> = {
@@ -1344,6 +1372,14 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   if (code !== undefined) {
     const which = GENERIC.has(code.toLowerCase()) ? "The system's monospace fonts" : code;
     notes.push(`${which} became the optional mono role (font.mono), for code text${family === code ? `; ${code} stays your text font too` : ""}.`);
+  }
+  for (const f of alsoGoogle) {
+    notes.push(`${f} ships with your app and is also loaded from Google Fonts. The draft uses the files your app ships (the guide's fonts list), so motif tokens won't load it from Google; check that they have every weight you use.`);
+  }
+  for (const f of unfound) {
+    notes.push(
+      `${f.family} comes from your app's font files (${f.from}), but Motif didn't find them, so the draft treats it as a Google font. Add its files to the guide's fonts list, or check that Google Fonts has it.`,
+    );
   }
   const offScale = spacing.filter((s) => !s.onScale).length;
   if (offScale) notes.push(`${offScale} spacing ${offScale === 1 ? "value wasn't" : "values weren't"} on a 4px scale; the report shows the nearest step for each.`);
