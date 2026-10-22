@@ -946,7 +946,14 @@ export function copyFilter(base: string, appDir: string, outDir: string): (src: 
   };
 }
 
-export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDeps = {}): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }> {
+/**
+ * SWIFTUI.shoot: copies the app, adds the harness, draws in a simulator or on the Mac, reads what it drew, and removes
+ * all but the build.
+ */
+export async function shootSwiftUI(
+  opts: NativeShotOptions,
+  deps: SwiftUIShotDeps = {},
+): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[]; noTapTargets?: true }> {
   const started = Date.now();
   const root = resolve(opts.root);
   const appDir = resolve(root, opts.app.path);
@@ -1081,7 +1088,8 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
           `It removes a build that goes ${KEEP_DAYS} days without a run, and keeps those of the ${KEEP_BUILDS} apps drawn most recently.`,
       );
     }
-    return { routes: mapped.routes, issues: mapped.issues, notes: [...notes, ...mapped.notes] };
+    // The Mac gets no tap-target check (decision 0010, §18): the summary says only what was checked.
+    return { routes: mapped.routes, issues: mapped.issues, notes: [...notes, ...mapped.notes], ...(platform === "macos" && opts.audit ? { noTapTargets: true as const } : {}) };
   } finally {
     cancel();
     cleanup();

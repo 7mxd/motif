@@ -1681,6 +1681,21 @@ describe("--audit on a SwiftUI app (Task 10)", () => {
     expect((await all.promise).notes.join("\n")).not.toContain("reduced-motion check");
   });
 
+  test("a clean audit of a Mac app says only what was checked: no tap targets on the Mac (final review)", async () => {
+    // The real shoot says a macOS run checked no tap targets, and an iOS run did.
+    const mac = await fakeShoot(macProject(), { viewports: MAC_WINDOWS, audit: true }, tempDir("motif-swiftui-home-"));
+    expect((await mac.promise).noTapTargets).toBe(true);
+    const ios = await fakeShoot(xcodeProject(), { audit: true }, tempDir("motif-swiftui-home-"));
+    expect((await ios.promise).noTapTargets).toBeUndefined();
+    // The command's line follows it.
+    const { deps } = shotDeps();
+    const shoot = deps.shoot!;
+    deps.shoot = async (o) => ({ ...(await shoot(o)), noTapTargets: true });
+    const r = await runShot(macProject(), ctx({ sizes: "1440", audit: true, routes: "/" }), deps);
+    expect(r.text).toContain("✓ Audit: no contrast or reduced-motion problems found, and no controls without a name (design/shots/audit.json).");
+    expect(r.text).not.toContain("tap-target");
+  });
+
   test("motif shot --audit on an iOS app at --sizes 360 says where the reduced-motion check runs", async () => {
     const root = xcodeProject();
     const { deps } = shotDeps();

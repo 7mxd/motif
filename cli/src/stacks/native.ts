@@ -67,7 +67,8 @@ export interface NativeStack {
   readNotes?(root: string, app: AppInfo, command: "check" | "extract"): string[];
   /** What the app's own files (and its shared packages' theme code) say about its design, for motif extract. */
   collect?(files: SourceFile[], shared?: SourceFile[]): Occurrences;
-  shoot?(opts: NativeShotOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }>;
+  /** noTapTargets: the run's audit checked no tap targets (a Mac app is clicked with a pointer), for the summary line. */
+  shoot?(opts: NativeShotOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[]; noTapTargets?: true }>;
   /** Why shoot can't run for this app on this computer (a missing SDK or package), with what to do; null when it can. */
   shotRefusal?(
     root: string,
