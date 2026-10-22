@@ -9,6 +9,7 @@ import { composeDoctor } from "../../cli/src/stacks/compose/doctor";
 import { FLUTTER_INSTALL, FLUTTER_MIN, olderThanFlutterMin } from "../../cli/src/stacks/flutter/doctor";
 import { swiftUIDoctor, XCODE_MIN } from "../../cli/src/stacks/swiftui/doctor";
 import { CASES, isCompose, isFlutter, isSwiftUI, needsBrowser as caseNeedsBrowser } from "./cases";
+import { supportsPurge } from "./purge";
 import { resolveClaude, sessionEnv } from "./claude";
 import { tail, type Run } from "./tools";
 
@@ -18,7 +19,13 @@ export function paths(repo: string): Paths {
   return { repo, cli: join(repo, "cli"), motifBin: join(repo, "dist", process.platform === "win32" ? "motif.exe" : "motif"), pluginDir: join(repo, "dist", "claude-code") };
 }
 
-export interface Ready { claude: string; claudeVersion: string; browser: boolean }
+export interface Ready {
+  claude: string;
+  claudeVersion: string;
+  browser: boolean;
+  /** Whether this Claude Code has `claude purge`; older ones don't, and the runner removes a case's transcripts itself. */
+  purge: boolean;
+}
 
 export interface PreflightDeps {
   which: (cmd: string) => string | null;
@@ -118,6 +125,9 @@ export async function preflight(
   if (status?.loggedIn !== true || !["claude.ai", "oauth_token"].includes(status.authMethod)) {
     return { error: "The evals run on your Claude plan through Claude Code, never with an API key. Sign in with your Claude account (claude auth login), then run this again." };
   }
+  // Claude Code before purge existed prints its main usage for "purge --help".
+  const help = await d.run([found.exe, "purge", "--help"], p.repo, 60_000, env);
+  const purge = help.code === 0 && supportsPurge(`${help.stdout}\n${help.stderr}`);
   // Before the builds, which take a while.
   if (needsFlutter) {
     const problem = await flutterProblem(d, p.repo);
@@ -168,5 +178,5 @@ export async function preflight(
       error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, and the React Native cases draw their screens through Expo's web target in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${noBrowser(false)}) don't need one.${onMac}`,
     };
   }
-  return { claude: found.exe, claudeVersion: version.stdout.trim(), browser };
+  return { claude: found.exe, claudeVersion: version.stdout.trim(), browser, purge };
 }
