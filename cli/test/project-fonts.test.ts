@@ -89,6 +89,12 @@ describe("checkProjectFontFiles", () => {
     const f = checkProjectFontFiles(projectWithFont(), readProjectFonts(doc).fonts, doc);
     expect(f.map((x) => [x.code, x.severity])).toEqual([["font-not-used", "warning"]]);
   });
+  test("a companion after the system font is in use (v0.5.0 sweep)", () => {
+    const t = withFonts([entry()]);
+    t.primitive.font.sans.$value = ["system-ui", "Thmanyah Sans", "sans-serif"];
+    const doc = docFrom(t);
+    expect(checkProjectFontFiles(projectWithFont(), readProjectFonts(doc).fonts, doc)).toEqual([]);
+  });
 });
 
 describe("motif validate", () => {

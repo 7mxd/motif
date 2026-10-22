@@ -102,6 +102,28 @@ describe("companions (final review)", () => {
   });
 });
 
+describe("a list that starts with the system font (v0.5.0 sweep)", () => {
+  test("stackFamilies: null for the system font first, then the named families after it", () => {
+    expect(stackFamilies("system-ui, Readex Pro")).toEqual([null, "Readex Pro"]);
+    expect(stackFamilies('system-ui, "Readex Pro", sans-serif')).toEqual([null, "Readex Pro"]);
+    expect(stackFamilies("serif, Amiri, Georgia, serif")).toEqual([null, "Amiri"]);
+  });
+
+  test("a generic family with no named family after it is still nothing to load", () => {
+    expect(stackFamilies("system-ui, sans-serif")).toEqual([]);
+    expect(stackFamilies("system-ui, Segoe UI, Roboto, sans-serif")).toEqual([]);
+    expect(stackFamilies("-apple-system, BlinkMacSystemFont, Readex Pro")).toEqual([]);
+  });
+
+  test("the family after the system font is a companion, bundled when Motif ships its Arabic letters", () => {
+    const fonts = themeFonts(withFonts(["system-ui", "Readex Pro", "sans-serif"]));
+    expect(fonts.map((f) => [f.family, f.source, f.companion])).toEqual([["Readex Pro", "bundled", true]]);
+    expect(fonts[0]!.weights).toEqual([400, 500, 600, 700]);
+    // Nothing more to fetch for a web page.
+    expect(fontStylesheets(withFonts(["system-ui", "Readex Pro", "sans-serif"]))).toEqual([]);
+  });
+});
+
 describe("project fonts", () => {
   test("a family the project bundles is source project and never gets a Google stylesheet", () => {
     const tokens = validTokens();

@@ -228,6 +228,17 @@ describe("generateSwiftUI, two variants and an Arabic companion", () => {
   });
 });
 
+describe("generateSwiftUI, the system font with an Arabic companion (v0.5.0 sweep)", () => {
+  const t = validTokens();
+  t.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+  const swift = swiftFor(t);
+
+  test("Latin text in the system font, Arabic text in the companion", () => {
+    expect(swift).toContain('        family: nil,\n        design: .default,\n        arabicFamily: "Readex Pro"\n');
+    expect(swift).toContain("        let arabic = direction == .rightToLeft || MotifType.isArabic(locale)\n");
+  });
+});
+
 describe("generateSwiftUI, variants whose default isn't called default", () => {
   const swift = swiftFor(twoVariantTokens());
 

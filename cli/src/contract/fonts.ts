@@ -75,7 +75,7 @@ function usedFamilies(doc: TokenDocument): Set<string> {
     if (!r.ok || !isObj(r.value)) continue;
     const family = r.value.fontFamily;
     if (typeof family !== "string" && !Array.isArray(family)) continue;
-    for (const f of stackFamilies(cssFontFamily(family as string | string[]))) used.add(f.toLowerCase());
+    for (const f of stackFamilies(cssFontFamily(family as string | string[]))) if (f !== null) used.add(f.toLowerCase());
   }
   return used;
 }

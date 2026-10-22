@@ -170,6 +170,19 @@ describe("generateReactNative, a companion", () => {
   });
 });
 
+describe("generateReactNative, the system font with an Arabic companion (v0.5.0 sweep)", () => {
+  const t = validTokens();
+  t.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+  const ts = tsFor(t, { googlePackages: new Map([["Inter", "@expo-google-fonts/inter"], ["Readex Pro", "@expo-google-fonts/readex-pro"]]) });
+
+  test("Latin text in the system font (no fontFamily), Arabic text in the companion's face", () => {
+    expect(ts).toContain('  body: { fontSize: 16, lineHeight: 24, fontWeight: "400" },');
+    expect(ts).toContain("export const typeArabic: Partial<Record<MotifTypeRole, MotifTextStyle>> = {\n  body: { fontFamily: \"ReadexPro_400Regular\", fontSize: 16, lineHeight: 24 },");
+    expect(ts).toContain('import { ReadexPro_400Regular } from "@expo-google-fonts/readex-pro";');
+    expect(ts).not.toContain('"system-ui"');
+  });
+});
+
 describe("generateReactNative, project fonts", () => {
   const brand = () => {
     const t = validTokens();

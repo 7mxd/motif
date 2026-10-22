@@ -29,20 +29,29 @@ export function firstFamily(css: string): string | null {
 }
 
 /**
+ * A type role's families: the first, then its companions. The first is null when the list starts with a generic family
+ * (the platform's system font) and names a family after it, as "system-ui, Readex Pro" does: Latin text in the system
+ * font, Arabic text in the companion. A list with no named family to load is empty.
+ */
+export type FamilyStack = [] | [first: string | null, ...companions: string[]];
+
+/**
  * The families a page loads for a type role: the first, and each one after it up to the first generic or system font.
  * A companion second in the list (an Arabic font) counts; fallbacks after a system font are never loaded or installed.
+ * A generic family first stands for the system font: the families after it are still read.
  */
-export function stackFamilies(css: string): string[] {
+export function stackFamilies(css: string): FamilyStack {
   const all = css.split(",").map((part) => part.trim().replace(/^(["'])(.*)\1$/, "$2").trim());
   const first = all[0];
-  if (!first || GENERIC.has(first.toLowerCase())) return [];
-  const families = [first];
+  if (!first) return [];
+  const system = GENERIC.has(first.toLowerCase());
+  const families: [string | null, ...string[]] = [system ? null : first];
   for (const family of all.slice(1)) {
     const key = family.toLowerCase();
     if (!family || GENERIC.has(key) || SYSTEM.has(key)) break;
     families.push(family);
   }
-  return families;
+  return system && families.length === 1 ? [] : families;
 }
 
 /** Each family the theme's type roles name (the first, and any companion after it), with the weights used. */
@@ -51,6 +60,7 @@ export function themeFonts(theme: Theme): ThemeFontUse[] {
   const own = new Set(theme.projectFonts.map((f) => f.family.toLowerCase()));
   for (const font of theme.fonts) {
     stackFamilies(font.family).forEach((family, i) => {
+      if (family === null) return;
       const key = family.toLowerCase();
       // The kit has only the Arabic letters of a style's Arabic companion: enough second in a list, not first.
       const coverage = bundledCoverage(family);

@@ -80,6 +80,13 @@ describe("the generated Dart", () => {
     // The other shape: no variants, and plain family names.
     const [plain] = generateFlutter(buildThemeSet(docFrom(withCompanion(validTokens()))), { googleFonts: false });
     writeFileSync(join(dir, "lib/design/plain_theme.dart"), plain!.content);
+    // The system font with an Arabic companion: no family of its own, the companion as its fallback (v0.5.0 sweep).
+    const systemTokens = validTokens();
+    systemTokens.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+    systemTokens.font.heading.$value.fontFamily = ["system-ui", "Readex Pro"];
+    const [system] = generateFlutter(buildThemeSet(docFrom(systemTokens)), { googleFonts: true });
+    expect(system!.content).toContain("fontFamilyFallback: [_family('Readex Pro')],");
+    writeFileSync(join(dir, "lib/design/system_theme.dart"), system!.content);
 
     const analyze = run([flutter, "analyze", "lib/design"], dir);
     if (analyze.code !== 0) console.log(analyze.out);

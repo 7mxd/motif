@@ -96,6 +96,16 @@ describe("the generated TypeScript", () => {
     writeFileSync(join(dir, "plain/motif-theme.tsx"), plain.content);
     writeFileSync(join(dir, "plain/usage.tsx"), usage({ variants: false, arabic: false }));
 
+    // The system font with an Arabic companion: no fontFamily in Latin, the companion in typeArabic (v0.5.0 sweep).
+    const systemTokens = validTokens();
+    systemTokens.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+    systemTokens.font.heading.$value.fontFamily = ["system-ui", "Readex Pro"];
+    const system = generate(systemTokens);
+    expect(system.content).toContain("export const typeArabic");
+    mkdirSync(join(dir, "system"), { recursive: true });
+    writeFileSync(join(dir, "system/motif-theme.tsx"), system.content);
+    writeFileSync(join(dir, "system/usage.tsx"), usage({ variants: false, arabic: true }));
+
     const tsc = run([node!, join(dir, "node_modules/typescript/bin/tsc"), "--noEmit"], dir);
     if (tsc.code !== 0) console.log(tsc.out);
     expect(tsc.code).toBe(0);

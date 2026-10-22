@@ -241,6 +241,16 @@ describe("generateFlutter, an Arabic companion", () => {
     expect(dart).not.toContain("getFont('Satoshi'");
   });
 
+  test("after the system font: no family of its own, so Latin text keeps the platform's, and Arabic falls back to the companion (v0.5.0 sweep)", () => {
+    const t = validTokens();
+    t.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+    const dart = dartFor(t);
+    expect(dart).toContain("static TextStyle get body => TextStyle(\n    fontFamilyFallback: [_family('Readex Pro')],\n    fontSize: 16,");
+    expect(dart).toContain("import 'package:google_fonts/google_fonts.dart';");
+    const plain = dartFor(t, false);
+    expect(plain).toContain("static TextStyle get body => const TextStyle(\n    fontFamilyFallback: ['Readex Pro'],\n    fontSize: 16,");
+  });
+
   test("without google_fonts, both are plain family names", () => {
     const dart = dartFor(withCompanion(validTokens()), false);
     expect(dart).not.toContain("GoogleFonts");

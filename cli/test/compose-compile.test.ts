@@ -147,6 +147,18 @@ describe("the generated Kotlin", () => {
     mkdirSync(join(dir, SOURCES, "plain"), { recursive: true });
     writeFileSync(join(dir, SOURCES, "plain/MotifTheme.kt"), plain!.content);
     writeFileSync(join(dir, SOURCES, "plain/Usage.kt"), PLAIN_USAGE);
+    // The system font with an Arabic companion: Latin in FontFamily.Default, Arabic in the companion (v0.5.0 sweep).
+    const systemTokens = validTokens();
+    systemTokens.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+    const [system] = generateCompose(buildThemeSet(docFrom(systemTokens)), {
+      packageName: `${PACKAGE}.system`,
+      rPackage: PACKAGE,
+      googleFonts: true,
+      resFonts: new Map(),
+    });
+    expect(system!.content).toContain("get() = if (arabicScript()) bodyArabic else bodyLatin");
+    mkdirSync(join(dir, SOURCES, "system"), { recursive: true });
+    writeFileSync(join(dir, SOURCES, "system/MotifTheme.kt"), system!.content);
     mkdirSync(join(dir, "app/src/main/res/font"), { recursive: true });
     copyFileSync(join(FIXTURES, "flutter-min/assets/fonts/NotoNaskhArabic.ttf"), join(dir, "app/src/main/res/font/brand_sans.ttf"));
 
@@ -159,7 +171,7 @@ describe("the generated Kotlin", () => {
     if (build.code !== 0) build = run([...gradlew, ...task], dir, env);
     if (build.code !== 0) console.log(build.out);
     expect(build.code).toBe(0);
-    const warnings = build.out.split(/\r?\n/).filter((l) => /^w: /.test(l) && /[\\/](ui[\\/]motif|plain)[\\/]/.test(l));
+    const warnings = build.out.split(/\r?\n/).filter((l) => /^w: /.test(l) && /[\\/](ui[\\/]motif|plain|system)[\\/]/.test(l));
     expect(warnings).toEqual([]);
   }, 1_200_000);
 });

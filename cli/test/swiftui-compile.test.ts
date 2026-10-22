@@ -100,6 +100,24 @@ struct WomenExample: View {
 }
 `;
 
+/** The system font with an Arabic companion: Latin text in Font.system, Arabic text in the companion (v0.5.0 sweep). */
+const SYSTEM_USAGE = `import SwiftUI
+
+struct SystemExample: View {
+    var body: some View {
+        VStack {
+            Text("Hi").motifFont(.body)
+            Text("\\u{0645}\\u{0631}\\u{062D}\\u{0628}\\u{0627}").font(MotifType.body.font(arabic: true))
+        }
+        .motifTheme()
+        .onAppear {
+            _ = MotifType.isArabic(Locale(identifier: "ar")) && MotifType.body.lineSpacing(size: 20, arabic: true) >= 0
+            _ = MotifType.body.naturalLineHeight(size: 20, arabic: true) ?? 0
+        }
+    }
+}
+`;
+
 function run(cmd: string[], cwd: string): { code: number; out: string } {
   const r = Bun.spawnSync(cmd, { cwd, stdout: "pipe", stderr: "pipe" });
   return { code: r.exitCode ?? 1, out: `${r.stdout.toString()}\n${r.stderr.toString()}` };
@@ -180,15 +198,23 @@ describe("the generated Swift", () => {
     writeFileSync(join(dir, "women/MotifTheme.swift"), women!.content);
     writeFileSync(join(dir, "women/WomenUsage.swift"), WOMEN_USAGE);
 
+    const systemTokens = validTokens();
+    systemTokens.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+    const [system] = generateSwiftUI(buildThemeSet(docFrom(systemTokens)));
+    expect(system!.content).toContain('        family: nil,\n        design: .default,\n        arabicFamily: "Readex Pro"\n');
+    mkdirSync(join(dir, "system"));
+    writeFileSync(join(dir, "system/MotifTheme.swift"), system!.content);
+    writeFileSync(join(dir, "system/SystemUsage.swift"), SYSTEM_USAGE);
+
     const targets = [
       ["macosx", "arm64-apple-macos14"],
       ["iphonesimulator", "arm64-apple-ios17.0-simulator"],
     ];
-    const usage: Record<string, string> = { full: "MotifUsage.swift", plain: "PlainUsage.swift", women: "WomenUsage.swift" };
+    const usage: Record<string, string> = { full: "MotifUsage.swift", plain: "PlainUsage.swift", women: "WomenUsage.swift", system: "SystemUsage.swift" };
     // The main actor by default only where the compiler has it (Swift 6.2, Xcode 26); Xcode 16.4's Swift 6.1 has not.
     const modes = [["-swift-version", "5"], ["-swift-version", "6"], ...(hasDefaultIsolation() ? [["-swift-version", "6", "-default-isolation", "MainActor"]] : [])];
     if (modes.length < 3) console.log("[swiftui-compile] Swift is older than 6.2: the main-actor-by-default typecheck is skipped.");
-    for (const shape of ["full", "plain", "women"]) {
+    for (const shape of ["full", "plain", "women", "system"]) {
       for (const [name, target] of targets) {
         for (const mode of modes) {
           const files = ["MotifTheme.swift", usage[shape]!];

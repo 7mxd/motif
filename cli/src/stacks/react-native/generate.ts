@@ -188,7 +188,8 @@ export function generateReactNative(set: ThemeSet, opts: RnOptions): GeneratedFi
       const style = styleLine(r.font, face);
       return [{ role: r.key, line: style.text, note: style.note }];
     });
-  const main = rows((r) => r.families[0]);
+  // A role whose list starts with the system font (null) leaves fontFamily out: the platform's own font draws it.
+  const main = rows((r) => r.families[0] ?? undefined);
   const companions = roles.filter((r) => r.families.length > 1);
   const arabic = companions.length > 0
     ? roles.flatMap((r) => {
