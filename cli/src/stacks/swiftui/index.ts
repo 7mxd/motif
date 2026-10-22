@@ -43,7 +43,7 @@ function usesTheme(root: string, app: AppInfo): boolean {
   return listSwiftFiles(root, app.path).some((f) => !isMotifGenerated(f.path, f.text) && /\.motifTheme\s*\(/.test(maskComments(f.text, "swift")));
 }
 
-/** SwiftUI: apps in Xcode projects and Swift packages. Each area is added as it is built. */
+/** SwiftUI: apps in Xcode projects and Swift packages (screenshots need an Xcode project and a Mac). */
 export const SWIFTUI: NativeStack = {
   id: "swiftui",
   extensions: [".swift"],

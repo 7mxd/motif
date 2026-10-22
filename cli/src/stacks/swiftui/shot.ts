@@ -1,7 +1,8 @@
-// motif shot for a SwiftUI app (decision 0010): the screens drawn in an iOS simulator Motif creates, by a unit-test
-// target Motif adds to a copy of the app's Xcode project, at every size, light and dark, in every design variant, right
-// to left, after an optional setup (design/states/Setup.swift) and with --state scripts. The copy, the work folder and
-// the simulator are deleted whatever happens; the build (DerivedData) is kept in Motif's own folder for the next run.
+// motif shot for a SwiftUI app (decision 0010): the screens drawn by a unit-test target Motif adds to a copy of the
+// app's Xcode project, in an iOS simulator Motif creates (an iOS app, at three phone sizes and a tablet) or on the Mac
+// itself (a macOS app, in a 1440×900 and a 900×700 window), light and dark, in every design variant, right to left,
+// after an optional setup (design/states/Setup.swift) and with --state scripts. The copy, the work folder, the
+// simulator and the Mac's host are removed whatever happens; the build (DerivedData) is kept in Motif's own folder.
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -757,7 +758,6 @@ async function removeLeftovers(exec: Exec, remove: (udid: string) => { code: num
   return removed;
 }
 
-/** SWIFTUI.shoot: copies the app, adds the harness, draws in a simulator, reads what it drew, and deletes all but the build. */
 /** How long a kept build may go without a run, and how many apps' builds Motif keeps (decision 0010, §16). */
 export const KEEP_DAYS = 14;
 export const KEEP_BUILDS = 3;

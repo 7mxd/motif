@@ -88,8 +88,6 @@ export type SwiftUIRawIssue = RawIssue & {
 export interface SwiftUIHarnessOptions {
   outDir: string;
   shots: SwiftUIShot[];
-  /** Font files to register for the run (Google families from Motif's cache), absolute. */
-  fonts?: string[];
   /** Seconds a screen may take to settle. */
   settle?: number;
   /** Seconds design/states/Setup.swift's motifSetup and each state may run (15). */

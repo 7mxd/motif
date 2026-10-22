@@ -42,8 +42,6 @@ struct MotifShotOptions: Decodable {
     }
 
     let outDir: String
-    /// Font files registered for the run's process before the first shot (Google families from Motif's cache).
-    let fonts: [String]?
     /// How long a screen may take to settle, in seconds.
     let settle: Double?
     /// How long design/states/Setup.swift's motifSetup and a state may run, in seconds (15).
@@ -97,13 +95,6 @@ final class MotifShotTests: XCTestCase {
         let resultURL = optionsURL.deletingLastPathComponent().appendingPathComponent("result.json")
 
         var result = RunResult()
-        for font in options.fonts ?? [] {
-            var error: Unmanaged<CFError>?
-            if !CTFontManagerRegisterFontsForURL(URL(fileURLWithPath: font) as CFURL, .process, &error) {
-                let reason = error.map { CFErrorCopyDescription($0.takeRetainedValue()) as String } ?? "unknown"
-                result.notes.append("The font \(font) couldn't be registered: \(reason)")
-            }
-        }
         let settle = options.settle ?? 5
         let limit = options.stateLimit ?? 15
         let setupFile = options.setupFile ?? "design/states/Setup.swift"
