@@ -10,7 +10,7 @@ Tests B, C and D from the design spec (§13.2), run through **your own signed-in
 
 ## Before you start
 
-- Claude Code, signed in with your Claude account: `claude auth status` shows `"authMethod": "claude.ai"`. The evals never use an API key.
+- Claude Code, signed in with your Claude account: `claude auth status` shows `"authMethod": "claude.ai"`. On a machine you reach without a browser (a remote Mac), your account's own token from `claude setup-token`, given as `CLAUDE_CODE_OAUTH_TOKEN`, shows `"oauth_token"` and is accepted too. The evals never use an API key.
 - Bun (this repository's tool), git, and Node.js 20.9 or later with npm.
 - Chrome or Edge for tests C and D on the web, for `b-plain`, and for the React Native cases (`b-rn-orders`, `b-rn-favourites`, `c-rn`, `d-rihla`), whose screens are drawn through Expo's web target. If you have neither, `motif browser install` downloads a private browser of about 120 MB (about 300 MB on disk); the runner never runs it for you. The Flutter, Compose and SwiftUI cases don't need one: Flutter, Robolectric and the iOS simulator draw their screens.
 - Flutter 3.27 or later on the `PATH` for the Flutter cases (`b-flutter-reserve`, `b-flutter-search`, `c-flutter`, `d-sahm`; [how to install it](https://docs.flutter.dev/get-started/install)). Without it, a run that includes them stops before starting and lists the other cases to run instead.

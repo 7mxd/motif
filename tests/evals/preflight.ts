@@ -113,7 +113,9 @@ export async function preflight(
   } catch {
     status = null;
   }
-  if (status?.loggedIn !== true || status.authMethod !== "claude.ai") {
+  // "oauth_token" is a Claude account's own token from claude setup-token (CLAUDE_CODE_OAUTH_TOKEN), for a machine
+  // you reach without a browser; each session still has to report no API key.
+  if (status?.loggedIn !== true || !["claude.ai", "oauth_token"].includes(status.authMethod)) {
     return { error: "The evals run on your Claude plan through Claude Code, never with an API key. Sign in with your Claude account (claude auth login), then run this again." };
   }
   // Before the builds, which take a while.

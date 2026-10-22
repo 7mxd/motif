@@ -69,6 +69,11 @@ describe("before a run", () => {
     }
   });
 
+  test("a Claude account's own token (claude setup-token) is your account too, on a machine you can't sign in on with a browser", async () => {
+    const { p, deps } = setup({ auth: ok(JSON.stringify({ loggedIn: true, authMethod: "oauth_token" })) });
+    expect(await preflight(p, false, deps)).not.toHaveProperty("error");
+  });
+
   test("a failed build says which", async () => {
     const { p, deps } = setup({ build: { code: 1, stdout: "", stderr: "error: boom", timedOut: false } });
     expect(await preflight(p, false, deps)).toEqual({ error: expect.stringContaining("bun run build") });
