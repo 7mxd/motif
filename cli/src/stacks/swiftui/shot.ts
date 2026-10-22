@@ -23,7 +23,7 @@ import { THEME_FILE } from "./generate";
 import {
   execCommand, removeSimulator, runSwiftUIHarness, stateFunction, sweepMacLeftovers, type AuditCheck, type Exec, type SwiftUIRawIssue, type MacHostIO, type SwiftUIHarnessResult, type SwiftUIHarnessRun, type SwiftUIScript, type SwiftUIShot,
 } from "./harness";
-import { appEntryFile, field, idsIn, pbxObjects, swiftUIApp, unquote, type SwiftUIApp } from "./project";
+import { appEntryFile, field, idsIn, packageText, pbxObjects, swiftUIApp, unquote, type SwiftUIApp } from "./project";
 import { discoverSwiftUIScreens, swiftUIRunName, swiftUIScreenProblem, type SwiftUIPreview } from "./screens";
 
 /** Said before the first run on a computer starts, and in its notes. */
@@ -120,13 +120,7 @@ export function swiftUIShotRefusal(root: string, app: AppInfo, doctor: DoctorDep
   return swift?.kind === "xcodeproj" ? swiftUICopyProblem(root, resolve(root, app.path), swift) : null;
 }
 
-/**
- * Why a Swift package app isn't drawn (decision 0010, §3 and Task 8): its tests run in a bare process with no app and no
- * window scene, so screens would be drawn from their layers, without blurs and materials, and its fonts registered by hand.
- */
-export const packageText = (name: string) =>
-  `Motif draws a SwiftUI app's screens through its Xcode project, and ${name} is a Swift package (Package.swift), which motif shot can't draw yet. ` +
-  "Make an Xcode project for it (in Xcode: File › New › Project › App, then add the package and use its views), and run motif shot in that project's folder.";
+export { packageText };
 
 interface SwiftUIInputs {
   states: SwiftUIScript[];

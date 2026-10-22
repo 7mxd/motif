@@ -334,3 +334,15 @@ export function buildsWholeFolder(appDir: string, app: SwiftUIApp): boolean {
     (o) => /\bisa = PBXFileSystemSynchronizedRootGroup;/.test(o.own) && unquote(field(o.own, "path") ?? "") === app.sourceRoot,
   );
 }
+
+/**
+ * Why a Swift package app isn't drawn (decision 0010, §3 and Task 8): its tests run in a bare process with no app and no
+ * window scene, so screens would be drawn from their layers, without blurs and materials, and its fonts registered by hand.
+ * `motif shot` refuses with it, and `motif doctor`'s app line says the same.
+ */
+export const packageLimit = (name: string) =>
+  `${name} is a Swift package (Package.swift), which motif shot can't draw yet. ` +
+  "Make an Xcode project for it (in Xcode: File › New › Project › App, then add the package and use its views), and run motif shot in that project's folder.";
+
+/** motif shot's refusal for a Swift package app. */
+export const packageText = (name: string) => `Motif draws a SwiftUI app's screens through its Xcode project, and ${packageLimit(name)}`;

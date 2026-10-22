@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runDoctor, type DoctorDeps, type DoctorItem } from "../src/commands/doctor";
+import { packageText } from "../src/stacks/swiftui/shot";
 import { copyFixture } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -68,14 +69,21 @@ describe("runDoctor", () => {
     expect(item(r.data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for React Native (Expo)." });
   });
 
-  test("a SwiftUI app has full support, in an Xcode project and in a Swift package (2H Task 15)", async () => {
+  test("a SwiftUI app has full support; in a Swift package, the line says motif shot can't draw it, as shot does (2H Task 15)", async () => {
     const qahwa = join(import.meta.dir, "../../tests/fixtures/swiftui-contract-app");
     expect(item((await runDoctor(qahwa, deps())).data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for SwiftUI." });
     const pkg = makeProject({
       "Package.swift": `// swift-tools-version:5.9\nimport PackageDescription\nlet package = Package(name: "Rafiq", platforms: [.iOS(.v17)], targets: [.executableTarget(name: "Rafiq")])\n`,
       "Sources/Rafiq/RafiqApp.swift": "import SwiftUI\n@main struct RafiqApp: App { var body: some Scene { WindowGroup { Text(\"Hi\") } } }\n",
     });
-    expect(item((await runDoctor(pkg, deps())).data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for SwiftUI." });
+    expect(item((await runDoctor(pkg, deps())).data.items as DoctorItem[], "app:.")).toMatchObject({
+      status: "ok",
+      detail:
+        "Full support for SwiftUI but for screenshots: Rafiq is a Swift package (Package.swift), which motif shot can't draw yet. " +
+        "Make an Xcode project for it (in Xcode: File › New › Project › App, then add the package and use its views), and run motif shot in that project's folder.",
+    });
+    // The same words as motif shot's refusal.
+    expect(packageText("Rafiq")).toContain("Rafiq is a Swift package (Package.swift), which motif shot can't draw yet. Make an Xcode project for it");
   });
 
   test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
