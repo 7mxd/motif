@@ -3,7 +3,7 @@
 // happens; a macOS app is built and drawn on the Mac itself, with no simulator. motif shot (Tasks 7–9) builds on it;
 // it never touches the developer's own project folder.
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { maskComments, maskStrings } from "../../check/mask";
 import { onExit } from "../../cleanup";
@@ -608,6 +608,8 @@ export interface MacHostIO {
   spawn?: (cmd: string[]) => { exitCode: number | null; stdout: string };
   kill?: (pid: number) => void;
   home?: string;
+  /** The user's temporary folder ($TMPDIR), where macOS also keeps an app's saved window state. */
+  tmp?: string;
   /** A folder's path with its symbolic links resolved (the host runs from it: /private/var/…, not /var/…). */
   realpath?: (path: string) => string;
 }
@@ -632,7 +634,8 @@ const hostKill = (pid: number) => {
  * Stops a macOS run's test host and removes what it leaves outside the run's work folder, synchronously (it also runs
  * from the exit hook). The host is launched apart from xcodebuild, so stopping xcodebuild doesn't stop it: every
  * process whose executable is an app inside `derivedData` (Motif's own build of the app) is killed. The host's
- * defaults domain (`hostId`, which must end in MAC_HOST_SUFFIX) is deleted, with its plist and saved window state.
+ * defaults domain (`hostId`, which must end in MAC_HOST_SUFFIX) is deleted, with its plist and saved window state (in
+ * the Library, and in the temporary folder, where macOS 27 keeps it).
  * How many processes it stopped.
  */
 export function stopMacHost(derivedData: string, hostId: string | undefined, io: MacHostIO = {}): { killed: number } {
@@ -664,6 +667,7 @@ export function stopMacHost(derivedData: string, hostId: string | undefined, io:
     const library = join(io.home ?? homedir(), "Library");
     rmSync(join(library, "Preferences", `${hostId}.plist`), { force: true });
     rmSync(join(library, "Saved Application State", `${hostId}.savedState`), { recursive: true, force: true });
+    rmSync(join(io.tmp ?? tmpdir(), `${hostId}.savedState`), { recursive: true, force: true });
   }
   return { killed };
 }
