@@ -407,6 +407,8 @@ describe("the SwiftUI guide", () => {
       "## Switching variants", "@AppStorage", "MotifVariant(rawValue:", ".motifTheme(variant:", "MotifTheme.debugVariantOverride", "colours only",
       // A new App for each root screenshot: its init runs; its delegate's launch work doesn't (final review).
       "`App`'s `init` runs before each screenshot of the root",
+      // Init work that can't run twice stops the root's screenshots: guard it (v0.5.0 sweep).
+      "can't run twice", "`if FirebaseApp.app() == nil { FirebaseApp.configure() }`",
     ]);
     expect(read("swiftui/tokens.md")).not.toContain("what the `App` sets up in its `init`");
   });
@@ -443,6 +445,7 @@ describe("the SwiftUI guide", () => {
       // A new App, and its own @State, for each root screenshot, and the note when it can't be kept (Task 15, final review).
       "a new `App` for each screenshot of `/`", "the run's note names the `@State` that wasn't kept", "@Previewable @State",
       "`App`'s `init` runs before each screenshot of the root",
+      "can't run twice", "`if FirebaseApp.app() == nil { FirebaseApp.configure() }`", "Default app has already been configured",
       // A negative padding keeps its sign and is judged by its size (v0.5.0 sweep, Landmarks 9).
       "`.padding(.bottom, -2)`", "`-MotifSpace.s1`",
       // Sizes kept in a constants type aren't traced, so the guide says to replace them with roles (Landmarks 8).

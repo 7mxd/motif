@@ -462,6 +462,22 @@ describe("the screenshots of a SwiftUI run", () => {
     const other = "The app's root view stopped the app: Fatal error: Index out of range";
     expect(screenError(other, "/")).toBe(other);
   });
+
+  test("a root view that stops the app with a second configure (FirebaseApp.configure() in the App's init) names the init and how to guard it", () => {
+    const hint =
+      " The App's init runs again for each screenshot of the root, as Motif makes a new App for each, and work in it that can't run twice stops the app. Guard it in the App's init (if FirebaseApp.app() == nil { FirebaseApp.configure() }), or move it to the app's delegate, then run motif shot again.";
+    const firebase = "The app's root view stopped the app: Terminating app due to uncaught exception 'com.firebase.core', reason: 'Default app has already been configured.'";
+    expect(screenError(firebase, "/")).toBe(firebase + hint);
+    for (const words of ["Fatal error: Analytics is already configured", "Fatal error: The SDK has already been configured."]) {
+      const error = `The app's root view stopped the app: ${words}`;
+      expect(screenError(error, "/")).toBe(error + hint);
+    }
+    // A preview doesn't make the App, so its crash keeps its plain words; so does a root view's that isn't a second configure.
+    const preview = "The preview Home.swift:12 stopped the app: Terminating app due to uncaught exception 'com.firebase.core', reason: 'Default app has already been configured.'";
+    expect(screenError(preview, "Home.swift:12")).toBe(preview);
+    const configured = "The app's root view stopped the app: Fatal error: The store isn't configured";
+    expect(screenError(configured, "/")).toBe(configured);
+  });
 });
 
 // ---- The run, with stand-ins for xcodebuild and simctl ----
@@ -908,6 +924,26 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     expect(r.routes[0]).toMatchObject({ route: "Settings", status: 0 });
     expect(r.routes[0]!.error).toStartWith("The preview SettingsScreen.swift:20 stopped the app: Fatal error: No ObservableObject of type Session found. Give the preview what the screen needs");
     expect(r.notes).toContain("This app doesn't offer he (its string catalogues and .lproj folders have no he strings), so its RTL screenshots show its default strings, laid out right to left.");
+  });
+
+  test("a root view stopped by a second FirebaseApp.configure() in the App's init gets the hint that names the init", async () => {
+    const root = xcodeProject();
+    const home = tempDir("motif-swiftui-home-");
+    let launch = 0;
+    const { promise } = await fakeShoot(root, { screens: ["Settings"] }, home, (options, path) => {
+      if (launch++ > 0) return drawsAll(options, path);
+      const first = options.shots.find((s) => s.screen === "/")!;
+      writeFileSync(path, JSON.stringify({ shots: [], previews: [], notes: [], current: { screen: "/", file: first.file } }));
+      const exception = "*** Terminating app due to uncaught exception 'com.firebase.core', reason: 'Default app has already been configured.'";
+      return { code: 65, stdout: `${exception}\n`, stderr: "", timedOut: false };
+    });
+    const r = await promise;
+    const home_ = r.routes.find((x) => x.route === "/")!;
+    expect(home_).toMatchObject({ status: 0 });
+    expect(home_.error).toBe(
+      "The app's root view stopped the app: Terminating app due to uncaught exception 'com.firebase.core', reason: 'Default app has already been configured.' The App's init runs again for each screenshot of the root, as Motif makes a new App for each, and work in it that can't run twice stops the app. Guard it in the App's init (if FirebaseApp.app() == nil { FirebaseApp.configure() }), or move it to the app's delegate, then run motif shot again.",
+    );
+    expect(r.routes.find((x) => x.route === "Settings")).toMatchObject({ status: 200 });
   });
 });
 

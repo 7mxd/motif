@@ -451,9 +451,19 @@ export function planSwiftUIShots(
 /** A crash that looks like a dependency the screen was meant to be given (an environment object, a SwiftData container). */
 const MISSING_DEPENDENCY = /No ObservableObject of type|No Observable object of type|may be missing as an ancestor|modelContext|ModelContainer|environmentObject/i;
 
-/** A screen's error, with what to do when it stopped the app for want of something the App gives its screens. */
+/** A crash that looks like set-up done twice: Firebase's "Default app has already been configured", and its kin. */
+const SECOND_CONFIGURE = /\balready (?:been )?configured\b/i;
+
+/**
+ * A screen's error, with what to do when it stopped the app for want of something the App gives its screens, or (the
+ * root) because the App's init, which runs again for each root screenshot, did work that can't run twice.
+ */
 export function screenError(error: string, screen: string): string {
-  if (!/ stopped the app: /.test(error) || !MISSING_DEPENDENCY.test(error)) return error;
+  if (!/ stopped the app: /.test(error)) return error;
+  if (screen === "/" && SECOND_CONFIGURE.test(error)) {
+    return `${error} The App's init runs again for each screenshot of the root, as Motif makes a new App for each, and work in it that can't run twice stops the app. Guard it in the App's init (if FirebaseApp.app() == nil { FirebaseApp.configure() }), or move it to the app's delegate, then run motif shot again.`;
+  }
+  if (!MISSING_DEPENDENCY.test(error)) return error;
   return screen === "/"
     ? `${error} Motif draws the root view from a new App's WindowGroup, with what the App puts on its scene; the App's init runs for it, but what its delegate sets up at launch, and SwiftData's .modelContainer(for:) on the scene, don't reach it. Give it inside the WindowGroup (WindowGroup { ContentView().environmentObject(…) }), or set it up in ${SETUP_FILE}.`
     : `${error} Give the preview what the screen needs in its #Preview block (.environmentObject(…), .environment(…), .modelContainer(…)).`;
