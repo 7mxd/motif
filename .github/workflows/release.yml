@@ -30,6 +30,9 @@ jobs:
         run: bun run typecheck
       - name: Tests
         working-directory: cli
+        # The release gate (test/release-gate.test.ts): every stack Motif supports has its parity row all done.
+        env:
+          MOTIF_RELEASE: "1"
         run: bun test --timeout 300000
 
   # The Flutter tests skip in the job above (no Flutter there); this one runs them against the pinned SDK (docs/decisions/0007-flutter-rendering.md).

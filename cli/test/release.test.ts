@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { agentChecks } from "../scripts/agent-checks";
+import { ADAPTERS_AVAILABLE } from "../src/detect/stacks";
+import { PARITY_ROWS, parityGaps } from "./parity-gate";
 
 const REPO = join(import.meta.dir, "../..");
 const VERSION = readFileSync(join(REPO, "skill/VERSION"), "utf8").trim();
@@ -343,5 +345,34 @@ describe("keeping the pinned actions current", () => {
     const config = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
     expect(config).toContain('package-ecosystem: "github-actions"');
     expect(config).toContain('interval: "weekly"');
+  });
+});
+
+describe("the release gate on docs/parity.md (plan 2H's final review)", () => {
+  const workflow = (name: string) => readFileSync(join(REPO, ".github/workflows", name), "utf8").replace(/\r\n/g, "\n");
+  const TABLE = (swiftui: string) =>
+    [
+      "| Stack | Detect and set up | Theme code | Evals | Agents |",
+      "|---|---|---|---|---|",
+      "| React web | done | done | done | done |",
+      `| SwiftUI | done | done | ${swiftui} | done |`,
+    ].join("\n");
+
+  test("the release's test step sets MOTIF_RELEASE=1, which runs the gate; ordinary CI doesn't", () => {
+    const release = workflow("release.yml");
+    const test = release.slice(release.indexOf("\n  test:"), release.indexOf("\n  flutter:"));
+    expect(test).toMatch(/- name: Tests\n {8}working-directory: cli\n(?: {8}#[^\n]*\n)* {8}env:\n {10}MOTIF_RELEASE: "1"\n {8}run: bun test --timeout 300000\n/);
+    expect(workflow("ci.yml")).not.toContain("MOTIF_RELEASE");
+    expect(readFileSync(join(import.meta.dir, "release-gate.test.ts"), "utf8")).toContain('process.env.MOTIF_RELEASE === "1"');
+  });
+
+  test("a row with an area not done, or no row, keeps its stack from a release; a done row passes", () => {
+    expect(parityGaps(TABLE("done"), ["react-web", "swiftui"])).toEqual([]);
+    expect(parityGaps(TABLE("pending"), ["react-web", "swiftui"])).toEqual(["SwiftUI: Evals is pending."]);
+    expect(parityGaps(TABLE("done"), ["flutter"])).toEqual(["Flutter has no row in docs/parity.md."]);
+  });
+
+  test("every supported stack has its row's name", () => {
+    for (const id of ADAPTERS_AVAILABLE) expect([id, typeof PARITY_ROWS[id]]).toEqual([id, "string"]);
   });
 });

@@ -23,7 +23,11 @@ export const STACK_LABELS: Record<StackId, string> = {
   "plain-web": "Plain web (HTML and CSS)",
 };
 
-/** Stacks with full support: every area of the parity checklist (docs/parity.md) is done. */
+/**
+ * Stacks Motif treats as supported (doctor's "Full support", check, extract, tokens and shot). A stack joins when its
+ * adapter is built; a release lists it only once its parity row (docs/parity.md) is done in every area, which the
+ * release workflow checks (test/release-gate.test.ts, with MOTIF_RELEASE=1).
+ */
 export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web", "flutter", "compose", "react-native", "swiftui"];
 /** The supported web stacks: motif extract reads their CSS and markup; Flutter, Compose, React Native and SwiftUI go through their own stacks. */
 export const WEB_STACKS: readonly StackId[] = ["react-web", "plain-web"];
