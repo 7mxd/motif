@@ -990,7 +990,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
           `Text colour ${(cluster!.members[0]?.value ?? cluster!.hex).toLowerCase()} (${shown(miss.ratio)}:1 on the ${miss.fill}, needs ${miss.min}:1) was ${nudged.darker ? "darkened" : "lightened"} to ${light.toLowerCase()} so it reads on every background; check it.`,
         );
       } else {
-        darkOwn = undefined;
+        // The light colour is set aside; the app's own dark value stays when it reads in dark mode.
+        darkOwn = ownDark && !missOf(role, ownDark, darkFills) ? ownDark : undefined;
         if (cluster) {
           chosen[role] = undefined;
           flattened.delete(role);

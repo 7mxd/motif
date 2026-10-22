@@ -392,6 +392,22 @@ describe("drafted text always reads on the drafted fills (v0.5.0 sweep, Landmark
     expect(textProblems(r.tokens)).toEqual([]);
   });
 
+  test("a found text colour set aside in light mode keeps its own dark value when that reads (re-review of the fix round)", () => {
+    const r = buildDraft({
+      ...none,
+      colors: [
+        { value: "#9a9a9a", count: 10, contexts: { text: 10 }, examples: [] },
+        { value: "#fff8ec", count: 8, contexts: { background: 8, page: 1 }, examples: [] },
+      ],
+      variables: [{ name: "--text", light: "#9a9a9a", dark: "#e5e5e5" }, { name: "--page", light: "#fff8ec", dark: "#101010" }],
+    });
+    // Light: #9a9a9a doesn't read and is too far to nudge, so the default; dark: the app's own #e5e5e5 reads, so it stays.
+    expect(hexOf(r.tokens, "text-primary", "light")).toBe("#111827");
+    expect(hexOf(r.tokens, "text-primary", "dark")).toBe("#E5E5E5");
+    expect(r.report.notes.join("\n")).not.toContain("In dark mode, text-primary");
+    expect(textProblems(r.tokens)).toEqual([]);
+  });
+
   test("a dark page found with text that has no dark value: the text's dark values are drafted from the dark page", () => {
     const r = buildDraft({
       ...none,
