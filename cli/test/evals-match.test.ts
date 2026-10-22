@@ -238,3 +238,22 @@ describe("line ranges (review of batch F)", () => {
     expect(gradeExact([f], [issue("P-01", 47), issue("P-02", 13)], () => undefined).exact).toEqual([{ id: "P-01", findings: [] }, { id: "P-02", findings: [] }]);
   });
 });
+
+// The 2H SwiftUI eval: a review filed a typed radius under spacing, as skill/modes/review.md says, and the grader missed it,
+// because every native seeded list gave its radius problem raw-value and consistency only.
+describe("every seeded list accepts the category the review mode gives each check rule", () => {
+  // skill/modes/review.md, "From | Category": off-scale is spacing (space, radius, shadow) or typography (font size).
+  const MODE: Record<string, string[]> = {
+    "raw-color": ["raw-value"], "tailwind-arbitrary": ["raw-value"], "tailwind-palette": ["raw-value"], "primitive-use": ["raw-value"],
+    "off-scale": ["spacing", "typography"], "raw-font": ["typography"], "raw-motion": ["motion"], "reduced-motion": ["reduced-motion"],
+    "generated-edited": ["consistency"],
+  };
+  const fixtures = join(import.meta.dir, "../../tests/fixtures");
+  const lists = require("node:fs").readdirSync(fixtures).filter((d: string) => require("node:fs").existsSync(join(fixtures, d, "seeded-issues.json")));
+  test.each(lists)("%s", (dir) => {
+    const list: SeededIssue[] = JSON.parse(readFileSync(join(fixtures, dir, "seeded-issues.json"), "utf8")).issues;
+    for (const issue of list.filter((i) => i.detectedBy === "check" && i.rule && MODE[i.rule])) {
+      expect({ id: issue.id, accepts: MODE[issue.rule!]!.some((c) => issue.categories.includes(c)) }).toEqual({ id: issue.id, accepts: true });
+    }
+  });
+});
