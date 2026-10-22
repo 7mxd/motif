@@ -566,6 +566,9 @@ export function mapSwiftUIResult(
 // ---- Motif's folder for the app ----
 
 /** Where Motif keeps an app's copy, work folder and build: under its own home, named by the app's folder. */
+/** The name swiftUICacheDir gives an app's folder: the only folders pruning may remove. */
+const CACHE_NAME = /^[A-Za-z0-9_-]+-[0-9a-f]{12}$/;
+
 export function swiftUICacheDir(home: string, appDir: string, name: string): string {
   const hash = createHash("sha256").update(resolve(appDir)).digest("hex").slice(0, 12);
   return join(home, "swiftui", `${name.replace(/[^A-Za-z0-9_-]+/g, "") || "app"}-${hash}`);
@@ -804,7 +807,8 @@ export function pruneSwiftUIBuilds(
   const out: Pruned = { old: [], extra: [], failed: [] };
   let names: string[];
   try {
-    names = readdirSync(dir).filter((n) => statSync(join(dir, n)).isDirectory());
+    // Only Motif's own folders (swiftUICacheDir's <App>-<12 hex digits>): anything else under swiftui/ is left alone.
+    names = readdirSync(dir).filter((n) => CACHE_NAME.test(n) && statSync(join(dir, n)).isDirectory());
   } catch {
     return out;
   }

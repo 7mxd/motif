@@ -745,20 +745,36 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
       utimesSync(stamp, new Date(now - daysAgo * day), new Date(now - daysAgo * day));
       if (lock) writeFileSync(join(dir, name, "run.lock"), String(lock));
     };
-    make("Current-1", 0);
-    make("Old-2", 20);
-    make("OldButRunning-3", 30, process.ppid);
-    make("Recent-4", 1);
-    make("Recent-5", 2);
-    make("Recent-6", 3);
-    make("DeadLock-7", 15, 99999999);
+    make("Current-000000000001", 0);
+    make("Old-000000000002", 20);
+    make("OldButRunning-000000000003", 30, process.ppid);
+    make("Recent-000000000004", 1);
+    make("Recent-000000000005", 2);
+    make("Recent-000000000006", 3);
+    make("DeadLock-000000000007", 15, 99999999);
     expect([KEEP_DAYS, KEEP_BUILDS]).toEqual([14, 3]);
-    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-1"), now);
+    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-000000000001"), now);
     // Unused for 14 days (a lock whose process is gone doesn't save it); then the current app and the running one count
     // toward the three, so of the rest only the one used most recently is kept.
-    expect({ old: removed.old.sort(), extra: removed.extra.sort() }).toEqual({ old: ["DeadLock-7", "Old-2"], extra: ["Recent-5", "Recent-6"] });
-    expect(readdirSync(dir).sort()).toEqual(["Current-1", "OldButRunning-3", "Recent-4"]);
+    expect({ old: removed.old.sort(), extra: removed.extra.sort() }).toEqual({ old: ["DeadLock-000000000007", "Old-000000000002"], extra: ["Recent-000000000005", "Recent-000000000006"] });
+    expect(readdirSync(dir).sort()).toEqual(["Current-000000000001", "OldButRunning-000000000003", "Recent-000000000004"]);
     expect(pruneSwiftUIBuilds(join(dir, "none"), join(dir, "none", "x"), now)).toEqual({ old: [], extra: [], failed: [] });
+  });
+
+  test("pruning only ever removes Motif's own folders, named <App>-<12 hex digits>: nothing else under swiftui/ (final review)", () => {
+    const dir = tempDir("motif-swiftui-builds-");
+    const now = Date.parse("2026-10-21T12:00:00Z");
+    for (const name of ["Old-000000000002", "notes", "Backup-1", "Old-00000000000g", "Old-0000000000002"]) {
+      mkdirSync(join(dir, name, "DerivedData"), { recursive: true });
+      const stamp = join(dir, name, "last-used");
+      writeFileSync(stamp, "");
+      utimesSync(stamp, new Date(now - 30 * 86_400_000), new Date(now - 30 * 86_400_000));
+    }
+    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-000000000000"), now);
+    expect(removed).toEqual({ old: ["Old-000000000002"], extra: [], failed: [] });
+    expect(readdirSync(dir).sort()).toEqual(["Backup-1", "Old-0000000000002", "Old-00000000000g", "notes"]);
+    // Motif's own name for an app's folder has that form.
+    expect(basename(swiftUICacheDir(tempDir("motif-home-"), dir, "My App!"))).toMatch(/^MyApp-[0-9a-f]{12}$/);
   });
 
   test("pruning takes each folder's lock before removing it: one a run took meanwhile is kept; a removal that fails is a note", () => {
@@ -770,46 +786,46 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
       writeFileSync(stamp, "");
       utimesSync(stamp, new Date(now - 30 * 86_400_000), new Date(now - 30 * 86_400_000));
     };
-    make("Raced-1");
-    make("Stuck-2");
-    make("Gone-3");
-    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-0"), now, KEEP_DAYS, KEEP_BUILDS, {
-      // A run starts on Raced-1 between the listing and its removal; Stuck-2 can't be removed.
+    make("Raced-000000000001");
+    make("Stuck-000000000002");
+    make("Gone-000000000003");
+    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-000000000000"), now, KEEP_DAYS, KEEP_BUILDS, {
+      // A run starts on Raced-000000000001 between the listing and its removal; Stuck-000000000002 can't be removed.
       beforeClaim: (folder) => {
-        if (folder.endsWith("Raced-1")) writeFileSync(join(folder, "run.lock"), String(process.ppid));
+        if (folder.endsWith("Raced-000000000001")) writeFileSync(join(folder, "run.lock"), String(process.ppid));
       },
       remove: (folder) => {
-        if (folder.endsWith("Stuck-2")) throw new Error("EBUSY: resource busy or locked");
+        if (folder.endsWith("Stuck-000000000002")) throw new Error("EBUSY: resource busy or locked");
         rmSync(folder, { recursive: true, force: true });
       },
     });
-    expect(removed.old).toEqual(["Gone-3"]);
-    expect(removed.failed).toEqual([{ name: "Stuck-2", path: join(dir, "Stuck-2"), error: "EBUSY: resource busy or locked" }]);
-    expect(readdirSync(dir).sort()).toEqual(["Raced-1", "Stuck-2"]);
+    expect(removed.old).toEqual(["Gone-000000000003"]);
+    expect(removed.failed).toEqual([{ name: "Stuck-000000000002", path: join(dir, "Stuck-000000000002"), error: "EBUSY: resource busy or locked" }]);
+    expect(readdirSync(dir).sort()).toEqual(["Raced-000000000001", "Stuck-000000000002"]);
     // The raced run's lock is its own, untouched; the folder that couldn't be removed isn't left locked.
-    expect(readFileSync(join(dir, "Raced-1", "run.lock"), "utf8")).toBe(String(process.ppid));
-    expect(existsSync(join(dir, "Stuck-2", "run.lock"))).toBe(false);
+    expect(readFileSync(join(dir, "Raced-000000000001", "run.lock"), "utf8")).toBe(String(process.ppid));
+    expect(existsSync(join(dir, "Stuck-000000000002", "run.lock"))).toBe(false);
     expect(prunedNotes(removed)).toEqual([
       "Removed Motif's kept build of an app not drawn in the last 14 days (Gone).",
-      `Motif couldn't remove its kept build of Stuck (${join(dir, "Stuck-2")}): EBUSY: resource busy or locked. Delete the folder to free its space.`,
+      `Motif couldn't remove its kept build of Stuck (${join(dir, "Stuck-000000000002")}): EBUSY: resource busy or locked. Delete the folder to free its space.`,
     ]);
   });
 
   test("pruning goes on when a folder vanishes before its lock is taken (another run pruned it), and doesn't fail the run", () => {
     const dir = tempDir("motif-swiftui-builds-");
     const now = Date.parse("2026-10-21T12:00:00Z");
-    for (const name of ["Vanished-1", "Old-2"]) {
+    for (const name of ["Vanished-000000000001", "Old-000000000002"]) {
       mkdirSync(join(dir, name, "DerivedData"), { recursive: true });
       const stamp = join(dir, name, "last-used");
       writeFileSync(stamp, "");
       utimesSync(stamp, new Date(now - 30 * 86_400_000), new Date(now - 30 * 86_400_000));
     }
-    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-0"), now, KEEP_DAYS, KEEP_BUILDS, {
+    const removed = pruneSwiftUIBuilds(dir, join(dir, "Current-000000000000"), now, KEEP_DAYS, KEEP_BUILDS, {
       beforeClaim: (folder) => {
-        if (folder.endsWith("Vanished-1")) rmSync(folder, { recursive: true, force: true });
+        if (folder.endsWith("Vanished-000000000001")) rmSync(folder, { recursive: true, force: true });
       },
     });
-    expect(removed.old).toEqual(["Old-2"]);
+    expect(removed.old).toEqual(["Old-000000000002"]);
     expect(removed.failed).toEqual([]);
     expect(readdirSync(dir)).toEqual([]);
   });
@@ -831,7 +847,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
   test("the first run says where the build is kept, how big it is, and when Motif removes it; others it removed are named", async () => {
     const root = xcodeProject();
     const home = tempDir("motif-swiftui-home-");
-    const old = join(home, "swiftui", "Old-abc");
+    const old = join(home, "swiftui", "Old-000000000abc");
     mkdirSync(join(old, "DerivedData"), { recursive: true });
     utimesSync(old, new Date(Date.now() - 30 * 86_400_000), new Date(Date.now() - 30 * 86_400_000));
     const { promise } = await fakeShoot(root, {}, home, (options, path, f) => {
