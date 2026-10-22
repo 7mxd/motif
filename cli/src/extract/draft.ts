@@ -816,6 +816,12 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const roles: Record<string, string> = {};
   const defaulted: string[] = [];
   const primitiveFor = (role: string): string => {
+    const own = textLight[role];
+    if (own) {
+      const name = addPrimitive(own.name, own.hex);
+      roles[`color.${role}`] = name;
+      return name;
+    }
     const cluster = chosen[role];
     if (cluster) {
       primitives[cluster.id] = { $value: srgbColor(cluster.hex) };
@@ -825,9 +831,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     const name = `default-${role}`;
     primitives[name] = { $value: srgbColor(DEFAULT_COLORS[role]!) };
     roles[`color.${role}`] = "default";
-    // A role whose found colour was set aside has its own note.
-    const setAsideRole = setAside.some((x) => x.role === role);
-    if (!setAsideRole && ["success", "warning", "danger", "info", "action-primary", "text-primary", "background", "border"].includes(role)) defaulted.push(role);
+    // A text role whose colour didn't read has its own note.
+    if (!textNoted.has(role) && ["success", "warning", "danger", "info", "action-primary", "text-primary", "background", "border"].includes(role)) defaulted.push(role);
     return name;
   };
   const hexOf = (name: string) => (primitives[name] as { $value: { hex: string } }).$value.hex;
@@ -888,36 +893,137 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     return v ? solidHex(v.dark) : undefined;
   };
 
-  // A text colour found in the app that fails the drafted page or cards (white used on photos, on a white page) would fail
-  // motif validate: the role keeps its default, and the notes say which colour was set aside. Checked as validate checks it,
-  // with its text pairs and ratios, in light mode and, when the found colour has a dark value, in dark mode too.
-  const setAside: { role: string; cluster: ColorCluster; reason: string }[] = [];
+  // Drafted text always reads on the drafted fills, as motif validate checks it (its text pairs, ratios and contrast helper):
+  // the background and the surface (surface-raised is the surface, and so are secondary buttons without a fill of their own),
+  // in light mode and in dark. Each text role takes, in order: the colour found, when it reads; that colour darkened or
+  // lightened a little, when it's on the right side of every fill and already reads at 3:1 on each; the default; then ink or
+  // white (a grey for secondary text, so it still differs from the primary). Its dark value is drafted the same way from the
+  // dark fills when its own, or its light one, doesn't read there. Each change has a note.
+  const TEXT_NAMES: Record<string, string> = { [INK]: "ink", [WHITE]: "white", "#4B5563": "gray-600", "#374151": "gray-700", "#D1D5DB": "gray-300", "#9CA3AF": "gray-400" };
+  const TEXT_FILLS = ["background", "surface"];
+  type Fills = Record<string, string>;
+  /** Validate's pairs for a text role, by the drafted fill each sits on (surface-raised is the surface). */
+  const pairsOf = (role: string) => [
+    ...new Map(STANDARD_PAIRS.filter(([fg]) => fg === role).map(([, on, kind]) => {
+      const fill = on === "surface-raised" ? "surface" : on;
+      return [fill, { fill, min: MIN_RATIO[kind] }] as const;
+    })).values(),
+  ];
+  const ratioOn = (fg: string, bg: string) => contrastRatio(srgbColor(fg), srgbColor(bg));
+  /** The first of a text role's pairs (in validate's order) a colour doesn't read on; undefined when it reads on all. */
+  const missOf = (role: string, hex: string, fills: Fills, only?: string) =>
+    pairsOf(role)
+      .filter((p) => !only || p.fill === only)
+      .map((p) => ({ ...p, on: fills[p.fill]!, ratio: ratioOn(hex, fills[p.fill]!) }))
+      .find((p) => p.ratio < p.min);
+  const shown = (ratio: number) => (Math.floor(ratio * 100) / 100).toFixed(2);
   const lightHex = (role: string) => chosen[role]?.hex ?? DEFAULT_COLORS[role]!;
+  const lightFills: Fills = Object.fromEntries(TEXT_FILLS.map((f) => [f, lightHex(f)]));
+  const darkFills: Fills = Object.fromEntries(TEXT_FILLS.map((f) => [f, (chosen[f] ? darkHexOf(f) : undefined) ?? lightFills[f]!]));
+  /** Ink or white for the primary text; a grey, then ink or white, for the secondary. */
+  const ladder = (role: string, fills: Fills) => {
+    const light = onColor(fills.background!) === INK;
+    const solid = light ? [INK, WHITE] : [WHITE, INK];
+    return role === "text-primary" ? solid : [...(light ? ["#4B5563", "#374151"] : ["#D1D5DB", "#9CA3AF"]), ...solid];
+  };
+  /** The first option that reads on every fill; else the first that reads on the background, and the surface it doesn't. */
+  const firstReading = (role: string, options: string[], fills: Fills): { hex: string; surface?: string } => {
+    const all = options.find((h) => !missOf(role, h, fills));
+    if (all) return { hex: all };
+    return { hex: options.find((h) => !missOf(role, h, fills, "background")) ?? options[0]!, surface: fills.surface };
+  };
+  const butSurface = (pick: { surface?: string }) => (pick.surface ? ` for the background, though nothing reads on both it and the surface (${pick.surface.toLowerCase()})` : "");
+  /** A found colour darkened or lightened in OKLCH, keeping its hue and chroma, until it reads on every fill. */
+  const nudge = (role: string, hex: string, fills: Fills) => {
+    const lum = wcagLuminance(hex);
+    const fillLums = TEXT_FILLS.map((f) => wcagLuminance(fills[f]!));
+    const darker = fillLums.every((l) => lum < l);
+    if (!darker && !fillLums.every((l) => lum > l)) return undefined;
+    if (TEXT_FILLS.some((f) => ratioOn(hex, fills[f]!) < 3)) return undefined;
+    const start = toOklch(parseColor(hex)!);
+    for (let step = 1; step <= 200; step++) {
+      const l = (start.l ?? 0) + (darker ? -step : step) * 0.005;
+      if (l < 0 || l > 1) break;
+      const next = formatHex({ ...start, l })?.toUpperCase();
+      if (next && !missOf(role, next, fills)) return { hex: next, darker };
+    }
+    return undefined;
+  };
+  /** A found colour as the notes name it: as written, with a word for white and black. */
+  const foundName = (c: ColorCluster) => {
+    const value = (c.members[0]?.value ?? c.hex).toLowerCase();
+    return c.hex.toUpperCase() === WHITE ? `White (${value})` : c.hex.toUpperCase() === "#000000" ? `Black (${value})` : value;
+  };
   const ownDarkHex = (role: string) => {
     if (!chosen[role]) return undefined;
     const field = flattened.get(role);
     if (!field) return darkHexOf(role);
-    const darkBg = (chosen.background ? darkHexOf("background") : undefined) ?? lightHex("background");
-    const flat = flatten(chainDark(chainOf(field)), darkBg);
+    const flat = flatten(chainDark(chainOf(field)), darkFills.background!);
     return flat && flat !== chosen[role]!.hex ? flat : undefined;
   };
+  /** Light values drafted for a text role (a found colour nudged, or ink, white or a grey): role → primitive name and colour. */
+  const textLight: Record<string, { name: string; hex: string }> = {};
+  /** Dark values drafted for a text role; null when it has none of its own (its light value shows in dark mode). */
+  const textDark: Record<string, { name: string; hex: string } | null> = {};
+  /** Roles whose colour didn't read: their note says so, not "No colour was found". */
+  const textNoted = new Set<string>();
+  /** Found colours set aside for the default: the note's start → the roles that keep their defaults. */
+  const keptDefault = new Map<string, string[]>();
+  const textNotes: string[] = [];
+  /** Text roles whose dark value Motif drafted (not the app's). */
+  const draftedDark = new Set<string>();
   for (const role of ["text-primary", "text-secondary"]) {
     const cluster = chosen[role];
-    if (!cluster) continue;
-    const textDark = ownDarkHex(role);
-    const reason = STANDARD_PAIRS.filter(([fg]) => fg === role).flatMap(([, on, kind]) => {
-      const fill = on === "surface-raised" ? "surface" : on;
-      const light = lightHex(fill);
-      const failsLight = contrastRatio(srgbColor(cluster.hex), srgbColor(light)) < MIN_RATIO[kind];
-      if (failsLight) return [`fails on the drafted ${fill} (${light.toLowerCase()})`];
-      if (!textDark) return [];
-      const dark = (chosen[fill] ? darkHexOf(fill) : undefined) ?? light;
-      return contrastRatio(srgbColor(textDark), srgbColor(dark)) < MIN_RATIO[kind] ? [`fails on the drafted ${fill} in dark mode (${dark.toLowerCase()})`] : [];
-    })[0];
-    if (!reason) continue;
-    setAside.push({ role, cluster, reason });
-    chosen[role] = undefined;
-    flattened.delete(role);
+    const ownDark = cluster ? ownDarkHex(role) : undefined;
+    let light = cluster?.hex ?? DEFAULT_COLORS[role]!;
+    let darkOwn = ownDark;
+    const miss = missOf(role, light, lightFills);
+    if (miss) {
+      textNoted.add(role);
+      const said = `reads at ${shown(miss.ratio)}:1 on the ${miss.fill} (${miss.on.toLowerCase()}), needs ${miss.min}:1`;
+      const nudged = cluster ? nudge(role, cluster.hex, lightFills) : undefined;
+      if (nudged) {
+        light = nudged.hex;
+        textLight[role] = { name: `${cluster!.id}-${nudged.darker ? "darker" : "lighter"}`, hex: light };
+        flattened.delete(role);
+        textNotes.push(
+          `Text colour ${(cluster!.members[0]?.value ?? cluster!.hex).toLowerCase()} (${shown(miss.ratio)}:1 on the ${miss.fill}, needs ${miss.min}:1) was ${nudged.darker ? "darkened" : "lightened"} to ${light.toLowerCase()} so it reads on every background; check it.`,
+        );
+      } else {
+        darkOwn = undefined;
+        if (cluster) {
+          chosen[role] = undefined;
+          flattened.delete(role);
+        }
+        const fallback = DEFAULT_COLORS[role]!;
+        if (cluster && !missOf(role, fallback, lightFills)) {
+          light = fallback;
+          const start = `${foundName(cluster)} was found for text but ${said}`;
+          keptDefault.set(start, [...(keptDefault.get(start) ?? []), role]);
+        } else {
+          const pick = firstReading(role, ladder(role, lightFills), lightFills);
+          light = pick.hex;
+          textLight[role] = { name: TEXT_NAMES[light]!, hex: light };
+          const what = cluster
+            ? `${foundName(cluster)} was found for text but ${said}, and the default (${fallback.toLowerCase()}) doesn't read either`
+            : `No text colour was found, and the default for ${role} (${fallback.toLowerCase()}) ${said}`;
+          textNotes.push(`${what}, so ${role} is drafted as ${light.toLowerCase()}${butSurface(pick)}; check it.`);
+        }
+      }
+    }
+    // Dark mode: the role's own dark value (kept when its light colour was kept or nudged), or its light one.
+    const dark = darkOwn ?? light;
+    const darkMiss = missOf(role, dark, darkFills);
+    if (darkMiss) {
+      const pick = firstReading(role, ladder(role, darkFills), darkFills);
+      textDark[role] = { name: TEXT_NAMES[pick.hex]!, hex: pick.hex };
+      draftedDark.add(role);
+      textNotes.push(
+        `In dark mode, ${role} (${dark.toLowerCase()}) reads at ${shown(darkMiss.ratio)}:1 on the ${darkMiss.fill} (${darkMiss.on.toLowerCase()}), needs ${darkMiss.min}:1, so its dark value is drafted as ${pick.hex.toLowerCase()}${butSurface(pick)}; check it.`,
+      );
+    } else if (miss) {
+      textDark[role] = darkOwn ? { name: `${cluster!.id}-dark`, hex: darkOwn } : null;
+    }
   }
 
   const base: Record<string, string> = {};
@@ -943,7 +1049,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   // Dark values from the CSS: a colour variable set in a light block and in a dark block gives its role a real dark value.
   const darkBase: Record<string, string> = {};
   for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
-    if (flattened.has(role)) continue;
+    if (flattened.has(role) || role in textDark) continue;
     const darkValue = darkHexOf(role);
     if (!darkValue) continue;
     // Roles that share a colour group (a grey-50 page and its white cards) can have different dark values.
@@ -958,6 +1064,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   for (const [role, field] of flattened) {
     const darkHex = flatten(chainDark(chainOf(field)), hexOf(darkBase.background ?? base.background!));
     if (darkHex && darkHex !== hexOf(base[role]!)) darkBase[role] = addPrimitive(`${chosen[role]!.id}-dark`, darkHex);
+  }
+  // Text roles whose dark value was drafted to read on the dark fills, or that keep their light one.
+  for (const [role, own] of Object.entries(textDark)) {
+    if (own) darkBase[role] = addPrimitive(own.name, own.hex);
+    else delete darkBase[role];
   }
   if (darkBase.surface) darkBase["surface-raised"] = darkBase.surface;
   if (darkBase.surface && !secondaryFill) darkBase["action-secondary"] = darkBase.surface;
@@ -1158,7 +1269,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     spring: { snappy: springGroup(0.25, 0), smooth: springGroup(0.4, 0.1), bouncy: springGroup(0.5, 0.3) },
   };
 
-  const darkRoles = Object.keys(darkBase).filter((r) => BASE_ROLES.includes(r));
+  const darkRoles = Object.keys(darkBase).filter((r) => BASE_ROLES.includes(r) && !draftedDark.has(r));
   const dart = occ.source === "dart" || occ.source === "kotlin" || occ.source === "swift" || occ.source === "script";
   const themeCode = occ.source === "script" ? "your theme code" : occ.source === "kotlin" ? "your Kotlin theme code" : occ.source === "swift" ? "your Swift theme code" : "your Dart theme code";
   const themeCodeSets =
@@ -1192,6 +1303,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   // A role whose colour is see-through (a hairline at 8%) is drafted solid: say so. The colour is the variable's that named
   // the role, when one did (a solid --text beside much-used see-through text of the same hue isn't see-through).
   for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
+    // A text colour changed to read on the fills has its own note.
+    if (textLight[role]) continue;
     const field = flattened.get(role);
     if (field) {
       notes.push(
@@ -1206,22 +1319,12 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
       notes.push(`${role} comes from a see-through colour (${value}), drafted as solid ${chosen[role]!.hex}; check it.`);
     }
   }
-  // One note per colour set aside and why, naming the text roles that keep their defaults because of it.
-  const asideNotes = new Map<string, string[]>();
-  for (const { role, cluster, reason } of setAside) {
-    const value = cluster.members[0]?.value.toLowerCase() ?? cluster.hex.toLowerCase();
-    const hex = cluster.hex.toUpperCase();
-    const found = hex === "#FFFFFF" ? `White (${value})` : hex === "#000000" ? `Black (${value})` : value;
-    const key = `${found} was found for text but ${reason}`;
-    asideNotes.set(key, [...(asideNotes.get(key) ?? []), role]);
+  // Text colours that didn't read on the drafted fills: what was set aside or changed, and why.
+  for (const [start, which] of keptDefault) {
+    notes.push(which.length === 1 ? `${start}, so ${which[0]} keeps the default; check it.` : `${start}, so ${which.join(" and ")} keep their defaults; check them.`);
   }
-  for (const [said, which] of asideNotes) {
-    notes.push(
-      which.length === 1
-        ? `${said}, so ${which[0]} keeps the default; check it.`
-        : `${said}, so ${which.join(" and ")} keep their defaults; check them.`,
-    );
-  }
+  // Both text roles can take the same nudged colour: its note is said once.
+  notes.push(...new Set(textNotes));
   if (defaulted.length) notes.push(`No colour was found for ${defaulted.join(", ")}, so Motif used defaults.`);
   const themeRoles = FONT_ROLES.map(([role]) => role).filter((role) => fromTheme[role]);
   if (occ.typeRoles && themeRoles.length > 0) {
