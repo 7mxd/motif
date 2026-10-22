@@ -417,6 +417,8 @@ describe("the SwiftUI guide", () => {
     has("components.md", [
       "Components/", "Features/<Feature>/", "`private` views are parts of a screen", "ButtonStyle", "configuration.isPressed", "@Environment(\\.isEnabled)",
       "@FocusState", ".accessibilityLabel", ".contentShape", "44", ".frame(minWidth: 44, minHeight: 44)", "Label(",
+      // With a prompt, iOS names a field by its prompt: give it its label as its name (v0.5.0 sweep, Qahwa's email field).
+      "iOS names the field by its prompt", "`.accessibilityLabel(label)`",
     ]);
     for (const c of ["Button", "IconButton", "Field", "Checkbox", "Switch", "Card", "ListItem", "TopBar", "TabBar", "Sheet", "Dialog", "Toast", "Skeleton", "EmptyState", "ErrorState", "Avatar", "Badge"]) {
       expect(read("swiftui/components.md")).toContain(`\`${c}\``);
