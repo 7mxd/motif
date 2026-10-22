@@ -79,8 +79,18 @@ interface Entry {
   clamped: boolean;
 }
 
-/** The colour sets of every asset catalogue the files hold, with the namespaces their folders provide. */
-function readCatalogues(files: SourceFile[]): Entry[] {
+/** A colour set that names one of the system's colours (Xcode's "System Indigo"), which has no value to read. */
+interface SystemColour {
+  name: string;
+  shown: string;
+  reference: string;
+}
+
+/**
+ * The colour sets of every asset catalogue the files hold, with the namespaces their folders provide, and (in `system`)
+ * the sets that are only a system colour.
+ */
+function readCatalogues(files: SourceFile[], system: SystemColour[] = []): Entry[] {
   const json = new Map<string, any>();
   for (const f of files) {
     if (f.lang !== "json" || !/\.xcassets\//.test(f.path)) continue;
@@ -123,8 +133,12 @@ function readCatalogues(files: SourceFile[]): Entry[] {
     };
     const light = read("light", "any");
     const dark = read("dark");
-    if (!light && !dark) continue;
     const name = folder.replace(/\.colorset$/, "");
+    if (!light && !dark) {
+      const reference = ranked.map((e) => e?.color?.reference).find((r): r is string => typeof r === "string" && r !== "");
+      if (reference) system.push({ name, shown: [...shown, name].join("/"), reference });
+      continue;
+    }
     entries.push({
       name,
       shown: [...shown, name].join("/"),
@@ -193,7 +207,16 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
   const variantLabels: Record<string, string> = {};
 
   // ---------- asset catalogue colour sets ----------
-  const entries = readCatalogues(files);
+  const system: SystemColour[] = [];
+  const entries = readCatalogues(files, system);
+  if (system.length === 1) {
+    const [s] = system as [SystemColour];
+    const role = s.name === "AccentColor" ? " (action-primary, for the accent colour)" : "";
+    notes.push(`${s.shown} is the system colour ${s.reference}, which has no value in the catalogue to read, so the draft leaves it out: give its role${role} a value yourself.`);
+  } else if (system.length > 1) {
+    const what = system.map((s) => `${s.shown} is the system colour ${s.reference}`).join("; ");
+    notes.push(`${what}. System colours have no value in the catalogue to read, so the draft leaves them out: give their roles values yourself.`);
+  }
   const keysOf = new Map<string, Set<string>>();
   for (const e of entries) keysOf.set(e.name, (keysOf.get(e.name) ?? new Set()).add(e.key));
   const parallel = new Set<string>();

@@ -70,6 +70,30 @@ describe("collectSwiftUI on component formats", () => {
     });
     expect(collect(root).variables).toEqual([]);
   });
+
+  test("a colour set that names a system colour (Landmarks's AccentColor) has no value to read, and a note says so (Task 15)", () => {
+    const root = makeProject({
+      "A/Assets.xcassets/AccentColor.colorset/Contents.json": JSON.stringify({
+        colors: [{ color: { platform: "universal", reference: "systemIndigoColor" }, idiom: "universal" }],
+        info: { author: "xcode", version: 1 },
+      }),
+      "A/V.swift": "import SwiftUI\n",
+    });
+    const occ = collect(root);
+    expect(occ.variables).toEqual([]);
+    expect(occ.notes).toEqual([
+      "AccentColor is the system colour systemIndigoColor, which has no value in the catalogue to read, so the draft leaves it out: give its role (action-primary, for the accent colour) a value yourself.",
+    ]);
+    const system = (reference: string) => JSON.stringify({ colors: [{ color: { platform: "ios", reference }, idiom: "universal" }], info: { version: 1 } });
+    const two = makeProject({
+      "A/Assets.xcassets/Card.colorset/Contents.json": system("secondarySystemBackgroundColor"),
+      "A/Assets.xcassets/Ink.colorset/Contents.json": system("labelColor"),
+      "A/V.swift": "import SwiftUI\n",
+    });
+    expect(collect(two).notes).toEqual([
+      "Card is the system colour secondarySystemBackgroundColor; Ink is the system colour labelColor. System colours have no value in the catalogue to read, so the draft leaves them out: give their roles values yourself.",
+    ]);
+  });
 });
 
 describe("collectSwiftUI on a catalogue with a namespaced pair", () => {
