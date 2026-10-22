@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SourceFile } from "../src/check/files";
-import { readPairs } from "../src/contract/contrast";
+import { checkContrastAll, readPairs } from "../src/contract/contrast";
 import { checkRoles } from "../src/contract/roles";
 import { validateTokens } from "../src/contract/tokens";
 import { checkVariants } from "../src/contract/variants";
@@ -102,7 +102,9 @@ describe("buildDraft", () => {
       "color.text-primary": "found-1",
       "color.background": "found-2",
       "color.action-primary": "found-3",
-      "color.text-secondary": "found-4",
+      // #6B7280 is the second text colour, but it reads at 4.39:1 on the found-5 cards (#F3F4F6), short of validate's
+      // 4.5:1, so it's set aside and the role keeps its default (v0.5.0 sweep, Landmarks problem 7).
+      "color.text-secondary": "default",
       "color.surface": "found-5",
       "color.border": "found-6",
       "color.success": "found-7",
@@ -303,5 +305,77 @@ describe("the see-through note names only a see-through value (Task 15 wave B, #
   test("a role whose own value is see-through still is", () => {
     const { report } = buildDraft({ ...occ, variables: [{ name: "--background", light: "#ffffff" }], roleNames: ["--background"], variableUses: { "--background": { background: 1 } } });
     expect(report.notes.join("\n")).toContain("text-primary comes from a see-through colour (#0a1733a6)");
+  });
+});
+
+describe("a found text colour that fails the drafted background is set aside (v0.5.0 sweep, Landmarks problem 7)", () => {
+  /** The low-contrast findings for the text roles' pairs, in every mode. */
+  const textProblems = (tokens: Record<string, unknown>) =>
+    checkContrastAll(docFrom(tokens)).findings.filter((f) => f.code === "low-contrast" && /^color\.text-(primary|secondary)$/.test(f.path ?? ""));
+  // Landmarks: the views' only typed colour is .white, on photos; no background is found, so the page is the default.
+  const landmarks: Occurrences = {
+    colors: [{ value: "#ffffff", count: 8, contexts: { text: 8 }, examples: ["Landmarks/Views/CircleImage.swift:14"] }],
+    space: [], radius: [], fontSize: [], fontFamily: [], duration: [], easing: [], unresolved: [],
+    source: "swift",
+  };
+
+  test("white text on a light background keeps the defaults, so the draft validates without text contrast problems", () => {
+    const { tokens, report } = buildDraft(landmarks);
+    expect(report.roles["color.text-primary"]).toBe("default");
+    expect(report.roles["color.text-secondary"]).toBe("default");
+    expect(textProblems(tokens)).toEqual([]);
+    expect(checkContrastAll(docFrom(tokens)).findings).toEqual([]);
+  });
+
+  test("the notes name the white that was set aside, and why", () => {
+    const notes = buildDraft(landmarks).report.notes.join("\n");
+    expect(notes).toContain(
+      "White (#ffffff) was found for text but fails on the drafted background (#f9fafb), so text-primary and text-secondary keep their defaults; check them.",
+    );
+    // A colour was found for text, so the draft doesn't say none was.
+    expect(notes).not.toMatch(/No colour was found for [^.]*text-primary/);
+  });
+
+  test("a found text colour that fails only on the drafted surface is set aside too", () => {
+    // Mid-grey text reads on the white page (4.54:1) but not on the near-white cards (3.98:1).
+    const r = buildDraft({
+      ...landmarks,
+      source: undefined,
+      colors: [
+        { value: "#ffffff", count: 9, contexts: { background: 9, page: 1 }, examples: [] },
+        { value: "#767676", count: 6, contexts: { text: 6 }, examples: [] },
+        { value: "#f0f0f0", count: 4, contexts: { background: 4 }, examples: [] },
+      ],
+    });
+    expect(r.report.roles["color.surface"]).toBe("found-3");
+    expect(r.report.roles["color.text-primary"]).toBe("default");
+    expect(r.report.notes.join("\n")).toContain(
+      "#767676 was found for text but fails on the drafted surface (#f0f0f0), so text-primary and text-secondary keep their defaults; check them.",
+    );
+    expect(textProblems(r.tokens)).toEqual([]);
+  });
+
+  test("a found text colour whose dark value fails on the dark background is set aside, and the note says dark mode", () => {
+    const r = buildDraft({
+      colors: [
+        { value: "#111827", count: 10, contexts: { text: 10 }, examples: [] },
+        { value: "#ffffff", count: 8, contexts: { background: 8, page: 1 }, examples: [] },
+      ],
+      space: [], radius: [], fontSize: [], fontFamily: [], duration: [], easing: [], unresolved: [],
+      variables: [{ name: "--ink", light: "#111827", dark: "#1f2937" }, { name: "--page", light: "#ffffff", dark: "#030712" }],
+    });
+    expect(r.report.roles["color.text-primary"]).toBe("default");
+    expect(r.report.notes.join("\n")).toContain("#111827 was found for text but fails on the drafted background in dark mode (#030712), so text-primary and text-secondary keep their defaults; check them.");
+  });
+
+  test("a found text colour that passes keeps it, and no note sets it aside", () => {
+    // The shared fixture, with secondary text that reads on its grey cards (#4b5563 rather than #6b7280).
+    const passing: Occurrences = { ...occ, colors: occ.colors.map((c) => (c.value === "#6B7280" ? { ...c, value: "#4B5563" } : c)) };
+    const { tokens, report } = buildDraft(passing);
+    expect(report.roles["color.text-primary"]).toBe("found-1");
+    expect(report.roles["color.text-secondary"]).toBe("found-4");
+    expect((tokens as any).primitive.color["found-1"].$value.hex).toBe("#111827");
+    expect(textProblems(tokens)).toEqual([]);
+    expect(report.notes.join("\n")).not.toContain("was found for text but fails");
   });
 });
