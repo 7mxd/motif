@@ -455,7 +455,7 @@ describe("the screenshots of a SwiftUI run", () => {
   test("a root view that stops the app for want of what the App gives it says how to give it", () => {
     const error = "The app's root view stopped the app: SwiftData/ModelContext.swift: Fatal error: Set a .modelContext in view's environment to use Query";
     expect(screenError(error, "/")).toBe(
-      `${error} Motif draws the root view from the App's WindowGroup on its own, with the environment the App puts on its scene; what the App sets up elsewhere (in its init, or in onAppear) doesn't reach it. Give it inside the WindowGroup (WindowGroup { ContentView().environmentObject(…) }), or set it up in design/states/Setup.swift.`,
+      `${error} Motif draws the root view from a new App's WindowGroup, with what the App puts on its scene; the App's init runs for it, but what its delegate sets up at launch, and SwiftData's .modelContainer(for:) on the scene, don't reach it. Give it inside the WindowGroup (WindowGroup { ContentView().environmentObject(…) }), or set it up in design/states/Setup.swift.`,
     );
     // Any other crash keeps its plain words.
     const other = "The app's root view stopped the app: Fatal error: Index out of range";

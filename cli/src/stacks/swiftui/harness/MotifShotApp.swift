@@ -7,14 +7,12 @@ import SwiftUI
 /// (Landmarks's window size) would be lost. As a property of a view, the App's @State is installed like the view's own.
 extension __APP__: DynamicProperty {}
 
-/// Holds the App: made once for the launch (its init runs once), and its @State installed afresh for each root view drawn,
-/// in a view that lives until the next one (decision 0010, §4). Each screenshot starts from the App's state as it is at
-/// launch, as each starts from a freshly drawn screen: on Apple's Landmarks, one model kept for the whole launch carried
-/// what the iPad's first layout wrote into it (its inspector shown) into every later screenshot.
+/// Holds the App for the root view being drawn: a new App for each (its init runs again, as at a launch), its @State
+/// installed in a view that lives until the next one (decision 0010, §4). So each screenshot of the root starts from the
+/// App as it starts, on every SDK: with Xcode 16's SDK an App's @State value is made once with the App, so one App kept for
+/// the launch would carry what one screenshot did to its model (a sign-in, a counter) into the next.
 @MainActor
 enum MotifAppState {
-    /// The launch's App, as made: its @State not yet installed.
-    static let launched = __APP__()
     /// The App as the keeper's view has it, for the root view being drawn: its @State reads that view's one value.
     static var installed: __APP__?
     /// The renderer whose view holds the App's state; kept until the next root view, so the state lives as long as it.
@@ -22,13 +20,14 @@ enum MotifAppState {
     /// The names of the App's @State properties that couldn't be kept, for the run's note; empty when all were.
     static var unkept: [String] = []
 
-    /// The App for a root view, its @State installed when SwiftUI can.
+    /// A new App for a root view, its @State installed when SwiftUI can.
     static func app() -> __APP__ {
         installed = nil
-        let renderer = ImageRenderer(content: MotifAppKeeper(app: launched))
+        let made = __APP__()
+        let renderer = ImageRenderer(content: MotifAppKeeper(app: made))
         keeper = renderer
         _ = renderer.cgImage
-        let app = installed ?? launched
+        let app = installed ?? made
         unkept = stateNames(app).filter { !$0.kept }.map(\.name)
         return app
     }

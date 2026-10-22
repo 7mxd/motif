@@ -179,8 +179,10 @@ describe("the harness's scheme and its own Swift file", () => {
     expect(full).toContain("@testable import SwiftUIMin\n");
     // One App for the launch, its @State installed for each root view by a view that holds it (Task 15 follow-up).
     expect(full).toContain("extension SwiftUIMinApp: DynamicProperty {}");
-    expect(full).toContain("static let launched = SwiftUIMinApp()");
-    expect(full).toContain("ImageRenderer(content: MotifAppKeeper(app: launched))");
+    // A new App for each root view, so each screenshot of / starts from a fresh model on every SDK (final review).
+    expect(full).toContain("let made = SwiftUIMinApp()");
+    expect(full).toContain("ImageRenderer(content: MotifAppKeeper(app: made))");
+    expect(full).not.toContain("static let launched");
     expect(full).toContain("MotifMirror.windowContent(MotifAppState.app().body)");
     expect(full).toContain("SwiftUIMinApp keeps \\(list) in @State, which Motif couldn't keep for the root view");
     expect(full).toContain("guard let variant = MotifVariant(rawValue: id) else {");

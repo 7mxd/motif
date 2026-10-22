@@ -107,6 +107,14 @@ beforeAll(async () => {
   // The audit's planted problems (Task 10), drawn only where a test names the screen.
   writeFileSync(join(root, auditFile("SwiftUIMac")), AUDIT_SCREEN);
   writeFileSync(join(root, "SwiftUIMac/Screens/TinyScreen.swift"), TINY);
+  // An App with a delegate adaptor, as production Mac apps have: its root must still be drawn (Task 15's final review).
+  writeFileSync(join(root, "SwiftUIMac/MacDelegate.swift"), "import AppKit\n\nfinal class MacDelegate: NSObject, NSApplicationDelegate {}\n");
+  const appFile = join(root, "SwiftUIMac/SwiftUIMacApp.swift");
+  const app = readFileSync(appFile, "utf8")
+    .replace(/\r\n/g, "\n")
+    .replace("struct SwiftUIMacApp: App {\n", "struct SwiftUIMacApp: App {\n    @NSApplicationDelegateAdaptor(MacDelegate.self) private var delegate\n\n");
+  expect(app).toContain("@NSApplicationDelegateAdaptor(MacDelegate.self) private var delegate");
+  writeFileSync(appFile, app);
   writeFileSync(join(root, "design", "states", "typed.swift"), TYPED_STATE);
   writeFileSync(join(root, "design", "states", "throws.swift"), THROWS_STATE);
   home = tempDir("motif-swiftui-mac-home-");

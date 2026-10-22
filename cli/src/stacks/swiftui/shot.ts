@@ -454,7 +454,7 @@ const MISSING_DEPENDENCY = /No ObservableObject of type|No Observable object of 
 export function screenError(error: string, screen: string): string {
   if (!/ stopped the app: /.test(error) || !MISSING_DEPENDENCY.test(error)) return error;
   return screen === "/"
-    ? `${error} Motif draws the root view from the App's WindowGroup on its own, with the environment the App puts on its scene; what the App sets up elsewhere (in its init, or in onAppear) doesn't reach it. Give it inside the WindowGroup (WindowGroup { ContentView().environmentObject(…) }), or set it up in ${SETUP_FILE}.`
+    ? `${error} Motif draws the root view from a new App's WindowGroup, with what the App puts on its scene; the App's init runs for it, but what its delegate sets up at launch, and SwiftData's .modelContainer(for:) on the scene, don't reach it. Give it inside the WindowGroup (WindowGroup { ContentView().environmentObject(…) }), or set it up in ${SETUP_FILE}.`
     : `${error} Give the preview what the screen needs in its #Preview block (.environmentObject(…), .environment(…), .modelContainer(…)).`;
 }
 

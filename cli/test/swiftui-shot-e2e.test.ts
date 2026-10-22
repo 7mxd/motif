@@ -43,9 +43,19 @@ import SwiftUI
 @Observable final class Store {
     let container: ModelContainer
     var title = "Store ready"
+    /// How many times a root view opened it: 1 in every screenshot, when each root starts from a fresh App.
+    var opens = 0
     init() {
         container = try! ModelContainer(for: Note.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
     }
+}
+
+/// The App's delegate, kept by @UIApplicationDelegateAdaptor: Motif's root must draw an App that has one.
+final class AppDelegate: NSObject, UIApplicationDelegate {}
+
+/// Kept by the App with @StateObject, which Motif's root installs with the App's other property wrappers.
+final class Legacy: ObservableObject {
+    @Published var ready = true
 }
 
 struct NotesBadge: View {
@@ -71,8 +81,9 @@ const STATE = `@MainActor func motifState(_ app: MotifHarness) async throws {
     try await app.type("Sam", into: "Name")
     try await app.tap("Greet")
     try await app.waitFor("Hello, Sam")
-    // The App's own @State store, which its root opened: one store for the whole launch (2H Task 15).
-    try await app.waitFor("Store opened: 0 notes")
+    // The App's own @State store, which its root opened once: a fresh App, and store, for each root screenshot on every
+    // SDK. A store shared by the launch's root views would say 2, 3… (2H Task 15 and its final review).
+    try await app.waitFor("Store opened 1: 0 notes")
 }
 `;
 
@@ -113,13 +124,21 @@ beforeAll(async () => {
   const app = readFileSync(join(root, APP), "utf8")
     .replace(/\r\n/g, "\n")
     .replace("import SwiftUI\n", "import SwiftData\nimport SwiftUI\n")
-    .replace("struct SwiftUIMinApp: App {\n", "struct SwiftUIMinApp: App {\n    @State private var store = Store()\n\n")
+    // The store as State(initialValue:), whose value is made once with the App (as every @State is on Xcode 16's SDK):
+    // only a new App for each root view gives each screenshot a fresh one. A delegate adaptor, a @StateObject and the
+    // scene phase are what production Apps hold too (Task 15's final review): the root must still be drawn.
+    .replace(
+      "struct SwiftUIMinApp: App {\n",
+      "struct SwiftUIMinApp: App {\n    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate\n    @StateObject private var legacy = Legacy()\n    @Environment(\\.scenePhase) private var scenePhase\n    @State private var store: Store\n\n    init() {\n        _store = State(initialValue: Store())\n    }\n\n",
+    )
     .replace(
       "            ContentView()\n        }\n",
-      '            ContentView()\n                .motifTheme(variant: .partner)\n                .onAppear { store.title = "Store opened" }\n        }\n        .environment(store)\n        .modelContainer(for: Note.self, inMemory: true)\n',
+      '            ContentView()\n                .motifTheme(variant: .partner)\n                .onAppear {\n                    store.opens += 1\n                    store.title = "Store opened \\(store.opens)"\n                }\n        }\n        .environment(store)\n        .modelContainer(for: Note.self, inMemory: true)\n',
     );
   expect(app).toContain(".motifTheme(variant: .partner)");
-  expect(app).toContain('.onAppear { store.title = "Store opened" }');
+  expect(app).toContain('store.title = "Store opened \\(store.opens)"');
+  expect(app).toContain("@UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate");
+  expect(app).toContain("_store = State(initialValue: Store())");
   expect(app).toContain(".modelContainer(for: Note.self, inMemory: true)");
   writeFileSync(join(root, APP), app);
   writeFileSync(join(root, "SwiftUIMin/Notes.swift"), NOTES);

@@ -405,7 +405,10 @@ describe("the SwiftUI guide", () => {
       ".motifTheme(", "@Environment(\\.motifColors)", ".motifFont(", "MotifSpace.", "MotifRadius.", ".motifShadow(", "MotifType.", "Arabic companion",
       "UIAppFonts", "ATSApplicationFontsPath", "fonts.google.com", "Info.plist", "AccentColor",
       "## Switching variants", "@AppStorage", "MotifVariant(rawValue:", ".motifTheme(variant:", "MotifTheme.debugVariantOverride", "colours only",
+      // A new App for each root screenshot: its init runs; its delegate's launch work doesn't (final review).
+      "`App`'s `init` runs before each screenshot of the root",
     ]);
+    expect(read("swiftui/tokens.md")).not.toContain("what the `App` sets up in its `init`");
   });
 
   test("components.md: where views live, private views, button styles, every state, names, 44 pt and focus", () => {
@@ -437,8 +440,9 @@ describe("the SwiftUI guide", () => {
       "design/states/Setup.swift", "func motifSetup(variant: String, locale: Locale, dark: Bool)", "@MainActor func motifState(_ app: MotifHarness) async throws",
       "MotifHarness", "app.tap(", "app.type(", "app.waitFor(", "app.exists(", "15 seconds", "top-level",
       "--screen", "#Preview", "--rtl", "--state", "a Mac", "1440×900", "900×700", "--sizes 1440",
-      // The App's own @State is kept for the root, and the note when it can't be (Apple's Landmarks, Task 15 and its follow-up).
-      "its own `@State` (`@State private var model = AppModel()`) is kept for the root", "the run's note names the `@State` that wasn't kept", "@Previewable @State",
+      // A new App, and its own @State, for each root screenshot, and the note when it can't be kept (Task 15, final review).
+      "a new `App` for each screenshot of `/`", "the run's note names the `@State` that wasn't kept", "@Previewable @State",
+      "`App`'s `init` runs before each screenshot of the root",
     ]);
   });
 

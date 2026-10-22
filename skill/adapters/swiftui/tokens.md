@@ -40,7 +40,7 @@ struct MyAppApp: App {
 }
 ```
 
-`.motifTheme()` is a view modifier, so it goes on the root view inside the `WindowGroup`; a scene has none. What the app gives its scene (`.environment(store)`, `.modelContainer(container)`) reaches the views as usual, and Motif's screenshots give it to the root view too. Two things don't reach the screenshots: SwiftData's `.modelContainer(for:)` on the scene (the run's note says so: make the container yourself and pass `.modelContainer(container)`, or give it inside the `WindowGroup`), and what the `App` sets up in its `init` or `.onAppear` (do that in `design/states/Setup.swift`, [checks](checks.md#the-setup-file)). In a project made before Xcode 16, add `MotifTheme.swift` to the app target first, as `motif tokens` says.
+`.motifTheme()` is a view modifier, so it goes on the root view inside the `WindowGroup`; a scene has none. What the app gives its scene (`.environment(store)`, `.modelContainer(container)`) reaches the views as usual, and Motif's screenshots give it to the root view too. The `App`'s `init` runs before each screenshot of the root, as Motif makes a new `App` for each. Two things don't reach the screenshots: SwiftData's `.modelContainer(for:)` on the scene (the run's note says so: make the container yourself and pass `.modelContainer(container)`, or give it inside the `WindowGroup`), and what the app's delegate (`@UIApplicationDelegateAdaptor`) sets up when the app launches (do that in `design/states/Setup.swift`, [checks](checks.md#the-setup-file)). In a project made before Xcode 16, add `MotifTheme.swift` to the app target first, as `motif tokens` says.
 
 Add `.motifTheme()` to each `#Preview` too, so Xcode's canvas shows the guide's look. Motif's screenshots add it themselves.
 
