@@ -71,6 +71,8 @@ export async function prepareWorkspace(c: EvalCase, dir: string, run: Run): Prom
   mkdirSync(ws.app, { recursive: true });
   if (c.brief) {
     copyFileSync(join(BRIEFS, `${c.brief}.md`), join(ws.app, "brief.md"));
+    // A SwiftUI brief starts from the project Xcode's iOS App template makes, beside the brief.
+    if (c.starter) assemble(c.starter, ws.app, { into: true });
     return ws;
   }
   assemble(c.fixture!, ws.app);

@@ -7,7 +7,7 @@ A running tracker: log each run's distance, time and pace, follow a simple plan 
 People who took up running in the last year, aged 18 to 50, working towards their first 5 or 10 kilometres. Many run before work or after sunset to miss the heat, and check the app with sweaty hands at the end of a run or on the sofa later. About half read Arabic first and half English.
 
 ## Platform
-A SwiftUI app for iPhone, phone first, in English and Arabic (Arabic right to left). There's no Xcode project yet, and I can't open Xcode for this one: make the project yourself, as Xcode's iOS App template would (named Masar, SwiftUI and Swift, no storage).
+A SwiftUI app for iPhone, phone first, in English and Arabic (Arabic right to left). The Xcode project is already made from Xcode's iOS App template, in this folder: Masar.xcodeproj, with SwiftUI and Swift, no storage, and nothing in it yet but the template's Hello, world! screen.
 
 ## Brand
 Named after the Arabic word for a path or a track (مسار): steady, clear, always going somewhere. No logo, colours or fonts yet, and no design files: everything starts here.

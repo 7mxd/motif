@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
 import { runCmd, type Run } from "../../tests/evals/tools";
 import { changes, findApp, patch, prepareWorkspace } from "../../tests/evals/workspace";
+import { swiftUIApp } from "../../cli/src/stacks/swiftui/project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -126,6 +127,23 @@ describe("a case's folder", () => {
       expect(await changes(ws, recording)).toEqual([]);
     }
     expect(commands).toEqual([]);
+  });
+
+  test("D on SwiftUI: the brief beside a starter Xcode App project, as Xcode's iOS App template makes it; nothing recorded", async () => {
+    const ws = await prepareWorkspace(byId("d-masar"), join(tempDir("motif-ws-"), "d-masar"), run);
+    expect(readdirSync(ws.app).sort()).toEqual(["Masar", "Masar.xcodeproj", "brief.md"]);
+    expect(readdirSync(join(ws.app, "Masar")).sort()).toEqual(["Assets.xcassets", "ContentView.swift", "MasarApp.swift"]);
+    expect(swiftUIApp(ws.app)).toEqual({ kind: "xcodeproj", name: "Masar", project: "Masar.xcodeproj", platforms: ["ios"], sourceRoot: "Masar" });
+    const pbx = readFileSync(join(ws.app, "Masar.xcodeproj", "project.pbxproj"), "utf8");
+    for (const s of ["objectVersion = 77;", "isa = PBXFileSystemSynchronizedRootGroup;", "IPHONEOS_DEPLOYMENT_TARGET = 17.0;", "SWIFT_VERSION = 5.0;", "GENERATE_INFOPLIST_FILE = YES;"]) expect(pbx).toContain(s);
+    // No design guide yet, and nothing of Motif's: the session starts it.
+    expect(existsSync(join(ws.app, "DESIGN.md"))).toBe(false);
+    expect(findApp(ws.app)).toBeNull();
+    expect(ws.baseline).toBeUndefined();
+    // The other briefs still start from an empty folder.
+    for (const id of ["d-stride", "d-sahm", "d-nabta", "d-rihla"]) {
+      expect(readdirSync((await prepareWorkspace(byId(id), join(tempDir("motif-ws-"), id), run)).app)).toEqual(["brief.md"]);
+    }
   });
 
   test("D: an empty folder holding the brief, nothing recorded", async () => {

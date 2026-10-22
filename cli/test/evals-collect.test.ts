@@ -911,6 +911,40 @@ describe("new components on SwiftUI, from the session's diff", () => {
     expect(swiftUIComponents(diff)).toEqual({ newComponents: [], screens: ["OrdersScreen", "RewardsScreen", "WelcomeView", "ReceiptScreen"], screenParts: [] });
   });
 
+  test("a preview alone makes a screen only of a *Screen struct or the case's own page: a row with its own preview is a component", () => {
+    const diff = [
+      newFile(`${APP}/Components/OrderRowView.swift`, "struct OrderRowView: View {\n    var body: some View { Text(\"o\") }\n}\n\n#Preview {\n    OrderRowView()\n}"),
+      newFile(`${APP}/Features/Orders/OrdersView.swift`, "struct OrdersView: View {\n    var body: some View { Text(\"o\") }\n}\n\n#Preview(\"Orders\") {\n    OrdersView()\n}"),
+      newFile(`${APP}/Features/Rewards/RewardsScreen.swift`, "struct RewardsScreen: View {\n    var body: some View { Text(\"r\") }\n}\n\n#Preview {\n    RewardsScreen()\n}"),
+    ].join("\n");
+    // OrdersView is b-swiftui-orders' page ("Orders"); for any other case it's a component like OrderRowView.
+    expect(swiftUIComponents(diff, "Orders")).toEqual({ newComponents: ["OrderRowView"], screens: ["OrdersView", "RewardsScreen"], screenParts: [] });
+    expect(swiftUIComponents(diff)).toEqual({ newComponents: ["OrderRowView", "OrdersView"], screens: ["RewardsScreen"], screenParts: [] });
+    expect(componentFacts(byId("b-swiftui-orders"), diff)).toMatchObject({ newComponents: ["OrderRowView"], screens: ["OrdersView", "RewardsScreen"] });
+  });
+
+  test("nesting is read from braces, not indentation: a struct under #if DEBUG is still top level, one in an extension isn't", () => {
+    const diff = newFile(`${APP}/Features/Orders/OrdersScreen.swift`, [
+      "#if DEBUG",
+      "    struct DebugBadge: View {",
+      "        var body: some View { Text(\"debug\") }",
+      "    }",
+      "#else",
+      "struct ReleaseBadge: View { var body: some View { Text(\"{\") } }",
+      "#endif",
+      "",
+      "extension OrdersScreen {",
+      "struct Row: View {",
+      "    var body: some View { Text(\"}\") }",
+      "}",
+      "}",
+      "",
+      "// }",
+      "struct AfterAll: View { var body: some View { EmptyView() } }",
+    ].join("\n"));
+    expect(swiftUIComponents(diff)).toEqual({ newComponents: ["DebugBadge", "ReleaseBadge", "AfterAll"], screens: [], screenParts: ["Row"] });
+  });
+
   test("componentFacts uses the SwiftUI rule for a SwiftUI case, and the guide's lines for what's recorded", () => {
     const diff = [
       newFile(`${APP}/Components/OrderRow.swift`, "struct OrderRow: View {\n    var body: some View { Text(\"o\") }\n}"),
@@ -1088,7 +1122,7 @@ describe("test C on the SwiftUI seeded app", () => {
 });
 
 describe("test D on SwiftUI", () => {
-  const HOME = "import SwiftUI\n\nstruct HomeScreen: View {\n    var body: some View { Text(\"This week\") }\n}\n\n#Preview(\"Home\") {\n    HomeScreen()\n}\n";
+  const screen = (type: string, title: string) => `import SwiftUI\n\nstruct ${type}: View {\n    var body: some View { Text("${title}") }\n}\n\n#Preview("${title}") {\n    ${type}()\n}\n`;
   async function masar(withHome: boolean) {
     const calls: { cmd: string[]; cwd: string }[] = [];
     const recordingRun: Run = async (cmd, cwd, t, env) => {
@@ -1097,11 +1131,14 @@ describe("test D on SwiftUI", () => {
       return { code: 0, stdout: "ok", stderr: "", timedOut: false };
     };
     const ws = await prepareWorkspace(byId("d-masar"), join(tempDir("motif-col-"), "ds"), recordingRun);
-    const app = join(ws.app, "masar");
-    assemble("swiftui-contract-app", app);
+    // What the session leaves: a design guide beside the starter project, and the screens the prompt names.
+    const app = ws.app;
+    writeFileSync(join(app, "DESIGN.md"), readFileSync(join(REPO, "tests/fixtures/swiftui-contract-app/DESIGN.md"), "utf8"));
+    mkdirSync(join(app, "Masar/Features/SignIn"), { recursive: true });
+    writeFileSync(join(app, "Masar/Features/SignIn/SignInScreen.swift"), screen("SignInScreen", "Sign in"));
     if (withHome) {
-      mkdirSync(join(app, "Qahwa/Features/Home"), { recursive: true });
-      writeFileSync(join(app, "Qahwa/Features/Home/HomeScreen.swift"), HOME);
+      mkdirSync(join(app, "Masar/Features/Home"), { recursive: true });
+      writeFileSync(join(app, "Masar/Features/Home/HomeScreen.swift"), screen("HomeScreen", "Home"));
     }
     const seen: string[][] = [];
     const recording = async (args: string[]) => {
@@ -1118,7 +1155,7 @@ describe("test D on SwiftUI", () => {
       command: "shot", ok: false, exitCode: 1, shots: [], findings: [{ id: "F-001" }, { id: "F-002" }],
       routes: [
         { route: "/", status: 200, shots: [] },
-        { route: "SignInScreen.swift:59", status: 200, shots: [] },
+        { route: "SignInScreen.swift:7", status: 200, shots: [] },
         { route: "HomeScreen.swift:7", status: 200, pageErrors: ["HomeScreen stopped the app"], shots: [] },
       ],
     };
@@ -1130,12 +1167,12 @@ describe("test D on SwiftUI", () => {
       expect(f.typecheck).toEqual({ code: 0, timedOut: false, command: XCODEBUILD });
       expect(m.calls).toEqual([{
         cmd: [
-          "xcodebuild", "build", "-project", "Qahwa.xcodeproj", "-scheme", "Qahwa", "-destination", "generic/platform=iOS Simulator",
+          "xcodebuild", "build", "-project", "Masar.xcodeproj", "-scheme", "Masar", "-destination", "generic/platform=iOS Simulator",
           "-derivedDataPath", join(m.ws.dir, "DerivedData"), "-quiet", "CODE_SIGNING_ALLOWED=NO",
         ],
         cwd: m.app,
       }]);
-      expect(m.seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/", "--screen", "SignInScreen.swift:59,HomeScreen.swift:7", "--sizes", "390"]);
+      expect(m.seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/", "--screen", "SignInScreen.swift:7,HomeScreen.swift:7", "--sizes", "390"]);
       expect(f.screens).toEqual([
         { route: "/", status: 200, pageErrors: 0 },
         { route: "Sign in", status: 200, pageErrors: 0 },
@@ -1152,10 +1189,10 @@ describe("test D on SwiftUI", () => {
   test("a screen with no preview isn't asked for, and is reported as not captured", async () => {
     const m = await masar(false);
     const saved = outputs.shot;
-    outputs.shot = { command: "shot", ok: true, exitCode: 0, shots: [], routes: [{ route: "/", status: 200, shots: [] }, { route: "SignInScreen.swift:59", status: 200, shots: [] }] };
+    outputs.shot = { command: "shot", ok: true, exitCode: 0, shots: [], routes: [{ route: "/", status: 200, shots: [] }, { route: "SignInScreen.swift:7", status: 200, shots: [] }] };
     try {
       const f = await collectD(byId("d-masar"), m.ws, { run: m.recordingRun, motif: m.recording, judge: noJudge }, join(m.ws.dir, "results"));
-      expect(m.seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/", "--screen", "SignInScreen.swift:59", "--sizes", "390"]);
+      expect(m.seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/", "--screen", "SignInScreen.swift:7", "--sizes", "390"]);
       expect(gradeD(f).criteria.find((k) => k.id === "screens")).toMatchObject({ pass: false, detail: "Didn't render: Home (not captured)." });
     } finally {
       outputs.shot = saved;

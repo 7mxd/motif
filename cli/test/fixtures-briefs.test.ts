@@ -23,8 +23,9 @@ describe("the new-app briefs", () => {
       } else if (file === "rihla.md") {
         for (const s of ["Expo (React Native)", "English and Arabic", "phone first"]) expect(platform).toContain(s);
       } else if (file === "masar.md") {
-        // An Xcode project has no command-line starter, so the brief answers the question init asks about making one.
-        for (const s of ["SwiftUI", "iPhone", "English and Arabic", "phone first", "Xcode project"]) expect(platform).toContain(s);
+        // An Xcode project has no command-line starter, so the case starts from one made from Xcode's iOS App template.
+        for (const s of ["SwiftUI", "iPhone", "English and Arabic", "phone first", "already made from Xcode's iOS App template"]) expect(platform).toContain(s);
+        expect(platform).not.toContain("make the project yourself");
       } else expect(platform).toContain("React web app");
     }
   });

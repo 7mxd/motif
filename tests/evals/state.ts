@@ -5,7 +5,8 @@ import { join } from "node:path";
 import type { Grade } from "./grade";
 import type { Workspace } from "./workspace";
 
-export type CaseStatus = "pending" | "session-done" | "graded" | "interrupted" | "error";
+/** "skipped": a Mac-only case on a run off macOS; its note says why, and resuming on a Mac runs it. */
+export type CaseStatus = "pending" | "session-done" | "graded" | "interrupted" | "error" | "skipped";
 
 export interface SessionSummary { end: string; model: string; turns: number; minutes: number; costUsd: number; denials: string[]; problems: string[] }
 

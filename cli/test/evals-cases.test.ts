@@ -122,7 +122,9 @@ describe("the eval cases (spec §13.2)", () => {
     expect(review.prompt).toContain("don't change the app's code");
     for (const r of review.routes) expect(review.prompt).toContain(r);
     const masar = CASES.find((c) => c.id === "d-masar")!;
-    expect(masar).toMatchObject({ test: "D", brief: "masar", routes: ["/", "Sign in", "Home"] });
+    expect(masar).toMatchObject({ test: "D", brief: "masar", starter: "swiftui-starter-masar", routes: ["/", "Sign in", "Home"] });
+    // Only Masar starts from a project: an Xcode project has no command-line starter, and the skill says not to write one by hand.
+    expect(CASES.filter((c) => c.starter).map((c) => c.id)).toEqual(["d-masar"]);
     expect(masar.prompt).toContain("root view");
     for (const r of ["Sign in", "Home"]) expect(masar.prompt).toContain(`"${r}"`);
     expect(readFileSync(join(REPO, "tests/fixtures/briefs/masar.md"), "utf8")).toContain("SwiftUI");

@@ -7,6 +7,8 @@ export const FIXTURE_NAMES = [
   "compose-contract-app", "compose-seeded-app",
   "rn-contract-app", "rn-seeded-app",
   "swiftui-contract-app", "swiftui-seeded-app",
+  // Not an app with a design guide: the project Xcode's iOS App template makes, which test D's d-masar starts from.
+  "swiftui-starter-masar",
 ] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
 
@@ -39,8 +41,13 @@ function copyKept(from: string, dest: string): void {
   }
 }
 
-export function assemble(fixture: FixtureName, dest: string): void {
-  if (existsSync(dest) && readdirSync(dest).length > 0) throw new Error(`${dest} isn't empty; a fixture is only assembled into an empty folder.`);
+/** `into`: copy beside what the folder already holds (a test D brief), never over it. */
+export function assemble(fixture: FixtureName, dest: string, opts: { into?: boolean } = {}): void {
+  if (!opts.into && existsSync(dest) && readdirSync(dest).length > 0) throw new Error(`${dest} isn't empty; a fixture is only assembled into an empty folder.`);
+  if (opts.into) {
+    const clash = keptFiles(join(FIXTURES, fixture)).find((f) => existsSync(join(dest, f)));
+    if (clash) throw new Error(`${join(dest, clash)} is there already; ${fixture} is only copied beside other files, never over them.`);
+  }
   mkdirSync(dest, { recursive: true });
   const base = BASES[fixture];
   copyKept(join(FIXTURES, base ?? fixture), dest);

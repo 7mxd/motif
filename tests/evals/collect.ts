@@ -516,12 +516,24 @@ interface SwiftView { name: string; isPrivate: boolean; nested: boolean }
 const SWIFT_STRUCT =
   /^([ \t]*)(?:@[\w.]+(?:\([^)\n]*\))?\s+)*((?:(?:public|internal|private|fileprivate|open|final|nonisolated)\s+)*)struct\s+([A-Za-z_]\w*)\s*(?:<[^>{\n]*>)?\s*:\s*([^{\n]*?)\s*(?:\bwhere\b[^{\n]*)?(?:\{|$)/gm;
 
-/** The structs that conform to View in some Swift lines, with comments and strings masked; an indented one is inside another type. */
+/**
+ * The structs that conform to View in some Swift lines, with comments and strings masked. One inside braces (another
+ * type, an extension) is nested: read from the braces before it, not its indentation, and `#if` lines hold none.
+ */
 function swiftViews(lines: string[]): SwiftView[] {
-  const text = maskStrings(maskComments(lines.join("\n"), "swift"), "swift");
-  return [...text.matchAll(SWIFT_STRUCT)]
-    .filter((m) => m[4]!.split(",").some((t) => ["View", "SwiftUI.View"].includes(t.trim())))
-    .map((m) => ({ name: m[3]!, isPrivate: /\b(private|fileprivate)\b/.test(m[2]!), nested: m[1]!.length > 0 }));
+  const text = maskStrings(maskComments(lines.join("\n"), "swift"), "swift").replace(/^[ \t]*#(?:if|elseif|else|endif)\b.*$/gm, (l) => " ".repeat(l.length));
+  const found: SwiftView[] = [];
+  let depth = 0;
+  let at = 0;
+  for (const m of text.matchAll(SWIFT_STRUCT)) {
+    for (; at < m.index!; at++) {
+      if (text[at] === "{") depth++;
+      else if (text[at] === "}") depth = Math.max(0, depth - 1);
+    }
+    if (!m[4]!.split(",").some((t) => ["View", "SwiftUI.View"].includes(t.trim()))) continue;
+    found.push({ name: m[3]!, isPrivate: /\b(private|fileprivate)\b/.test(m[2]!), nested: depth > 0 });
+  }
+  return found;
 }
 
 /** Where a call's arguments and trailing closures end in masked Swift (`label:` closures included), from just after its name. */
@@ -541,17 +553,23 @@ function callEnd(s: string, from: number): number {
   }
 }
 
-const SCREEN_CONTEXT = /#Preview\b|\b(?:WindowGroup|NavigationStack|NavigationView|NavigationSplitView|TabView|NavigationLink)\b|\.(?:navigationDestination|sheet|fullScreenCover|popover)\b/g;
+const SCREEN_CONTEXT = /\b(?:WindowGroup|NavigationStack|NavigationView|NavigationSplitView|TabView|NavigationLink)\b|\.(?:navigationDestination|sheet|fullScreenCover|popover)\b/g;
 
-/** The types some Swift code shows as a screen: in a #Preview, a WindowGroup, a NavigationStack or TabView, a navigation link or destination, or a sheet. */
-function shownAsScreens(code: string): Set<string> {
+/**
+ * The types some Swift code shows as a screen: those a #Preview shows (a NavigationStack inside one included), and those
+ * the app shows as one, in a WindowGroup, a NavigationStack or TabView, a navigation link or destination, or a sheet.
+ */
+function shownAsScreens(code: string): { byPreview: Set<string>; byApp: Set<string> } {
   const s = maskStrings(maskComments(code, "swift"), "swift");
-  const names = new Set<string>();
+  const types = (from: number, to: number) => [...s.slice(from, to).matchAll(/\b([A-Z]\w*)\s*[({]/g)].map((n) => n[1]!);
+  const previews = [...s.matchAll(/#Preview\b/g)].map((m) => [m.index!, callEnd(s, m.index! + m[0].length)] as const);
+  const byPreview = new Set(previews.flatMap(([from, to]) => types(from, to)));
+  const byApp = new Set<string>();
   for (const m of s.matchAll(SCREEN_CONTEXT)) {
-    const region = s.slice(m.index!, callEnd(s, m.index! + m[0].length));
-    for (const n of region.matchAll(/\b([A-Z]\w*)\s*[({]/g)) names.add(n[1]!);
+    if (previews.some(([from, to]) => m.index! >= from && m.index! < to)) continue;
+    for (const t of types(m.index!, callEnd(s, m.index! + m[0].length))) byApp.add(t);
   }
-  return names;
+  return { byPreview, byApp };
 }
 
 /** Swift files that are never components: tests, Motif's screenshot harness, its folder, the theme folder and the screenshot setup in design/. */
@@ -560,26 +578,35 @@ const notSwiftUIApp = (path: string) =>
 
 /**
  * SwiftUI's new components, from the session's diff: public or internal View structs it adds at the top level outside
- * the theme. A screen (a *Screen or *View struct a #Preview, the root's WindowGroup, a NavigationStack or TabView, a
- * navigation link or destination, or a sheet shows) is the page itself; private and nested ones are parts. The theme
- * folder (Design/), a file that starts with Motif's header, tests and the screenshot harness never count, and a struct the
- * diff also removes (moved or renamed in place) isn't new.
+ * the theme. A screen is the page itself: a *Screen or *View struct the root's WindowGroup, a NavigationStack or TabView,
+ * a navigation link or destination, or a sheet shows; one only a #Preview shows is a screen when it's a *Screen or the
+ * case's own page (`page`, the preview's title: OrdersView for "Orders"), so a row with its own preview is still a
+ * component. Private and nested ones are parts. The theme folder (Design/), a file that starts with Motif's header, tests
+ * and the screenshot harness never count, and a struct the diff also removes (moved or renamed in place) isn't new.
  */
-export function swiftUIComponents(diff: string): SwiftUIComponents {
+export function swiftUIComponents(diff: string, page?: string): SwiftUIComponents {
   const all = diffFiles(diff);
   const removed = new Set(all.flatMap((f) => swiftViews(f.removed).map((v) => v.name)));
   const kept = all.filter((f) => !f.deleted && !notSwiftUIApp(f.path));
   // A changed file comes with its context lines, so the NavigationStack or #Preview around a new line is there too.
-  const shown = new Set(kept.flatMap((f) => [...shownAsScreens(f.after.join("\n"))]));
+  const shown = kept.map((f) => shownAsScreens(f.after.join("\n")));
+  const byApp = new Set(shown.flatMap((x) => [...x.byApp]));
+  const byPreview = new Set(shown.flatMap((x) => [...x.byPreview]));
+  const pageTypes = page ? screenTypes(page) : [];
+  const isScreen = (name: string) =>
+    /.(Screen|View)$/.test(name) && (byApp.has(name) || (byPreview.has(name) && (name.endsWith("Screen") || pageTypes.includes(name))));
   const found: SwiftUIComponents = { newComponents: [], screens: [], screenParts: [] };
   const seen = new Set<string>();
   for (const f of kept) {
-    if (reallyAdded(f)[0]?.startsWith("// Generated by Motif")) continue;
-    for (const v of swiftViews(reallyAdded(f))) {
-      if (removed.has(v.name) || seen.has(v.name)) continue;
+    const added = reallyAdded(f);
+    if (added[0]?.startsWith("// Generated by Motif")) continue;
+    const names = new Set(swiftViews(added).map((v) => v.name));
+    // Read in the file's lines after the change, context included, so a struct added inside a type it shows is nested.
+    for (const v of swiftViews(f.after)) {
+      if (!names.has(v.name) || removed.has(v.name) || seen.has(v.name)) continue;
       seen.add(v.name);
       if (v.isPrivate || v.nested) found.screenParts.push(v.name);
-      else if (/.(Screen|View)$/.test(v.name) && shown.has(v.name)) found.screens.push(v.name);
+      else if (isScreen(v.name)) found.screens.push(v.name);
       else found.newComponents.push(v.name);
     }
   }
@@ -616,7 +643,7 @@ export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComp
       : isReactNative(c)
         ? rnComponents(diff)
         : isSwiftUI(c)
-          ? swiftUIComponents(diff)
+          ? swiftUIComponents(diff, c.test === "B" ? c.routes[0] : undefined)
           : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
   return { ...found, recorded: recordedIn(diff, found.newComponents) };
 }

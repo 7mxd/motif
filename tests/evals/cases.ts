@@ -15,6 +15,11 @@ export interface EvalCase {
   fixture?: FixtureName;
   /** D: tests/fixtures/briefs/<brief>.md, copied into the empty folder as brief.md. */
   brief?: string;
+  /**
+   * D: a project the brief starts from, copied in beside it. Only for a stack with no command-line starter (an Xcode
+   * App project, which the SwiftUI guide says never to write by hand); the others start from an empty folder.
+   */
+  starter?: FixtureName;
   /** B: the feature's page. C: the screens reviewed. D: the starter screens. */
   routes: string[];
   prompt: string;
@@ -50,7 +55,11 @@ export const isReactNative = (c: EvalCase): boolean => c.stack === "react-native
 /** A case on a SwiftUI app: it needs a Mac with Xcode and an iOS simulator. */
 export const isSwiftUI = (c: EvalCase): boolean => c.stack === "swiftui";
 
-const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+export const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+
+/** Why a Mac-only case is skipped elsewhere, and how to run it, as a skipped case's note in the run's record. */
+export const macOnlyNote = (runId: string) =>
+  `It needs a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Resume this run on a Mac to run it: bun tests/evals/run.ts --resume ${runId}`;
 
 /** The cases that can run on this platform, and the Mac-only ones set aside off macOS with the reason (empty when none are). */
 export function macOnly(cases: EvalCase[], platform: NodeJS.Platform): { run: EvalCase[]; skipped: EvalCase[]; reason: string } {
@@ -110,9 +119,12 @@ const newApp = (brief: string, title: string, stack?: StackId, home = "home"): E
   ...(stack ? { stack } : {}),
 });
 
-/** A new SwiftUI app from a brief, on a Mac only: its root view is the welcome screen, and the other two are the #Previews the prompt names. */
-const swiftUINewApp = (brief: string, title: string): EvalCase => ({
-  id: `d-${brief}`, test: "D", title, brief, routes: ["/", "Sign in", "Home"],
+/**
+ * A new SwiftUI app from a brief, on a Mac only, starting from the project Xcode's iOS App template makes (there's no
+ * command-line starter): its root view is the welcome screen, and the other two are the #Previews the prompt names.
+ */
+const swiftUINewApp = (brief: string, title: string, starter: FixtureName): EvalCase => ({
+  id: `d-${brief}`, test: "D", title, brief, starter, routes: ["/", "Sign in", "Home"],
   prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Make the welcome screen the app's root view, and give the sign-in and home screens #Preview blocks titled "Sign in" and "Home".\n\n${UNATTENDED}`,
   maxTurns: 400, maxBudgetUsd: 80, minutes: 180, stack: "swiftui", mac: true,
 });
@@ -195,7 +207,7 @@ ${UNATTENDED}`,
   newApp("sahm", "New Flutter app: Sahm (university carpools)", "flutter"),
   newApp("nabta", "New Compose app: Nabta (plant care)", "compose"),
   newApp("rihla", "New Expo app: Rihla (a trip planner)", "react-native", "trips"),
-  swiftUINewApp("masar", "New SwiftUI app: Masar (a running tracker)"),
+  swiftUINewApp("masar", "New SwiftUI app: Masar (a running tracker)", "swiftui-starter-masar"),
 ];
 
 export function selectCases(all: EvalCase[], pick: { tests?: string[]; ids?: string[] }): EvalCase[] | { error: string } {

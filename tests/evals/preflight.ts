@@ -33,8 +33,17 @@ export interface PreflightDeps {
   platform?: NodeJS.Platform;
 }
 
-/** The cases that need neither Flutter, a JDK and the Android SDK, nor a Mac: the web ones and the Expo ones. */
-const webAndExpoCases = () => CASES.filter((c) => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c)).map((c) => c.id);
+/**
+ * The cases to run instead when Flutter or the Android SDK is missing: the web and Expo ones, and on a Mac the SwiftUI
+ * ones too, with what to call them.
+ */
+function otherCases(d: PreflightDeps): { ids: string[]; what: string } {
+  const mac = (d.platform ?? process.platform) === "darwin";
+  return {
+    ids: CASES.filter((c) => !isFlutter(c) && !isCompose(c) && (mac || !isSwiftUI(c))).map((c) => c.id),
+    what: mac ? "the web, Expo and SwiftUI cases" : "the web and Expo cases",
+  };
+}
 
 /**
  * Why the SwiftUI cases can't run here, naming the cases that can: off a Mac, that they need one; on a Mac, doctor's own
@@ -73,9 +82,9 @@ async function flutterProblem(d: PreflightDeps, cwd: string): Promise<string | n
   const version = await flutterVersion(d, cwd);
   if (version && !olderThanFlutterMin(version)) return null;
   const flutterCases = CASES.filter(isFlutter).map((c) => c.id);
-  const others = webAndExpoCases();
+  const others = otherCases(d);
   const found = version ? `This is Flutter ${version}; run flutter upgrade, or ${FLUTTER_INSTALL}` : `Flutter wasn't found on the PATH (or didn't say its version): ${FLUTTER_INSTALL}`;
-  return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN} or later. ${found}, then run this again. Or run the web and Expo cases without it: --cases ${others.join(",")}`;
+  return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN} or later. ${found}, then run this again. Or run ${others.what} without it: --cases ${others.ids.join(",")}`;
 }
 
 /** Why the Compose cases can't run here (doctor's own lines for the JDK and the SDK), naming the cases that can; nothing when both are found. */
@@ -84,8 +93,8 @@ function androidProblem(d: PreflightDeps, repo: string): string | null {
   const needed = composeDoctor(deps, { root: repo, apps: [{ path: ".", stack: "compose", source: "detected" }] }).filter((i) => i.status === "needed");
   if (needed.length === 0) return null;
   const composeCases = CASES.filter(isCompose).map((c) => c.id);
-  const others = webAndExpoCases();
-  return `The Compose cases (${composeCases.join(", ")}) need a JDK 17 or later and the Android SDK. ${needed.map((i) => i.detail).join(" ")} Then run this again. Or run the web and Expo cases without them: --cases ${others.join(",")}`;
+  const others = otherCases(d);
+  return `The Compose cases (${composeCases.join(", ")}) need a JDK 17 or later and the Android SDK. ${needed.map((i) => i.detail).join(" ")} Then run this again. Or run ${others.what} without them: --cases ${others.ids.join(",")}`;
 }
 
 export async function preflight(

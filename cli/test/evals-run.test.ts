@@ -514,6 +514,7 @@ describe("the eval runner (review of batch F)", () => {
 describe("the eval runner and the Mac-only cases (spec §9)", () => {
   const reason =
     "Skipping b-swiftui-orders and c-swiftui: they need a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Run them on a Mac: bun tests/evals/run.ts --cases b-swiftui-orders,c-swiftui";
+  const SKIP_NOTE = `It needs a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Resume this run on a Mac to run it: bun tests/evals/run.ts --resume ${RUN}`;
 
   test("off a Mac, they're skipped with the reason and the others run; nothing is prepared for them", async () => {
     for (const platform of ["win32", "linux"] as const) {
@@ -529,8 +530,51 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
       expect(h.lines).toContain(reason);
       expect(seen).toEqual([false]);
       expect(h.calls.prepare).toEqual(["b-search"]);
-      expect(Object.keys((loadRun(h.where.results, RUN) as RunState).cases)).toEqual(["b-search"]);
+      // Recorded as skipped, with the reason, so the report says why and a Mac can finish the run.
+      const cases = (loadRun(h.where.results, RUN) as RunState).cases;
+      expect(Object.keys(cases)).toEqual(["b-search", "b-swiftui-orders", "c-swiftui"]);
+      for (const id of ["b-swiftui-orders", "c-swiftui"]) expect(cases[id]).toEqual({ status: "skipped", attempts: 0, note: SKIP_NOTE });
+      const md = readFileSync(join(h.where.results, RUN, "report.md"), "utf8");
+      expect(md).toContain(`## c-swiftui: Review of the seeded SwiftUI app\n\nSkipped: ${SKIP_NOTE}`);
+      expect(md).toContain("1 of 13 cases graded; b-swiftui-orders was skipped (it needs a Mac).");
     }
+  });
+
+  test("off a Mac, a whole run passes when every case it can run passes: verdicts and exit code agree", async () => {
+    const h = harness({ platform: "win32" });
+    expect(await runEvals(["--work", h.work], h.deps, h.where)).toBe(0);
+    expect(h.calls.prepare).toHaveLength(23);
+    const { verdicts } = JSON.parse(readFileSync(join(h.where.results, RUN, "report.json"), "utf8"));
+    expect(verdicts).toEqual([
+      { test: "B", status: "pass", detail: "All 12 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
+      { test: "C", status: "pass", detail: "All 5 cases run passed; c-swiftui was skipped (it needs a Mac)." },
+      { test: "D", status: "pass", detail: "The new apps passed, and B and C passed with no design sources connected; d-masar was skipped (it needs a Mac)." },
+    ]);
+    // A failing case that ran still fails it.
+    const f = harness({ platform: "win32", collect: async (c) => (c.id === "c-review" ? { pass: false, criteria: [], metrics: {} } : PASS) });
+    expect(await runEvals(["--work", f.work], f.deps, f.where)).toBe(1);
+  });
+
+  test("a run started off a Mac is finished on one: its skipped cases run there", async () => {
+    const pc = harness({ platform: "win32" });
+    expect(await runEvals(["--cases", "b-search,b-swiftui-orders", "--work", pc.work], pc.deps, pc.where)).toBe(0);
+    const mac = harness({ platform: "darwin" });
+    mac.where.results = pc.where.results;
+    expect(await runEvals(["--resume", RUN], mac.deps, mac.where)).toBe(0);
+    expect(mac.calls.prepare).toEqual(["b-swiftui-orders"]);
+    const state = loadRun(pc.where.results, RUN) as RunState;
+    expect(state.cases["b-swiftui-orders"]).toMatchObject({ status: "graded", attempts: 1 });
+    expect(state.cases["b-swiftui-orders"]!.note).toBeUndefined();
+  });
+
+  test("resuming off a Mac with only skipped cases left writes the report without running anything", async () => {
+    const pc = harness({ platform: "win32" });
+    await runEvals(["--cases", "b-search,b-swiftui-orders", "--work", pc.work], pc.deps, pc.where);
+    const again = harness({ platform: "linux" });
+    again.where.results = pc.where.results;
+    expect(await runEvals(["--resume", RUN], again.deps, again.where)).toBe(0);
+    expect(again.calls.preflight + again.calls.prepare.length).toBe(0);
+    expect(again.lines.join("\n")).toContain("Skipping b-swiftui-orders: it needs a Mac with Xcode");
   });
 
   test("off a Mac, a run of Mac-only cases alone doesn't start", async () => {
@@ -566,17 +610,17 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
     expect(h.lines.join("\n")).not.toContain("Skipping");
   });
 
-  test("a run started on a Mac and resumed elsewhere skips them again, leaving them to do", async () => {
+  test("a run started on a Mac and resumed elsewhere skips them there, recording why", async () => {
     let n = 0;
     const mac = harness({ platform: "darwin", session: async () => (++n === 1 ? { ...finished(), end: "usage-limit" } : finished()) });
     expect(await runEvals(["--cases", "b-settings,b-search,b-swiftui-orders", "--work", mac.work], mac.deps, mac.where)).toBe(3);
     const pc = harness({ platform: "win32" });
     pc.where.results = mac.where.results;
-    expect(await runEvals(["--resume", RUN], pc.deps, pc.where)).toBe(1);
+    expect(await runEvals(["--resume", RUN], pc.deps, pc.where)).toBe(0);
     expect(pc.lines.join("\n")).toContain("Skipping b-swiftui-orders: it needs a Mac with Xcode");
     expect(pc.calls.prepare).toEqual(["b-settings", "b-search"]);
     const state = loadRun(mac.where.results, RUN) as RunState;
-    expect(state.cases["b-swiftui-orders"]!.status).toBe("pending");
+    expect(state.cases["b-swiftui-orders"]).toEqual({ status: "skipped", attempts: 0, note: SKIP_NOTE });
     expect(state.cases["b-search"]!.status).toBe("graded");
   });
 

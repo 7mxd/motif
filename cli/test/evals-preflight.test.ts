@@ -44,6 +44,8 @@ function setup(answers: Partial<Record<Step, RunResult>> = {}, which: Record<str
     },
     env: { PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x" },
     bun: "/bin/bun",
+    // Off a Mac unless a test says otherwise: on a Mac the other cases offered include the SwiftUI ones.
+    platform: "linux",
   };
   return { p, deps, seen };
 }
@@ -156,6 +158,18 @@ describe("before a run with SwiftUI cases", () => {
       expect(r.error).toContain(words);
       expect(r.error).toEndWith(`Then run this again. Or run the others without them: ${others}`);
     }
+  });
+
+  test("on a Mac, a missing Flutter or Android SDK offers the SwiftUI cases among the others", async () => {
+    const withSwiftUI =
+      "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-swiftui-orders,b-swiftui-rewards,c-review,c-plain,c-rn,c-swiftui,d-stride,d-ledgerly,d-bloom,d-rihla,d-masar";
+    const a = setup({}, { flutter: null });
+    const flutter = (await preflight(a.p, false, { ...a.deps, platform: "darwin" }, true)) as { error: string };
+    expect(flutter.error).toEndWith(`Or run the web, Expo and SwiftUI cases without it: ${withSwiftUI}`);
+    const b = setup();
+    const noSdk: DoctorDeps = { ...mac({ xcode: "16.4", simulator: true }), which: () => null, files: { exists: () => false, read: () => null, list: () => [] } };
+    const android = (await preflight(b.p, false, { ...b.deps, platform: "darwin", doctor: noSdk }, false, true)) as { error: string };
+    expect(android.error).toEndWith(`Or run the web, Expo and SwiftUI cases without them: ${withSwiftUI}`);
   });
 
   test("not checked without a SwiftUI case, wherever it runs", async () => {

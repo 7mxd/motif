@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
-import { CASES, isCompose, isFlutter, isReactNative, isSwiftUI, macOnly, needsBrowser, selectCases, type EvalCase } from "./cases";
+import { CASES, isCompose, isFlutter, isReactNative, isSwiftUI, macOnly, macOnlyNote, needsBrowser, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
@@ -139,17 +139,32 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     };
   }
 
-  // Off macOS the Mac-only cases (SwiftUI) are skipped with the reason (spec §9); a new run leaves them out of its
-  // record, and a resumed one keeps them to do on a Mac.
-  const here = macOnly(remaining(state).map((id) => CASES.find((c) => c.id === id)).filter((c): c is EvalCase => Boolean(c)), deps.platform ?? process.platform);
+  // Off macOS the Mac-only cases (SwiftUI) are skipped with the reason (spec §9) and recorded as skipped, so the
+  // verdicts leave them out and name them; on a Mac, resuming the run turns them back into cases to do.
+  const platform = deps.platform ?? process.platform;
+  if (platform === "darwin") {
+    for (const cs of Object.values(state.cases)) {
+      if (cs.status !== "skipped") continue;
+      cs.status = "pending";
+      delete cs.note;
+    }
+  }
+  const here = macOnly(remaining(state).map((id) => CASES.find((c) => c.id === id)).filter((c): c is EvalCase => Boolean(c)), platform);
   const todo = here.run;
+  /** Records the skipped cases with why, under the run's settled id (the note says how to resume it on a Mac). */
+  const markSkipped = () => {
+    for (const c of here.skipped) state.cases[c.id] = { status: "skipped", attempts: state.cases[c.id]?.attempts ?? 0, note: macOnlyNote(state.id) };
+  };
   if (here.skipped.length > 0) {
     deps.log(here.reason);
     if (todo.length === 0) {
       deps.log("Nothing is left to run here.");
-      return 2;
+      // A new run doesn't start; a resumed one is done here, and its report says what's left for a Mac.
+      if (idBase !== null || o["dry-run"]) return 2;
+      markSkipped();
+      saveRun(where.results, state);
+      return writeReport(state, runDir(where.results, state.id), deps);
     }
-    if (idBase !== null) for (const c of here.skipped) delete state.cases[c.id];
   }
   let dir = runDir(where.results, state.id);
   let mcpConfigFile = join(dir, "no-mcp.json");
@@ -202,6 +217,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   }
   mkdirSync(dir, { recursive: true });
   writeFileSync(mcpConfigFile, JSON.stringify({ mcpServers: {} }));
+  markSkipped();
   const save = () => saveRun(where.results, state);
   save();
 
@@ -351,13 +367,16 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   return finish();
 }
 
-/** report.md and report.json for the run as it stands; the exit code is 0 only when every case passed. */
+/**
+ * report.md and report.json for the run as it stands; the exit code is 0 only when every case passed, leaving out the
+ * Mac-only ones skipped here, as the verdicts do.
+ */
 function writeReport(state: RunState, dir: string, deps: RunDeps): number {
   const verdicts = testVerdicts(state, CASES);
   writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts));
   writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts }, null, 2));
   deps.log(`\n${verdicts.map((v) => `${v.test}: ${v.status} — ${v.detail}`).join("\n")}\nReport: ${join(dir, "report.md")}`);
-  return Object.values(state.cases).every((c) => c.status === "graded" && c.grade?.pass) ? 0 : 1;
+  return Object.values(state.cases).filter((c) => c.status !== "skipped").every((c) => c.status === "graded" && c.grade?.pass) ? 0 : 1;
 }
 
 /** --regrade: each graded B case's new-component criterion again, from its saved diff; every other criterion stands. */
