@@ -58,6 +58,7 @@ A spacing, corner or text size that isn't on the theme's scales. A number that i
 
 - Example: `.padding(13)`, `.padding(.horizontal, 18)`, `VStack(spacing: 6)`, `EdgeInsets(top: 18, …)`, `RoundedRectangle(cornerRadius: 10)`, `.cornerRadius(10)`, `.font(.system(size: 15))`.
 - Fix: the nearest step, `MotifSpace.s4`, `MotifRadius.md`, or a type role (`.motifFont(.body)`). If the design truly needs a new step, propose a change to the design guide instead. Sizes that aren't spacing (`.frame(width: 40)`, a border's `lineWidth`) aren't read.
+- A negative spacing (`.padding(.bottom, -2)`, which pulls a view closer) is reported with its sign ("Spacing -2pt") and judged by its size, as the other stacks judge a negative margin: `-4` is on a scale that has 4. Its fix is the step with a minus, `-MotifSpace.s1`.
 
 ```swift
 // Reported as off-scale: a spacing and a corner that aren't the guide's.

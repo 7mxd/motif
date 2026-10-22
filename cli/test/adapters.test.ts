@@ -443,6 +443,8 @@ describe("the SwiftUI guide", () => {
       // A new App, and its own @State, for each root screenshot, and the note when it can't be kept (Task 15, final review).
       "a new `App` for each screenshot of `/`", "the run's note names the `@State` that wasn't kept", "@Previewable @State",
       "`App`'s `init` runs before each screenshot of the root",
+      // A negative padding keeps its sign and is judged by its size (v0.5.0 sweep, Landmarks 9).
+      "`.padding(.bottom, -2)`", "`-MotifSpace.s1`",
     ]);
   });
 

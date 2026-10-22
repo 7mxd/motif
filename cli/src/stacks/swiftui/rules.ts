@@ -257,11 +257,14 @@ export function scanSwift(source: SourceFile, scale: Scale | null): Hit[] {
   }
 
   // ---------- sizes ----------
+  // A negative size (.padding(.bottom, -2), a pull) is judged by its size, as the other stacks judge negative margins, and
+  // keeps its sign in the message.
   const size = (index: number, literal: string, kind: "space" | "radius" | "font-size", number: string) => {
-    const px = Math.abs(num(number));
+    const signed = num(number);
+    const px = Math.abs(signed);
     const set = kind === "space" ? scale?.spacePx : kind === "radius" ? scale?.radiusPx : scale?.fontSizePx;
     const onScale = px === 0 || (set?.has(px) ?? false);
-    push(index, { rule: "off-scale", kind, text: literal, value: `${px}px`, violation: scale ? !onScale : false, message: sizeMessage[kind](px) });
+    push(index, { rule: "off-scale", kind, text: literal, value: `${px}px`, violation: scale ? !onScale : false, message: sizeMessage[kind](signed === 0 ? 0 : signed) });
   };
   const unlabelledNumber = (args: Arg[]) => args.find((a) => !a.name && NUMBER.test(a.value));
   for (const m of text.matchAll(PADDING_CALL)) {
