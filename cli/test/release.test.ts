@@ -54,12 +54,16 @@ describe("the READMEs", () => {
     }
   });
 
-  test("the README's preview note lists the stacks the release has, says Flutter, Jetpack Compose and React Native arrive in v0.5.0, and links the parity checklist (Ruling W)", () => {
+  test("the README's preview note lists the stacks the release has, says Flutter, Jetpack Compose, React Native and SwiftUI arrive in v0.5.0, and links the parity checklist (Ruling W)", () => {
     const readme = readFileSync(join(REPO, "README.md"), "utf8");
     const note = readme.slice(readme.indexOf("**Preview"), readme.indexOf("\n", readme.indexOf("**Preview")));
-    expect(note).toContain("for React web apps and plain web sites. Flutter, Jetpack Compose and React Native (Expo) apps arrive in v0.5.0 ([what each stack gets](docs/parity.md)).");
+    expect(note).toContain("for React web apps and plain web sites. Flutter, Jetpack Compose, React Native (Expo) and SwiftUI apps arrive in v0.5.0 ([what each stack gets](docs/parity.md)). More stacks");
     expect(readme).toContain("Full support in v0.4.2: React web apps and plain web sites");
-    expect(readme).not.toMatch(/Full support today[^\n]*(Flutter|Compose|React Native)/);
+    expect(readme).not.toMatch(/Full support today[^\n]*(Flutter|Compose|React Native|SwiftUI)/);
+    expect(readme).not.toContain("SwiftUI comes after");
+    // SwiftUI's needs, as doctor and the SwiftUI guide say them (2H Task 15).
+    expect(readme).toContain("SwiftUI apps for iPhone, iPad and the Mac, in an Xcode project or a Swift package, arrive in v0.5.0 too: theme code, checks and drafts work on any computer, and screenshots need a Mac with Xcode.");
+    for (const s of ["a Mac with Xcode 16 or later", "iOS 17 or macOS 14", "`--state design/states/<name>.swift`", "`design/states/Setup.swift`", "Kotlin and Swift"]) expect(readme).toContain(s);
     expect(readme).toContain("Jetpack Compose apps (Android) arrive in v0.5.0 too; in a Gradle project with several modules, Motif finds each app module and reads its own code, and names the Compose library modules it depends on, which it doesn't read yet.");
     expect(readme).not.toContain("also in a Gradle project with several modules");
     expect(readme).toContain("React Native apps made with Expo (SDK 52 or later), also inside a monorepo, arrive in v0.5.0");

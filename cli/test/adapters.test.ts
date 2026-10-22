@@ -485,19 +485,23 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web, Flutter, React Native and Jetpack Compose have every area done; the stacks still to come have none", () => {
+  test("React web, plain web, Flutter, React Native and Jetpack Compose have every area done, SwiftUI every area but its pending evals; the stacks still to come have none", () => {
     for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+    // SwiftUI's Evals cell turns "done" once its four cases pass, and its proof then names the run (2H Task 15).
+    expect(row("SwiftUI")!.slice(1)).toEqual(AREAS.map((a) => (a === "Evals" ? "pending" : "done")));
+    const swiftEvals = table.find((r) => r[0] === "Evals" && r[1]!.includes("fixtures-swiftui.test.ts"))!;
+    expect(swiftEvals[1]).toContain("Pending: the four SwiftUI cases (b-swiftui-orders, b-swiftui-rewards, c-swiftui and d-masar) haven't been run yet.");
     // The cell and its proof agree: each Evals proof names the run that passed.
     for (const fixtureTest of ["fixtures-rn.test.ts", "fixtures-compose.test.ts"]) {
       const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes(fixtureTest))!;
       expect([fixtureTest, proof[1]!.includes("Recorded in eval run")]).toEqual([fixtureTest, true]);
     }
-    for (const stack of ["SwiftUI", "Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
+    for (const stack of ["Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }
   });
 
-  test("Flutter's, Jetpack Compose's and React Native's proofs name every area, and every file they link to exists", () => {
+  test("Flutter's, Jetpack Compose's, React Native's and SwiftUI's proofs name every area, and every file they link to exists", () => {
     const section = (heading: string) => {
       const start = parity.indexOf(heading);
       expect(start).toBeGreaterThan(-1);
@@ -506,10 +510,14 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     };
     for (const proof of [
       section("## Flutter: the tests that show it"), section("## Jetpack Compose: the tests that show it"), section("## React Native (Expo): the tests that show it"),
+      section("## SwiftUI: the tests that show it"),
     ]) {
       for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
     }
     expect(section("## Jetpack Compose: the tests that show it")).toContain("(decisions/0008-compose-rendering.md)");
+    const swift = section("## SwiftUI: the tests that show it");
+    expect(swift).toContain("(decisions/0010-swiftui-rendering.md)");
+    for (const job of ["`swiftui`", "`swiftui-fixtures`"]) expect(swift).toContain(job);
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");

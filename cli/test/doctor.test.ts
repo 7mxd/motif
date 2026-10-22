@@ -68,6 +68,16 @@ describe("runDoctor", () => {
     expect(item(r.data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for React Native (Expo)." });
   });
 
+  test("a SwiftUI app has full support, in an Xcode project and in a Swift package (2H Task 15)", async () => {
+    const qahwa = join(import.meta.dir, "../../tests/fixtures/swiftui-contract-app");
+    expect(item((await runDoctor(qahwa, deps())).data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for SwiftUI." });
+    const pkg = makeProject({
+      "Package.swift": `// swift-tools-version:5.9\nimport PackageDescription\nlet package = Package(name: "Rafiq", platforms: [.iOS(.v17)], targets: [.executableTarget(name: "Rafiq")])\n`,
+      "Sources/Rafiq/RafiqApp.swift": "import SwiftUI\n@main struct RafiqApp: App { var body: some Scene { WindowGroup { Text(\"Hi\") } } }\n",
+    });
+    expect(item((await runDoctor(pkg, deps())).data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for SwiftUI." });
+  });
+
   test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
     const dir = tempDir("motif-vue-");
     writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { vue: "^3" } }));
