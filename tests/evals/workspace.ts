@@ -1,5 +1,6 @@
 // A case's folder: a fresh copy of the fixture app with its packages installed (B, C; npm ci, or flutter pub get, or local.properties for Compose), or an empty folder holding the brief (D),
-// plus git's record of how it started (a plain site installs nothing). The record lives beside the app, not in it, so nothing the session does can change it.
+// plus git's record of how it started (a plain site installs nothing, and nor does Qahwa, a SwiftUI app with no packages). The record lives beside the app, not in it, so nothing
+// the session does can change it.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { defaultDoctorDeps } from "../../cli/src/commands/doctor";
@@ -98,6 +99,8 @@ export function findApp(dir: string): string | null {
     (n) => !n.startsWith(".") && n !== "node_modules" && statSync(join(dir, n)).isDirectory() && existsSync(join(dir, n, "DESIGN.md")),
   );
   if (withGuide.length === 1) return join(dir, withGuide[0]!);
-  const apps = withGuide.filter((n) => existsSync(join(dir, n, "package.json")) || existsSync(join(dir, n, "pubspec.yaml")));
+  const isApp = (d: string) =>
+    existsSync(join(d, "package.json")) || existsSync(join(d, "pubspec.yaml")) || existsSync(join(d, "Package.swift")) || readdirSync(d).some((n) => n.endsWith(".xcodeproj"));
+  const apps = withGuide.filter((n) => isApp(join(dir, n)));
   return apps.length === 1 ? join(dir, apps[0]!) : null;
 }

@@ -510,3 +510,85 @@ describe("the eval runner (review of batch F)", () => {
     expect(USAGE).toContain("~/.motif-evals");
   });
 });
+
+describe("the eval runner and the Mac-only cases (spec §9)", () => {
+  const reason =
+    "Skipping b-swiftui-orders and c-swiftui: they need a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Run them on a Mac: bun tests/evals/run.ts --cases b-swiftui-orders,c-swiftui";
+
+  test("off a Mac, they're skipped with the reason and the others run; nothing is prepared for them", async () => {
+    for (const platform of ["win32", "linux"] as const) {
+      const seen: (boolean | undefined)[] = [];
+      const h = harness({
+        platform,
+        preflight: async (_b, _c, _f, _a, xcode) => {
+          seen.push(xcode);
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+        },
+      });
+      expect(await runEvals(["--cases", "b-search,b-swiftui-orders,c-swiftui", "--work", h.work], h.deps, h.where)).toBe(0);
+      expect(h.lines).toContain(reason);
+      expect(seen).toEqual([false]);
+      expect(h.calls.prepare).toEqual(["b-search"]);
+      expect(Object.keys((loadRun(h.where.results, RUN) as RunState).cases)).toEqual(["b-search"]);
+    }
+  });
+
+  test("off a Mac, a run of Mac-only cases alone doesn't start", async () => {
+    const h = harness({ platform: "win32" });
+    expect(await runEvals(["--cases", "d-masar", "--work", h.work], h.deps, h.where)).toBe(2);
+    expect(h.lines.join("\n")).toContain("Skipping d-masar: it needs a Mac with Xcode");
+    expect(h.lines.join("\n")).toContain("Nothing is left to run here.");
+    expect(h.calls.preflight + h.calls.prepare.length).toBe(0);
+    expect(existsSync(h.where.results)).toBe(false);
+  });
+
+  test("a dry run off a Mac says which it skips and shows only the others", async () => {
+    const h = harness({ platform: "linux" });
+    expect(await runEvals(["--dry-run", "--cases", "b-search,b-swiftui-orders,c-swiftui"], h.deps, h.where)).toBe(0);
+    const text = h.lines.join("\n");
+    expect(text).toContain(reason);
+    expect(text).toContain("b-search: ");
+    expect(text).not.toContain("b-swiftui-orders: ");
+  });
+
+  test("on a Mac they run, and preflight is asked for Xcode", async () => {
+    const seen: (boolean | undefined)[] = [];
+    const h = harness({
+      platform: "darwin",
+      preflight: async (_b, _c, _f, _a, xcode) => {
+        seen.push(xcode);
+        return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+      },
+    });
+    expect(await runEvals(["--cases", "b-search,b-swiftui-orders", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(seen).toEqual([true]);
+    expect(h.calls.prepare).toEqual(["b-search", "b-swiftui-orders"]);
+    expect(h.lines.join("\n")).not.toContain("Skipping");
+  });
+
+  test("a run started on a Mac and resumed elsewhere skips them again, leaving them to do", async () => {
+    let n = 0;
+    const mac = harness({ platform: "darwin", session: async () => (++n === 1 ? { ...finished(), end: "usage-limit" } : finished()) });
+    expect(await runEvals(["--cases", "b-settings,b-search,b-swiftui-orders", "--work", mac.work], mac.deps, mac.where)).toBe(3);
+    const pc = harness({ platform: "win32" });
+    pc.where.results = mac.where.results;
+    expect(await runEvals(["--resume", RUN], pc.deps, pc.where)).toBe(1);
+    expect(pc.lines.join("\n")).toContain("Skipping b-swiftui-orders: it needs a Mac with Xcode");
+    expect(pc.calls.prepare).toEqual(["b-settings", "b-search"]);
+    const state = loadRun(mac.where.results, RUN) as RunState;
+    expect(state.cases["b-swiftui-orders"]!.status).toBe("pending");
+    expect(state.cases["b-search"]!.status).toBe("graded");
+  });
+
+  test("the grader is told it's reviewing a SwiftUI app", async () => {
+    const h = harness({
+      platform: "darwin",
+      collect: async (_c, ws, _out, judge) => {
+        await judge({ issues: [], unmatched: [] }, ws.app);
+        return PASS;
+      },
+    });
+    await runEvals(["--cases", "c-swiftui", "--work", h.work], h.deps, h.where);
+    expect(h.calls.session.find((s) => s.args.includes("--json-schema"))!.prompt).toContain("design review of the SwiftUI app in");
+  });
+});

@@ -112,6 +112,22 @@ describe("a case's folder", () => {
     }
   });
 
+  test("a SwiftUI app: a fresh copy of Qahwa, nothing installed or resolved (it has no packages), its starting state recorded", async () => {
+    const commands: string[][] = [];
+    const recording: Run = async (cmd, cwd, t, env) => {
+      if (cmd[0] !== "git") commands.push(cmd);
+      return runCmd(cmd, cwd, t, env);
+    };
+    for (const id of ["b-swiftui-orders", "c-swiftui"]) {
+      const ws = await prepareWorkspace(byId(id), join(tempDir("motif-ws-"), id), recording);
+      expect(existsSync(join(ws.app, "Qahwa.xcodeproj", "project.pbxproj"))).toBe(true);
+      expect(existsSync(join(ws.app, "Qahwa", "QahwaApp.swift"))).toBe(true);
+      expect(ws.baseline).toMatch(/^[0-9a-f]{40}$/);
+      expect(await changes(ws, recording)).toEqual([]);
+    }
+    expect(commands).toEqual([]);
+  });
+
   test("D: an empty folder holding the brief, nothing recorded", async () => {
     const ws = await prepareWorkspace(byId("d-stride"), join(tempDir("motif-ws-"), "d"), run);
     expect(readdirSync(ws.app)).toEqual(["brief.md"]);
@@ -142,5 +158,18 @@ describe("test D's new app", () => {
     expect(findApp(dir)).toBe(join(dir, "stride"));
     writeFileSync(join(dir, "DESIGN.md"), "");
     expect(findApp(dir)).toBe(dir);
+  });
+
+  test("among several folders with a design guide, the one with an Xcode project or a Swift package is the app", () => {
+    for (const make of [(d: string) => mkdirSync(join(d, "Masar.xcodeproj")), (d: string) => writeFileSync(join(d, "Package.swift"), "")]) {
+      const dir = tempDir("motif-find-");
+      for (const name of ["notes", "masar"]) {
+        mkdirSync(join(dir, name));
+        writeFileSync(join(dir, name, "DESIGN.md"), "");
+      }
+      expect(findApp(dir)).toBeNull();
+      make(join(dir, "masar"));
+      expect(findApp(dir)).toBe(join(dir, "masar"));
+    }
   });
 });

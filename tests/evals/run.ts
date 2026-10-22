@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
-import { CASES, isCompose, isFlutter, isReactNative, needsBrowser, selectCases, type EvalCase } from "./cases";
+import { CASES, isCompose, isFlutter, isReactNative, isSwiftUI, macOnly, needsBrowser, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
@@ -36,7 +36,7 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
   --claude <path>        The Claude Code program to use`;
 
 export interface RunDeps {
-  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean): Promise<Ready | { error: string }>;
+  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean): Promise<Ready | { error: string }>;
   prepare(c: EvalCase, dir: string): Promise<Workspace>;
   session(spec: SessionSpec): Promise<SessionOutcome>;
   collect(c: EvalCase, ws: Workspace, out: string, judge: JudgeFn): Promise<Grade>;
@@ -53,6 +53,8 @@ export interface RunDeps {
   personal(): string[];
   /** The MCP servers in the developer's coding agents' user settings, which no session may change. */
   agentSettings(): Record<string, string | null>;
+  /** The platform the evals run on (this one when not given): off macOS, the Mac-only cases are skipped. */
+  platform?: NodeJS.Platform;
 }
 
 /** An argument as a shell reads it: quoted when it holds spaces, brackets, commas or wildcards. */
@@ -137,7 +139,18 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     };
   }
 
-  const todo = remaining(state).map((id) => CASES.find((c) => c.id === id)).filter((c): c is EvalCase => Boolean(c));
+  // Off macOS the Mac-only cases (SwiftUI) are skipped with the reason (spec §9); a new run leaves them out of its
+  // record, and a resumed one keeps them to do on a Mac.
+  const here = macOnly(remaining(state).map((id) => CASES.find((c) => c.id === id)).filter((c): c is EvalCase => Boolean(c)), deps.platform ?? process.platform);
+  const todo = here.run;
+  if (here.skipped.length > 0) {
+    deps.log(here.reason);
+    if (todo.length === 0) {
+      deps.log("Nothing is left to run here.");
+      return 2;
+    }
+    if (idBase !== null) for (const c of here.skipped) delete state.cases[c.id];
+  }
   let dir = runDir(where.results, state.id);
   let mcpConfigFile = join(dir, "no-mcp.json");
   const caseArgs = (c: EvalCase) =>
@@ -157,7 +170,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 0;
   }
 
-  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose));
+  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose), todo.some(isSwiftUI));
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;
@@ -294,7 +307,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       if (instructions.length > 0) throw new Stopped(`The grader would read these instruction files: ${instructions.join(", ")}. Move them aside, then --resume.`);
       const r = await deps.session({
         command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel, appDir: app }), cwd: own, env: withTempFolder(env, join(own, "tmp")),
-        prompt: judgePrompt(input, undefined, app, isCompose(c) ? "Jetpack Compose app" : isFlutter(c) ? "Flutter app" : isReactNative(c) ? "Expo (React Native) app" : "web app"), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
+        prompt: judgePrompt(input, undefined, app, isCompose(c) ? "Jetpack Compose app" : isFlutter(c) ? "Flutter app" : isReactNative(c) ? "Expo (React Native) app" : isSwiftUI(c) ? "SwiftUI app" : "web app"), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
       });
       await purge(own);
       if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "The grader's session didn't start.");
@@ -382,8 +395,11 @@ if (import.meta.main) {
   const code = await runEvals(
     process.argv.slice(2),
     {
-      preflight: (needsBrowser, claude, needsFlutter, needsAndroid) =>
-        preflight(p, needsBrowser, { which: (cmd) => Bun.which(cmd), run: runCmd, env: process.env, bun: process.execPath, ...(claude ? { claudeOverride: resolve(claude) } : {}) }, needsFlutter, needsAndroid),
+      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode) =>
+        preflight(
+          p, needsBrowser, { which: (cmd) => Bun.which(cmd), run: runCmd, env: process.env, bun: process.execPath, ...(claude ? { claudeOverride: resolve(claude) } : {}) },
+          needsFlutter, needsAndroid, needsXcode,
+        ),
       prepare: (c, dir) => prepareWorkspace(c, dir, runCmd),
       session: runSession,
       collect: (c, ws, out, judge) => collectAndGrade(c, ws, out, { run: runCmd, motif, judge }),

@@ -94,6 +94,74 @@ describe("before a run", () => {
     expect(r).toEqual({ error: expect.stringContaining(line) });
     expect(r).toEqual({ error: expect.stringContaining("--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,c-flutter,c-compose,d-sahm,d-nabta") });
   });
+
+  test("the cases that need no browser name the SwiftUI ones only on a Mac, where they can run", async () => {
+    const noBrowser = ok(JSON.stringify({ items: [{ id: "browser", status: "needed" }] }));
+    const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,c-flutter,c-compose,d-sahm,d-nabta) don't need one.";
+    const pc = setup({ doctor: noBrowser });
+    const here = (await preflight(pc.p, true, { ...pc.deps, platform: "win32" })) as { error: string };
+    expect(here.error).toContain(others);
+    expect(here.error).not.toContain("swiftui");
+    const mac = setup({ doctor: noBrowser });
+    const there = (await preflight(mac.p, true, { ...mac.deps, platform: "darwin" })) as { error: string };
+    expect(there.error).toContain(others);
+    expect(there.error).toContain("On this Mac, the SwiftUI cases don't need one either: --cases b-swiftui-orders,b-swiftui-rewards,c-swiftui,d-masar.");
+  });
+});
+
+describe("before a run with SwiftUI cases", () => {
+  const swiftUICases = "b-swiftui-orders, b-swiftui-rewards, c-swiftui, d-masar";
+  const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,b-rn-orders,b-rn-favourites,c-review,c-plain,c-flutter,c-compose,c-rn,d-stride,d-ledgerly,d-bloom,d-sahm,d-nabta,d-rihla";
+  /** A Mac with (or without) Xcode and an iOS simulator, as doctor sees it. */
+  function mac(opts: { xcode?: string; simulator?: boolean }): DoctorDeps {
+    return {
+      platform: "darwin", arch: "arm64", home: "/Users/dev", findBrowser: () => null, which: () => null, vars: {},
+      run: (cmd) => {
+        const line = cmd.join(" ");
+        if (line === "xcode-select -p") return { code: 0, stdout: "/Applications/Xcode.app/Contents/Developer\n" };
+        if (line === "xcodebuild -version") return opts.xcode ? { code: 0, stdout: `Xcode ${opts.xcode}\nBuild version 16F6\n` } : { code: 127, stdout: "" };
+        if (line === "swift --version") return { code: 0, stdout: "Apple Swift version 6.1 (swiftlang-6.1.0.110.21)\n" };
+        if (line === "xcrun simctl list runtimes --json") {
+          return { code: 0, stdout: JSON.stringify({ runtimes: opts.simulator ? [{ platform: "iOS", version: "18.5", isAvailable: true }] : [] }) };
+        }
+        return { code: 127, stdout: "" };
+      },
+    };
+  }
+
+  test("ready on a Mac with Xcode 16 or later and an iOS simulator", async () => {
+    const { p, deps } = setup();
+    expect(await preflight(p, false, { ...deps, platform: "darwin", doctor: mac({ xcode: "16.4", simulator: true }) }, false, false, true)).toMatchObject({ claude: "/bin/claude" });
+  });
+
+  test("off a Mac: they need one, said plainly, with the cases to run here instead", async () => {
+    for (const platform of ["win32", "linux"] as const) {
+      const { p, deps } = setup();
+      const r = (await preflight(p, false, { ...deps, platform }, false, false, true)) as { error: string };
+      expect(r.error).toBe(
+        `The SwiftUI cases (${swiftUICases}) need a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Run them on a Mac, or run the others here: ${others}`,
+      );
+    }
+  });
+
+  test("a Mac without Xcode, with an old one, or with no iOS simulator: doctor's own words, and the cases to run instead", async () => {
+    for (const [doctor, words] of [
+      [mac({}), "Xcode isn't installed."],
+      [mac({ xcode: "15.4", simulator: true }), "Xcode 15.4 is older than 16"],
+      [mac({ xcode: "16.4" }), "has no iOS simulator"],
+    ] as const) {
+      const { p, deps } = setup();
+      const r = (await preflight(p, false, { ...deps, platform: "darwin", doctor }, false, false, true)) as { error: string };
+      expect(r.error).toStartWith(`The SwiftUI cases (${swiftUICases}) need Xcode 16 or later with an iOS simulator.`);
+      expect(r.error).toContain(words);
+      expect(r.error).toEndWith(`Then run this again. Or run the others without them: ${others}`);
+    }
+  });
+
+  test("not checked without a SwiftUI case, wherever it runs", async () => {
+    const { p, deps } = setup();
+    expect(await preflight(p, false, { ...deps, platform: "win32", doctor: mac({}) })).toMatchObject({ claude: "/bin/claude" });
+  });
 });
 
 describe("before a run with Flutter cases", () => {

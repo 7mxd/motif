@@ -52,7 +52,11 @@ describe("the verdicts", () => {
   });
 
   test("cases not run leave their tests incomplete", () => {
-    expect(testVerdicts(state(allGraded(pass, ["c-review", "c-plain", "c-flutter", "c-compose", "c-rn"])), CASES).map((v) => v.status)).toEqual(["incomplete", "pass", "incomplete"]);
+    expect(testVerdicts(state(allGraded(pass, ["c-review", "c-plain", "c-flutter", "c-compose", "c-rn", "c-swiftui"])), CASES).map((v) => v.status)).toEqual(["incomplete", "pass", "incomplete"]);
+  });
+
+  test("a Mac-only case skipped off a Mac leaves its test incomplete, never passed", () => {
+    expect(testVerdicts(state(allGraded(pass, ["c-review", "c-plain", "c-flutter", "c-compose", "c-rn"])), CASES)[1]).toEqual({ test: "C", status: "incomplete", detail: "5 of 6 cases graded." });
   });
 });
 

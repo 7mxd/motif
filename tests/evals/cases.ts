@@ -1,5 +1,6 @@
 // The eval cases (spec §13.2 and the plain web spec §11): test B's features on copies of the contract apps and site, test C's reviews of the seeded apps and site,
-// and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose and React Native (Expo). Each prompt switches approvals off in the skill's own words.
+// and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose, React Native (Expo) and SwiftUI (on a Mac only). Each prompt switches approvals
+// off in the skill's own words.
 
 import type { StackId } from "../../cli/src/detect/stacks";
 import type { FixtureName } from "../fixtures/assemble";
@@ -23,9 +24,12 @@ export interface EvalCase {
   minutes: number;
   /**
    * The app's stack when it isn't a web one: a Flutter case is type-checked with flutter analyze and drawn by Flutter,
-   * a Compose case with Gradle and drawn by Robolectric, and a React Native one with tsc and drawn through Expo's web target.
+   * a Compose case with Gradle and drawn by Robolectric, a React Native one with tsc and drawn through Expo's web target, and
+   * a SwiftUI one built with xcodebuild and drawn in an iOS simulator.
    */
   stack?: StackId;
+  /** Needs a Mac (SwiftUI builds and draws only on macOS): elsewhere the runner skips it and says why (spec §9). */
+  mac?: boolean;
 }
 
 export const UNATTENDED =
@@ -43,12 +47,30 @@ export const isCompose = (c: EvalCase): boolean => c.stack === "compose";
 /** A case on an Expo app: its screens are drawn through Expo's web target, in a browser. */
 export const isReactNative = (c: EvalCase): boolean => c.stack === "react-native";
 
+/** A case on a SwiftUI app: it needs a Mac with Xcode and an iOS simulator. */
+export const isSwiftUI = (c: EvalCase): boolean => c.stack === "swiftui";
+
+const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+
+/** The cases that can run on this platform, and the Mac-only ones set aside off macOS with the reason (empty when none are). */
+export function macOnly(cases: EvalCase[], platform: NodeJS.Platform): { run: EvalCase[]; skipped: EvalCase[]; reason: string } {
+  const skipped = platform === "darwin" ? [] : cases.filter((c) => c.mac);
+  if (skipped.length === 0) return { run: cases, skipped, reason: "" };
+  const ids = skipped.map((c) => c.id);
+  const one = ids.length === 1;
+  return {
+    run: cases.filter((c) => !c.mac),
+    skipped,
+    reason: `Skipping ${andList(ids)}: ${one ? "it needs" : "they need"} a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Run ${one ? "it" : "them"} on a Mac: bun tests/evals/run.ts --cases ${ids.join(",")}`,
+  };
+}
+
 /**
  * Whether grading needs a browser: C and D always, and B on a plain site, whose new page is checked in one, and on an
- * Expo app, whose new screen is drawn through its web target. Flutter and Compose draw their own screens, so their cases
- * never do.
+ * Expo app, whose new screen is drawn through its web target. Flutter, Compose and SwiftUI draw their own screens, so
+ * their cases never do.
  */
-export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && (c.test !== "B" || isPlain(c) || isReactNative(c));
+export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c) && (c.test !== "B" || isPlain(c) || isReactNative(c));
 
 const feature = (id: string, title: string, route: string, what: string): EvalCase => ({
   id, test: "B", title, fixture: "react-contract-app", routes: [route],
@@ -71,12 +93,28 @@ const rnFeature = (id: string, title: string, route: string, what: string): Eval
   ...feature(id, title, route, what), fixture: "rn-contract-app", stack: "react-native", minutes: 120,
 });
 
+/**
+ * A feature on Qahwa, on a Mac only. SwiftUI's screens have no address, so the feature's page is the #Preview the prompt
+ * names (its title, as motif shot's --screen takes it). Every screenshot builds the app for the simulator, so these get as
+ * long as Rafiq's.
+ */
+const swiftUIFeature = (id: string, title: string, preview: string, what: string): EvalCase => ({
+  ...feature(id, title, preview, what), fixture: "swiftui-contract-app", stack: "swiftui", mac: true, minutes: 120,
+});
+
 /** A new app from a brief; `home` is the name of its third screen, which Rihla calls /trips. */
 const newApp = (brief: string, title: string, stack?: StackId, home = "home"): EvalCase => ({
   id: `d-${brief}`, test: "D", title, brief, routes: ["/", "/sign-in", `/${home}`],
   prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${stack ? "screen" : "page"} at /, sign-in at /sign-in and ${home} at /${home}.\n\n${UNATTENDED}`,
   maxTurns: 400, maxBudgetUsd: 80, minutes: 180,
   ...(stack ? { stack } : {}),
+});
+
+/** A new SwiftUI app from a brief, on a Mac only: its root view is the welcome screen, and the other two are the #Previews the prompt names. */
+const swiftUINewApp = (brief: string, title: string): EvalCase => ({
+  id: `d-${brief}`, test: "D", title, brief, routes: ["/", "Sign in", "Home"],
+  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Make the welcome screen the app's root view, and give the sign-in and home screens #Preview blocks titled "Sign in" and "Home".\n\n${UNATTENDED}`,
+  maxTurns: 400, maxBudgetUsd: 80, minutes: 180, stack: "swiftui", mac: true,
 });
 
 export const CASES: EvalCase[] = [
@@ -110,6 +148,11 @@ export const CASES: EvalCase[] = [
   rnFeature("b-rn-favourites", "Favourites saved from a product (React Native)", "/favourites",
     "Add favourites at /favourites: a heart on a product's page saves or removes that product, and the favourites screen lists the saved products, each opening its page, with an empty state that says how to save one. Link to it from the app's home screen. Keep the saved products in memory; there's no back end."),
 
+  swiftUIFeature("b-swiftui-orders", "Past orders with an empty state (SwiftUI)", "Orders",
+    "Add past orders: a screen with every order newest first, each with the day it was placed, its drinks, its total and the stamps it earned, and an empty state for before the first order that leads back to the menu. Give it a #Preview titled \"Orders\", and link to it from the menu. Mock data only."),
+  swiftUIFeature("b-swiftui-rewards", "Rewards history grouped by month (SwiftUI)", "Rewards history",
+    "Add a rewards history: a screen with every stamp collected and every free drink redeemed, newest first and grouped by month, and an empty state for a member with no stamps yet. Give it a #Preview titled \"Rewards history\", and link to it from the loyalty card. Mock data only."),
+
   {
     id: "c-review", test: "C", title: "Review of the seeded app", fixture: "react-seeded-app", routes: ["/", "/products", "/products/oats"],
     prompt: `/motif:review Review the whole app: its screens are /, /products and /products/oats (a product). Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
@@ -140,12 +183,19 @@ ${UNATTENDED}`,
     prompt: `/motif:review Review the whole app: its screens are /, /products/oat-milk (a product), /basket and /sign-in. Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
     maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
   },
+  {
+    id: "c-swiftui", test: "C", title: "Review of the seeded SwiftUI app", fixture: "swiftui-seeded-app", stack: "swiftui", mac: true,
+    routes: ["/", "Menu", "Drink", "Loyalty card", "Sign in"],
+    prompt: `/motif:review Review the whole app: its screens are / (the root view: the menu, once signed in) and the previews Menu, Drink (a drink's page), Loyalty card and Sign in. Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
+    maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
+  },
   newApp("stride", "New app: Stride (a running club)"),
   newApp("ledgerly", "New app: Ledgerly (invoicing)"),
   newApp("bloom", "New app: Bloom (plant care)"),
   newApp("sahm", "New Flutter app: Sahm (university carpools)", "flutter"),
   newApp("nabta", "New Compose app: Nabta (plant care)", "compose"),
   newApp("rihla", "New Expo app: Rihla (a trip planner)", "react-native", "trips"),
+  swiftUINewApp("masar", "New SwiftUI app: Masar (a running tracker)"),
 ];
 
 export function selectCases(all: EvalCase[], pick: { tests?: string[]; ids?: string[] }): EvalCase[] | { error: string } {
