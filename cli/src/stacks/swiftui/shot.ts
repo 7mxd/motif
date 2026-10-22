@@ -730,7 +730,7 @@ export interface SwiftUIShotDeps {
   /** How commands run and simulators are removed (tests), passed to the harness too. */
   exec?: Exec;
   remove?: (udid: string) => { code: number; stderr: string };
-  onExit?: (fn: () => void) => () => void;
+  onExit?: (fn: () => void, opts?: { last?: boolean }) => () => void;
   /** How a macOS run stops its test host and removes its defaults (tests). */
   host?: MacHostIO;
 }
@@ -1017,11 +1017,10 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
     opts.progress?.(first);
     notes.unshift(first);
   }
-  const cleanup = () => {
-    for (const dir of [copyRoot, workDir]) rmSync(dir, { recursive: true, force: true });
-    rmSync(lock, { force: true });
-  };
-  const cancel = (deps.onExit ?? onExit)(cleanup);
+  const cleanup = () => removeRunFolders([copyRoot, workDir], lock);
+  // Last on exit: xcodebuild, the Mac's host and the simulator are stopped first (the harness's hooks), so nothing is
+  // still writing to the copy when it goes.
+  const cancel = (deps.onExit ?? onExit)(cleanup, { last: true });
   try {
     // A fresh copy each run, at the same path, so the kept build is reused and the project file and scheme are the
     // developer's own again (the harness refuses a project that already has its target).
@@ -1082,5 +1081,23 @@ export async function shootSwiftUI(opts: NativeShotOptions, deps: SwiftUIShotDep
   } finally {
     cancel();
     cleanup();
+  }
+}
+
+/**
+ * Removes a run's folders, each on its own, and then its lock, whatever happened to them: a folder that can't be
+ * removed (a file still open) leaves the lock to be removed all the same, so the next run isn't refused.
+ */
+export function removeRunFolders(dirs: string[], lock: string, rm: (path: string) => void = (p) => rmSync(p, { recursive: true, force: true })): void {
+  try {
+    for (const dir of dirs) {
+      try {
+        rm(dir);
+      } catch {
+        // Left for the next run's fresh copy, which removes it first.
+      }
+    }
+  } finally {
+    rm(lock);
   }
 }

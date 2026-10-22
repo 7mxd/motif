@@ -12,7 +12,7 @@ import { swiftUIDoctor } from "../src/stacks/swiftui/doctor";
 import { hooksSource, MAC_HOST_SUFFIX, RESULT_FILE, scriptSource, SOURCES_FOLDER, stopMacHost, withHostIds, type Exec, type ExecResult, type SwiftUIHarnessResult, type SwiftUIShot, type SwiftUIShotResult } from "../src/stacks/swiftui/harness";
 import {
   appStructName, copyBase, KEEP_BUILDS, MAC_WINDOWS, SWIFTUI_FIRST_RUN_MAC, swiftUIPlatform, swiftUIShotSizes, KEEP_DAYS, mapSwiftUIResult, offersLanguage, planSwiftUIShots, projectReferences, prunedNotes, pruneSwiftUIBuilds, readSwiftUIInputs, takeLock, screenError, shootSwiftUI, signedCapabilities,
-  SWIFTUI_FIRST_RUN, SWIFTUI_FIXES, ENVIRONMENT_ONLY, SWIFTUI_VARIANT_HOW, swiftUIAuditChecks, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
+  removeRunFolders, SWIFTUI_FIRST_RUN, SWIFTUI_FIXES, ENVIRONMENT_ONLY, SWIFTUI_VARIANT_HOW, swiftUIAuditChecks, swiftUICacheDir, swiftUIRoutes, swiftUIShotRefusal, swiftUITargets, swiftUITimeLimit, type PlannedShot,
 } from "../src/stacks/swiftui/shot";
 import { discoverSwiftUIScreens } from "../src/stacks/swiftui/screens";
 import { swiftUIApp } from "../src/stacks/swiftui/project";
@@ -482,6 +482,10 @@ interface Fake {
   calls: string[][];
   removed: string[];
   hooks: (() => void)[];
+  /** Exit hooks added to run after all the others (cleanup's onExit with last). */
+  lastHooks: (() => void)[];
+  /** For each simulator deleted, whether the copy was still there then: processes go before folders. */
+  copyAtRemove: boolean[];
   sources: Record<string, string>;
   options: { shots: SwiftUIShot[]; setupFile?: string; stateLimit?: number; appKitOnly?: boolean } | null;
   copyDir: string;
@@ -508,7 +512,7 @@ async function fakeShoot(
   // The id in a built app's Info.plist: Motif's own (dev.motif.<App>.motif-shots) unless the test says otherwise.
   const idOf = (plist: string) => builtId ?? `dev.motif.${basename(dirname(dirname(plist))).replace(/\.app$/, "")}.motif-shots`;
   const fake: Fake = {
-    calls: [], removed: [], hooks: [], sources: {}, options: null, copyDir: "", pbx: "", env: null,
+    calls: [], removed: [], hooks: [], lastHooks: [], copyAtRemove: [], sources: {}, options: null, copyDir: "", pbx: "", env: null,
     host: { spawned: [], killed: [], home: tempDir("motif-swiftui-user-"), ps },
   };
   const exec: Exec = async (cmd, o) => {
@@ -547,11 +551,13 @@ async function fakeShoot(
       exec,
       remove: (udid) => {
         fake.removed.push(udid);
+        fake.copyAtRemove.push(fake.copyDir !== "" && existsSync(fake.copyDir));
         return { code: 0, stderr: "" };
       },
-      onExit: (fn) => {
-        fake.hooks.push(fn);
-        return () => fake.hooks.splice(fake.hooks.indexOf(fn), 1);
+      onExit: (fn, o) => {
+        const list = o?.last ? fake.lastHooks : fake.hooks;
+        list.push(fn);
+        return () => list.splice(list.indexOf(fn), 1);
       },
       host: {
         spawn: (cmd) => {
@@ -645,20 +651,36 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     expect(fake.hooks).toEqual([]);
   });
 
-  test("interrupted (Ctrl+C, a termination signal): the exit hooks delete the simulator and the copy", async () => {
+  test("interrupted (Ctrl+C, a termination signal): the exit hooks stop and delete the simulator first, then the copy and the lock", async () => {
     const root = xcodeProject();
     const home = tempDir("motif-swiftui-home-");
     const cache = swiftUICacheDir(home, root, "SwiftUIMin");
     let seen: string[] = [];
+    let last = 0;
     const { promise, fake } = await fakeShoot(root, {}, home, (options, path, f) => {
-      // Motif exits while xcodebuild runs: what its exit hooks do.
-      for (const hook of [...f.hooks]) hook();
+      // Motif exits while xcodebuild runs: what its exit hooks do, in cleanup's order (the last ones after the others).
+      last = f.lastHooks.length;
+      for (const hook of [...f.hooks, ...f.lastHooks]) hook();
       seen = readdirSync(cache).sort();
       return drawsAll(options, path);
     });
     await promise.catch(() => {});
     expect(fake.removed).toContain(UDID);
+    // The folders' removal is a last hook, so the simulator (and xcodebuild, the Mac's host) go while the copy is there.
+    expect(last).toBe(1);
+    expect(fake.copyAtRemove[fake.removed.indexOf(UDID)]).toBe(true);
     expect(seen).toEqual(["last-used"]);
+    expect(fake.lastHooks).toEqual([]);
+  });
+
+  test("the run's folders are removed one by one: a folder that can't be removed never keeps the lock (final review)", () => {
+    const removed: string[] = [];
+    const rm = (path: string) => {
+      if (path === "copy") throw new Error("EBUSY: resource busy or locked");
+      removed.push(path);
+    };
+    removeRunFolders(["copy", "work"], "run.lock", rm);
+    expect(removed).toEqual(["work", "run.lock"]);
   });
 
   test("another run on the same app is refused while it draws; a lock left by a run that died is taken over", async () => {
