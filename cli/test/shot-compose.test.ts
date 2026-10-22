@@ -141,7 +141,7 @@ function fakes(answer?: (o: NativeShotOptions) => { routes: RouteResult[]; notes
 }
 
 describe("motif shot --variant on a Compose app with one palette", () => {
-  const NOTE = "This design guide has one palette, so --variant all drew it.";
+  const NOTE = "This design guide has one palette, so --variant all is the same as leaving --variant out.";
   const oneLook = () => makeProject({ ...COMPOSE_APP, "design/tokens.json": JSON.stringify(validTokens()) });
 
   test("all draws the default and says so once, in text and in --json notes", async () => {

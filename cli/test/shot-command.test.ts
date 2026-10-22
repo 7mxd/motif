@@ -530,7 +530,7 @@ describe("motif shot --variant", () => {
 
   test("all on a guide with one palette draws the default and says so once; a name is refused; no flag adds no note", async () => {
     const one = () => makeProject({ ...NEXT_APP, "design/tokens.json": JSON.stringify(validTokens()) });
-    const NOTE = "This design guide has one palette, so --variant all drew it.";
+    const NOTE = "This design guide has one palette, so --variant all is the same as leaving --variant out.";
     const all = fakes();
     const r = await runShot(one(), ctx({ url: URL_, variant: "all" }), all.deps);
     expect(r.exitCode).toBe(0);

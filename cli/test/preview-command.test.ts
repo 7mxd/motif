@@ -518,11 +518,13 @@ describe("motif preview --variant", () => {
   });
 
   test("all on a guide with one palette renders the default and says so once; a name is refused; no flag adds no note", async () => {
-    const NOTE = "This design guide has one palette, so --variant all drew it.";
+    const NOTE = "This design guide has one palette, so --variant all is the same as leaving --variant out.";
     const all = fakes();
     const r = await runPreview(project(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "all" }), all.deps);
     expect(r.exitCode).toBe(0);
-    expect(variantsOf(all)).toEqual([undefined]);
+    // One target, the default: toEqual([undefined]) alone would also pass for no targets at all.
+    expect(all.calls.render[0]!.targets).toHaveLength(1);
+    expect(all.calls.render[0]!.targets[0]!.variant).toBeUndefined();
     expect(r.text.split(NOTE)).toHaveLength(2);
     expect((r.data as { notes: string[] }).notes).toContain(NOTE);
     const named = fakes();

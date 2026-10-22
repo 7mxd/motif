@@ -30,4 +30,4 @@ export function variantRefusal(who: string, flag: string, ids: string[]): Varian
 }
 
 /** What --variant all says when the guide has one palette and it was drawn. */
-export const ONE_PALETTE_NOTE = "This design guide has one palette, so --variant all drew it.";
+export const ONE_PALETTE_NOTE = "This design guide has one palette, so --variant all is the same as leaving --variant out.";

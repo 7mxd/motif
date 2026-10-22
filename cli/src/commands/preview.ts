@@ -232,7 +232,11 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
       const who = directionTokens(cwd, file) ? posix.dirname(file) : "This design guide";
       const refusal = variantRefusal(who, variantFlag, ids);
       if (refusal) return fail(refusal.exitCode, refusal.text, refusal.data);
-      if (variantFlag === "all" && ids.length === 0) onePalette = true;
+      // One palette: the mockup is drawn once, in its default, as with no --variant.
+      if (variantFlag === "all" && ids.length === 0) {
+        onePalette = true;
+        continue;
+      }
       const chosen = variantFlag === "all" ? ids : [variantFlag];
       variantsFor.set(file, chosen.map((id) => (id === ids[0] ? undefined : id)));
     }
