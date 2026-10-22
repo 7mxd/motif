@@ -328,6 +328,18 @@ final class MotifShotWindow: NSWindow {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
     override var canBecomeKey: Bool { true }
 
+    /// The title bar's direction: right to left puts the window's buttons at the top right, as on a Mac in Arabic. AppKit
+    /// reads it while it makes the title bar, so it is set before NSWindow's own init (setting it later moves nothing).
+    private let titlebarDirection: NSUserInterfaceLayoutDirection
+    override var windowTitlebarLayoutDirection: NSUserInterfaceLayoutDirection { titlebarDirection }
+
+    init(contentRect: NSRect, styleMask: NSWindow.StyleMask, rightToLeft: Bool) {
+        titlebarDirection = rightToLeft ? .rightToLeft : .leftToRight
+        super.init(contentRect: contentRect, styleMask: styleMask, backing: .buffered, defer: false)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
     /// The scale its views are laid out and drawn at, whatever the screen's (decision 0010, §17).
     var drawingScale: CGFloat = 0
     override var backingScaleFactor: CGFloat { drawingScale > 0 ? drawingScale : super.backingScaleFactor }
@@ -395,7 +407,7 @@ enum MotifShotDrawing {
         let window = MotifShotWindow(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered, defer: false)
+            rightToLeft: shot.rtl)
         window.isReleasedWhenClosed = false
         // The shot's size is the window's, fixed: nothing the content asks for resizes it.
         window.minSize = size

@@ -369,7 +369,7 @@ motif shot --audit --rtl
 
 ## A macOS app
 
-A Mac app is drawn on the Mac itself, in the app, as whole windows with their title bar, toolbar and sidebar, at 2×: a 1440×900 window and a 900×700 one, named `desktop` and `desktop-900`. `--sizes 1440` or `--sizes 900` takes one; a phone's width is refused. An app for iPhone and the Mac is drawn on iOS by default, and on the Mac when `--sizes` names only windows (`--sizes 1440`); asking for both in one run is refused, with one run each as the way. No simulator is needed. The app's window shows for about a second as it launches. The audit checks contrast and names in both windows, and reduced motion in the 1440 window. A window's title stays in the app's own language in Arabic screenshots.
+A Mac app is drawn on the Mac itself, in the app, as whole windows with their title bar, toolbar and sidebar, at 2×: a 1440×900 window and a 900×700 one, named `desktop` and `desktop-900`. `--sizes 1440` or `--sizes 900` takes one; a phone's width is refused. An app for iPhone and the Mac is drawn on iOS by default, and on the Mac when `--sizes` names only windows (`--sizes 1440`); asking for both in one run is refused, with one run each as the way. No simulator is needed. The app's window shows for about a second as it launches. The audit checks contrast and names in both windows, and reduced motion in the 1440 window. Right to left, the whole window mirrors, its title bar too: the window's buttons are at the top right, as on a Mac in Arabic. A window's title stays in the app's own language in Arabic screenshots.
 
 ## Reading the results
 
