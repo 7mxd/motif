@@ -651,6 +651,28 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     expect(fake.hooks).toEqual([]);
   });
 
+  test("a build script that needs git fails in Motif's copy, which has no .git: the error says so, with what to do (final review)", async () => {
+    const root = xcodeProject();
+    const home = tempDir("motif-swiftui-home-");
+    const out = [
+      "PhaseScriptExecution Set\\ version /x/Script-1.sh (in target 'SwiftUIMin' from project 'SwiftUIMin')",
+      "fatal: not a git repository (or any of the parent directories): .git",
+      "Command PhaseScriptExecution failed with a nonzero exit code",
+      "** TEST BUILD FAILED **",
+    ].join("\n");
+    const { promise } = await fakeShoot(root, {}, home, drawsAll, { code: 65, stdout: out, stderr: "", timedOut: false });
+    const error = await promise.then(() => "", (e: Error) => e.message);
+    expect(error).toContain("The app didn't build with Motif's harness:");
+    expect(error).toContain(
+      "Motif builds a copy of the project without its .git folder, and a build script here needs git (\"not a git repository\"). Make the script carry on without git (check git rev-parse --is-inside-work-tree first), then run motif shot again.",
+    );
+    // A build that fails for another reason doesn't get the hint.
+    const other = await fakeShoot(xcodeProject(), {}, tempDir("motif-swiftui-home-"), drawsAll, {
+      code: 65, stdout: "/x/ContentView.swift:3:5: error: cannot find 'Foo' in scope\n** TEST BUILD FAILED **", stderr: "", timedOut: false,
+    });
+    expect(await other.promise.then(() => "", (e: Error) => e.message)).not.toContain(".git folder");
+  });
+
   test("interrupted (Ctrl+C, a termination signal): the exit hooks stop and delete the simulator first, then the copy and the lock", async () => {
     const root = xcodeProject();
     const home = tempDir("motif-swiftui-home-");

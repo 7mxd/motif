@@ -899,10 +899,12 @@ function readResult(path: string): WrittenResult | null | "unreadable" {
 /** True when xcodebuild stopped because the build failed, before any test ran. */
 const buildFailed = (output: string) => /Testing cancelled because the build failed|\*\* BUILD FAILED \*\*|The following build commands failed/.test(output);
 
-/** The compiler's errors in xcodebuild's output, each once (the first ten), or its last lines when it gave none. */
+/** A build step that needed git: Motif's copy of the project has no .git folder. */
+const NEEDS_GIT = /not a git repository|fatal: [^\n]*\bgit\b|git: command not found/i;
+
 /**
  * Why the build failed, in plain words: a setup or state file that doesn't compile is named (its errors give its path
- * and line), else the app's build with the compiler's errors.
+ * and line), else the app's build with the compiler's errors, and a hint when a build script needed git.
  */
 function buildProblem(output: string, scripts: SwiftUIHarnessRun["scripts"], platform: SwiftUIPlatform = "ios"): string {
   const files = [...(scripts?.setup ? [scripts.setup] : []), ...(scripts?.states ?? [])].map((s) => s.file);
@@ -911,6 +913,13 @@ function buildProblem(output: string, scripts: SwiftUIHarnessRun["scripts"], pla
   if (theirs.length > 0) {
     const lines = errors.split("\n").filter((l) => theirs.some((f) => l.startsWith(`${f}:`)));
     return `${andList(theirs)} ${theirs.length === 1 ? "doesn't" : "don't"} compile:\n${lines.join("\n")}\nFix ${theirs.length === 1 ? "it" : "them"}, then run motif shot again.`;
+  }
+  if (NEEDS_GIT.test(output)) {
+    return (
+      `The app didn't build with Motif's harness:\n${errors}\n` +
+      'Motif builds a copy of the project without its .git folder, and a build script here needs git ("not a git repository"). ' +
+      "Make the script carry on without git (check git rev-parse --is-inside-work-tree first), then run motif shot again."
+    );
   }
   return `The app didn't build with Motif's harness:\n${errors}\nCheck that the app builds for ${DESTINATION[platform]} in Xcode, then run motif shot again.`;
 }
@@ -922,6 +931,7 @@ const DESTINATION: Record<SwiftUIPlatform, string> = { ios: "the iOS simulator",
 /** Where the app launches, for what to check when it doesn't. */
 const LAUNCHES: Record<SwiftUIPlatform, string> = { ios: "in the simulator", macos: "on this Mac" };
 
+/** The compiler's errors in xcodebuild's output, each once (the first ten), or its last lines when it gave none. */
 function compilerErrors(output: string): string {
   const errors = [...new Set(output.split(/\r?\n/).filter((l) => /: error: /.test(l)).map((l) => l.trim()))];
   return errors.length > 0 ? errors.slice(0, 10).join("\n") : tail(output);
