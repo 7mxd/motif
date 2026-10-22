@@ -715,13 +715,15 @@ enum MotifAuditTree {
             systemPart: (object as? NSView).flatMap { inMap($0) }, segment: inSegmentedControl(object))
     }
 
-    /// True for a segment of an AppKit segmented control (SwiftUI's segmented Picker on the Mac): the control itself, or
-    /// an element whose parent, a level or two up, is one.
+    /// True for a segment of an AppKit segmented control (SwiftUI's segmented Picker on the Mac): AppKit's own segment
+    /// element (NSAccessibilitySegment, whose parent is the control's cell), or an element whose parent, a level or two
+    /// up, is the control or its cell.
     static func inSegmentedControl(_ object: NSObject) -> Bool {
+        if NSStringFromClass(type(of: object)) == "NSAccessibilitySegment" { return true }
         var at: NSObject? = object
         for _ in 0..<3 {
             guard let o = at else { return false }
-            if o is NSSegmentedControl { return true }
+            if o is NSSegmentedControl || o is NSSegmentedCell { return true }
             at = MotifAX.object(o, "accessibilityParent") as? NSObject
         }
         return false
