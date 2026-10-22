@@ -177,7 +177,12 @@ describe("the harness's scheme and its own Swift file", () => {
   test("names the app's module and App struct; a variant the theme lacks fails the shot", () => {
     const full = appSourceFor(BUILD);
     expect(full).toContain("@testable import SwiftUIMin\n");
-    expect(full).toContain("MotifMirror.windowContent(SwiftUIMinApp().body)");
+    // One App for the launch, its @State installed for each root view by a view that holds it (Task 15 follow-up).
+    expect(full).toContain("extension SwiftUIMinApp: DynamicProperty {}");
+    expect(full).toContain("static let launched = SwiftUIMinApp()");
+    expect(full).toContain("ImageRenderer(content: MotifAppKeeper(app: launched))");
+    expect(full).toContain("MotifMirror.windowContent(MotifAppState.app().body)");
+    expect(full).toContain("SwiftUIMinApp keeps \\(list) in @State, which Motif couldn't keep for the root view");
     expect(full).toContain("guard let variant = MotifVariant(rawValue: id) else {");
     expect(full).toContain("has no variant \\(id). Run motif tokens again, then motif shot.");
     expect(full).toContain("MotifTheme.debugVariantOverride = variant");

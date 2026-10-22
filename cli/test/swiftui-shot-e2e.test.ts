@@ -71,7 +71,8 @@ const STATE = `@MainActor func motifState(_ app: MotifHarness) async throws {
     try await app.type("Sam", into: "Name")
     try await app.tap("Greet")
     try await app.waitFor("Hello, Sam")
-    try await app.waitFor("Store ready: 0 notes")
+    // The App's own @State store, which its root opened: one store for the whole launch (2H Task 15).
+    try await app.waitFor("Store opened: 0 notes")
 }
 `;
 
@@ -115,9 +116,10 @@ beforeAll(async () => {
     .replace("struct SwiftUIMinApp: App {\n", "struct SwiftUIMinApp: App {\n    @State private var store = Store()\n\n")
     .replace(
       "            ContentView()\n        }\n",
-      "            ContentView()\n                .motifTheme(variant: .partner)\n        }\n        .environment(store)\n        .modelContainer(for: Note.self, inMemory: true)\n",
+      '            ContentView()\n                .motifTheme(variant: .partner)\n                .onAppear { store.title = "Store opened" }\n        }\n        .environment(store)\n        .modelContainer(for: Note.self, inMemory: true)\n',
     );
   expect(app).toContain(".motifTheme(variant: .partner)");
+  expect(app).toContain('.onAppear { store.title = "Store opened" }');
   expect(app).toContain(".modelContainer(for: Note.self, inMemory: true)");
   writeFileSync(join(root, APP), app);
   writeFileSync(join(root, "SwiftUIMin/Notes.swift"), NOTES);

@@ -146,6 +146,7 @@ final class MotifShotTests: XCTestCase {
                 let view: AnyView
                 if shot.screen == "/" {
                     view = try MotifShotApp.root()
+                    if let note = MotifShotApp.unkeptNote, !result.notes.contains(note) { result.notes.append(note) }
                     for name in MotifMirror.unapplied {
                         let note = "The App's scene modifier \(name) couldn't be given to the root view: what it gives (an environment value, a container) is missing there, and a screen that needs it may fail or draw differently. Give it inside the WindowGroup instead."
                         if !result.notes.contains(note) { result.notes.append(note) }
