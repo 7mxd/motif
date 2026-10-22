@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findBrowser } from "../src/detect/browser";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -46,6 +46,21 @@ process.exit(3);
     expect(r.exitCode).toBe(3);
     expect(existsSync(join(dir, "ran"))).toBe(true);
     expect(existsSync(join(dir, "cancelled"))).toBe(false);
+  });
+
+  test("hooks added with last run after all the others, whatever the order they were added in (plan 2H's final review)", () => {
+    const { file, dir } = script((d) => `
+import { appendFileSync } from "node:fs";
+import { onExit } from "${SRC}/cleanup";
+const log = (s) => () => appendFileSync(${JSON.stringify(join(d, "order"))}, s + "\\n");
+onExit(log("remove the folders"), { last: true });
+onExit(log("stop xcodebuild"));
+onExit(() => { throw new Error("a hook that fails"); });
+onExit(log("delete the simulator"));
+process.exit(0);
+`);
+    expect(Bun.spawnSync([process.execPath, file]).exitCode).toBe(0);
+    expect(readFileSync(join(dir, "order"), "utf8").trim().split("\n")).toEqual(["stop xcodebuild", "delete the simulator", "remove the folders"]);
   });
 
   test.skipIf(process.platform === "win32")("Ctrl+C runs the hooks and exits with 130", async () => {

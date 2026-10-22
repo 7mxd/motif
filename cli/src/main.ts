@@ -54,7 +54,7 @@ Shot options:
   --against <what>  Side by side with a saved set (after a rebuild) or a mockup (while building)
   --state <file.js> Also capture each page after this script runs in it (a state behind a form or a click; Flutter: a .dart file with motifState); repeat for more
   --variant <id|all>  Also capture one design variant (index+men.mobile.png), or all of them; --audit alone covers every variant
-  --sizes <list>    Only some sizes, for a quick run: widths (360, 390, 430, 768, 1440) or phones, tablet, desktop
+  --sizes <list>    Only some sizes, for a quick run: widths (360, 390, 430, 768, 1440) or phones, tablet, desktop; a macOS app's windows: 1440, 900
   --rtl [<lang>]    Also capture each page right to left (index.mobile.rtl.png), in this language (default: ar)
   --screen <Widget> Flutter: also capture this widget, opened on the app's navigator (sign-in-screen.mobile.png); repeat for more
 

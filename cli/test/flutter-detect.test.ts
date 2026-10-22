@@ -112,9 +112,10 @@ describe("naming and the registry", () => {
     expect(dartIdentifier("women")).toBe("women");
     expect(dartIdentifier("dark-blue-2")).toBe("darkBlue2");
   });
-  test("Flutter is the only native stack registered so far", () => {
+  test("Flutter and the other native stacks are registered; Vue isn't", () => {
     expect(nativeStack("flutter")?.id).toBe("flutter");
-    expect(nativeStack("swiftui")).toBeNull();
+    expect(nativeStack("swiftui")?.id).toBe("swiftui");
+    expect(nativeStack("vue")).toBeNull();
     expect(nativeStack(null)).toBeNull();
   });
 });
@@ -139,7 +140,7 @@ describe("final review: the commands reach a stack through its registration (Min
     expect(flutter.doctor).toBe(flutterDoctor);
     expect(flutter.extensions).toEqual([".dart"]);
     expect(flutter.stateFiles).toEqual({ extension: ".dart", language: "Dart" });
-    expect(nativeStacks().map((s) => s.id)).toEqual(["flutter", "compose", "react-native"]);
+    expect(nativeStacks().map((s) => s.id)).toEqual(["flutter", "compose", "react-native", "swiftui"]);
   });
 });
 

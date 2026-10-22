@@ -39,9 +39,9 @@ export interface Occurrences {
   followVariables?: boolean;
   /**
    * Where the colours were read from, for the notes: an app's CSS (the default), a Flutter app's Dart theme code,
-   * a Compose app's Kotlin, or a React Native app's TypeScript theme code (script).
+   * a Compose app's Kotlin, a SwiftUI app's asset catalogue and Swift, or a React Native app's TypeScript theme code (script).
    */
-  source?: "css" | "dart" | "kotlin" | "script";
+  source?: "css" | "dart" | "kotlin" | "swift" | "script";
   /** A label for a design variant whose name says more than its id (high-contrast → High Contrast). */
   variantLabels?: Record<string, string>;
   /** Notes from reading the code, for the report. */
@@ -317,8 +317,8 @@ const ROLE_NAMES: { role: string; words: string[]; exact: boolean; usedAs?: stri
 ];
 /**
  * React Native palettes name their action colour tint (create-expo-app's Colors) or accent (HiSalon), and read it in
- * props such as tabBarActiveTintColor, which say nothing of its use: the name is enough. On the web, shadcn's --accent is
- * a hover fill, so these words stay React Native's.
+ * props such as tabBarActiveTintColor, which say nothing of its use: the name is enough. SwiftUI's asset catalogue names
+ * its default AccentColor the same way. On the web, shadcn's --accent is a hover fill, so these words stay with those two.
  */
 const SCRIPT_ROLE_NAMES: typeof ROLE_NAMES = [...ROLE_NAMES, { role: "action-primary", words: ["tint", "accent"], exact: true }];
 
@@ -679,15 +679,16 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const named: Record<string, ColorCluster> = {};
   /** The variable whose name gave a role its colour. */
   const namedVar: Record<string, string> = {};
-  /** The role names this app's code uses: React Native's add tint and accent. */
-  const roleNames = occ.source === "script" ? SCRIPT_ROLE_NAMES : ROLE_NAMES;
+  /** The role names this app's code uses: React Native's and SwiftUI's add tint and accent. */
+  const roleNames = occ.source === "script" || occ.source === "swift" ? SCRIPT_ROLE_NAMES : ROLE_NAMES;
   for (const entry of roleNames) {
     // A later entry for a role only names it when the earlier ones didn't (React Native's tint after primary).
     if (named[entry.role]) continue;
     const best = candidates
       .map((x) => ({ ...x, score: nameScore(x.name, entry) }))
-      // The role's own name is enough; a word like "muted" also needs that variable itself used that way.
-      .filter((x) => x.score >= 0 && (x.score === 0 || !entry.usedAs || entry.usedAs.some((k) => (ownUses[x.name]?.[k] ?? 0) > 0)))
+      // The role's own name is enough; a word like "muted" also needs that variable itself used that way. A SwiftUI colour
+      // set's name is the designer's (Primary, Text, Surface), and its uses sit in views Motif doesn't trace, so an exact word is enough there too.
+      .filter((x) => x.score >= 0 && (x.score === 0 || !entry.usedAs || (occ.source === "swift" && entry.exact) || entry.usedAs.some((k) => (ownUses[x.name]?.[k] ?? 0) > 0)))
       .sort((a, b) => a.score - b.score)[0];
     if (best) {
       named[entry.role] = best.cluster!;
@@ -699,7 +700,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
 
   // A Flutter app's palette says more than its colour groups: a role named by a palette field takes the field's own colour,
   // even one no group stands for alone (an off-white page beside white cards), or one that is see-through (muted text).
-  const dartSource = occ.source === "dart" || occ.source === "kotlin" || occ.source === "script";
+  const dartSource = occ.source === "dart" || occ.source === "kotlin" || occ.source === "swift" || occ.source === "script";
   /** Roles drafted from a see-through palette field laid over the background: role → the field. */
   const flattened = new Map<string, string>();
   const takenIds = new Set([...clusters.map((c) => c.id), "white", "ink"]);
@@ -1120,9 +1121,13 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   };
 
   const darkRoles = Object.keys(darkBase).filter((r) => BASE_ROLES.includes(r));
-  const dart = occ.source === "dart" || occ.source === "kotlin" || occ.source === "script";
-  const themeCode = occ.source === "script" ? "your theme code" : occ.source === "kotlin" ? "your Kotlin theme code" : "your Dart theme code";
-  const themeCodeSets = occ.source === "script" ? "colour roles in light and dark objects" : occ.source === "kotlin" ? "colour constants and scheme arguments" : "palette fields and ColorScheme arguments";
+  const dart = occ.source === "dart" || occ.source === "kotlin" || occ.source === "swift" || occ.source === "script";
+  const themeCode = occ.source === "script" ? "your theme code" : occ.source === "kotlin" ? "your Kotlin theme code" : occ.source === "swift" ? "your Swift theme code" : "your Dart theme code";
+  const themeCodeSets =
+    occ.source === "script" ? "colour roles in light and dark objects"
+    : occ.source === "kotlin" ? "colour constants and scheme arguments"
+    : occ.source === "swift" ? "asset catalogue colour sets and Color constants"
+    : "palette fields and ColorScheme arguments";
   const notes = [
     darkRoles.length
       ? `Dark-mode colours came from ${dart ? themeCode : "your CSS"} for ${darkRoles.join(", ")}; the others were copied from light mode. Review them before turning on dark mode.`

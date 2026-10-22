@@ -10,6 +10,7 @@ import type { RouteResult, StateScript, Viewport } from "../shot/capture";
 import { COMPOSE } from "./compose";
 import { FLUTTER } from "./flutter";
 import { REACT_NATIVE } from "./react-native";
+import { SWIFTUI } from "./swiftui";
 
 export interface NativeShotOptions {
   root: string;
@@ -43,6 +44,8 @@ export interface NativeStack {
   /** The one step that puts the theme file (root-relative) to use, or null when the app already uses it. */
   wiring?(root: string, app: AppInfo, file: string, set?: ThemeSet): string | null;
   sourceFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
+  /** Files besides sourceFiles that motif extract reads (SwiftUI's asset catalogue colour sets); check never scans them. */
+  extractFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
   /** The hits in one file; `ctx` is the app being checked (React Native reads its package.json for nativewind). */
   scan?(file: SourceFile, scale: Scale, ctx?: { root: string; app: AppInfo }): Hit[];
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];
@@ -64,11 +67,25 @@ export interface NativeStack {
   readNotes?(root: string, app: AppInfo, command: "check" | "extract"): string[];
   /** What the app's own files (and its shared packages' theme code) say about its design, for motif extract. */
   collect?(files: SourceFile[], shared?: SourceFile[]): Occurrences;
-  shoot?(opts: NativeShotOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[] }>;
+  /** noTapTargets: the run's audit checked no tap targets (a Mac app is clicked with a pointer), for the summary line. */
+  shoot?(opts: NativeShotOptions): Promise<{ routes: RouteResult[]; issues: AuditIssue[]; notes: string[]; noTapTargets?: true }>;
   /** Why shoot can't run for this app on this computer (a missing SDK or package), with what to do; null when it can. */
-  shotRefusal?(root: string, app: AppInfo, which: (cmd: string) => string | null, doctor?: DoctorDeps): { error: string; text: string } | null;
+  shotRefusal?(
+    root: string,
+    app: AppInfo,
+    which: (cmd: string) => string | null,
+    doctor?: DoctorDeps,
+    /** The sizes shotSizes chose for this run, when it chose any (a multiplatform SwiftUI app drawn on the Mac). */
+    sizes?: Viewport[],
+  ): { error: string; text: string } | null;
   /** What's wrong with what shoot is given (--screen widgets, --state scripts, setup files), before anything is written. */
   shotInputsProblem?(root: string, app: AppInfo, given: { screens: string[]; states: StateScript[] }): string | null;
+  /**
+   * The sizes this app is drawn at when they aren't the native ones (a macOS SwiftUI app's windows), read from --sizes
+   * when it's given (`given`); or why those sizes can't be drawn. Null when the native sizes, and --sizes' usual
+   * reading, apply.
+   */
+  shotSizes?(root: string, app: AppInfo, given: string | undefined): { viewports: Viewport[] } | { error: string } | null;
   /** The size the reduced-motion check runs at, for the note when --sizes leaves it out (the desktop's on the web). */
   motionSize?: { width: number; text: string };
   /** How long a run of this many screenshots may take, in ms. */
@@ -84,7 +101,7 @@ export interface NativeStack {
   doctor?(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[];
 }
 
-const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER], [COMPOSE.id, COMPOSE], [REACT_NATIVE.id, REACT_NATIVE]]);
+const STACKS = new Map<StackId, NativeStack>([[FLUTTER.id, FLUTTER], [COMPOSE.id, COMPOSE], [REACT_NATIVE.id, REACT_NATIVE], [SWIFTUI.id, SWIFTUI]]);
 
 /** Every native stack Motif has, registered. */
 export function nativeStacks(): NativeStack[] {

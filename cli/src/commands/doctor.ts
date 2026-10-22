@@ -11,6 +11,7 @@ import { diskFiles, type DoctorFiles } from "../project/disk";
 import { ignoredByGit, ignoredNotes } from "../project/git";
 import { nativeStack } from "../stacks/native";
 import { isExpoApp } from "../stacks/react-native/project";
+import { packageLimit, swiftUIApp } from "../stacks/swiftui/project";
 import { VERSION } from "../version";
 import { runValidate } from "./validate";
 
@@ -88,6 +89,9 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
         label,
         "React Native without Expo detected. Motif fully supports Expo apps; here theme code, checks and drafts work, and for screenshots, run the app on react-native-web and pass its address to motif shot --url.",
       );
+    } else if (app.stack === "swiftui" && swiftUIApp(join(cwd, app.path))?.kind === "package") {
+      // motif shot refuses a Swift package app; the line says so in its words.
+      push(`app:${app.path}`, "ok", label, `Full support for SwiftUI but for screenshots: ${packageLimit(swiftUIApp(join(cwd, app.path))!.name)}`);
     } else if (ADAPTERS_AVAILABLE.includes(app.stack)) {
       const site = app.stack === "plain-web" ? siteDir(cwd, app) : null;
       const where = site === null ? "" : `; its pages are in ${site === "." ? "this folder" : `${site}/`}`;

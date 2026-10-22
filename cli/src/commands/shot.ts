@@ -138,7 +138,9 @@ function routeLine(r: RouteResult, width: number): string {
     ? `${r.shots.length} screenshots${r.landedOn ? ` (went to ${r.landedOn})` : r.finalUrl ? ` (went to ${new URL(r.finalUrl).pathname})` : ""}${r.cropped ? ` (cropped at ${MAX_HEIGHT} px)` : ""}`
     : r.loading && !r.error && !r.pageErrors?.length
       ? `✗ ${r.loading}`
-      : `✗ ${r.error ?? (r.pageErrors?.length ? `the page threw an error: ${r.pageErrors[0]}` : `HTTP ${r.status}`)}${r.shots.length > 0 ? " (the screenshots show what it looked like)" : ""}`;
+      : r.missing && r.pageErrors?.length
+        ? `✗ ${r.missing} of its ${r.missing + r.shots.length} screenshots weren't drawn: ${r.pageErrors[0]}`
+        : `✗ ${r.error ??(r.pageErrors?.length ? `the page threw an error: ${r.pageErrors[0]}` : `HTTP ${r.status}`)}${r.shots.length > 0 ? " (the screenshots show what it looked like)" : ""}`;
   return `  ${r.route.padEnd(width)}  ${what}`;
 }
 
@@ -260,6 +262,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   // Expo's apps are drawn in the browser, through the web target: the web path, with native sizes and notes.
   const rn = app?.stack === "react-native";
   const shoot = native?.shoot ? (deps.shoot ?? native.shoot.bind(native)) : undefined;
+  // Sizes the stack draws this app at instead of the native ones (a macOS SwiftUI app's windows), or why not.
+  let own: { viewports: Viewport[] } | { error: string } | null = null;
   if (shoot && native && app) {
     const label = app.stack ? STACK_LABELS[app.stack] : "These";
     if (givenUrl !== undefined) return usage(`${label} apps are screenshotted from their code, not a URL; drop --url.`, { error: "usage" });
@@ -274,17 +278,28 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         { error: "usage" },
       );
     }
-    const refusal = native.shotRefusal?.(cwd, app, deps.which ?? ((cmd) => Bun.which(cmd)), (deps.doctor ?? defaultDoctorDeps)());
+    // The stack's own sizes first: a multiplatform SwiftUI app drawn at window sizes needs no iOS simulator.
+    own = native.shotSizes?.(cwd, app, typeof flags.sizes === "string" ? flags.sizes : undefined) ?? null;
+    // A --sizes the app can't be drawn at is a usage error, said first, as for every app.
+    if (own && "error" in own) return usage(own.error, { error: "usage" });
+    const chosen = own ? own.viewports : undefined;
+    const refusal = native.shotRefusal?.(cwd, app, deps.which ?? ((cmd) => Bun.which(cmd)), (deps.doctor ?? defaultDoctorDeps)(), chosen);
     if (refusal) return usage(refusal.text, { error: refusal.error });
     // A widget or a state script that can't be used is a usage error, found before anything is written.
     const problem = native.shotInputsProblem?.(cwd, app, { screens, states });
     if (problem) return usage(problem, { error: "usage" });
   } else if (screens.length > 0) {
     if (rn) return usage("React Native screens are routes; pass --routes.", { error: "usage" });
-    return usage("--screen opens a Flutter widget by its class name, or a Jetpack Compose @Preview function by its name; this app is neither. Use --routes for its pages.", { error: "usage" });
+    return usage("--screen opens a Flutter widget by its class name, a Jetpack Compose @Preview function by its name, or a SwiftUI #Preview by its title; this app is neither. Use --routes for its pages.", { error: "usage" });
   }
   let viewports: Viewport[] | undefined;
-  if (typeof flags.sizes === "string") {
+  // Sizes the stack draws this app at instead of the native ones (a macOS SwiftUI app's windows), from --sizes when
+  // given. They are what's drawn; --sizes' notes about what it left out are for phone and tablet sizes only.
+  let stackSizes: Viewport[] | undefined;
+  if (own && !("error" in own)) {
+    stackSizes = own.viewports;
+    if (typeof flags.sizes === "string" && own.viewports.some((v) => v.mobile)) viewports = own.viewports;
+  } else if (typeof flags.sizes === "string") {
     const sizes = parseSizes(flags.sizes, shoot || rn ? [...NATIVE_VIEWPORTS, NATIVE_DESKTOP] : undefined);
     if ("error" in sizes) return usage(sizes.error, { error: "usage" });
     viewports = sizes;
@@ -434,6 +449,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const appScheme = rn && app ? fixedScheme(appDir) : null;
 
   let captured: Awaited<ReturnType<typeof captureScreens>>;
+  // Whether the audit checked tap targets: always but on a Mac app's windows (a native stack says so).
+  let targetsRan = true;
   try {
     mkdirSync(outDir, { recursive: true });
     const ignore = join(outDir, ".gitignore");
@@ -441,7 +458,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       writeFileSync(ignore, "# Screenshots of the running app (motif shot). Not committed.\n*\n");
     }
     if (shoot && app) {
-      const sizes = viewports ?? NATIVE_VIEWPORTS;
+      const sizes = stackSizes ?? viewports ?? NATIVE_VIEWPORTS;
       // Each state is one more screenshot of every shot, after the screen has settled.
       const count = (routes.length + runScreens.length) * sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1) * (1 + states.length);
       const timeoutMs = native?.shotTimeLimit?.(count) ?? 240_000 + 3_000 * count;
@@ -450,6 +467,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         ...(ctx.progress ? { progress: ctx.progress } : {}), doctor: (deps.doctor ?? defaultDoctorDeps)(),
       });
       notes.push(...drawn.notes);
+      targetsRan = !drawn.noTapTargets;
       captured = { routes: drawn.routes, issues: drawn.issues };
     } else {
       captured = await deps.capture({
@@ -471,7 +489,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const width = Math.max(...captured.routes.map((r) => r.route.length));
   const lines = [
     shots.length > 0
-      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? (shoot ? "screen" : "page") : shoot ? "screens" : "pages"} (${describeSizes(viewports ?? (shoot || rn ? NATIVE_VIEWPORTS : undefined))}, light and dark${rtl ? `, right to left in ${rtl}` : ""}${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
+      ? `✓ ${shots.length} screenshots of ${captured.routes.length} ${captured.routes.length === 1 ? (shoot ? "screen" : "page") : shoot ? "screens" : "pages"} (${describeSizes(stackSizes ?? viewports ?? (shoot || rn ? NATIVE_VIEWPORTS : undefined))}, light and dark${rtl ? `, right to left in ${rtl}` : ""}${variants.length > 0 ? `, ${variants.length + 1} design variants` : ""}) in ${projectPath(cwd, outDir)}/`
       : "✗ No screenshots were taken.",
     ...captured.routes.map((r) => routeLine(r, width)),
   ];
@@ -534,7 +552,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       lines.push(`✗ Audit incomplete: ${andList(overlaid)} threw an error as ${one ? "it" : "they"} loaded, so ${one ? "it isn't" : "they aren't"} audited (${one ? "its" : "their"} screenshots may show Expo's error overlay).`);
     }
     if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
-    else if (incomplete.length === 0 && overlaid.length === 0) lines.push(`✓ Audit: no contrast, tap-target${motionRan ? " or reduced-motion" : ""} problems found, and no controls without a name (${auditFile}).`);
+    else if (incomplete.length === 0 && overlaid.length === 0) lines.push(`✓ Audit: no contrast${targetsRan ? ", tap-target" : ""}${motionRan ? " or reduced-motion" : ""} problems found, and no controls without a name (${auditFile}).`);
     for (const f of findings.slice(0, 15)) {
       const l = f.location;
       const where = `${l.screen}${l.state ? ` in "${l.state}"` : ""} (${l.viewport}${l.scheme ? `, ${l.scheme}` : ""}${l.variant ? `, ${l.variant} variant` : ""}${l.rtl ? ", right to left" : ""})`;

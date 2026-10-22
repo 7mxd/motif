@@ -263,7 +263,8 @@ describe("motif shot", () => {
   test("a clean audit exits 0", async () => {
     const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", audit: true }), fakes().deps);
     expect(r.exitCode).toBe(0);
-    expect(r.text).toContain("no contrast, tap-target or reduced-motion problems");
+    // Byte for byte, as it was before a Mac SwiftUI run got its own line (plan 2H's final review).
+    expect(r.text).toContain("✓ Audit: no contrast, tap-target or reduced-motion problems found, and no controls without a name (design/shots/audit.json).");
   });
 
   test("the dev server is stopped even when capturing fails", async () => {

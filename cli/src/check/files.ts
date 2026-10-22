@@ -3,7 +3,7 @@ import { extname, join } from "node:path";
 import ignore from "ignore";
 import { stripBom } from "../text";
 
-export type Lang = "css" | "script" | "markup" | "dart" | "kotlin";
+export type Lang = "css" | "script" | "markup" | "dart" | "kotlin" | "swift" | "json";
 
 export interface SourceFile {
   /** Relative to the project root, forward slashes. */
@@ -48,6 +48,12 @@ const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/");
  * whose previews aren't the app's screens.
  */
 export const COMPOSE_IGNORES = ["/build/", "/.gradle/", "/.motif/", "src/test*/", "src/androidTest*/", "src/screenshotTest*/", "src/sharedTest/", "*.kts"];
+
+/**
+ * A SwiftUI app's build output, dependencies, tests and generated Swift: never the team's own code. Matched from the app
+ * (and from each Swift package inside it), so a feature folder named build under the app's sources is still read.
+ */
+export const SWIFTUI_IGNORES = ["/build/", "/DerivedData/", "/.build/", "/.motif/", "*Tests/", "*UITests/", "/Pods/", "/Carthage/", "*.generated.swift", "Package.swift"];
 
 /** An Expo app's native folders, build and export output, and tests: never the team's own code. */
 export const RN_IGNORES = ["/ios/", "/android/", "/.expo/", "/dist/", "/web-build/", "/.motif/", "expo-env.d.ts", "*.test.*", "__tests__/"];
@@ -101,6 +107,40 @@ export function listKotlinFiles(root: string, appPath: string, opts: { paths?: s
     defaults: DART_DEFAULT_IGNORES,
     packageMarker: ["build.gradle.kts", "build.gradle"],
   });
+}
+
+/** A SwiftUI app's Swift files, without its build output, dependencies, tests and generated code. */
+export function listSwiftFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
+  return listSourceFiles(root, appPath, {
+    ...opts,
+    langs: { ".swift": "swift" },
+    extraIgnores: SWIFTUI_IGNORES,
+    defaults: DART_DEFAULT_IGNORES,
+    packageMarker: "Package.swift",
+  });
+}
+
+/** True for a Contents.json under .xcassets that describes a colour set or a plain folder (not an image set, app icon set, …). */
+function isCatalogDescription(f: SourceFile): boolean {
+  const inside = f.path.split("/");
+  const at = inside.findIndex((s) => s.endsWith(".xcassets"));
+  if (at < 0 || inside[inside.length - 1] !== "Contents.json") return false;
+  const folders = inside.slice(at + 1, -1);
+  return folders.every((s, i) => !s.includes(".") || (s.endsWith(".colorset") && i === folders.length - 1));
+}
+
+/**
+ * An iOS or macOS app's asset catalogue descriptions: the Contents.json of each colour set, and of the folders that hold them
+ * (one with "provides-namespace" prefixes its colours' names). Read by motif extract, never scanned for values.
+ */
+export function listAssetCatalogFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
+  return listSourceFiles(root, appPath, {
+    ...opts,
+    langs: { ".json": "json" },
+    extraIgnores: SWIFTUI_IGNORES,
+    defaults: DART_DEFAULT_IGNORES,
+    packageMarker: "Package.swift",
+  }).filter(isCatalogDescription);
 }
 
 /** A React Native (Expo) app's scripts, without its native folders, build output and tests. */

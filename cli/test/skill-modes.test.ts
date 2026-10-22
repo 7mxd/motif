@@ -125,6 +125,29 @@ describe("modes/review.md", () => {
     expect(outOfOrder(review, ["## 1. Scope", "## 2. Extract (only when there is no design guide)", "⏸", "## 3. Audit", "## 4. Report ⏸", "## 5. Rebuild", "## 6. A new look instead"])).toBeNull();
   });
 
+  // The 2H SwiftUI evals: two reviews opened the loyalty card and menu screenshots and still missed Sign out drawn as the
+  // main button and cards with no space between them, both rules written in the guide. Judgement is a written pass.
+  test("judgement is a written pass per screen against the guide's own rules: the one main action, spacing, words, direction", () => {
+    const judgement = review.slice(review.indexOf("**Judgement**"), review.indexOf("Two things screenshots hide"));
+    for (const s of [
+      "before writing the report",
+      "**The one main action.**",
+      "sign out",
+      "`hierarchy` finding",
+      "**Spacing between things.**",
+      "touch",
+      "`spacing` findings",
+      "**Words.**",
+      "\"Submit\"",
+      "`copy` finding",
+      "**Direction.**",
+      "`platform-convention` findings",
+      "still gets its line",
+    ]) {
+      expect(judgement).toContain(s);
+    }
+  });
+
   test("merges the exact checks into one report, naming every category and check rule", () => {
     for (const c of CATEGORIES) expect(review).toContain(`\`${c}\``);
     for (const id of RULE_IDS) expect(review).toContain(`\`${id}\``);
@@ -396,5 +419,36 @@ describe("Jetpack Compose in the skill and the modes", () => {
     for (const s of ["MotifTheme(variant = MotifVariant.", "rememberSaveable", "StateFlow", "(../adapters/compose/tokens.md#switching-variants)"]) {
       expect(variants).toContain(s);
     }
+  });
+});
+
+describe("SwiftUI in the skill and the modes", () => {
+  test("SKILL.md sends SwiftUI apps to their guide, and the toolchain row names a Mac with Xcode", () => {
+    const skill = read("SKILL.md");
+    for (const s of ["(adapters/swiftui/README.md)", "SwiftUI", "a Mac with Xcode for SwiftUI apps' screenshots"]) expect(skill).toContain(s);
+  });
+
+  test("init offers SwiftUI, starts it from Xcode's App template, which has no command-line starter, and says screenshots need a Mac", () => {
+    const init = read("modes/init.md");
+    for (const s of ["an iPhone or Mac app in SwiftUI", "(../adapters/swiftui/README.md)", "Xcode's App template", "no command-line starter", "a Mac with Xcode"]) {
+      expect(init).toContain(s);
+    }
+  });
+
+  test("feature lists a SwiftUI app's views from its guide", () => {
+    const feature = read("modes/feature.md");
+    for (const s of ["(../adapters/swiftui/components.md)", "Components/", "`.swift` for a SwiftUI app"]) expect(feature).toContain(s);
+  });
+
+  test("review links SwiftUI's checks and state files, which are Swift, and says screenshots need a Mac", () => {
+    const review = read("modes/review.md");
+    for (const s of ["(../adapters/swiftui/checks.md)", "(../adapters/swiftui/checks.md#screens-behind-a-form-or-a-tap)", "`.swift` for a SwiftUI app", "on a Mac"]) {
+      expect(review).toContain(s);
+    }
+  });
+
+  test("variants: switching a SwiftUI app's variant from @AppStorage, and what SwiftUI varies", () => {
+    const variants = read("knowledge/variants.md");
+    for (const s of [".motifTheme(variant: .", "@AppStorage", "(../adapters/swiftui/tokens.md#switching-variants)"]) expect(variants).toContain(s);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gradeExact, normScreen, parseReport, places, sameScreen, type Finding, type LineText, type SeededIssue } from "../../tests/evals/match";
 
@@ -236,5 +236,24 @@ describe("line ranges (review of batch F)", () => {
     const f: Finding = { id: "F", severity: "minor", category: "raw-value", location: { file: "styles.css:10-50" }, summary: "x" };
     const issue = (id: string, line: number): SeededIssue => ({ id, kind: "exact", detectedBy: "check", categories: ["raw-value"], severity: "minor", location: { file: "styles.css", line }, summary: "x" });
     expect(gradeExact([f], [issue("P-01", 47), issue("P-02", 13)], () => undefined).exact).toEqual([{ id: "P-01", findings: [] }, { id: "P-02", findings: [] }]);
+  });
+});
+
+// The 2H SwiftUI eval: a review filed a typed radius under spacing, as skill/modes/review.md says, and the grader missed it,
+// because every native seeded list gave its radius problem raw-value and consistency only.
+describe("every seeded list accepts the category the review mode gives each check rule", () => {
+  // skill/modes/review.md, "From | Category": off-scale is spacing (space, radius, shadow) or typography (font size).
+  const MODE: Record<string, string[]> = {
+    "raw-color": ["raw-value"], "tailwind-arbitrary": ["raw-value"], "tailwind-palette": ["raw-value"], "primitive-use": ["raw-value"],
+    "off-scale": ["spacing", "typography"], "raw-font": ["typography"], "raw-motion": ["motion"], "reduced-motion": ["reduced-motion"],
+    "generated-edited": ["consistency"],
+  };
+  const fixtures = join(import.meta.dir, "../../tests/fixtures");
+  const lists: string[] = readdirSync(fixtures).filter((d) => existsSync(join(fixtures, d, "seeded-issues.json")));
+  test.each(lists)("%s", (dir) => {
+    const list: SeededIssue[] = JSON.parse(readFileSync(join(fixtures, dir, "seeded-issues.json"), "utf8")).issues;
+    for (const issue of list.filter((i) => i.detectedBy === "check" && i.rule && MODE[i.rule])) {
+      expect({ id: issue.id, accepts: MODE[issue.rule!]!.some((c) => issue.categories.includes(c)) }).toEqual({ id: issue.id, accepts: true });
+    }
   });
 });

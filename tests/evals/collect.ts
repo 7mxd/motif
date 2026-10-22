@@ -1,8 +1,10 @@
 // Measures what a finished case left behind: the motif tool's checks, the build and the type check (on a plain site, the page in a browser; on Flutter,
-// flutter analyze and the page as Flutter draws it; on React Native, tsc and the page as Expo's web target draws it), what the session changed,
-// and for test C the review report, graded against the seeded list (match.ts) and by the model grader (judge.ts).
+// flutter analyze and the page as Flutter draws it; on React Native, tsc and the page as Expo's web target draws it; on SwiftUI, xcodebuild build and
+// the page's #Preview as the simulator draws it), what the session changed, and for test C the review report, graded against the seeded list (match.ts)
+// and by the model grader (judge.ts).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join, posix } from "node:path";
+import { listSwiftFiles } from "../../cli/src/check/files";
 import { REQUIRED_SECTIONS } from "../../cli/src/contract/design-md";
 import { discoverRoutes } from "../../cli/src/stacks/react-web/routes";
 import { detectApps, siteDir } from "../../cli/src/detect/stacks";
@@ -14,7 +16,9 @@ import { findAndroidSdk, gradleJava } from "../../cli/src/stacks/compose/doctor"
 import { gradleProjectPath, gradleTaskCommand } from "../../cli/src/stacks/compose/harness";
 import { discoverComposeScreens, previewSlug, type Preview } from "../../cli/src/stacks/compose/screens";
 import { discoverExpoRoutes } from "../../cli/src/stacks/react-native/routes";
-import { isCompose, isFlutter, isPlain, isReactNative, type EvalCase } from "./cases";
+import { swiftUIApp } from "../../cli/src/stacks/swiftui/project";
+import { discoverSwiftUIScreens, previewSlug as swiftUIPreviewSlug, type SwiftUIPreview } from "../../cli/src/stacks/swiftui/screens";
+import { isCompose, isFlutter, isPlain, isReactNative, isSwiftUI, type EvalCase } from "./cases";
 import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
 import { Paused, type JudgeFn, type JudgeInput, type JudgeVerdict } from "./judge";
 import { gradeExact, parseReport, type SeededIssue } from "./match";
@@ -117,7 +121,42 @@ async function rnTypecheck(dir: string, k: Collectors, out: string): Promise<Cmd
   return { code: tsc.code, timedOut: tsc.timedOut, command: "tsc" };
 }
 
-/** motif shot's sizes for a Flutter, Compose or Expo app: one phone, so each screen is drawn once per scheme rather than at every native size. */
+/** What a SwiftUI app's type check is called in the details and the grade. */
+const SWIFTUI_TYPECHECK = "xcodebuild build";
+
+/** The compiler's errors in xcodebuild's output, each once, with the app's folder taken off their paths. */
+function xcodeErrors(output: string, dir: string): string[] {
+  const prefixes = [...new Set([dir, dir.replace(/\\/g, "/")])].flatMap((d) => [`${d}/`, `${d}\\`]);
+  const local = (line: string) => {
+    const p = prefixes.find((x) => line.startsWith(x));
+    return p ? line.slice(p.length) : line;
+  };
+  return [...new Set(output.split(/\r?\n/).filter((l) => /: error: /.test(l)).map((l) => local(l.trim())))];
+}
+
+/**
+ * A SwiftUI app's type check: the app built with xcodebuild for any iOS simulator (or the Mac, for a Mac-only app), with
+ * signing off, so no simulator or certificate is needed. Its DerivedData goes to the case's folder, never to Xcode's
+ * own; when the build fails, the details give the compiler's first errors. Without an app to build, it fails and says so.
+ */
+async function swiftUIBuild(dir: string, derivedData: string, k: Collectors, out: string): Promise<CmdFacts> {
+  const app = swiftUIApp(dir);
+  if (!app) return { code: 1, command: SWIFTUI_TYPECHECK, detail: "There's no Xcode project (or Swift package) with a SwiftUI app here, so the app couldn't be built." };
+  const destination = app.platforms.includes("ios") ? "generic/platform=iOS Simulator" : "generic/platform=macOS";
+  const r = await k.run(
+    ["xcodebuild", "build", ...(app.kind === "xcodeproj" ? ["-project", app.project] : []), "-scheme", app.name, "-destination", destination, "-derivedDataPath", derivedData, "-quiet", "CODE_SIGNING_ALLOWED=NO"],
+    dir, 1_800_000,
+  );
+  const log = `${r.stdout}\n${r.stderr}`;
+  save(out, "xcodebuild.log", log);
+  const facts: CmdFacts = { code: r.code, timedOut: r.timedOut, command: SWIFTUI_TYPECHECK };
+  const errors = r.code === 0 || r.timedOut ? [] : xcodeErrors(log, dir);
+  if (errors.length === 0) return facts;
+  const more = errors.length > 3 ? ` (and ${errors.length - 3} more in xcodebuild.log)` : "";
+  return { ...facts, detail: `The type check (${SWIFTUI_TYPECHECK}) failed (exit code ${r.code}): ${errors.slice(0, 3).join("; ")}${more}.` };
+}
+
+/** motif shot's sizes for a Flutter, Compose, Expo or SwiftUI app: one phone, so each screen is drawn once per scheme rather than at every native size. */
 const PHONE_SIZES = ["--sizes", "390"];
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -127,8 +166,11 @@ const ROUTE_FILES = new Set(["page", "layout", "loading", "error", "global-error
 const isComponentFile = (path: string) =>
   /^src\/.+\.(tsx|jsx)$/.test(path) && !/\.(test|spec|stories|d)\.(tsx|jsx)$/.test(path) && !ROUTE_FILES.has(basename(path, extname(path)));
 
-/** A file in a diff; `after` is its hunks as they read after the change (context and added lines). */
-interface DiffFile { path: string; isNew: boolean; deleted: boolean; added: string[]; removed: string[]; after: string[]; text: string }
+/**
+ * A file in a diff; `after` is its hunks as they read after the change (context and added lines), and `hunks` the same
+ * lines hunk by hunk, apart, since the lines between hunks aren't in the diff.
+ */
+interface DiffFile { path: string; isNew: boolean; deleted: boolean; added: string[]; removed: string[]; after: string[]; hunks: string[][]; text: string }
 
 /** A diff's files: whether each is new, and the lines it adds and removes, line endings dropped. */
 function diffFiles(diff: string): DiffFile[] {
@@ -139,7 +181,7 @@ function diffFiles(diff: string): DiffFile[] {
     const line = raw.replace(/\r$/, "");
     const head = /^diff --git a\/.+? b\/(.+)$/.exec(line);
     if (head) {
-      file = { path: head[1]!, isNew: false, deleted: false, added: [], removed: [], after: [], text: line };
+      file = { path: head[1]!, isNew: false, deleted: false, added: [], removed: [], after: [], hunks: [], text: line };
       files.push(file);
       inHunk = false;
       continue;
@@ -149,13 +191,22 @@ function diffFiles(diff: string): DiffFile[] {
     if (!inHunk) {
       if (line.startsWith("new file mode")) file.isNew = true;
       if (line.startsWith("deleted file mode")) file.deleted = true;
-      if (line.startsWith("@@")) inHunk = true;
+      if (line.startsWith("@@")) {
+        inHunk = true;
+        file.hunks.push([]);
+      }
     } else if (line.startsWith("+")) {
       file.added.push(line.slice(1));
       file.after.push(line.slice(1));
+      file.hunks.at(-1)!.push(line.slice(1));
     } else if (line.startsWith("-")) file.removed.push(line.slice(1));
-    else if (line.startsWith(" ")) file.after.push(line.slice(1));
-    else if (line.startsWith("@@")) file.after.push("");
+    else if (line.startsWith(" ")) {
+      file.after.push(line.slice(1));
+      file.hunks.at(-1)!.push(line.slice(1));
+    } else if (line.startsWith("@@")) {
+      file.after.push("");
+      file.hunks.push([]);
+    }
   }
   return files;
 }
@@ -463,6 +514,118 @@ export function rnComponents(diff: string): RnComponents {
   return found;
 }
 
+export interface SwiftUIComponents {
+  /** New View structs, public or internal and at the top level, outside the theme: they count against the limit unless the design guide records them. */
+  newComponents: string[];
+  /** A *Screen or *View struct that a #Preview, the app's root (WindowGroup), a NavigationStack or TabView, a navigation link or destination, or a sheet shows: the page itself. */
+  screens: string[];
+  /** Private and fileprivate View structs, and those inside another type: a screen's or a component's own parts. */
+  screenParts: string[];
+}
+
+interface SwiftView { name: string; isPrivate: boolean; nested: boolean }
+
+const SWIFT_STRUCT =
+  /^([ \t]*)(?:@[\w.]+(?:\([^)\n]*\))?\s+)*((?:(?:public|internal|private|fileprivate|open|final|nonisolated)\s+)*)struct\s+([A-Za-z_]\w*)\s*(?:<[^>{\n]*>)?\s*:\s*([^{\n]*?)\s*(?:\bwhere\b[^{\n]*)?(?:\{|$)/gm;
+
+/**
+ * The structs that conform to View in some Swift lines, with comments and strings masked. One inside braces (another
+ * type, an extension) is nested: read from the braces before it, not its indentation, and `#if` lines hold none.
+ */
+function swiftViews(lines: string[]): SwiftView[] {
+  const text = maskStrings(maskComments(lines.join("\n"), "swift"), "swift").replace(/^[ \t]*#(?:if|elseif|else|endif)\b.*$/gm, (l) => " ".repeat(l.length));
+  const found: SwiftView[] = [];
+  let depth = 0;
+  let at = 0;
+  for (const m of text.matchAll(SWIFT_STRUCT)) {
+    for (; at < m.index!; at++) {
+      if (text[at] === "{") depth++;
+      else if (text[at] === "}") depth = Math.max(0, depth - 1);
+    }
+    if (!m[4]!.split(",").some((t) => ["View", "SwiftUI.View"].includes(t.trim()))) continue;
+    found.push({ name: m[3]!, isPrivate: /\b(private|fileprivate)\b/.test(m[2]!), nested: depth > 0 });
+  }
+  return found;
+}
+
+/** Where a call's arguments and trailing closures end in masked Swift (`label:` closures included), from just after its name. */
+function callEnd(s: string, from: number): number {
+  let j = from;
+  const skip = () => {
+    while (/\s/.test(s[j] ?? "")) j++;
+  };
+  skip();
+  if (s[j] === "(") j = closeOf(s, j) + 1;
+  for (;;) {
+    skip();
+    const label = /^[a-z]\w*\s*:\s*\{/.exec(s.slice(j, j + 40));
+    if (label) j += label[0].length - 1;
+    if (s[j] !== "{") return j;
+    j = closeOf(s, j) + 1;
+  }
+}
+
+const SCREEN_CONTEXT = /\b(?:WindowGroup|NavigationStack|NavigationView|NavigationSplitView|TabView|NavigationLink)\b|\.(?:navigationDestination|sheet|fullScreenCover|popover)\b/g;
+
+/**
+ * The types some Swift code shows as a screen: those a #Preview shows (a NavigationStack inside one included), and those
+ * the app shows as one, in a WindowGroup, a NavigationStack or TabView, a navigation link or destination, or a sheet.
+ */
+function shownAsScreens(code: string): { byPreview: Set<string>; byApp: Set<string> } {
+  const s = maskStrings(maskComments(code, "swift"), "swift");
+  const types = (from: number, to: number) => [...s.slice(from, to).matchAll(/\b([A-Z]\w*)\s*[({]/g)].map((n) => n[1]!);
+  const previews = [...s.matchAll(/#Preview\b/g)].map((m) => [m.index!, callEnd(s, m.index! + m[0].length)] as const);
+  const byPreview = new Set(previews.flatMap(([from, to]) => types(from, to)));
+  const byApp = new Set<string>();
+  for (const m of s.matchAll(SCREEN_CONTEXT)) {
+    if (previews.some(([from, to]) => m.index! >= from && m.index! < to)) continue;
+    for (const t of types(m.index!, callEnd(s, m.index! + m[0].length))) byApp.add(t);
+  }
+  return { byPreview, byApp };
+}
+
+/** Swift files that are never components: tests, Motif's screenshot harness, its folder, the theme folder and the screenshot setup in design/. */
+const notSwiftUIApp = (path: string) =>
+  !path.endsWith(".swift") || /(^|\/)[^/]*Tests\//.test(path) || /(^|\/)(MotifShots|\.motif)\//.test(path) || /(^|\/)Design\//.test(path) || path.startsWith("design/");
+
+/**
+ * SwiftUI's new components, from the session's diff: public or internal View structs it adds at the top level outside
+ * the theme. A screen is the page itself: a *Screen or *View struct the root's WindowGroup, a NavigationStack or TabView,
+ * a navigation link or destination, or a sheet shows; one only a #Preview shows is a screen when it's a *Screen or the
+ * case's own page (`page`, the preview's title: OrdersView for "Orders"), so a row with its own preview is still a
+ * component. Private and nested ones are parts. The theme folder (Design/), a file that starts with Motif's header, tests
+ * and the screenshot harness never count, and a struct the diff also removes (moved or renamed in place) isn't new.
+ */
+export function swiftUIComponents(diff: string, page?: string): SwiftUIComponents {
+  const all = diffFiles(diff);
+  const removed = new Set(all.flatMap((f) => swiftViews(f.removed).map((v) => v.name)));
+  const kept = all.filter((f) => !f.deleted && !notSwiftUIApp(f.path));
+  // A changed file comes with its context lines, so the NavigationStack or #Preview around a new line is there too.
+  const shown = kept.map((f) => shownAsScreens(f.after.join("\n")));
+  const byApp = new Set(shown.flatMap((x) => [...x.byApp]));
+  const byPreview = new Set(shown.flatMap((x) => [...x.byPreview]));
+  const pageTypes = page ? screenTypes(page) : [];
+  const isScreen = (name: string) =>
+    /.(Screen|View)$/.test(name) && (byApp.has(name) || (byPreview.has(name) && (name.endsWith("Screen") || pageTypes.includes(name))));
+  const found: SwiftUIComponents = { newComponents: [], screens: [], screenParts: [] };
+  const seen = new Set<string>();
+  for (const f of kept) {
+    const added = reallyAdded(f);
+    if (added[0]?.startsWith("// Generated by Motif")) continue;
+    const names = new Set(swiftViews(added).map((v) => v.name));
+    // Read in each hunk's lines after the change, context included, so a struct added inside a type the hunk shows is
+    // nested; each hunk starts from depth 0, since the lines between hunks aren't in the diff.
+    for (const v of f.hunks.flatMap((h) => swiftViews(h))) {
+      if (!names.has(v.name) || removed.has(v.name) || seen.has(v.name)) continue;
+      seen.add(v.name);
+      if (v.isPrivate || v.nested) found.screenParts.push(v.name);
+      else if (isScreen(v.name)) found.screens.push(v.name);
+      else found.newComponents.push(v.name);
+    }
+  }
+  return found;
+}
+
 /** A plain site's new components, from the session's diff of its pages and stylesheets. */
 const plainComponents = (diff: string, existing: Set<string>) =>
   addedComponents(diffFiles(diff).filter((f) => !f.deleted && /\.(css|html?)$/i.test(f.path)).map((f) => f.text).join("\n"), existing);
@@ -486,7 +649,15 @@ export function fixtureComponents(fixture: string, root = join(import.meta.dir, 
 
 /** A B case's new components, and which the design guide records, from the session's diff (also used by --regrade). */
 export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComponents" | "recorded" | "screenParts" | "notUi" | "screens"> {
-  const found = isCompose(c) ? composeComponents(diff) : isFlutter(c) ? flutterComponents(diff) : isReactNative(c) ? rnComponents(diff) : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
+  const found = isCompose(c)
+    ? composeComponents(diff)
+    : isFlutter(c)
+      ? flutterComponents(diff)
+      : isReactNative(c)
+        ? rnComponents(diff)
+        : isSwiftUI(c)
+          ? swiftUIComponents(diff, c.test === "B" ? c.routes[0] : undefined)
+          : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
   return { ...found, recorded: recordedIn(diff, found.newComponents) };
 }
 
@@ -530,6 +701,54 @@ function composeScreen(app: string, route: string): { exists: boolean; preview?:
   return preview ? { exists: true, preview: preview.name } : { exists: false };
 }
 
+/** The types that would be a screen the prompt names: "Rewards history" is RewardsHistoryScreen or RewardsHistoryView. */
+function screenTypes(title: string): string[] {
+  const name = title.split(/[^A-Za-z0-9]+/).filter(Boolean).map((w) => w[0]!.toUpperCase() + w.slice(1)).join("");
+  return [`${name}Screen`, `${name}View`];
+}
+
+/** The #Preview block that starts on a line of a file, as masked Swift: from #Preview to the end of its closure. */
+function previewBlock(app: string, p: SwiftUIPreview): string {
+  let text: string;
+  try {
+    text = readFileSync(join(app, p.file), "utf8");
+  } catch {
+    return "";
+  }
+  const s = maskStrings(maskComments(text, "swift"), "swift");
+  const lineStart = s.split("\n").slice(0, p.line - 1).reduce((n, l) => n + l.length + 1, 0);
+  const at = s.indexOf("#Preview", lineStart);
+  return at < 0 ? "" : s.slice(at, callEnd(s, at + "#Preview".length));
+}
+
+/**
+ * The #Preview that stands for a screen the prompt names: one titled so ("Orders", "Orders screen"), else one that shows
+ * its type (OrdersScreen or OrdersView). SwiftUI screens have no address, so this is how motif shot reaches it.
+ */
+function swiftUIPreviewFor(app: string, title: string): SwiftUIPreview | undefined {
+  const { previews } = discoverSwiftUIScreens(app);
+  const slug = swiftUIPreviewSlug(title);
+  const named = previews.find((p) => [slug, `${slug}-screen`, `${slug}-view`].includes(swiftUIPreviewSlug(p.name.split("/").pop()!)));
+  if (named) return named;
+  const types = screenTypes(title);
+  return previews.find((p) => types.some((t) => new RegExp(`\\b${t}\\s*[({]`).test(previewBlock(app, p))));
+}
+
+/**
+ * A SwiftUI screen the prompt names exists when a #Preview stands for it, or when the app declares its type (OrdersScreen
+ * or OrdersView) and another file shows it (a navigation link, say): then it's there, but can't be drawn on its own.
+ */
+function swiftUIScreen(app: string, title: string): { exists: boolean; preview?: SwiftUIPreview; reachable?: string } {
+  const preview = swiftUIPreviewFor(app, title);
+  if (preview) return { exists: true, preview };
+  const files = listSwiftFiles(app, ".").filter((f) => !notSwiftUIApp(f.path)).map((f) => ({ path: f.path, code: maskStrings(maskComments(f.text, "swift"), "swift") }));
+  const reachable = screenTypes(title).find((t) => {
+    const home = files.find((f) => swiftViews(f.code.split("\n")).some((v) => v.name === t && !v.nested));
+    return home !== undefined && files.some((f) => f !== home && new RegExp(`\\b${t}\\s*[({]`).test(f.code));
+  });
+  return reachable ? { exists: true, reachable } : { exists: false };
+}
+
 export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: string): Promise<BFacts> {
   mkdirSync(out, { recursive: true });
   const route = c.routes[0]!;
@@ -553,6 +772,19 @@ export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: s
       route, pageExists: screen.exists, check: checkFacts(check), validate: validateFacts(validate),
       typecheck, render: await renderFacts(k, ws.app, route, out, PHONE_SIZES, screen.preview, 1_800_000), ...components,
     };
+  }
+  if (isSwiftUI(c)) {
+    // The feature's page is the #Preview the prompt names: it's drawn by itself, and nothing is drawn when there's none.
+    const screen = swiftUIScreen(ws.app, route);
+    const typecheck = await swiftUIBuild(ws.app, join(ws.dir, "DerivedData"), k, out);
+    const render = screen.preview
+      ? await renderFacts(k, ws.app, route, out, PHONE_SIZES, screen.preview.screen, 1_800_000)
+      : {
+          error: screen.reachable
+            ? `${screen.reachable} has no #Preview titled "${route}", so motif shot can't draw it on its own.`
+            : `The app has no #Preview titled "${route}" (or one showing ${screenTypes(route).join(" or ")}), so there's no screen to draw.`,
+        };
+    return { route, pageExists: screen.exists, check: checkFacts(check), validate: validateFacts(validate), typecheck, render, ...components };
   }
   if (isFlutter(c)) {
     const typecheck = await flutterAnalyze(ws.app, k, out);
@@ -687,7 +919,8 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
   for (const f of ["DESIGN.md", "design/tokens.json"]) if (existsSync(join(app, f))) copyFileSync(join(app, f), join(out, basename(f)));
   const compose = isCompose(c);
   const flutter = isFlutter(c);
-  if (!flutter && !compose && !existsSync(join(app, "node_modules"))) {
+  const swift = isSwiftUI(c);
+  if (!flutter && !compose && !swift && !existsSync(join(app, "node_modules"))) {
     const r = await k.run([packageManager(app), "install"], app, 900_000);
     save(out, "install.log", `${r.stdout}\n${r.stderr}`);
   }
@@ -698,11 +931,23 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
     ? { build: undefined, typecheck: await composeCompile(app, k, out) }
     : flutter
       ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) }
-      : isReactNative(c) ? { build: undefined, typecheck: await rnTypecheck(app, k, out) } : await buildAndTypecheck(app, k, out);
-  const shot = await motifJson(k, ["shot", "--audit", "--routes", c.routes.join(","), ...(flutter || compose || isReactNative(c) ? PHONE_SIZES : [])], app, out, "shot.json", compose ? 1_800_000 : 900_000);
+      : isReactNative(c)
+        ? { build: undefined, typecheck: await rnTypecheck(app, k, out) }
+        : swift ? { build: undefined, typecheck: await swiftUIBuild(app, join(ws.dir, "DerivedData"), k, out) } : await buildAndTypecheck(app, k, out);
+  // SwiftUI: the root, and the #Previews the prompt names that the app has (by File.swift:line, which nothing else
+  // shares), each reported under the case's own name; one the app lacks isn't asked for, so it shows as not captured.
+  const named = new Map<string, string>();
+  if (swift) {
+    for (const r of c.routes.filter((x) => x !== "/")) {
+      const p = swiftUIPreviewFor(app, r);
+      if (p) named.set(p.screen, r);
+    }
+  }
+  const targets = swift ? ["--routes", "/", ...(named.size > 0 ? ["--screen", [...named.keys()].join(",")] : [])] : ["--routes", c.routes.join(",")];
+  const shot = await motifJson(k, ["shot", "--audit", ...targets, ...(flutter || compose || swift || isReactNative(c) ? PHONE_SIZES : [])], app, out, "shot.json", compose || swift ? 1_800_000 : 900_000);
   copyShots(app, shot.json, join(out, "shots"));
   const screens = Array.isArray(shot.json?.routes)
-    ? shot.json.routes.map((r: any) => ({ route: String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))
+    ? shot.json.routes.map((r: any) => ({ route: named.get(String(r.route)) ?? String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))
     : { error: String(shot.json?.error ?? shot.output) };
   return {
     app, validate: validateFacts(validate), check: checkFacts(check), sections, ...(build ? { build } : {}), typecheck, screens, routes: c.routes,

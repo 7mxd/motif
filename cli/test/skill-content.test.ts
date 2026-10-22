@@ -214,3 +214,92 @@ describe("the Compose guide matches the tool", () => {
     expect(files.filter((f) => f.startsWith("adapters/compose/")).length).toBe(6);
   });
 });
+
+describe("the SwiftUI guide matches the tool", () => {
+  const read = (p: string) => readFileSync(join(SKILL, p), "utf8").replace(/\r\n/g, "\n");
+
+  test("doctor's lines are the tool's own, on a Mac and elsewhere", async () => {
+    const { swiftUIDoctor } = await import("../src/stacks/swiftui/doctor");
+    const readme = read("adapters/swiftui/README.md");
+    const deps = (platform: NodeJS.Platform, run?: (cmd: string[]) => { code: number; stdout: string }) =>
+      ({ platform, arch: "arm64", home: "/Users/you", findBrowser: () => null, which: () => null, ...(run ? { run } : {}) });
+    expect(readme).toContain(swiftUIDoctor(deps("win32"), { root: ".", apps: [] })[0]!.detail);
+    expect(readme).toContain(swiftUIDoctor(deps("darwin", () => ({ code: 127, stdout: "" })), { root: ".", apps: [] })[0]!.detail);
+    const tools = (cmd: string[]) => (cmd[0] === "xcode-select" ? { code: 0, stdout: "/Library/Developer/CommandLineTools\n" } : { code: 0, stdout: "" });
+    expect(readme).toContain(swiftUIDoctor(deps("darwin", tools), { root: ".", apps: [] })[0]!.detail);
+  });
+
+  test("its setup file, first-run lines, variant hint and audit fixes are the tool's own", async () => {
+    const { SETUP_FILE, SWIFTUI_FIRST_RUN, SWIFTUI_FIRST_RUN_MAC, SWIFTUI_FIXES } = await import("../src/stacks/swiftui/shot");
+    const checks = read("adapters/swiftui/checks.md");
+    for (const s of [SETUP_FILE, SWIFTUI_FIRST_RUN, SWIFTUI_FIRST_RUN_MAC]) expect(checks).toContain(s);
+    // The audit's advice and the guide's agree: each fix's code is in both.
+    const fixes = Object.values(SWIFTUI_FIXES).join("\n");
+    for (const s of [".accessibilityLabel(", ".frame(minWidth: 44, minHeight: 44)", ".contentShape(Rectangle())", "@Environment(\\.accessibilityReduceMotion)", ".foregroundStyle(", ".tint(", "MotifMotion.animation("]) {
+      expect([s, fixes.includes(s), checks.includes(s)]).toEqual([s, true, true]);
+    }
+  });
+
+  test("its wiring and variants are the theme's own names; the default variant is the guide's own, not one called default (fix round 1)", async () => {
+    const { generateSwiftUI } = await import("../src/stacks/swiftui/generate");
+    const { buildThemeSet } = await import("../src/generate/theme");
+    const { docFrom, twoVariantTokens } = await import("./helpers");
+    // women is the default, as in the format's own example.
+    const theme = generateSwiftUI(buildThemeSet(docFrom(twoVariantTokens())))[0]!.content;
+    const tokens = read("adapters/swiftui/tokens.md");
+    for (const s of [
+      "@Environment(\\.motifColors) private var colors", "func motifTheme(variant: MotifVariant = .women)", "case women\n    case men", "func motifFont(_ type: MotifType)",
+      "@MainActor static var debugVariantOverride", "@Entry var motifVariant", "static func standard(over duration: Double) -> Animation",
+    ]) {
+      expect([s, theme.includes(s)]).toEqual([s, true]);
+    }
+    for (const s of [
+      "@Environment(\\.motifColors) private var colors", ".motifTheme(variant: .women)", "MotifVariant(rawValue: variant) ?? .women", 'marks `"default": true`, whatever its id',
+      ".motifFont(.body)", "MotifTheme.debugVariantOverride", "@Environment(\\.motifVariant)",
+    ]) {
+      expect(tokens).toContain(s);
+    }
+    expect(tokens).not.toContain("MotifVariant.defaultVariant");
+    expect(read("adapters/swiftui/motion.md")).toContain("MotifCurves.standard(over: MotifDurations.slow)");
+  });
+
+  test("Dynamic Type, line spacing, scene modifiers and the Xcode steps say what the theme and the tool do now (fix round 1)", () => {
+    const tokens = read("adapters/swiftui/tokens.md");
+    const platform = read("adapters/swiftui/platform.md");
+    // .motifFont scales every role, the system font's too; MotifType.x.font() alone doesn't scale a system role.
+    for (const s of ["`.motifFont` scales every role with Dynamic Type", "`MotifType.body.font()` alone", "the font's own line height"]) expect(tokens).toContain(s);
+    expect(platform).toContain("`.motifFont` scales every role with Dynamic Type");
+    for (const text of [tokens, platform]) {
+      expect(text).not.toContain("A role in the system font keeps its size");
+      expect(text).not.toContain("1.2 times the size, true of the system font");
+    }
+    // Scene modifiers reach the views; only .modelContainer(for:) and the App's own setup don't reach the screenshots.
+    expect(tokens).not.toContain("a modifier on the scene doesn't reach the views");
+    expect(tokens).toContain("`.modelContainer(for:)`");
+    // Xcode makes the app's folder itself; its language modes are Swift 5 and Swift 6.
+    const readme = read("adapters/swiftui/README.md");
+    expect(readme).toContain("Xcode makes the `MyApp` folder there");
+    expect(readme).not.toContain("Swift 5.9");
+    expect(read("modes/init.md")).toContain("Xcode makes the app's folder there");
+    // System controls aren't all 44 points: the system sizes them, and the audit doesn't flag them.
+    expect(read("adapters/swiftui/components.md")).toContain("the system sizes them, and the audit doesn't flag them");
+    expect(platform).toContain("the system sizes them, and the audit doesn't flag them");
+    // A SwiftUI app's other screens are previews: feature names --screen beside --routes.
+    const feature = read("modes/feature.md");
+    expect((feature.match(/--screen <preview>/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("symbols that point are named by reading order, for the documented reason: the left and right names flip only through a compatibility list (Task 12)", () => {
+    const platform = read("adapters/swiftui/platform.md");
+    for (const s of ["`chevron.forward`, not `chevron.right`", "`arrow.backward`, not `arrow.left`", "only through a compatibility list"]) expect(platform).toContain(s);
+    // Qahwa's seeded copy showed chevron.right drawn pointing left in Arabic: the guide no longer says it doesn't mirror.
+    expect(platform).not.toContain('| `Image(systemName: "chevron.right")` |');
+  });
+
+  test("every SwiftUI guide file stays under the line limit and links only to files that exist", () => {
+    for (const f of files.filter((f) => f.startsWith("adapters/swiftui/"))) {
+      expect(lintSkillMarkdown(f, readFileSync(join(SKILL, f), "utf8"), opts)).toEqual([]);
+    }
+    expect(files.filter((f) => f.startsWith("adapters/swiftui/")).length).toBe(6);
+  });
+});

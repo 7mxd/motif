@@ -1,5 +1,5 @@
 /** Words a native language won't take as an identifier: a variant called "default" becomes defaultVariant. */
-export const RESERVED: { dart: Set<string>; kotlin: Set<string> } = {
+export const RESERVED: { dart: Set<string>; kotlin: Set<string>; swift: Set<string> } = {
   dart: new Set([
     // Reserved words
     "assert", "break", "case", "catch", "class", "const", "continue", "default", "do", "else", "enum", "extends",
@@ -15,6 +15,16 @@ export const RESERVED: { dart: Set<string>; kotlin: Set<string> } = {
     "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in", "interface", "is", "null",
     "object", "package", "return", "super", "this", "throw", "true", "try", "typealias", "typeof", "val", "var",
     "when", "while",
+  ]),
+  // Swift's keywords in declarations, statements and expressions.
+  swift: new Set([
+    "associatedtype", "class", "deinit", "enum", "extension", "fileprivate", "func", "import", "init", "inout", "internal",
+    "let", "open", "operator", "private", "precedencegroup", "protocol", "public", "rethrows", "static", "struct",
+    "subscript", "typealias", "var", "break", "case", "catch", "continue", "default", "defer", "do", "else", "fallthrough",
+    "for", "guard", "if", "in", "repeat", "return", "throw", "switch", "where", "while", "Any", "as", "await", "false",
+    "is", "nil", "self", "Self", "super", "throws", "true", "try",
+    // Members every enum has, which a case of the same name would clash with.
+    "allCases", "rawValue", "hashValue",
   ]),
 };
 
@@ -43,4 +53,10 @@ export function camelCase(id: string): string {
 export function kotlinIdentifier(id: string): string {
   const name = camelCase(id);
   return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** "partner-store" becomes partnerStore. A Swift keyword gets "Variant" added: default becomes defaultVariant. */
+export function swiftIdentifier(id: string): string {
+  const name = camelCase(id);
+  return RESERVED.swift.has(name) ? `${name}Variant` : name;
 }

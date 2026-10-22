@@ -1,12 +1,14 @@
 // Checks before a run: Claude Code signed in with a Claude account (never an API key), this checkout's motif tool and plugin built,
 // Node.js for the apps, a browser for the cases that need one (the React Native cases among them: Expo's web target), Flutter for the Flutter cases,
-// and a JDK and the Android SDK for the Compose ones. Nothing is downloaded or installed for the developer.
+// a JDK and the Android SDK for the Compose ones, and a Mac with Xcode and an iOS simulator for the SwiftUI ones. Nothing is downloaded or installed for
+// the developer.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { defaultDoctorDeps, type DoctorDeps } from "../../cli/src/commands/doctor";
 import { composeDoctor } from "../../cli/src/stacks/compose/doctor";
 import { FLUTTER_INSTALL, FLUTTER_MIN, olderThanFlutterMin } from "../../cli/src/stacks/flutter/doctor";
-import { CASES, isCompose, isFlutter, needsBrowser as caseNeedsBrowser } from "./cases";
+import { swiftUIDoctor, XCODE_MIN } from "../../cli/src/stacks/swiftui/doctor";
+import { CASES, isCompose, isFlutter, isSwiftUI, needsBrowser as caseNeedsBrowser } from "./cases";
 import { resolveClaude, sessionEnv } from "./claude";
 import { tail, type Run } from "./tools";
 
@@ -25,12 +27,41 @@ export interface PreflightDeps {
   /** This Bun, for `bun run build` and `bun run plugin`. */
   bun: string;
   claudeOverride?: string;
-  /** Compose: how doctor looks for the JDK and the Android SDK (this computer's own when not given; tests give a fake). */
+  /** Compose and SwiftUI: how doctor looks for the JDK and the Android SDK, and for Xcode (this computer's own when not given; tests give a fake). */
   doctor?: DoctorDeps;
+  /** The platform the evals run on (this one when not given): the SwiftUI cases need macOS. */
+  platform?: NodeJS.Platform;
 }
 
-/** The cases that need neither Flutter nor a JDK and the Android SDK: the web ones and the Expo ones. */
-const webAndExpoCases = () => CASES.filter((c) => !isFlutter(c) && !isCompose(c)).map((c) => c.id);
+/**
+ * The cases to run instead when Flutter or the Android SDK is missing: the web and Expo ones, and on a Mac the SwiftUI
+ * ones too, with what to call them.
+ */
+function otherCases(d: PreflightDeps): { ids: string[]; what: string } {
+  const mac = (d.platform ?? process.platform) === "darwin";
+  return {
+    ids: CASES.filter((c) => !isFlutter(c) && !isCompose(c) && (mac || !isSwiftUI(c))).map((c) => c.id),
+    what: mac ? "the web, Expo and SwiftUI cases" : "the web and Expo cases",
+  };
+}
+
+/**
+ * Why the SwiftUI cases can't run here, naming the cases that can: off a Mac, that they need one; on a Mac, doctor's own
+ * line for Xcode and the iOS simulator. Nothing when Xcode 16 or later and a simulator are there.
+ */
+function xcodeProblem(d: PreflightDeps, repo: string): string | null {
+  const swiftUICases = CASES.filter(isSwiftUI).map((c) => c.id).join(", ");
+  const others = CASES.filter((c) => !c.mac).map((c) => c.id).join(",");
+  const platform = d.platform ?? process.platform;
+  if (platform !== "darwin") {
+    return `The SwiftUI cases (${swiftUICases}) need a Mac with Xcode, since SwiftUI apps build and draw only on macOS. Run them on a Mac, or run the others here: --cases ${others}`;
+  }
+  const deps = { ...(d.doctor ?? { ...defaultDoctorDeps(), which: d.which, vars: d.env }), platform };
+  // The repository's root isn't an app, so doctor takes it as an iOS one and looks for a simulator too.
+  const needed = swiftUIDoctor(deps, { root: repo, apps: [{ path: ".", stack: "swiftui", source: "detected" }] }).filter((i) => i.status === "needed");
+  if (needed.length === 0) return null;
+  return `The SwiftUI cases (${swiftUICases}) need Xcode ${XCODE_MIN} or later with an iOS simulator. ${needed.map((i) => i.detail).join(" ")} Then run this again. Or run the others without them: --cases ${others}`;
+}
 
 /** Flutter's version from flutter --version --machine (an "upgrade available" banner may come first), or null. */
 async function flutterVersion(d: PreflightDeps, cwd: string): Promise<string | null> {
@@ -51,9 +82,9 @@ async function flutterProblem(d: PreflightDeps, cwd: string): Promise<string | n
   const version = await flutterVersion(d, cwd);
   if (version && !olderThanFlutterMin(version)) return null;
   const flutterCases = CASES.filter(isFlutter).map((c) => c.id);
-  const others = webAndExpoCases();
+  const others = otherCases(d);
   const found = version ? `This is Flutter ${version}; run flutter upgrade, or ${FLUTTER_INSTALL}` : `Flutter wasn't found on the PATH (or didn't say its version): ${FLUTTER_INSTALL}`;
-  return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN} or later. ${found}, then run this again. Or run the web and Expo cases without it: --cases ${others.join(",")}`;
+  return `The Flutter cases (${flutterCases.join(", ")}) need Flutter ${FLUTTER_MIN} or later. ${found}, then run this again. Or run ${others.what} without it: --cases ${others.ids.join(",")}`;
 }
 
 /** Why the Compose cases can't run here (doctor's own lines for the JDK and the SDK), naming the cases that can; nothing when both are found. */
@@ -62,11 +93,13 @@ function androidProblem(d: PreflightDeps, repo: string): string | null {
   const needed = composeDoctor(deps, { root: repo, apps: [{ path: ".", stack: "compose", source: "detected" }] }).filter((i) => i.status === "needed");
   if (needed.length === 0) return null;
   const composeCases = CASES.filter(isCompose).map((c) => c.id);
-  const others = webAndExpoCases();
-  return `The Compose cases (${composeCases.join(", ")}) need a JDK 17 or later and the Android SDK. ${needed.map((i) => i.detail).join(" ")} Then run this again. Or run the web and Expo cases without them: --cases ${others.join(",")}`;
+  const others = otherCases(d);
+  return `The Compose cases (${composeCases.join(", ")}) need a JDK 17 or later and the Android SDK. ${needed.map((i) => i.detail).join(" ")} Then run this again. Or run ${others.what} without them: --cases ${others.ids.join(",")}`;
 }
 
-export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false): Promise<Ready | { error: string }> {
+export async function preflight(
+  p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false, needsXcode = false,
+): Promise<Ready | { error: string }> {
   const found = resolveClaude(d.claudeOverride ?? d.which("claude"));
   if ("error" in found) return found;
   const { env } = sessionEnv(d.env, p.motifBin);
@@ -80,7 +113,9 @@ export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDep
   } catch {
     status = null;
   }
-  if (status?.loggedIn !== true || status.authMethod !== "claude.ai") {
+  // "oauth_token" is a Claude account's own token from claude setup-token (CLAUDE_CODE_OAUTH_TOKEN), for a machine
+  // you reach without a browser; each session still has to report no API key.
+  if (status?.loggedIn !== true || !["claude.ai", "oauth_token"].includes(status.authMethod)) {
     return { error: "The evals run on your Claude plan through Claude Code, never with an API key. Sign in with your Claude account (claude auth login), then run this again." };
   }
   // Before the builds, which take a while.
@@ -90,6 +125,10 @@ export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDep
   }
   if (needsAndroid) {
     const problem = androidProblem(d, p.repo);
+    if (problem) return { error: problem };
+  }
+  if (needsXcode) {
+    const problem = xcodeProblem(d, p.repo);
     if (problem) return { error: problem };
   }
 
@@ -118,8 +157,11 @@ export async function preflight(p: Paths, needsBrowser: boolean, d: PreflightDep
     browser = false;
   }
   if (needsBrowser && !browser) {
+    // The SwiftUI cases need no browser either, but they run only on a Mac.
+    const noBrowser = (mac: boolean) => CASES.filter((c) => !caseNeedsBrowser(c) && Boolean(c.mac) === mac).map((c) => c.id).join(",");
+    const onMac = (d.platform ?? process.platform) === "darwin" ? ` On this Mac, the SwiftUI cases don't need one either: --cases ${noBrowser(true)}.` : "";
     return {
-      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, and the React Native cases draw their screens through Expo's web target in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${CASES.filter((c) => !caseNeedsBrowser(c)).map((c) => c.id).join(",")}) don't need one.`,
+      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, and the React Native cases draw their screens through Expo's web target in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${noBrowser(false)}) don't need one.${onMac}`,
     };
   }
   return { claude: found.exe, claudeVersion: version.stdout.trim(), browser };

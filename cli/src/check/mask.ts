@@ -6,7 +6,7 @@ import type { Lang } from "./files";
  * Strings are respected, so "https://…" inside quotes is not a comment.
  */
 export function maskComments(text: string, lang: Lang): string {
-  if (lang === "dart" || lang === "kotlin") return scanDart(text, "comments", lang === "kotlin");
+  if (lang === "dart" || lang === "kotlin" || lang === "swift") return scanDart(text, "comments", lang);
   const out = text.split("");
   const blank = (from: number, to: number) => {
     for (let k = from; k < to; k++) if (out[k] !== "\n" && out[k] !== "\r") out[k] = " ";
@@ -57,13 +57,13 @@ export function maskComments(text: string, lang: Lang): string {
 
 /**
  * Replace the contents of string literals with spaces, keeping the quotes, every line break and the length.
- * Dart and Kotlin only. Dart: `'…'`, `"…"`, triple-quoted and raw (`r'…'`) strings are blanked;
+ * Dart, Kotlin and Swift only. Swift: `"…"`, `"""…"""` and raw `#"…"#` (any number of #) strings are blanked; code inside `\(…)` (`\#(…)` in a raw string) stays visible. Dart: `'…'`, `"…"`, triple-quoted and raw (`r'…'`) strings are blanked;
  * Kotlin: `"…"`, `"""…"""` (no escapes, closing on the last quote of a run) and `'x'` char literals are blanked; code inside `${…}` stays visible
  * (nested braces and strings handled); a bare `$name` interpolation is blanked with the rest of the string.
  * Comments are left as they are (mask them first with maskComments). Other languages are returned unchanged.
  */
 export function maskStrings(text: string, lang: Lang): string {
-  return lang === "dart" || lang === "kotlin" ? scanDart(text, "strings", lang === "kotlin") : text;
+  return lang === "dart" || lang === "kotlin" || lang === "swift" ? scanDart(text, "strings", lang) : text;
 }
 
 const isIdent = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_$]/.test(c);
@@ -73,7 +73,9 @@ const isIdent = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_$]/.te
  * Kotlin differs in three ways: `'…'` is a char literal (never triple), there is no `r'…'`, and `"""…"""`
  * takes no escapes and closes on the last quote of a run of three or more.
  */
-function scanDart(text: string, mode: "comments" | "strings", kotlin = false): string {
+function scanDart(text: string, mode: "comments" | "strings", lang: "dart" | "kotlin" | "swift" = "dart"): string {
+  const kotlin = lang === "kotlin";
+  const swift = lang === "swift";
   const out = text.split("");
   const n = text.length;
   const isBreak = (c: string | undefined) => c === "\n" || c === "\r";
@@ -119,7 +121,41 @@ function scanDart(text: string, mode: "comments" | "strings", kotlin = false): s
     return n;
   };
 
-  // Scans code from `start`. Inside an interpolation, returns the index of its closing `}`; otherwise n.
+  // Swift: a string whose opening quote run starts at `i` (after `hashes` # signs); returns the index after its closing run.
+  const swiftString = (i: number, hashes: number): number => {
+    const triple = text.startsWith('"""', i);
+    const open = triple ? 3 : 1;
+    const close = '"'.repeat(open) + "#".repeat(hashes);
+    const escape = "\\" + "#".repeat(hashes);
+    let j = i + open;
+    let from = j;
+    const flush = (to: number) => {
+      if (mode === "strings") blank(from, to);
+    };
+    while (j < n) {
+      if (text.startsWith(close, j)) {
+        flush(j);
+        return j + close.length;
+      }
+      if (!triple && isBreak(text[j])) {
+        flush(j);
+        return j;
+      }
+      if (text.startsWith(escape, j)) {
+        if (text[j + escape.length] === "(") {
+          flush(j);
+          j = code(j + escape.length + 1, true) + 1;
+          from = j;
+        } else j += escape.length + 1;
+        continue;
+      }
+      j++;
+    }
+    flush(Math.min(j, n));
+    return n;
+  };
+
+  // Scans code from `start`. Inside an interpolation, returns the index of its closing `}` (`)` in Swift); otherwise n.
   const code = (start: number, interp: boolean): number => {
     let i = start;
     let depth = 0;
@@ -146,6 +182,29 @@ function scanDart(text: string, mode: "comments" | "strings", kotlin = false): s
         }
         if (mode === "comments") blank(i, j);
         i = j;
+        continue;
+      }
+      if (swift) {
+        if (c === '"') {
+          i = swiftString(i, 0);
+          continue;
+        }
+        if (c === "#") {
+          let k = i;
+          while (text[k] === "#") k++;
+          if (text[k] === '"' && !isIdent(text[i - 1])) {
+            i = swiftString(k, k - i);
+            continue;
+          }
+          i = k;
+          continue;
+        }
+        if (c === "(") depth++;
+        else if (c === ")") {
+          if (interp && depth === 0) return i;
+          if (depth > 0) depth--;
+        }
+        i++;
         continue;
       }
       if (c === "'" || c === '"') {

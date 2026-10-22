@@ -54,6 +54,15 @@ export const NATIVE_VIEWPORTS: Viewport[] = [
 /** A native app's desktop size, drawn only when --sizes asks for it. */
 export const NATIVE_DESKTOP: Viewport = { name: "desktop", width: 1440, height: 900, scale: 1, mobile: false };
 
+/**
+ * A macOS app's sizes (decision 0010, §17): windows, not screens. The desktop's 1440×900 and a compact 900×700, both
+ * at 2× (a Retina Mac's), whatever the Mac's own screen is. In file names: desktop and desktop-900.
+ */
+export const MAC_WINDOWS: Viewport[] = [
+  { name: "desktop", width: 1440, height: 900, scale: 2, mobile: false },
+  { name: "desktop", file: "desktop-900", width: 900, height: 700, scale: 2, mobile: false },
+];
+
 /** The sizes --sizes accepts: each width, and names for groups of them. */
 const SIZE_NAMES: Record<string, number[]> = { phones: [360, 390, 430], phone: [390], mobile: [390], tablet: [768], desktop: [1440] };
 
@@ -75,6 +84,11 @@ export function parseSizes(value: string, list: Viewport[] = VIEWPORTS): Viewpor
 export function describeSizes(viewports: Viewport[] = VIEWPORTS): string {
   if (viewports.length === VIEWPORTS.length) return "three phone sizes, a tablet and a desktop";
   if (viewports.length === NATIVE_VIEWPORTS.length && viewports.every((v, i) => v === NATIVE_VIEWPORTS[i])) return "three phone sizes and a tablet";
+  // A macOS app's windows: "a 1440×900 and a 900×700 window".
+  if (viewports.length > 0 && viewports.every((v) => MAC_WINDOWS.includes(v))) {
+    const each = viewports.map((v) => `a ${v.width}×${v.height}`);
+    return `${each.length > 1 ? `${each.slice(0, -1).join(", ")} and ${each.at(-1)}` : each[0]} window`;
+  }
   const widths = viewports.map((v) => String(v.width));
   return `${widths.length > 1 ? `${widths.slice(0, -1).join(", ")} and ${widths.at(-1)}` : widths[0]} px wide`;
 }
@@ -132,6 +146,8 @@ export interface RouteResult {
   shots: string[];
   /** Set when the audit of this page couldn't finish. */
   auditError?: string;
+  /** How many of the page's screenshots weren't drawn while others were (a native stack's setup failed for them). */
+  missing?: number;
   /** Set when the page didn't turn right to left by itself in the --rtl language, so Motif set dir="rtl" on <html>. */
   rtlForced?: boolean;
   /** A native app's screen that redirected (to a sign-in screen, say): the route it was drawn at. */

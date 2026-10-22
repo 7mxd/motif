@@ -12,6 +12,7 @@ import { dartReducedMotion, scanDart } from "../src/stacks/flutter/rules";
 import { composeReducedMotion, scanKotlin } from "../src/stacks/compose/rules";
 import { NO_ANDROID_SDK } from "../src/stacks/compose/doctor";
 import { rnReducedMotion, scanReactNative } from "../src/stacks/react-native/rules";
+import { scanSwift, swiftUIReducedMotion } from "../src/stacks/swiftui/rules";
 import { docFrom, validTokens } from "./helpers";
 
 const ADAPTERS = join(import.meta.dir, "../../skill/adapters");
@@ -379,6 +380,99 @@ describe("the React Native guide", () => {
   });
 });
 
+describe("the SwiftUI guide", () => {
+  const has = (file: string, strings: string[]) => {
+    const text = read(`swiftui/${file}`);
+    for (const s of strings) expect([file, s, text.includes(s)]).toEqual([file, s, true]);
+  };
+
+  test("has exactly the template's files", () => {
+    expect(readdirSync(join(ADAPTERS, "swiftui")).sort()).toEqual(GUIDE_FILES);
+  });
+
+  test("README: Xcode's App template, no command-line starter, xcodebuild, the Mac, doctor's lines, the floors and monorepos", () => {
+    has("README.md", [
+      "**App**", "no command-line starter", "swift package init --type executable", "xcodebuild", "-destination", "a Mac",
+      "`Xcode`", "SwiftUI screenshots need a Mac with Xcode.", "Xcode isn't installed.", "is older than 16", "install an iOS simulator in Xcode › Settings › Components",
+      "A macOS app needs no simulator.", "not only its command-line tools",
+      "Xcode 16", "iOS 17", "macOS 14", "**Swift 5**", "**Swift 6**", "design/motif.json", "themeDir", "## Monorepos", "one guide for the web dashboard and the iPhone app", "platform notes", "--app",
+      "#Preview", "synchronized folder", "Podfile", "Package.swift",
+    ]);
+  });
+
+  test("tokens.md: wiring .motifTheme in, reading the colours from the environment, type, sizes, fonts and switching variants", () => {
+    has("tokens.md", [
+      ".motifTheme(", "@Environment(\\.motifColors)", ".motifFont(", "MotifSpace.", "MotifRadius.", ".motifShadow(", "MotifType.", "Arabic companion",
+      "UIAppFonts", "ATSApplicationFontsPath", "fonts.google.com", "Info.plist", "AccentColor",
+      "## Switching variants", "@AppStorage", "MotifVariant(rawValue:", ".motifTheme(variant:", "MotifTheme.debugVariantOverride", "colours only",
+      // A new App for each root screenshot: its init runs; its delegate's launch work doesn't (final review).
+      "`App`'s `init` runs before each screenshot of the root",
+    ]);
+    expect(read("swiftui/tokens.md")).not.toContain("what the `App` sets up in its `init`");
+  });
+
+  test("components.md: where views live, private views, button styles, every state, names, 44 pt and focus", () => {
+    has("components.md", [
+      "Components/", "Features/<Feature>/", "`private` views are parts of a screen", "ButtonStyle", "configuration.isPressed", "@Environment(\\.isEnabled)",
+      "@FocusState", ".accessibilityLabel", ".contentShape", "44", ".frame(minWidth: 44, minHeight: 44)", "Label(",
+    ]);
+    for (const c of ["Button", "IconButton", "Field", "Checkbox", "Switch", "Card", "ListItem", "TopBar", "TabBar", "Sheet", "Dialog", "Toast", "Skeleton", "EmptyState", "ErrorState", "Avatar", "Badge"]) {
+      expect(read("swiftui/components.md")).toContain(`\`${c}\``);
+    }
+  });
+
+  test("motion.md: the roles in SwiftUI's animation API, springs, and reduced motion", () => {
+    has("motion.md", ["MotifSprings.", "MotifCurves.", "MotifDurations.", "withAnimation(", "accessibilityReduceMotion", "MotifMotion.animation(", "isReduceMotionEnabled", ".repeatForever("]);
+  });
+
+  test("platform.md: right to left, leading and trailing, Dynamic Type, safe areas, iOS and the Mac, languages", () => {
+    has("platform.md", [
+      ".environment(\\.layoutDirection", "leading", "trailing", ".flipsForRightToLeftLayoutDirection(true)", "Dynamic Type", "safe area", ".safeAreaInset(",
+      "Localizable.xcstrings", "NavigationStack", "the Mac", "DESIGN.md",
+    ]);
+  });
+
+  test("checks.md: every rule, the audit, the setup and state files with their exact signatures, and the screenshot flags", () => {
+    const checks = read("swiftui/checks.md");
+    for (const id of RULE_IDS.filter((r) => !r.startsWith("tailwind") && r !== "primitive-use")) expect(checks).toContain(`## \`${id}\``);
+    has("checks.md", [
+      "## Contrast", "## Target size", "## Names", "## Reduced motion", "// motif-ok:",
+      "design/states/Setup.swift", "func motifSetup(variant: String, locale: Locale, dark: Bool)", "@MainActor func motifState(_ app: MotifHarness) async throws",
+      "MotifHarness", "app.tap(", "app.type(", "app.waitFor(", "app.exists(", "15 seconds", "top-level",
+      "--screen", "#Preview", "--rtl", "--state", "a Mac", "1440×900", "900×700", "--sizes 1440",
+      // A new App, and its own @State, for each root screenshot, and the note when it can't be kept (Task 15, final review).
+      "a new `App` for each screenshot of `/`", "the run's note names the `@State` that wasn't kept", "@Previewable @State",
+      "`App`'s `init` runs before each screenshot of the root",
+    ]);
+  });
+
+  test("the Swift examples pass motif check as they are, and each rule's bad example is reported by it", () => {
+    const scale = buildScale(buildTheme(docFrom(validTokens())), "MyApp/Design");
+    const reported = new Set<string>();
+    for (const file of GUIDE_FILES) {
+      const text = read(`swiftui/${file}`);
+      const blocks = [...text.matchAll(/```swift\n([\s\S]*?)```/g)].map((m) => m[1]!);
+      if (file !== "README.md") expect([file, blocks.length > 0]).toEqual([file, true]);
+      for (const [i, code] of blocks.entries()) {
+        const path = `${file}-example-${i + 1}.swift`;
+        const source = { path, abs: path, text: code, lang: "swift" as const };
+        const lines = code.split("\n");
+        const hits = [...scanSwift(source, scale), ...swiftUIReducedMotion([source])].filter((h) => h.violation && !("reason" in (exceptionFor(lines, h.line) ?? {})));
+        // A bad example starts with "// Reported as <rule>:", and motif check reports it as that rule, and only that.
+        const bad = /^\/\/ Reported as ([a-z-]+):/.exec(code)?.[1];
+        if (bad) {
+          expect([path, file]).toEqual([path, "checks.md"]);
+          expect([path, hits.length > 0, [...new Set(hits.map((h): string => h.rule))]]).toEqual([path, true, [bad]]);
+          reported.add(bad);
+        } else {
+          expect(hits.map((h) => `${path}: ${h.rule} ${h.text}`)).toEqual([]);
+        }
+      }
+    }
+    expect([...reported].sort()).toEqual(["off-scale", "raw-color", "raw-font", "raw-motion", "reduced-motion"]);
+  });
+});
+
 describe("the parity checklist (docs/parity.md, Task 15)", () => {
   const REPO = join(import.meta.dir, "../..");
   const AREAS = ["Detect and set up", "Theme code", "Checks", "Drafting a guide", "Components", "Mockups", "Screenshots", "Audit", "Skill", "Evals", "Agents"];
@@ -395,19 +489,22 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web, Flutter, React Native and Jetpack Compose have every area done; the stacks still to come have none", () => {
-    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+  test("React web, plain web, Flutter, React Native, Jetpack Compose and SwiftUI have every area done; the stacks still to come have none", () => {
+    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose", "SwiftUI"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+    // SwiftUI's proof names the runs its four cases passed in (2H Task 15).
+    const swiftEvals = table.find((r) => r[0] === "Evals" && r[1]!.includes("fixtures-swiftui.test.ts"))!;
+    for (const s of ["eval run 20261022-061913", "It passed in run 20261022-085041"]) expect(swiftEvals[1]).toContain(s);
     // The cell and its proof agree: each Evals proof names the run that passed.
     for (const fixtureTest of ["fixtures-rn.test.ts", "fixtures-compose.test.ts"]) {
       const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes(fixtureTest))!;
       expect([fixtureTest, proof[1]!.includes("Recorded in eval run")]).toEqual([fixtureTest, true]);
     }
-    for (const stack of ["SwiftUI", "Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
+    for (const stack of ["Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }
   });
 
-  test("Flutter's, Jetpack Compose's and React Native's proofs name every area, and every file they link to exists", () => {
+  test("Flutter's, Jetpack Compose's, React Native's and SwiftUI's proofs name every area, and every file they link to exists", () => {
     const section = (heading: string) => {
       const start = parity.indexOf(heading);
       expect(start).toBeGreaterThan(-1);
@@ -416,10 +513,14 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     };
     for (const proof of [
       section("## Flutter: the tests that show it"), section("## Jetpack Compose: the tests that show it"), section("## React Native (Expo): the tests that show it"),
+      section("## SwiftUI: the tests that show it"),
     ]) {
       for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
     }
     expect(section("## Jetpack Compose: the tests that show it")).toContain("(decisions/0008-compose-rendering.md)");
+    const swift = section("## SwiftUI: the tests that show it");
+    expect(swift).toContain("(decisions/0010-swiftui-rendering.md)");
+    for (const job of ["`swiftui`", "`swiftui-fixtures`"]) expect(swift).toContain(job);
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");

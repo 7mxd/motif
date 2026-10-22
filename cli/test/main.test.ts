@@ -111,6 +111,11 @@ describe("main: shot", () => {
     expect(readRtlFlag(["shot", "--rtl", "12"])).toEqual({ args: ["shot"], rtl: "12" });
     expect(readRtlFlag(["shot", "--audit"])).toEqual({ args: ["shot", "--audit"] });
   });
+  test("--sizes lists a macOS app's windows in help", () => {
+    expect(run("help").stdout.toString()).toContain(
+      "--sizes <list>    Only some sizes, for a quick run: widths (360, 390, 430, 768, 1440) or phones, tablet, desktop; a macOS app's windows: 1440, 900\n",
+    );
+  });
   test("--rtl is listed in help, and a value that isn't a language is a usage error", () => {
     expect(run("help").stdout.toString()).toContain("--rtl [<lang>]");
     const r = run("shot", "--rtl", "12", "--url", "http://localhost:1", "--cwd", tempDir("motif-empty-"));

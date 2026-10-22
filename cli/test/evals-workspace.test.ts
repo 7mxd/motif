@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
 import { runCmd, type Run } from "../../tests/evals/tools";
 import { changes, findApp, patch, prepareWorkspace } from "../../tests/evals/workspace";
+import { swiftUIApp } from "../../cli/src/stacks/swiftui/project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -112,6 +113,39 @@ describe("a case's folder", () => {
     }
   });
 
+  test("a SwiftUI app: a fresh copy of Qahwa, nothing installed or resolved (it has no packages), its starting state recorded", async () => {
+    const commands: string[][] = [];
+    const recording: Run = async (cmd, cwd, t, env) => {
+      if (cmd[0] !== "git") commands.push(cmd);
+      return runCmd(cmd, cwd, t, env);
+    };
+    for (const id of ["b-swiftui-orders", "c-swiftui"]) {
+      const ws = await prepareWorkspace(byId(id), join(tempDir("motif-ws-"), id), recording);
+      expect(existsSync(join(ws.app, "Qahwa.xcodeproj", "project.pbxproj"))).toBe(true);
+      expect(existsSync(join(ws.app, "Qahwa", "QahwaApp.swift"))).toBe(true);
+      expect(ws.baseline).toMatch(/^[0-9a-f]{40}$/);
+      expect(await changes(ws, recording)).toEqual([]);
+    }
+    expect(commands).toEqual([]);
+  });
+
+  test("D on SwiftUI: the brief beside a starter Xcode App project, as Xcode's iOS App template makes it; nothing recorded", async () => {
+    const ws = await prepareWorkspace(byId("d-masar"), join(tempDir("motif-ws-"), "d-masar"), run);
+    expect(readdirSync(ws.app).sort()).toEqual(["Masar", "Masar.xcodeproj", "brief.md"]);
+    expect(readdirSync(join(ws.app, "Masar")).sort()).toEqual(["Assets.xcassets", "ContentView.swift", "MasarApp.swift"]);
+    expect(swiftUIApp(ws.app)).toEqual({ kind: "xcodeproj", name: "Masar", project: "Masar.xcodeproj", platforms: ["ios"], sourceRoot: "Masar" });
+    const pbx = readFileSync(join(ws.app, "Masar.xcodeproj", "project.pbxproj"), "utf8");
+    for (const s of ["objectVersion = 77;", "isa = PBXFileSystemSynchronizedRootGroup;", "IPHONEOS_DEPLOYMENT_TARGET = 17.0;", "SWIFT_VERSION = 5.0;", "GENERATE_INFOPLIST_FILE = YES;"]) expect(pbx).toContain(s);
+    // No design guide yet, and nothing of Motif's: the session starts it.
+    expect(existsSync(join(ws.app, "DESIGN.md"))).toBe(false);
+    expect(findApp(ws.app)).toBeNull();
+    expect(ws.baseline).toBeUndefined();
+    // The other briefs still start from an empty folder.
+    for (const id of ["d-stride", "d-sahm", "d-nabta", "d-rihla"]) {
+      expect(readdirSync((await prepareWorkspace(byId(id), join(tempDir("motif-ws-"), id), run)).app)).toEqual(["brief.md"]);
+    }
+  });
+
   test("D: an empty folder holding the brief, nothing recorded", async () => {
     const ws = await prepareWorkspace(byId("d-stride"), join(tempDir("motif-ws-"), "d"), run);
     expect(readdirSync(ws.app)).toEqual(["brief.md"]);
@@ -142,5 +176,18 @@ describe("test D's new app", () => {
     expect(findApp(dir)).toBe(join(dir, "stride"));
     writeFileSync(join(dir, "DESIGN.md"), "");
     expect(findApp(dir)).toBe(dir);
+  });
+
+  test("among several folders with a design guide, the one with an Xcode project or a Swift package is the app", () => {
+    for (const make of [(d: string) => mkdirSync(join(d, "Masar.xcodeproj")), (d: string) => writeFileSync(join(d, "Package.swift"), "")]) {
+      const dir = tempDir("motif-find-");
+      for (const name of ["notes", "masar"]) {
+        mkdirSync(join(dir, name));
+        writeFileSync(join(dir, name, "DESIGN.md"), "");
+      }
+      expect(findApp(dir)).toBeNull();
+      make(join(dir, "masar"));
+      expect(findApp(dir)).toBe(join(dir, "masar"));
+    }
   });
 });

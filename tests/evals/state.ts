@@ -5,11 +5,16 @@ import { join } from "node:path";
 import type { Grade } from "./grade";
 import type { Workspace } from "./workspace";
 
-export type CaseStatus = "pending" | "session-done" | "graded" | "interrupted" | "error";
+/** "skipped": a Mac-only case on a run off macOS; its note says why, and resuming on a Mac runs it. */
+export type CaseStatus = "pending" | "session-done" | "graded" | "interrupted" | "error" | "skipped";
 
 export interface SessionSummary { end: string; model: string; turns: number; minutes: number; costUsd: number; denials: string[]; problems: string[] }
 
-export interface CaseState { status: CaseStatus; attempts: number; workspace?: Workspace; session?: SessionSummary; grade?: Grade; note?: string }
+export interface CaseState {
+  status: CaseStatus; attempts: number; workspace?: Workspace; session?: SessionSummary; grade?: Grade; note?: string;
+  /** A skipped case's status and note before it was skipped, given back when the run is resumed on a Mac. */
+  skippedFrom?: CaseStatus; noteBefore?: string;
+}
 
 export interface RunOptions { model?: string; judgeModel?: string; keep: boolean; maxTurns?: number; work: string }
 

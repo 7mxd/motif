@@ -118,3 +118,18 @@ export function heavyStackTests(stack: string, toolchainPresent: boolean): { run
   if (inCi && process.env.MOTIF_STACK_JOB !== stack) return { run: false, reason: `runs in CI's ${stack} job` };
   return { run: true, reason: "" };
 }
+
+let xcodeFound: boolean | undefined;
+
+/** True on a Mac where xcodebuild runs (Xcode is installed and selected). It runs xcodebuild -version once and remembers the answer. */
+export function isMacWithXcode(): boolean {
+  if (xcodeFound === undefined) {
+    const path = process.platform === "darwin" ? Bun.which("xcodebuild") : null;
+    try {
+      xcodeFound = path !== null && Bun.spawnSync([path, "-version"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+    } catch {
+      xcodeFound = false;
+    }
+  }
+  return xcodeFound;
+}

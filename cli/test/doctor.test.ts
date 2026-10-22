@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runDoctor, type DoctorDeps, type DoctorItem } from "../src/commands/doctor";
+import { packageText } from "../src/stacks/swiftui/shot";
 import { copyFixture } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -66,6 +67,23 @@ describe("runDoctor", () => {
     const dir = makeProject({ "package.json": JSON.stringify({ dependencies: { expo: "~54.0.1", "react-native": "0.81.5" } }) });
     const r = await runDoctor(dir, deps());
     expect(item(r.data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for React Native (Expo)." });
+  });
+
+  test("a SwiftUI app has full support; in a Swift package, the line says motif shot can't draw it, as shot does (2H Task 15)", async () => {
+    const qahwa = join(import.meta.dir, "../../tests/fixtures/swiftui-contract-app");
+    expect(item((await runDoctor(qahwa, deps())).data.items as DoctorItem[], "app:.")).toMatchObject({ status: "ok", detail: "Full support for SwiftUI." });
+    const pkg = makeProject({
+      "Package.swift": `// swift-tools-version:5.9\nimport PackageDescription\nlet package = Package(name: "Rafiq", platforms: [.iOS(.v17)], targets: [.executableTarget(name: "Rafiq")])\n`,
+      "Sources/Rafiq/RafiqApp.swift": "import SwiftUI\n@main struct RafiqApp: App { var body: some Scene { WindowGroup { Text(\"Hi\") } } }\n",
+    });
+    expect(item((await runDoctor(pkg, deps())).data.items as DoctorItem[], "app:.")).toMatchObject({
+      status: "ok",
+      detail:
+        "Full support for SwiftUI but for screenshots: Rafiq is a Swift package (Package.swift), which motif shot can't draw yet. " +
+        "Make an Xcode project for it (in Xcode: File › New › Project › App, then add the package and use its views), and run motif shot in that project's folder.",
+    });
+    // The same words as motif shot's refusal.
+    expect(packageText("Rafiq")).toContain("Rafiq is a Swift package (Package.swift), which motif shot can't draw yet. Make an Xcode project for it");
   });
 
   test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
@@ -432,5 +450,129 @@ describe("runDoctor: a guide git ignores (Task 15 wave B, #10)", () => {
       expect(r.text.match(/without Expo/g)).toHaveLength(1);
       expect(r.text).not.toContain("non-goal");
     });
+  });
+});
+
+describe("the Xcode toolchain for SwiftUI apps", () => {
+  const swiftApp = (platforms: string) =>
+    makeProject({
+      "Package.swift": `// swift-tools-version:5.9\nimport PackageDescription\nlet package = Package(name: "Rafiq", platforms: [${platforms}], targets: [.executableTarget(name: "Rafiq")])\n`,
+      "Sources/Rafiq/RafiqApp.swift": "import SwiftUI\n@main struct RafiqApp: App { var body: some Scene { WindowGroup { Text(\"Hi\") } } }\n",
+    });
+  const ios = () => swiftApp(".iOS(.v17)");
+  const mac = () => swiftApp(".macOS(.v14)");
+  const runtimes = (...versions: string[]) =>
+    JSON.stringify({
+      runtimes: versions.map((v) => ({ identifier: `com.apple.CoreSimulator.SimRuntime.iOS-${v.replace(".", "-")}`, name: `iOS ${v}`, version: v, platform: "iOS", isAvailable: true })),
+    });
+  const swift = "swift-driver version: 1.115.1 Apple Swift version 6.0.3 (swiftlang-6.0.3.1.10 clang-1600.0.30.6)\nTarget: arm64-apple-macosx15.0\n";
+  const mini = (over: { select?: string; xcode?: string; runtimes?: string } = {}): Partial<DoctorDeps> => ({
+    platform: "darwin",
+    run: (cmd) => {
+      const c = cmd.join(" ");
+      if (c === "xcode-select -p") return { code: 0, stdout: (over.select ?? "/Applications/Xcode.app/Contents/Developer") + "\n" };
+      if (c === "xcodebuild -version") return { code: 0, stdout: over.xcode ?? "Xcode 16.2\nBuild version 16C5032a\n" };
+      if (c === "swift --version") return { code: 0, stdout: swift };
+      if (c === "xcrun simctl list runtimes --json") return { code: 0, stdout: over.runtimes ?? runtimes("18.2") };
+      return { code: 127, stdout: "" };
+    },
+  });
+  const xcode = async (dir: string, over: Partial<DoctorDeps>) => item((await runDoctor(dir, deps(over))).data.items as DoctorItem[], "xcode");
+
+  test("Xcode, its Swift and the iOS simulator, for an iOS app", async () => {
+    expect(await xcode(ios(), mini())).toEqual({ id: "xcode", status: "ok", label: "Xcode", detail: "Xcode 16.2 (Swift 6.0.3), with the iOS 18.2 simulator." });
+  });
+
+  test("reads Xcode 27 and its newest iOS runtime", async () => {
+    const it = await xcode(ios(), mini({ xcode: "Xcode 27.0\nBuild version 27A266a\n", runtimes: runtimes("17.5", "27.0") }));
+    expect(it).toMatchObject({ status: "ok", detail: "Xcode 27.0 (Swift 6.0.3), with the iOS 27.0 simulator." });
+  });
+
+  test("a macOS-only app needs no simulator", async () => {
+    const it = await xcode(mac(), mini({ runtimes: JSON.stringify({ runtimes: [] }) }));
+    expect(it).toEqual({ id: "xcode", status: "ok", label: "Xcode", detail: "Xcode 16.2 (Swift 6.0.3). A macOS app needs no simulator." });
+  });
+
+  test("the command-line tools alone are not enough", async () => {
+    const it = await xcode(ios(), mini({ select: "/Library/Developer/CommandLineTools" }));
+    expect(it).toEqual({
+      id: "xcode",
+      status: "needed",
+      label: "Xcode",
+      detail: "Screenshots need Xcode, not only its command-line tools: install Xcode from the App Store, then run sudo xcode-select -s /Applications/Xcode.app.",
+    });
+  });
+
+  test("an iOS app with no iOS simulator is told where to install one", async () => {
+    const it = await xcode(ios(), mini({ runtimes: JSON.stringify({ runtimes: [{ name: "tvOS 18.0", version: "18.0", platform: "tvOS", isAvailable: true }, { name: "iOS 18.2", version: "18.2", platform: "iOS", isAvailable: false }] }) }));
+    expect(it).toMatchObject({ status: "needed", detail: "Xcode 16.2 has no iOS simulator, which an iOS app's screenshots need: install an iOS simulator in Xcode › Settings › Components." });
+  });
+
+  test("Xcode older than 16 asks for an update", async () => {
+    const it = await xcode(ios(), mini({ xcode: "Xcode 15.4\nBuild version 15F31d\n" }));
+    expect(it).toMatchObject({ status: "needed", detail: "Xcode 15.4 is older than 16, which Motif's theme code needs. Update Xcode from the App Store." });
+  });
+
+  test("no Xcode at all", async () => {
+    const it = await xcode(ios(), { platform: "darwin", run: () => ({ code: 127, stdout: "" }) });
+    expect(it).toMatchObject({ status: "needed", detail: expect.stringContaining("Xcode isn't installed") });
+  });
+
+  test("on Windows and Linux: a Mac is needed for screenshots, and nothing is run", async () => {
+    for (const platform of ["win32", "linux"] as const) {
+      const ran: string[][] = [];
+      const it = await xcode(ios(), { platform, run: (cmd) => (ran.push(cmd), { code: 0, stdout: "" }) });
+      expect(it).toEqual({ id: "xcode", status: "optional", label: "Xcode", detail: "SwiftUI screenshots need a Mac with Xcode. Theme code, checks and drafts work here." });
+      expect(ran).toEqual([]);
+    }
+  });
+});
+
+describe("the Xcode toolchain: noisy and failing tools", () => {
+  const app = () =>
+    makeProject({
+      "Package.swift": `// swift-tools-version:5.9\nimport PackageDescription\nlet package = Package(name: "Rafiq", platforms: [.iOS(.v17)], targets: [.executableTarget(name: "Rafiq")])\n`,
+      "Sources/Rafiq/RafiqApp.swift": "import SwiftUI\n@main struct RafiqApp: App { var body: some Scene { WindowGroup { Text(\"Hi\") } } }\n",
+    });
+  const good = '{"runtimes":[{"platform":"iOS","version":"18.2","isAvailable":true}]}';
+  const mini = (o: { xcode?: { code: number; stdout: string }; swift?: { code: number; stdout: string }; sim?: { code: number; stdout: string } }): Partial<DoctorDeps> => ({
+    platform: "darwin",
+    run: (cmd) => {
+      const c = cmd.join(" ");
+      if (c === "xcode-select -p") return { code: 0, stdout: "/Applications/Xcode.app/Contents/Developer" };
+      if (c === "xcodebuild -version") return o.xcode ?? { code: 0, stdout: "Xcode 16.2\nBuild version 16C5032a\n" };
+      if (c === "swift --version") return o.swift ?? { code: 0, stdout: "Apple Swift version 6.0.3 (swiftlang)\n" };
+      return o.sim ?? { code: 0, stdout: good };
+    },
+  });
+  const xcode = async (over: Partial<DoctorDeps>) => item((await runDoctor(app(), deps(over))).data.items as DoctorItem[], "xcode")!;
+
+  test("warnings before the simulators' JSON are skipped", async () => {
+    expect(await xcode(mini({ sim: { code: 0, stdout: `CoreSimulator is out of date. Current version (1) vs. (2).\n${good}` } }))).toMatchObject({ status: "ok", detail: "Xcode 16.2 (Swift 6.0.3), with the iOS 18.2 simulator." });
+  });
+
+  test("a failing or unreadable simctl is not 'no simulator'", async () => {
+    for (const sim of [{ code: 1, stdout: "" }, { code: 0, stdout: "not json" }, { code: 0, stdout: '{"other":1}' }]) {
+      expect(await xcode(mini({ sim }))).toMatchObject({ status: "optional", detail: expect.stringContaining("couldn't list the simulators") });
+    }
+    expect((await xcode(mini({ sim: { code: 1, stdout: "" } }))).detail).toContain("run xcrun simctl list runtimes to see why.");
+  });
+
+  test("visionOS and watchOS runtimes don't count", async () => {
+    const sim = { code: 0, stdout: JSON.stringify({ runtimes: [{ platform: "xrOS", version: "2.0", isAvailable: true }, { platform: "watchOS", version: "11.0", isAvailable: true }] }) };
+    expect(await xcode(mini({ sim }))).toMatchObject({ status: "needed", detail: expect.stringContaining("no iOS simulator") });
+  });
+
+  test("an unaccepted licence is not 'not installed'", async () => {
+    const it = await xcode(mini({ xcode: { code: 69, stdout: "You have not agreed to the Xcode license agreements." } }));
+    expect(it).toMatchObject({ status: "needed", detail: "Xcode is installed but didn't run: open it once, or run sudo xcodebuild -license accept." });
+  });
+
+  test("a beta version reads by its numbers", async () => {
+    expect(await xcode(mini({ xcode: { code: 0, stdout: "Xcode 26.1 beta\nBuild version 26B5\n" } }))).toMatchObject({ status: "ok", detail: expect.stringContaining("Xcode 26.1 (") });
+  });
+
+  test("a failing swift --version leaves the Swift out", async () => {
+    expect(await xcode(mini({ swift: { code: 1, stdout: "" } }))).toMatchObject({ status: "ok", detail: "Xcode 16.2, with the iOS 18.2 simulator." });
   });
 });

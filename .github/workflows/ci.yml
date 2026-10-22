@@ -141,3 +141,70 @@ jobs:
       - name: Compose tests
         working-directory: cli
         run: bun test --timeout 900000 test/compose-*.test.ts test/check-compose.test.ts test/extract-compose.test.ts test/fixtures-compose.test.ts test/shot-compose.test.ts test/tokens-compose.test.ts
+
+  # The SwiftUI tests that build with Xcode and draw on a simulator skip elsewhere (MOTIF_STACK_JOB names this job). macos-15
+  # rather than macos-latest: its image has Xcode 16.x (the floor, global constraint "Xcode 16"); the macos-26 image has only 26.x.
+  # Xcode 16.4 is the newest 16.x on that image (runner-images, macos-15-arm64 README, Oct 2026); the step fails and lists
+  # what is installed if the image drops it.
+  swiftui:
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      MOTIF_STACK_JOB: swiftui
+      XCODE: "16.4"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - name: Select Xcode ${{ env.XCODE }}
+        run: |
+          app="/Applications/Xcode_${XCODE}.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::Xcode $XCODE is not on this runner image. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$app/Contents/Developer"
+          xcodebuild -version
+          swift --version
+          xcrun simctl list runtimes
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: SwiftUI tests
+        working-directory: cli
+        run: bun test --timeout 1800000 test/swiftui-*.test.ts test/check-swiftui.test.ts test/extract-swiftui.test.ts test/shot-swiftui.test.ts test/tokens-swiftui.test.ts
+
+  # The SwiftUI fixtures (Qahwa and its seeded copy, plan 2H Task 12), built and audited in a simulator. A job of their own,
+  # beside the swiftui job, so that one stays within its 75 minutes; the same runner image and Xcode, and the same
+  # MOTIF_STACK_JOB, which the heavy tests' gate reads. Both apps are drawn here, in one folder, so the build is reused.
+  swiftui-fixtures:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      MOTIF_STACK_JOB: swiftui
+      XCODE: "16.4"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - name: Select Xcode ${{ env.XCODE }}
+        run: |
+          app="/Applications/Xcode_${XCODE}.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::Xcode $XCODE is not on this runner image. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$app/Contents/Developer"
+          xcodebuild -version
+          swift --version
+          xcrun simctl list runtimes
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: SwiftUI fixtures
+        working-directory: cli
+        run: bun test --timeout 1800000 test/fixtures-swiftui.test.ts

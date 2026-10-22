@@ -1,11 +1,13 @@
 /** Work to undo when Motif exits: child processes (a browser, a dev server) must not outlive it. */
 const hooks = new Set<() => void>();
+/** Run after the others: removing folders that the processes the others stop may still be writing to. */
+const lastHooks = new Set<() => void>();
 let installed = false;
 /** Commands that run until stopped (a live preview), waiting for Ctrl+C. */
 let stopWaiters: (() => void)[] = [];
 
 function runHooks(): void {
-  for (const fn of [...hooks]) {
+  for (const fn of [...hooks, ...lastHooks]) {
     try {
       fn();
     } catch {
@@ -13,6 +15,7 @@ function runHooks(): void {
     }
   }
   hooks.clear();
+  lastHooks.clear();
 }
 
 /**
@@ -46,14 +49,16 @@ function install(): void {
 }
 
 /**
- * Runs fn synchronously when the process exits, including after Ctrl+C or a termination signal.
- * Returns a function that cancels it; call that once the work has been cleaned up normally.
+ * Runs fn synchronously when the process exits, including after Ctrl+C or a termination signal. Hooks run in the order
+ * they were added, and those added with `last` after all the others (a folder removed only once the processes that use
+ * it are stopped). Returns a function that cancels it; call that once the work has been cleaned up normally.
  */
-export function onExit(fn: () => void): () => void {
+export function onExit(fn: () => void, opts: { last?: boolean } = {}): () => void {
   install();
-  hooks.add(fn);
+  const set = opts.last ? lastHooks : hooks;
+  set.add(fn);
   return () => {
-    hooks.delete(fn);
+    set.delete(fn);
   };
 }
 
