@@ -489,12 +489,11 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web, Flutter, React Native and Jetpack Compose have every area done, SwiftUI every area but its pending evals; the stacks still to come have none", () => {
-    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
-    // SwiftUI's Evals cell turns "done" once its four cases pass, and its proof then names the run (2H Task 15).
-    expect(row("SwiftUI")!.slice(1)).toEqual(AREAS.map((a) => (a === "Evals" ? "pending" : "done")));
+  test("React web, plain web, Flutter, React Native, Jetpack Compose and SwiftUI have every area done; the stacks still to come have none", () => {
+    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose", "SwiftUI"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+    // SwiftUI's proof names the runs its four cases passed in (2H Task 15).
     const swiftEvals = table.find((r) => r[0] === "Evals" && r[1]!.includes("fixtures-swiftui.test.ts"))!;
-    expect(swiftEvals[1]).toContain("Pending: the four SwiftUI cases (b-swiftui-orders, b-swiftui-rewards, c-swiftui and d-masar) haven't been run yet.");
+    for (const s of ["eval run 20261022-061913", "It passed in run 20261022-085041"]) expect(swiftEvals[1]).toContain(s);
     // The cell and its proof agree: each Evals proof names the run that passed.
     for (const fixtureTest of ["fixtures-rn.test.ts", "fixtures-compose.test.ts"]) {
       const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes(fixtureTest))!;

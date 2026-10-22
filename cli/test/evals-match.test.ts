@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gradeExact, normScreen, parseReport, places, sameScreen, type Finding, type LineText, type SeededIssue } from "../../tests/evals/match";
 
@@ -249,7 +249,7 @@ describe("every seeded list accepts the category the review mode gives each chec
     "generated-edited": ["consistency"],
   };
   const fixtures = join(import.meta.dir, "../../tests/fixtures");
-  const lists = require("node:fs").readdirSync(fixtures).filter((d: string) => require("node:fs").existsSync(join(fixtures, d, "seeded-issues.json")));
+  const lists: string[] = readdirSync(fixtures).filter((d) => existsSync(join(fixtures, d, "seeded-issues.json")));
   test.each(lists)("%s", (dir) => {
     const list: SeededIssue[] = JSON.parse(readFileSync(join(fixtures, dir, "seeded-issues.json"), "utf8")).issues;
     for (const issue of list.filter((i) => i.detectedBy === "check" && i.rule && MODE[i.rule])) {
