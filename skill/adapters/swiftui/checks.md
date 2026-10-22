@@ -305,7 +305,7 @@ motif shot --screen Contact --state design/states/sent.swift
 `MotifHarness` finds things the way VoiceOver does: by their accessibility label (a button's or a field's title, a text's words, an `.accessibilityLabel`), then their `.accessibilityIdentifier`, then the label in any case.
 
 - `app.tap("Send")` taps it, waiting up to 5 seconds for it to appear (`timeout:` changes that), then lets the screen settle. On the Mac it's a click.
-- `app.type("maya@example.com", into: "Email")` types into the field with that title or prompt; without `into:`, into the field being edited, else the first.
+- `app.type("maya@example.com", into: "Email")` types into the field with that name: its title, or on iOS its prompt when it shows one, unless the field has an `.accessibilityLabel` ([components](components.md#a-field-with-its-states)); without `into:`, into the field being edited, else the first.
 - `app.waitFor("…")` waits for something to appear; `app.exists("…")` says whether it's there now; `app.wait(1)` lets the screen run for a second; `app.settle()` waits for it to stop changing.
 - `app.labels` lists what the screen's elements are called, in VoiceOver's order: when a tap can't find its target, the error lists them too. `app.variant`, `app.locale`, `app.dark` and `app.window` describe the screenshot.
 
