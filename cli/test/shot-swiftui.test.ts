@@ -1526,6 +1526,23 @@ describe("--audit on a SwiftUI app (Task 10)", () => {
     expect(findings[1]!.fix).toContain(".tint(…) on its button");
   });
 
+  test("what the system draws itself (MapKit's Legal link, UIKit's split-view dividers) is left out of the audit, with one note (Task 15 follow-up)", () => {
+    const outDir = tempDir("motif-swiftui-audit-");
+    const opts = phoneOpts({ outDir, viewports: [NATIVE_VIEWPORTS[1]!], routes: ["/"], audit: true });
+    const targets = swiftUITargets(opts, previews);
+    const shots = planSwiftUIShots(opts, targets, null, "");
+    for (const s of shots) writeFileSync(join(outDir, s.file), "png");
+    const caption = { rule: "color-contrast" as const, selector: 'Text("Prices include tax")', label: "Prices include tax", kind: "element" as const, ratio: 1.83, expected: 4.5, fg: "#bfbfbf", bg: "#ffffff" };
+    const legal = { rule: "color-contrast" as const, selector: 'Link("Legal")', label: "Legal", kind: "link" as const, ratio: 2.59, expected: 4.5, fg: "#7c7a76", bg: "#f9f5ed", systemPart: "MapKit" };
+    const divider = { rule: "name" as const, selector: "Slider", label: "", kind: "element" as const, systemPart: "UIKit's split view" };
+    const marker = { rule: "motion" as const, selector: 'View("Uyuni Salt Flat")', label: "Uyuni Salt Flat", kind: "element" as const, systemPart: "MapKit" };
+    const found: SwiftUIShotResult[] = shots.map((s) => ({ file: s.file, issues: s.file === "index.mobile.png" ? [caption, legal, divider, marker] : [] }));
+    const mapped = mapSwiftUIResult(targets, shots, outDir, { timedOut: false, notes: [], result: { previews: [], notes: [], shots: found } }, 60_000);
+    expect(mapped.issues.map((i) => i.selector)).toEqual(['Text("Prices include tax")']);
+    expect(mapped.issues[0]).not.toHaveProperty("systemPart");
+    expect(mapped.notes).toContain("The audit left out what the system draws itself (MapKit, UIKit's split view), which the app can't change.");
+  });
+
   test("each kind of target gets its own fix, and a motion finding drawn with SwiftUI's environment alone says what it couldn't turn on (fix round 1)", () => {
     const outDir = tempDir("motif-swiftui-audit-");
     const ios = phoneOpts({ outDir, viewports: [NATIVE_VIEWPORTS[1]!], audit: true });

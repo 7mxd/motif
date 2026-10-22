@@ -35,6 +35,9 @@ struct MotifIssue: Encodable {
     /// A motion finding's: "environment" when only SwiftUI's accessibilityReduceMotion could be turned on, not the
     /// system's setting the app may read instead.
     var reducedBy: String?
+    /// Drawn by the system, not the app (MapKit's map, UIKit's split view), which the app can't change: Motif leaves it
+    /// out of audit.json and says so once (decision 0010, §18).
+    var systemPart: String?
 }
 
 /// What the audit found on one screenshot: its problems, the texts whose contrast it couldn't judge (no one colour
@@ -73,6 +76,8 @@ struct MotifElement {
     var system = false
     /// What it says it is set to (a picker's choice, a menu's), when it says.
     var value: String?
+    /// Drawn by the system itself, not the app: MapKit's map and what is on it, UIKit's split-view dividers.
+    var systemPart: String?
 }
 
 @MainActor
@@ -97,6 +102,7 @@ enum MotifAudit {
                     let e = elements[i]
                     let same = selectors.indices.filter { selectors[$0] == selectors[i] }
                     var issue = MotifIssue(rule: "", selector: selectors[i], label: shownName(e), kind: issueKind(e))
+                    issue.systemPart = e.systemPart
                     if same.count > 1 {
                         issue.nth = (same.firstIndex(of: i) ?? 0) + 1
                         issue.of = same.count
@@ -112,7 +118,7 @@ enum MotifAudit {
                         for i in elements.indices {
                             guard let judged = contrast(elements[i], pixels) else { continue }
                             switch judged {
-                            case .unjudged(let what): out.unjudged.append(what)
+                            case .unjudged(let what): if elements[i].systemPart == nil { out.unjudged.append(what) }
                             case .failed(let ratio, let expected, let fg, let bg, let icon):
                                 var issue = described(i)
                                 issue.rule = "color-contrast"
@@ -603,10 +609,16 @@ enum MotifMotionCheck {
         // The element it is part of, when it is one: the smallest whose frame takes in the middle of what moves (not a
         // group that holds the whole screen).
         let middle = CGPoint(x: lead.rect.midX, y: lead.rect.midY)
+        // What moves inside a map (a marker landing, tiles coming in) is MapKit's own.
+        let part = MotifAuditTree.systemPart(of: lead.layer)
         if let subject = elements.filter({ $0.kind != .other && $0.rect.contains(middle) }).min(by: { $0.rect.width * $0.rect.height < $1.rect.width * $1.rect.height }) {
-            return MotifIssue(rule: "motion", selector: MotifAudit.baseSelector(subject), label: MotifAudit.shownName(subject), kind: "element")
+            var issue = MotifIssue(rule: "motion", selector: MotifAudit.baseSelector(subject), label: MotifAudit.shownName(subject), kind: "element")
+            issue.systemPart = part ?? subject.systemPart
+            return issue
         }
-        return MotifIssue(rule: "motion", selector: "View(\(Int(lead.size.width.rounded()))×\(Int(lead.size.height.rounded())))", label: "", kind: "element")
+        var issue = MotifIssue(rule: "motion", selector: "View(\(Int(lead.size.width.rounded()))×\(Int(lead.size.height.rounded())))", label: "", kind: "element")
+        issue.systemPart = part
+        return issue
     }
 
     /// A layer as the screen shows it now: its presentation's place, size and turn.
@@ -696,7 +708,30 @@ enum MotifAuditTree {
         return MotifElement(
             kind: kind, name: name, rect: rect, symbol: symbol, symbolOnly: control && symbolOnly, identifier: symbol == nil ? id : nil,
             enabled: MotifAX.bool(object, "isAccessibilityEnabled") ?? true, font: font, color: color,
-            typed: kind == .field ? value : nil, system: object is NSView, value: kind == .field ? nil : value)
+            typed: kind == .field ? value : nil, system: object is NSView, value: kind == .field ? nil : value,
+            systemPart: (object as? NSView).flatMap { inMap($0) })
+    }
+
+    /// MapKit's, when the view is a map or inside one (its attribution, its markers): the system draws it.
+    static func inMap(_ view: NSView) -> String? {
+        guard let map = NSClassFromString("MKMapView") else { return nil }
+        var at: NSView? = view
+        for _ in 0..<32 {
+            guard let v = at else { return nil }
+            if v.isKind(of: map) || Bundle(for: type(of: v)).bundleIdentifier == "com.apple.MapKit" { return "MapKit" }
+            at = v.superview
+        }
+        return nil
+    }
+
+    /// What the system draws itself, for a layer that moves: the view it belongs to, when that is MapKit's.
+    static func systemPart(of layer: CALayer) -> String? {
+        var at: CALayer? = layer
+        while let l = at {
+            if let view = l.delegate as? NSView { return inMap(view) }
+            at = l.superlayer
+        }
+        return nil
     }
 
     /// The attributes of an element's text at its first character (accessibilityAttributedStringForRange:).
@@ -814,7 +849,37 @@ enum MotifAuditTree {
         return MotifElement(
             kind: kind, name: name, rect: rect, symbol: symbol, symbolOnly: control && symbolOnly, identifier: symbol == nil ? id : nil,
             enabled: !traits.contains(.notEnabled), font: font, color: color, typed: typed, system: system,
-            value: kind == .field ? nil : string(object.accessibilityValue))
+            value: kind == .field ? nil : string(object.accessibilityValue), systemPart: systemPart(object, kind: kind))
+    }
+
+    /// What the system draws itself, which the app can't change: a split view's column divider (UIKit's own private
+    /// view, adjustable and unnamed; only the element itself, as the app's columns sit inside UIKit's split-view views
+    /// too), and MapKit's map and what is on it (its Legal link, its markers).
+    static func systemPart(_ object: NSObject, kind: MotifElement.Kind) -> String? {
+        if kind == .adjustable, NSStringFromClass(type(of: object)).hasPrefix("_UISplitViewController") { return "UIKit's split view" }
+        return (object as? UIView).flatMap { inMap($0) }
+    }
+
+    /// MapKit's, when the view is a map or inside one.
+    static func inMap(_ view: UIView) -> String? {
+        guard let map = NSClassFromString("MKMapView") else { return nil }
+        var at: UIView? = view
+        for _ in 0..<32 {
+            guard let v = at else { return nil }
+            if v.isKind(of: map) || Bundle(for: type(of: v)).bundleIdentifier == "com.apple.MapKit" { return "MapKit" }
+            at = v.superview
+        }
+        return nil
+    }
+
+    /// What the system draws itself, for a layer that moves: the view it belongs to, when that is MapKit's.
+    static func systemPart(of layer: CALayer) -> String? {
+        var at: CALayer? = layer
+        while let l = at {
+            if let view = l.delegate as? UIView { return inMap(view) }
+            at = l.superlayer
+        }
+        return nil
     }
 
     /// Every layer in the window, with its state now and where it is; the layers of an activity indicator (the system's

@@ -481,6 +481,8 @@ export function mapSwiftUIResult(
   const why = run.timedOut ? `The run reached its time limit (${Math.round(timeoutMs / 1000)} s) before drawing it.` : (run.problem ?? "xcodebuild stopped before drawing it.");
   const errorsSeen = new Set<string>();
   const more: string[] = [];
+  // What the system draws itself, which the app can't change (decision 0010, §18): left out, and named in a note.
+  const systemParts = new Set<string>();
   const routes = targets.map((t): RouteResult => {
     const base = { route: t.key, url: t.key };
     if (t.error) return { ...base, status: 0, error: t.error, shots: [] };
@@ -509,7 +511,11 @@ export function mapSwiftUIResult(
       // The audit's findings on this screenshot, named by where they were seen, as on the other stacks.
       auditError ??= r.auditError;
       for (const text of r.unjudged ?? []) notJudged.add(text);
-      for (const { nth, of, reducedBy, ...i } of r.issues ?? []) {
+      for (const { nth, of, reducedBy, systemPart, ...i } of r.issues ?? []) {
+        if (systemPart) {
+          systemParts.add(systemPart);
+          continue;
+        }
         const size = s.seen?.size ?? "";
         const fix = swiftUIFix({ ...i, ...(reducedBy ? { reducedBy } : {}) }, size.startsWith("desktop"));
         issues.push({
@@ -556,6 +562,9 @@ export function mapSwiftUIResult(
   });
   // A screen that stopped the app is in its own error already.
   const notes = [...(run.result?.notes ?? []).filter((n) => !errorsSeen.has(n)), ...more, ...unjudged];
+  if (systemParts.size > 0) {
+    notes.push(`The audit left out what the system draws itself (${[...systemParts].join(", ")}), which the app can't change.`);
+  }
   if (run.problem && run.result) notes.push(run.problem);
   return { routes, issues, notes: [...notes, ...run.notes] };
 }

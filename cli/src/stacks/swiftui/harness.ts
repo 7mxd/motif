@@ -81,6 +81,8 @@ export type SwiftUIRawIssue = RawIssue & {
   of?: number;
   /** A motion finding's: "environment" when only SwiftUI's accessibilityReduceMotion could be turned on for the shot. */
   reducedBy?: "environment";
+  /** Drawn by the system, not the app (MapKit's map, UIKit's split view): left out of audit.json, which says so once. */
+  systemPart?: string;
 };
 
 export interface SwiftUIHarnessOptions {
