@@ -86,6 +86,12 @@ export function macOnly(cases: EvalCase[], platform: NodeJS.Platform): { run: Ev
  */
 export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c) && (c.test !== "B" || isPlain(c) || isReactNative(c));
 
+/**
+ * Whether the case installs or builds with npm: the web and React Native apps (npm ci, npm run build, npx tsc). Flutter, Compose and
+ * SwiftUI use their own tools, and a plain site has nothing to install.
+ */
+export const needsNode = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c) && !isPlain(c);
+
 const feature = (id: string, title: string, route: string, what: string): EvalCase => ({
   id, test: "B", title, fixture: "react-contract-app", routes: [route],
   prompt: `/motif:feature ${what}\n\n${UNATTENDED}`,

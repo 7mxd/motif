@@ -83,6 +83,34 @@ describe("the eval runner", () => {
     }
   });
 
+  test("Node.js is required only when a chosen case installs or builds with npm", async () => {
+    const cases: [string, boolean][] = [
+      ["b-search", true], ["c-review", true], ["c-rn", true], ["d-stride", true], ["d-rihla", true],
+      ["b-plain", false], ["c-plain", false], ["b-flutter-search", false], ["c-compose", false], ["d-sahm", false], ["d-nabta", false],
+      ["b-search,b-flutter-search", true],
+    ];
+    for (const [ids, needs] of cases) {
+      const seen: (boolean | undefined)[] = [];
+      const h = harness({
+        platform: "darwin",
+        preflight: async (_b, _c, _f, _a, _x, node) => {
+          seen.push(node);
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+        },
+      });
+      await runEvals(["--cases", ids], h.deps, h.where);
+      expect([ids, seen]).toEqual([ids, [needs]]);
+    }
+    const h = harness({
+      platform: "darwin",
+      preflight: async (_b, _c, _f, _a, _x, node) => {
+        expect(node).toBe(false);
+        return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+      },
+    });
+    await runEvals(["--cases", "c-swiftui,b-swiftui-orders"], h.deps, h.where);
+  });
+
   test("Flutter is required only when a chosen case is a Flutter one", async () => {
     for (const [cases, needs] of [["b-search,c-plain", false], ["b-flutter-search", true], ["c-review,d-sahm", true]] as const) {
       const seen: (boolean | undefined)[] = [];

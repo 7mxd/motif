@@ -84,6 +84,19 @@ describe("before a run", () => {
     expect(await preflight(p, false, deps)).toEqual({ error: expect.stringContaining("Node.js 20.9") });
   });
 
+  test("Node.js is checked only when a chosen case needs it: a SwiftUI-only run installs nothing with npm", async () => {
+    const none = { node: { code: 1, stdout: "", stderr: "node: not found", timedOut: false } };
+    const swift = setup(none, { node: null, npm: null });
+    expect(await preflight(swift.p, false, swift.deps, false, false, false, false)).not.toHaveProperty("error");
+    for (const answers of [none, { node: ok("v18.19.0") }]) {
+      const web = setup(answers, { npm: null });
+      expect(await preflight(web.p, false, web.deps, false, false, false, true)).toEqual({ error: expect.stringContaining("Node.js 20.9 or later, with npm") });
+    }
+    // Asked nothing, it still checks: a caller that doesn't say gets the old behaviour.
+    const dflt = setup(none);
+    expect(await preflight(dflt.p, false, dflt.deps)).toEqual({ error: expect.stringContaining("Node.js 20.9") });
+  });
+
   test("a browser is needed only for tests C and D, and is never downloaded for you", async () => {
     const noBrowser = ok(JSON.stringify({ items: [{ id: "browser", status: "needed" }] }));
     const a = setup({ doctor: noBrowser });

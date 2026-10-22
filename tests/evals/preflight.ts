@@ -98,7 +98,7 @@ function androidProblem(d: PreflightDeps, repo: string): string | null {
 }
 
 export async function preflight(
-  p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false, needsXcode = false,
+  p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false, needsXcode = false, needsNode = true,
 ): Promise<Ready | { error: string }> {
   const found = resolveClaude(d.claudeOverride ?? d.which("claude"));
   if ("error" in found) return found;
@@ -140,10 +140,14 @@ export async function preflight(
     return { error: "The build didn't produce dist/motif and dist/claude-code; run bun run build and bun run plugin in cli to see why." };
   }
 
-  const node = await d.run(["node", "--version"], p.repo, 30_000);
-  const [major = 0, minor = 0] = node.stdout.trim().replace(/^v/, "").split(".").map(Number);
-  if (node.code !== 0 || !d.which("npm") || major < 20 || (major === 20 && minor < 9)) {
-    return { error: "Node.js 20.9 or later, with npm, is needed to install and build the eval apps. Install it, then run this again." };
+  // Only the cases that install or build with npm (web, React Native) need Node. Flutter, Compose and SwiftUI don't, and
+  // the tool and plugin builds above run on Bun.
+  if (needsNode) {
+    const node = await d.run(["node", "--version"], p.repo, 30_000);
+    const [major = 0, minor = 0] = node.stdout.trim().replace(/^v/, "").split(".").map(Number);
+    if (node.code !== 0 || !d.which("npm") || major < 20 || (major === 20 && minor < 9)) {
+      return { error: "Node.js 20.9 or later, with npm, is needed to install and build the eval apps. Install it, then run this again." };
+    }
   }
 
   const doctor = await d.run([p.motifBin, "doctor", "--json"], p.repo, 60_000);
