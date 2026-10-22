@@ -34,6 +34,27 @@ const defaults = (...args: string[]) => {
 };
 const saved = process.env.MOTIF_HOME;
 const HOME = "SwiftUIMac/Screens/HomeScreen.swift";
+/**
+ * A preview smaller than any window: a badge of a fixed width, as Landmarks's BadgesView is. Its own size must never
+ * become the window's (2H Task 15 follow-up: Landmarks's badge preview was drawn as a 74×72 pt window, its title bar alone).
+ */
+const TINY = `import SwiftUI
+
+struct TinyBadge: View {
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "star.fill")
+            Text("Tiny")
+        }
+        .padding(8)
+        .frame(width: 60)
+    }
+}
+
+#Preview("Tiny") {
+    TinyBadge()
+}
+`;
 
 const SETUP = `import Foundation
 
@@ -85,6 +106,7 @@ beforeAll(async () => {
   writeFileSync(join(root, "design", "states", "greeted.swift"), STATE);
   // The audit's planted problems (Task 10), drawn only where a test names the screen.
   writeFileSync(join(root, auditFile("SwiftUIMac")), AUDIT_SCREEN);
+  writeFileSync(join(root, "SwiftUIMac/Screens/TinyScreen.swift"), TINY);
   writeFileSync(join(root, "design", "states", "typed.swift"), TYPED_STATE);
   writeFileSync(join(root, "design", "states", "throws.swift"), THROWS_STATE);
   home = tempDir("motif-swiftui-mac-home-");
@@ -133,6 +155,15 @@ const near = (hex: string) => {
   const want = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
   return (rgb: number[]) => rgb.every((v, i) => Math.abs(v - want[i]!) <= 3);
 };
+/** Every screenshot in the shots folder is exactly its window's size at 2×: 2880×1800 (1440×900) or 1800×1400 (900×700). */
+function expectWindowSized(): void {
+  const files = readdirSync(join(root, "design", "shots")).filter((f) => f.endsWith(".png"));
+  expect(files.length).toBeGreaterThan(0);
+  for (const file of files) {
+    const want = file.includes(".desktop-900.") ? { width: 1800, height: 1400 } : { width: 2880, height: 1800 };
+    expect([file, pngSize(png(file))]).toEqual([file, want]);
+  }
+}
 /** The colour at a point of a PNG, in pixels. */
 function pixel(file: string, x: number, y: number): number[] {
   const { width, rgba } = decodePng(png(file));
@@ -198,6 +229,7 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
       // The windows at 2×: 1440×900 gives 2880×1800, 900×700 gives 1800×1400.
       for (const file of ["index.desktop.png", "index.desktop.dark.png", "settings.desktop.png"]) expect(pngSize(png(file))).toEqual({ width: 2880, height: 1800 });
       for (const file of ["index.desktop-900.png", "settings.desktop-900.dark.png"]) expect(pngSize(png(file))).toEqual({ width: 1800, height: 1400 });
+      expectWindowSized();
       expect(Buffer.compare(png("index.desktop.png"), png("index.desktop.dark.png"))).not.toBe(0);
       expect(Buffer.compare(png("settings.desktop.png"), png("settings.desktop.dark.png"))).not.toBe(0);
 
@@ -259,6 +291,17 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
     expect(arabicRoot).not.toBeNull();
     expect(difference(arabicRoot!, png("index.desktop.rtl.png"), 150, 500)).toBeGreaterThan(5_000);
     expect(readdirSync(swiftUICacheDir(home, root, "SwiftUIMac")).sort()).toEqual(["DerivedData-macos", "last-used"]);
+    expect(hosts()).toBe("");
+  }, 1_800_000);
+
+  test.skipIf(!heavy.run)("a preview smaller than the window is drawn in the whole window, at both sizes (Task 15 follow-up; skipped without Xcode)", async () => {
+    const r = await shot(root, { screen: "Tiny" });
+    console.log(r.text);
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toContain("✓ 4 screenshots of 1 screen (a 1440×900 and a 900×700 window, light and dark)");
+    expect(r.text).not.toContain("without the window server");
+    for (const file of ["tiny.desktop.png", "tiny.desktop.dark.png", "tiny.desktop-900.png", "tiny.desktop-900.dark.png"]) expect(existsSync(join(root, "design", "shots", file))).toBe(true);
+    expectWindowSized();
     expect(hosts()).toBe("");
   }, 1_800_000);
 

@@ -392,7 +392,10 @@ enum MotifShotDrawing {
         state: (NSWindow) -> String? = { _ in nil }
     ) throws -> (png: Data, note: String?, stateError: String?) {
         let size = NSSize(width: shot.width, height: shot.height)
+        // The screen fills the window, whatever its own size: a small preview (a badge of a fixed width) never becomes a
+        // small window (Landmarks's badge preview was a 74×72 pt window, its title bar alone).
         let root = view
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environment(\.locale, Locale(identifier: shot.locale))
             .environment(\.layoutDirection, shot.rtl ? .rightToLeft : .leftToRight)
             .motifReduceMotion(shot.reduceMotion == true)
@@ -403,6 +406,9 @@ enum MotifShotDrawing {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        // The shot's size is the window's, fixed: nothing the content asks for resizes it.
+        window.minSize = size
+        window.maxSize = size
         window.appearance = NSAppearance(named: shot.dark ? .darkAqua : .aqua)
         window.contentView = host
         host.userInterfaceLayoutDirection = shot.rtl ? .rightToLeft : .leftToRight
@@ -423,6 +429,11 @@ enum MotifShotDrawing {
         // A field being edited is left, so the picture has no caret or focus ring the screen wouldn't show on its own.
         if window.firstResponder is NSText {
             window.makeFirstResponder(nil)
+            settleWindow(window, seconds: settle)
+        }
+        // Put back to the shot's size if anything resized it.
+        if window.frame.size != size {
+            window.setFrame(NSRect(origin: window.frame.origin, size: size), display: false)
             settleWindow(window, seconds: settle)
         }
         window.displayIfNeeded()
