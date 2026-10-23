@@ -366,6 +366,21 @@ final theme = ThemeData(textTheme: GoogleFonts.latoTextTheme(ThemeData().textThe
     );
   });
 
+  test("a variable font file covers every weight, so a family shipped as one gets no such note (re-review of the fix round)", () => {
+    // Google Fonts ships many families, Arabic ones among them, as one variable file named like these.
+    for (const file of ["ReadexPro[HEXP,wght].ttf", "ReadexPro-VariableFont_HEXP,wght.ttf", "ReadexPro-Variable.ttf", "ReadexPro-VF.ttf"]) {
+      const { report } = flutterDraft(
+        makeProject({
+          "pubspec.yaml": `${PUBSPEC}\nflutter:\n  fonts:\n    - family: Readex Pro\n      fonts:\n        - asset: assets/fonts/${file}\n`,
+          [`assets/fonts/${file}`]: "font",
+          "lib/main.dart": "void main() {}\n",
+          "lib/theme.dart": "import 'package:flutter/material.dart';\n\nWidget body() => Text('Hi', style: TextStyle(fontFamily: 'Readex Pro', fontSize: 14));\n",
+        }),
+      );
+      expect([file, report.notes.join("\n").includes("Readex Pro's files have")]).toEqual([file, false]);
+    }
+  });
+
   test("a shipped family with every weight the roles use has no such note", () => {
     const { report } = flutterDraft(makeProject(readex([400, 500, 600, 700])));
     expect(report.notes.join("\n")).not.toContain("Readex Pro's files have");

@@ -1394,6 +1394,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
       ...([family, companion].some((s) => s?.toLowerCase() === key) ? sansWeights : []),
       ...(code?.toLowerCase() === key ? [MONO_ROLE[1]] : []),
     ]);
+    // A variable font file (Google's Name[wght].ttf, Name-VariableFont_wght.ttf, -Variable, -VF) serves every weight.
+    if (f.files.some((file) => /\[[^\]]*wght|variable|[-_]vf\./i.test(file.path))) continue;
     const has = [...new Set(f.files.filter((file) => file.style === "normal").map((file) => file.weight))].sort((a, b) => a - b);
     const ranges = (occ.fontWeightRanges ?? []).filter((r) => r.family.toLowerCase() === key);
     const missing = [...used].filter((w) => !has.includes(w) && !ranges.some((r) => r.min <= w && w <= r.max)).sort((a, b) => a - b);
