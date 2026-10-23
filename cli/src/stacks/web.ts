@@ -36,8 +36,8 @@ export interface WebStack {
   collect?(files: SourceFile[]): Occurrences;
   /** The pages of the app, for motif shot without --routes. */
   routes?(appDir: string): RouteDiscovery;
-  /** How long the app's dev server may take to answer its first page, in ms, when the web's usual limit is too short. */
-  startTimeoutMs?: number;
+  /** How long this app's dev server may take to answer its first page, in ms, when the web's usual limit is too short (undefined: the usual). */
+  startTimeoutMs?(appDir: string): number | undefined;
   /** How the framework sets a design variant, for the note when a variant looks the same as the default. */
   variantHow?: string;
   /** The items for this stack, given the project root and this stack's apps in it. */

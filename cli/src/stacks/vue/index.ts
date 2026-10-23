@@ -6,7 +6,7 @@ import type { WebStack } from "../web";
 import { vueDoctor } from "./doctor";
 import { collectVue } from "./extract";
 import { generateVue, vueWiring } from "./generate";
-import { vueSrcDir } from "./project";
+import { isNuxt, vueSrcDir } from "./project";
 import { discoverVueRoutes } from "./routes";
 import { scanVue, vueFix, vueReducedMotionHits } from "./rules";
 
@@ -46,6 +46,9 @@ function vuetifyConfigs(root: string, app: AppInfo, opts: { ignore?: string[] })
   );
 }
 
+/** Nuxt compiles its first page on demand, which takes longer than a Vite app's. */
+const NUXT_START_TIMEOUT_MS = 180_000;
+
 /** Vue 3 and Nuxt 3 or later: apps with Vite (Vue's own starter) or Nuxt. The parts that come later are filled in by their tasks. */
 export const VUE: WebStack = {
   id: "vue",
@@ -61,4 +64,6 @@ export const VUE: WebStack = {
   collect: collectVue,
   doctor: vueDoctor,
   routes: discoverVueRoutes,
+  startTimeoutMs: (appDir) => (isNuxt(appDir) ? NUXT_START_TIMEOUT_MS : undefined),
+  variantHow: "motif.css, which follows data-variant on <html>",
 };

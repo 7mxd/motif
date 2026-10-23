@@ -24,6 +24,7 @@ import { fixedScheme, hasWebSupport, isExpoApp } from "../stacks/react-native/pr
 import { buildWebBundle, webErrorHints } from "../stacks/react-native/web";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
 import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes";
+import { webStack } from "../stacks/web";
 import { andList } from "../text";
 
 export interface ShotDeps {
@@ -262,6 +263,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const native = app ? nativeStack(app.stack) : null;
   // Expo's apps are drawn in the browser, through the web target: the web path, with native sizes and notes.
   const rn = app?.stack === "react-native";
+  // A web framework with its own file format (Vue): started through its own dev server, with the web's sizes and its own routes.
+  const web = app ? webStack(app.stack) : null;
   const shoot = native?.shoot ? (deps.shoot ?? native.shoot.bind(native)) : undefined;
   // Sizes the stack draws this app at instead of the native ones (a macOS SwiftUI app's windows), or why not.
   let own: { viewports: Viewport[] } | { error: string } | null = null;
@@ -342,7 +345,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         "Motif starts Expo apps for screenshots, and this React Native app doesn't use Expo. If it runs on react-native-web, start it and pass its address with --url.",
         { error: "unsupported-stack" },
       );
-    } else if (app.stack !== "react-web" && app.stack !== "plain-web") {
+    } else if (app.stack !== "react-web" && app.stack !== "plain-web" && !web) {
       const what = app.stack ? `${STACK_LABELS[app.stack]} apps` : "this app";
       return usage(`Motif can't start ${what} for screenshots yet. Start it yourself and pass its address with --url.`, { error: "unsupported-stack" });
     }
@@ -361,6 +364,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         ? (native?.routes?.(appDir) ?? { routes: ["/"], skipped: [] })
         : app?.stack === "react-web"
         ? discoverRoutes(appDir)
+        : web?.routes
+        ? web.routes(appDir)
         : siteFolderPath
           ? discoverPlainRoutes(siteFolderPath)
           : { routes: ["/"], skipped: [] };
@@ -426,12 +431,14 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     baseUrl = site.url;
   } else if (!baseUrl) {
     const how = deps.devCommand(appDir);
+    const webStartLimit = web?.startTimeoutMs?.(appDir);
     if ("error" in how) return usage(how.error, { error: "cant-start" });
     // Expo's start limit covers its server and its first web bundle.
     const started = Date.now();
     try {
       server = await deps.startDevServer({
         cwd: appDir, command: how.command, ...(how.env ? { env: how.env } : {}), ...(rn ? { timeoutMs: RN_START_TIMEOUT_MS } : {}),
+        ...(webStartLimit !== undefined ? { timeoutMs: webStartLimit } : {}),
       });
     } catch (e) {
       return usage(`Couldn't start the app with "${how.display}". ${message(e)}`, { error: "dev-server-failed" });
@@ -524,7 +531,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       }
     }
   }
-  notes.push(...identicalVariantNotes(captured.routes.flatMap((r) => r.shots), native?.variantHow ?? WEB_VARIANT_HOW));
+  notes.push(...identicalVariantNotes(captured.routes.flatMap((r) => r.shots), native?.variantHow ?? web?.variantHow ?? WEB_VARIANT_HOW));
 
   // Whether the reduced-motion check ran at all: it needs the stack's motion size (a desktop one on the web) among the sizes drawn.
   const sizesDrawn = viewports ?? (rn ? NATIVE_VIEWPORTS : undefined);

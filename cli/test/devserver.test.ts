@@ -35,6 +35,17 @@ describe("findLocalUrl", () => {
   test("prefers the line that says Local, when several programs print addresses (backlog)", () => {
     expect(findLocalUrl("[0] JSON Server is running on http://localhost:3001\n[1]   ➜  Local:   http://localhost:5173/\n")).toBe("http://localhost:5173/");
   });
+  test("reads Vite's banner, with its colours", () => {
+    const banner = "\n  \x1b[32m\x1b[1mVITE\x1b[22m v6.3.5\x1b[39m  ready in \x1b[1m412\x1b[22m ms\n\n  \x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:   \x1b[36mhttp://localhost:\x1b[1m5173\x1b[22m/\x1b[39m\n  \x1b[32m➜\x1b[39m  \x1b[1mNetwork\x1b[22m\x1b[2m: use \x1b[22m\x1b[1m--host\x1b[22m\x1b[2m to expose\x1b[22m\n";
+    expect(findLocalAddress(banner)).toEqual({ url: "http://localhost:5173/", onLocalLine: true });
+  });
+  test("reads Nuxt's banner (Nuxt 3 and 4 print it through listhen), with its colours and a Network line", () => {
+    // Nuxt prints "  ➜ Local:    <url>" and "  ➜ Network:  use --host to expose", or the Network address when started with --host.
+    const quiet = "Nuxt 3.17.4 with Nitro 2.11.12\n\n\x1b[32m  ➜ Local:    \x1b[39m \x1b[36mhttp://localhost:\x1b[1m3000\x1b[22m/\x1b[39m\n\x1b[90m  ➜ Network:  use \x1b[39m\x1b[37m--host\x1b[39m\x1b[90m to expose\x1b[39m\n";
+    expect(findLocalAddress(quiet)).toEqual({ url: "http://localhost:3000/", onLocalLine: true });
+    expect(findLocalUrl("  ➜ Network:  http://192.168.1.4:3001/\n  ➜ Local:    http://localhost:3001/\n")).toBe("http://localhost:3001/");
+    expect(findLocalAddress("[nitro] Using 2 threads as worker\n  ➜ Local:    http://127.0.0.1:3000/docs/\n")).toEqual({ url: "http://127.0.0.1:3000/docs/", onLocalLine: true });
+  });
 });
 
 const has = (cmds: string[]) => (cmd: string) => (cmds.includes(cmd) ? `/usr/bin/${cmd}` : null);
