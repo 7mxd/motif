@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { launchBrowser } from "../browser/cdp";
-import { pngSize } from "../browser/png";
+import { decodePng, pngSize } from "../browser/png";
 import { MAX_HEIGHT, screenOf, type Screen } from "./capture";
 
 export interface ComparePair {
@@ -138,10 +138,47 @@ export function missingStateFrames(frames: string[], allShots: string[]): string
   return [...new Set(frames.filter((f) => frameState(f) && captured.has(variantOf(f)) && !shotFor(f, shots)).map(frameState))];
 }
 
+/** How far apart two pictures may be and still look the same: a channel within 8 of 255, and at most 0.5% of pixels past it. */
+const SAME_CHANNEL = 8;
+const SAME_SHARE = 0.005;
+
 /**
- * The variants whose every screenshot in this run is byte-identical to the default's of the same screen, state, size,
- * scheme and direction: the app likely didn't switch to them. A variant screenshot with no default one to compare with
- * leaves its variant out.
+ * True when two screenshots look the same: the same size, with nearly every pixel matching (a loading spinner drawn at
+ * another angle, or a colour a few steps off, doesn't make them differ). Pictures Motif can't decode are compared by
+ * their bytes; one that can't be read is never the same.
+ */
+export function looksTheSame(a: string, b: string): boolean {
+  const x = readFileSync(a);
+  const y = readFileSync(b);
+  if (x.equals(y)) return true;
+  let p: ReturnType<typeof decodePng>;
+  let q: ReturnType<typeof decodePng>;
+  try {
+    p = decodePng(x);
+    q = decodePng(y);
+  } catch {
+    return false;
+  }
+  if (p.width !== q.width || p.height !== q.height) return false;
+  const allowed = Math.floor(p.width * p.height * SAME_SHARE);
+  let differ = 0;
+  for (let i = 0; i < p.rgba.length; i += 4) {
+    if (
+      Math.abs(p.rgba[i]! - q.rgba[i]!) > SAME_CHANNEL ||
+      Math.abs(p.rgba[i + 1]! - q.rgba[i + 1]!) > SAME_CHANNEL ||
+      Math.abs(p.rgba[i + 2]! - q.rgba[i + 2]!) > SAME_CHANNEL ||
+      Math.abs(p.rgba[i + 3]! - q.rgba[i + 3]!) > SAME_CHANNEL
+    ) {
+      if (++differ > allowed) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The variants whose every screenshot in this run looks the same (looksTheSame) as the default's of the same screen,
+ * state, size, scheme and direction: the app likely didn't switch to them. A variant screenshot with no default one to
+ * compare with leaves its variant out.
  */
 export function identicalVariants(shots: string[]): string[] {
   const taken = new Set(shots);
@@ -152,7 +189,7 @@ export function identicalVariants(shots: string[]): string[] {
     const dflt = join(dirname(shot), withoutVariant(basename(shot)));
     let equal = false;
     try {
-      equal = taken.has(dflt) && readFileSync(shot).equals(readFileSync(dflt));
+      equal = taken.has(dflt) && looksTheSame(shot, dflt);
     } catch {
       // A screenshot that can't be read can't show the variant looks the same: no note for it.
     }
@@ -327,8 +364,8 @@ export async function renderComparisons(opts: {
 }
 
 /**
- * True when the run took dark screenshots and every one is byte-identical to its light twin (same screen, state, size,
- * variant and direction): the app didn't draw a dark mode. A dark screenshot with no light twin, or one that can't be
+ * True when the run took dark screenshots and every one looks the same (looksTheSame) as its light twin (same screen,
+ * state, size, variant and direction): the app didn't draw a dark mode. A dark screenshot with no light twin, or one that can't be
  * read, makes it false.
  */
 export function darkLooksLikeLight(shots: string[]): boolean {
@@ -338,7 +375,7 @@ export function darkLooksLikeLight(shots: string[]): boolean {
   return dark.every((shot) => {
     const light = `${shot.slice(0, -".dark.png".length)}.png`;
     try {
-      return taken.has(light) && readFileSync(shot).equals(readFileSync(light));
+      return taken.has(light) && looksTheSame(shot, light);
     } catch {
       return false;
     }

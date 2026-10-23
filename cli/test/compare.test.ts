@@ -6,6 +6,7 @@ import { addPngText, pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 import { shotName } from "../src/shot/capture";
 import { comparePage, darkLooksLikeLight, identicalVariantNotes, identicalVariants, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
+import { encodePng } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -400,5 +401,55 @@ describe("darkLooksLikeLight (Task 7)", () => {
     // No dark screenshots, or one without its light twin: nothing to say.
     expect(darkLooksLikeLight([join(dir, "index.mobile.png")])).toBe(false);
     expect(darkLooksLikeLight([join(dir, "index.mobile.dark.png")])).toBe(false);
+  });
+});
+
+describe("nearly the same pictures count as the same (v0.5.0 sweep, HiSalon problem 7)", () => {
+  // A 200 × 200 screen: a white page with a dark header, as an app draws it light.
+  const SIZE = 200;
+  const page = (paint?: (x: number, y: number) => [number, number, number] | undefined) => {
+    const rgba = new Uint8Array(SIZE * SIZE * 4);
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        const [r, g, b] = paint?.(x, y) ?? (y < 40 ? [20, 30, 40] : [255, 255, 255]);
+        rgba.set([r, g, b, 255], (y * SIZE + x) * 4);
+      }
+    }
+    return encodePng(SIZE, SIZE, rgba);
+  };
+  /** The page with a spinner of side n px at (100, 100), drawn at another angle: n × n pixels differ. */
+  const spinner = (n: number) => page((x, y) => (x >= 100 && x < 100 + n && y >= 100 && y < 100 + n ? [90, 90, 90] : undefined));
+  const dark = page((_x, y) => (y < 40 ? [20, 30, 40] : [18, 18, 18]));
+  const write = (dir: string, files: Record<string, Uint8Array>) =>
+    Object.entries(files).map(([name, bytes]) => {
+      writeFileSync(join(dir, name), bytes);
+      return join(dir, name);
+    });
+
+  test("a dark screenshot that differs from light only in a spinner (0.25% of its pixels) looks like light", () => {
+    const dir = tempDir("motif-near-");
+    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": spinner(10) }))).toBe(true);
+  });
+
+  test("a variant that differs from the default only in a spinner looks like the default", () => {
+    const dir = tempDir("motif-near-");
+    const shots = write(dir, { "index.mobile.png": page(), "index+men.mobile.png": spinner(10) });
+    expect(identicalVariants(shots)).toEqual(["men"]);
+  });
+
+  test("colours a few steps apart in every pixel (8 of 255 or fewer) are the same", () => {
+    const dir = tempDir("motif-near-");
+    const shifted = page((_x, y) => (y < 40 ? [28, 22, 48] : [247, 250, 255]));
+    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": shifted }))).toBe(true);
+  });
+
+  test("a real dark mode, a change in 1% of the pixels, a change of 9 steps, or another size isn't the same", () => {
+    const dir = tempDir("motif-near-");
+    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": dark }))).toBe(false);
+    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": spinner(20) }))).toBe(false);
+    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": page((_x, y) => (y < 40 ? [20, 30, 40] : [246, 255, 255])) }))).toBe(false);
+    const wide = encodePng(SIZE + 1, SIZE, new Uint8Array((SIZE + 1) * SIZE * 4).fill(255));
+    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": wide }))).toBe(false);
+    expect(identicalVariants(write(dir, { "index.mobile.png": page(), "index+men.mobile.png": dark }))).toEqual([]);
   });
 });

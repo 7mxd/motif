@@ -1,3 +1,5 @@
+import { inflateSync } from "node:zlib";
+
 const SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 
 /** Width and height from a PNG's IHDR chunk. */
@@ -48,4 +50,50 @@ export function readPngText(bytes: Uint8Array, key: string): string | undefined 
     if (split >= 0 && text.slice(0, split) === key) return text.slice(split + 1);
   }
   return undefined;
+}
+
+/** An 8-bit RGB or RGBA PNG, decoded: its size and its pixels as RGBA, row by row. */
+export function decodePng(png: Uint8Array): { width: number; height: number; rgba: Uint8Array } {
+  const buf = Buffer.from(png);
+  if (buf.length < 29 || buf.toString("latin1", 1, 4) !== "PNG") throw new Error("Not a PNG.");
+  const depth = buf[24];
+  const colourType = buf[25];
+  const interlace = buf[28];
+  if (depth !== 8 || (colourType !== 2 && colourType !== 6) || interlace !== 0) {
+    throw new Error(`Only 8-bit RGB or RGBA PNGs without interlacing can be decoded here (this one is ${depth}-bit, colour type ${colourType}, ${interlace ? "interlaced" : "not interlaced"}).`);
+  }
+  const width = buf.readUInt32BE(16);
+  const height = buf.readUInt32BE(20);
+  const bpp = colourType === 6 ? 4 : 3;
+  const chunks: Buffer[] = [];
+  for (let at = 8; at < buf.length; ) {
+    const length = buf.readUInt32BE(at);
+    if (buf.toString("latin1", at + 4, at + 8) === "IDAT") chunks.push(buf.subarray(at + 8, at + 8 + length));
+    at += length + 12;
+  }
+  const raw = inflateSync(Buffer.concat(chunks));
+  const stride = width * bpp;
+  const rgba = new Uint8Array(width * height * 4);
+  let prev = new Uint8Array(stride);
+  for (let y = 0; y < height; y++) {
+    const line = new Uint8Array(stride);
+    const filter = raw[y * (stride + 1)]!;
+    for (let x = 0; x < stride; x++) {
+      const v = raw[y * (stride + 1) + 1 + x]!;
+      const a = x >= bpp ? line[x - bpp]! : 0;
+      const b = prev[x]!;
+      const c = x >= bpp ? prev[x - bpp]! : 0;
+      const p = a + b - c;
+      const pa = Math.abs(p - a);
+      const pb = Math.abs(p - b);
+      const pc = Math.abs(p - c);
+      const paeth = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      line[x] = (v + [0, a, b, (a + b) >> 1, paeth][filter]!) & 0xff;
+    }
+    for (let x = 0; x < width; x++) {
+      for (let k = 0; k < 4; k++) rgba[(y * width + x) * 4 + k] = k < bpp ? line[x * bpp + k]! : 255;
+    }
+    prev = line;
+  }
+  return { width, height, rgba };
 }
