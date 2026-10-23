@@ -386,8 +386,17 @@ Widget cards(AppColors c) => Column(children: [
     expect(accent.male).toEqual(["#3D4B6E", "#7E94C9"]);
   });
 
-  test("a role drafted from a see-through colour is noted", () => {
-    expect(report.notes.join("\n")).toContain("border comes from a see-through colour (#0f3c3214)");
+  // v0.5.0 gate, Task 4: the 8% hairline was drafted as its solid #0F3C32, near-black outlines. It's drafted as it shows.
+  test("a role drafted from a see-through colour is drafted as it shows over the background, and noted", () => {
+    const border = values("border");
+    // #0f3c32 at 8% over #F8FAF9, and over the dark #0F1413.
+    expect([border.light, border.dark]).toEqual(["#E6EBE9", "#0F1715"]);
+    expect(border.male ?? [border.light, border.dark]).toEqual([border.light, border.dark]);
+    const notes = report.notes.join("\n");
+    expect(notes).toContain(
+      "border comes from --card-border, which is see-through (#0f3c3214): drafted as #E6EBE9, how it shows over the background (in dark mode and each variant, over theirs). Check it.",
+    );
+    expect(notes).not.toContain("drafted as solid");
   });
 
   test("the draft stays a valid guide", () => {
@@ -713,7 +722,14 @@ Widget screen(AppColors c) => Column(children: [
   test("the see-through note names only roles whose own value is see-through", () => {
     const notes = report.notes.join("\n");
     expect(notes).not.toContain("text-primary comes from a see-through colour");
-    expect(notes).toContain("border comes from a see-through colour (#0f3c3214)");
+    expect(notes).toContain("border comes from --card-border, which is see-through (#0f3c3214)");
+  });
+
+  test("border is the card outline as it shows over the background, in light, dark and the variant (v0.5.0 gate, Task 4)", () => {
+    const border = role("border");
+    expect(border.light).toBe(over(light.cardBorder, light.bg));
+    expect(border.dark).toBe(over(dark.cardBorder, dark.bg));
+    expect(border.male ?? [border.light, border.dark]).toEqual([border.light, border.dark]);
   });
 
   test("the draft stays a valid guide", () => {
