@@ -862,6 +862,41 @@ export const s = { body: { fontFamily: 'IBMPlexSansArabic_400Regular', fontSize:
     expect(sources(tokens)).toEqual({ "IBM Plex Sans Arabic": "google" });
   });
 
+  const READEX_USE = `export default function App() { useFonts({ ReadexPro_400Regular }); return null; }
+export const s = { body: { fontFamily: 'ReadexPro_400Regular', fontSize: 16 } };
+`;
+  test.each([
+    ["a per-weight subpath", `import { ReadexPro_400Regular } from '@expo-google-fonts/readex-pro/400Regular';\n`],
+    ["a default import of a subpath", `import ReadexPro_400Regular from '@expo-google-fonts/readex-pro/400Regular';\n`],
+    ["require()", `const { ReadexPro_400Regular } = require('@expo-google-fonts/readex-pro');\n`],
+    ["an aliased require()", `const { ReadexPro_400Regular: Readex } = require("@expo-google-fonts/readex-pro");\n`],
+    ["import * as", `import * as Readex from '@expo-google-fonts/readex-pro';\nconst ReadexPro_400Regular = Readex.ReadexPro_400Regular;\n`],
+    ["import * as, its faces never read by name", `import * as Readex from '@expo-google-fonts/readex-pro';\nconst ReadexPro_400Regular = 1;\n`],
+  ])("@expo-google-fonts/readex-pro through %s is Readex Pro, and motif tokens names the real package", async (_, imports) => {
+    const root = makeProject({ "package.json": pkg({ "@expo-google-fonts/readex-pro": "*" }), "App.tsx": `import { useFonts } from 'expo-font';\n${imports}${READEX_USE}` });
+    const occ = collectReactNative(REACT_NATIVE.sourceFiles!(root, app, {}));
+    expect(occ.googleFonts).toEqual(["Readex Pro"]);
+    expect(occ.fontFamily.map((f) => f.value)).toEqual(["Readex Pro"]);
+    const { tokens } = buildDraft(occ);
+    mkdirSync(join(root, "design"), { recursive: true });
+    writeFileSync(join(root, "design/tokens.json"), JSON.stringify(tokens));
+    const notes = (((await runTokens(root, { positionals: [] })).data as { notes?: string[] }).notes ?? []).join("\n");
+    expect(notes).not.toContain("readexpro");
+  });
+
+  test("@expo-google-fonts/dev, which exports every family, keeps each family by its export: Inter and Readex Pro, not Dev", () => {
+    const root = makeProject({
+      "package.json": pkg({ "@expo-google-fonts/dev": "*" }),
+      "App.tsx": `import { useFonts } from 'expo-font';
+import { Inter_400Regular, ReadexPro_400Regular, IBMPlexSansArabic_400Regular } from '@expo-google-fonts/dev';
+export default function App() { useFonts({ Inter_400Regular, ReadexPro_400Regular, IBMPlexSansArabic_400Regular }); return null; }
+export const s = { body: { fontFamily: 'Inter_400Regular', fontSize: 16 } };
+`,
+    });
+    const occ = collectReactNative(REACT_NATIVE.sourceFiles!(root, app, {}));
+    expect(occ.googleFonts).toEqual(["Inter", "Readex Pro", "IBM Plex Sans Arabic"]);
+  });
+
   /** A copy of a real font whose fvar table is renamed away: a static font at its default weight, 400. */
   const staticCopy = (path: string) => {
     const b = Buffer.from(readFileSync(path));

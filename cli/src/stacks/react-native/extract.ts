@@ -177,11 +177,11 @@ function familyOf(name: string): string {
 /**
  * A Google family's name from its @expo-google-fonts package, in its export's capitals: readex-pro and ReadexPro_400Regular
  * → Readex Pro, ibm-plex-sans-arabic and IBMPlexSansArabic_400Regular → IBM Plex Sans Arabic. When the export's letters
- * aren't the package's words, the words are capitalised.
+ * aren't the package's words (@expo-google-fonts/dev exports every family), the export is split at its capitals.
  */
 function googleFamily(pkg: string, stem: string): string {
   const words = pkg.split("-").filter(Boolean);
-  if (words.join("") !== stem.toLowerCase()) return words.map((w) => w[0]!.toUpperCase() + w.slice(1)).join(" ");
+  if (words.join("") !== stem.toLowerCase()) return stem.replace(/([a-z\d])(?=[A-Z])|([A-Z])(?=[A-Z][a-z])/g, "$1$2 ");
   const out: string[] = [];
   let at = 0;
   for (const w of words) {
@@ -194,9 +194,33 @@ function googleFamily(pkg: string, stem: string): string {
 /** A family name as a key: no case, spaces, "-" or "_" (Readex Pro, ReadexPro). */
 const compactKey = (family: string) => family.toLowerCase().replace(/[\s_-]+/g, "");
 
-const GOOGLE_IMPORT = /import\s*\{([^}]*)\}\s*from\s*["']@expo-google-fonts\/([\w-]+)["']/g;
-/** An import list's capitalised names, without aliases: the faces an @expo-google-fonts package exports. */
-const importedFaces = (list: string) => list.split(",").map((s) => s.trim().split(/\s+as\s+/)[0]!.trim()).filter((s) => /^[A-Z]/.test(s));
+const GOOGLE_PKG = String.raw`\(?\s*["']@expo-google-fonts\/([\w-]+)(?:\/[\w-]+)?["']`;
+const GOOGLE_IMPORT = new RegExp(
+  String.raw`import\s*(?:\*\s*as\s+(\w+)|(\w+)?\s*,?\s*(?:\{([^}]*)\})?)\s*from\s*${GOOGLE_PKG}|(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\s*${GOOGLE_PKG}`,
+  "g",
+);
+/** An import list's capitalised names, without aliases (`A as B`, `A: B`): the faces an @expo-google-fonts package exports. */
+const importedFaces = (list: string) => list.split(",").map((s) => s.trim().split(/\s+as\s+|\s*:/)[0]!.trim()).filter((s) => /^[A-Z]/.test(s));
+
+/**
+ * The @expo-google-fonts imports in a file: each one's package, the faces it brings in and where it is. They come as
+ * `import { A, B as C } from`, from a per-weight subpath (…/readex-pro/400Regular, also as a default import),
+ * `const { A, B: C } = require(…)`, or `import * as F from`, whose faces are those read off it (F.A); when none are, the
+ * package is taken for one family, named by its words.
+ */
+function googleImports(text: string): { pkg: string; faces: string[]; index: number }[] {
+  const out: { pkg: string; faces: string[]; index: number }[] = [];
+  for (const m of text.matchAll(GOOGLE_IMPORT)) {
+    const pkg = (m[4] ?? m[6])!;
+    let faces: string[];
+    if (m[1]) {
+      faces = [...new Set([...text.matchAll(new RegExp(String.raw`\b${m[1]}\.([A-Z]\w*)`, "g"))].map((r) => r[1]!))];
+      if (faces.length === 0 && pkg !== "dev") faces = [pkg.split("-").filter(Boolean).map((w) => w[0]!.toUpperCase() + w.slice(1)).join("")];
+    } else faces = [...(m[2] && /^[A-Z]/.test(m[2]) ? [m[2]] : []), ...importedFaces(m[3] ?? m[5] ?? "")];
+    out.push({ pkg, faces, index: m.index! });
+  }
+  return out;
+}
 
 type ProjectFontEntry = NonNullable<Occurrences["projectFonts"]>[number];
 type UnfoundFontEntry = NonNullable<Occurrences["unfoundFonts"]>[number];
@@ -649,10 +673,10 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
   // Google and motif tokens name it; every face name of it (ReadexPro_400Regular) is that family.
   const googleNames = new Map<string, string>();
   for (const file of scripts) {
-    for (const m of file.source.text.matchAll(GOOGLE_IMPORT)) {
-      for (const face of importedFaces(m[1]!)) {
+    for (const g of googleImports(file.source.text)) {
+      for (const face of g.faces) {
         const stem = familyOf(face);
-        if (!googleNames.has(compactKey(stem))) googleNames.set(compactKey(stem), googleFamily(m[2]!, stem));
+        if (!googleNames.has(compactKey(stem))) googleNames.set(compactKey(stem), googleFamily(g.pkg, stem));
       }
     }
   }
@@ -715,13 +739,13 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
       const found = m[1] ? objectNamed(file, m[1], byPath) : { file, obj: parseObject(file.masked, file.source.text, m.index! + m[0].length) };
       if (found) loadedFonts(found.file, found.obj);
     }
-    for (const m of file.source.text.matchAll(GOOGLE_IMPORT)) {
-      for (const name of importedFaces(m[1]!)) {
+    for (const g of googleImports(file.source.text)) {
+      for (const name of g.faces) {
         const family = familyNamed(name);
         googleFonts.add(family);
         if (!fontNames.has(family)) {
           fontNames.add(family);
-          add("fontFamily", family, where(file, m.index!));
+          add("fontFamily", family, where(file, g.index));
         }
       }
     }
