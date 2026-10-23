@@ -23,6 +23,7 @@ Start a new guide from [DESIGN.template.md](DESIGN.template.md) and [tokens.temp
 - A header between two `---` lines: `motifContract: 1`, `name:` and `updated:` (YYYY-MM-DD).
 - A plain summary of three to five sentences before the first section ("This app feels calm and premium…").
 - Ten numbered sections, in this order: 1. Brief · 2. Direction · 3. Foundations · 4. Motion · 5. Components · 6. Patterns · 7. Accessibility · 8. Platform notes · 9. Do / Don't · 10. Change log.
+- A guide with variants also has an unnumbered `## Variants` section after Foundations (see [Variants](#variants)). `motif validate` reports it missing, and warns about any variant the section doesn't mention. A guide without variants has no such section.
 - It states intent and rules. Exact values live only in `tokens.json`: write "the primary action colour", not a hex code.
 - Change log lines: `- YYYY-MM-DD — what changed — why — approved by <name>`.
 
@@ -89,6 +90,42 @@ A project may add roles (a `color.chart-1`, say). Describe each new role in DESI
 
 A spring is a perceived duration and a bounce, the way Motion and SwiftUI describe them. Use `snappy` (about 0.25 s, no bounce) for presses, toggles and small changes; `smooth` (about 0.4 s, slight bounce) for screens, sheets and cards; `bouncy` only for rare playful moments such as a completed goal. Generated code turns them into each platform's own spring.
 
+### Variants
+
+A variant is a named alternative look of the same app for an audience or context its idea calls for (a women's and a men's experience, a brand per customer). Light and dark are not variants: every variant has both. Declare the variants once, at the root; exactly one is the default, and ids are kebab-case (`^[a-z][a-z0-9-]*$`):
+
+```json
+"$extensions": { "dev.motif": { "motifContract": 1, "variants": [ { "id": "women", "label": "Women", "default": true }, { "id": "men", "label": "Men" } ] } }
+```
+
+A role's `$value` and `modes.dark` are always the default variant's. A role that differs in another variant adds that variant's values; a colour role needs both `value` and `dark`, any other role takes `value` only. Aliases are fine. A role that doesn't mention a variant uses the default's value there:
+
+```json
+"action-primary": {
+  "$value": "{primitive.color.light-action-primary}",
+  "$extensions": { "dev.motif": {
+    "modes": { "dark": "{primitive.color.dark-action-primary}" },
+    "variants": { "men": { "value": "{primitive.color.teal-600}", "dark": "{primitive.color.teal-300}" } }
+  } }
+}
+```
+
+`motif validate` checks every readability pair in every variant, in light and dark ("In the Men variant, dark mode: …"), and reports a variant id that is repeated or not kebab-case, a role that names an unknown variant, and a role that gives the default variant values of its own (the default's values are the role's `$value` and `modes.dark`). Other commands refuse a variants block with errors until it's fixed. Write the `## Variants` section in DESIGN.md, and see [variants](../knowledge/variants.md) for when and how to use them.
+
+`motif tokens` writes every variant. On the web, `data-variant="<id>"` on `<html>` (the element that carries `data-theme`) selects one; the default needs no attribute. Mockups and screenshots take `--variant <id>` or `--variant all`, and a variant's PNG adds `+<id>` to the name: `home+men.png` and `home+men.dark.png` for a mockup, `index+men.mobile.png` for a screenshot.
+
+### Project fonts
+
+An app's own font files (a brand font, one the developer bought) are named once, at the root, with paths relative to the folder that holds `design/`:
+
+```json
+"$extensions": { "dev.motif": { "motifContract": 1, "fonts": [ { "family": "Thmanyah Sans", "files": [ { "path": "assets/fonts/ThmanyahSans-Regular.woff2", "weight": 400, "style": "normal" } ] } ] } }
+```
+
+Each file is a `.woff2`, `.woff`, `.ttf` or `.otf`, and a family may list the same weight and style in more than one format. The web uses WOFF2 first; native stacks (Flutter, Android, iOS) need `.ttf` or `.otf`, so list one of those too when the app has a native target.
+
+Use the family name in a role's `fontFamily` (through a primitive) as for any font. Files must exist inside the project; `motif validate` reports a missing file, a path outside the project and a font no role uses. Previews and screenshots load the files from the project. `motif tokens` never downloads fonts: the app loads its own files (on the web, with `@font-face`; the stack guide shows how).
+
 ## The four rules
 
 1. **Roles only.** Product code uses role values (through the generated theme code), never raw colours, sizes, fonts or timings, and never primitives. `motif check` finds anything that slips through.
@@ -106,8 +143,8 @@ A spring is a perceived duration and a bounce, the way Motion and SwiftUI descri
 
 ## Commands that read the guide
 
-- `motif validate` — checks both files: format, required roles, aliases, every readability pair in light and dark, motion ranges, and DESIGN.md's header and sections.
+- `motif validate` — checks both files: format, required roles, aliases, every readability pair in every variant in light and dark, project font files, motion ranges, and DESIGN.md's header and sections.
 - `motif tokens` — writes the theme code for each app (React web: CSS variables, a Tailwind v4 theme, Motion timings).
 - `motif check` — finds raw values and other drift in the app's code.
 - `motif extract` — drafts `design/tokens.draft.json` from an app that has no guide yet.
-- `motif preview` and `motif shot` — show mockups and the running app using the guide.
+- `motif preview` and `motif shot` — show mockups and the running app using the guide, in each variant with `--variant`.

@@ -6,7 +6,7 @@ What `motif tokens` writes for a React web app, how to wire it in once, and how 
 
 | File | Holds |
 |---|---|
-| `src/styles/motif.css` | A CSS variable per role: `--motif-color-action-primary`, `--motif-space-4`, `--motif-font-body-size` and so on. Light values sit on `:root`; dark values apply under `prefers-color-scheme: dark` and on `[data-theme="dark"]`; `[data-theme="light"]` forces light. |
+| `src/styles/motif.css` | A CSS variable per role: `--motif-color-action-primary`, `--motif-space-4`, `--motif-font-body-size` and so on. Light values sit on `:root`; dark values apply under `prefers-color-scheme: dark` and on `[data-theme="dark"]`; `[data-theme="light"]` forces light. When the design guide has variants, each also gets `:root[data-variant="<id>"]` blocks for light, dark (the media query and `[data-theme="dark"]`). |
 | `src/styles/motif.tailwind.css` | Tailwind v4 projects only. It imports `motif.css` and maps Tailwind's utilities to the roles. It also removes Tailwind's default colours, radii, shadows, text sizes, fonts and easings, so only the theme's exist. |
 | `src/design/motion.ts` | `duration` (in seconds), `easing` (cubic Bézier arrays) and `spring` (Motion's `{ type: "spring", visualDuration, bounce }`). |
 
@@ -58,6 +58,16 @@ Dark mode follows the system automatically. To offer a switch, set `data-theme="
 
 Never use Tailwind's `dark:` variant for colours: the roles already change on their own.
 
+## Variants
+
+When the design guide has variants, choose one by setting `data-variant="<id>"` on `<html>`, the same element as `data-theme`, so they combine with each other and with the system's dark setting. The default variant needs no attribute. Tailwind classes follow on their own, since they read the same variables; write no per-variant classes.
+
+```tsx
+document.documentElement.dataset.variant = "men"; // remove it to return to the default
+```
+
+Set both on `<html>`. The variant selectors are scoped to `:root`, so an inner element with its own `data-theme` doesn't keep the variant. Remember the choice and apply it before the page is drawn, as for a saved theme (in Next.js, a small inline script in the layout's `<head>`), so no one sees the default first.
+
 ## Fonts
 
 `motif tokens --json` lists the theme's `fonts`: each family with the weights its roles use (fonts every computer has are left out). Load each one with its Fontsource package:
@@ -79,7 +89,7 @@ The font files are served with the app, so nothing loads from Google when people
 
 Don't use `next/font` or the `@fontsource-variable` packages for theme fonts: both register the font under a different family name, so the theme's names wouldn't match and text would fall back.
 
-A font with no Fontsource package (a brand font, or one the developer bought) is served with the app: put its files and licence in `public/fonts/`, and declare it once under the exact family name the theme uses, in a stylesheet the root imports (Next.js: `src/app/globals.css`; Vite: `src/index.css`):
+A font with no Fontsource package (a brand font, or one the developer bought) is served with the app: put its files and licence in `public/fonts/`, and declare it once under the exact family name the theme uses, in a stylesheet the root imports (Next.js: `src/app/globals.css`; Vite: `src/index.css`). A project font named under `fonts` in the design guide is this case: `motif tokens` never downloads fonts, previews load the files from the project, and the app loads them itself with `@font-face`, using the family name from the guide. If the guide's paths point elsewhere (`assets/fonts/…`), serve that folder or move the files and update the guide.
 
 A variable font covers every weight with one file, declared with its range:
 

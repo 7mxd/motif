@@ -13,6 +13,19 @@ Every stack Motif supports has two halves: a guide in `adapters/<stack>/` that a
 | `platform.md` | 4. Platform rules | The platform's conventions and accessibility specifics | — |
 | `checks.md` | 5. Checks and screenshots | Each `motif check` rule and `motif shot --audit` finding on this stack, and how to fix it | The check rules and the screenshot driver |
 
+## A finished guide
+
+A stack is finished when the developer gets all of this on it, and the guide says how (spec §4, the parity checklist):
+
+- **Detection and the toolchain:** `motif doctor` recognises the app, also inside a monorepo, says what's missing and how to install it, and `init` knows the stack's official starter.
+- **Theme code:** colours (light, dark, every variant), type roles with the Arabic companion, spacing, corners, shadows, durations, easings and springs, and the theme's fonts wired in.
+- **Checks:** typed colours, sizes, fonts and animation timings found with file, line and fix, with `motif-ok` exceptions.
+- **Drafting a guide** from an existing app with `motif extract`.
+- **Components:** where they live, so the `feature` mode can list them.
+- **Screenshots:** three phone sizes, a tablet and, where the stack runs on desktops, a desktop; light and dark; every variant; right-to-left; state scripts for screens behind a form or a tap; comparing with mockups.
+- **The audit:** contrast, tap-target size, accessible names and reduced motion, as rendered.
+- **Skill, evals and agents:** this guide, the `init`, `feature` and `review` modes working on the stack, fixture apps and eval cases, and all agent packages.
+
 ## Rules for every guide
 
 - Use the stack's own words and APIs, and link the official docs for anything that changes often.

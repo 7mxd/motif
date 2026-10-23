@@ -19,9 +19,20 @@ Ask whether to review the whole app or named screens or features (default: the w
 
 1. `motif validate`: problems in the design guide itself.
 2. `motif check`: places in the code that bypass the design guide.
-3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, at three phone sizes, a tablet and a desktop). Screens that only appear after a form or a click (a result, an editor, an error) need a state script: write one per state in `design/states/`, as the stack guide's checks show ([React web](../adapters/react-web/checks.md#screens-behind-a-form-or-a-click), [plain web](../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click)), and add `--state design/states/<state>.js` for each. It also writes its findings to `design/shots/audit.json` in the report format below.
+3. `motif shot --audit`: contrast and tap-target sizes as rendered, and movement under reduced motion, for the screens in scope (light and dark, at three phone sizes and a tablet, plus a desktop for a web app, and in every variant). Screens that only appear after a form or a click (a result, an editor, an error) need a state script: write one per state in `design/states/`, as the stack guide's checks show ([React web](../adapters/react-web/checks.md#screens-behind-a-form-or-a-click), [plain web](../adapters/plain-web/checks.md#screens-behind-a-form-or-a-click), [Flutter](../adapters/flutter/checks.md#screens-behind-a-form-or-a-click), [Jetpack Compose](../adapters/compose/checks.md#screens-behind-a-form-or-a-click), [SwiftUI](../adapters/swiftui/checks.md#screens-behind-a-form-or-a-tap), [React Native](../adapters/react-native/checks.md#screens-behind-a-form-or-a-tap)), and add `--state design/states/<state>.js` for each (`.dart` for a Flutter app, `.kt` for a Compose app, `.swift` for a SwiftUI app; a React Native app's are JavaScript run on Expo's web target, `.js` too). For an app that offers right-to-left languages (Arabic, Hebrew), add `--rtl` to screenshot every screen right to left too, and look at those pictures as well. A SwiftUI app is screenshotted only on a Mac with Xcode: on another computer, say so once and review it from the code and `motif check`. It also writes its findings to `design/shots/audit.json` in the report format below.
 
-**Judgement**, screen by screen and state by state, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, whether things people use together (a live preview and the controls that change it, a form and its result) fit on one screen, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's checks ([React web](../adapters/react-web/checks.md), [plain web](../adapters/plain-web/checks.md)).
+**Judgement**, screen by screen and state by state, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, whether things people use together (a live preview and the controls that change it, a form and its result) fit on one screen, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's checks ([React web](../adapters/react-web/checks.md), [plain web](../adapters/plain-web/checks.md), [Flutter](../adapters/flutter/checks.md), [Jetpack Compose](../adapters/compose/checks.md), [SwiftUI](../adapters/swiftui/checks.md), [React Native](../adapters/react-native/checks.md)).
+
+Make it a written pass, not a glance: open each screen's screenshots (light at a phone size, and the right-to-left one) and, before writing the report, note for each screen what you checked against the design guide's own rules, at least these four:
+
+- **The one main action.** Which action is drawn loudest (filled, full width, in the action colour)? It should be the screen's main task, and there should be one. A rarely used or final action (sign out, delete, cancel) drawn as the loudest thing on its screen, or two actions drawn as main, is a `hierarchy` finding.
+- **Spacing between things.** Against the guide's spacing rules: repeated items (cards, rows, tiles) that touch or sit at uneven gaps, and a heading pressed against what it heads, are `spacing` findings.
+- **Words.** Every visible label in each language the app offers: one left untranslated in the other language's screenshot, or a button that doesn't name what it does ("Submit", "OK", "Click here"), is a `copy` finding.
+- **Direction.** In the right-to-left screenshots, parts that don't mirror (a row that stays left to right, an arrow that points the wrong way) are `platform-convention` findings.
+
+A screen where you found nothing still gets its line in your notes ("Loyalty card: one main action, spacing on the scale, every string translated, mirrors"), so no screen is skipped.
+
+When the design guide has variants, look at every variant's screenshots: `motif shot --routes <routes> --variant all` (files like `index+men.mobile.png`). A finding that applies to one variant says which in `location` (`"variant": "men"`) and in its summary; one that applies to all is reported once.
 
 Two things screenshots hide, so check them in the code too:
 
@@ -43,8 +54,8 @@ Write the report as `design/reviews/<YYYY-MM-DD>-<scope>.json`, plus a Markdown 
       "severity": "critical",
       "category": "contrast",
       "source": "exact",
-      "location": { "screen": "/settings", "selector": "p.hint", "viewport": "mobile", "scheme": "dark" },
-      "summary": "Hint text is hard to read on cards in dark mode (2.8:1; it needs 4.5:1).",
+      "location": { "screen": "/settings", "selector": "p.hint", "viewport": "mobile", "scheme": "dark", "variant": "men" },
+      "summary": "In the Men variant, hint text is hard to read on cards in dark mode (2.8:1; it needs 4.5:1).",
       "fix": "Lighten text-secondary's dark value, or use text-primary on surface-raised.",
       "shot": "design/shots/settings.mobile.dark.png",
       "status": "open"
@@ -75,7 +86,7 @@ Write the report as `design/reviews/<YYYY-MM-DD>-<scope>.json`, plus a Markdown 
 
 **Severity:** `critical` blocks or shuts people out (unreadable text, a control they can't reach, a broken flow); `major` clearly hurts the experience or the design's consistency; `minor` is polish.
 
-**Categories:** `raw-value`, `contrast`, `target-size`, `reduced-motion`, `accessibility`, `missing-state`, `hierarchy`, `spacing`, `typography`, `motion`, `navigation`, `copy`, `platform-convention`, `consistency`, `anti-pattern`, `other`. Use `accessibility` for what keeps people who use a screen reader, a keyboard or zoom from using something: a field or button with no label or name, focus you can't see or that gets lost, a control that only appears on hover, content that breaks when zoomed. Contrast, tap sizes and reduced motion keep their own categories.
+**Categories:** `raw-value`, `contrast`, `target-size`, `reduced-motion`, `accessibility`, `missing-state`, `hierarchy`, `spacing`, `typography`, `motion`, `navigation`, `copy`, `platform-convention`, `consistency`, `anti-pattern`, `other`. Use `accessibility` for what keeps people who use a screen reader, a keyboard or zoom from using something: a field or button with no label or name, focus you can't see or that gets lost, a control that only appears on hover, content that breaks when zoomed. Contrast, tap sizes and reduced motion keep their own categories. `motif shot --audit` reports unnamed controls under `accessibility`.
 
 The default look (see [anti-patterns](../knowledge/anti-patterns.md) and [type pairings](../knowledge/type-pairings.md)) is advice, not a fault: report it at most once per review, as `anti-pattern` and `minor`, and say the developer may keep it on purpose.
 
