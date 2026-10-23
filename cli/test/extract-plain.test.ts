@@ -62,7 +62,7 @@ describe("motif extract on a plain web site", () => {
   });
 
   test("on a stack it can't read yet, extract and check point at the review instead of a dead end", async () => {
-    const vue = makeProject({ "package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "src/App.vue": "" });
+    const vue = makeProject({ "package.json": JSON.stringify({ dependencies: { svelte: "^5" } }), "src/App.svelte": "" });
     const e = await runExtract(vue, { positionals: [] });
     expect(e.exitCode).toBe(2);
     expect(e.text).toContain("React web apps and plain web sites");

@@ -78,7 +78,7 @@ describe("motif check on a plain web site", () => {
   });
 
   test("names both stacks it reads when it can't read an app", async () => {
-    const r = await check(site({ "package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "src/App.vue": "" }));
+    const r = await check(site({ "package.json": JSON.stringify({ dependencies: { svelte: "^5" } }), "src/App.svelte": "" }));
     expect(r.code).toBe(2);
     expect(r.text).toContain("React web apps and plain web sites");
   });

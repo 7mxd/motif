@@ -13,6 +13,8 @@ export interface SourceFile {
   lang: Lang;
   /** Parts of the text that apply only in dark mode beyond what the CSS says (a <style media="…dark">). */
   dark?: [number, number][];
+  /** For a component file's script view: where each bound attribute's value sits, with its attribute and element, so a stack's rules know what an expression is for. */
+  spans?: { attr: string; tag: string; start: number; end: number }[];
 }
 
 export const WEB_LANGS: Record<string, Lang> = {

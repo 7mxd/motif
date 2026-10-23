@@ -5,7 +5,7 @@ import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../t
 import { isMonospace } from "../../contract/defaults";
 import { CSS_DECLARATION } from "./colors";
 
-export const IMPORTS_MOTION = /from\s+["'](?:motion|motion\/react|motion\/react-client|framer-motion)["']/;
+export const IMPORTS_MOTION = /from\s+["'](?:motion|motion\/react|motion\/react-client|framer-motion|motion-v)["']/;
 
 // A property, or a custom property whose name may hold digits (--surface-2).
 
@@ -17,11 +17,13 @@ const TIME = /(?<![\w.-])(\d*\.?\d+)(ms|s)\b/g;
 const EASING = /\b(?:ease(?:-in-out|-in|-out)?(?![\w-])|cubic-bezier\([^)]*\))/g;
 const PRIMITIVE = /--motif-primitive-[\w-]+|\bprimitive\.(?:color|font|space|radius|shadow)\b/g;
 
-const STYLE_LENGTH = /\b((?:margin|padding)(?:Top|Right|Bottom|Left|Inline|Block|InlineStart|InlineEnd|BlockStart|BlockEnd)?|gap|rowGap|columnGap|top|right|bottom|left|inset|borderRadius|border(?:Top|Bottom)(?:Left|Right)Radius|fontSize)\s*:\s*(?:(-?\d+(?:\.\d+)?)(?=\s*[,}\n\r])|(["'])(-?\d*\.?\d+)(px|rem)\3)/g;
+/** The style keys (camelCase) whose lengths are judged: spacing, corner sizes and text size. */
+export const STYLE_KEYS = "(?:margin|padding)(?:Top|Right|Bottom|Left|Inline|Block|InlineStart|InlineEnd|BlockStart|BlockEnd)?|gap|rowGap|columnGap|top|right|bottom|left|inset|borderRadius|border(?:Top|Bottom)(?:Left|Right)Radius|fontSize";
+const STYLE_LENGTH = new RegExp(`\\b(${STYLE_KEYS})\\s*:\\s*(?:(-?\\d+(?:\\.\\d+)?)(?=\\s*[,}\\n\\r])|(["'])(-?\\d*\\.?\\d+)(px|rem)\\3)`, "g");
 const STYLE_FONT = /\bfontFamily\s*:\s*(["'`])([^"'`]+)\1/g;
-const MOTION_TIME = /\b(duration|delay|visualDuration)\s*:\s*(\d*\.?\d+)/g;
-const MOTION_SPRING = /\b(stiffness|damping|mass|bounce)\s*:\s*(\d*\.?\d+)/g;
-const MOTION_EASE = /\bease\s*:\s*(\[[^\]]*\]|["'][\w-]+["'])/g;
+export const MOTION_TIME = /\b(duration|delay|visualDuration)\s*:\s*(\d*\.?\d+)/g;
+export const MOTION_SPRING = /\b(stiffness|damping|mass|bounce)\s*:\s*(\d*\.?\d+)/g;
+export const MOTION_EASE =/\bease\s*:\s*(\[[^\]]*\]|["'][\w-]+["'])/g;
 const STYLE_BLOCK = /\b(?:style|sx)=\{\{[\s\S]*?\}\}/g;
 const MOTION_BLOCK = /\btransition\s*(?:=\s*\{\{|:\s*\{)[\s\S]*?\}|\banimate\([^)]*\)/g;
 const FONT_FACE = /@font-face\s*\{[^}]*\}/g;
@@ -40,6 +42,15 @@ export function fontFix(family: string, scale: Scale | null): string {
     : "For code text, propose adding the optional font.mono role to the design guide (a change the person approves), then use var(--motif-font-mono-family) or font-mono.";
 }
 
+/** A length written in code, judged against the scale: on it, or a violation with the role to use instead. */
+export function offScaleHit(file: SourceFile, at: (i: number) => { line: number; column: number }, index: number, text: string, kind: "space" | "radius" | "font-size", rawNumber: string, unit: string, scale: Scale | null): Hit {
+  const px = Math.abs(Number.parseFloat(rawNumber) * (unit === "rem" ? 16 : 1));
+  const set = kind === "space" ? scale?.spacePx : kind === "radius" ? scale?.radiusPx : scale?.fontSizePx;
+  const onScale = px === 0 || (set?.has(px) ?? false);
+  const [message, fix] = sizeMessages[kind](px, [...(scale?.spacePx ?? [])].sort((a, b) => a - b));
+  return makeHit(file, at, index, { rule: "off-scale", kind, value: `${px}px`, text, violation: scale ? !onScale : false, message, fix });
+}
+
 export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
   const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
@@ -47,13 +58,8 @@ export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
   const push = (index: number, text: string, rule: RuleId, kind: ValueKind | undefined, value: string | undefined, violation: boolean, message: string, fix: string) =>
     hits.push(makeHit(file, at, index, { rule, ...(kind ? { kind } : {}), ...(value !== undefined ? { value } : {}), text, violation, message, fix }));
 
-  const size = (index: number, text: string, kind: "space" | "radius" | "font-size", rawNumber: string, unit: string) => {
-    const px = Math.abs(Number.parseFloat(rawNumber) * (unit === "rem" ? 16 : 1));
-    const set = kind === "space" ? scale?.spacePx : kind === "radius" ? scale?.radiusPx : scale?.fontSizePx;
-    const onScale = px === 0 || (set?.has(px) ?? false);
-    const [message, fix] = sizeMessages[kind](px, [...(scale?.spacePx ?? [])].sort((a, b) => a - b));
-    push(index, text, "off-scale", kind, `${px}px`, scale ? !onScale : false, message, fix);
-  };
+  const size = (index: number, text: string, kind: "space" | "radius" | "font-size", rawNumber: string, unit: string) =>
+    hits.push(offScaleHit(file, at, index, text, kind, rawNumber, unit, scale));
   const motionFix = `Use the generated ${scale?.motionImport ?? "design/motion"}.ts: import { duration, easing, spring } from it (path relative to this file), e.g. transition={spring.smooth}.`;
 
   if (file.lang === "css") {

@@ -9,6 +9,7 @@ import { buildThemeSet } from "../generate/theme";
 import { appLabel, noSuchApp, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
 import { checkableNativeStacks, nativeStack } from "../stacks/native";
+import { webStack } from "../stacks/web";
 import { TOKENS_JSON } from "./validate";
 import { andList, plural } from "../text";
 
@@ -79,7 +80,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (!existsSync(tokensPath)) {
     const found = detectApps(cwd).apps;
     // extract can't read every stack yet; then the review mode is the way to a first guide.
-    const unreadable = found.length > 0 && !found.some((a) => a.stack !== null && ADAPTERS_AVAILABLE.includes(a.stack));
+    const unreadable = found.length > 0 && !found.some((a) => a.stack !== null && (ADAPTERS_AVAILABLE.includes(a.stack) || webStack(a.stack)?.scan !== undefined));
     return {
       command: "check",
       exitCode: 2,
@@ -100,7 +101,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (apps === null) {
     return { command: "check", exitCode: 2, text: noSuchApp(ctx.app, detected), data: { error: "no-such-app" } };
   }
-  const supported = apps.filter((a) => a.stack !== null && (ADAPTERS_AVAILABLE.includes(a.stack) || nativeStack(a.stack)?.scan !== undefined));
+  const supported = apps.filter((a) => a.stack !== null && (ADAPTERS_AVAILABLE.includes(a.stack) || nativeStack(a.stack)?.scan !== undefined || webStack(a.stack)?.scan !== undefined));
   if (supported.length === 0) {
     const others = apps.filter((a) => a.stack).map((a) => `${appLabel(a)} (${STACK_LABELS[a.stack!]})`);
     const reads = [...checkableNativeStacks().map((s) => `${STACK_LABELS[s.id]} apps`), "React web apps", "plain web sites"];

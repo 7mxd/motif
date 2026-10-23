@@ -1,6 +1,7 @@
 // Reading a component file (Vue's .vue; later Svelte's .svelte and Angular's templates) for check and extract: its CSS,
 // its script and its markup as three views the length of the file. Every rule runs unchanged on them, positions stay
 // exact, and no character is read in two views, so nothing is reported twice.
+import type { SourceFile } from "./files";
 import { addStyleAttr, blanked, cssView, regions, TAG, type CssParts } from "./html";
 
 /**
@@ -95,9 +96,10 @@ function customBlocks(text: string, blocks: string[]): [number, number][] {
  * with what the other two read blank. Comments are blank in all three; `dark` holds the dark-only style blocks. A
  * self-closing <script /> or <style /> (Vue's src imports) is empty. `blocks`, for a file made of top-level blocks
  * (Vue's template, script and style), names them: any other top-level element is a custom block (<i18n>, <docs>), blank
- * in every view. Without it (a Svelte file, whose top level is its markup) every element is read.
+ * in every view. `spans` says where each script binding's value sits, with its attribute name and element, for the rules that
+ * judge a value by what it is bound to (a :style object, a <Transition>'s :duration). Without `blocks` (a Svelte file, whose top level is its markup) every element is read.
  */
-export function componentViews(source: string, opts: { bindings: Binding[]; blocks?: string[] }): { css: string; script: string; markup: string; dark: [number, number][] } {
+export function componentViews(source: string, opts: { bindings: Binding[]; blocks?: string[] }): { css: string; script: string; markup: string; dark: [number, number][]; spans: NonNullable<SourceFile["spans"]> } {
   const text = opts.blocks ? blanked(source, customBlocks(source, opts.blocks)) : source;
   const { comments, cdata, scripts, styles } = regions(text, { selfClosing: true });
   const uncommented = blanked(text, comments);
@@ -114,6 +116,7 @@ export function componentViews(source: string, opts: { bindings: Binding[]; bloc
   for (const [, contentStart, contentEnd] of scripts) inScript.fill(1, contentStart, contentEnd);
   // A CSS binding's "=" reads as ":", after the separators are set.
   const colons: number[] = [];
+  const spans: NonNullable<SourceFile["spans"]> = [];
 
   // Attributes only in tags: not inside <style> or <script> blocks, or CDATA's text. Vue's own <template> tags, nested
   // ones too, are tags like any other.
@@ -137,6 +140,7 @@ export function componentViews(source: string, opts: { bindings: Binding[]; bloc
       if (!binding || binding.as === "markup") continue;
       if (binding.as === "script") {
         inScript.fill(1, valueAt, valueEnd);
+        spans.push({ attr: name, tag: TAG_NAME.exec(t[0])?.[1] ?? "", start: valueAt, end: valueEnd });
         continue;
       }
       // prop: value; in place. The character before the property and the one after the value (its closing quote) are
@@ -161,5 +165,5 @@ export function componentViews(source: string, opts: { bindings: Binding[]; bloc
     if (!inScript[i] || inCss[i] || unreadMask[i]) script[i] = " ";
     if (inScript[i] || inCss[i] || unreadMask[i]) markup[i] = " ";
   }
-  return { css: css.join(""), script: script.join(""), markup: markup.join(""), dark };
+  return { css: css.join(""), script: script.join(""), markup: markup.join(""), dark, spans };
 }
