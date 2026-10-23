@@ -79,7 +79,7 @@ struct AppButton: View {
 }
 ```
 
-The disabled look is `onActionSecondary` on `actionSecondary`, a pair the guide checks for contrast, so a disabled button stays readable. Where the design is happy with Apple's buttons, `.buttonStyle(.borderedProminent)` with the theme's tint is a fine primary button: it already has every state and Apple's size.
+The disabled look is `onActionSecondary` on `actionSecondary`, a pair the guide checks for contrast, so a disabled button stays readable. Where the design is happy with Apple's buttons, `.buttonStyle(.borderedProminent)` with the theme's tint is a fine primary button: it already has every state and Apple's size. When the guide's action colour is too light for text, the tint is the darker `actionText` ([theme code](tokens.md)), so that button fills with it; use the button above for the brand fill.
 
 ## Names and touch targets
 
