@@ -182,6 +182,13 @@ describe("the Flutter guide", () => {
     ]);
   });
 
+  test("tokens.md: actionText for text, outlined and elevated buttons, and what still draws the action colour as text", () => {
+    has("tokens.md", [
+      "`TextButton`, `OutlinedButton` and `ElevatedButton` take their label colour from it", "`FilledButton`",
+      "a focused field's label", "`TabBar` labels", "checkboxes, switches and radio buttons", "use `colors.actionText`",
+    ]);
+  });
+
   test("components.md: where widgets live, private widgets, every state, and names", () => {
     has("components.md", [
       "lib/widgets/", "lib/features/<feature>/widgets/", "private `_Widget` classes are parts of a screen",
