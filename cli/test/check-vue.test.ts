@@ -209,3 +209,14 @@ describe("motif check on a Nuxt app", () => {
     expect(where(await check(root))).toEqual(["off-scale app/pages/index.vue:1:" + (`<template><p :style="{ `.length + 1)]);
   });
 });
+
+describe("motif check on a Vue app without a design guide", () => {
+  // Task 5 gives Vue a collect: extract then reads Vue, and this expectation flips to "motif extract".
+  test("points at the review (/design), because motif extract can't read Vue yet", async () => {
+    const root = makeProject({ "package.json": pkg(), "src/App.vue": "<template><p /></template>\n" });
+    const r = await check(root);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("Start one with /design");
+    expect(r.text).not.toContain("motif extract");
+  });
+});

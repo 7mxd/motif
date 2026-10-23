@@ -80,7 +80,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   if (!existsSync(tokensPath)) {
     const found = detectApps(cwd).apps;
     // extract can't read every stack yet; then the review mode is the way to a first guide.
-    const unreadable = found.length > 0 && !found.some((a) => a.stack !== null && (ADAPTERS_AVAILABLE.includes(a.stack) || webStack(a.stack)?.scan !== undefined));
+    const unreadable = found.length > 0 && !found.some((a) => a.stack !== null && (ADAPTERS_AVAILABLE.includes(a.stack) || webStack(a.stack)?.collect !== undefined));
     return {
       command: "check",
       exitCode: 2,
