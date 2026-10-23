@@ -453,7 +453,7 @@ describe("the SwiftUI guide", () => {
       // A negative padding keeps its sign and is judged by its size (v0.5.0 sweep, Landmarks 9).
       "`.padding(.bottom, -2)`", "`-MotifSpace.s1`",
       // Sizes kept in a constants type aren't traced, so the guide says to replace them with roles (Landmarks 8).
-      "static let standardPadding: CGFloat = 14", "can't see where the views use it", "replace each constant with the theme's role",
+      "static let standardPadding: CGFloat = 14", "can't see where the views use it", "replace each constant with the theme's role", "not a `shadowRadius`",
     ]);
   });
 

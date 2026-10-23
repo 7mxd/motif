@@ -244,6 +244,31 @@ describe("collectSwiftUI: sizes kept in a constants type (Landmarks's Constants,
     expect(values(occ.duration)).toEqual([]);
   });
 
+  test("a name that also says shadow, blur, a multiplier, ratio, factor, scale, count, opacity, alpha, duration or delay isn't a size (fix round 1)", () => {
+    const names = [
+      "shadowRadius", "blurRadius", "paddingMultiplier", "spacingRatio", "cornerFactor", "radiusScale", "gapCount",
+      "insetOpacity", "marginAlpha", "paddingDuration", "spacingDelay", "SHADOW_RADIUS",
+    ];
+    const other = collect(makeProject({ "A/K.swift": ["struct K {", ...names.map((n, i) => `    static let ${n}: CGFloat = ${i + 1}.5`), "}"].join("\n") }));
+    expect([values(other.space), values(other.radius), other.notes ?? []]).toEqual([[], [], []]);
+  });
+
+  test("names with digits and runs of capitals are split into words: padding8, HPadding, cardRadius2, VSpacing_large (fix round 1)", () => {
+    const occ2 = collect(makeProject({
+      "A/K.swift": [
+        "enum K {",
+        "    static let padding8: CGFloat = 8",
+        "    static let HPadding: CGFloat = 18",
+        "    static let VSpacing_large: CGFloat = 22",
+        "    static let cardRadius2: CGFloat = 9",
+        "    static let UIInsetTop: CGFloat = 3",
+        "}",
+      ].join("\n"),
+    }));
+    expect(values(occ2.space).sort()).toEqual(["18px", "22px", "3px", "8px"]);
+    expect(values(occ2.radius)).toEqual(["9px"]);
+  });
+
   test("a note names them and says to use the theme's roles, since their uses aren't traced", () => {
     expect(occ.notes).toEqual([
       "8 sizes are kept as named constants (cornerRadius, leadingContentInset, standardPadding, safeAreaPadding, itemSpacing and 3 more), so each counts once, where it is defined: neither extract nor motif check sees where the views use them. Once the app uses Motif's theme, replace them with MotifSpace and MotifRadius roles.",

@@ -19,15 +19,31 @@ const SIZE_CONSTANT = new RegExp(`(?<![\\w$.])static\\s+(?:let|var)\\s+(${IDENT}
 const SHOWN_CONSTANTS = 5;
 const SPACE_WORDS = new Set(["padding", "paddings", "spacing", "inset", "insets", "gap", "gaps", "margin", "margins"]);
 const RADIUS_WORDS = new Set(["radius", "radii", "corner", "corners"]);
+/** Words that make a size word something else: shadowRadius, blurRadius, paddingMultiplier, spacingRatio. */
+const NOT_SIZE_WORDS = new Set([
+  "shadow", "shadows", "blur", "multiplier", "ratio", "factor", "scale", "count", "opacity", "alpha", "duration", "delay",
+]);
+
+/** A Swift name's words, lower case: standardPadding, HPadding, padding8, VSpacing_large, UIInsetTop. */
+const nameWords = (name: string) =>
+  name
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
+    .replace(/([A-Za-z])(\d)|(\d)([A-Za-z])/g, (_, a, b, c, d) => (a ? `${a} ${b}` : `${c} ${d}`))
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
 
 /** Which samples a size constant's name puts it in: a corner (cornerRadius), a spacing (standardPadding), or none. */
 function sizeBucket(name: string): "radius" | "space" | undefined {
-  const words = name.replace(/([a-z\d])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase().split(/\s+/);
+  const words = nameWords(name);
+  if (words.some((w) => NOT_SIZE_WORDS.has(w))) return undefined;
   if (words.some((w) => RADIUS_WORDS.has(w))) return "radius";
   if (words.some((w) => SPACE_WORDS.has(w))) return "space";
   return undefined;
 }
-const sortedSamples =(m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+const sortedSamples = (m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 
 /** A Swift or asset name in kebab case: AccentColor → accent-color, Purple80 → purple-80. */
 const kebab = (name: string) => dartKebab(name.replace(/[\s.]+/g, "_")).replace(/([a-z])(\d)/g, "$1-$2");
