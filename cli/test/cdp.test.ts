@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { closeTab, launchBrowser, openTab, removeProfile, removeProfileNow, startFailureHint } from "../src/browser/cdp";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
+import { pixel } from "./png-pixels";
 
 const browser = findBrowser();
 
@@ -178,6 +179,53 @@ server.stop(true);
     expect(r.stdout.toString().trim()).toBe("The page took too long to load.");
     expect(r.stderr.toString()).not.toContain("took too long");
   }, 30_000);
+});
+
+describe.skipIf(!browser)("whole-page shots at the desktop size, right to left (task 10b, needs a browser)", () => {
+  // A red bar with a word, and a 300 px blue block at the start of the line (the right, right to left).
+  const RED = [204, 0, 0, 255];
+  const BLUE = [0, 0, 204, 255];
+  const WHITE = [255, 255, 255, 255];
+  const rtlPage = (tall: boolean) =>
+    `<!doctype html><html dir="rtl"><body style="margin:0"><div style="background:#c00;height:60px">نص</div><div style="width:300px;height:40px;background:#00c"></div>${tall ? '<div style="height:2000px"></div>' : ""}</body></html>`;
+
+  for (const tall of [false, true]) {
+    test(`a ${tall ? "page taller than the screen" : "short page"} is drawn where it is laid out, not shifted to the right`, async () => {
+      const b = await launchBrowser(browser!.path);
+      try {
+        const page = await b.newPage({ isolated: true });
+        await page.setViewport(1440, 900, 1, false);
+        await page.goto("data:text/html;charset=utf-8," + encodeURIComponent(rtlPage(tall)));
+        // As motif shot captures it: the whole page, from the top.
+        const height = await page.evaluate<number>("document.documentElement.scrollHeight");
+        const png = await page.screenshot({ x: 0, y: 0, width: 1440, height });
+        expect(pngSize(png)).toEqual({ width: 1440, height: tall ? 2100 : 900 });
+        // The bar reaches both ends (the start isn't blank), and the block's edge is 300 px in from the right.
+        expect(pixel(png, 0, 50)).toEqual(RED);
+        expect(pixel(png, 1439, 50)).toEqual(RED);
+        expect(pixel(png, 1140, 80)).toEqual(BLUE);
+        expect(pixel(png, 1139, 80)).toEqual(WHITE);
+      } finally {
+        await b.close();
+      }
+    }, 60_000);
+  }
+
+  test("a screen-sized shot of a scrolled page still starts at the top of the page", async () => {
+    const b = await launchBrowser(browser!.path);
+    try {
+      const page = await b.newPage({ isolated: true });
+      await page.setViewport(1440, 900, 1, false);
+      await page.goto("data:text/html;charset=utf-8," + encodeURIComponent(rtlPage(true).replace(' dir="rtl"', "")));
+      await page.evaluate("scrollTo(0, 500), true");
+      const png = await page.screenshot({ x: 0, y: 0, width: 1440, height: 900 });
+      expect(pixel(png, 0, 50)).toEqual(RED);
+      expect(pixel(png, 299, 80)).toEqual(BLUE);
+      expect(pixel(png, 300, 80)).toEqual(WHITE);
+    } finally {
+      await b.close();
+    }
+  }, 60_000);
 });
 
 describe("tabs leave nothing behind (backlog)", () => {
