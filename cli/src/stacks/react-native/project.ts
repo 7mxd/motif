@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { parse as parseJsonc } from "jsonc-parser";
 import { stripBom } from "../../text";
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -14,7 +15,8 @@ function readJson(path: string): Record<string, unknown> | null {
 /** Where the app's @/ alias points, relative to the app ("src" for "./src/*"), or null when tsconfig.json doesn't set one. */
 export function aliasBase(appDir: string): string | null {
   try {
-    const tsconfig = JSON.parse(stripBom(readFileSync(join(appDir, "tsconfig.json"), "utf8")));
+    // tsconfig.json is JSON with comments and trailing commas.
+    const tsconfig = parseJsonc(stripBom(readFileSync(join(appDir, "tsconfig.json"), "utf8")), [], { allowTrailingComma: true });
     const target = tsconfig?.compilerOptions?.paths?.["@/*"]?.[0];
     if (typeof target !== "string" || !target.endsWith("/*")) return null;
     return target.slice(0, -2).replace(/^\.\//, "").replace(/^\.$/, "");

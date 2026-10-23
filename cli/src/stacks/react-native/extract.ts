@@ -7,7 +7,8 @@ import { inRanges, maskComments } from "../../check/mask";
 import { colorContext } from "../../check/rules/colors";
 import { parseColor, type Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
-import { rootOf, weightStyleOf } from "../../extract/own-fonts";
+import { coversArabic, rootOf, weightStyleOf } from "../../extract/own-fonts";
+import { bundledCoverage } from "../../preview/font-list";
 import { locator } from "../../text";
 import { isMonospace } from "../../contract/defaults";
 import { GENERIC_WORDS, kebab, pairInstances, title, words, type Paired } from "../flutter/extract";
@@ -242,7 +243,7 @@ const bindings = (list: string) =>
 const IMPORT_FROM = /(?<![\w$.])import\s+(?!type\s)(?:([A-Za-z_$][\w$]*)\s*,?\s*)?(?:\{([^}]*)\})?\s*from\s*(["'])([^"'\n]+)\3/g;
 const EXPORT_FROM = /(?<![\w$.])export\s+(?!type\s)(?:\{([^}]*)\}|\*)\s*from\s*(["'])([^"'\n]+)\2/g;
 const EXPORT_LIST = /(?<![\w$.])export\s*\{([^}]*)\}(?!\s*from)/g;
-const EXPORT_DEFAULT_NAME = /(?<![\w$.])export\s+default\s+([A-Za-z_$][\w$]*)\s*;/;
+const EXPORT_DEFAULT_NAME = /(?<![\w$.])export\s+default\s+([A-Za-z_$][\w$]*)\s*(?:;|$)/m;
 
 /**
  * The object literal a name stands for in a file, read without running anything: a top-level const (or export default)
@@ -260,10 +261,11 @@ function objectNamed(file: ScriptFile, name: string, byPath: Map<string, ScriptF
     return module ? objectNamed(module, exported, byPath, seen) : undefined;
   };
   if (name === "default") {
+    // export default fonts; (or without the semicolon). export { fonts as default } and export { default } from "./x"
+    // are read below, with the other export lists.
     const local = text.match(EXPORT_DEFAULT_NAME)?.[1];
-    return local ? objectNamed(file, local, byPath, seen) : undefined;
-  }
-  for (const m of text.matchAll(IMPORT_FROM)) {
+    if (local && !["function", "class", "async"].includes(local)) return objectNamed(file, local, byPath, seen);
+  } else for (const m of text.matchAll(IMPORT_FROM)) {
     if (m[1] === name) return follow(m[4]!, "default");
     const bound = m[2] ? bindings(m[2]).find(([, as]) => as === name) : undefined;
     if (bound) return follow(m[4]!, bound[0]);
@@ -284,8 +286,20 @@ function objectNamed(file: ScriptFile, name: string, byPath: Map<string, ScriptF
   return undefined;
 }
 
-/** A locale test for a language in Arabic script (=== "ar", "fa" or "ur"), or the layout's right-to-left flag. */
-const ARABIC_CHECK = /(["'`])(?:ar|fa|ur)\1\s*[!=]==?|[!=]==?\s*(["'`])(?:ar|fa|ur)\2|\bisRTL\b/;
+/**
+ * A locale test for a language in Arabic script choosing between two names: l === "ar" ? "Cairo-Regular" : "Inter-Regular",
+ * with "ar" (or "fa", "ur") on either side, and != or !== swapping the branches.
+ */
+const LOCALE_TERNARY = [
+  /(?<op>[!=]==?)\s*(?<q>["'`])(?:ar|fa|ur)\k<q>\s*\)?\s*\?\s*(?<q1>["'`])(?<first>[^"'`\n]+)\k<q1>\s*:\s*(?<q2>["'`])(?<second>[^"'`\n]+)\k<q2>/g,
+  /(?<q>["'`])(?:ar|fa|ur)\k<q>\s*(?<op>[!=]==?)\s*[\w$.?!()[\]]+\s*\)?\s*\?\s*(?<q1>["'`])(?<first>[^"'`\n]+)\k<q1>\s*:\s*(?<q2>["'`])(?<second>[^"'`\n]+)\k<q2>/g,
+];
+
+/** A family name that says it's for Arabic, when nothing else does: a last resort. */
+const ARABIC_NAME = /arab|naskh|kufi|thmanyah/i;
+
+/** True for a family Motif's kit ships the Arabic letters of (Readex Pro, Cairo), written either way (ReadexPro). */
+const knownArabic = (family: string) => (bundledCoverage(family) ?? bundledCoverage(family.replace(/([a-z])([A-Z])/g, "$1 $2"))) === "arabic";
 
 /** A call that loads fonts: useFonts( or Font.loadAsync( with an object literal, or with a name (group 1) for one. */
 const FONT_LOAD = new RegExp(`(?<![\\w$.])(?:useFonts|(?:Font\\s*\\.\\s*)?loadAsync)\\s*\\(\\s*(?:(?=\\{)|(${IDENT})\\s*[,)])`, "g");
@@ -667,18 +681,33 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
   }
   // Fonts expo-font's config plugin embeds in the app ("plugins": [["expo-font", { "fonts": [...] }]]).
   for (const font of pluginFonts(files)) shipped(font.family, font.path, font.from, font);
-  // The Arabic companion: a family the app loads, other than its main one, that a file testing for an Arabic-script
-  // locale (locale === "ar" ? … : …) or for right to left names (as "ThmanyahSans-Bold", say).
+  const projectFonts = [...ownFonts.values()].filter((f): f is ProjectFontEntry => "files" in f);
+  // The Arabic companion, a family the app loads other than its main one (as Flutter's is found): the "ar" branch of a
+  // locale ternary; else a family Motif knows is Arabic, or whose shipped font file has Arabic letters; else, as a last
+  // resort, one whose name says so. A family on a ternary's Latin side never is.
   const families = sortedSamples(buckets.fontFamily).filter((f) => !isMonospace(f.value) && !/^(?:system-ui|sans-serif|serif|monospace)$/i.test(f.value));
   const main = families[0]?.value.toLowerCase();
-  const inArabicCheck = new Set<string>();
+  const arabicSide = new Set<string>();
+  const latinSide = new Set<string>();
   for (const file of scripts) {
     const text = maskComments(file.source.text, "script");
-    if (!ARABIC_CHECK.test(text)) continue;
-    for (const m of text.matchAll(/(["'`])([^"'`\n]+)\1/g)) inArabicCheck.add(familyOf(m[2]!.trim()).toLowerCase());
+    for (const re of LOCALE_TERNARY) {
+      for (const m of text.matchAll(re)) {
+        const { op, first, second } = m.groups!;
+        const equal = op!.startsWith("=");
+        arabicSide.add(familyOf((equal ? first : second)!.trim()).toLowerCase());
+        latinSide.add(familyOf((equal ? second : first)!.trim()).toLowerCase());
+      }
+    }
   }
-  const companion = families.find((f) => f.value.toLowerCase() !== main && fontNames.has(f.value) && inArabicCheck.has(f.value.toLowerCase()))?.value;
-  const projectFonts = [...ownFonts.values()].filter((f): f is ProjectFontEntry => "files" in f);
+  const candidates = families.filter((f) => f.value.toLowerCase() !== main && fontNames.has(f.value) && !latinSide.has(f.value.toLowerCase())).map((f) => f.value);
+  const root = scripts[0] ? rootOf(scripts[0].source) : null;
+  const shipsArabic = (family: string) =>
+    root !== null && projectFonts.some((p) => p.family.toLowerCase() === family.toLowerCase() && p.files.some((f) => coversArabic(root + f.path)));
+  const companion =
+    candidates.find((f) => arabicSide.has(f.toLowerCase())) ??
+    candidates.find((f) => knownArabic(f) || shipsArabic(f)) ??
+    candidates.find((f) => ARABIC_NAME.test(f));
   const unfoundFonts = [...ownFonts.values()].filter((f): f is UnfoundFontEntry => "from" in f);
 
   return {

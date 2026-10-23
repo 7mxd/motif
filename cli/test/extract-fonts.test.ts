@@ -1,7 +1,7 @@
 // A family the app ships is drafted as its own (a project font, with its files); a family is drafted as a Google font
 // only when the app gets it from Google. Checked through what `motif tokens` reads from the draft (themeFonts).
 import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runExtract } from "../src/commands/extract";
 import { checkProjectFontFiles, readProjectFonts } from "../src/contract/fonts";
@@ -653,5 +653,124 @@ export default function RootLayout() {
     const { tokens } = draft(root);
     expect(fontsList(tokens)).toBeUndefined();
     expect((tokens as any).primitive.font.sans.$value).toEqual(["system-ui", "sans-serif"]);
+  });
+});
+
+describe("React Native companion and name-following, Task 5 fix round 1", () => {
+  const app = { path: ".", stack: "react-native" } as AppInfo;
+  const collect = (root: string) => collectReactNative(REACT_NATIVE.sourceFiles!(root, app, {}));
+  const PKG = JSON.stringify({ name: "x", dependencies: { expo: "~54.0.1", react: "19.1.0", "react-native": "0.81.4" } });
+  const LATIN = { "package.json": PKG, "assets/fonts/Inter-Regular.ttf": "f", "assets/fonts/PlayfairDisplay-Bold.ttf": "f" };
+  const LOAD_LATIN = "useFonts({ 'Inter-Regular': require('../assets/fonts/Inter-Regular.ttf'), 'PlayfairDisplay-Bold': require('../assets/fonts/PlayfairDisplay-Bold.ttf') })";
+
+  /** A TrueType file with only a cmap (format 4) that maps the given code point ranges. */
+  const ttf = (ranges: [number, number][]) => {
+    const segs: [number, number][] = [...ranges, [0xffff, 0xffff]];
+    const n = segs.length;
+    const sub = Buffer.alloc(16 + n * 8);
+    sub.writeUInt16BE(4, 0);
+    sub.writeUInt16BE(sub.length, 2);
+    sub.writeUInt16BE(n * 2, 6);
+    segs.forEach(([, end], i) => sub.writeUInt16BE(end, 14 + i * 2));
+    segs.forEach(([start], i) => sub.writeUInt16BE(start, 16 + n * 2 + i * 2));
+    segs.forEach((_, i) => sub.writeUInt16BE(1, 16 + n * 4 + i * 2)); // idDelta 1: each code point has a glyph
+    const cmap = Buffer.concat([Buffer.from([0, 0, 0, 1, 0, 3, 0, 1, 0, 0, 0, 12]), sub]);
+    const head = Buffer.alloc(28);
+    head.writeUInt32BE(0x00010000, 0);
+    head.writeUInt16BE(1, 4);
+    head.write("cmap", 12, "latin1");
+    head.writeUInt32BE(28, 20);
+    head.writeUInt32BE(cmap.length, 24);
+    return Buffer.concat([head, cmap]);
+  };
+
+  test("probe A: a layout that reads isRTL and loads two Latin families has no companion", () => {
+    const occ = collect(makeProject({
+      ...LATIN,
+      "app/_layout.tsx": `import { useFonts } from 'expo-font';\nimport { I18nManager } from 'react-native';\nexport default function RootLayout() {\n  const [loaded] = ${LOAD_LATIN};\n  const dir = I18nManager.isRTL ? 'rtl' : 'ltr';\n  return null;\n}\n`,
+      "app/index.tsx": "export const s = { a: { fontFamily: 'Inter-Regular', fontSize: 16 }, b: { fontFamily: 'Inter-Regular' }, c: { fontFamily: 'PlayfairDisplay-Bold', fontSize: 28 } };\n",
+    }));
+    expect(occ.companion).toBeUndefined();
+  });
+
+  test("probe A2: a layout that tests for 'ar' and loads two Latin families has no companion", () => {
+    const occ = collect(makeProject({
+      ...LATIN,
+      "app/_layout.tsx": `import { useFonts } from 'expo-font';\nimport i18n from 'i18next';\nimport { I18nManager } from 'react-native';\nif (i18n.language === 'ar') I18nManager.forceRTL(true);\nexport default function RootLayout() {\n  const [loaded] = ${LOAD_LATIN};\n  return null;\n}\n`,
+      "app/index.tsx": "export const s = { a: { fontFamily: 'Inter-Regular', fontSize: 16 }, b: { fontFamily: 'Inter-Regular' } };\n",
+    }));
+    expect(occ.companion).toBeUndefined();
+  });
+
+  test("probe H: the 'ar' branch of a locale ternary is the companion, over a more used Latin display font", () => {
+    const occ = collect(makeProject({
+      ...LATIN,
+      "assets/fonts/Cairo-Regular.ttf": "f",
+      "app/_layout.tsx": "import { useFonts } from 'expo-font';\nimport { I18nManager } from 'react-native';\nexport default function RootLayout() {\n  const [loaded] = useFonts({ 'Inter-Regular': require('../assets/fonts/Inter-Regular.ttf'), 'PlayfairDisplay-Bold': require('../assets/fonts/PlayfairDisplay-Bold.ttf'), 'Cairo-Regular': require('../assets/fonts/Cairo-Regular.ttf') });\n  I18nManager.allowRTL(I18nManager.isRTL);\n  return null;\n}\n",
+      "app/index.tsx": "export const s = { a: { fontFamily: 'Inter-Regular', fontSize: 16 }, b: { fontFamily: 'Inter-Regular' }, c: { fontFamily: 'PlayfairDisplay-Bold', fontSize: 28 }, d: { fontFamily: 'PlayfairDisplay-Bold' } };\nexport const ar = (l: string) => (l === 'ar' ? 'Cairo-Regular' : 'Inter-Regular');\n",
+    }));
+    expect(occ.companion).toBe("Cairo");
+  });
+
+  test("a ternary written with !== or with 'ar' first picks the 'ar' branch, and a family on the Latin side never is the companion", () => {
+    const files = (ternary: string) => ({
+      "package.json": PKG,
+      "assets/fonts/Inter-Regular.ttf": "f",
+      "assets/fonts/Lalezar-Regular.ttf": "f",
+      "App.tsx": `import { useFonts } from 'expo-font';\nexport default function L() { useFonts({ 'Inter-Regular': require('./assets/fonts/Inter-Regular.ttf'), 'Lalezar-Regular': require('./assets/fonts/Lalezar-Regular.ttf') }); return null; }\nexport const fam = (l: string) => ${ternary};\nexport const s = { a: { fontFamily: 'Inter-Regular', fontSize: 16 } };\n`,
+    });
+    expect(collect(makeProject(files("l !== 'ar' ? 'Inter-Regular' : 'Lalezar-Regular'"))).companion).toBe("Lalezar");
+    expect(collect(makeProject(files("'ar' === l ? 'Lalezar-Regular' : 'Inter-Regular'"))).companion).toBe("Lalezar");
+    expect(collect(makeProject(files("l === 'ar' ? 'Inter-Regular' : 'Lalezar-Regular'"))).companion).toBeUndefined();
+  });
+
+  test("a shipped family whose font file has Arabic letters is the companion; one without them isn't", () => {
+    const project = (zain: Buffer) => {
+      const root = makeProject({
+        "package.json": PKG,
+        "App.tsx": "import { useFonts } from 'expo-font';\nexport default function L() { useFonts({ 'Inter-Regular': require('./assets/fonts/Inter-Regular.ttf'), 'Zain-Regular': require('./assets/fonts/Zain-Regular.ttf') }); return null; }\nexport const s = { a: { fontFamily: 'Inter-Regular', fontSize: 16 } };\n",
+      });
+      mkdirSync(join(root, "assets/fonts"), { recursive: true });
+      writeFileSync(join(root, "assets/fonts/Inter-Regular.ttf"), ttf([[0x20, 0x7e]]));
+      writeFileSync(join(root, "assets/fonts/Zain-Regular.ttf"), zain);
+      return root;
+    };
+    expect(collect(project(ttf([[0x20, 0x7e], [0x0600, 0x06ff]]))).companion).toBe("Zain");
+    expect(collect(project(ttf([[0x20, 0x7e]]))).companion).toBeUndefined();
+  });
+
+  const READEX = { "package.json": PKG, "assets/fonts/ReadexPro-Regular.ttf": "f" };
+  const readexFound = (root: string) =>
+    expect(collect(root).projectFonts).toEqual([{ family: "ReadexPro", files: [{ path: "assets/fonts/ReadexPro-Regular.ttf", weight: 400, style: "normal" }] }]);
+
+  test("probe B: export default name, without semicolons, is followed", () => {
+    readexFound(makeProject({
+      ...READEX,
+      "app/_layout.tsx": "import { useFonts } from 'expo-font'\nimport appFonts from '../constants/fonts'\nexport default function L() { useFonts(appFonts); return null }\n",
+      "constants/fonts.ts": "const fonts = {\n  'ReadexPro-Regular': require('../assets/fonts/ReadexPro-Regular.ttf'),\n}\nexport default fonts\n",
+    }));
+  });
+
+  test("probe C: export { fonts as default }, and export { default } from another file, are followed", () => {
+    readexFound(makeProject({
+      ...READEX,
+      "app/_layout.tsx": "import { useFonts } from 'expo-font';\nimport appFonts from '../constants/fonts';\nexport default function L() { useFonts(appFonts); return null; }\n",
+      "constants/fonts.ts": "const fonts = {\n  'ReadexPro-Regular': require('../assets/fonts/ReadexPro-Regular.ttf'),\n};\nexport { fonts as default };\n",
+    }));
+    readexFound(makeProject({
+      ...READEX,
+      "app/_layout.tsx": "import { useFonts } from 'expo-font';\nimport appFonts from '../constants';\nexport default function L() { useFonts(appFonts); return null; }\n",
+      "constants/index.ts": "export { default } from './fonts';\n",
+      "constants/fonts.ts": "export default {\n  'ReadexPro-Regular': require('../assets/fonts/ReadexPro-Regular.ttf'),\n};\n",
+    }));
+  });
+
+  test("probe F: a tsconfig.json with comments and trailing commas still gives the @/ alias", () => {
+    readexFound(makeProject({
+      ...READEX,
+      "tsconfig.json": '{\n  // Expo\n  "compilerOptions": { "paths": { "@/*": ["./src/*"], }, },\n}\n',
+      "App.tsx": "import { useFonts } from 'expo-font';\nimport { fonts } from '@/theme/fonts';\nexport default function L() { useFonts(fonts); return null; }\n",
+      "src/theme/fonts.ts": "export const fonts = {\n  'ReadexPro-Regular': require('../../assets/fonts/ReadexPro-Regular.ttf'),\n};\n",
+    }));
   });
 });
