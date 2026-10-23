@@ -477,3 +477,39 @@ describe("drafts whose found text passes stay byte-identical (v0.5.0 sweep, Task
     });
   }
 });
+
+describe("the small type roles come from the small sizes the app uses most (HiSalon, v0.5.0 sweep problem 6)", () => {
+  const sizes = (fontSize: Sample[]) => {
+    const t = buildDraft({ ...occ, fontSize }).tokens as any;
+    return Object.fromEntries(["caption", "label", "body", "heading", "title", "display"].map((r) => [r, t.font[r].$value.fontSize.value]));
+  };
+  // HiSalon's text sizes and how often each is used: 12px (22 uses) and 13px (42) are its small text; 10px is used once.
+  const HISALON = [
+    s("13px", 42), s("14px", 30), s("12px", 22), s("15px", 12), s("16px", 12), s("18px", 12), s("11px", 11), s("26px", 8), s("22px", 6),
+    s("30px", 3), s("17px", 2), s("36px", 2), s("10px", 1), s("20px", 1), s("28px", 1), s("34px", 1),
+  ];
+
+  test("a size used once doesn't become the caption while a smaller size is used far more", () => {
+    expect(sizes(HISALON)).toEqual({ caption: 12, label: 13, body: 14, heading: 15, title: 16, display: 36 });
+  });
+
+  test("small sizes used equally often keep the smallest as caption and the largest as label", () => {
+    expect(sizes([s("16px", 10), s("10px", 2), s("11px", 2), s("12px", 2), s("13px", 2)])).toMatchObject({ caption: 10, label: 13, body: 16 });
+  });
+
+  test("one or two small sizes are the caption and label, however often each is used", () => {
+    expect(sizes([s("16px", 10), s("14px", 9), s("11px", 1)])).toMatchObject({ caption: 11, label: 14 });
+    expect(sizes([s("16px", 10), s("12px", 1)])).toMatchObject({ caption: 12, label: 14 });
+  });
+});
+
+describe("Tailwind's text-2xl and text-3xl are sizes from the theme, not 2px and 3px (found with problem 6)", () => {
+  const app: SourceFile = { path: "src/App.tsx", abs: "", lang: "script", text: '<h1 className="text-2xl" /><h2 className="text-3xl" /><p className="text-sm" />' };
+  test("with Tailwind's sizes, they resolve", () => {
+    const occ = collectOccurrences([app], { ...tw, textPx: new Map([["sm", 14], ["2xl", 24], ["3xl", 30]]) });
+    expect(values(occ.fontSize).sort()).toEqual(["14px", "24px", "30px"]);
+  });
+  test("without them, they're unresolved, as text-sm is", () => {
+    expect(values(collectOccurrences([app], null).unresolved).sort()).toEqual(["text-2xl", "text-3xl", "text-sm"]);
+  });
+});

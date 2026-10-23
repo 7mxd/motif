@@ -367,7 +367,8 @@ export function collectOccurrences(
   };
   const sized = (bucket: "radius" | "fontSize", hit: Hit, table: Map<string, number> | undefined) => {
     const v = hit.value!;
-    if (/^\d/.test(v)) return add(bucket, v, hit);
+    // A size as written (13px, 0.875rem); Tailwind's text-2xl and text-3xl are names in its theme, not 2 and 3.
+    if (/^\d/.test(v) && !(bucket === "fontSize" && /^\d+xl$/.test(v))) return add(bucket, v, hit);
     const px = table?.get(v) ?? (bucket === "radius" && v === "none" ? 0 : bucket === "radius" && v === "full" ? 9999 : undefined);
     if (px !== undefined) add(bucket, `${px}px`, hit);
     else add("unresolved", hit.text, hit);
@@ -1223,8 +1224,15 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const body = given("body") ?? (bodySample ? pxOf(bodySample) : 16);
   const smaller = sizes.filter((v) => v < body);
   const larger = sizes.filter((v) => v > body);
-  let caption = smaller[0] ?? Math.round(body * 0.75);
-  let label = smaller.length >= 2 ? smaller[smaller.length - 1]! : Math.round(body * 0.875);
+  // With more than two smaller sizes, caption and label are the two the app uses most (a size used once isn't the
+  // caption while a near one is used far more); between sizes used as often, the smallest and the largest win.
+  const uses = new Map<number, number>();
+  for (const s of occ.fontSize) uses.set(pxOf(s), (uses.get(pxOf(s)) ?? 0) + s.count);
+  const edge = (v: number) => Math.min(smaller.indexOf(v), smaller.length - 1 - smaller.indexOf(v));
+  const small =
+    smaller.length > 2 ? [...smaller].sort((a, b) => uses.get(b)! - uses.get(a)! || edge(a) - edge(b) || a - b).slice(0, 2).sort((a, b) => a - b) : smaller;
+  let caption = small[0] ?? Math.round(body * 0.75);
+  let label = small.length >= 2 ? small[small.length - 1]! : Math.round(body * 0.875);
   if (caption > label) [caption, label] = [label, caption];
   caption = given("caption") ?? caption;
   label = given("label") ?? label;
