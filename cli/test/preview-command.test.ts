@@ -568,3 +568,14 @@ describe("motif preview refuses variants and project fonts that motif validate r
     });
   }
 });
+
+describe("final fix wave: the one-palette note names a design direction", () => {
+  test("--variant all on a direction with one palette says the direction, as the refusal does", async () => {
+    const f = fakes();
+    const root = makeProject({ "design/tokens.json": JSON.stringify(twoVariantTokens()), "design/directions/a/home.html": MOCKUP, "design/directions/a/tokens.json": JSON.stringify(validTokens()) });
+    const r = await runPreview(root, ctx(["design/directions/a/home.html"], { "png-only": true, variant: "all" }), f.deps);
+    expect(r.exitCode).toBe(0);
+    expect((r.data as { notes: string[] }).notes).toContain("design/directions/a has one palette, so --variant all is the same as leaving --variant out.");
+    expect(r.text).not.toContain("This design guide has one palette");
+  });
+});

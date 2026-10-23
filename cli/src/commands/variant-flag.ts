@@ -29,5 +29,8 @@ export function variantRefusal(who: string, flag: string, ids: string[]): Varian
   return null;
 }
 
-/** What --variant all says when the guide has one palette and it was drawn. */
-export const ONE_PALETTE_NOTE = "This design guide has one palette, so --variant all is the same as leaving --variant out.";
+/** What --variant all says when `who` (the guide, or a design direction) has one palette and it was drawn. */
+export const onePaletteNote = (who: string) => `${who} has one palette, so --variant all is the same as leaving --variant out.`;
+
+/** The note for the design guide itself. */
+export const ONE_PALETTE_NOTE = onePaletteNote("This design guide");
