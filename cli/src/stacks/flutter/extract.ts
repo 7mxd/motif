@@ -532,6 +532,9 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
   // ---------- what the widgets use ----------
   /** Families the app loads with google_fonts (GoogleFonts.inter(…), GoogleFonts.getFont('Inter')). */
   const googleFonts = new Set<string>();
+  /** Families (in lower case) named in a fontFamilyFallback list, and those named anywhere else in the code. */
+  const fallbacks = new Set<string>();
+  const namedFonts = new Set<string>();
   for (const file of dart) {
     const defs = definitions.get(file) ?? [];
     for (const hit of file.hits) {
@@ -556,6 +559,8 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
         case "font-family":
           add("fontFamily", hit.value!, example);
           if (hit.text.startsWith("GoogleFonts.")) googleFonts.add(hit.value!);
+          // A family named only as a string in a fontFamilyFallback list is a fallback; any other mention names it.
+          (/^r?["']/.test(hit.text) ? fallbacks : namedFonts).add(hit.value!.toLowerCase());
           break;
         case "duration":
           add("duration", hit.value!, example);
@@ -573,8 +578,11 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
   const bundled = pubspecFonts([...files, ...shared]);
   for (const { family, path } of bundled) add("fontFamily", family, path);
   const typeRoles = textThemeRoles(dart);
-  // The family the app uses most (not a code font) is its main one, never the companion.
-  const main = sortedSamples(buckets.fontFamily).find((f) => !isMonospace(f.value) && !/^(?:system-ui|sans-serif|serif|monospace)$/i.test(f.value))?.value;
+  // The family the app uses most (not a code font) is its main one, never the companion: a family the code names only in
+  // a fontFamilyFallback list is passed over while another one is used.
+  const textFamilies = sortedSamples(buckets.fontFamily).filter((f) => !isMonospace(f.value) && !/^(?:system-ui|sans-serif|serif|monospace)$/i.test(f.value));
+  const onlyFallback = (f: string) => fallbacks.has(f.toLowerCase()) && !namedFonts.has(f.toLowerCase());
+  const main = (textFamilies.find((f) => !onlyFallback(f.value)) ?? textFamilies[0])?.value;
   const companion = companionFamily(dart, [...new Set(bundled.map((b) => b.family))], main);
   // Every family a pubspec bundles is the app's own (the draft keeps those its roles use); the first pubspec's, when two name it.
   const projectFonts = bundled

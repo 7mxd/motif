@@ -7,7 +7,7 @@ import { inRanges, maskComments, rangesOf } from "../check/mask";
 import { scanFile } from "../check/run";
 import { colorContext, CSS_COLOR_LITERAL, CSS_DECLARATION, isPageSelector } from "../check/rules/colors";
 import type { Hit } from "../check/types";
-import { locator } from "../text";
+import { andList, locator } from "../text";
 import { contrastRatio } from "../contract/color";
 import { MIN_RATIO } from "../contract/contrast";
 import { FONT_ROLES, FULL_RADIUS_PX, MONO_ROLE, MONO_STACK, SPACE_SCALE, STANDARD_PAIRS, defaultShadows, isMonospace, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
@@ -61,7 +61,9 @@ export interface Occurrences {
   /** Families the app loads from Google Fonts: google_fonts, @expo-google-fonts, a Google Fonts link or @import, GoogleFont(…). */
   googleFonts?: string[];
   /** Families the app's code loads from its own font files, though the files weren't found (`from` is how the code names them). */
-  unfoundFonts?: { family: string; from: string }[];
+  unfoundFonts?: { family: string; from: string; xml?: string }[];
+  /** A project font's weight range (a web @font-face's font-weight: 200 1000): its file serves every weight in it. */
+  fontWeightRanges?: { family: string; min: number; max: number }[];
 }
 
 export interface ExtractReport {
@@ -85,7 +87,7 @@ const MAX_EXAMPLES = 5;
 /** The lists of samples collected; variables and the settings are kept apart. */
 type Bucket = Exclude<
   keyof Occurrences,
-  "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables" | "source" | "variantLabels" | "notes" | "typeRoles" | "companion" | "projectFonts" | "googleFonts" | "unfoundFonts"
+  "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables" | "source" | "variantLabels" | "notes" | "typeRoles" | "companion" | "projectFonts" | "googleFonts" | "unfoundFonts" | "fontWeightRanges"
 >;
 
 // ---------- collecting ----------
@@ -605,6 +607,7 @@ export function mergeOccurrences(parts: Occurrences[]): Occurrences {
     ...listOf(parts, "projectFonts"),
     ...listOf(parts, "googleFonts"),
     ...listOf(parts, "unfoundFonts"),
+    ...(parts.some((o) => o.fontWeightRanges) ? { fontWeightRanges: parts.flatMap((o) => o.fontWeightRanges ?? []) } : {}),
   };
 }
 
@@ -1378,7 +1381,25 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   }
   for (const f of unfound) {
     notes.push(
-      `${f.family} comes from your app's font files (${f.from}), but Motif didn't find them, so the draft treats it as a Google font. Add its files to the guide's fonts list, or check that Google Fonts has it.`,
+      f.xml
+        ? `${f.family} comes from an XML font family (${f.xml}), which Motif doesn't read yet, so the draft treats it as a Google font. Add its font files to the guide's fonts list, or check that Google Fonts has it.`
+        : `${f.family} comes from your app's font files (${f.from}), but Motif didn't find them, so the draft treats it as a Google font. Add its files to the guide's fonts list, or check that Google Fonts has it.`,
+    );
+  }
+  // A shipped family needs a file for each weight its roles use (a weight range covers the weights in it).
+  const sansWeights = FONT_ROLES.map(([role]) => (font[role] as { $value: { fontWeight: number } }).$value.fontWeight);
+  for (const f of projectFonts) {
+    const key = f.family.toLowerCase();
+    const used = new Set([
+      ...([family, companion].some((s) => s?.toLowerCase() === key) ? sansWeights : []),
+      ...(code?.toLowerCase() === key ? [MONO_ROLE[1]] : []),
+    ]);
+    const has = [...new Set(f.files.filter((file) => file.style === "normal").map((file) => file.weight))].sort((a, b) => a - b);
+    const ranges = (occ.fontWeightRanges ?? []).filter((r) => r.family.toLowerCase() === key);
+    const missing = [...used].filter((w) => !has.includes(w) && !ranges.some((r) => r.min <= w && w <= r.max)).sort((a, b) => a - b);
+    if (missing.length === 0 || has.length === 0) continue;
+    notes.push(
+      `${f.family}'s files have ${has.length === 1 ? "weight" : "weights"} ${andList(has.map(String))} only, but the type roles also use ${andList(missing.map(String))}. Add files for ${missing.length === 1 ? "that weight" : "those weights"} to the guide's fonts list, or change the roles' weights.`,
     );
   }
   const offScale = spacing.filter((s) => !s.onScale).length;

@@ -187,13 +187,16 @@ function fontCalls(code: string): { resource: string; weight: number; style: "no
   return out;
 }
 
-/** A font resource's file (root-relative): a .ttf or .otf of that name in the res/font folder of a source set above the Kotlin file. */
-function resFontFile(source: SourceFile, resource: string): string | undefined {
+/**
+ * A font resource's file (root-relative): a .ttf or .otf of that name (or another kind, given in `exts`) in the res/font
+ * folder of a source set above the Kotlin file.
+ */
+function resFontFile(source: SourceFile, resource: string, exts = [".ttf", ".otf"]): string | undefined {
   const root = rootOf(source);
   if (root === null) return undefined;
   const dirs = source.path.split("/").slice(0, -1);
   for (let n = dirs.length; n >= 0; n--) {
-    for (const ext of [".ttf", ".otf"]) {
+    for (const ext of exts) {
       const path = [...dirs.slice(0, n), "res", "font", `${resource}${ext}`].join("/");
       if (existsSync(join(root, path))) return path;
     }
@@ -423,7 +426,9 @@ export function collectCompose(files: SourceFile[], shared: SourceFile[] = []): 
         const path = resFontFile(file.source, f.resource);
         if (path && !files.some((x) => x.path === path)) files.push({ path, weight: f.weight, style: f.style });
       }
-      ownFonts.set(family.toLowerCase(), files.length > 0 ? { family, files } : { family, from: `R.font.${resource}` });
+      // An XML font family (res/font/inter.xml) names its files, or a download, in a way Motif doesn't read yet.
+      const xml = files.length > 0 ? undefined : resFontFile(file.source, resource, [".xml"]);
+      ownFonts.set(family.toLowerCase(), files.length > 0 ? { family, files } : { family, from: `R.font.${resource}`, ...(xml ? { xml } : {}) });
     }
     for (const m of file.code.matchAll(/(?<![\w$.])GoogleFont\s*\(/g)) {
       const family = file.text.slice(m.index!).match(/^GoogleFont\s*\(\s*(?:name\s*=\s*)?"([^"\n]+)"/)?.[1]?.trim();

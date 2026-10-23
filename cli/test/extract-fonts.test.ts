@@ -7,7 +7,7 @@ import { runExtract } from "../src/commands/extract";
 import { checkProjectFontFiles, readProjectFonts } from "../src/contract/fonts";
 import { validateTokens } from "../src/contract/tokens";
 import type { AppInfo } from "../src/detect/stacks";
-import { buildDraft } from "../src/extract/draft";
+import { buildDraft, mergeOccurrences, type Occurrences } from "../src/extract/draft";
 import { buildThemeSet } from "../src/generate/theme";
 import { themeFonts } from "../src/generate/theme-fonts";
 import { COMPOSE } from "../src/stacks/compose";
@@ -327,5 +327,169 @@ describe("the web", () => {
     expect(sources(tokens)).toEqual({ "Readex Pro": "project" });
     expect(read(root, "design/extract-report.json").notes.join("\n")).toContain("Readex Pro ships with your app and is also loaded from Google Fonts");
     valid(root, tokens);
+  });
+});
+
+describe("fix round 1", () => {
+  const flutterApp = { path: ".", stack: "flutter" } as AppInfo;
+  const flutterDraft = (root: string) => buildDraft(collectFlutter(FLUTTER.sourceFiles!(root, flutterApp, {})));
+  const PUBSPEC = "name: shop\nenvironment:\n  sdk: ^3.6.0\n\ndependencies:\n  flutter:\n    sdk: flutter\n  google_fonts: ^6.2.1\n";
+  const readex = (weights: number[]) => ({
+    "pubspec.yaml": `${PUBSPEC}\nflutter:\n  fonts:\n    - family: Readex Pro\n      fonts:\n${weights.map((w) => `        - asset: assets/fonts/ReadexPro-${w}.ttf\n          weight: ${w}\n`).join("")}`,
+    ...Object.fromEntries(weights.map((w) => [`assets/fonts/ReadexPro-${w}.ttf`, "font"])),
+    "lib/main.dart": "void main() {}\n",
+    "lib/theme.dart": "import 'package:flutter/material.dart';\n\nWidget body() => Text('Hi', style: TextStyle(fontFamily: 'Readex Pro', fontSize: 14));\n",
+  });
+
+  test("Flutter: a Google main family with a bundled Arabic fallback stays first, and the fallback is the project-font companion", () => {
+    const root = makeProject({
+      "pubspec.yaml": `${PUBSPEC}\nflutter:\n  fonts:\n    - family: NotoNaskhArabic\n      fonts:\n        - asset: assets/fonts/NotoNaskhArabic.ttf\n`,
+      "assets/fonts/NotoNaskhArabic.ttf": "font",
+      "lib/main.dart": "void main() {}\n",
+      "lib/theme.dart": `import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+final theme = ThemeData(textTheme: GoogleFonts.latoTextTheme(ThemeData().textTheme).apply(fontFamilyFallback: const ['NotoNaskhArabic']));
+`,
+    });
+    const { tokens } = flutterDraft(root);
+    expect((tokens as any).primitive.font.sans.$value).toEqual(["Lato", "NotoNaskhArabic", "system-ui", "sans-serif"]);
+    expect(sources(tokens)).toEqual({ Lato: "google", NotoNaskhArabic: "project" });
+    expect(fontsList(tokens).map((f: any) => f.family)).toEqual(["NotoNaskhArabic"]);
+    valid(root, tokens);
+  });
+
+  test("a shipped family without every weight the roles use is noted, naming the missing weights", () => {
+    const { report } = flutterDraft(makeProject(readex([400])));
+    expect(report.notes).toContain(
+      "Readex Pro's files have weight 400 only, but the type roles also use 500, 600 and 700. Add files for those weights to the guide's fonts list, or change the roles' weights.",
+    );
+  });
+
+  test("a shipped family with every weight the roles use has no such note", () => {
+    const { report } = flutterDraft(makeProject(readex([400, 500, 600, 700])));
+    expect(report.notes.join("\n")).not.toContain("Readex Pro's files have");
+  });
+
+  test("a web @font-face with a weight range covers the weights in it", async () => {
+    const root = makeProject({
+      "public/index.html": '<!doctype html><html><head><link rel="stylesheet" href="styles.css"></head><body><h1>Hi</h1></body></html>\n',
+      "public/styles.css": '@font-face {\n  font-family: "Nunito";\n  font-weight: 200 1000;\n  src: url("fonts/nunito.woff2") format("woff2");\n}\nbody { font-family: "Nunito", system-ui, sans-serif; }\n',
+      "public/fonts/nunito.woff2": "font",
+    });
+    expect((await runExtract(root, { positionals: [] })).exitCode).toBe(0);
+    expect(fontsList(read(root, "design/tokens.draft.json"))?.map((f: any) => f.family)).toEqual(["Nunito"]);
+    expect(read(root, "design/extract-report.json").notes.join("\n")).not.toContain("Nunito's files have");
+  });
+
+  const rnApp = { path: ".", stack: "react-native" } as AppInfo;
+  const rnDraft = (root: string) => buildDraft(collectReactNative(REACT_NATIVE.sourceFiles!(root, rnApp, {})));
+  const RN = {
+    "package.json": JSON.stringify({ name: "shop", dependencies: { expo: "~54.0.1", react: "19.1.0", "react-native": "0.81.4" } }),
+    "assets/fonts/ReadexPro-Regular.ttf": "font",
+    "assets/fonts/ReadexPro-Bold.ttf": "font",
+    "app/styles.ts":
+      "import { StyleSheet } from 'react-native';\n\nexport const styles = StyleSheet.create({\n  body: { fontFamily: 'ReadexPro-Regular', fontSize: 16 },\n  title: { fontFamily: 'ReadexPro-Bold', fontSize: 22 },\n});\n",
+  };
+  const READEX_FILES = [
+    { path: "assets/fonts/ReadexPro-Regular.ttf", weight: 400, style: "normal" },
+    { path: "assets/fonts/ReadexPro-Bold.ttf", weight: 700, style: "normal" },
+  ];
+
+  test("React Native: fonts expo-font's config plugin lists in app.json are project fonts", () => {
+    const root = makeProject({
+      ...RN,
+      "app.json": JSON.stringify({
+        expo: { name: "Shop", plugins: ["expo-router", ["expo-font", { fonts: ["./assets/fonts/ReadexPro-Regular.ttf", "./assets/fonts/ReadexPro-Bold.ttf"] }]] },
+      }),
+    });
+    const { tokens } = rnDraft(root);
+    expect(fontsList(tokens)).toEqual([{ family: "ReadexPro", files: READEX_FILES }]);
+    expect(sources(tokens)).toEqual({ ReadexPro: "project" });
+    valid(root, tokens);
+  });
+
+  test("React Native: the literal fonts list in app.config.ts's expo-font plugin is read too", () => {
+    const root = makeProject({
+      ...RN,
+      "app.config.ts": `import type { ExpoConfig } from 'expo/config';
+
+const config: ExpoConfig = {
+  name: 'Shop',
+  plugins: [
+    'expo-router',
+    ['expo-font', { fonts: ['./assets/fonts/ReadexPro-Regular.ttf', './assets/fonts/ReadexPro-Bold.ttf'] }],
+  ],
+};
+export default config;
+`,
+    });
+    const { tokens } = rnDraft(root);
+    expect(fontsList(tokens)).toEqual([{ family: "ReadexPro", files: READEX_FILES }]);
+    expect(sources(tokens)).toEqual({ ReadexPro: "project" });
+  });
+
+  test("React Native: Font.loadAsync with the app's own files is read like useFonts", () => {
+    const root = makeProject({
+      ...RN,
+      "app/_layout.tsx": `import * as Font from 'expo-font';
+
+export async function loadFonts() {
+  await Font.loadAsync({
+    'ReadexPro-Regular': require('../assets/fonts/ReadexPro-Regular.ttf'),
+    'ReadexPro-Bold': require('../assets/fonts/ReadexPro-Bold.ttf'),
+  });
+}
+`,
+    });
+    const { tokens } = rnDraft(root);
+    expect(fontsList(tokens)).toEqual([{ family: "ReadexPro", files: READEX_FILES }]);
+    expect(sources(tokens)).toEqual({ ReadexPro: "project" });
+  });
+
+  test("Compose: a family from an XML font family says Motif doesn't read those yet", () => {
+    const composeApp = { path: ".", stack: "compose" } as AppInfo;
+    const root = makeProject({
+      "app/src/main/res/font/inter.xml": '<?xml version="1.0" encoding="utf-8"?>\n<font-family xmlns:app="http://schemas.android.com/apk/res-auto" />\n',
+      "app/src/main/java/com/example/shop/ui/theme/Type.kt": `package com.example.shop.ui.theme
+
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
+import com.example.shop.R
+
+val Inter = FontFamily(Font(R.font.inter))
+
+val Typography = Typography(bodyLarge = TextStyle(fontFamily = Inter, fontSize = 16.sp))
+`,
+    });
+    const { tokens, report } = buildDraft(collectCompose(COMPOSE.sourceFiles!(root, composeApp, {})));
+    expect(fontsList(tokens)).toBeUndefined();
+    const notes = report.notes.join("\n");
+    expect(notes).toContain("Inter comes from an XML font family (app/src/main/res/font/inter.xml), which Motif doesn't read yet");
+    expect(notes).not.toContain("didn't find them");
+  });
+
+  test("mergeOccurrences joins every part's fonts, each family once, the first part's winning", () => {
+    const part = (extra: Partial<Occurrences>): Occurrences => ({
+      colors: [], space: [], radius: [], fontSize: [], fontFamily: [], duration: [], easing: [], unresolved: [], ...extra,
+    });
+    const file = (path: string) => ({ path, weight: 400, style: "normal" as const });
+    const merged = mergeOccurrences([
+      part({ projectFonts: [{ family: "Inter", files: [file("web/fonts/inter.woff2")] }], googleFonts: ["Inter"] }),
+      part({
+        projectFonts: [{ family: "inter", files: [file("app/assets/fonts/Inter.ttf")] }, { family: "Cairo", files: [file("app/assets/fonts/Cairo.ttf")] }],
+        googleFonts: ["Roboto", "inter"],
+        unfoundFonts: [{ family: "Lato", from: "R.font.lato" }],
+      }),
+    ]);
+    expect(merged.projectFonts).toEqual([
+      { family: "Inter", files: [file("web/fonts/inter.woff2")] },
+      { family: "Cairo", files: [file("app/assets/fonts/Cairo.ttf")] },
+    ]);
+    expect(merged.googleFonts).toEqual(["Inter", "Roboto"]);
+    expect(merged.unfoundFonts).toEqual([{ family: "Lato", from: "R.font.lato" }]);
   });
 });

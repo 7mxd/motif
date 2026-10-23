@@ -60,7 +60,7 @@ const GOOGLE_URL = /(?:https?:)?\/\/fonts\.googleapis\.com\/css2?\?[^"'\s)<>`]+/
 const NEXT_GOOGLE = /import\s*\{([^}]*)\}\s*from\s*["']next\/font\/google["']/g;
 
 /** A @font-face's weight (one number; 400 for a range that holds it, else the range's first) and style. */
-function faceWeightStyle(body: string): { weight: number; style: "normal" | "italic" } {
+function faceWeightStyle(body: string): { weight: number; style: "normal" | "italic"; range?: [number, number] } {
   const raw = body.match(/(?:^|[;{\s])font-weight\s*:\s*([^;]+)/i)?.[1]?.trim().toLowerCase() ?? "";
   const nums = [...raw.matchAll(/\d+/g)].map((n) => Number(n[0])).filter((n) => n >= 1 && n <= 1000);
   let weight = raw === "bold" ? 700 : 400;
@@ -68,7 +68,7 @@ function faceWeightStyle(body: string): { weight: number; style: "normal" | "ita
   else if (nums.length >= 2) weight = nums[0]! <= 400 && 400 <= nums[1]! ? 400 : nums[0]!;
   weight = Math.min(900, Math.max(100, Math.round(weight / 100) * 100));
   const style = /(?:^|[;{\s])font-style\s*:\s*(?:italic|oblique)/i.test(body) ? "italic" : "normal";
-  return { weight, style };
+  return { weight, style, ...(nums.length >= 2 ? { range: [nums[0]!, nums[1]!] as [number, number] } : {}) };
 }
 
 /**
@@ -98,9 +98,10 @@ function fileOfUrl(source: SourceFile, url: string): string | undefined {
  * the app's own (a family whose files aren't there is noted), and a Google Fonts link, @import or next/font/google
  * import is Google's.
  */
-export function webFonts(files: SourceFile[]): Pick<Occurrences, "projectFonts" | "googleFonts" | "unfoundFonts"> {
+export function webFonts(files: SourceFile[]): Pick<Occurrences, "projectFonts" | "googleFonts" | "unfoundFonts" | "fontWeightRanges"> {
   const own = new Map<string, ProjectFontEntry | UnfoundFontEntry>();
   const google = new Set<string>();
+  const ranges: NonNullable<Occurrences["fontWeightRanges"]> = [];
   for (const file of files) {
     const text = file.lang === "css" || file.lang === "script" ? maskComments(file.text, file.lang) : file.text;
     for (const m of text.matchAll(GOOGLE_URL)) for (const f of googleFontsFamilies(m[0].replace(/&amp;/g, "&"))) google.add(f);
@@ -127,7 +128,8 @@ export function webFonts(files: SourceFile[]): Pick<Occurrences, "projectFonts" 
       }
       const found = own.get(key);
       const entry = found && "files" in found ? found : { family, files: [] };
-      const { weight, style } = faceWeightStyle(body);
+      const { weight, style, range } = faceWeightStyle(body);
+      if (range && style === "normal") ranges.push({ family, min: range[0], max: range[1] });
       for (const path of paths) if (!entry.files.some((f) => f.path === path)) entry.files.push({ path, weight, style });
       own.set(key, entry);
     }
@@ -138,5 +140,6 @@ export function webFonts(files: SourceFile[]): Pick<Occurrences, "projectFonts" 
     ...(projectFonts.length ? { projectFonts } : {}),
     ...(google.size ? { googleFonts: [...google] } : {}),
     ...(unfoundFonts.length ? { unfoundFonts } : {}),
+    ...(ranges.length ? { fontWeightRanges: ranges } : {}),
   };
 }

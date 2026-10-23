@@ -1,6 +1,6 @@
 // motif extract for React Native: a draft design guide from an Expo app's code — the colour objects with light and dark
 // halves (the starter's constants/Colors.ts), parallel ones as design variants, and the values its styles and animations use.
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { posix } from "node:path";
 import type { SourceFile } from "../../check/files";
 import { inRanges, maskComments } from "../../check/mask";
@@ -196,6 +196,84 @@ function shippedFont(source: SourceFile, required: string): string | undefined {
     }
     if (d === "." || d === "/" || d === "") return undefined;
   }
+}
+
+const APP_CONFIGS = ["app.json", "app.config.json", "app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"];
+const FONT_PATH = /\.(?:ttf|otf)$/i;
+
+/**
+ * The fonts expo-font's config plugin embeds, from each app's config (the folder above the code with a package.json):
+ * app.json's or app.config.json's plugins entry ["expo-font", { fonts: [...] }] (its ios and android lists too, paths
+ * or { fontFamily, fontDefinitions }). An app.config.js or .ts is code: it isn't run, and only a literal list of paths
+ * in its expo-font entry is read. Each font's path is root-relative, or undefined when the file isn't there.
+ */
+function pluginFonts(files: SourceFile[]): { family: string; path: string | undefined; from: string; weight: number; style: "normal" | "italic" }[] {
+  const root = files.length > 0 ? rootOf(files[0]!) : null;
+  if (root === null) return [];
+  const apps = new Set<string>();
+  for (const f of files) {
+    for (let d = posix.dirname(f.path); ; d = posix.dirname(d)) {
+      const base = d === "." ? "" : `${d}/`;
+      if (existsSync(`${root}${base}package.json`)) {
+        apps.add(base);
+        break;
+      }
+      if (d === "." || d === "/" || d === "") break;
+    }
+  }
+  const out: ReturnType<typeof pluginFonts> = [];
+  for (const base of [...apps].sort()) {
+    for (const name of APP_CONFIGS) {
+      let text: string;
+      try {
+        text = readFileSync(`${root}${base}${name}`, "utf8").replace(/^﻿/, "");
+      } catch {
+        continue;
+      }
+      const found: { path: string; family?: string; weight?: number; style?: string }[] = [];
+      if (name.endsWith(".json")) {
+        let config: any;
+        try {
+          config = JSON.parse(text);
+        } catch {
+          continue;
+        }
+        const plugins = config?.expo?.plugins ?? config?.plugins;
+        for (const p of Array.isArray(plugins) ? plugins : []) {
+          if (!Array.isArray(p) || p[0] !== "expo-font" || typeof p[1] !== "object" || p[1] === null) continue;
+          for (const list of [p[1].fonts, p[1].ios?.fonts, p[1].android?.fonts]) {
+            for (const item of Array.isArray(list) ? list : []) {
+              if (typeof item === "string") found.push({ path: item });
+              else if (item && typeof item.fontFamily === "string" && Array.isArray(item.fontDefinitions)) {
+                for (const d of item.fontDefinitions) if (typeof d?.path === "string") found.push({ path: d.path, family: item.fontFamily, weight: d.weight, style: d.style });
+              }
+            }
+          }
+        }
+      } else {
+        const code = maskComments(text, "script");
+        for (const m of code.matchAll(/(["'])expo-font\1\s*,\s*\{/g)) {
+          const list = code.slice(m.index!, m.index! + 2000).match(/\bfonts\s*:\s*\[([^\]]*)\]/)?.[1] ?? "";
+          for (const s of list.matchAll(/(["'])([^"'\n]+)\1/g)) found.push({ path: s[2]! });
+        }
+      }
+      for (const f of found) {
+        if (!FONT_PATH.test(f.path)) continue;
+        const file = posix.basename(f.path).replace(FONT_PATH, "");
+        const face = weightStyleOf(file);
+        const path = posix.normalize(base + f.path.replace(/^\.\//, ""));
+        const inside = !(path.startsWith("../") || path === ".." || posix.isAbsolute(path));
+        out.push({
+          family: f.family ?? familyOf(file),
+          path: inside && existsSync(root + path) ? path : undefined,
+          from: `"${f.path}" in ${base}${name}`,
+          weight: typeof f.weight === "number" && f.weight >= 100 && f.weight <= 900 ? Math.round(f.weight / 100) * 100 : face.weight,
+          style: f.style === "italic" ? "italic" : f.style === "normal" ? "normal" : face.style,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 /** Colour properties of a React Native style, which a palette's roles aren't called. */
@@ -416,6 +494,18 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
   const ownFonts = new Map<string, ProjectFontEntry | UnfoundFontEntry>();
   /** Families loaded from @expo-google-fonts. */
   const googleFonts = new Set<string>();
+  /** A file the app ships for a family: listed with its weight and style, or, when it isn't there, noted as `from`. */
+  const shipped = (family: string, path: string | undefined, from: string, face: { weight: number; style: "normal" | "italic" }) => {
+    const key = family.toLowerCase();
+    const own = ownFonts.get(key);
+    if (!path) {
+      if (!own) ownFonts.set(key, { family, from });
+      return;
+    }
+    const entry = own && "files" in own ? own : { family, files: [] };
+    if (!entry.files.some((f) => f.path === path)) entry.files.push({ path, weight: face.weight, style: face.style });
+    ownFonts.set(key, entry);
+  };
   for (const file of scripts) {
     const defs = definitions.get(file) ?? [];
     const lines = [0];
@@ -450,8 +540,8 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
       }
     }
 
-    // Fonts: useFonts({ Onest_400Regular, 'Inter-Bold': require(…) }) and @expo-google-fonts/* imports.
-    for (const m of file.masked.matchAll(/(?<![\w$.])useFonts\s*\(\s*(?=\{)/g)) {
+    // Fonts: useFonts({ Onest_400Regular, 'Inter-Bold': require(…) }) or Font.loadAsync({ … }), and @expo-google-fonts/* imports.
+    for (const m of file.masked.matchAll(/(?<![\w$.])(?:useFonts|(?:Font\s*\.\s*)?loadAsync)\s*\(\s*(?=\{)/g)) {
       const obj = parseObject(file.masked, file.source.text, m.index! + m[0].length);
       for (const e of obj.entries) {
         const family = familyOf(e.key);
@@ -462,16 +552,7 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
         // A font loaded from a file the app ships ('Inter-Bold': require('../assets/fonts/Inter-Bold.ttf')) is its own.
         const required = "text" in e.value ? e.value.text.match(/^require\s*\(\s*(["'])([^"'\n]+\.(?:ttf|otf))\1\s*\)$/i)?.[2] : undefined;
         if (!family || !required) continue;
-        const path = shippedFont(file.source, required);
-        const key = family.toLowerCase();
-        if (!path) {
-          if (!ownFonts.has(key)) ownFonts.set(key, { family, from: `require("${required}")` });
-          continue;
-        }
-        const own = ownFonts.get(key);
-        const entry = own && "files" in own ? own : { family, files: [] };
-        if (!entry.files.some((f) => f.path === path)) entry.files.push({ path, ...weightStyleOf(e.key) });
-        ownFonts.set(key, entry);
+        shipped(family, shippedFont(file.source, required), `require("${required}")`, weightStyleOf(e.key));
       }
     }
     for (const m of file.source.text.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']@expo-google-fonts\/[\w-]+["']/g)) {
@@ -485,6 +566,8 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
       }
     }
   }
+  // Fonts expo-font's config plugin embeds in the app ("plugins": [["expo-font", { "fonts": [...] }]]).
+  for (const font of pluginFonts(files)) shipped(font.family, font.path, font.from, font);
   const projectFonts = [...ownFonts.values()].filter((f): f is ProjectFontEntry => "files" in f);
   const unfoundFonts = [...ownFonts.values()].filter((f): f is UnfoundFontEntry => "from" in f);
 
