@@ -20,21 +20,86 @@ export interface Binding {
 /** An attribute in a tag; its value's grammar is TAG's, so quoted values may hold ">". */
 const ATTR = /\s([^\s"'>/=]+)(?:(\s*=\s*)("([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
 const LANG_ATTR = /\slang\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
-/** The style languages read as CSS; a block in another (stylus) is left out of every view. */
-const CSS_LANGS = new Set(["css", "scss", "sass", "less"]);
+/** The style languages read as CSS (postcss is CSS with Tailwind's @apply); a block in another (stylus) is left out of every view. */
+const CSS_LANGS = new Set(["css", "scss", "sass", "less", "postcss"]);
+const TAG_NAME = /^<([^\s/>]+)/;
 
 function cssLang(tag: string): boolean {
   const m = LANG_ATTR.exec(tag);
   return !m || CSS_LANGS.has((m[1] ?? m[2] ?? m[3] ?? "").toLowerCase());
 }
 
+/** The start tag at `at`, if one starts there: its lower-case name, where it ends, and whether it closes itself. */
+function startTag(text: string, at: number): { name: string; end: number; closed: boolean } | null {
+  const tag = new RegExp(TAG.source, "y");
+  tag.lastIndex = at;
+  const t = tag.exec(text);
+  return t ? { name: TAG_NAME.exec(t[0])![1]!.toLowerCase(), end: at + t[0].length, closed: t[0].endsWith("/>") } : null;
+}
+
+/** Where the element whose start tag ends at `from` closes: its text runs to </name>, a template's to its own </template>. */
+function blockEnd(text: string, name: string, from: number): number {
+  if (name !== "template") {
+    const close = new RegExp(`</${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*>`, "gi");
+    close.lastIndex = from;
+    const c = close.exec(text);
+    return c ? c.index + c[0].length : text.length;
+  }
+  // Templates nest (<template v-if>): count them, tag by tag, so a quoted "<template>" or a comment's counts for nothing.
+  let depth = 1;
+  let i = from;
+  while (i < text.length) {
+    const lt = text.indexOf("<", i);
+    if (lt === -1) break;
+    if (text.startsWith("<!--", lt)) {
+      const c = text.indexOf("-->", lt + 4);
+      i = c === -1 ? text.length : c + 3;
+      continue;
+    }
+    const close = /^<\/template\s*>/i.exec(text.slice(lt, lt + 40));
+    if (close && --depth === 0) return lt + close[0].length;
+    const tag = startTag(text, lt);
+    if (tag?.name === "template" && !tag.closed) depth++;
+    i = tag ? tag.end : lt + 1;
+  }
+  return text.length;
+}
+
+/** The file's top-level elements whose names aren't `blocks` (Vue's <i18n>, <docs>): [start, end] of each. */
+function customBlocks(text: string, blocks: string[]): [number, number][] {
+  const found: [number, number][] = [];
+  let i = 0;
+  while (i < text.length) {
+    const lt = text.indexOf("<", i);
+    if (lt === -1) break;
+    if (text.startsWith("<!--", lt)) {
+      const c = text.indexOf("-->", lt + 4);
+      i = c === -1 ? text.length : c + 3;
+      continue;
+    }
+    const tag = startTag(text, lt);
+    if (!tag) {
+      i = lt + 1;
+      continue;
+    }
+    const end = tag.closed ? tag.end : blockEnd(text, tag.name, tag.end);
+    if (!blocks.includes(tag.name)) found.push([lt, end]);
+    i = end;
+  }
+  return found;
+}
+
 /**
  * A component file's views. `css`: its <style> blocks, static style="" attributes and CSS bindings; `script`: its
  * <script> blocks' content and script bindings' values; `markup`: everything else (tags, text, class attributes),
- * with what the other two read blank. Comments are blank in all three; `dark` holds the dark-only style blocks.
+ * with what the other two read blank. Comments are blank in all three; `dark` holds the dark-only style blocks. A
+ * self-closing <script /> or <style /> (Vue's src imports) is empty. `blocks`, for a file made of top-level blocks
+ * (Vue's template, script and style), names them: any other top-level element is a custom block (<i18n>, <docs>), blank
+ * in every view. Without it (a Svelte file, whose top level is its markup) every element is read.
  */
-export function componentViews(text: string, opts: { bindings: Binding[] }): { css: string; script: string; markup: string; dark: [number, number][] } {
-  const { comments, cdata, scripts, styles } = regions(text);
+export function componentViews(source: string, opts: { bindings: Binding[]; blocks?: string[] }): { css: string; script: string; markup: string; dark: [number, number][] } {
+  const text = opts.blocks ? blanked(source, customBlocks(source, opts.blocks)) : source;
+  const { comments, cdata, scripts, styles } = regions(text, { selfClosing: true });
   const uncommented = blanked(text, comments);
   const read = styles.filter(([at, contentStart]) => cssLang(text.slice(at, contentStart)));
   const unread = styles.filter((s) => !read.includes(s)).map(([, contentStart, contentEnd]): [number, number] => [contentStart, contentEnd]);

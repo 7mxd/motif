@@ -15,12 +15,15 @@ export const VUE_BINDINGS: Binding[] = [
   { attr: /^(?:[:@#.]|v-)/, as: "script" },
 ];
 
+/** A .vue file's own top-level blocks; any other (<i18n>, <docs>) is a custom block, read by none of the views. */
+export const VUE_BLOCKS = ["template", "script", "style"];
+
 const VUE_FILE = /\.vue$/i;
 
 /** A .vue file as its CSS, script and markup, each a file with its path; HTML as the web reads it; other files as they are. */
 function vueViews(file: SourceFile): SourceFile[] {
   if (!VUE_FILE.test(file.path)) return expandHtml([file]);
-  const { css, script, markup, dark } = componentViews(file.text, { bindings: VUE_BINDINGS });
+  const { css, script, markup, dark } = componentViews(file.text, { bindings: VUE_BINDINGS, blocks: VUE_BLOCKS });
   return [
     { ...file, text: css, lang: "css", ...(dark.length > 0 ? { dark } : {}) },
     { ...file, text: script, lang: "script" },

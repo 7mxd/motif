@@ -5,11 +5,11 @@ import { expandHtml, htmlViews } from "../src/check/html";
 import { scanFile } from "../src/check/run";
 import { buildScale } from "../src/check/scale";
 import { buildTheme } from "../src/generate/theme";
-import { VUE, VUE_BINDINGS } from "../src/stacks/vue";
+import { VUE, VUE_BINDINGS, VUE_BLOCKS } from "../src/stacks/vue";
 import { docFrom, validTokens } from "./helpers";
 
 const scale = buildScale(buildTheme(docFrom(validTokens())), ".");
-const vueViews = (text: string) => componentViews(text, { bindings: VUE_BINDINGS });
+const vueViews = (text: string) => componentViews(text, { bindings: VUE_BINDINGS, blocks: VUE_BLOCKS });
 /** Line and column (1-based) of the first occurrence of needle. */
 const at = (text: string, needle: string, from = 0) => {
   const i = text.indexOf(needle, from);
@@ -158,8 +158,74 @@ describe("componentViews: regions", () => {
     }
   });
 
+  test("a <style lang=\"postcss\"> block (Tailwind 3's @apply) is read as CSS", () => {
+    const text = '<style scoped lang="postcss">\n.row { @apply p-[13px]; gap: 13px }\n</style>';
+    const v = vueViews(text);
+    expect(holds(v.css, text, ".row { @apply p-[13px]; gap: 13px }")).toBe(true);
+    const hits = scanFile({ path: "src/App.vue", abs: "/x/src/App.vue", text: v.css, lang: "css" }, scale).map((h) => [h.rule, h.text, h.line, h.column]);
+    expect(hits).toContainEqual(["tailwind-arbitrary", "p-[13px]", 2, at(text, "p-[13px]").column]);
+    expect(hits).toContainEqual(["off-scale", "13px", 2, at(text, "13px }").column]);
+  });
+
+  test("a top-level custom block (<i18n>, <docs>) is blank in every view; the template's own elements aren't", () => {
+    const text = [
+      "<i18n>",
+      '{ "en": { "accent": "#ffffff" } }',
+      "</i18n>",
+      "<docs>",
+      '<p style="color: #00ff00">Use <style>.x { color: #0000ff }</style> and <script>x()</script></p>',
+      "</docs>",
+      "<!-- <docs> in a comment </docs> -->",
+      '<template><docs-panel :size="2" style="gap: 8px"><i18n-t keypath="a" /></docs-panel></template>',
+      '<script setup lang="ts">const a = "</docs>";</script>',
+      "<style>.a { color: #111111 }</style>",
+    ].join("\n");
+    const v = vueViews(text);
+    const blockEnd = text.indexOf("</docs>") + 7;
+    for (const view of [v.css, v.script, v.markup]) {
+      expect(isBlank(view.slice(0, blockEnd))).toBe(true);
+      expect(view).not.toMatch(/#ffffff|#00ff00|#0000ff|x\(\)/);
+    }
+    expect(holds(v.markup, text, "<docs-panel")).toBe(true);
+    expect(holds(v.markup, text, '<i18n-t keypath="a" />')).toBe(true);
+    expect(holds(v.css, text, "gap: 8px")).toBe(true);
+    expect(holds(v.script, text, "2")).toBe(true);
+    expect(holds(v.script, text, 'const a = "</docs>";')).toBe(true);
+    expect(holds(v.css, text, ".a { color: #111111 }")).toBe(true);
+    const file = (t: string, lang: SourceFile["lang"]): SourceFile => ({ path: "src/App.vue", abs: "/x/src/App.vue", text: t, lang });
+    const hits = [file(v.css, "css"), file(v.script, "script"), file(v.markup, "markup")].flatMap((f) => scanFile(f, scale)).map((h) => h.text);
+    for (const hit of hits) expect(["#111111", "8px"]).toContain(hit);
+    expect(hits).toContain("#111111");
+  });
+
+  test("custom blocks are left as they are without the blocks option (a Svelte file's top level is its markup)", () => {
+    const text = '<section style="color: #00ff00"></section>';
+    expect(holds(componentViews(text, { bindings: [] }).css, text, "color: #00ff00")).toBe(true);
+  });
+
+  test("a self-closing <script src> or <style src> block is empty: it doesn't read on into the next block", () => {
+    const a = '<script src="./x.ts" />\n<style scoped>.a { gap: 13px }</style>\n<template><p :width="300">Hi</p></template>';
+    const va = vueViews(a);
+    expect(holds(va.css, a, ".a { gap: 13px }")).toBe(true);
+    expect(va.script).not.toContain("gap");
+    expect(holds(va.script, a, "300")).toBe(true);
+    expect(holds(va.markup, a, '<p :width="')).toBe(true);
+    const b = '<style src="./a.css" />\n<template><p :width="300">Hi</p></template>\n<script setup>const n = 1;</script>';
+    const vb = vueViews(b);
+    expect(isBlank(vb.css)).toBe(true);
+    expect(holds(vb.script, b, "300")).toBe(true);
+    expect(holds(vb.script, b, "const n = 1;")).toBe(true);
+    expect(holds(vb.markup, b, "<p ")).toBe(true);
+  });
+
+  test("HTML keeps its own rule: a self-closing <script /> reads on to </script>", () => {
+    const html = '<script src="x.js" />\n<p>const a = 1;</p>\n</script><p style="color: red"></p>';
+    expect(htmlViews(html).rest).toContain("const a = 1;");
+    expect(htmlViews(html).css).toContain("color: red");
+  });
+
   test("a binding whose value holds \">\" ends where its quotes do", () => {
-    const text = `<p :title="a > b ? 'x' : 'y'" @click='n => n > 1' class="p-2">Hi</p>`;
+    const text = `<template><p :title="a > b ? 'x' : 'y'" @click='n => n > 1' class="p-2">Hi</p></template>`;
     const v = vueViews(text);
     expect(holds(v.script, text, "a > b ? 'x' : 'y'")).toBe(true);
     expect(holds(v.script, text, "n => n > 1")).toBe(true);
@@ -175,7 +241,7 @@ describe("componentViews: regions", () => {
   });
 
   test("unquoted values, valueless directives and every Vue binding form", () => {
-    const text = '<input :value=amount v-model.trim="name" v-bind="attrs" v-on:keyup.enter="go" v-else :[key]="v" #default="p" v-show="open" disabled>';
+    const text = '<template><input :value=amount v-model.trim="name" v-bind="attrs" v-on:keyup.enter="go" v-else :[key]="v" #default="p" v-show="open" disabled></template>';
     const v = vueViews(text);
     for (const expr of ["=amount", '"name"', '"attrs"', '"go"', '"v"', '"p"', '"open"']) expect(holds(v.script, text, expr.slice(1, expr.endsWith('"') ? -1 : undefined), text.indexOf(expr) + 1)).toBe(true);
     expect(holds(v.markup, text, "v-else")).toBe(true);
@@ -265,7 +331,7 @@ describe("VUE.views", () => {
       ["src/App.vue", "/x/src/App.vue", "script"],
       ["src/App.vue", "/x/src/App.vue", "markup"],
     ]);
-    const expected = componentViews(text, { bindings: VUE_BINDINGS });
+    const expected = vueViews(text);
     expect(views.map((f) => f.text)).toEqual([expected.css, expected.script, expected.markup]);
     expect(views[0]!.dark).toEqual(expected.dark);
     expect("dark" in views[1]!).toBe(false);

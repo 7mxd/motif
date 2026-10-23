@@ -50,18 +50,32 @@ export interface Regions {
   styles: [number, number, number, number, boolean][];
 }
 
+/** Where a self-closing start tag at `at` ends (<script src="./x.ts" />), or null when it isn't one. */
+function selfClosedAt(text: string, at: number): number | null {
+  const tag = new RegExp(TAG.source, "y");
+  tag.lastIndex = at;
+  const t = tag.exec(text);
+  return t && t[0].endsWith("/>") ? at + t[0].length : null;
+}
+
 /**
  * The comments, CDATA sections, scripts and style blocks, found in order: what's inside a script ("<!--" in a string, '<style>')
- * starts nothing, and a comment marker inside a style block is just CSS's old way of hiding it.
+ * starts nothing, and a comment marker inside a style block is just CSS's old way of hiding it. In HTML a <script /> still
+ * reads on to its </script>; with `selfClosing` (a component file's blocks, Vue's <style src="./a.css" />) it's empty.
  */
-export function regions(text: string): Regions {
+export function regions(text: string, opts: { selfClosing?: boolean } = {}): Regions {
   const found: Regions = { comments: [], cdata: [], scripts: [], styles: [] };
   const opener = new RegExp(OPENER.source, "gi");
   let m: RegExpExecArray | null;
   while ((m = opener.exec(text))) {
     const at = m.index;
     const kind = m[0].toLowerCase();
-    if (kind === "<!--") {
+    const closed = opts.selfClosing && (kind === "<script" || kind === "<style") ? selfClosedAt(text, at) : null;
+    if (closed !== null) {
+      if (kind === "<script") found.scripts.push([at, closed, closed, closed]);
+      else found.styles.push([at, closed, closed, closed, false]);
+      opener.lastIndex = closed;
+    } else if (kind === "<!--") {
       const close = text.indexOf("-->", at + 4);
       const end = close === -1 ? text.length : close + 3;
       found.comments.push([at, end]);
