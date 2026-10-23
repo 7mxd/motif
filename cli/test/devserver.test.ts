@@ -46,6 +46,14 @@ describe("findLocalUrl", () => {
     expect(findLocalUrl("  ➜ Network:  http://192.168.1.4:3001/\n  ➜ Local:    http://localhost:3001/\n")).toBe("http://localhost:3001/");
     expect(findLocalAddress("[nitro] Using 2 threads as worker\n  ➜ Local:    http://127.0.0.1:3000/docs/\n")).toEqual({ url: "http://127.0.0.1:3000/docs/", onLocalLine: true });
   });
+  test("reads the banner a real nuxt dev printed (Nuxt 4.4.8, @nuxt/cli 3.37.0, on Windows): underlined, bold port, DevTools line", () => {
+    // Copied byte for byte from `npm run dev` in cli/test/fixtures/nuxt-min (plan 2I, Task 8).
+    const real =
+      "\n> dev\n> nuxt dev\n\n\x1b[90m│\x1b[39m\n\x1b[34m●\x1b[39m  \x1b[32mNuxt \x1b[1m4.4.8\x1b[22m\x1b[39m\x1b[90m (with \x1b[39m\x1b[90mNitro \x1b[1m2.13.5\x1b[22m\x1b[39m\x1b[90m, Vite \x1b[1m7.3.7\x1b[22m\x1b[39m\x1b[90m and Vue \x1b[1m3.5.44\x1b[22m\x1b[39m\x1b[90m)\x1b[39m\n\n" +
+      "\x1b[32m  ➜ Local:   \x1b[39m \x1b[36m\x1b[4mhttp://localhost:\x1b[1m3000\x1b[22m/\x1b[24m\x1b[39m\n\x1b[90m  ➜ Network:  use \x1b[37m--host\x1b[90m to expose\x1b[39m\n\n" +
+      "\x1b[33m  ➜ DevTools: \x1b[39m\x1b[2mpress \x1b[22m\x1b[32mShift\x1b[39m\x1b[2m + \x1b[22m\x1b[32mAlt\x1b[39m\x1b[2m + \x1b[22m\x1b[32mD\x1b[39m\x1b[2m in the browser (v3.4.4)\x1b[22m\n\n\x1b[32m✔\x1b[39m Vite client built in 26ms\n";
+    expect(findLocalAddress(real)).toEqual({ url: "http://localhost:3000/", onLocalLine: true });
+  });
 });
 
 const has = (cmds: string[]) => (cmd: string) => (cmds.includes(cmd) ? `/usr/bin/${cmd}` : null);

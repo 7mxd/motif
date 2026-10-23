@@ -433,11 +433,13 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     const how = deps.devCommand(appDir);
     const webStartLimit = web?.startTimeoutMs?.(appDir);
     if ("error" in how) return usage(how.error, { error: "cant-start" });
+    const webEnv = web?.devEnv?.(appDir);
+    const env = how.env || webEnv ? { ...how.env, ...webEnv } : undefined;
     // Expo's start limit covers its server and its first web bundle.
     const started = Date.now();
     try {
       server = await deps.startDevServer({
-        cwd: appDir, command: how.command, ...(how.env ? { env: how.env } : {}), ...(rn ? { timeoutMs: RN_START_TIMEOUT_MS } : {}),
+        cwd: appDir, command: how.command, ...(env ? { env } : {}), ...(rn ? { timeoutMs: RN_START_TIMEOUT_MS } : {}),
         ...(webStartLimit !== undefined ? { timeoutMs: webStartLimit } : {}),
       });
     } catch (e) {
@@ -543,7 +545,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     const landed = new Map(captured.routes.map((r) => [r.route, landedOn(r)]));
     // An Expo screen that threw as it loaded is covered by Expo's error overlay: auditing it would judge the overlay.
     const overlaid = rn ? captured.routes.filter((r) => r.pageErrors?.some((e) => !e.startsWith('State "'))).map((r) => r.route) : [];
-    findings = toFindings(captured.issues.filter((i) => !overlaid.includes(i.route)).map((i) => ({ ...i, ...(rn && !i.fix && RN_FIXES[i.rule] ? { fix: RN_FIXES[i.rule] } : {}), route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
+    // A stack's own words for a fix (React Native's hitSlop, Vue's motion-v), where the web's don't fit.
+    const fixes = rn ? RN_FIXES : web?.auditFixes;
+    findings = toFindings(captured.issues.filter((i) => !overlaid.includes(i.route)).map((i) => ({ ...i, ...(!i.fix && fixes?.[i.rule] ? { fix: fixes[i.rule] } : {}), route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
     const redirected = captured.routes.filter((r) => landedOn(r) !== r.route);
     if (redirected.length > 0) {
       notes.push(`Pages that redirected were audited as the page they landed on: ${redirected.map((r) => `${r.route} → ${landedOn(r)}`).join(", ")}.`);

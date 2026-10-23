@@ -220,8 +220,12 @@ export function shotName(slug: string, viewport: string, scheme: Scheme, variant
   return `${slug}${variant ? `+${variant}` : ""}.${viewport}${rtl ? ".rtl" : ""}${scheme === "dark" ? ".dark" : ""}.png`;
 }
 
-// The Next.js dev badge isn't part of the app.
-const HIDE_DEV_BADGES = `(() => { const s = document.createElement("style"); s.textContent = "nextjs-portal { display: none !important; }"; document.head.append(s); return true; })()`;
+/**
+ * What a dev server adds to every page isn't part of the app: Next.js's badge, Nuxt DevTools' floating panel (on in
+ * every new Nuxt app) and Vue DevTools' (vite-plugin-vue-devtools, which create-vue offers).
+ */
+const DEV_TOOLS = ["nextjs-portal", "#nuxt-devtools-container", "#__vue-devtools-container__"];
+const HIDE_DEV_BADGES = `(() => { const s = document.createElement("style"); s.textContent = ${JSON.stringify(`${DEV_TOOLS.join(", ")} { display: none !important; }`)}; document.head.append(s); return true; })()`;
 const PAGE_HEIGHT = "document.documentElement.scrollHeight";
 
 /**
@@ -419,7 +423,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   if (thrown.length > 0 || loadErrors.length > 0) {
                     addErrors(tagNew(thrown));
                   } else {
-                    // Hide the dev badge only when nothing went wrong: Next.js shows its error overlay in the same place.
+                    // Hide the dev tools only when nothing went wrong: Next.js shows its error overlay in the same place.
                     await page.evaluate(HIDE_DEV_BADGES);
                   }
                   const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);

@@ -5,6 +5,7 @@ import type { AppInfo, StackId } from "../detect/stacks";
 import type { Occurrences } from "../extract/draft";
 import type { GeneratedFile } from "../generate/header";
 import type { ThemeSet } from "../generate/theme";
+import type { IssueRule } from "../shot/audit";
 import type { TailwindVersion } from "./react-web/generate";
 import type { RouteDiscovery } from "./react-web/routes";
 import { VUE } from "./vue";
@@ -38,8 +39,12 @@ export interface WebStack {
   routes?(appDir: string): RouteDiscovery;
   /** How long this app's dev server may take to answer its first page, in ms, when the web's usual limit is too short (undefined: the usual). */
   startTimeoutMs?(appDir: string): number | undefined;
+  /** Variables this app's dev server needs besides the usual, or undefined for none. */
+  devEnv?(appDir: string): Record<string, string> | undefined;
   /** How the framework sets a design variant, for the note when a variant looks the same as the default. */
   variantHow?: string;
+  /** What motif shot --audit says to do, in the framework's own terms, where the web's words don't fit. */
+  auditFixes?: Partial<Record<IssueRule, string>>;
   /** The items for this stack, given the project root and this stack's apps in it. */
   doctor?(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[];
 }

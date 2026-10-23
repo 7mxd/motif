@@ -49,13 +49,13 @@ const WHICH = (cmd: string) => `/usr/bin/${cmd}`;
 const shotName = (route: string, variant?: string) => `${route === "/" ? "index" : route.slice(1)}${variant ? `+${variant}` : ""}.mobile.png`;
 
 function fakes(over: Partial<ShotDeps> & { results?: (o: CaptureOptions) => RouteResult[] } = {}) {
-  const calls = { started: [] as { cwd: string; command: string[]; timeoutMs?: number }[], stopped: 0, captured: [] as CaptureOptions[] };
+  const calls = { started: [] as { cwd: string; command: string[]; timeoutMs?: number; env?: Record<string, string> }[], stopped: 0, captured: [] as CaptureOptions[] };
   const { results, ...rest } = over;
   const deps: ShotDeps = {
     findBrowser: () => CHROME,
     devCommand: (dir) => devCommand(dir, { platform: "linux", which: WHICH }),
     startDevServer: async (o) => {
-      calls.started.push({ cwd: o.cwd, command: o.command, timeoutMs: o.timeoutMs });
+      calls.started.push({ cwd: o.cwd, command: o.command, timeoutMs: o.timeoutMs, env: o.env });
       return { url: "http://localhost:5173", pid: 1, stop: async () => void calls.stopped++ };
     },
     serveStatic: () => ({ url: "http://127.0.0.1:1", stop: () => {} }),
@@ -85,6 +85,7 @@ describe("motif shot: a Vue app", () => {
     expect(calls.started).toHaveLength(1);
     expect(calls.started[0]!.command).toEqual(["/usr/bin/npm", "run", "dev"]);
     expect(calls.started[0]!.timeoutMs).toBeUndefined();
+    expect(calls.started[0]!.env).toBeUndefined();
     expect(calls.captured[0]!.routes).toEqual(["/", "/about"]);
     expect(calls.captured[0]!.baseUrl).toBe("http://localhost:5173");
     // No sizes passed: the capture's own web sizes, the desktop included.
@@ -98,6 +99,19 @@ describe("motif shot: a Vue app", () => {
     expect(r.exitCode).toBe(0);
     expect(calls.started[0]!.timeoutMs).toBe(180_000);
     expect(calls.captured[0]!.routes).toEqual(["/"]);
+  });
+
+  test("a Nuxt app starts in development, whatever NODE_ENV says: under NODE_ENV=test, nuxt dev doesn't print its address", async () => {
+    const { deps, calls } = fakes();
+    const saved = process.env.NODE_ENV;
+    process.env.NODE_ENV = "test";
+    try {
+      expect((await runShot(makeProject(NUXT_APP), ctx(), deps)).exitCode).toBe(0);
+    } finally {
+      if (saved === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = saved;
+    }
+    expect(calls.started[0]!.env).toEqual({ NODE_ENV: "development" });
   });
 
   test("a Nuxt app's pages folder gives its routes, and the ones that need values are skipped by name", async () => {
@@ -212,6 +226,30 @@ describe("motif shot: a Vue app", () => {
     const r = await runShot(root, ctx({ variant: "men" }), deps);
     expect(r.exitCode).toBe(0);
     expect(r.text).toContain("the app may not switch variants the way Motif sets them (motif.css, which follows data-variant on <html>).");
+  });
+
+  test("the audit says how to stop a loop in Vue's terms (motion-v), and keeps the web's words for the rest", async () => {
+    const { deps } = fakes();
+    const capture = deps.capture;
+    deps.capture = async (o) => {
+      const done = await capture(o);
+      const shot = done.routes[0]!.shots[0]!;
+      const at = { route: "/", viewport: "desktop" as const, scheme: "light" as const, shot };
+      return {
+        ...done,
+        issues: [
+          { rule: "motion" as const, selector: "main > div", label: "", kind: "element" as const, ...at },
+          { rule: "name" as const, selector: "main > button", label: "", kind: "button" as const, ...at },
+        ],
+      };
+    };
+    const r = await runShot(makeProject(VITE_APP), ctx({ routes: "/", audit: true }), deps);
+    expect(r.exitCode).toBe(1);
+    const fixes = Object.fromEntries((r.data.findings as { category: string; fix: string }[]).map((f) => [f.category, f.fix]));
+    expect(fixes["reduced-motion"]).toBe(
+      'Stop it under reduced motion: with motion-v, call useReducedMotion() or wrap your app once in <MotionConfig reduced-motion="user">; a CSS animation or <Transition> needs an @media (prefers-reduced-motion: reduce) rule (motif.css has one).',
+    );
+    expect(fixes.accessibility).toBe("Give it a visible label or an accessible name (aria-label, or alt for an image).");
   });
 
   test("Svelte is still one Motif can't start", async () => {

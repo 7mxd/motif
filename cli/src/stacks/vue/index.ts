@@ -48,6 +48,16 @@ function vuetifyConfigs(root: string, app: AppInfo, opts: { ignore?: string[] })
 
 /** Nuxt compiles its first page on demand, which takes longer than a Vite app's. */
 const NUXT_START_TIMEOUT_MS = 180_000;
+/**
+ * nuxt dev runs in development. Under NODE_ENV=test (a test runner's, or a shell's) its logger keeps quiet, address
+ * and all, so Motif would wait for a line that never comes.
+ */
+const NUXT_DEV_ENV = { NODE_ENV: "development" };
+
+/** The audit's fixes in Vue's terms: Motion for Vue animates in script, where React web's MotionConfig isn't. */
+const VUE_AUDIT_FIXES = {
+  motion: 'Stop it under reduced motion: with motion-v, call useReducedMotion() or wrap your app once in <MotionConfig reduced-motion="user">; a CSS animation or <Transition> needs an @media (prefers-reduced-motion: reduce) rule (motif.css has one).',
+};
 
 /** Vue 3 and Nuxt 3 or later: apps with Vite (Vue's own starter) or Nuxt. The parts that come later are filled in by their tasks. */
 export const VUE: WebStack = {
@@ -65,5 +75,7 @@ export const VUE: WebStack = {
   doctor: vueDoctor,
   routes: discoverVueRoutes,
   startTimeoutMs: (appDir) => (isNuxt(appDir) ? NUXT_START_TIMEOUT_MS : undefined),
+  devEnv: (appDir) => (isNuxt(appDir) ? NUXT_DEV_ENV : undefined),
   variantHow: "motif.css, which follows data-variant on <html>",
+  auditFixes: VUE_AUDIT_FIXES,
 };
