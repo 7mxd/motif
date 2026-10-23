@@ -724,19 +724,46 @@ describe("React Native companion and name-following, Task 5 fix round 1", () => 
     expect(collect(makeProject(files("l === 'ar' ? 'Inter-Regular' : 'Lalezar-Regular'"))).companion).toBeUndefined();
   });
 
+  // The app reads I18nManager.isRTL: a sign it's used in Arabic, which a family's file or name alone isn't (fix round 2).
+  const zainProject = (zain: Buffer, signal = "export const rtl = I18nManager.isRTL;\n") => {
+    const root = makeProject({
+      "package.json": PKG,
+      "App.tsx": `import { useFonts } from 'expo-font';\nimport { I18nManager } from 'react-native';\nexport default function L() { useFonts({ 'Inter-Regular': require('./assets/fonts/Inter-Regular.ttf'), 'Zain-Regular': require('./assets/fonts/Zain-Regular.ttf') }); return null; }\nexport const s = { a: { fontFamily: 'Inter-Regular', fontSize: 16 } };\n${signal}`,
+    });
+    mkdirSync(join(root, "assets/fonts"), { recursive: true });
+    writeFileSync(join(root, "assets/fonts/Inter-Regular.ttf"), ttf([[0x20, 0x7e]]));
+    writeFileSync(join(root, "assets/fonts/Zain-Regular.ttf"), zain);
+    return root;
+  };
+
   test("a shipped family whose font file has Arabic letters is the companion; one without them isn't", () => {
-    const project = (zain: Buffer) => {
-      const root = makeProject({
-        "package.json": PKG,
-        "App.tsx": "import { useFonts } from 'expo-font';\nexport default function L() { useFonts({ 'Inter-Regular': require('./assets/fonts/Inter-Regular.ttf'), 'Zain-Regular': require('./assets/fonts/Zain-Regular.ttf') }); return null; }\nexport const s = { a: { fontFamily: 'Inter-Regular', fontSize: 16 } };\n",
-      });
-      mkdirSync(join(root, "assets/fonts"), { recursive: true });
-      writeFileSync(join(root, "assets/fonts/Inter-Regular.ttf"), ttf([[0x20, 0x7e]]));
-      writeFileSync(join(root, "assets/fonts/Zain-Regular.ttf"), zain);
-      return root;
-    };
-    expect(collect(project(ttf([[0x20, 0x7e], [0x0600, 0x06ff]]))).companion).toBe("Zain");
-    expect(collect(project(ttf([[0x20, 0x7e]]))).companion).toBeUndefined();
+    expect(collect(zainProject(ttf([[0x20, 0x7e], [0x0600, 0x06ff]]))).companion).toBe("Zain");
+    expect(collect(zainProject(ttf([[0x20, 0x7e]]))).companion).toBeUndefined();
+  });
+
+  test("fix round 2: without any sign of Arabic in the app, a family's Arabic letters or name don't make it the companion", () => {
+    expect(collect(zainProject(ttf([[0x20, 0x7e], [0x0600, 0x06ff]]), "")).companion).toBeUndefined();
+    // The review's rubik.ts: Inter for text, Rubik (which Motif's kit knows covers Arabic) for headings, in English only.
+    const rubik = makeProject({
+      "package.json": JSON.stringify({ name: "x", dependencies: { expo: "~54.0.1", react: "19.1.0", "react-native": "0.81.4", "@expo-google-fonts/inter": "*", "@expo-google-fonts/rubik": "*" } }),
+      "App.tsx":
+        "import { useFonts, Inter_400Regular } from '@expo-google-fonts/inter';\nimport { Rubik_700Bold } from '@expo-google-fonts/rubik';\nexport default function L() { useFonts({ Inter_400Regular, Rubik_700Bold }); return null; }\nexport const s = { a: { fontFamily: 'Inter_400Regular', fontSize: 16 }, b: { fontFamily: 'Inter_400Regular' }, h: { fontFamily: 'Rubik_700Bold', fontSize: 28 } };\n",
+    });
+    expect(collect(rubik).companion).toBeUndefined();
+    // With Arabic in its i18n resources, Rubik is the companion.
+    writeFileSync(join(rubik, "i18n.ts"), "export const resources = { en: { translation: {} }, ar: { translation: {} } };\n");
+    expect(collect(rubik).companion).toBe("Rubik");
+  });
+
+  test("fix round 2: a damaged font file the app loads (the review's 28-byte one) doesn't stop extract", async () => {
+    const bad = Buffer.alloc(28);
+    bad.writeUInt32BE(0x4f54544f, 0);
+    bad.writeUInt16BE(1, 4);
+    bad.write("cmap", 12, "latin1");
+    bad.writeUInt32BE(0, 20);
+    const root = zainProject(bad);
+    expect(collect(root).companion).toBeUndefined();
+    expect((await runExtract(root, { positionals: [], flags: {} })).exitCode).toBe(0);
   });
 
   const READEX = { "package.json": PKG, "assets/fonts/ReadexPro-Regular.ttf": "f" };

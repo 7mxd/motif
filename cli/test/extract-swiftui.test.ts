@@ -425,8 +425,12 @@ describe("collectSwiftUI: a font the app ships is drafted as its own, not as a G
     const occ = collect(root);
     expect(occ.companion).toBe("Readex Pro");
     expect(occ.fontFamily).toEqual([]);
-    const { tokens } = buildDraft(occ);
+    const { tokens, report } = buildDraft(occ);
     expect((tokens as any).primitive.font.sans.$value).toEqual(["system-ui", "Readex Pro", "sans-serif"]);
+    // Fix round 2: the note says what happened, not "after system-ui".
+    expect(report.notes).toContain(
+      "Your app registers Readex Pro for Arabic text, so the draft makes it each type role's companion after the system font, and its font files are in the guide's fonts list.",
+    );
     expect(sources(tokens)).toEqual({ "Readex Pro": "project" });
     valid(root, tokens);
   });
@@ -545,9 +549,14 @@ describe("collectSwiftUI's font files: fix round 1 (sweep Task 3, SwiftUI)", () 
     const occ = collect(root);
     expect(occ.companion).toBeUndefined();
     expect(occ.notes).toContain(
-      'Reqdex Pro is registered in your app\'s Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so the draft leaves it out. To use it, name a Latin font first ("SF Pro, Reqdex Pro") and add its files (Shop/Fonts/ReqdexPro.ttf) to the guide\'s fonts list.',
+      'Reqdex Pro is registered in your app\'s Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so no type role uses it yet; its files are in the guide\'s fonts list. To use it, name a Latin font first ("SF Pro, Reqdex Pro").',
     );
-    expect((buildDraft(occ).tokens as any).primitive.font.sans.$value).toEqual(["system-ui", "sans-serif"]);
+    const tokens = buildDraft(occ).tokens as any;
+    expect(tokens.primitive.font.sans.$value).toEqual(["system-ui", "sans-serif"]);
+    // Fix round 2: its files stay in the guide's fonts list, ready for when a role names it.
+    expect(tokens.$extensions["dev.motif"].fonts).toEqual([{ family: "Reqdex Pro", files: [{ path: "Shop/Fonts/ReqdexPro.ttf", weight: 400, style: "normal" }] }]);
+    expect(validateTokens(docFrom(tokens))).toEqual([]);
+    expect(checkProjectFontFiles(root, readProjectFonts(docFrom(tokens)).fonts, docFrom(tokens)).filter((f) => f.severity === "error")).toEqual([]);
   });
 
   test("a named Latin family beside a named shipped Arabic family: the Arabic one is the companion, both are the app's own", () => {

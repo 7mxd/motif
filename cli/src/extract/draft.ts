@@ -56,6 +56,8 @@ export interface Occurrences {
   typeRoles?: { from: string; roles: Partial<Record<string, { size: number; weight?: number; lineHeight?: number }>> };
   /** A second family the app's theme picks for another script (a bundled Arabic font): every type role's fallback. */
   companion?: string;
+  /** Project fonts the guide's fonts list keeps though no role uses them (a registered Arabic font Motif can't make the companion). */
+  keptFonts?: string[];
   /** Fonts the project bundles itself, for the guide's fonts list (paths from the project's root). */
   projectFonts?: { family: string; files: { path: string; weight: number; style: "normal" | "italic" }[] }[];
   /** Families the app loads from Google Fonts: google_fonts, @expo-google-fonts, a Google Fonts link or @import, GoogleFont(…). */
@@ -87,7 +89,7 @@ const MAX_EXAMPLES = 5;
 /** The lists of samples collected; variables and the settings are kept apart. */
 type Bucket = Exclude<
   keyof Occurrences,
-  "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables" | "source" | "variantLabels" | "notes" | "typeRoles" | "companion" | "projectFonts" | "googleFonts" | "unfoundFonts" | "fontWeightRanges"
+  "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables" | "source" | "variantLabels" | "notes" | "typeRoles" | "companion" | "keptFonts" | "projectFonts" | "googleFonts" | "unfoundFonts" | "fontWeightRanges"
 >;
 
 // ---------- collecting ----------
@@ -608,12 +610,13 @@ export function mergeOccurrences(parts: Occurrences[]): Occurrences {
     ...listOf(parts, "projectFonts"),
     ...listOf(parts, "googleFonts"),
     ...listOf(parts, "unfoundFonts"),
+    ...listOf(parts, "keptFonts"),
     ...(parts.some((o) => o.fontWeightRanges) ? { fontWeightRanges: parts.flatMap((o) => o.fontWeightRanges ?? []) } : {}),
   };
 }
 
 /** Every part's fonts of one kind, each family once (the first part's). */
-function listOf<K extends "projectFonts" | "googleFonts" | "unfoundFonts">(parts: Occurrences[], key: K): Pick<Occurrences, K> | Record<string, never> {
+function listOf<K extends "projectFonts" | "googleFonts" | "unfoundFonts" | "keptFonts">(parts: Occurrences[], key: K): Pick<Occurrences, K> | Record<string, never> {
   const seen = new Set<string>();
   const list: unknown[] = [];
   for (const item of parts.flatMap((o) => (o[key] ?? []) as unknown[])) {
@@ -1229,10 +1232,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const uses = new Map<number, number>();
   for (const s of occ.fontSize) uses.set(pxOf(s), (uses.get(pxOf(s)) ?? 0) + s.count);
   const edge = (v: number) => Math.min(smaller.indexOf(v), smaller.length - 1 - smaller.indexOf(v));
-  // Two roles less than 1px apart aren't two sizes: the more used one stays, with the next most used size at least 1px
-  // from it, if there is one.
+  // Two roles less than 5% apart (13 and 13.5) aren't two sizes: the more used one stays, with the next most used size
+  // at least 5% from it, if there is one.
   const ranked = [...smaller].sort((a, b) => uses.get(b)! - uses.get(a)! || edge(a) - edge(b) || a - b);
-  const apart = ranked.length > 2 && Math.abs(ranked[0]! - ranked[1]!) < 1 ? ranked.find((v) => Math.abs(v - ranked[0]!) >= 1) : undefined;
+  const close = (a: number, b: number) => Math.abs(a - b) < 0.05 * Math.max(a, b);
+  const apart = ranked.length > 2 && close(ranked[0]!, ranked[1]!) ? ranked.find((v) => !close(v, ranked[0]!)) : undefined;
   const small = smaller.length > 2 ? [ranked[0]!, apart ?? ranked[1]!].sort((a, b) => a - b) : smaller;
   let caption = small[0] ?? Math.round(body * 0.75);
   let label = small.length >= 2 ? small[small.length - 1]! : Math.round(body * 0.875);
@@ -1277,7 +1281,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   // The fonts the project bundles that a role uses (the main family, the companion or the code font), for the guide's
   // fonts list: a family the app ships is its own, even when it also loads it from Google.
   const usedFamilies = new Set([family, ...(companion ? [companion] : []), ...(code !== undefined && !GENERIC.has(code.toLowerCase()) ? [code] : [])].map((f) => f.toLowerCase()));
-  const projectFonts = (occ.projectFonts ?? []).filter((f) => usedFamilies.has(f.family.toLowerCase()) && f.files.length > 0);
+  // A family the stack keeps (a registered Arabic font no role can use yet) stays too, ready for when one names it.
+  const kept = new Set((occ.keptFonts ?? []).map((f) => f.toLowerCase()));
+  const projectFonts = (occ.projectFonts ?? []).filter((f) => (usedFamilies.has(f.family.toLowerCase()) || kept.has(f.family.toLowerCase())) && f.files.length > 0);
   const ownFamily = (f: string) => projectFonts.some((p) => p.family.toLowerCase() === f.toLowerCase());
   /** Google's name and the app's for one family can differ in spaces and case (Readex Pro, ReadexPro). */
   const fontKey = (f: string) => f.toLowerCase().replace(/[\s_-]+/g, "");
@@ -1379,8 +1385,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   }
   if (companion) {
     const bundled = projectFonts.some((f) => f.family.toLowerCase() === companion.toLowerCase());
+    const files = bundled ? ", and its font files are in the guide's fonts list" : "";
     notes.push(
-      `Your theme also uses ${companion} (for Arabic text, or as a fallback), so it's each type role's companion after ${family}${bundled ? ", and its font files are in the guide's fonts list" : ""}.`,
+      GENERIC.has(family.toLowerCase())
+        ? `Your app registers ${companion} for Arabic text, so the draft makes it each type role's companion after the system font${files}.`
+        : `Your theme also uses ${companion} (for Arabic text, or as a fallback), so it's each type role's companion after ${family}${files}.`,
     );
   }
   if (code !== undefined) {

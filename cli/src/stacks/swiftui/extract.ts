@@ -428,7 +428,7 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
  * After the system font, a companion must be one Motif knows covers Arabic (bundledCoverage), as motif tokens reads the
  * guide: the contract can't yet mark a project font as Arabic. A registered one it doesn't know gets a note instead.
  */
-function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFamily: (name: string) => string | undefined): Pick<Occurrences, "projectFonts" | "unfoundFonts" | "fontWeightRanges" | "companion"> & { note?: string } {
+function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFamily: (name: string) => string | undefined): Pick<Occurrences, "projectFonts" | "unfoundFonts" | "fontWeightRanges" | "companion" | "keptFonts"> & { note?: string } {
   const named = [...new Set([...written.keys()].flatMap((n) => shippedFamily(n) ?? []))];
   const ofFamily = (family: string) => files.filter((f) => fontKey(f.family) === fontKey(family));
   const covers = (family: string) => ofFamily(family).some((f) => f.arabic);
@@ -438,9 +438,11 @@ function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFa
   const companion = written.size === 0 ? (known ? registered.family : undefined) : latin ? named.find(covers) : undefined;
   const note =
     registered && !known
-      ? `${registered.family} is registered in your app's Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so the draft leaves it out. To use it, name a Latin font first ("SF Pro, ${registered.family}") and add its files (${ofFamily(registered.family).map((f) => f.path).join(", ")}) to the guide's fonts list.`
+      ? `${registered.family} is registered in your app's Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so no type role uses it yet; its files are in the guide's fonts list. To use it, name a Latin font first ("SF Pro, ${registered.family}").`
       : undefined;
-  const families = [...new Set([...named, ...(companion ? [companion] : [])])];
+  // A registered Arabic font Motif can't make the companion keeps its files in the guide's fonts list (keptFonts).
+  const kept = registered && !known ? [registered.family] : [];
+  const families = [...new Set([...named, ...(companion ? [companion] : []), ...kept])];
   const projectFonts = families.map((family) => ({ family, files: ofFamily(family).map((f) => ({ path: f.path, weight: f.weight, style: f.style })) }));
   const fontWeightRanges = families.flatMap((family) => {
     const axes = ofFamily(family).flatMap((f) => (f.wght ? [f.wght] : []));
@@ -452,6 +454,7 @@ function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFa
     ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
     ...(unfoundFonts.length ? { unfoundFonts } : {}),
     ...(companion ? { companion } : {}),
+    ...(kept.length ? { keptFonts: kept } : {}),
     ...(note ? { note } : {}),
   };
 }

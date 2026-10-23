@@ -295,10 +295,17 @@ const LOCALE_TERNARY = [
   /(?<q>["'`])(?:ar|fa|ur)\k<q>\s*(?<op>[!=]==?)\s*[\w$.?!()[\]]+\s*\)?\s*\?\s*(?<q1>["'`])(?<first>[^"'`\n]+)\k<q1>\s*:\s*(?<q2>["'`])(?<second>[^"'`\n]+)\k<q2>/g,
 ];
 
+/**
+ * A sign the app is used in a language written in Arabic script: a locale test (=== "ar", startsWith("ar")), "ar" among
+ * the languages it lists (["en", "ar"], an i18n resources key ar:), or the layout's right to left (isRTL, forceRTL).
+ */
+const ARABIC_SIGNAL =
+  /[!=]==?\s*(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\1|(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\2\s*[!=]==?|startsWith\(\s*(["'`])(?:ar|fa|ur)\3|\[[^\]\n]*(["'`])(?:ar|fa|ur)\4[^\]\n]*\]|[{,]\s*(["']?)(?:ar|fa|ur)\5\s*:|\b(?:isRTL|forceRTL)\b/;
+
 /** A family name that says it's for Arabic, when nothing else does: a last resort. */
 const ARABIC_NAME = /arab|naskh|kufi|thmanyah/i;
 
-/** True for a family Motif's kit ships the Arabic letters of (Readex Pro, Cairo), written either way (ReadexPro). */
+/** True for a family Motif's kit ships the Arabic letters of (Readex Pro, Rubik), written either way (ReadexPro). */
 const knownArabic = (family: string) => (bundledCoverage(family) ?? bundledCoverage(family.replace(/([a-z])([A-Z])/g, "$1 $2"))) === "arabic";
 
 /** A call that loads fonts: useFonts( or Font.loadAsync( with an object literal, or with a name (group 1) for one. */
@@ -683,14 +690,17 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
   for (const font of pluginFonts(files)) shipped(font.family, font.path, font.from, font);
   const projectFonts = [...ownFonts.values()].filter((f): f is ProjectFontEntry => "files" in f);
   // The Arabic companion, a family the app loads other than its main one (as Flutter's is found): the "ar" branch of a
-  // locale ternary; else a family Motif knows is Arabic, or whose shipped font file has Arabic letters; else, as a last
-  // resort, one whose name says so. A family on a ternary's Latin side never is.
+  // locale ternary; else, only when the app shows a sign of Arabic (ARABIC_SIGNAL), a family Motif knows is Arabic, or
+  // whose shipped font file has Arabic letters, or, as a last resort, one whose name says so. A family on a ternary's
+  // Latin side never is.
   const families = sortedSamples(buckets.fontFamily).filter((f) => !isMonospace(f.value) && !/^(?:system-ui|sans-serif|serif|monospace)$/i.test(f.value));
   const main = families[0]?.value.toLowerCase();
   const arabicSide = new Set<string>();
   const latinSide = new Set<string>();
+  let arabicApp = false;
   for (const file of scripts) {
     const text = maskComments(file.source.text, "script");
+    arabicApp ||= ARABIC_SIGNAL.test(text);
     for (const re of LOCALE_TERNARY) {
       for (const m of text.matchAll(re)) {
         const { op, first, second } = m.groups!;
@@ -706,8 +716,7 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
     root !== null && projectFonts.some((p) => p.family.toLowerCase() === family.toLowerCase() && p.files.some((f) => coversArabic(root + f.path)));
   const companion =
     candidates.find((f) => arabicSide.has(f.toLowerCase())) ??
-    candidates.find((f) => knownArabic(f) || shipsArabic(f)) ??
-    candidates.find((f) => ARABIC_NAME.test(f));
+    (arabicApp ? (candidates.find((f) => knownArabic(f) || shipsArabic(f)) ?? candidates.find((f) => ARABIC_NAME.test(f))) : undefined);
   const unfoundFonts = [...ownFonts.values()].filter((f): f is UnfoundFontEntry => "from" in f);
 
   return {

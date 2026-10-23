@@ -519,14 +519,21 @@ describe("Task 5 fix round 1: type and corner sizes", () => {
     const t = buildDraft({ ...occ, fontSize }).tokens as any;
     return Object.fromEntries(["caption", "label", "body"].map((r) => [r, t.font[r].$value.fontSize.value]));
   };
-  test("caption and label less than 1px apart: the more used one stays, with the next most used size at least 1px from it (HiSalon's Flutter admin)", () => {
+  test("caption and label less than 5% apart: the more used one stays, with the next most used size at least 5% from it (HiSalon's Flutter admin, 3.7%)", () => {
     const ADMIN = [
       s("13px", 29), s("13.5px", 14), s("12px", 4), s("22px", 4), s("14.5px", 3), s("15px", 2), s("17px", 2), s("18px", 2), s("10px", 1), s("12.5px", 1),
       s("19px", 1), s("20px", 1), s("26px", 1), s("28px", 1),
     ];
     expect(sizes(ADMIN)).toEqual({ caption: 12, label: 13, body: 14.5 });
   });
-  test("with no size 1px away, the close pair stays", () => {
+  test("fix round 2: two sizes 5% or more apart are both kept (ataaflow's 11.2px and 12px, 6.7% apart)", () => {
+    const ATAAFLOW = [
+      s("12px", 50), s("11.2px", 38), s("12.8px", 31), s("14.4px", 23), s("10.4px", 17), s("16px", 16), s("14px", 13), s("13.6px", 12), s("13px", 10),
+      s("17.6px", 10), s("15.2px", 9), s("11px", 7), s("10px", 3), s("8px", 1),
+    ];
+    expect(sizes(ATAAFLOW)).toEqual({ caption: 11.2, label: 12, body: 14.4 });
+  });
+  test("with no size 5% away, the close pair stays", () => {
     expect(sizes([s("16px", 10), s("13px", 9), s("13.5px", 8), s("12.6px", 1)])).toEqual({ caption: 13, label: 13.5, body: 16 });
   });
   const app: SourceFile = { path: "src/App.tsx", abs: "", lang: "script", text: '<div className="rounded-xl" /><div className="rounded-2xl" /><div className="rounded-3xl" />' };
