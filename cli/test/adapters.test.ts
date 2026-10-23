@@ -444,6 +444,8 @@ describe("the SwiftUI guide", () => {
       "design/states/Setup.swift", "func motifSetup(variant: String, locale: Locale, dark: Bool)", "@MainActor func motifState(_ app: MotifHarness) async throws",
       "MotifHarness", "app.tap(", "app.type(", "app.waitFor(", "app.exists(", "15 seconds", "top-level",
       "--screen", "#Preview", "--rtl", "--state", "a Mac", "1440×900", "900×700", "--sizes 1440",
+      // How a state finds a field: its title, its prompt on iOS when it shows one, its label when it has one (c51cea3, fix round 1).
+      "its title, or on iOS its prompt when it shows one, unless the field has an `.accessibilityLabel` (then that label)",
       // The Mac's title bar mirrors right to left (v0.5.0 sweep, Landmarks 5).
       "the window's buttons are at the top right",
       // A new App, and its own @State, for each root screenshot, and the note when it can't be kept (Task 15, final review).
