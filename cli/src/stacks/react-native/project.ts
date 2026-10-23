@@ -11,6 +11,18 @@ function readJson(path: string): Record<string, unknown> | null {
   }
 }
 
+/** Where the app's @/ alias points, relative to the app ("src" for "./src/*"), or null when tsconfig.json doesn't set one. */
+export function aliasBase(appDir: string): string | null {
+  try {
+    const tsconfig = JSON.parse(stripBom(readFileSync(join(appDir, "tsconfig.json"), "utf8")));
+    const target = tsconfig?.compilerOptions?.paths?.["@/*"]?.[0];
+    if (typeof target !== "string" || !target.endsWith("/*")) return null;
+    return target.slice(0, -2).replace(/^\.\//, "").replace(/^\.$/, "");
+  } catch {
+    return null;
+  }
+}
+
 /** The version range of a package in an app's package.json (dependencies, then devDependencies), or null. */
 export function declared(dir: string, name: string): string | null {
   const pkg = readJson(join(dir, "package.json"));

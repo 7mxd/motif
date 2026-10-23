@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 import { listRnFiles } from "../../check/files";
 import { maskComments } from "../../check/mask";
@@ -7,31 +7,19 @@ import { isMotifGenerated } from "../../generate/header";
 import type { RawIssue } from "../../shot/audit";
 import { variantChanges, type ThemeSet } from "../../generate/theme";
 import { prefixPath } from "../../project/apps";
-import { andList, stripBom } from "../../text";
+import { andList } from "../../text";
 import type { NativeStack } from "../native";
 import { rnDoctor } from "./doctor";
 import { collectReactNative } from "./extract";
 import { rnFonts } from "./fonts";
 import { generateReactNative } from "./generate";
-import { declared, srcRoot, usesExpoRouter } from "./project";
+import { aliasBase, declared, srcRoot, usesExpoRouter } from "./project";
 import { discoverExpoRoutes } from "./routes";
 import { rnFix, rnPaletteFile, rnReducedMotion, rnRole, scanReactNative } from "./rules";
 
 /** True when the app's own code (not Motif's file, and not a comment) uses MotifProvider. */
 function usesTheme(root: string, app: AppInfo): boolean {
   return listRnFiles(root, app.path).some((f) => !isMotifGenerated(f.path, f.text) && maskComments(f.text, "script").includes("MotifProvider"));
-}
-
-/** Where the app's @/ alias points, relative to the app ("src" for "./src/*"), or null when tsconfig.json doesn't set one. */
-function aliasBase(appDir: string): string | null {
-  try {
-    const tsconfig = JSON.parse(stripBom(readFileSync(join(appDir, "tsconfig.json"), "utf8")));
-    const target = tsconfig?.compilerOptions?.paths?.["@/*"]?.[0];
-    if (typeof target !== "string" || !target.endsWith("/*")) return null;
-    return target.slice(0, -2).replace(/^\.\//, "").replace(/^\.$/, "");
-  } catch {
-    return null;
-  }
 }
 
 /** How to import the theme file from the app's code: through the @/ alias when the app has one, else from the app's folder. */

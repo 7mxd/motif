@@ -508,3 +508,150 @@ val Typography = Typography(bodyLarge = TextStyle(fontFamily = Inter, fontSize =
     expect(merged.unfoundFonts).toEqual([{ family: "Lato", from: "R.font.lato" }]);
   });
 });
+
+describe("React Native: an object passed to useFonts by name", () => {
+  const app = { path: ".", stack: "react-native" } as AppInfo;
+  const draft = (root: string) => buildDraft(collectReactNative(REACT_NATIVE.sourceFiles!(root, app, {})));
+  const PKG = JSON.stringify({ name: "salon", dependencies: { expo: "~54.0.1", react: "19.1.0", "react-native": "0.81.4", "@expo-google-fonts/onest": "^0.4.0" } });
+  const THMANYAH = ["Light", "Regular", "Medium", "Bold", "Black"];
+  const THMANYAH_FILES = [
+    { path: "assets/fonts/thmanyahsans-Light.ttf", weight: 300, style: "normal" },
+    { path: "assets/fonts/thmanyahsans-Regular.ttf", weight: 400, style: "normal" },
+    { path: "assets/fonts/thmanyahsans-Medium.ttf", weight: 500, style: "normal" },
+    { path: "assets/fonts/thmanyahsans-Bold.ttf", weight: 700, style: "normal" },
+    { path: "assets/fonts/thmanyahsans-Black.ttf", weight: 900, style: "normal" },
+  ];
+  // HiSalon's shape: App.tsx calls useFonts(fontAssets), imported through the @/ alias (./src/*) from a theme folder
+  // whose index re-exports it from typography.ts, where the object mixes @expo-google-fonts names with require()d files.
+  const HISALON = {
+    "package.json": PKG,
+    "tsconfig.json": JSON.stringify({ extends: "expo/tsconfig.base", compilerOptions: { strict: true, paths: { "@/*": ["./src/*"] } } }),
+    ...Object.fromEntries(THMANYAH.map((w) => [`assets/fonts/thmanyahsans-${w}.ttf`, "font"])),
+    "App.tsx": `import { useFonts } from "expo-font";
+import { ThemeProvider, fontAssets } from "@/theme";
+
+export default function App() {
+  const [fontsLoaded] = useFonts(fontAssets);
+  return null;
+}
+`,
+    "src/theme/index.ts": `export { ThemeProvider, useTheme } from "./theme-context";
+export {
+  sansFamily,
+  fontAssets,
+  type FontWeight,
+} from "./typography";
+`,
+    "src/theme/theme-context.tsx": "export function ThemeProvider() { return null; }\nexport function useTheme() { return null; }\n",
+    "src/theme/typography.ts": `import {
+  Onest_400Regular,
+  Onest_500Medium,
+  Onest_700Bold,
+} from "@expo-google-fonts/onest";
+
+export type FontWeight = 400 | 500 | 700;
+
+const onest: Record<FontWeight, string> = { 400: "Onest_400Regular", 500: "Onest_500Medium", 700: "Onest_700Bold" };
+const thmanyah: Record<FontWeight, string> = { 400: "ThmanyahSans-Regular", 500: "ThmanyahSans-Medium", 700: "ThmanyahSans-Bold" };
+
+export function sansFamily(weight: FontWeight, locale: string): string {
+  return locale === "ar" ? thmanyah[weight] : onest[weight];
+}
+
+export const fontAssets = {
+  Onest_400Regular,
+  Onest_500Medium,
+  Onest_700Bold,
+  // Thmanyah Sans: the app's own files.
+${THMANYAH.map((w) => `  "ThmanyahSans-${w}": require("../../assets/fonts/thmanyahsans-${w}.ttf"),`).join("\n")}
+};
+`,
+    "src/screens/home.tsx": `import { StyleSheet } from "react-native";
+
+export const styles = StyleSheet.create({
+  body: { fontSize: 16 },
+  title: { fontSize: 22 },
+});
+`,
+  };
+
+  test("HiSalon's useFonts(fontAssets), re-exported from another module, gives the shipped Arabic family as the companion", () => {
+    const root = makeProject(HISALON);
+    const { tokens, report } = draft(root);
+    expect((tokens as any).primitive.font.sans.$value).toEqual(["Onest", "ThmanyahSans", "system-ui", "sans-serif"]);
+    expect(fontsList(tokens)).toEqual([{ family: "ThmanyahSans", files: THMANYAH_FILES }]);
+    expect(sources(tokens).ThmanyahSans).toBe("project");
+    expect(report.notes.join("\n")).toContain("Your theme also uses ThmanyahSans (for Arabic text, or as a fallback), so it's each type role's companion after Onest");
+    valid(root, tokens);
+  });
+
+  test("an object defined in the same file is read", () => {
+    const root = makeProject({
+      "package.json": PKG,
+      "assets/fonts/ReadexPro-Regular.ttf": "font",
+      "assets/fonts/ReadexPro-Bold.ttf": "font",
+      "app/_layout.tsx": `import { useFonts } from 'expo-font';
+
+const fonts = {
+  'ReadexPro-Regular': require('../assets/fonts/ReadexPro-Regular.ttf'),
+  'ReadexPro-Bold': require('../assets/fonts/ReadexPro-Bold.ttf'),
+};
+
+export default function RootLayout() {
+  const [loaded] = useFonts(fonts);
+  return null;
+}
+`,
+    });
+    const { tokens } = draft(root);
+    expect((tokens as any).primitive.font.sans.$value[0]).toBe("ReadexPro");
+    expect(fontsList(tokens)).toEqual([
+      {
+        family: "ReadexPro",
+        files: [
+          { path: "assets/fonts/ReadexPro-Regular.ttf", weight: 400, style: "normal" },
+          { path: "assets/fonts/ReadexPro-Bold.ttf", weight: 700, style: "normal" },
+        ],
+      },
+    ]);
+    valid(root, tokens);
+  });
+
+  test("a module's default export, imported under another name with a relative path, is read", () => {
+    const root = makeProject({
+      "package.json": PKG,
+      "assets/fonts/ReadexPro-Regular.ttf": "font",
+      "app/_layout.tsx": `import { useFonts } from 'expo-font';
+import appFonts from '../constants/fonts';
+
+export default function RootLayout() {
+  const [loaded] = useFonts(appFonts);
+  return null;
+}
+`,
+      "constants/fonts.ts": "export default {\n  'ReadexPro-Regular': require('../assets/fonts/ReadexPro-Regular.ttf'),\n};\n",
+    });
+    const { tokens } = draft(root);
+    expect(fontsList(tokens)).toEqual([{ family: "ReadexPro", files: [{ path: "assets/fonts/ReadexPro-Regular.ttf", weight: 400, style: "normal" }] }]);
+  });
+
+  test("a name Motif can't follow to an object literal (a package's export, a function's result) is skipped", () => {
+    const root = makeProject({
+      "package.json": PKG,
+      "app/_layout.tsx": `import { useFonts } from 'expo-font';
+import { iconFonts } from 'some-icon-package';
+
+const built = makeFonts();
+
+export default function RootLayout() {
+  useFonts(iconFonts);
+  useFonts(built);
+  return null;
+}
+`,
+    });
+    const { tokens } = draft(root);
+    expect(fontsList(tokens)).toBeUndefined();
+    expect((tokens as any).primitive.font.sans.$value).toEqual(["system-ui", "sans-serif"]);
+  });
+});
