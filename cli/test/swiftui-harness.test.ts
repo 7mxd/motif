@@ -427,6 +427,41 @@ describe("runSwiftUIHarness (with stand-ins for xcodebuild and simctl)", () => {
     );
   });
 
+  test("the harness's own error after it started (a result it couldn't write) blames neither the app nor the screen (fix round 1)", async () => {
+    const write =
+      '/x/MotifShotTests.swift:116: error: -[MotifShots.MotifShotTests testShots] : failed: caught error: "Error Domain=NSCocoaErrorDomain Code=640 "You can’t save the file because the volume is out of space.""';
+    // Before the first screen: the result on disk has no current shot.
+    const first = await fakeRun([shot("/", "home.png")], () => undefined, (_, __, path) => {
+      writeResult(path, { shots: [], previews: [], notes: [], done: false });
+      return failed(65, `${write}\n** TEST EXECUTE FAILED **`, "");
+    });
+    expect(first.r.problem).toBe(
+      'Motif\'s harness stopped before drawing its first screen: Error Domain=NSCocoaErrorDomain Code=640 "You can’t save the file because the volume is out of space." Run motif shot again; if it happens again, tell Motif\'s maintainers which Xcode you use.',
+    );
+    // While drawing a screen: that screen's shots fail with the harness's words, and the others are drawn in a new launch.
+    const shots = [shot("/", "home.png"), shot("Settings.swift:20", "settings.png")];
+    const later = await fakeRun(shots, () => undefined, (n, options, path) => {
+      if (n > 0) return drawsAll(n, options, path);
+      writeResult(path, { shots: [], previews: [], notes: [], current: { screen: "/", file: "home.png" }, done: false });
+      return failed(65, `${write}\n** TEST EXECUTE FAILED **`, "");
+    });
+    const error = 'Motif\'s harness stopped while drawing the app\'s root view: Error Domain=NSCocoaErrorDomain Code=640 "You can’t save the file because the volume is out of space."';
+    expect(later.r.result?.shots).toEqual([{ file: "home.png", error }, { file: "settings.png", ms: 200 }]);
+  });
+
+  test("the harness's own error before any result (its options didn't decode) isn't called the app stopping (fix round 1)", async () => {
+    // XCTest's line for a Swift error thrown by testShots, as Xcode 27's XCTest printed it on the Mac mini.
+    const decode =
+      '/x/work/MotifShots/MotifShotTests.swift:92: error: -[MotifShots.MotifShotTests testShots] : failed: caught error: "DecodingError.keyNotFound: Key \'outDir\' not found in keyed decoding container."';
+    const run = await fakeRun([shot("/", "home.png")], () => undefined, () => failed(65, `${decode}\n** TEST EXECUTE FAILED **`, ""));
+    expect(run.r.result).toBeNull();
+    expect(run.r.problem).toContain("wrote no result");
+    expect(run.r.problem).not.toContain("The app stopped");
+    expect(run.r.problem).toContain(
+      "Motif's harness stopped before the first screenshot: DecodingError.keyNotFound: Key 'outDir' not found in keyed decoding container. Run motif shot again; if it happens again, tell Motif's maintainers which Xcode you use.",
+    );
+  });
+
   test("a build that fails says so, with the compiler's errors", async () => {
     const out = [
       "/tmp/x/app/SwiftUI26/BrokenPreview.swift:9:7: error: type 'Session' does not conform to protocol 'ObservableObject'",
@@ -562,6 +597,17 @@ describe("fix round 2", () => {
     ].join("\n");
     expect(crashReason(out)).toBe("An exception was raised: Default app has already been configured. (com.firebase.core)");
     expect(crashReason(`Fatal error: first\n${out}`)).toBe("Fatal error: first");
+    // An older XCTest's wording for a caught exception.
+    const older = `/x/MotifShotApp.swift:26: error: -[MotifShots.MotifShotTests testShots] : failed: caught "com.firebase.core", "Default app has already been configured."`;
+    expect(crashReason(older)).toBe("An exception was raised: Default app has already been configured. (com.firebase.core)");
+  });
+
+  test("a crash's reason: a Swift error the harness's test threw itself (a write that failed) gets a neutral prefix (fix round 1)", () => {
+    // Seen on the Mac mini (Xcode 27's XCTest): a thrown Swift error is "failed: caught error: "…"".
+    const write =
+      '/x/MotifShotTests.swift:116: error: -[MotifShots.MotifShotTests testShots] : failed: caught error: "Error Domain=NSCocoaErrorDomain Code=4 "The file “result.json” doesn’t exist.""';
+    expect(crashReason(write)).toBe('The test stopped: Error Domain=NSCocoaErrorDomain Code=4 "The file “result.json” doesn’t exist."');
+    expect(crashReason("/x/MotifShotTests.swift:120: error: -[MotifShots.MotifShotTests testShots] : failed - something else")).toBe("The test stopped: failed - something else");
   });
 });
 
