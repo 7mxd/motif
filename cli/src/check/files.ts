@@ -58,6 +58,14 @@ export const SWIFTUI_IGNORES = ["/build/", "/DerivedData/", "/.build/", "/.motif
 /** An Expo app's native folders, build and export output, and tests: never the team's own code. */
 export const RN_IGNORES = ["/ios/", "/android/", "/.expo/", "/dist/", "/web-build/", "/.motif/", "expo-env.d.ts", "*.test.*", "__tests__/"];
 
+/**
+ * A Vue or Nuxt app's build output, caches and the types its tooling generates: never the team's own code. The project's
+ * design/ folder is left out by DEFAULT_IGNORES at the project root only, so a Nuxt 3 app's own folders there are read.
+ */
+export const VUE_IGNORES = [
+  "/.nuxt/", "/.output/", "/.data/", "/dist/", "/.vite/", "/.motif/", "*.d.ts", "auto-imports.d.ts", "components.d.ts", "typed-router.d.ts",
+];
+
 export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_LENGTH = 3000;
 
@@ -147,6 +155,11 @@ export function listAssetCatalogFiles(root: string, appPath: string, opts: { pat
 export function listRnFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
   const scripts = Object.fromEntries([".ts", ".tsx", ".js", ".jsx"].map((e) => [e, "script" as const]));
   return listSourceFiles(root, appPath, { ...opts, langs: scripts, extraIgnores: RN_IGNORES });
+}
+
+/** A Vue or Nuxt app's .vue files, scripts, styles and HTML, without its build output and generated types. */
+export function listVueFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
+  return listSourceFiles(root, appPath, { ...opts, langs: { ...WEB_LANGS, ".vue": "markup" }, extraIgnores: VUE_IGNORES });
 }
 
 export function listSourceFiles(

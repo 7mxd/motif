@@ -94,6 +94,27 @@ describe("runDoctor", () => {
     expect(app.detail).toContain("Vue / Nuxt detected. Full support is coming soon");
   });
 
+  test("a Vue 3 app has its version line beside the coming-soon line", async () => {
+    const dir = tempDir("motif-vue3-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { vue: "^3.5.13" }, devDependencies: { vite: "^6.0.0" } }));
+    const items = (await runDoctor(dir, deps())).data.items as DoctorItem[];
+    expect(item(items, "app:.")!.detail).toContain("Vue / Nuxt detected. Full support is coming soon");
+    expect(item(items, "vue:.")).toMatchObject({ status: "ok", detail: "Vue 3.5 with Vite." });
+  });
+
+  test("a Vue 2 app is told Vue 2 isn't supported, once, and what still works", async () => {
+    const dir = tempDir("motif-vue2-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { vue: "^2.7.16" } }));
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toBeUndefined();
+    expect(item(items, "vue:.")).toMatchObject({ status: "optional" });
+    expect(item(items, "vue:.")!.detail).toStartWith("Vue 2 isn't supported");
+    expect(r.text).not.toContain("coming soon");
+    expect(r.text).not.toContain("Full support");
+    expect(r.text.match(/Vue 2 isn't supported/g)).toHaveLength(1);
+  });
+
   describe("the Flutter toolchain", () => {
     const flutterApp = () => {
       const dir = tempDir("motif-flutter-sdk-");
