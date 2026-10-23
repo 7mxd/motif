@@ -3,6 +3,7 @@ import { springPhysics } from "../../contract/spring";
 import type { DtcgColor } from "../../contract/values";
 import { num } from "../../generate/css-values";
 import { TS_HEADER, type GeneratedFile } from "../../generate/header";
+import { readableAction, type ModePair, type ReadableAction } from "../../generate/readable-action";
 import type { Theme, ThemeFont, ThemeSet, ThemeShadowLayer } from "../../generate/theme";
 import { stackFamilies, themeFonts, type ThemeFontUse } from "../../generate/theme-fonts";
 import { slotSize, TYPE_SLOTS, typeScale } from "../../generate/type-slots";
@@ -206,39 +207,60 @@ function object(doc: string[], name: string, body: string[]): string[] {
   return ["", ...kdoc(doc), `object ${name} {`, ...body, "}"];
 }
 
-function colorsBlock(set: ThemeSet): string[] {
+/**
+ * MotifColors' members for the readable action colour and the colour for text on it, there when the guide's own action
+ * colour doesn't read as text: actionText and onActionText, unless the guide has roles of those names.
+ */
+function actionTextFields(t: Theme): { text: string; onText: string } {
+  const taken = new Set([...COLOR_MEMBERS, ...t.colors.map((c) => colorField(c.name))]);
+  const text = kotlinMember("action-text", "c", taken);
+  return { text, onText: kotlinMember("on-action-text", "c", new Set([...taken, text])) };
+}
+
+function colorsBlock(set: ThemeSet, readable: ReadableAction | null): string[] {
   const colors = set.base.colors;
   const fields = colors.map((c) => colorField(c.name));
+  const actionText = actionTextFields(set.base);
   const oneLine = (label: string) => label.replace(/\s+/g, " ").trim();
-  const instance = (name: string, theme: Theme, mode: "light" | "dark", doc: string): string[] => {
+  const instance = (name: string, theme: Theme, mode: "light" | "dark", doc: string, pair?: ModePair): string[] => {
     const byName = new Map(theme.colors.map((c) => [c.name, c]));
-    return [
-      ...kdoc([doc], 8),
-      ...render(
-        call("MotifColors(", colors.map((c, i) => `${fields[i]} = ${kotlinColor((byName.get(c.name) ?? c)[mode])}`), ")", true),
-        8,
-        `val ${name} = `,
-      ),
-    ];
+    const values = colors.map((c, i) => `${fields[i]} = ${kotlinColor((byName.get(c.name) ?? c)[mode])}`);
+    if (pair) {
+      const { text, onText } = pair[mode];
+      values.push(`${actionText.text} = Color(0xFF${text.slice(1)})`, `${actionText.onText} = Color(0xFF${onText.slice(1)})`);
+    }
+    return [...kdoc([doc], 8), ...render(call("MotifColors(", values, ")", true), 8, `val ${name} = `)];
   };
   const defaultName = set.defaultLabel ? `${oneLine(set.defaultLabel)} variant, ` : "";
   const cap = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
   const instances = [
-    instance("Light", set.base, "light", cap(`${defaultName}light mode.`)),
+    instance("Light", set.base, "light", cap(`${defaultName}light mode.`), readable?.base),
     "",
-    instance("Dark", set.base, "dark", cap(`${defaultName}dark mode.`)),
+    instance("Dark", set.base, "dark", cap(`${defaultName}dark mode.`), readable?.base),
     ...set.variants.flatMap((v) => {
       const id = kotlinIdentifier(v.id);
       const doc = (mode: string) => `${oneLine(v.label)} variant, ${mode} mode.`;
-      return ["", instance(`${id}Light`, v.theme, "light", doc("light")), "", instance(`${id}Dark`, v.theme, "dark", doc("dark"))];
+      const pair = readable?.variants[v.id];
+      return ["", instance(`${id}Light`, v.theme, "light", doc("light"), pair), "", instance(`${id}Dark`, v.theme, "dark", doc("dark"), pair)];
     }),
   ].flat();
 
+  const header = render(call("data class MotifColors(", fields.map((f) => `val ${f}: Color`), ")", true), 0, "", " {");
+  if (readable) {
+    header.splice(
+      -1,
+      0,
+      "    /** The action colour for text, readable on the background. */",
+      `    val ${actionText.text}: Color,`,
+      `    /** Text and icons on ${actionText.text}. */`,
+      `    val ${actionText.onText}: Color,`,
+    );
+  }
   return [
     "",
     ...kdoc(["The guide's colour roles, light and dark.", "", "Read them in a composable with MotifTheme.colors."]),
     "@Immutable",
-    ...render(call("data class MotifColors(", fields.map((f) => `val ${f}: Color`), ")", true), 0, "", " {"),
+    ...header,
     "    companion object {",
     ...instances,
     "    }",
@@ -291,10 +313,17 @@ const SCHEME: [string, string | null][] = [
   ["surfaceContainerHigh", "surface-raised"], ["surfaceContainerHighest", "surface-raised"],
 ];
 
-function schemeBlock(t: Theme): string[] {
+/**
+ * Material's scheme from the guide's roles. With the readable action colour, primary is actionText and onPrimary the
+ * colour for text on it: Material draws primary as text (TextButton, OutlinedButton) and as small marks on the page
+ * (checkboxes, switches), where a light action colour doesn't read. The containers and inversePrimary keep the brand.
+ */
+function schemeBlock(t: Theme, readable: boolean): string[] {
   const has = new Set(t.colors.map((c) => c.name));
-  const args = SCHEME.filter(([, role]) => role === null || has.has(role)).map(([key, role]) =>
-    `${key} = ${role === null ? "Color.Black" : `colors.${colorField(role)}`}`,
+  const actionText = actionTextFields(t);
+  const own: Record<string, string> = readable ? { primary: actionText.text, onPrimary: actionText.onText } : {};
+  const args = SCHEME.filter(([key, role]) => role === null || has.has(role) || own[key]).map(([key, role]) =>
+    `${key} = ${own[key] ? `colors.${own[key]}` : role === null ? "Color.Black" : `colors.${colorField(role)}`}`,
   );
   return [
     "",
@@ -431,6 +460,9 @@ export function generateCompose(set: ThemeSet, opts: ComposeOptions): GeneratedF
   const resources = plan.members.some((m) => m.fonts?.some((f) => flat(f).includes("R.font.")));
   const italic = plan.members.some((m) => m.fonts?.some((f) => flat(f).includes("FontStyle.Italic")));
   const variants = set.variants.length > 0 && set.defaultId !== null;
+  // Material draws ColorScheme.primary as text and small marks on the page: a light action colour gets a readable
+  // version for it.
+  const readable = readableAction(set);
 
   const imports = new Set([
     "android.provider.Settings",
@@ -488,7 +520,7 @@ export function generateCompose(set: ThemeSet, opts: ComposeOptions): GeneratedF
 
   const val = (name: string, lead: string, value: Expr) => render(value, INDENT, `val ${kotlinMember(name, lead)} = `);
   lines.push(
-    ...colorsBlock(set),
+    ...colorsBlock(set, readable),
     ...object(["Spacing."], "MotifSpace", t.space.flatMap((s) => val(s.name, "s", unit(s.px, "dp")))),
     ...object(["Corner radii."], "MotifRadius", t.radius.flatMap((r) => val(r.name, "r", unit(r.px, "dp")))),
     ...object(
@@ -576,7 +608,7 @@ export function generateCompose(set: ThemeSet, opts: ComposeOptions): GeneratedF
     "/** Text sits in the middle of its line height, as on the web. */",
     "private val EvenLeading =",
     "    LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)",
-    ...schemeBlock(t),
+    ...schemeBlock(t, readable !== null),
     ...typographyBlock(t, arabic),
     ...shapesBlock(t),
     ...(arabic ? LOCALE_BLOCK : []),

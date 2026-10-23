@@ -4,7 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { buildThemeSet } from "../src/generate/theme";
 import { fontCertsXml } from "../src/stacks/compose/fonts";
 import { generateCompose } from "../src/stacks/compose/generate";
-import { androidToolchain, docFrom, FIXTURES, hasAndroid, heavyStackTests, partnerTokens, validTokens, withCompanion } from "./helpers";
+import { androidToolchain, docFrom, FIXTURES, hasAndroid, heavyStackTests, hexColor, partnerTokens, validTokens, withCompanion } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -88,6 +88,21 @@ fun Plain() {
 }
 `;
 
+/** A light action colour: actionText for a link, and onActionText on it. */
+const READABLE_USAGE = `package ${PACKAGE}.readable
+
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+
+@Composable
+fun Readable() {
+    MotifTheme(variant = MotifVariant.Partner, darkTheme = false) {
+        Text("Later", color = MotifTheme.colors.actionText)
+        Text("On", color = MotifColors.PartnerLight.onActionText)
+    }
+}
+`;
+
 function run(cmd: string[], cwd: string, env: Record<string, string | undefined>): { code: number; out: string } {
   const r = Bun.spawnSync(cmd, { cwd, env, stdout: "pipe", stderr: "pipe" });
   return { code: r.exitCode ?? 1, out: `${r.stdout.toString()}\n${r.stderr.toString()}` };
@@ -159,6 +174,22 @@ describe("the generated Kotlin", () => {
     expect(system!.content).toContain("get() = if (arabicScript()) bodyArabic else bodyLatin");
     mkdirSync(join(dir, SOURCES, "system"), { recursive: true });
     writeFileSync(join(dir, SOURCES, "system/MotifTheme.kt"), system!.content);
+    // HiSalon's mint on a near-white page, in the default variant and the partner one: primary is actionText
+    // (v0.5.0 gate).
+    const readableTokens = partnerTokens();
+    readableTokens.color["action-primary"].$value = hexColor("#7EEBC1");
+    readableTokens.color["action-primary"].$extensions["dev.motif"].variants = { partner: { value: hexColor("#7EEBC1") } };
+    readableTokens.color.background.$value = hexColor("#F7F9F8");
+    const [readable] = generateCompose(buildThemeSet(docFrom(readableTokens)), {
+      packageName: `${PACKAGE}.readable`,
+      rPackage: PACKAGE,
+      googleFonts: false,
+      resFonts: new Map(),
+    });
+    expect(readable!.content).toContain("primary = colors.actionText,");
+    mkdirSync(join(dir, SOURCES, "readable"), { recursive: true });
+    writeFileSync(join(dir, SOURCES, "readable/MotifTheme.kt"), readable!.content);
+    writeFileSync(join(dir, SOURCES, "readable/Usage.kt"), READABLE_USAGE);
     mkdirSync(join(dir, "app/src/main/res/font"), { recursive: true });
     copyFileSync(join(FIXTURES, "flutter-min/assets/fonts/NotoNaskhArabic.ttf"), join(dir, "app/src/main/res/font/brand_sans.ttf"));
 
@@ -171,7 +202,7 @@ describe("the generated Kotlin", () => {
     if (build.code !== 0) build = run([...gradlew, ...task], dir, env);
     if (build.code !== 0) console.log(build.out);
     expect(build.code).toBe(0);
-    const warnings = build.out.split(/\r?\n/).filter((l) => /^w: /.test(l) && /[\\/](ui[\\/]motif|plain|system)[\\/]/.test(l));
+    const warnings = build.out.split(/\r?\n/).filter((l) => /^w: /.test(l) && /[\\/](ui[\\/]motif|plain|system|readable)[\\/]/.test(l));
     expect(warnings).toEqual([]);
   }, 1_200_000);
 });

@@ -60,8 +60,10 @@ Material composables (buttons, fields, cards, app bars, dialogs, the navigation 
 
 | Material's colours | The guide's role |
 |---|---|
-| `primary`, `primaryContainer`, `inversePrimary` | `actionPrimary` |
-| `onPrimary`, `onPrimaryContainer` | `onActionPrimary` |
+| `primary` | `actionPrimary`, or `actionText` when the guide's action colour is too light for text (below) |
+| `onPrimary` | `onActionPrimary`, or `onActionText` with `actionText` |
+| `primaryContainer`, `inversePrimary` | `actionPrimary` |
+| `onPrimaryContainer` | `onActionPrimary` |
 | `secondary`, `secondaryContainer`, `tertiary` | `actionSecondary` |
 | `onSecondary`, `onSecondaryContainer`, `onTertiary` | `onActionSecondary` |
 | `tertiaryContainer`, `surfaceVariant`, `surfaceContainerHigh`, `surfaceContainerHighest` | `surfaceRaised` |
@@ -76,6 +78,8 @@ Material composables (buttons, fields, cards, app bars, dialogs, the navigation 
 | `scrim` | black (behind dialogs and sheets) |
 
 So a `FloatingActionButton` is `actionPrimary` with `onActionPrimary` on it, and the navigation bar's indicator, a `FilledTonalButton` and a selected `FilterChip` are `actionSecondary` with `onActionSecondary`. A role the guide doesn't have leaves its colours at Material's defaults. The guide's other roles (`focus`, `success`, `warning`, `info`) are only in `MotifTheme.colors`. Corners: Material's `extraSmall` and `small` shapes use `MotifRadius.sm`, `medium` `MotifRadius.md`, `large` and `extraLarge` `MotifRadius.lg`.
+
+Material draws `primary` as text and small marks on the page: `TextButton` and `OutlinedButton` labels, checkboxes, switches and radio buttons. When `actionPrimary` is too light to read as text (under 4.5:1 on `background`, or on `surface`) in some mode or variant, as a mint or a yellow often is on a light page, `MotifColors` gets two more members. `actionText` is the action colour darkened (or lightened, on a dark page) with the same hue until it reads, `textPrimary` when no shade of it does, and `actionPrimary` itself wherever that already reads. `onActionText` is the colour for text on it. `primary` is then `actionText` and `onPrimary` `onActionText`, so those read on the page, and a plain Material `Button` fills with `actionText` too. The guide's own button ([components](components.md)) sets `containerColor = colors.actionPrimary`, so it keeps the brand fill, as does a `FloatingActionButton` (`primaryContainer`). A guide whose action colour reads has neither member. When the file has them, use `colors.actionText` for any text or icon in the action colour on the page, such as a link; keep `actionPrimary` for fills.
 
 ## Reading theme values in composables
 

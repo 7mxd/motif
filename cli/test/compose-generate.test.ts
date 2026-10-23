@@ -2,12 +2,15 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { generatedEditedHits } from "../src/check/rules/app";
+import { contrastRatio } from "../src/contract/color";
+import { srgbColor } from "../src/contract/defaults";
 import { springPhysics } from "../src/contract/spring";
 import { isMotifGenerated, TS_HEADER, XML_HEADER } from "../src/generate/header";
+import { readableAction } from "../src/generate/readable-action";
 import { buildThemeSet } from "../src/generate/theme";
 import { generateCompose, kotlinMember } from "../src/stacks/compose/generate";
 import { fontCertsXml, resourceName } from "../src/stacks/compose/fonts";
-import { docFrom, partnerTokens, validTokens, withCompanion } from "./helpers";
+import { docFrom, hexColor, partnerTokens, validTokens, withCompanion } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -349,6 +352,93 @@ describe("generateCompose, fonts", () => {
     const t = validTokens();
     t.font.display.$value.letterSpacing = { value: -0.5, unit: "px" };
     expect(kotlinFor(t)).toContain("letterSpacing = (-0.5).sp,");
+  });
+});
+
+describe("generateCompose, a light action colour (HiSalon's mint on a near-white page)", () => {
+  /** HiSalon's light colours: mint #7EEBC1 on #F7F9F8 with white cards, about 1.4:1, and dark green text on it. */
+  const hisalon = (t = validTokens()) => {
+    t.color["action-primary"].$value = hexColor("#7EEBC1");
+    t.color["on-action-primary"].$value = hexColor("#0F3C32");
+    t.color.background.$value = hexColor("#F7F9F8");
+    t.color.surface.$value = hexColor("#FFFFFF");
+    return t;
+  };
+  const tokens = hisalon();
+  const kt = kotlinFor(tokens);
+  const readable = readableAction(buildThemeSet(docFrom(tokens)))!;
+  const argb = (hex: string) => `Color(0xFF${hex.slice(1)})`;
+  const instance = (out: string, name: string) => {
+    const start = out.indexOf(`        val ${name} = MotifColors(`);
+    return out.slice(start, out.indexOf("        )", start));
+  };
+  /** The scheme's lines for a slot, in the dark and light schemes. */
+  const slot = (out: string, key: string) => out.split("\n").filter((l) => l.startsWith(`            ${key} = `));
+
+  test("MotifColors gains actionText and the colour for text on it, light and dark, with doc comments", () => {
+    expect(kt).toContain(
+      "    /** The action colour for text, readable on the background. */\n    val actionText: Color,\n" +
+        "    /** Text and icons on actionText. */\n    val onActionText: Color,\n) {",
+    );
+    expect(readable.base.light.text).not.toBe("#7EEBC1");
+    expect(instance(kt, "Light")).toContain(`            actionText = ${argb(readable.base.light.text)},\n`);
+    expect(instance(kt, "Light")).toContain(`            onActionText = ${argb(readable.base.light.onText)},\n`);
+    // The guide's dark green on mint doesn't read on the darker green: white does.
+    expect(instance(kt, "Light")).toContain("            onActionText = Color(0xFFFFFFFF),\n");
+    expect(contrastRatio(srgbColor(readable.base.light.onText), srgbColor(readable.base.light.text))).toBeGreaterThanOrEqual(4.5);
+    // Dark mode's action colour already reads: actionText is action-primary there.
+    expect(instance(kt, "Dark")).toContain("            actionText = Color(0xFF818CF8),\n");
+    expect(instance(kt, "Dark")).toContain(`            onActionText = ${argb(readable.base.dark.onText)},\n`);
+  });
+
+  test("Material's primary is actionText with onActionText on it; the containers and inversePrimary keep the brand", () => {
+    expect(slot(kt, "primary")).toEqual(Array(2).fill("            primary = colors.actionText,"));
+    expect(slot(kt, "onPrimary")).toEqual(Array(2).fill("            onPrimary = colors.onActionText,"));
+    expect(slot(kt, "primaryContainer")).toEqual(Array(2).fill("            primaryContainer = colors.actionPrimary,"));
+    expect(slot(kt, "onPrimaryContainer")).toEqual(Array(2).fill("            onPrimaryContainer = colors.onActionPrimary,"));
+    expect(slot(kt, "inversePrimary")).toEqual(Array(2).fill("            inversePrimary = colors.actionPrimary,"));
+  });
+
+  test("no line is longer than 100 characters, and indentation is in fours", () => {
+    for (const line of kt.split("\n")) {
+      expect(line.length).toBeLessThanOrEqual(100);
+      if (!/^ *\*/.test(line)) expect(line.match(/^ */)![0].length % 4).toBe(0);
+    }
+  });
+
+  test("with variants, only the light variant's actionText changes; the others are action-primary", () => {
+    const t = partnerTokens();
+    t.color["action-primary"].$extensions["dev.motif"].variants = { partner: { value: hexColor("#7EEBC1") } };
+    const out = kotlinFor(t);
+    const r = readableAction(buildThemeSet(docFrom(t)))!;
+    expect(instance(out, "Light")).toContain("            actionText = Color(0xFF4338CA),\n");
+    expect(instance(out, "Dark")).toContain("            actionText = Color(0xFF818CF8),\n");
+    expect(instance(out, "PartnerLight")).toContain(`            actionText = ${argb(r.variants.partner!.light.text)},\n`);
+    expect(instance(out, "PartnerLight")).toContain(`            onActionText = ${argb(r.variants.partner!.light.onText)},\n`);
+    expect(r.variants.partner!.light.text).not.toBe("#7EEBC1");
+    expect(instance(out, "PartnerLight")).toContain("            actionPrimary = Color(0xFF7EEBC1),\n");
+    expect(instance(out, "PartnerDark")).toContain("            actionText = Color(0xFF818CF8),\n");
+    expect(slot(out, "primary")).toEqual(Array(2).fill("            primary = colors.actionText,"));
+  });
+
+  test("a guide with its own action-text role keeps it; the readable colour takes another name", () => {
+    const t = hisalon();
+    t.color["action-text"] = { $value: hexColor("#123456"), $extensions: { "dev.motif": { modes: { dark: hexColor("#654321") } } } };
+    const out = kotlinFor(t);
+    expect(out).toContain("    val actionText: Color,\n");
+    expect(out).toContain("    /** The action colour for text, readable on the background. */\n    val actionTextValue: Color,\n");
+    expect(out).toContain("    /** Text and icons on actionTextValue. */\n    val onActionText: Color,\n");
+    expect(slot(out, "primary")).toEqual(Array(2).fill("            primary = colors.actionTextValue,"));
+  });
+
+  test("a guide whose action colour reads has no actionText, and primary stays action-primary", () => {
+    for (const t of [validTokens(), partnerTokens()]) {
+      const out = kotlinFor(t);
+      expect(out).not.toContain("actionText");
+      expect(out).not.toContain("ActionText");
+      expect(slot(out, "primary")).toEqual(Array(2).fill("            primary = colors.actionPrimary,"));
+      expect(slot(out, "onPrimary")).toEqual(Array(2).fill("            onPrimary = colors.onActionPrimary,"));
+    }
   });
 });
 
