@@ -79,7 +79,7 @@ export function swiftUIShotSizes(root: string, app: AppInfo, given: string | und
   return { viewports: sizes };
 }
 
-/** How Motif sets a design variant on a SwiftUI app, for the note when a variant looks exactly like the default. */
+/** How Motif sets a design variant on a SwiftUI app, for the note when a variant looks the same as the default. */
 export const SWIFTUI_VARIANT_HOW = ".motifTheme(variant:), or design/states/Setup.swift for an app that switches its own palette";
 
 /**

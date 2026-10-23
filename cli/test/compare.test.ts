@@ -5,7 +5,7 @@ import { launchBrowser } from "../src/browser/cdp";
 import { addPngText, pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 import { shotName } from "../src/shot/capture";
-import { comparePage, darkLooksLikeLight, identicalVariantNotes, identicalVariants, isRtlShot, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
+import { comparePage, darkLooksLikeLight, identicalVariantNotes, identicalVariants, isRtlShot, looksTheSame, missingStateFrames, mockupFrames, pairWithMockup, pairWithSet, renderComparisons } from "../src/shot/compare";
 import { encodePng } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -476,4 +476,59 @@ describe("nearly the same pictures count as the same (v0.5.0 sweep, HiSalon prob
     expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": wide }))).toBe(false);
     expect(identicalVariants(write(dir, { "index.mobile.png": page(), "index+men.mobile.png": dark }))).toEqual([]);
   });
+});
+
+// Fix round 2: the review's real-browser pictures (aa.ts, links.ts). Anti-aliasing spreads a recoloured link over many
+// colours, so only its hue gives it away; text moved by a pixel, a spinner, a shimmer and a caret must stay the same.
+describe.skipIf(!browser)("real pictures from a browser: what's the same and what isn't (needs Chrome, Edge or Chromium)", () => {
+  const para = (dx: number, dy: number, color = "#111", extra = "") => `
+<div style="padding:16px">
+<h1 style="font-size:24px;margin:0 0 8px">Bookings</h1>
+<p style="margin:0 0 12px">Your next appointment is on Thursday at 10:30 with Sara.</p>
+<p style="margin:0 0 12px;position:relative;left:${dx}px;top:${dy}px;color:${color}">Tap to reschedule or cancel up to 24 hours before.</p>
+<p style="margin:0 0 12px">Other text that stays put on this screen.</p>${extra}</div>`;
+  const spinner = (deg: number) =>
+    `<div style="position:absolute;left:150px;top:400px;width:90px;height:44px;background:#2563eb;border-radius:8px;display:flex;align-items:center;justify-content:center"><div style="width:20px;height:20px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;transform:rotate(${deg}deg)"></div></div>`;
+  const shimmer = (pos: number) =>
+    `<div style="margin:16px;width:120px;height:12px;border-radius:4px;background:linear-gradient(90deg,#e5e7eb 0%,#e5e7eb ${pos}%,#f3f4f6 ${pos + 15}%,#e5e7eb ${pos + 30}%,#e5e7eb 100%)"></div>`;
+  const caret = (on: boolean) =>
+    `<div style="margin:16px;border:1px solid #ccc;border-radius:6px;height:40px;position:relative"><span style="position:absolute;left:12px;top:10px">Search</span>${on ? '<span style="position:absolute;left:70px;top:9px;width:2px;height:22px;background:#2563eb"></span>' : ""}</div>`;
+  const link = (color: string) => `<div style="padding:16px"><p style="margin:0 0 8px;color:${color}">Forgot your password? Reset it here</p></div>`;
+  const cases: [string, string, string, boolean][] = [
+    ["a line of link text recoloured from blue to rose", link("#2563eb"), link("#e11d48"), false],
+    ["a paragraph of links recoloured", para(0, 0, "#2563eb"), para(0, 0, "#e11d48"), false],
+    ["text moved 1px right", para(0, 0), para(1, 0), true],
+    ["text moved half a pixel", para(0, 0), para(0.5, 0.5), true],
+    ["a blue link moved 1px", para(0, 0, "#2563eb"), para(1, 0, "#2563eb"), true],
+    ["a white spinner on a blue button, turned", para(0, 0, "#111", spinner(0)), para(0, 0, "#111", spinner(120)), true],
+    ["a loading shimmer, moved on", para(0, 0, "#111", shimmer(10)), para(0, 0, "#111", shimmer(50)), true],
+    ["a blue caret, blinked off", para(0, 0, "#111", caret(true)), para(0, 0, "#111", caret(false)), true],
+  ];
+
+  test("at 1x, 2x and 3x", async () => {
+    const dir = tempDir("motif-real-");
+    const b = await launchBrowser(browser!.path);
+    const results: string[] = [];
+    const expected: string[] = [];
+    try {
+      const page = await b.newPage();
+      const shot = async (body: string, scale: number, name: string) => {
+        await page.setViewport(390, 844, scale, true);
+        await page.goto("data:text/html," + encodeURIComponent(`<html><body style="margin:0;background:#fff;font:16px/1.4 system-ui, sans-serif;color:#111">${body}</body></html>`));
+        const path = join(dir, name);
+        writeFileSync(path, await page.screenshot());
+        return path;
+      };
+      for (const scale of [1, 2, 3]) {
+        for (const [label, x, y, same] of cases) {
+          const [pa, pb] = [await shot(x, scale, "a.png"), await shot(y, scale, "b.png")];
+          results.push(`${scale}x ${label}: ${looksTheSame(pa, pb) ? "same" : "different"}`);
+          expected.push(`${scale}x ${label}: ${same ? "same" : "different"}`);
+        }
+      }
+    } finally {
+      await b.close();
+    }
+    expect(results).toEqual(expected);
+  }, 120_000);
 });
