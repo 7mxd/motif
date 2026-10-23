@@ -7,6 +7,7 @@ import { vueDoctor } from "./doctor";
 import { collectVue } from "./extract";
 import { generateVue, vueWiring } from "./generate";
 import { vueSrcDir } from "./project";
+import { discoverVueRoutes } from "./routes";
 import { scanVue, vueFix, vueReducedMotionHits } from "./rules";
 
 /**
@@ -59,4 +60,5 @@ export const VUE: WebStack = {
   fix: vueFix,
   collect: collectVue,
   doctor: vueDoctor,
+  routes: discoverVueRoutes,
 };
