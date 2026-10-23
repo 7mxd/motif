@@ -5,7 +5,7 @@ import { pngSize } from "../src/browser/png";
 import { runShot } from "../src/commands/shot";
 import { runTokens } from "../src/commands/tokens";
 import { findBrowser } from "../src/detect/browser";
-import { FIXTURES } from "./helpers";
+import { FIXTURES, heavyStackTests } from "./helpers";
 import { pixel } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -14,7 +14,7 @@ import { cleanupTempDirs, tempDir } from "./tmp";
 // bun's skipIf takes no reason, so each name says it. Each fixture is installed once into a temp copy with npm ci, and its
 // theme is made there by today's motif tokens from the fixture's guide (two variants, Onest with Noto Naskh Arabic as its
 // Arabic companion, both bundled by the app). Every run starts the app's own dev script, as a developer's would.
-// Task 12 gates it as a heavy test of the vue CI job (helpers.ts) once that job exists.
+// In CI it runs in the vue job only (the gate in helpers.ts).
 //
 // vue-min picks its words by the browser's language and leaves dir alone, so Motif turns it right to left; nuxt-min reads
 // Accept-Language as it renders on the server and sets dir="rtl" itself. vue-min's /audit holds planted problems and
@@ -22,8 +22,9 @@ import { cleanupTempDirs, tempDir } from "./tmp";
 const npm = Bun.which("npm");
 const node = Bun.which("node");
 const browser = findBrowser() !== null;
-const ready = Boolean(npm && node && browser);
-const reason = !node || !npm ? "Node and npm aren't installed" : "no Chrome, Edge or Chromium was found";
+const gate = heavyStackTests("vue", Boolean(npm && node && browser));
+const ready = gate.run;
+const reason = !node || !npm ? "Node and npm aren't installed" : !browser ? "no Chrome, Edge or Chromium was found" : gate.reason;
 if (!ready) console.log(`[vue-shot-e2e] skipped: ${reason}.`);
 
 // Removing an installed node_modules takes longer than a hook's default 5 s on Windows.

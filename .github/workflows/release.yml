@@ -118,6 +118,33 @@ jobs:
         working-directory: cli
         run: bun test --timeout 600000 test/rn-*.test.ts test/check-rn.test.ts test/extract-rn.test.ts test/fixtures-rn.test.ts test/shot-rn.test.ts test/tokens-rn.test.ts
 
+  # The Vue tests that run npm ci on Vite and Nuxt apps, type-check with vue-tsc and start their dev servers skip in the test
+  # job (MOTIF_STACK_JOB is not set there); this one runs them. Node and Chrome are on the runner.
+  vue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      MOTIF_STACK_JOB: vue
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            cli/test/fixtures/vue-min/package-lock.json
+            cli/test/fixtures/nuxt-min/package-lock.json
+            tests/fixtures/vue-contract-app/package-lock.json
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: Vue tests
+        working-directory: cli
+        run: bun test --timeout 600000 test/vue-*.test.ts test/check-vue.test.ts test/extract-vue.test.ts test/fixtures-vue.test.ts test/shot-vue.test.ts test/tokens-vue.test.ts test/component-views.test.ts
+
   # The SwiftUI tests that build with Xcode and draw on a simulator skip elsewhere (MOTIF_STACK_JOB names this job). macos-15
   # rather than macos-latest: its image has Xcode 16.x (the floor, global constraint "Xcode 16"); the macos-26 image has only 26.x.
   # Xcode 16.4 is the newest 16.x on that image (runner-images, macos-15-arm64 README, Oct 2026); the step fails and lists
@@ -279,7 +306,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [build, plugin, test, flutter, compose, react-native, swiftui, swiftui-fixtures]
+    needs: [build, plugin, test, flutter, compose, react-native, vue, swiftui, swiftui-fixtures]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

@@ -9,6 +9,7 @@ import { runValidate } from "../src/commands/validate";
 import { findBrowser } from "../src/detect/browser";
 import { CSS_HEADER, TS_HEADER } from "../src/generate/header";
 import { discoverVueRoutes } from "../src/stacks/vue/routes";
+import { heavyStackTests } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 // Removing an installed node_modules takes longer than a hook's default 5 s on Windows.
@@ -259,12 +260,13 @@ describe("the assembled Vue seeded app", () => {
 
 // The rest needs Node with npm (Vite runs on Node) and, for screenshots, Chrome, Edge or Chromium. bun's skipIf takes no
 // reason, so each name says it. Each copy's node_modules are installed once (offline from npm's cache when it can), and
-// each screenshot run starts the app's own dev script. Task 12 moves these under the vue CI job's heavy-test gate.
+// each screenshot run starts the app's own dev script. In CI they run in the vue job only (the gate in helpers.ts).
 const npm = Bun.which("npm");
 const node = Bun.which("node");
 const npx = Bun.which("npx");
 const browser = findBrowser() !== null;
-const hasNode = Boolean(npm && node && npx);
+const gate = heavyStackTests("vue", Boolean(npm && node && npx));
+const hasNode = gate.run;
 const ready = hasNode && browser;
 
 describe("Bustan and its seeded copy, installed, type-checked and drawn through Vite", () => {
@@ -279,7 +281,7 @@ describe("Bustan and its seeded copy, installed, type-checked and drawn through 
 
   beforeAll(() => {
     if (!hasNode) {
-      console.log("fixtures-vue: the installed tests are skipped, Node and npm aren't installed.");
+      console.log(`fixtures-vue: the installed tests are skipped, ${!npm || !node || !npx ? "Node and npm aren't installed" : gate.reason}.`);
       return;
     }
     if (!browser) console.log("fixtures-vue: the screenshot tests are skipped, no Chrome, Edge or Chromium was found.");
