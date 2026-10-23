@@ -68,3 +68,28 @@ describe("removing a case's transcripts without purge", () => {
     expect(existsSync(join(h, ".claude", "projects", "other", "a.jsonl"))).toBe(true);
   });
 });
+
+describe("the folder under the path as given and under its real path (macOS: /tmp is /private/tmp)", () => {
+  const cwd = "/tmp/motif-evals/run-1/app";
+  const real = () => "/private/tmp/motif-evals/run-1/app";
+
+  test("Claude Code saved it under the real path: that one is removed", () => {
+    const h = home(projectFolderName("/private/tmp/motif-evals/run-1/app"), "other");
+    expect(removeProjectData(h, cwd, real)).toBeUndefined();
+    expect(existsSync(join(h, ".claude", "projects", projectFolderName("/private/tmp/motif-evals/run-1/app")))).toBe(false);
+    expect(existsSync(join(h, ".claude", "projects", "other", "a.jsonl"))).toBe(true);
+  });
+
+  test("under both, both go; a real path that names nothing is ignored, and the guards hold", () => {
+    const h = home(projectFolderName(cwd), projectFolderName(real()), "other");
+    expect(removeProjectData(h, cwd, real)).toBeUndefined();
+    expect(existsSync(join(h, ".claude", "projects", projectFolderName(cwd)))).toBe(false);
+    expect(existsSync(join(h, ".claude", "projects", projectFolderName(real())))).toBe(false);
+    const h2 = home(projectFolderName(cwd), "other");
+    expect(removeProjectData(h2, cwd, () => "/")).toBeUndefined();
+    expect(existsSync(join(h2, ".claude", "projects", projectFolderName(cwd)))).toBe(false);
+    expect(existsSync(join(h2, ".claude", "projects", "other", "a.jsonl"))).toBe(true);
+    const h3 = home("other");
+    expect(removeProjectData(h3, cwd, () => { throw new Error("no such path"); })).toBeUndefined();
+  });
+});

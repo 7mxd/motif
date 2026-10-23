@@ -1,6 +1,6 @@
 // Clearing a case's Claude Code project data. Claude Code from 2.1.30x has `claude purge`; older ones don't, so the runner
 // removes the project's transcript folder itself, the way purge would.
-import { lstatSync, rmSync } from "node:fs";
+import { lstatSync, realpathSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 /** What `claude purge --help` says first, in the versions that have it. */
@@ -14,12 +14,35 @@ export const NO_PURGE_NOTE =
 /** Claude Code's folder for a project: every character that isn't a letter or digit (path separators, the colon, dots) becomes "-". */
 export const projectFolderName = (cwd: string): string => cwd.replace(/[^a-zA-Z0-9]/g, "-");
 
+/** The path with its links resolved, or null when it can't be (it's gone): macOS's /tmp is /private/tmp. */
+function realPath(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Removes the one transcript folder for `cwd` under `<home>/.claude/projects`, and only that: the folder's name must equal
- * the computed name exactly and sit directly under the projects folder, and must be a real folder (not a link). Returns
- * why it didn't, or nothing (also when there was nothing to remove).
+ * Removes the transcript folder for `cwd` under `<home>/.claude/projects`, named from the path as given and from its real
+ * path (Claude Code may have saved it under either: /tmp/x or /private/tmp/x on macOS), and only those: each folder's name
+ * must equal the computed name exactly and sit directly under the projects folder, and must be a real folder (not a
+ * link). Returns why one wasn't removed, or nothing (also when there was nothing to remove).
  */
-export function removeProjectData(home: string, cwd: string): string | void {
+export function removeProjectData(home: string, cwd: string, real: (path: string) => string | null = realPath): string | void {
+  let resolved: string | null = null;
+  try {
+    resolved = real(cwd);
+  } catch {
+    resolved = null;
+  }
+  const paths = [...new Set([cwd, ...(resolved && projectFolderName(resolved).replace(/-/g, "") ? [resolved] : [])])];
+  // Each is tried; the first reason one was left alone is what's said.
+  const why = paths.map((path) => removeOne(home, path)).find((w) => w);
+  if (why) return why;
+}
+
+function removeOne(home: string, cwd: string): string | void {
   const projects = join(home, ".claude", "projects");
   const name = projectFolderName(cwd);
   const target = join(projects, name);
