@@ -39,7 +39,7 @@ React web and plain web were finished in Part 1 and plan 2A; right-to-left scree
 Flutter was built in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Every area is done. Its code is in the CLI, so `motif doctor` built from source already treats it as supported; the README and the release notes list it from v0.5.0, once its row is complete and these release gates are passed:
 
 - The Flutter job in CI passes on the pull request.
-- The owner runs an app's generated theme on an iPhone (plan 2E, Task 15): a release step, not an area.
+- The owner runs an app's generated theme on an iPhone (plan 2E, Task 15): a release step, not an area. The owner chose the iOS simulator on the Mac mini instead: HiSalon's customer app ran on Motif's generated theme on 2026-10-23, in all three variants, light and dark, English and Arabic ([the note](notes/2026-10-23-hisalon-simulator-check.md)). It found two problems in Motif, fixed before v0.5.0 ([plan](plans/2026-10-23-motif-v050-gate-fixes.md)).
 
 Tests marked "needs Flutter" run in CI's Flutter job and skip, saying so, where the Flutter SDK isn't installed.
 
