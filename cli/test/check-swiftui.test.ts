@@ -148,6 +148,15 @@ describe("motif check on a SwiftUI app", () => {
     expect(r.text).toContain("1× Color(red: 1, green: 0, blue: 0.667)  Raw colour Color(red: 1, green: 0, blue: 0.667). Use colors.<role> from @Environment(\\.motifColors). At SwiftUIMin/Many.swift:31.");
   });
 
+  test("a negative size's closest role keeps the minus, so the fix doesn't flip its direction (fix round 1)", async () => {
+    const pulls = ["import SwiftUI", "", "struct Pull {", ...Array.from({ length: 26 }, (_, i) => `    let p${i} = Text("x").padding(.bottom, -13)`), "    let q = Text(\"x\").padding(.top, -2)", "    let r = Text(\"x\").padding(13)", "}", ""].join("\n");
+    const r = await check(await swiftApp({ "SwiftUIMin/Pull.swift": pulls }));
+    expect(r.text).toContain("26× .padding(.bottom, -13)  Spacing -13pt isn't on your spacing scale. Closest: -MotifSpace.s3 (-12px).");
+    // The step of 0 has no direction to keep.
+    expect(r.text).toContain("1× .padding(.top, -2)  Spacing -2pt isn't on your spacing scale. Closest: MotifSpace.s0 (0px) or -MotifSpace.s1 (-4px).");
+    expect(r.text).toContain("1× .padding(13)  Spacing 13pt isn't on your spacing scale. Closest: MotifSpace.s3 (12px).");
+  });
+
   test("typed colours in the app's own palette are still flagged, with one hint line per palette file", async () => {
     const palette = `import SwiftUI
 
