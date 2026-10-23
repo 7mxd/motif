@@ -3,6 +3,7 @@ import { listVueFiles, type SourceFile } from "../../check/files";
 import { expandHtml } from "../../check/html";
 import type { WebStack } from "../web";
 import { vueDoctor } from "./doctor";
+import { generateVue, vueWiring } from "./generate";
 import { vueSrcDir } from "./project";
 
 /**
@@ -37,5 +38,7 @@ export const VUE: WebStack = {
   sourceFiles: (root, app, opts) => listVueFiles(root, app.path, opts),
   views: vueViews,
   srcDir: vueSrcDir,
+  generate: generateVue,
+  wiring: (root, app, files) => vueWiring(root, app, files, vueSrcDir),
   doctor: vueDoctor,
 };

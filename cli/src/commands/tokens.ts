@@ -17,7 +17,9 @@ import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { ignoredByGit, ignoredNotes } from "../project/git";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
 import { motifCss } from "../generate/motif-css";
+import { isReferenced } from "../generate/referenced";
 import { nativeStack } from "../stacks/native";
+import { webStack, type WebStack } from "../stacks/web";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
 import { andList } from "../text";
 import { TOKENS_JSON } from "./validate";
@@ -83,7 +85,7 @@ function updateSettings(root: string, detected: AppInfo[], srcDirs: Map<string, 
   }
   let changed = false;
   const apps = (raw!.apps as AppSetting[]).map((a) => {
-    if ((a?.stack === "react-web" || a?.stack === "plain-web") && typeof a.srcDir !== "string" && srcDirs.has(a.path)) {
+    if ((a?.stack === "react-web" || a?.stack === "plain-web" || a?.stack === "vue") && typeof a.srcDir !== "string" && srcDirs.has(a.path)) {
       changed = true;
       return { ...a, srcDir: srcDirs.get(a.path)! };
     }
@@ -93,39 +95,6 @@ function updateSettings(root: string, detected: AppInfo[], srcDirs: Map<string, 
   // Keep every other key as it was.
   writeSettings(root, { ...(raw as object), apps } as MotifSettings);
   return "updated";
-}
-
-const CODE_FILE = /\.(css|scss|ts|tsx|js|jsx|mjs|html?)$/;
-
-/** True when any file under dir (other than Motif's own) mentions name. Bounded to 2000 files. */
-function isReferenced(dir: string, name: string): boolean {
-  let seen = 0;
-  const visit = (d: string): boolean => {
-    let entries: string[];
-    try {
-      entries = readdirSync(d);
-    } catch {
-      return false;
-    }
-    for (const e of entries) {
-      if (e === "node_modules" || e.startsWith(".") || seen++ > 2000) continue;
-      const p = join(d, e);
-      let isDir = false;
-      try {
-        isDir = statSync(p).isDirectory();
-      } catch {
-        continue;
-      }
-      if (isDir) {
-        if (visit(p)) return true;
-      } else if (CODE_FILE.test(e)) {
-        const text = readFileSync(p, "utf8");
-        if (text.includes(name) && !isMotifGenerated(e, text)) return true;
-      }
-    }
-    return false;
-  };
-  return visit(dir);
 }
 
 /** A <link> to motif.css, or an @import of it (from a page's <style> or the site's own stylesheet). */
@@ -251,6 +220,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   let needsFlat = false;
   const links: { dir: string; path: string }[] = [];
   const copies: { from: string; to: string }[] = [];
+  const webWiring: { app: AppInfo; files: GeneratedFile[]; wire: NonNullable<WebStack["wiring"]> }[] = [];
   const wiring: { app: AppInfo; path: string; note: (root: string, app: AppInfo, file: string, set: ThemeSet) => string | null }[] = [];
 
   for (const app of apps) {
@@ -287,6 +257,14 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       files.push({ path: cssPath, content: motifCss(theme, set.variants) });
       links.push({ dir: join(appDir, site), path: cssPath });
       needsFlat = true;
+    } else if (webStack(app.stack)?.generate) {
+      const web = webStack(app.stack)!;
+      const srcDir = app.srcDir ?? web.srcDir(appDir);
+      srcDirs.set(app.path, srcDir);
+      const out = web.generate!(set, { root: cwd, app, srcDir, tailwind: detectTailwind(appDir) });
+      for (const f of out.files) if (!files.some((g) => g.path === f.path)) files.push(f);
+      for (const n of out.notes) if (!notes.includes(n)) notes.push(n);
+      if (web.wiring) webWiring.push({ app, files: out.files, wire: web.wiring.bind(web) });
     } else if (app.stack) {
       needsFallback = true;
       notes.push(`${appLabel(app)}: ${STACK_LABELS[app.stack]} support is coming soon. Motif wrote plain CSS variables and design/generated/tokens.flat.json to map by hand.`);
@@ -317,6 +295,13 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     notes.push(e.tailwind
       ? `Next: in your main CSS file, add an @import for ${e.path} right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.`
       : `Next: load ${e.path} once: @import it from your main CSS file, or import it in your app's entry file.`);
+  }
+  for (const w of webWiring) {
+    // A file left alone isn't Motif's, so there is nothing to wire up.
+    const written = w.files.filter((f) => !blockedPaths.has(f.path));
+    if (written.length < w.files.length) continue;
+    const note = w.wire(cwd, w.app, written, set);
+    if (note && !notes.includes(note)) notes.push(note);
   }
   for (const w of wiring) {
     if (blockedPaths.has(w.path)) continue;
