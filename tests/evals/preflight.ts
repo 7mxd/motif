@@ -1,5 +1,5 @@
 // Checks before a run: Claude Code signed in with a Claude account (never an API key), this checkout's motif tool and plugin built,
-// Node.js for the apps, a browser for the cases that need one (the React Native cases among them: Expo's web target), Flutter for the Flutter cases,
+// Node.js for the apps, a browser for the cases that need one (the React Native cases among them: Expo's web target; and the Vue ones: Bustan's pages), Flutter for the Flutter cases,
 // a JDK and the Android SDK for the Compose ones, and a Mac with Xcode and an iOS simulator for the SwiftUI ones. Nothing is downloaded or installed for
 // the developer.
 import { existsSync } from "node:fs";
@@ -150,7 +150,7 @@ export async function preflight(
     return { error: "The build didn't produce dist/motif and dist/claude-code; run bun run build and bun run plugin in cli to see why." };
   }
 
-  // Only the cases that install or build with npm (web, React Native) need Node. Flutter, Compose and SwiftUI don't, and
+  // Only the cases that install or build with npm (web, React Native, Vue) need Node. Flutter, Compose and SwiftUI don't, and
   // the tool and plugin builds above run on Bun.
   if (needsNode) {
     const node = await d.run(["node", "--version"], p.repo, 30_000);
@@ -175,7 +175,7 @@ export async function preflight(
     const noBrowser = (mac: boolean) => CASES.filter((c) => !caseNeedsBrowser(c) && Boolean(c.mac) === mac).map((c) => c.id).join(",");
     const onMac = (d.platform ?? process.platform) === "darwin" ? ` On this Mac, the SwiftUI cases don't need one either: --cases ${noBrowser(true)}.` : "";
     return {
-      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, and the React Native cases draw their screens through Expo's web target in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${noBrowser(false)}) don't need one.${onMac}`,
+      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, the React Native cases draw their screens through Expo's web target in one, and the Vue cases draw their pages in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${noBrowser(false)}) don't need one.${onMac}`,
     };
   }
   return { claude: found.exe, claudeVersion: version.stdout.trim(), browser, purge };

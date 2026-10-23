@@ -46,7 +46,7 @@ export interface BFacts {
   route: string; pageExists: boolean; check: CheckFacts; validate: ValidateFacts;
   /** React web: the build and the type check. Flutter: flutter analyze as the type check, and no build. */
   build?: CmdFacts; typecheck?: CmdFacts;
-  /** A plain site and a Flutter app have nothing to build: their new page, as motif shot draws it. */
+  /** A plain site and a Flutter app have nothing to build: their new page, as motif shot draws it (a Vue app has both a build and a drawn page). */
   render?: ScreenFacts | { error: string };
   /** New components: React files under src/; a plain site's new "Component:" lines; Flutter's public widget classes under lib/. */
   newComponents: string[];
@@ -85,9 +85,9 @@ export function gradeB(f: BFacts): Grade {
     { id: "feature", label: `The feature's page exists (${f.route})`, pass: f.pageExists, detail: f.pageExists ? `${f.route} is a page of the app.` : `There's no page at ${f.route}.` },
     ...checkCriteria(f.check),
     validateCriterion(f.validate),
-    // React web builds and type-checks; a plain site is loaded in a browser; Flutter is analyzed and drawn.
+    // React web builds and type-checks; a plain site is loaded in a browser; Flutter is analyzed and drawn; Vue is built, type-checked and drawn.
     ...(f.typecheck ? buildCriteria(f.build, f.typecheck) : []),
-    ...(f.build ? [] : [renderCriterion(f.route, f.render)]),
+    ...(f.build && !f.render ? [] : [renderCriterion(f.route, f.render)]),
     componentsCriterion(f),
   ], { newComponents: f.newComponents.length });
 }

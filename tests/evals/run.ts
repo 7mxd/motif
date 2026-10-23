@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
-import { CASES, isCompose, isFlutter, isReactNative, isSwiftUI, macOnly, macOnlyNote, needsBrowser, needsNode, selectCases, type EvalCase } from "./cases";
+import { CASES, isCompose, isFlutter, isReactNative, isSwiftUI, isVue, macOnly, macOnlyNote, needsBrowser, needsNode, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
@@ -342,7 +342,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       if (instructions.length > 0) throw new Stopped(`The grader would read these instruction files: ${instructions.join(", ")}. Move them aside, then --resume.`);
       const r = await deps.session({
         command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel, appDir: app }), cwd: own, env: withTempFolder(env, join(own, "tmp")),
-        prompt: judgePrompt(input, undefined, app, isCompose(c) ? "Jetpack Compose app" : isFlutter(c) ? "Flutter app" : isReactNative(c) ? "Expo (React Native) app" : isSwiftUI(c) ? "SwiftUI app" : "web app"), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
+        prompt: judgePrompt(input, undefined, app, isCompose(c) ? "Jetpack Compose app" : isFlutter(c) ? "Flutter app" : isReactNative(c) ? "Expo (React Native) app" : isVue(c) ? "Vue app" : isSwiftUI(c) ? "SwiftUI app" : "web app"), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
       });
       await purge(own);
       if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "The grader's session didn't start.");

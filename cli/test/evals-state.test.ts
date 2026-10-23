@@ -52,7 +52,7 @@ describe("the verdicts", () => {
   });
 
   test("cases not run leave their tests incomplete", () => {
-    expect(testVerdicts(state(allGraded(pass, ["c-review", "c-plain", "c-flutter", "c-compose", "c-rn", "c-swiftui"])), CASES).map((v) => v.status)).toEqual(["incomplete", "pass", "incomplete"]);
+    expect(testVerdicts(state(allGraded(pass, ["c-review", "c-plain", "c-flutter", "c-compose", "c-rn", "c-vue", "c-swiftui"])), CASES).map((v) => v.status)).toEqual(["incomplete", "pass", "incomplete"]);
   });
 
   test("Mac-only cases skipped off a Mac are left out of the count and named: the tests can pass without them", () => {
@@ -60,19 +60,19 @@ describe("the verdicts", () => {
     const macOnly = ["b-swiftui-orders", "b-swiftui-rewards", "c-swiftui", "d-masar"];
     const s = state({ ...allGraded(pass, CASES.map((c) => c.id).filter((id) => !macOnly.includes(id))), ...Object.assign({}, ...macOnly.map(skip)) });
     expect(testVerdicts(s, CASES)).toEqual([
-      { test: "B", status: "pass", detail: "All 12 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
-      { test: "C", status: "pass", detail: "All 5 cases run passed; c-swiftui was skipped (it needs a Mac)." },
+      { test: "B", status: "pass", detail: "All 14 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
+      { test: "C", status: "pass", detail: "All 6 cases run passed; c-swiftui was skipped (it needs a Mac)." },
       { test: "D", status: "pass", detail: "The new apps passed, and B and C passed with no design sources connected; d-masar was skipped (it needs a Mac)." },
     ]);
     // A skipped case still says so when its test fails or is incomplete.
     const failing = state({ ...s.cases, "c-review": { status: "graded", attempts: 1, grade: fail } });
     expect(testVerdicts(failing, CASES)[1]).toEqual({ test: "C", status: "fail", detail: "Failed: c-review; c-swiftui was skipped (it needs a Mac)." });
     const partial = state({ ...s.cases, "c-review": { status: "pending", attempts: 0 } });
-    expect(testVerdicts(partial, CASES)[1]).toEqual({ test: "C", status: "incomplete", detail: "4 of 5 cases graded; c-swiftui was skipped (it needs a Mac)." });
+    expect(testVerdicts(partial, CASES)[1]).toEqual({ test: "C", status: "incomplete", detail: "5 of 6 cases graded; c-swiftui was skipped (it needs a Mac)." });
   });
 
   test("a Mac-only case that wasn't run at all (not skipped) still leaves its test incomplete", () => {
-    expect(testVerdicts(state(allGraded(pass, ["c-review", "c-plain", "c-flutter", "c-compose", "c-rn"])), CASES)[1]).toEqual({ test: "C", status: "incomplete", detail: "5 of 6 cases graded." });
+    expect(testVerdicts(state(allGraded(pass, ["c-review", "c-plain", "c-flutter", "c-compose", "c-rn", "c-vue"])), CASES)[1]).toEqual({ test: "C", status: "incomplete", detail: "6 of 7 cases graded." });
   });
 });
 
