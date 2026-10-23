@@ -255,7 +255,7 @@ const SCHEME: [string, string][] = [
 /**
  * Material's own widgets drawn the way the stack guide's components are: buttons and fields at the md corner, cards,
  * dialogs and sheets raised at lg, fields outlined with the focus and danger roles. Each is left out when the guide
- * lacks a role it needs. With `actionText`, text and outlined buttons draw their labels in the readable action colour
+ * lacks a role it needs. With `actionText`, text, outlined and elevated buttons draw their labels in the readable action colour
  * (Material's default is ColorScheme.primary, action-primary, which doesn't read). The types are the ones Flutter 3.27
  * (the floor) takes and newer versions still accept.
  */
@@ -314,7 +314,9 @@ function componentThemes(t: Theme, actionText: boolean): { locals: string[]; arg
     const style = [...(text && actionText ? [`foregroundColor: colors.${actionTextField(t)}`] : []), ...(buttons ? ["shape: corners"] : [])];
     return call(`${theme}: ${widget}ThemeData(`, [call(`style: ${widget}.styleFrom(`, style)]);
   };
-  if (buttons) args.push(button("elevatedButtonTheme", "ElevatedButton"), button("filledButtonTheme", "FilledButton"));
+  // An elevated button labels in the action colour on the page's colour, so it reads like a text button; a filled one labels in onPrimary on the fill.
+  if (buttons || actionText) args.push(button("elevatedButtonTheme", "ElevatedButton", true));
+  if (buttons) args.push(button("filledButtonTheme", "FilledButton"));
   if (fields) {
     args.push(
       call("inputDecorationTheme: InputDecorationTheme(", [

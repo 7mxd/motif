@@ -299,13 +299,13 @@ describe("generateFlutter, a light action colour (HiSalon's mint on a near-white
     expect(dart).toContain("actionText: Color.lerp(actionText, other.actionText, t)!,");
   });
 
-  test("text and outlined buttons draw their labels in actionText; the filled button keeps the brand fill", () => {
-    for (const widget of ["TextButton", "OutlinedButton"]) {
+  test("text, outlined and elevated buttons draw their labels in actionText; the filled button keeps the brand fill", () => {
+    for (const widget of ["TextButton", "OutlinedButton", "ElevatedButton"]) {
       expect(dart).toContain(`style: ${widget}.styleFrom(\n          foregroundColor: colors.actionText,\n          shape: corners,\n        ),`);
     }
     expect(dart).toContain("primary: colors.actionPrimary,");
     expect(dart).toContain("filledButtonTheme: FilledButtonThemeData(\n        style: FilledButton.styleFrom(shape: corners),\n      ),");
-    expect(dart).toContain("style: ElevatedButton.styleFrom(shape: corners),");
+    expect(dart).not.toContain("style: ElevatedButton.styleFrom(shape: corners),");
   });
 
   test("without the md corner, text and outlined buttons still take actionText", () => {
@@ -315,6 +315,7 @@ describe("generateFlutter, a light action colour (HiSalon's mint on a near-white
     expect(dart).not.toContain("final corners");
     expect(dart).toContain("textButtonTheme: TextButtonThemeData(\n        style: TextButton.styleFrom(foregroundColor: colors.actionText),\n      ),");
     expect(dart).toContain("outlinedButtonTheme: OutlinedButtonThemeData(");
+    expect(dart).toContain("elevatedButtonTheme: ElevatedButtonThemeData(\n        style: ElevatedButton.styleFrom(foregroundColor: colors.actionText),\n      ),");
     expect(dart).not.toContain("filledButtonTheme:");
   });
 
@@ -348,6 +349,7 @@ describe("generateFlutter, a light action colour (HiSalon's mint on a near-white
       const dart = dartFor(t);
       expect(dart).not.toContain("actionText");
       expect(dart).toContain("style: TextButton.styleFrom(shape: corners),");
+      expect(dart).toContain("style: ElevatedButton.styleFrom(shape: corners),");
     }
   });
 });
