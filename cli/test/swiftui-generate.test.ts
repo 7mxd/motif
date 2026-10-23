@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { srgbColor } from "../src/contract/defaults";
 import { isMotifGenerated, TS_HEADER } from "../src/generate/header";
+import { readableAction } from "../src/generate/readable-action";
 import { buildThemeSet } from "../src/generate/theme";
 import { generateSwiftUI, swiftColor, swiftMember, textStyleFor } from "../src/stacks/swiftui/generate";
 import { docFrom, hexColor, partnerTokens, twoVariantTokens, validTokens, withCompanion } from "./helpers";
@@ -249,6 +251,72 @@ describe("generateSwiftUI, variants whose default isn't called default", () => {
     expect(swift).toContain("    @Entry var motifVariant: MotifVariant = .women\n");
     expect(swift).toContain("    func motifTheme(variant: MotifVariant = .women) -> some View {");
     expect(swift).not.toContain("defaultVariant");
+  });
+});
+
+describe("generateSwiftUI, a light action colour (HiSalon's mint on a near-white page)", () => {
+  /** HiSalon's light colours: mint #7EEBC1 on #F7F9F8 with white cards, about 1.4:1. Dark stays the fixture's. */
+  const hisalon = (t = validTokens()) => {
+    t.color["action-primary"].$value = hexColor("#7EEBC1");
+    t.color.background.$value = hexColor("#F7F9F8");
+    t.color.surface.$value = hexColor("#FFFFFF");
+    return t;
+  };
+  const tokens = hisalon();
+  const swift = swiftFor(tokens);
+  const readable = readableAction(buildThemeSet(docFrom(tokens)))!;
+  const color = (hex: string) => swiftColor(srgbColor(hex));
+  /** One MotifColors instance, from its declaration to its closing parenthesis. */
+  const instance = (out: string, name: string) => {
+    const start = out.indexOf(`    static let ${name} = MotifColors(\n`);
+    return out.slice(start, out.indexOf("    )\n", start) + 6);
+  };
+
+  test("MotifColors gains actionText, light and dark, with a doc comment", () => {
+    expect(swift).toContain("\n\n    /// The action colour for text, readable on the background.\n    let actionText: Color\n\n");
+    expect(readable.base.light.text).not.toBe("#7EEBC1");
+    expect(instance(swift, "light")).toContain(`,\n        actionText: ${color(readable.base.light.text)}\n    )\n`);
+    // Dark mode's action colour already reads: actionText is action-primary there.
+    expect(instance(swift, "dark")).toContain(",\n        actionText: Color(.sRGB, red: 0.5059, green: 0.549, blue: 0.9725, opacity: 1)\n    )\n"); // #818CF8
+    // The brand fill stays: actionPrimary is still the guide's mint.
+    expect(instance(swift, "light")).toContain(`        actionPrimary: ${color("#7EEBC1")},\n`);
+  });
+
+  test(".motifTheme() tints with actionText, so borderless buttons, links and toolbar buttons read", () => {
+    expect(swift).toContain("        content.tint(MotifColors.resolve(scheme).actionText)\n");
+    expect(swift).not.toContain(".tint(MotifColors.resolve(scheme).actionPrimary)");
+  });
+
+  test("with variants, only the light variant's actionText changes; the others are action-primary", () => {
+    const t = partnerTokens();
+    t.color["action-primary"].$extensions["dev.motif"].variants = { partner: { value: hexColor("#7EEBC1") } };
+    const out = swiftFor(t);
+    const r = readableAction(buildThemeSet(docFrom(t)))!;
+    expect(out).toContain("    /// The action colour for text, readable on the background.\n    let actionText: Color\n");
+    expect(instance(out, "light")).toContain(`        actionText: ${color("#4338CA")}\n`);
+    expect(instance(out, "dark")).toContain(`        actionText: ${color("#818CF8")}\n`);
+    expect(r.variants.partner!.light.text).not.toBe("#7EEBC1");
+    expect(instance(out, "partnerLight")).toContain(`        actionText: ${color(r.variants.partner!.light.text)}\n`);
+    expect(instance(out, "partnerLight")).toContain(`        actionPrimary: ${color("#7EEBC1")},\n`);
+    expect(instance(out, "partnerDark")).toContain(`        actionText: ${color("#818CF8")}\n`);
+    expect(out).toContain("            .tint(MotifColors.resolve(scheme, variant: chosen).actionText)\n");
+  });
+
+  test("a guide with its own action-text role keeps it; the readable colour takes another name", () => {
+    const t = hisalon();
+    t.color["action-text"] = { $value: hexColor("#123456"), $extensions: { "dev.motif": { modes: { dark: hexColor("#654321") } } } };
+    const out = swiftFor(t);
+    expect(out).toContain("    let actionText: Color\n");
+    expect(out).toContain("    /// The action colour for text, readable on the background.\n    let actionTextValue: Color\n");
+    expect(out).toContain("        content.tint(MotifColors.resolve(scheme).actionTextValue)\n");
+  });
+
+  test("a guide whose action colour reads has no actionText at all, and tints with actionPrimary", () => {
+    for (const t of [validTokens(), partnerTokens()]) {
+      const out = swiftFor(t);
+      expect(out).not.toContain("actionText");
+      expect(out).toMatch(/\.tint\(MotifColors\.resolve\(scheme(, variant: chosen)?\)\.actionPrimary\)/);
+    }
   });
 });
 

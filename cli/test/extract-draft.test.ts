@@ -308,7 +308,149 @@ describe("the see-through note names only a see-through value (Task 15 wave B, #
   });
   test("a role whose own value is see-through still is", () => {
     const { report } = buildDraft({ ...occ, variables: [{ name: "--background", light: "#ffffff" }], roleNames: ["--background"], variableUses: { "--background": { background: 1 } } });
-    expect(report.notes.join("\n")).toContain("text-primary comes from a see-through colour (#0a1733a6)");
+    expect(report.notes.join("\n")).toContain("text-primary comes from a see-through colour (#0a1733a6): drafted as #60687A, how it shows over the background. Check it.");
+  });
+});
+
+describe("a see-through role colour is drafted as it shows (v0.5.0 gate, Task 4)", () => {
+  const none = { space: [], radius: [], fontSize: [], fontFamily: [], duration: [], easing: [], unresolved: [] };
+  /** A see-through #RRGGBBAA colour laid over a solid #RRGGBB one, as #RRGGBB. */
+  const over = (rgba: string, bg: string) => {
+    const a = Number.parseInt(rgba.slice(7, 9), 16) / 255;
+    const ch = (s: string, i: number) => Number.parseInt(s.slice(i, i + 2), 16);
+    return `#${[1, 3, 5].map((i) => Math.round(a * ch(rgba, i) + (1 - a) * ch(bg, i)).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+  };
+  const role = (tokens: any, name: string) => {
+    const r = tokens.color[name];
+    const hex = (ref: string) => tokens.primitive.color[ref.slice("{primitive.color.".length, -1)].$value.hex;
+    const own = r.$extensions["dev.motif"].variants ?? {};
+    return { light: hex(r.$value), dark: hex(r.$extensions["dev.motif"].modes.dark), men: own.men && [hex(own.men.value), hex(own.men.dark)] };
+  };
+  const valid = (tokens: Record<string, unknown>) => {
+    const doc = docFrom(tokens);
+    expect(validateTokens(doc)).toEqual([]);
+    expect(checkRoles(doc)).toEqual([]);
+    expect(checkContrastAll(doc).findings.filter((f) => f.code === "low-contrast" && /^color\.text-/.test(f.path ?? ""))).toEqual([]);
+  };
+  // HiSalon: its cards' outline is #0f3c32 at 8% (0x140F3C32), on an off-white page.
+  const hisalon: Occurrences = {
+    ...none,
+    colors: [
+      { value: "#0a1733", count: 10, contexts: { text: 10 }, examples: [] },
+      { value: "#f7f9f8", count: 8, contexts: { background: 8, page: 1 }, examples: [] },
+      { value: "#0f3c3214", count: 5, contexts: { border: 5 }, examples: [] },
+    ],
+  };
+
+  test("HiSalon's hairline border is the light grey-green it shows as over the page, not its solid #0F3C32", () => {
+    const { tokens, report } = buildDraft(hisalon);
+    const border = role(tokens, "border");
+    expect(border.light).toBe(over("#0f3c3214", "#F7F9F8"));
+    expect(border.light).toBe("#E5EAE8");
+    expect(border.dark).toBe(border.light);
+    const notes = report.notes.join("\n");
+    expect(notes).toContain("border comes from a see-through colour (#0f3c3214): drafted as #E5EAE8, how it shows over the background. Check it.");
+    expect(notes).not.toContain("drafted as solid");
+    valid(tokens);
+  });
+
+  test("with no variable of its own, it's laid over the dark background in dark mode, not copied from light (final review)", () => {
+    const { tokens, report } = buildDraft({ ...hisalon, variables: [{ name: "--page", light: "#f7f9f8", dark: "#0f1413" }] });
+    const border = role(tokens, "border");
+    expect(border.light).toBe("#E5EAE8");
+    expect(border.dark).toBe(over("#0f3c3214", "#0F1413"));
+    expect(border.dark).toBe("#0F1715");
+    const notes = report.notes.join("\n");
+    expect(notes).toContain(
+      "border comes from a see-through colour (#0f3c3214): drafted as #E5EAE8, how it shows over the background (in dark mode and each variant, over theirs). Check it.",
+    );
+    expect(notes).not.toContain("drafted as solid");
+    valid(tokens);
+  });
+
+  test("with no variable of its own, each variant's background has it laid over it too, in each mode (final review)", () => {
+    const { tokens } = buildDraft({
+      ...hisalon,
+      variables: [{ name: "--page", light: "#f7f9f8", dark: "#0f1413", variants: { men: { light: "#ffffff", dark: "#000000" } } }],
+    });
+    const border = role(tokens, "border");
+    expect([border.light, border.dark]).toEqual(["#E5EAE8", "#0F1715"]);
+    expect(border.men).toEqual([over("#0f3c3214", "#FFFFFF"), over("#0f3c3214", "#000000")]);
+    valid(tokens);
+    expect(checkVariants(docFrom(tokens)).filter((f) => f.severity === "error")).toEqual([]);
+  });
+
+  test("the variable that sets it gives its dark and variant values, each over its own background", () => {
+    const { tokens, report } = buildDraft({
+      ...hisalon,
+      variables: [
+        { name: "--line", light: "#0f3c3214", dark: "#ffffff1f", variants: { men: { light: "#3d4b6e33", dark: "#ffffff33" } } },
+        { name: "--page", light: "#f7f9f8", dark: "#0f1413", variants: { men: { light: "#ffffff", dark: "#000000" } } },
+      ],
+    });
+    const border = role(tokens, "border");
+    expect([border.light, border.dark]).toEqual([over("#0f3c3214", "#F7F9F8"), over("#ffffff1f", "#0F1413")]);
+    expect(border.men).toEqual([over("#3d4b6e33", "#FFFFFF"), over("#ffffff33", "#000000")]);
+    expect(report.notes.join("\n")).toContain(
+      "border comes from --line, which is see-through (#0f3c3214): drafted as #E5EAE8, how it shows over the background (in dark mode and each variant, over theirs). Check it.",
+    );
+    expect(report.variables.find((v) => v.name === "--line")?.role).toBe("color.border");
+    valid(tokens);
+    expect(checkVariants(docFrom(tokens)).filter((f) => f.severity === "error")).toEqual([]);
+  });
+
+  test("a see-through colour that's the only text colour is drafted as it shows, and the draft still validates", () => {
+    const only = (value: string): Occurrences => ({
+      ...none,
+      colors: [
+        { value, count: 10, contexts: { text: 10 }, examples: [] },
+        { value: "#ffffff", count: 8, contexts: { background: 8, page: 1 }, examples: [] },
+      ],
+    });
+    // Navy at 65% reads on white as it shows (#60687A).
+    const reads = buildDraft(only("#0a1733a6"));
+    expect(role(reads.tokens, "text-primary").light).toBe(over("#0a1733a6", "#FFFFFF"));
+    expect(role(reads.tokens, "text-secondary").light).toBe(over("#0a1733a6", "#FFFFFF"));
+    valid(reads.tokens);
+    // Navy at 25% shows as a pale grey that doesn't read: the text logic takes over, as for any colour that doesn't.
+    const faint = buildDraft(only("#0a173340"));
+    expect(role(faint.tokens, "text-primary").light).not.toBe("#0A1733");
+    expect(faint.report.notes.join("\n")).toContain("#0a173340 was found for text but reads at");
+    valid(faint.tokens);
+  });
+
+  test("status and action colours found only see-through stay solid, with the solid note (fix round 1)", () => {
+    // A danger red found only as a 10% tint, and buttons filled with indigo at 80%: still red and indigo as text or a fill.
+    const { tokens, report } = buildDraft({
+      ...hisalon,
+      colors: [
+        ...hisalon.colors,
+        { value: "#dc26261a", count: 4, contexts: { background: 4 }, examples: [] },
+        { value: "#4338cacc", count: 6, contexts: { action: 6, background: 6 }, examples: [] },
+      ],
+    });
+    expect(role(tokens, "danger").light).toBe("#DC2626");
+    expect(role(tokens, "action-primary").light).toBe("#4338CA");
+    const notes = report.notes.join("\n");
+    expect(notes).toContain("danger comes from a see-through colour (#dc26261a), drafted as solid #DC2626; check it.");
+    expect(notes).toContain("action-primary comes from a see-through colour (#4338cacc), drafted as solid #4338CA; check it.");
+    // The border beside them is still drafted as it shows.
+    expect(role(tokens, "border").light).toBe("#E5EAE8");
+    expect(validateTokens(docFrom(tokens))).toEqual([]);
+  });
+
+  test("a see-through background isn't laid over itself: it, and a surface that is it, stay its solid colour", () => {
+    const { tokens, report } = buildDraft({
+      ...none,
+      colors: [
+        { value: "#ffffff80", count: 8, contexts: { background: 8, page: 1 }, examples: [] },
+        { value: "#111111", count: 10, contexts: { text: 10 }, examples: [] },
+      ],
+    });
+    expect(role(tokens, "background").light).toBe("#FFFFFF");
+    expect(role(tokens, "surface").light).toBe("#FFFFFF");
+    expect(report.notes.join("\n")).toContain("background comes from a see-through colour (#ffffff80), drafted as solid #FFFFFF; check it.");
+    valid(tokens);
   });
 });
 

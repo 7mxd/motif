@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { springPhysics } from "../src/contract/spring";
 import { TS_HEADER } from "../src/generate/header";
+import { readableAction } from "../src/generate/readable-action";
 import { buildThemeSet } from "../src/generate/theme";
 import { generateFlutter, member, slotSize } from "../src/stacks/flutter/generate";
-import { docFrom, partnerTokens, validTokens, withCompanion } from "./helpers";
+import { docFrom, hexColor, partnerTokens, validTokens, withCompanion } from "./helpers";
 
 const dartFor = (tokens: any, googleFonts = true) => {
   const files = generateFlutter(buildThemeSet(docFrom(tokens)), { googleFonts });
@@ -268,5 +269,87 @@ describe("generateFlutter, an Arabic companion", () => {
     expect(dart).not.toContain("google_fonts");
     expect(dart).toContain("fontFamily: 'Onest',");
     expect(dart).toContain("fontFamilyFallback: ['Readex Pro'],");
+  });
+});
+
+describe("generateFlutter, a light action colour (HiSalon's mint on a near-white page)", () => {
+  /** HiSalon's light colours: mint #7EEBC1 on #F7F9F8 with white cards, about 1.4:1. Dark stays the fixture's. */
+  const hisalon = (t = validTokens()) => {
+    t.color["action-primary"].$value = hexColor("#7EEBC1");
+    t.color.background.$value = hexColor("#F7F9F8");
+    t.color.surface.$value = hexColor("#FFFFFF");
+    return t;
+  };
+  const tokens = hisalon();
+  const dart = dartFor(tokens);
+  const readable = readableAction(buildThemeSet(docFrom(tokens)))!;
+  const argb = (hex: string) => `Color(0xFF${hex.slice(1)})`;
+
+  test("MotifColors gains actionText, light and dark, with a doc comment", () => {
+    expect(dart).toContain("  /// The action colour for text, readable on the background.\n  final Color actionText;");
+    expect(dart).toContain("required this.actionText");
+    const light = dart.slice(dart.indexOf("static const MotifColors light"), dart.indexOf("static const MotifColors dark"));
+    const dark = dart.slice(dart.indexOf("static const MotifColors dark"), dart.indexOf("static MotifColors of("));
+    expect(light).toContain(`actionText: ${argb(readable.base.light.text)},`);
+    expect(readable.base.light.text).not.toBe("#7EEBC1");
+    // Dark mode's action colour already reads: actionText is action-primary there.
+    expect(dark).toContain("actionText: Color(0xFF818CF8),");
+    expect(dart).toContain("Color? actionText");
+    expect(dart).toContain("actionText: actionText ?? this.actionText,");
+    expect(dart).toContain("actionText: Color.lerp(actionText, other.actionText, t)!,");
+  });
+
+  test("text, outlined and elevated buttons draw their labels in actionText; the filled button keeps the brand fill", () => {
+    for (const widget of ["TextButton", "OutlinedButton", "ElevatedButton"]) {
+      expect(dart).toContain(`style: ${widget}.styleFrom(\n          foregroundColor: colors.actionText,\n          shape: corners,\n        ),`);
+    }
+    expect(dart).toContain("primary: colors.actionPrimary,");
+    expect(dart).toContain("filledButtonTheme: FilledButtonThemeData(\n        style: FilledButton.styleFrom(shape: corners),\n      ),");
+    expect(dart).not.toContain("style: ElevatedButton.styleFrom(shape: corners),");
+  });
+
+  test("without the md corner, text and outlined buttons still take actionText", () => {
+    const t = hisalon();
+    delete t.radius.md;
+    const dart = dartFor(t);
+    expect(dart).not.toContain("final corners");
+    expect(dart).toContain("textButtonTheme: TextButtonThemeData(\n        style: TextButton.styleFrom(foregroundColor: colors.actionText),\n      ),");
+    expect(dart).toContain("outlinedButtonTheme: OutlinedButtonThemeData(");
+    expect(dart).toContain("elevatedButtonTheme: ElevatedButtonThemeData(\n        style: ElevatedButton.styleFrom(foregroundColor: colors.actionText),\n      ),");
+    expect(dart).not.toContain("filledButtonTheme:");
+  });
+
+  test("with variants, every variant has actionText: the light one's readable version, action-primary elsewhere", () => {
+    const t = partnerTokens();
+    t.color["action-primary"].$extensions["dev.motif"].variants = { partner: { value: hexColor("#7EEBC1") } };
+    const dart = dartFor(t);
+    const r = readableAction(buildThemeSet(docFrom(t)))!;
+    const instance = (name: string) => {
+      const start = dart.indexOf(`static const MotifColors ${name} =`);
+      return dart.slice(start, dart.indexOf(");", start));
+    };
+    expect(instance("light")).toContain("actionText: Color(0xFF4338CA),");
+    expect(instance("dark")).toContain("actionText: Color(0xFF818CF8),");
+    expect(instance("partnerLight")).toContain(`actionText: ${argb(r.variants.partner!.light.text)},`);
+    expect(r.variants.partner!.light.text).not.toBe("#7EEBC1");
+    expect(instance("partnerDark")).toContain("actionText: Color(0xFF818CF8),");
+  });
+
+  test("a guide with its own action-text role keeps it; the readable colour takes another name", () => {
+    const t = hisalon();
+    t.color["action-text"] = { $value: hexColor("#123456"), $extensions: { "dev.motif": { modes: { dark: hexColor("#654321") } } } };
+    const dart = dartFor(t);
+    expect(dart).toContain("  final Color actionText;\n");
+    expect(dart).toContain("  /// The action colour for text, readable on the background.\n  final Color actionTextValue;");
+    expect(dart).toContain("foregroundColor: colors.actionTextValue,");
+  });
+
+  test("a guide whose action colour reads has no actionText at all", () => {
+    for (const t of [validTokens(), partnerTokens()]) {
+      const dart = dartFor(t);
+      expect(dart).not.toContain("actionText");
+      expect(dart).toContain("style: TextButton.styleFrom(shape: corners),");
+      expect(dart).toContain("style: ElevatedButton.styleFrom(shape: corners),");
+    }
   });
 });

@@ -3,7 +3,7 @@ import { cpSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildThemeSet } from "../src/generate/theme";
 import { generateSwiftUI } from "../src/stacks/swiftui/generate";
-import { docFrom, FIXTURES, heavyStackTests, isMacWithXcode, partnerTokens, twoVariantTokens, validTokens, withCompanion } from "./helpers";
+import { docFrom, FIXTURES, heavyStackTests, hexColor, isMacWithXcode, partnerTokens, twoVariantTokens, validTokens, withCompanion } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -118,6 +118,27 @@ struct SystemExample: View {
 }
 `;
 
+/** A light action colour: actionText for a link, and the tint .motifTheme sets from it (v0.5.0 gate). */
+const READABLE_USAGE = `import SwiftUI
+
+struct ReadableExample: View {
+    @Environment(\\.motifColors) private var colors
+
+    var body: some View {
+        VStack {
+            Button("Later") {}
+            Text("Terms").foregroundStyle(colors.actionText)
+            Button("Book") {}.buttonStyle(.borderedProminent)
+        }
+        .motifTheme(variant: .partner)
+        .onAppear {
+            _ = MotifColors.partnerLight.actionText != MotifColors.partnerLight.actionPrimary
+            _ = MotifColors.resolve(.dark).actionText == MotifColors.dark.actionText
+        }
+    }
+}
+`;
+
 function run(cmd: string[], cwd: string): { code: number; out: string } {
   const r = Bun.spawnSync(cmd, { cwd, stdout: "pipe", stderr: "pipe" });
   return { code: r.exitCode ?? 1, out: `${r.stdout.toString()}\n${r.stderr.toString()}` };
@@ -206,15 +227,33 @@ describe("the generated Swift", () => {
     writeFileSync(join(dir, "system/MotifTheme.swift"), system!.content);
     writeFileSync(join(dir, "system/SystemUsage.swift"), SYSTEM_USAGE);
 
+    // HiSalon's mint on a near-white page, in the default variant and the partner one: MotifColors has actionText, and
+    // .motifTheme tints with it (v0.5.0 gate).
+    const readableTokens = partnerTokens();
+    readableTokens.color["action-primary"].$value = hexColor("#7EEBC1");
+    readableTokens.color["action-primary"].$extensions["dev.motif"].variants = { partner: { value: hexColor("#7EEBC1") } };
+    readableTokens.color.background.$value = hexColor("#F7F9F8");
+    const [readable] = generateSwiftUI(buildThemeSet(docFrom(readableTokens)));
+    expect(readable!.content).toContain(".tint(MotifColors.resolve(scheme, variant: chosen).actionText)");
+    mkdirSync(join(dir, "readable"));
+    writeFileSync(join(dir, "readable/MotifTheme.swift"), readable!.content);
+    writeFileSync(join(dir, "readable/ReadableUsage.swift"), READABLE_USAGE);
+
     const targets = [
       ["macosx", "arm64-apple-macos14"],
       ["iphonesimulator", "arm64-apple-ios17.0-simulator"],
     ];
-    const usage: Record<string, string> = { full: "MotifUsage.swift", plain: "PlainUsage.swift", women: "WomenUsage.swift", system: "SystemUsage.swift" };
+    const usage: Record<string, string> = {
+      full: "MotifUsage.swift",
+      plain: "PlainUsage.swift",
+      women: "WomenUsage.swift",
+      system: "SystemUsage.swift",
+      readable: "ReadableUsage.swift",
+    };
     // The main actor by default only where the compiler has it (Swift 6.2, Xcode 26); Xcode 16.4's Swift 6.1 has not.
     const modes = [["-swift-version", "5"], ["-swift-version", "6"], ...(hasDefaultIsolation() ? [["-swift-version", "6", "-default-isolation", "MainActor"]] : [])];
     if (modes.length < 3) console.log("[swiftui-compile] Swift is older than 6.2: the main-actor-by-default typecheck is skipped.");
-    for (const shape of ["full", "plain", "women", "system"]) {
+    for (const shape of Object.keys(usage)) {
       for (const [name, target] of targets) {
         for (const mode of modes) {
           const files = ["MotifTheme.swift", usage[shape]!];

@@ -1,4 +1,4 @@
-import { converter, formatHex, wcagContrast, wcagLuminance } from "culori";
+import { converter, formatHex, formatHex8, wcagContrast, wcagLuminance } from "culori";
 import type { SourceFile } from "../check/files";
 import { darkRanges, variantAt, variantRanges } from "../check/dark";
 import { CLASS_PREFIX, classSegments, utilContext } from "../check/rules/tailwind";
@@ -839,6 +839,45 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     chosen[role] = named[role] ?? remaining.find((c) => hueDistance(c.h, hue) <= width && !Object.values(chosen).some((x) => same(x, c)));
   }
 
+  // A border, text or surface colour that is see-through (a hairline at 8%) is drafted as it shows over the drafted
+  // background, as a see-through palette field is: the variable that sets that colour, when one does, gives its dark value
+  // (over the dark background) and each variant's (over that variant's); when none does, the same colour is laid over the dark
+  // background and each variant's, and only without a dark background is its light value copied. surface-raised follows the surface. The background
+  // itself stays solid: nothing is under it. Status and action colours stay solid too: a danger red found only as a 10%
+  // tint is still red where it's used as text or a fill.
+  /** Roles drafted from a see-through colour no variable sets, laid over the background: role → that colour. */
+  const shownOver = new Map<string, string>();
+  const shownClusters = new Map<ColorCluster, { cluster: ColorCluster; field?: string }>();
+  const sameColor = (a: string | undefined, b: string) => {
+    const x = a ? parseColor(a) : undefined;
+    const y = parseColor(b);
+    return Boolean(x && y && formatHex8(x) === formatHex8(y));
+  };
+  const asShown = (role: string, cluster: ColorCluster | undefined): ColorCluster | undefined => {
+    if (!cluster || flattened.has(role) || cluster === named[role] || same(cluster, chosen.background)) return cluster;
+    const value = cluster.members[0]?.value;
+    const alpha = value ? parseColor(value)?.alpha : undefined;
+    if (!value || alpha === undefined || alpha >= 1) return cluster;
+    let shown = shownClusters.get(cluster);
+    if (!shown) {
+      const flat = flatten(value, chosen.background?.hex ?? DEFAULT_COLORS.background!);
+      if (!flat) return cluster;
+      const sets = (occ.variables ?? []).filter((v) => sameColor(v.light, value));
+      const entries = follow ? roleNames.filter((e) => e.role === role) : [];
+      const v =
+        sets.find((x) => entries.some((entry) => nameScore(x.name, entry) >= 0)) ?? sets.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ?? sets[0];
+      const made = ownCluster(v ? v.name : `${cluster.id}-shown`, flat, cluster);
+      // Notes name the app's own colour, as it's written.
+      made.members = [cluster.members[0]!];
+      shown = { cluster: made, field: v?.name };
+      shownClusters.set(cluster, shown);
+    }
+    if (shown.field) flattened.set(role, shown.field);
+    else shownOver.set(role, value);
+    return shown.cluster;
+  };
+  for (const role of ["border", "text-primary", "text-secondary", "surface"]) chosen[role] = asShown(role, chosen[role]);
+
   // Primitive colours: one per cluster used, plus defaults, white and ink.
   const primitives: Record<string, unknown> = {};
   const roles: Record<string, string> = {};
@@ -908,8 +947,17 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
 
   const inCluster = (cluster: ColorCluster | undefined, value: string | undefined) =>
     Boolean(cluster && solidHex(value) && cluster.members.some((m) => solidHex(m.value) === solidHex(value)));
-  /** A role's own dark value from the app (a variable's dark block, or a see-through field over the dark background). */
+  /**
+   * A role's own dark value from the app: a variable's dark block, or a see-through colour no variable sets laid over the
+   * dark background, as it shows there (none when the app has no dark background: its light value is copied, as any role's).
+   */
   const darkHexOf = (role: string): string | undefined => {
+    const seeThrough = shownOver.get(role);
+    if (seeThrough) {
+      const background = darkHexOf("background");
+      const flat = background ? flatten(seeThrough, background) : undefined;
+      return flat && flat !== chosen[role]?.hex ? flat : undefined;
+    }
     const source = sourceOf(role);
     if (source) return solidHex(chainDark(source));
     const candidates = (occ.variables ?? []).filter((x) => solidHex(x.dark) && inCluster(chosen[role], x.light));
@@ -948,6 +996,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const lightHex = (role: string) => chosen[role]?.hex ?? DEFAULT_COLORS[role]!;
   const lightFills: Fills = Object.fromEntries(TEXT_FILLS.map((f) => [f, lightHex(f)]));
   const darkFills: Fills = Object.fromEntries(TEXT_FILLS.map((f) => [f, (chosen[f] ? darkHexOf(f) : undefined) ?? lightFills[f]!]));
+  // A see-through surface's dark colour shows over the dark background, as its role's dark value will.
+  const surfaceField = flattened.get("surface");
+  if (surfaceField) darkFills.surface = flatten(chainDark(chainOf(surfaceField)), darkFills.background!) ?? lightFills.surface!;
   /** Ink or white for the primary text; a grey, then ink or white, for the secondary. */
   const ladder = (role: string, fills: Fills) => {
     const light = onColor(fills.background!) === INK;
@@ -1014,6 +1065,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
         light = nudged.hex;
         textLight[role] = { name: `${cluster!.id}-${nudged.darker ? "darker" : "lighter"}`, hex: light };
         flattened.delete(role);
+        shownOver.delete(role);
         textNotes.push(
           `Text colour ${(cluster!.members[0]?.value ?? cluster!.hex).toLowerCase()} (${shown(miss.ratio)}:1 on the ${miss.fill}, needs ${miss.min}:1) was ${nudged.darker ? "darkened" : "lightened"} to ${light.toLowerCase()} so it reads on every background; check it.`,
         );
@@ -1023,6 +1075,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
         if (cluster) {
           chosen[role] = undefined;
           flattened.delete(role);
+          shownOver.delete(role);
         }
         const fallback = DEFAULT_COLORS[role]!;
         if (cluster && !missOf(role, fallback, lightFills)) {
@@ -1173,6 +1226,19 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
         const darkHex = flatten(own.dark, hexOf(bg?.dark ?? darkBase.background ?? base.background!));
         const value = !lightHex || lightHex === hexOf(base[role]!) ? base[role]! : addPrimitive(`${chosen[role]!.id}-${id}`, lightHex);
         const dark = !darkHex ? (lightHex ? value : defaultDark) : darkHex === hexOf(defaultDark) ? defaultDark : addPrimitive(`${chosen[role]!.id}-${id}-dark`, darkHex);
+        (variantRoles[role] ??= {})[id] = { value, dark };
+      }
+    }
+    // A see-through colour no variable sets shows over each variant's background, in each mode.
+    for (const [role, seeThrough] of shownOver) {
+      const defaultDark = darkBase[role] ?? base[role]!;
+      for (const [id, bg] of Object.entries(variantRoles.background ?? {})) {
+        const lightHex = flatten(seeThrough, hexOf(bg.value));
+        const darkHex = flatten(seeThrough, hexOf(bg.dark));
+        const value = !lightHex || lightHex === hexOf(base[role]!) ? base[role]! : addPrimitive(`${chosen[role]!.id}-${id}`, lightHex);
+        // A text colour whose dark value Motif drafted (it didn't read as it shows) keeps that drafted value.
+        const dark =
+          draftedDark.has(role) || !darkHex || darkHex === hexOf(defaultDark) ? defaultDark : addPrimitive(`${chosen[role]!.id}-${id}-dark`, darkHex);
         (variantRoles[role] ??= {})[id] = { value, dark };
       }
     }
@@ -1353,8 +1419,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     notes.push(`Your CSS sets ${variables.length} colour ${variables.length === 1 ? "variable" : "variables"}; design/extract-report.json shows the role each matches, so you can define them from Motif's (--bg: var(--motif-color-background)).`);
   }
   notes.push(...(occ.notes ?? []));
-  // A role whose colour is see-through (a hairline at 8%) is drafted solid: say so. The colour is the variable's that named
-  // the role, when one did (a solid --text beside much-used see-through text of the same hue isn't see-through).
+  // A border, text or surface colour that is see-through (a hairline at 8%) is drafted as it shows over the background, and
+  // the background, status and action colours solid: say so. The colour is the variable's that named the role, when one did (a solid --text beside much-used
+  // see-through text of the same hue isn't see-through).
   for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
     // A text colour changed to read on the fills has its own note.
     if (textLight[role]) continue;
@@ -1363,6 +1430,13 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
       notes.push(
         `${role} comes from ${field}, which is see-through (${lightOf(field)}): drafted as ${chosen[role]!.hex}, how it shows over the background (in dark mode and each variant, over theirs). Check it.`,
       );
+      continue;
+    }
+    const seeThrough = shownOver.get(role);
+    if (seeThrough && chosen[role]) {
+      // Laid over the dark background, or a variant's, too when the app has one.
+      const theirs = darkHexOf("background") || Object.keys(variantRoles.background ?? {}).length > 0 ? " (in dark mode and each variant, over theirs)" : "";
+      notes.push(`${role} comes from a see-through colour (${seeThrough}): drafted as ${chosen[role]!.hex}, how it shows over the background${theirs}. Check it.`);
       continue;
     }
     const byName = chosen[role] && chosen[role] === named[role] ? namedVar[role] : undefined;

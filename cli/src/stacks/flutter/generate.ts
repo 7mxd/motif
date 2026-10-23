@@ -3,6 +3,7 @@ import { springPhysics } from "../../contract/spring";
 import type { DtcgColor } from "../../contract/values";
 import { num } from "../../generate/css-values";
 import { TS_HEADER, type GeneratedFile } from "../../generate/header";
+import { readableAction, type ModePair, type ReadableAction } from "../../generate/readable-action";
 import type { Theme, ThemeFont, ThemeSet, ThemeShadowLayer } from "../../generate/theme";
 import { stackFamilies, themeFonts } from "../../generate/theme-fonts";
 import { slotSize, TYPE_SLOTS, typeScale } from "../../generate/type-slots";
@@ -75,15 +76,25 @@ function duration(ms: number): string {
   return Number.isInteger(ms) ? `Duration(milliseconds: ${ms})` : `Duration(microseconds: ${Math.round(ms * 1000)})`;
 }
 
-function colorsBlock(set: ThemeSet): string[] {
+/**
+ * MotifColors' member for the readable action colour, there when the guide's own action colour doesn't read as text:
+ * actionText, unless the guide has a role of that name.
+ */
+const actionTextField = (t: Theme) => member("action-text", "c", new Set([...COLOR_MEMBERS, ...t.colors.map((c) => colorField(c.name))]));
+
+function colorsBlock(set: ThemeSet, readable: ReadableAction | null): string[] {
   const colors = set.base.colors;
-  const fields = colors.map((c) => colorField(c.name));
-  const instance = (name: string, theme: Theme, mode: "light" | "dark", doc: string): string[] => {
+  const roleFields = colors.map((c) => colorField(c.name));
+  const actionText = actionTextField(set.base);
+  const fields = readable ? [...roleFields, actionText] : roleFields;
+  const instance = (name: string, theme: Theme, mode: "light" | "dark", doc: string, pair?: ModePair): string[] => {
     const byName = new Map(theme.colors.map((c) => [c.name, c]));
+    const values = colors.map((c, i) => `${roleFields[i]}: ${dartColor((byName.get(c.name) ?? c)[mode])}`);
+    if (pair) values.push(`${actionText}: Color(0xFF${pair[mode].text.slice(1)})`);
     return [
       `  /// ${doc}`,
       ...render(
-        call("MotifColors(", colors.map((c, i) => `${fields[i]}: ${dartColor((byName.get(c.name) ?? c)[mode])}`)),
+        call("MotifColors(", values),
         2,
         `static const MotifColors ${name} = `,
         ";",
@@ -93,13 +104,14 @@ function colorsBlock(set: ThemeSet): string[] {
   const oneLine = (label: string) => label.replace(/\s+/g, " ").trim();
   const defaultName = set.defaultLabel ? `${oneLine(set.defaultLabel)} variant, ` : "";
   const instances = [
-    instance("light", set.base, "light", `${defaultName}light mode.`.replace(/^./, (c) => c.toUpperCase())),
+    instance("light", set.base, "light", `${defaultName}light mode.`.replace(/^./, (c) => c.toUpperCase()), readable?.base),
     "",
-    instance("dark", set.base, "dark", `${defaultName}dark mode.`.replace(/^./, (c) => c.toUpperCase())),
+    instance("dark", set.base, "dark", `${defaultName}dark mode.`.replace(/^./, (c) => c.toUpperCase()), readable?.base),
     ...set.variants.flatMap((v) => {
       const id = dartIdentifier(v.id);
       const doc = (mode: string) => `${oneLine(v.label)} variant, ${mode} mode.`;
-      return ["", instance(`${id}Light`, v.theme, "light", doc("light")), "", instance(`${id}Dark`, v.theme, "dark", doc("dark"))];
+      const pair = readable?.variants[v.id];
+      return ["", instance(`${id}Light`, v.theme, "light", doc("light"), pair), "", instance(`${id}Dark`, v.theme, "dark", doc("dark"), pair)];
     }),
   ].flat();
 
@@ -110,7 +122,8 @@ function colorsBlock(set: ThemeSet): string[] {
     "class MotifColors extends ThemeExtension<MotifColors> {",
     ...render(call("const MotifColors({", fields.map((f) => `required this.${f}`), "});"), 2),
     "",
-    ...fields.map((f) => `  final Color ${f};`),
+    ...roleFields.map((f) => `  final Color ${f};`),
+    ...(readable ? ["", "  /// The action colour for text, readable on the background.", `  final Color ${actionText};`] : []),
     "",
     ...instances,
     "",
@@ -242,9 +255,11 @@ const SCHEME: [string, string][] = [
 /**
  * Material's own widgets drawn the way the stack guide's components are: buttons and fields at the md corner, cards,
  * dialogs and sheets raised at lg, fields outlined with the focus and danger roles. Each is left out when the guide
- * lacks a role it needs. The types are the ones Flutter 3.27 (the floor) takes and newer versions still accept.
+ * lacks a role it needs. With `actionText`, text, outlined and elevated buttons draw their labels in the readable action colour
+ * (Material's default is ColorScheme.primary, action-primary, which doesn't read). The types are the ones Flutter 3.27
+ * (the floor) takes and newer versions still accept.
  */
-function componentThemes(t: Theme): { locals: string[]; args: Expr[] } {
+function componentThemes(t: Theme, actionText: boolean): { locals: string[]; args: Expr[] } {
   const has = new Set([...t.colors.map((c) => `color.${c.name}`), ...t.radius.map((r) => `radius.${r.name}`)]);
   const needs = (...roles: string[]) => roles.every((r) => has.has(r));
   const c = (role: string) => `colors.${colorField(role)}`;
@@ -294,9 +309,14 @@ function componentThemes(t: Theme): { locals: string[]; args: Expr[] } {
       ]),
     );
   }
-  const button = (theme: string, widget: string) =>
-    call(`${theme}: ${widget}ThemeData(`, [call(`style: ${widget}.styleFrom(`, ["shape: corners"])]);
-  if (buttons) args.push(button("elevatedButtonTheme", "ElevatedButton"), button("filledButtonTheme", "FilledButton"));
+  /** A button's theme: its corners, and the readable action colour for the buttons that draw it as text. */
+  const button = (theme: string, widget: string, text = false) => {
+    const style = [...(text && actionText ? [`foregroundColor: colors.${actionTextField(t)}`] : []), ...(buttons ? ["shape: corners"] : [])];
+    return call(`${theme}: ${widget}ThemeData(`, [call(`style: ${widget}.styleFrom(`, style)]);
+  };
+  // An elevated button labels in the action colour on the page's colour, so it reads like a text button; a filled one labels in onPrimary on the fill.
+  if (buttons || actionText) args.push(button("elevatedButtonTheme", "ElevatedButton", true));
+  if (buttons) args.push(button("filledButtonTheme", "FilledButton"));
   if (fields) {
     args.push(
       call("inputDecorationTheme: InputDecorationTheme(", [
@@ -311,15 +331,15 @@ function componentThemes(t: Theme): { locals: string[]; args: Expr[] } {
       ]),
     );
   }
-  if (buttons) args.push(button("outlinedButtonTheme", "OutlinedButton"), button("textButtonTheme", "TextButton"));
+  if (buttons || actionText) args.push(button("outlinedButtonTheme", "OutlinedButton", true), button("textButtonTheme", "TextButton", true));
   return { locals, args };
 }
 
-function themeBlock(set: ThemeSet): string[] {
+function themeBlock(set: ThemeSet, readable: ReadableAction | null): string[] {
   const t = set.base;
   const has = new Set(t.colors.map((c) => c.name));
   const fonts = new Set(t.fonts.map((f) => f.name));
-  const components = componentThemes(t);
+  const components = componentThemes(t, readable !== null);
   const scheme = call("colorScheme: ColorScheme(", [
     "brightness: brightness",
     ...SCHEME.filter(([, role]) => has.has(role)).map(([key, role]) => `${key}: colors.${colorField(role)}`),
@@ -389,6 +409,9 @@ export function generateFlutter(set: ThemeSet, opts: { googleFonts: boolean }): 
   const usesFamily = styles.some((s) => flat(s.style).includes("_family("));
   const usesGoogleFonts = usesFont || usesFamily;
   const usesSystemFamily = styles.some((s) => flat(s.style).includes("_systemFamily"));
+  // Material draws TextButton and OutlinedButton labels in ColorScheme.primary (action-primary): a light action
+  // colour gets a readable version for them.
+  const readable = readableAction(set);
 
   const lines = [
     TS_HEADER,
@@ -404,7 +427,7 @@ export function generateFlutter(set: ThemeSet, opts: { googleFonts: boolean }): 
   }
   const field = (type: string, name: string, lead: string, value: Expr) => render(value, 2, `static const ${type} ${member(name, lead)} = `, ";");
   lines.push(
-    ...colorsBlock(set),
+    ...colorsBlock(set, readable),
     ...constants(["Spacing, in logical pixels."], "MotifSpace", t.space.flatMap((s) => field("double", s.name, "s", num(s.px)))),
     ...constants(["Corner radii, in logical pixels."], "MotifRadius", t.radius.flatMap((r) => field("double", r.name, "r", num(r.px)))),
     ...constants(["Shadows, for BoxDecoration.boxShadow."], "MotifShadows", t.shadows.flatMap((s) => field("List<BoxShadow>", s.name, "s", call("[", boxShadows(s.layers), "]")))),
@@ -442,7 +465,7 @@ export function generateFlutter(set: ThemeSet, opts: { googleFonts: boolean }): 
         ...(usesSystemFamily ? ["", ...SYSTEM_FAMILY_HELPER] : []),
       ],
     ),
-    ...themeBlock(set),
+    ...themeBlock(set, readable),
     "",
   );
   return [{ path: THEME_FILE, content: lines.join("\n") }];
