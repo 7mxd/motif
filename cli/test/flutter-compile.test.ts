@@ -3,7 +3,7 @@ import { cpSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { buildThemeSet } from "../src/generate/theme";
 import { generateFlutter } from "../src/stacks/flutter/generate";
-import { docFrom, FIXTURES, hasFlutter, partnerTokens, validTokens, withCompanion } from "./helpers";
+import { docFrom, FIXTURES, hasFlutter, hexColor, partnerTokens, validTokens, withCompanion } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -128,6 +128,15 @@ describe("the generated Dart", () => {
     const [systemPlain] = generateFlutter(buildThemeSet(docFrom(systemTokens)), { googleFonts: false });
     expect(systemPlain!.content).toContain("fontFamily: _systemFamily,\n    fontFamilyFallback: ['Readex Pro'],");
     writeFileSync(join(dir, "lib/design/system_plain_theme.dart"), systemPlain!.content);
+    // HiSalon's mint on a near-white page, in the default variant and the partner one: actionText for text and
+    // outlined buttons (v0.5.0 gate).
+    const readableTokens = partnerTokens();
+    readableTokens.color["action-primary"].$value = hexColor("#7EEBC1");
+    readableTokens.color["action-primary"].$extensions["dev.motif"].variants = { partner: { value: hexColor("#7EEBC1") } };
+    readableTokens.color.background.$value = hexColor("#F7F9F8");
+    const [readable] = generateFlutter(buildThemeSet(docFrom(readableTokens)), { googleFonts: false });
+    expect(readable!.content).toContain("foregroundColor: colors.actionText,");
+    writeFileSync(join(dir, "lib/design/readable_theme.dart"), readable!.content);
     mkdirSync(join(dir, "test"), { recursive: true });
     writeFileSync(join(dir, "test/system_family_test.dart"), SYSTEM_FAMILY_TEST);
 
