@@ -549,14 +549,17 @@ describe("collectSwiftUI's font files: fix round 1 (sweep Task 3, SwiftUI)", () 
     const occ = collect(root);
     expect(occ.companion).toBeUndefined();
     expect(occ.notes).toContain(
-      'Reqdex Pro is registered in your app\'s Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so no type role uses it yet; its files are in the guide\'s fonts list. To use it, name a Latin font first ("SF Pro, Reqdex Pro").',
+      'Reqdex Pro is registered in your app\'s Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so no type role uses it yet; its files are in the guide\'s fonts list. To use it, name a Latin font first ("SF Pro, Reqdex Pro"); until a type role names it, motif validate warns that it isn\'t used.',
     );
     const tokens = buildDraft(occ).tokens as any;
     expect(tokens.primitive.font.sans.$value).toEqual(["system-ui", "sans-serif"]);
     // Fix round 2: its files stay in the guide's fonts list, ready for when a role names it.
     expect(tokens.$extensions["dev.motif"].fonts).toEqual([{ family: "Reqdex Pro", files: [{ path: "Shop/Fonts/ReqdexPro.ttf", weight: 400, style: "normal" }] }]);
     expect(validateTokens(docFrom(tokens))).toEqual([]);
-    expect(checkProjectFontFiles(root, readProjectFonts(docFrom(tokens)).fonts, docFrom(tokens)).filter((f) => f.severity === "error")).toEqual([]);
+    const fontFindings = checkProjectFontFiles(root, readProjectFonts(docFrom(tokens)).fonts, docFrom(tokens));
+    expect(fontFindings.filter((f) => f.severity === "error")).toEqual([]);
+    // The warning the note tells the developer to expect, and nothing else.
+    expect(fontFindings.map((f) => f.code)).toEqual(["font-not-used"]);
   });
 
   test("a named Latin family beside a named shipped Arabic family: the Arabic one is the companion, both are the app's own", () => {

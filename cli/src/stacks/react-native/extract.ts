@@ -297,10 +297,11 @@ const LOCALE_TERNARY = [
 
 /**
  * A sign the app is used in a language written in Arabic script: a locale test (=== "ar", startsWith("ar")), "ar" among
- * the languages it lists (["en", "ar"], an i18n resources key ar:), or the layout's right to left (isRTL, forceRTL).
+ * the languages it lists (["en", "ar"], an i18n resources key ar:, shorthand resources { en, ar } beside another
+ * language), a default language (lng: "ar"), or the layout's right to left (isRTL, forceRTL).
  */
 const ARABIC_SIGNAL =
-  /[!=]==?\s*(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\1|(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\2\s*[!=]==?|startsWith\(\s*(["'`])(?:ar|fa|ur)\3|\[[^\]\n]*(["'`])(?:ar|fa|ur)\4[^\]\n]*\]|[{,]\s*(["']?)(?:ar|fa|ur)\5\s*:|\b(?:isRTL|forceRTL)\b/;
+  /[!=]==?\s*(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\1|(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\2\s*[!=]==?|startsWith\(\s*(["'`])(?:ar|fa|ur)\3|\[[^\]\n]*(["'`])(?:ar|fa|ur)\4[^\]\n]*\]|[{,]\s*(["']?)(?:ar|fa|ur)\5\s*:|\{\s*(?:[a-z]{2}\s*,\s*)+(?:ar|fa|ur)\s*[,}]|\{\s*(?:ar|fa|ur)\s*,\s*[a-z]{2}\s*[,}]|\b(?:lng|lang|language|locale|defaultLocale)\s*[:=]\s*(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\6|\b(?:isRTL|forceRTL)\b/;
 
 /** A family name that says it's for Arabic, when nothing else does: a last resort. */
 const ARABIC_NAME = /arab|naskh|kufi|thmanyah/i;

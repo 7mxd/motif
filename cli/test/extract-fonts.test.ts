@@ -753,6 +753,18 @@ describe("React Native companion and name-following, Task 5 fix round 1", () => 
     // With Arabic in its i18n resources, Rubik is the companion.
     writeFileSync(join(rubik, "i18n.ts"), "export const resources = { en: { translation: {} }, ar: { translation: {} } };\n");
     expect(collect(rubik).companion).toBe("Rubik");
+    // The other common ways (re-review of fix round 2): shorthand resources from imported files, and a default language.
+    for (const i18n of [
+      "import en from './en.json';\nimport ar from './ar.json';\nexport const resources = { en, ar };\n",
+      "import en from './en.json';\nimport ar from './ar.json';\nexport const i18n = new I18n({ en, ar });\n",
+      "i18n.init({ lng: 'ar', fallbackLng: 'en' });\n",
+    ]) {
+      writeFileSync(join(rubik, "i18n.ts"), i18n);
+      expect([i18n, collect(rubik).companion]).toEqual([i18n, "Rubik"]);
+    }
+    // An object whose key happens to be "en" or "ar" in a list of words isn't a sign: shorthand needs a language beside it.
+    writeFileSync(join(rubik, "i18n.ts"), "export const icons = { home, search };\n");
+    expect(collect(rubik).companion).toBeUndefined();
   });
 
   test("fix round 2: a damaged font file the app loads (the review's 28-byte one) doesn't stop extract", async () => {

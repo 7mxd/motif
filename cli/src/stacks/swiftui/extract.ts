@@ -438,7 +438,7 @@ function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFa
   const companion = written.size === 0 ? (known ? registered.family : undefined) : latin ? named.find(covers) : undefined;
   const note =
     registered && !known
-      ? `${registered.family} is registered in your app's Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so no type role uses it yet; its files are in the guide's fonts list. To use it, name a Latin font first ("SF Pro, ${registered.family}").`
+      ? `${registered.family} is registered in your app's Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so no type role uses it yet; its files are in the guide's fonts list. To use it, name a Latin font first ("SF Pro, ${registered.family}"); until a type role names it, motif validate warns that it isn't used.`
       : undefined;
   // A registered Arabic font Motif can't make the companion keeps its files in the guide's fonts list (keptFonts).
   const kept = registered && !known ? [registered.family] : [];
