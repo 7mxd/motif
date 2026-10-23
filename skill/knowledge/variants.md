@@ -31,6 +31,8 @@ On Flutter, a variant changes colours only: the theme code gives each variant it
 
 On React Native, a variant changes colours only too. The app switches with `<MotifProvider variant="women">`, from its own state ([how](../adapters/react-native/tokens.md#switching-variants)).
 
+On Vue and Nuxt, a variant switches as on the web: `data-variant` on `<html>`, set from the app's state, and with `useHead` in Nuxt so a server-rendered page starts in the right variant ([how](../adapters/vue/tokens.md#switching-variants)).
+
 ## What never varies
 
 The app must still read as one brand, and every variant must be as usable as the others:
