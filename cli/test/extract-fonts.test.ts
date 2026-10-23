@@ -1,9 +1,10 @@
 // A family the app ships is drafted as its own (a project font, with its files); a family is drafted as a Google font
 // only when the app gets it from Google. Checked through what `motif tokens` reads from the draft (themeFonts).
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runExtract } from "../src/commands/extract";
+import { runTokens } from "../src/commands/tokens";
 import { checkProjectFontFiles, readProjectFonts } from "../src/contract/fonts";
 import { validateTokens } from "../src/contract/tokens";
 import type { AppInfo } from "../src/detect/stacks";
@@ -270,9 +271,10 @@ export default function RootLayout() {
       "app/styles.ts": STYLES("ReadexPro-Regular"),
     });
     const { tokens, report } = draft(root);
-    expect(fontsList(tokens)?.map((f: any) => f.family)).toEqual(["ReadexPro"]);
-    expect(sources(tokens)).toEqual({ ReadexPro: "project" });
-    expect(report.notes.join("\n")).toContain("ReadexPro ships with your app and is also loaded from Google Fonts");
+    // The family is named by its @expo-google-fonts package, Readex Pro, whichever way the code spells a face (final fix wave).
+    expect(fontsList(tokens)?.map((f: any) => f.family)).toEqual(["Readex Pro"]);
+    expect(sources(tokens)).toEqual({ "Readex Pro": "project" });
+    expect(report.notes.join("\n")).toContain("Readex Pro ships with your app and is also loaded from Google Fonts");
     valid(root, tokens);
   });
 });
@@ -811,5 +813,94 @@ describe("React Native companion and name-following, Task 5 fix round 1", () => 
       "App.tsx": "import { useFonts } from 'expo-font';\nimport { fonts } from '@/theme/fonts';\nexport default function L() { useFonts(fonts); return null; }\n",
       "src/theme/fonts.ts": "export const fonts = {\n  'ReadexPro-Regular': require('../../assets/fonts/ReadexPro-Regular.ttf'),\n};\n",
     }));
+  });
+});
+
+describe("final fix wave: Expo Google families by their package, and weights from the font's own axis", () => {
+  const app = { path: ".", stack: "react-native" } as AppInfo;
+  const pkg = (deps: Record<string, string>) => JSON.stringify({ name: "x", dependencies: { expo: "~54.0.1", react: "19.1.0", "react-native": "0.81.4", "expo-font": "~14.0.0", ...deps } });
+
+  test("@expo-google-fonts/readex-pro's ReadexPro_400Regular is Readex Pro, the companion; motif tokens names the real package", async () => {
+    const root = makeProject({
+      "package.json": pkg({ "@expo-google-fonts/inter": "*" }),
+      "App.tsx": `import { useFonts } from 'expo-font';
+import { Inter_400Regular, Inter_700Bold } from '@expo-google-fonts/inter';
+import { ReadexPro_400Regular } from '@expo-google-fonts/readex-pro';
+export default function App() { useFonts({ Inter_400Regular, Inter_700Bold, ReadexPro_400Regular }); return null; }
+export const family = (locale: string) => (locale === 'ar' ? 'ReadexPro_400Regular' : 'Inter_400Regular');
+export const s = { body: { fontFamily: 'Inter_400Regular', fontSize: 16 }, title: { fontFamily: 'Inter_700Bold', fontSize: 22 } };
+`,
+    });
+    const occ = collectReactNative(REACT_NATIVE.sourceFiles!(root, app, {}));
+    expect(occ.companion).toBe("Readex Pro");
+    expect(occ.googleFonts).toEqual(["Inter", "Readex Pro"]);
+    const { tokens } = buildDraft(occ);
+    expect((tokens as any).primitive.font.sans.$value).toEqual(["Inter", "Readex Pro", "system-ui", "sans-serif"]);
+    expect(sources(tokens)).toEqual({ Inter: "google", "Readex Pro": "bundled" });
+    writeFileSync(join(root, "tokens.draft.json"), JSON.stringify(tokens));
+    mkdirSync(join(root, "design"), { recursive: true });
+    writeFileSync(join(root, "design/tokens.json"), JSON.stringify(tokens));
+    const r = await runTokens(root, { positionals: [] });
+    const notes = ((r.data as { notes?: string[] }).notes ?? []).join("\n");
+    expect(notes).toContain("@expo-google-fonts/readex-pro");
+    expect(notes).not.toContain("readexpro");
+  });
+
+  test("@expo-google-fonts/ibm-plex-sans-arabic's export is IBM Plex Sans Arabic, as the main family", () => {
+    const root = makeProject({
+      "package.json": pkg({ "@expo-google-fonts/ibm-plex-sans-arabic": "*" }),
+      "App.tsx": `import { useFonts } from 'expo-font';
+import { IBMPlexSansArabic_400Regular, IBMPlexSansArabic_700Bold } from '@expo-google-fonts/ibm-plex-sans-arabic';
+export default function App() { useFonts({ IBMPlexSansArabic_400Regular, IBMPlexSansArabic_700Bold }); return null; }
+export const s = { body: { fontFamily: 'IBMPlexSansArabic_400Regular', fontSize: 16 }, title: { fontFamily: 'IBMPlexSansArabic_700Bold', fontSize: 22 } };
+`,
+    });
+    const occ = collectReactNative(REACT_NATIVE.sourceFiles!(root, app, {}));
+    expect(occ.fontFamily.map((f) => f.value)).toEqual(["IBM Plex Sans Arabic"]);
+    const { tokens } = buildDraft(occ);
+    expect((tokens as any).primitive.font.sans.$value).toEqual(["IBM Plex Sans Arabic", "system-ui", "sans-serif"]);
+    expect(sources(tokens)).toEqual({ "IBM Plex Sans Arabic": "google" });
+  });
+
+  /** A copy of a real font whose fvar table is renamed away: a static font at its default weight, 400. */
+  const staticCopy = (path: string) => {
+    const b = Buffer.from(readFileSync(path));
+    for (let i = 0, n = b.readUInt16BE(4); i < n; i++) if (b.toString("latin1", 12 + i * 16, 16 + i * 16) === "fvar") b.write("xvar", 12 + i * 16, "latin1");
+    return b;
+  };
+  const WEIGHTS = "files have weight";
+  const extractNotes = async (fixture: string, change?: (root: string) => void) => {
+    const root = makeProject({});
+    cpSync(join(import.meta.dir, "fixtures", fixture), root, { recursive: true });
+    change?.(root);
+    expect((await runExtract(root, { positionals: [], flags: {} })).exitCode).toBe(0);
+    return (read(root, "design/extract-report.json").notes as string[]).join("\n");
+  };
+
+  test("compose-min's and flutter-min's Noto Naskh Arabic has a 400–700 weight axis, so it has every weight the roles use", async () => {
+    expect(await extractNotes("compose-min")).not.toContain(WEIGHTS);
+    expect(await extractNotes("flutter-min")).not.toContain(WEIGHTS);
+  });
+
+  test("the same font made static (no weight axis) still gets the note", async () => {
+    const compose = "app/src/main/res/font/noto_naskh_arabic.ttf";
+    const notes = await extractNotes("compose-min", (root) => writeFileSync(join(root, compose), staticCopy(join(import.meta.dir, "fixtures/compose-min", compose))));
+    expect(notes).toContain("Naskh Arabic's files have weight 400 only, but the type roles also use");
+    const flutter = "assets/fonts/NotoNaskhArabic.ttf";
+    expect(await extractNotes("flutter-min", (root) => writeFileSync(join(root, flutter), staticCopy(join(import.meta.dir, "fixtures/flutter-min", flutter))))).toContain(
+      "NotoNaskhArabic's files have weight 400 only",
+    );
+  });
+
+  test("an Expo app's require()d variable font is read the same way", () => {
+    const root = makeProject({
+      "package.json": pkg({}),
+      "App.tsx": "import { useFonts } from 'expo-font';\nexport default function App() { useFonts({ 'NotoNaskhArabic-Regular': require('./assets/fonts/NotoNaskhArabic.ttf') }); return null; }\nexport const s = { body: { fontFamily: 'NotoNaskhArabic-Regular', fontSize: 16 } };\n",
+    });
+    mkdirSync(join(root, "assets/fonts"), { recursive: true });
+    cpSync(join(import.meta.dir, "fixtures/flutter-min/assets/fonts/NotoNaskhArabic.ttf"), join(root, "assets/fonts/NotoNaskhArabic.ttf"));
+    const occ = collectReactNative(REACT_NATIVE.sourceFiles!(root, app, {}));
+    expect(occ.fontWeightRanges).toEqual([{ family: "NotoNaskhArabic", min: 400, max: 700 }]);
+    expect(buildDraft(occ).report.notes.join("\n")).not.toContain(WEIGHTS);
   });
 });

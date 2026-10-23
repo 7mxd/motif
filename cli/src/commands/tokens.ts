@@ -12,7 +12,7 @@ import { flatTokensFile, generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
 import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
 import { buildThemeSet, type ThemeSet } from "../generate/theme";
-import { skippedCompanions, themeFonts, type SkippedCompanion } from "../generate/theme-fonts";
+import { latinExample, skippedCompanions, themeFonts, type SkippedCompanion } from "../generate/theme-fonts";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { ignoredByGit, ignoredNotes } from "../project/git";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
@@ -299,7 +299,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   }
   // Native apps read only the start of a font list; on the web, CSS reads the whole list, so there's nothing to say.
   if (apps.some((a) => nativeStack(a.stack)?.generate)) {
-    const latin = themeFonts(theme).find((f) => !f.companion)?.family ?? "Onest";
+    const latin = latinExample(theme, apps.find((a) => nativeStack(a.stack)?.generate)?.stack);
     for (const s of skippedCompanions(theme)) notes.push(skippedCompanionNote(s, latin));
   }
   if (needsFallback) files.push(...generateFallback(theme, set.variants));

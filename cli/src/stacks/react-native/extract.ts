@@ -7,8 +7,8 @@ import { inRanges, maskComments } from "../../check/mask";
 import { colorContext } from "../../check/rules/colors";
 import { parseColor, type Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
-import { coversArabic, rootOf, weightStyleOf } from "../../extract/own-fonts";
-import { bundledCoverage } from "../../preview/font-list";
+import { axisWeightRanges, coversArabic, rootOf, weightStyleOf } from "../../extract/own-fonts";
+import { isKnownArabic } from "../../preview/font-list";
 import { locator } from "../../text";
 import { isMonospace } from "../../contract/defaults";
 import { GENERIC_WORDS, kebab, pairInstances, title, words, type Paired } from "../flutter/extract";
@@ -174,6 +174,30 @@ function familyOf(name: string): string {
   return name.replace(/_\d{3}\w*$/, "").replace(/-(?:Thin|ExtraLight|Light|Regular|Medium|SemiBold|Bold|ExtraBold|Black)(?:Italic)?$/, "");
 }
 
+/**
+ * A Google family's name from its @expo-google-fonts package, in its export's capitals: readex-pro and ReadexPro_400Regular
+ * → Readex Pro, ibm-plex-sans-arabic and IBMPlexSansArabic_400Regular → IBM Plex Sans Arabic. When the export's letters
+ * aren't the package's words, the words are capitalised.
+ */
+function googleFamily(pkg: string, stem: string): string {
+  const words = pkg.split("-").filter(Boolean);
+  if (words.join("") !== stem.toLowerCase()) return words.map((w) => w[0]!.toUpperCase() + w.slice(1)).join(" ");
+  const out: string[] = [];
+  let at = 0;
+  for (const w of words) {
+    out.push(stem.slice(at, at + w.length));
+    at += w.length;
+  }
+  return out.join(" ");
+}
+
+/** A family name as a key: no case, spaces, "-" or "_" (Readex Pro, ReadexPro). */
+const compactKey = (family: string) => family.toLowerCase().replace(/[\s_-]+/g, "");
+
+const GOOGLE_IMPORT = /import\s*\{([^}]*)\}\s*from\s*["']@expo-google-fonts\/([\w-]+)["']/g;
+/** An import list's capitalised names, without aliases: the faces an @expo-google-fonts package exports. */
+const importedFaces = (list: string) => list.split(",").map((s) => s.trim().split(/\s+as\s+/)[0]!.trim()).filter((s) => /^[A-Z]/.test(s));
+
 type ProjectFontEntry = NonNullable<Occurrences["projectFonts"]>[number];
 type UnfoundFontEntry = NonNullable<Occurrences["unfoundFonts"]>[number];
 
@@ -307,7 +331,7 @@ const ARABIC_SIGNAL =
 const ARABIC_NAME = /arab|naskh|kufi|thmanyah/i;
 
 /** True for a family Motif's kit ships the Arabic letters of (Readex Pro, Rubik), written either way (ReadexPro). */
-const knownArabic = (family: string) => (bundledCoverage(family) ?? bundledCoverage(family.replace(/([a-z])([A-Z])/g, "$1 $2"))) === "arabic";
+const knownArabic = isKnownArabic;
 
 /** A call that loads fonts: useFonts( or Font.loadAsync( with an object literal, or with a name (group 1) for one. */
 const FONT_LOAD = new RegExp(`(?<![\\w$.])(?:useFonts|(?:Font\\s*\\.\\s*)?loadAsync)\\s*\\(\\s*(?:(?=\\{)|(${IDENT})\\s*[,)])`, "g");
@@ -621,10 +645,25 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
     ownFonts.set(key, entry);
   };
   const byPath = new Map(scripts.map((f) => [f.source.path, f]));
+  // A family the app gets from @expo-google-fonts is named by its package (Readex Pro), not its export (ReadexPro), as
+  // Google and motif tokens name it; every face name of it (ReadexPro_400Regular) is that family.
+  const googleNames = new Map<string, string>();
+  for (const file of scripts) {
+    for (const m of file.source.text.matchAll(GOOGLE_IMPORT)) {
+      for (const face of importedFaces(m[1]!)) {
+        const stem = familyOf(face);
+        if (!googleNames.has(compactKey(stem))) googleNames.set(compactKey(stem), googleFamily(m[2]!, stem));
+      }
+    }
+  }
+  const familyNamed = (name: string) => {
+    const family = familyOf(name);
+    return googleNames.get(compactKey(family)) ?? family;
+  };
   /** The families an object of fonts loads (its keys), each a sample once; those from require()d files are the app's own. */
   const loadedFonts = (file: ScriptFile, obj: Obj) => {
     for (const e of obj.entries) {
-      const family = familyOf(e.key);
+      const family = familyNamed(e.key);
       if (family && !fontNames.has(family)) {
         fontNames.add(family);
         add("fontFamily", family, where(file, e.keyStart));
@@ -657,7 +696,7 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
           add("fontSize", hit.value!, example);
           break;
         case "font-family":
-          add("fontFamily", familyOf(hit.value!), example);
+          add("fontFamily", familyNamed(hit.value!), example);
           break;
         case "duration":
           add("duration", hit.value!, example);
@@ -676,9 +715,9 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
       const found = m[1] ? objectNamed(file, m[1], byPath) : { file, obj: parseObject(file.masked, file.source.text, m.index! + m[0].length) };
       if (found) loadedFonts(found.file, found.obj);
     }
-    for (const m of file.source.text.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']@expo-google-fonts\/[\w-]+["']/g)) {
-      for (const name of m[1]!.split(",").map((s) => s.trim().split(/\s+as\s+/)[0]!.trim()).filter((s) => /^[A-Z]/.test(s))) {
-        const family = familyOf(name);
+    for (const m of file.source.text.matchAll(GOOGLE_IMPORT)) {
+      for (const name of importedFaces(m[1]!)) {
+        const family = familyNamed(name);
         googleFonts.add(family);
         if (!fontNames.has(family)) {
           fontNames.add(family);
@@ -706,13 +745,14 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
       for (const m of text.matchAll(re)) {
         const { op, first, second } = m.groups!;
         const equal = op!.startsWith("=");
-        arabicSide.add(familyOf((equal ? first : second)!.trim()).toLowerCase());
-        latinSide.add(familyOf((equal ? second : first)!.trim()).toLowerCase());
+        arabicSide.add(familyNamed((equal ? first : second)!.trim()).toLowerCase());
+        latinSide.add(familyNamed((equal ? second : first)!.trim()).toLowerCase());
       }
     }
   }
   const candidates = families.filter((f) => f.value.toLowerCase() !== main && fontNames.has(f.value) && !latinSide.has(f.value.toLowerCase())).map((f) => f.value);
   const root = scripts[0] ? rootOf(scripts[0].source) : null;
+  const fontWeightRanges = axisWeightRanges(root, projectFonts);
   const shipsArabic = (family: string) =>
     root !== null && projectFonts.some((p) => p.family.toLowerCase() === family.toLowerCase() && p.files.some((f) => coversArabic(root + f.path)));
   const companion =
@@ -733,6 +773,7 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
     ...(notes.length ? { notes } : {}),
     ...(companion ? { companion } : {}),
     ...(projectFonts.length ? { projectFonts } : {}),
+    ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
     ...(googleFonts.size ? { googleFonts: [...googleFonts] } : {}),
     ...(unfoundFonts.length ? { unfoundFonts } : {}),
   };

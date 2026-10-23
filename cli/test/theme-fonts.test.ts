@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildTheme, buildThemeSet, type Theme } from "../src/generate/theme";
-import { firstFamily, fontStylesheets, googleFontsUrl, skippedCompanions, stackFamilies, themeFonts } from "../src/generate/theme-fonts";
+import { firstFamily, fontStylesheets, googleFontsUrl, latinExample, skippedCompanions, stackFamilies, themeFonts } from "../src/generate/theme-fonts";
 import { generateCompose } from "../src/stacks/compose/generate";
 import { generateFlutter } from "../src/stacks/flutter/generate";
 import { generateReactNative } from "../src/stacks/react-native/generate";
@@ -192,5 +192,34 @@ describe("project fonts", () => {
     // without the declaration the same family would be fetched
     delete tokens.$extensions;
     expect(fontStylesheets(buildTheme(docFrom(tokens))).join(" ")).toContain("Thmanyah");
+  });
+});
+
+describe("final fix wave", () => {
+  test("a known Arabic family written without its space (ReadexPro) is still the companion after the system font", () => {
+    expect(stackFamilies("system-ui, ReadexPro, sans-serif")).toEqual([null, "ReadexPro"]);
+  });
+
+  test("skippedCompanions names each list's own first generic family", () => {
+    const tokens = validTokens();
+    tokens.$extensions["dev.motif"].fonts = [{ family: "Thmanyah Sans", files: [{ path: "design/fonts/T.ttf", weight: 400, style: "normal" }] }];
+    tokens.font.body.$value.fontFamily = ["system-ui", "Thmanyah Sans"];
+    tokens.font.caption.$value.fontFamily = ["-apple-system", "Thmanyah Sans"];
+    tokens.font.label.$value.fontFamily = ["system-ui", "Thmanyah Sans", "sans-serif"];
+    expect(skippedCompanions(buildTheme(docFrom(tokens)))).toEqual([
+      { family: "Thmanyah Sans", after: "system-ui", roles: ["body", "label"], kind: "project" },
+      { family: "Thmanyah Sans", after: "-apple-system", roles: ["caption"], kind: "project" },
+    ]);
+  });
+
+  test("the Latin font a note suggests: the theme's own, else the platform's (SF Pro, Roboto), else Onest", () => {
+    const tokens = validTokens();
+    for (const role of Object.keys(tokens.font).filter((k) => !k.startsWith("$"))) tokens.font[role].$value.fontFamily = ["system-ui", "Thmanyah Sans"];
+    const systemOnly = buildTheme(docFrom(tokens));
+    expect(latinExample(systemOnly, "swiftui")).toBe("SF Pro");
+    expect(latinExample(systemOnly, "compose")).toBe("Roboto");
+    expect(latinExample(systemOnly, "flutter")).toBe("Roboto");
+    expect(latinExample(systemOnly, "react-native")).toBe("Onest");
+    expect(latinExample(buildTheme(docFrom(validTokens())), "swiftui")).toBe(themeFonts(buildTheme(docFrom(validTokens())))[0]!.family);
   });
 });

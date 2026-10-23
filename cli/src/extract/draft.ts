@@ -1042,7 +1042,10 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     }
     // Dark mode: the role's own dark value (kept when its light colour was kept or nudged), or its light one.
     const dark = darkOwn ?? light;
-    const darkMiss = missOf(role, dark, darkFills);
+    // Dark mode copied from light (no dark colours from the app for this role or its fills) fails as light does, which
+    // its light note already says: nothing to draft or say for it.
+    const copied = dark === light && TEXT_FILLS.every((f) => darkFills[f] === lightFills[f]);
+    const darkMiss = copied ? undefined : missOf(role, dark, darkFills);
     if (darkMiss) {
       const pick = firstReading(role, ladder(role, darkFills), darkFills);
       textDark[role] = { name: TEXT_NAMES[pick.hex]!, hex: pick.hex };
@@ -1233,11 +1236,12 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   for (const s of occ.fontSize) uses.set(pxOf(s), (uses.get(pxOf(s)) ?? 0) + s.count);
   const edge = (v: number) => Math.min(smaller.indexOf(v), smaller.length - 1 - smaller.indexOf(v));
   // Two roles less than 5% apart (13 and 13.5) aren't two sizes: the more used one stays, with the next most used size
-  // at least 5% from it, if there is one.
+  // at least 5% from it, if there is one; with only those two, the other role takes its default.
   const ranked = [...smaller].sort((a, b) => uses.get(b)! - uses.get(a)! || edge(a) - edge(b) || a - b);
   const close = (a: number, b: number) => Math.abs(a - b) < 0.05 * Math.max(a, b);
   const apart = ranked.length > 2 && close(ranked[0]!, ranked[1]!) ? ranked.find((v) => !close(v, ranked[0]!)) : undefined;
-  const small = smaller.length > 2 ? [ranked[0]!, apart ?? ranked[1]!].sort((a, b) => a - b) : smaller;
+  const small =
+    smaller.length > 2 ? [ranked[0]!, apart ?? ranked[1]!].sort((a, b) => a - b) : smaller.length === 2 && close(ranked[0]!, ranked[1]!) ? [ranked[0]!] : smaller;
   let caption = small[0] ?? Math.round(body * 0.75);
   let label = small.length >= 2 ? small[small.length - 1]! : Math.round(body * 0.875);
   if (caption > label) [caption, label] = [label, caption];
@@ -1414,8 +1418,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
       ...([family, companion].some((s) => s?.toLowerCase() === key) ? sansWeights : []),
       ...(code?.toLowerCase() === key ? [MONO_ROLE[1]] : []),
     ]);
-    // A variable font file (Google's Name[wght].ttf, Name-VariableFont_wght.ttf, -Variable, -VF) serves every weight.
-    if (f.files.some((file) => /\[[^\]]*wght|variable|[-_]vf\./i.test(file.path))) continue;
+    // A variable font serves every weight on its axis: each stack reads it from the file (axisWeightRanges).
     const has = [...new Set(f.files.filter((file) => file.style === "normal").map((file) => file.weight))].sort((a, b) => a - b);
     const ranges = (occ.fontWeightRanges ?? []).filter((r) => r.family.toLowerCase() === key);
     const missing = [...used].filter((w) => !has.includes(w) && !ranges.some((r) => r.min <= w && w <= r.max)).sort((a, b) => a - b);

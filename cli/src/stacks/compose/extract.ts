@@ -9,7 +9,7 @@ import { inRanges, maskComments, maskStrings } from "../../check/mask";
 import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
-import { rootOf } from "../../extract/own-fonts";
+import { axisWeightRanges, rootOf } from "../../extract/own-fonts";
 import { locator } from "../../text";
 import { kebab as dartKebab, pairInstances, SLOT_NAMES, title, TEXT_SLOTS, type Paired } from "../flutter/extract";
 import { scanKotlin } from "./rules";
@@ -440,6 +440,7 @@ export function collectCompose(files: SourceFile[], shared: SourceFile[] = []): 
   const typeRoles = typographyRoles(kotlin);
   const projectFonts = [...ownFonts.values()].filter((f): f is ProjectFontEntry => "files" in f);
   const unfoundFonts = [...ownFonts.values()].filter((f): f is UnfoundFontEntry => "from" in f);
+  const fontWeightRanges = axisWeightRanges(files[0] ? rootOf(files[0]) : null, projectFonts);
 
   return {
     colors: sortedSamples(buckets.colors), space: sortedSamples(buckets.space), radius: sortedSamples(buckets.radius), fontSize: sortedSamples(buckets.fontSize),
@@ -454,6 +455,7 @@ export function collectCompose(files: SourceFile[], shared: SourceFile[] = []): 
     ...(notes.length ? { notes } : {}),
     ...(typeRoles ? { typeRoles } : {}),
     ...(projectFonts.length ? { projectFonts } : {}),
+    ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
     ...(googleFonts.size ? { googleFonts: [...googleFonts] } : {}),
     ...(unfoundFonts.length ? { unfoundFonts } : {}),
   };

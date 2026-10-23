@@ -543,3 +543,21 @@ describe("Task 5 fix round 1: type and corner sizes", () => {
     expect(values(collectOccurrences([app], null).unresolved).sort()).toEqual(["rounded-2xl", "rounded-3xl", "rounded-xl"]);
   });
 });
+
+describe("final fix wave: draft rules", () => {
+  test("two small sizes less than 5% apart are one: the more used is kept, and the other role takes its default", () => {
+    const t = buildDraft({ ...occ, fontSize: [s("16px", 10), s("13px", 9), s("13.5px", 4)] }).tokens as any;
+    expect(["caption", "label"].map((r) => t.font[r].$value.fontSize.value)).toEqual([13, 14]);
+    const apart = buildDraft({ ...occ, fontSize: [s("16px", 10), s("12px", 9), s("14px", 4)] }).tokens as any;
+    expect(["caption", "label"].map((r) => apart.font[r].$value.fontSize.value)).toEqual([12, 14]);
+  });
+
+  test("with no dark colours from the app, a light pair nothing can fix gets no dark-mode note, and the draft stays valid", () => {
+    // A mid-grey page (#777777): neither ink nor white reads on it at 4.5:1, and dark mode is light's copy.
+    const { tokens, report } = buildDraft({ ...occ, colors: [s("#777777", 9, "background")] });
+    const notes = report.notes.join("\n");
+    expect(notes).toContain("so text-primary is drafted as #ffffff for the background, though nothing reads on both it and the surface (#777777)");
+    expect(notes).not.toContain("In dark mode");
+    expect(validateTokens(docFrom(tokens))).toEqual([]);
+  });
+});

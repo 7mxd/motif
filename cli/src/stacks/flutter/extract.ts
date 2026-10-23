@@ -8,6 +8,7 @@ import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
 import { isMonospace } from "../../contract/defaults";
+import { axisWeightRanges, rootOf } from "../../extract/own-fonts";
 import { locator, stripBom } from "../../text";
 import { fontAssets } from "./project";
 import { callArgs, colorContext, namedArgument, scanDart } from "./rules";
@@ -588,6 +589,8 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
   const projectFonts = bundled
     .map((b) => ({ family: b.family, files: b.files.filter((f) => /\.(ttf|otf)$/i.test(f.path)) }))
     .filter((b, i, all) => b.files.length > 0 && all.findIndex((o) => o.family.toLowerCase() === b.family.toLowerCase() && o.files.length > 0) === i);
+  const someFile = [...files, ...shared][0];
+  const fontWeightRanges = axisWeightRanges(someFile ? rootOf(someFile) : null, projectFonts);
 
   const sorted = sortedSamples;
   return {
@@ -604,6 +607,7 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
     ...(typeRoles ? { typeRoles } : {}),
     ...(companion ? { companion } : {}),
     ...(projectFonts.length ? { projectFonts } : {}),
+    ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
     ...(googleFonts.size ? { googleFonts: [...googleFonts] } : {}),
   };
 }

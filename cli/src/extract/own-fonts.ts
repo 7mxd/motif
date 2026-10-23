@@ -137,12 +137,36 @@ export function webFonts(files: SourceFile[]): Pick<Occurrences, "projectFonts" 
   }
   const projectFonts = [...own.values()].filter((f): f is ProjectFontEntry => "files" in f);
   const unfoundFonts = [...own.values()].filter((f): f is UnfoundFontEntry => "from" in f);
+  ranges.push(...axisWeightRanges(files[0] ? rootOf(files[0]) : null, projectFonts));
   return {
     ...(projectFonts.length ? { projectFonts } : {}),
     ...(google.size ? { googleFonts: [...google] } : {}),
     ...(unfoundFonts.length ? { unfoundFonts } : {}),
     ...(ranges.length ? { fontWeightRanges: ranges } : {}),
   };
+}
+
+/** A variable font's file name (Google's Name[wght].ttf, Name-VariableFont_wght.ttf, -Variable, -VF): only for a file Motif can't read. */
+const VARIABLE_NAME = /\[[^\]]*wght|variable|[-_]vf\./i;
+
+/**
+ * Each shipped family's weight range from its files' own weight axis (fvar's wght), read with the shared reader: a
+ * variable font serves every weight in it, so the draft's missing-weights note is only for real gaps. A file Motif can't
+ * read (a .woff2, a damaged file) counts as variable when its name says so. Families with no range are left out.
+ */
+export function axisWeightRanges(root: string | null, fonts: ProjectFontEntry[]): NonNullable<Occurrences["fontWeightRanges"]> {
+  const out: NonNullable<Occurrences["fontWeightRanges"]> = [];
+  for (const font of fonts) {
+    let range: { min: number; max: number } | undefined;
+    for (const file of font.files) {
+      const tables = root === null ? null : readFontTables(root + file.path);
+      const axis = tables ? tables.wght : VARIABLE_NAME.test(file.path) ? { min: 1, max: 1000 } : undefined;
+      if (!axis || !Number.isFinite(axis.min) || !Number.isFinite(axis.max)) continue;
+      range = range ? { min: Math.min(range.min, axis.min), max: Math.max(range.max, axis.max) } : { min: axis.min, max: axis.max };
+    }
+    if (range) out.push({ family: font.family, ...range });
+  }
+  return out;
 }
 
 /** True when a TrueType or OpenType file's character map has the Arabic letters (the shared reader's cmap check). Never throws. */
