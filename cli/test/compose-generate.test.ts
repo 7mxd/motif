@@ -289,6 +289,19 @@ describe("generateCompose, an Arabic companion", () => {
   });
 });
 
+describe("generateCompose, the system font with an Arabic companion (v0.5.0 sweep)", () => {
+  const t = validTokens();
+  t.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+  const kt = kotlinFor(t);
+
+  test("Latin text in the system font, Arabic text in the companion, picked by locale", () => {
+    expect(kt).toContain("    val body: TextStyle\n        @Composable\n        @ReadOnlyComposable\n        get() = if (arabicScript()) bodyArabic else bodyLatin\n");
+    expect(kt).toContain("    val bodyLatin: TextStyle\n        get() = TextStyle(\n            fontFamily = FontFamily.Default,");
+    expect(kt).toContain("    val bodyArabic: TextStyle\n        get() = TextStyle(\n            fontFamily = MotifFonts.readexPro,");
+    expect(kt).toContain('googleFont = GoogleFont("Readex Pro")');
+  });
+});
+
 describe("generateCompose, fonts", () => {
   test("a project font comes from the app's res/font resources, at each file's weight and style", () => {
     const kt = kotlinFor(brandTokens(), {

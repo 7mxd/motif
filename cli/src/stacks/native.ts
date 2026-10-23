@@ -90,7 +90,7 @@ export interface NativeStack {
   motionSize?: { width: number; text: string };
   /** How long a run of this many screenshots may take, in ms. */
   shotTimeLimit?(shots: number): number;
-  /** How the stack sets a design variant, for the note when a variant looks exactly like the default. */
+  /** How the stack sets a design variant, for the note when a variant looks the same as the default. */
   variantHow?: string;
   /**
    * The pages of the app, for motif shot without --routes; screens are what a run also takes by default (Compose's

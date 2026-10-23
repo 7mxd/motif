@@ -245,7 +245,7 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
       expect(near("#FDE68A")(pixel("index+partner.desktop.png", 2400, 1500))).toBe(true);
       expect(near("#FDE68A")(pixel("index.desktop.png", 2400, 1500))).toBe(false);
       expect(Buffer.compare(png("index.desktop.dark.png"), png("index+partner.desktop.dark.png"))).not.toBe(0);
-      expect(r.text).not.toContain("looks exactly like the default");
+      expect(r.text).not.toContain("looks the same as the default");
 
       // The setup's signed-in square, at the detail pane's leading edge: past the sidebar on the left, and on the right
       // when the window is right to left (the sidebar then on the far right).
@@ -256,6 +256,19 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
       expect(count("index.desktop.rtl.png", nearRight, red)).toBeGreaterThan(30_000);
       expect(count("index.desktop.rtl.png", nearLeft, red)).toBe(0);
       arabicRoot = png("index.desktop.rtl.png");
+
+      // The title bar mirrors too (v0.5.0 sweep, Landmarks 5): the window's buttons (the close button's red) are at the
+      // top left, and at the top right in a right-to-left window, as on a Mac in Arabic.
+      const lights = ([r, g, b]: number[]) => r! > 200 && g! < 140 && b! < 140 && r! - g! > 90;
+      for (const [file, dark, width] of [["index.desktop", "", 2880], ["settings.desktop-900", "", 1800], ["index+partner.desktop", ".dark", 2880]] as const) {
+        const topLeft = { x0: 0, x1: 220, y0: 0, y1: 120 };
+        const topRight = { x0: width - 220, x1: width, y0: 0, y1: 120 };
+        const ltr = [count(`${file}${dark}.png`, topLeft, lights), count(`${file}${dark}.png`, topRight, lights)];
+        const rtl = [count(`${file}.rtl${dark}.png`, topLeft, lights), count(`${file}.rtl${dark}.png`, topRight, lights)];
+        console.log(`[swiftui-mac-shot-e2e] ${file}: the close button's red, left and right: ${ltr} left to right, ${rtl} right to left`);
+        expect([file, ltr[0]! > 50, ltr[1]]).toEqual([file, true, 0]);
+        expect([file, rtl[0], rtl[1]! > 50]).toEqual([file, 0, true]);
+      }
 
       // The state typed, clicked and found the greeting (it would have failed otherwise): its screenshot differs.
       expect(Buffer.compare(png("index.desktop.png"), png("index@greeted.desktop.png"))).not.toBe(0);

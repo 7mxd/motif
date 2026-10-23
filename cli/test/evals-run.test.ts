@@ -23,12 +23,12 @@ const finished = (): SessionOutcome => ({
 
 function harness(over: Partial<RunDeps> = {}) {
   const root = tempDir("motif-evalrun-");
-  const calls = { prepare: [] as string[], session: [] as SessionSpec[], collect: [] as string[], purge: [] as string[], removed: [] as string[], preflight: 0 };
+  const calls = { prepare: [] as string[], session: [] as SessionSpec[], collect: [] as string[], purge: [] as string[], removed: [] as string[], own: [] as string[], preflight: 0 };
   const lines: string[] = [];
   const deps: RunDeps = {
     preflight: async () => {
       calls.preflight++;
-      return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+      return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
     },
     prepare: async (c: EvalCase, dir: string) => {
       calls.prepare.push(c.id);
@@ -45,6 +45,9 @@ function harness(over: Partial<RunDeps> = {}) {
     },
     purge: async (_claude, cwd) => {
       calls.purge.push(cwd);
+    },
+    removeData: (cwd) => {
+      calls.own.push(cwd);
     },
     removeDir: (dir) => {
       calls.removed.push(dir);
@@ -75,12 +78,69 @@ describe("the eval runner", () => {
       const h = harness({
         preflight: async (n) => {
           seen.push(n);
-          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
         },
       });
       await runEvals(["--cases", id], h.deps, h.where);
       expect(seen).toEqual([needs]);
     }
+  });
+
+  test("Node.js is required only when a chosen case installs or builds with npm", async () => {
+    const cases: [string, boolean][] = [
+      ["b-search", true], ["c-review", true], ["c-rn", true], ["d-stride", true], ["d-rihla", true],
+      ["b-plain", false], ["c-plain", false], ["b-flutter-search", false], ["c-compose", false], ["d-sahm", false], ["d-nabta", false],
+      ["b-search,b-flutter-search", true],
+    ];
+    for (const [ids, needs] of cases) {
+      const seen: (boolean | undefined)[] = [];
+      const h = harness({
+        platform: "darwin",
+        preflight: async (_b, _c, _f, _a, _x, node) => {
+          seen.push(node);
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
+        },
+      });
+      await runEvals(["--cases", ids], h.deps, h.where);
+      expect([ids, seen]).toEqual([ids, [needs]]);
+    }
+    const h = harness({
+      platform: "darwin",
+      preflight: async (_b, _c, _f, _a, _x, node) => {
+        expect(node).toBe(false);
+        return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
+      },
+    });
+    await runEvals(["--cases", "c-swiftui,b-swiftui-orders"], h.deps, h.where);
+  });
+
+  test("with claude purge, it clears each folder with it and says nothing about transcripts", async () => {
+    const h = harness();
+    await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where);
+    expect(h.calls.purge.length).toBeGreaterThan(0);
+    expect(h.calls.own).toEqual([]);
+    expect(h.lines.join("\n")).not.toContain("no `claude purge`");
+  });
+
+  test("without claude purge, it removes each folder's transcripts itself, and says so once at the start", async () => {
+    const h = harness({ preflight: async () => ({ claude: "claude-exe", claudeVersion: "2.1.283 (Claude Code)", browser: true, purge: false }) });
+    await runEvals(["--cases", "b-search,b-settings", "--work", h.work], h.deps, h.where);
+    expect(h.calls.purge).toEqual([]);
+    expect(h.calls.own).toContain(join(h.work, RUN, "b-settings", "app"));
+    expect(h.calls.own.length).toBeGreaterThanOrEqual(2);
+    const said = h.lines.filter((l) => l.includes("no `claude purge`"));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain("Update Claude Code");
+    expect(h.lines.findIndex((l) => l.includes("no `claude purge`"))).toBeLessThan(h.lines.findIndex((l) => l.includes("Claude Code is working")));
+  });
+
+  test("its own removal that fails is reported like purge's", async () => {
+    const h = harness({
+      preflight: async () => ({ claude: "claude-exe", claudeVersion: "2.1.283 (Claude Code)", browser: true, purge: false }),
+      removeData: () => "the folder was in use",
+    });
+    await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where);
+    expect(h.lines.join("\n")).toContain("Couldn't clear Claude Code's saved data for");
   });
 
   test("Flutter is required only when a chosen case is a Flutter one", async () => {
@@ -89,7 +149,7 @@ describe("the eval runner", () => {
       const h = harness({
         preflight: async (_browser, _claude, flutter) => {
           seen.push(flutter);
-          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
         },
       });
       await runEvals(["--cases", cases], h.deps, h.where);
@@ -523,7 +583,7 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
         platform,
         preflight: async (_b, _c, _f, _a, xcode) => {
           seen.push(xcode);
-          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
         },
       });
       expect(await runEvals(["--cases", "b-search,b-swiftui-orders,c-swiftui", "--work", h.work], h.deps, h.where)).toBe(0);
@@ -644,7 +704,7 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
       platform: "darwin",
       preflight: async (_b, _c, _f, _a, xcode) => {
         seen.push(xcode);
-        return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true };
+        return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
       },
     });
     expect(await runEvals(["--cases", "b-search,b-swiftui-orders", "--work", h.work], h.deps, h.where)).toBe(0);

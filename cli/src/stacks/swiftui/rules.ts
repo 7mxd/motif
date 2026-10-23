@@ -196,7 +196,7 @@ export function scanSwift(source: SourceFile, scale: Scale | null): Hit[] {
   const at = locator(text);
   const imports = [...text.matchAll(IMPORT_LINE)].map((m): [number, number] => [m.index!, m.index! + m[0].length]);
   const hits: Hit[] = [];
-  const push = (index: number, fields: { rule: RuleId; kind: ValueKind; text: string; value?: string; context?: string; violation: boolean; message: string }) => {
+  const push = (index: number, fields: { rule: RuleId; kind: ValueKind; text: string; value?: string; context?: string; violation: boolean; message: string; negative?: true }) => {
     if (imports.some(([a, b]) => index >= a && index < b)) return;
     const hit = makeHit(file, at, index, { ...fields, fix: "" });
     hits.push({ ...hit, fix: swiftUIFix(hit) });
@@ -257,11 +257,17 @@ export function scanSwift(source: SourceFile, scale: Scale | null): Hit[] {
   }
 
   // ---------- sizes ----------
+  // A negative size (.padding(.bottom, -2), a pull) is judged by its size, as the other stacks judge negative margins, and
+  // keeps its sign in the message and (negative) in its closest role, -MotifSpace.s1.
   const size = (index: number, literal: string, kind: "space" | "radius" | "font-size", number: string) => {
-    const px = Math.abs(num(number));
+    const signed = num(number);
+    const px = Math.abs(signed);
     const set = kind === "space" ? scale?.spacePx : kind === "radius" ? scale?.radiusPx : scale?.fontSizePx;
     const onScale = px === 0 || (set?.has(px) ?? false);
-    push(index, { rule: "off-scale", kind, text: literal, value: `${px}px`, violation: scale ? !onScale : false, message: sizeMessage[kind](px) });
+    push(index, {
+      rule: "off-scale", kind, text: literal, value: `${px}px`, violation: scale ? !onScale : false, message: sizeMessage[kind](signed === 0 ? 0 : signed),
+      ...(signed < 0 ? { negative: true as const } : {}),
+    });
   };
   const unlabelledNumber = (args: Arg[]) => args.find((a) => !a.name && NUMBER.test(a.value));
   for (const m of text.matchAll(PADDING_CALL)) {

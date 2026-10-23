@@ -1,12 +1,18 @@
 // motif extract for React Native: a draft design guide from an Expo app's code — the colour objects with light and dark
 // halves (the starter's constants/Colors.ts), parallel ones as design variants, and the values its styles and animations use.
+import { existsSync, readFileSync } from "node:fs";
+import { posix } from "node:path";
 import type { SourceFile } from "../../check/files";
 import { inRanges, maskComments } from "../../check/mask";
 import { colorContext } from "../../check/rules/colors";
 import { parseColor, type Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
+import { axisWeightRanges, coversArabic, rootOf, weightStyleOf } from "../../extract/own-fonts";
+import { isKnownArabic } from "../../preview/font-list";
 import { locator } from "../../text";
+import { isMonospace } from "../../contract/defaults";
 import { GENERIC_WORDS, kebab, pairInstances, title, words, type Paired } from "../flutter/extract";
+import { aliasBase } from "./project";
 import { scanReactNative } from "./rules";
 
 const MAX_EXAMPLES = 5;
@@ -166,6 +172,270 @@ const EASE = "cubic-bezier(0.42, 0, 1, 1)";
 /** A font family from an Expo font key: Onest_400Regular → Onest, Inter-Bold → Inter; other names as written. */
 function familyOf(name: string): string {
   return name.replace(/_\d{3}\w*$/, "").replace(/-(?:Thin|ExtraLight|Light|Regular|Medium|SemiBold|Bold|ExtraBold|Black)(?:Italic)?$/, "");
+}
+
+/**
+ * A Google family's name from its @expo-google-fonts package, in its export's capitals: readex-pro and ReadexPro_400Regular
+ * → Readex Pro, ibm-plex-sans-arabic and IBMPlexSansArabic_400Regular → IBM Plex Sans Arabic. When the export's letters
+ * aren't the package's words (@expo-google-fonts/dev exports every family), the export is split at its capitals.
+ */
+function googleFamily(pkg: string, stem: string): string {
+  const words = pkg.split("-").filter(Boolean);
+  if (words.join("") !== stem.toLowerCase()) return stem.replace(/([a-z\d])(?=[A-Z])|([A-Z])(?=[A-Z][a-z])/g, "$1$2 ");
+  const out: string[] = [];
+  let at = 0;
+  for (const w of words) {
+    out.push(stem.slice(at, at + w.length));
+    at += w.length;
+  }
+  return out.join(" ");
+}
+
+/** A family name as a key: no case, spaces, "-" or "_" (Readex Pro, ReadexPro). */
+const compactKey = (family: string) => family.toLowerCase().replace(/[\s_-]+/g, "");
+
+const GOOGLE_PKG = String.raw`\(?\s*["']@expo-google-fonts\/([\w-]+)(?:\/[\w-]+)?["']`;
+const GOOGLE_IMPORT = new RegExp(
+  String.raw`import\s*(?:\*\s*as\s+(\w+)|(\w+)?\s*,?\s*(?:\{([^}]*)\})?)\s*from\s*${GOOGLE_PKG}|(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\s*${GOOGLE_PKG}`,
+  "g",
+);
+/** An import list's capitalised names, without aliases (`A as B`, `A: B`): the faces an @expo-google-fonts package exports. */
+const importedFaces = (list: string) => list.split(",").map((s) => s.trim().split(/\s+as\s+|\s*:/)[0]!.trim()).filter((s) => /^[A-Z]/.test(s));
+
+/**
+ * The @expo-google-fonts imports in a file: each one's package, the faces it brings in and where it is. They come as
+ * `import { A, B as C } from`, from a per-weight subpath (…/readex-pro/400Regular, also as a default import),
+ * `const { A, B: C } = require(…)`, or `import * as F from`, whose faces are those read off it (F.A); when none are, the
+ * package is taken for one family, named by its words.
+ */
+function googleImports(text: string): { pkg: string; faces: string[]; index: number }[] {
+  const out: { pkg: string; faces: string[]; index: number }[] = [];
+  for (const m of text.matchAll(GOOGLE_IMPORT)) {
+    const pkg = (m[4] ?? m[6])!;
+    let faces: string[];
+    if (m[1]) {
+      faces = [...new Set([...text.matchAll(new RegExp(String.raw`\b${m[1]}\.([A-Z]\w*)`, "g"))].map((r) => r[1]!))];
+      if (faces.length === 0 && pkg !== "dev") faces = [pkg.split("-").filter(Boolean).map((w) => w[0]!.toUpperCase() + w.slice(1)).join("")];
+    } else faces = [...(m[2] && /^[A-Z]/.test(m[2]) ? [m[2]] : []), ...importedFaces(m[3] ?? m[5] ?? "")];
+    out.push({ pkg, faces, index: m.index! });
+  }
+  return out;
+}
+
+type ProjectFontEntry = NonNullable<Occurrences["projectFonts"]>[number];
+type UnfoundFontEntry = NonNullable<Occurrences["unfoundFonts"]>[number];
+
+/**
+ * A font file the app ships, root-relative, from the path a require() names: relative to the file, or, with Expo's @/
+ * alias, to the app's folder (the nearest one above the file with a package.json). Undefined when it isn't there.
+ */
+function shippedFont(source: SourceFile, required: string): string | undefined {
+  const root = rootOf(source);
+  if (root === null) return undefined;
+  const dir = posix.dirname(source.path);
+  const inside = (p: string) => (p === "." || p.startsWith("..") || posix.isAbsolute(p) ? undefined : p);
+  if (required.startsWith("./") || required.startsWith("../")) {
+    const path = inside(posix.normalize(posix.join(dir, required)));
+    return path && existsSync(root + path) ? path : undefined;
+  }
+  if (!required.startsWith("@/")) return undefined;
+  const base = appFolder(root, dir);
+  if (base === null) return undefined;
+  const path = inside(posix.normalize(base + required.slice(2)));
+  return path && existsSync(root + path) ? path : undefined;
+}
+
+/** The app's folder, root-relative with a trailing "/" ("" for the root): the nearest one at or above `dir` with a package.json. */
+function appFolder(root: string, dir: string): string | null {
+  for (let d = dir; ; d = posix.dirname(d)) {
+    const base = d === "." ? "" : `${d}/`;
+    if (existsSync(`${root}${base}package.json`)) return base;
+    if (d === "." || d === "/" || d === "") return null;
+  }
+}
+
+const MODULE_SUFFIXES = ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx", "/index.js", "/index.jsx"];
+
+/**
+ * The app's file an import names: a relative path, or Expo's @/ alias (where tsconfig.json's paths point it, else the
+ * app's folder). A package, or a file Motif doesn't scan, gives undefined.
+ */
+function moduleFile(from: ScriptFile, spec: string, byPath: Map<string, ScriptFile>): ScriptFile | undefined {
+  let base: string;
+  if (spec.startsWith("./") || spec.startsWith("../")) base = posix.normalize(posix.join(posix.dirname(from.source.path), spec));
+  else if (spec.startsWith("@/")) {
+    const root = rootOf(from.source);
+    const app = root === null ? null : appFolder(root, posix.dirname(from.source.path));
+    if (root === null || app === null) return undefined;
+    base = posix.normalize(posix.join(app, aliasBase(root + app) ?? "", spec.slice(2)));
+  } else return undefined;
+  if (base.startsWith("..")) return undefined;
+  for (const suffix of MODULE_SUFFIXES) {
+    const file = byPath.get(base + suffix);
+    if (file) return file;
+  }
+  return undefined;
+}
+
+/** The names a list in braces brings in or sends out: "a, b as c, type T" → [a, a], [b, c] (type-only names left out). */
+const bindings = (list: string) =>
+  list
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s && !/^type\s/.test(s))
+    .map((s) => {
+      const [from, as] = s.split(/\s+as\s+/);
+      return [from!.trim(), (as ?? from)!.trim()] as const;
+    });
+
+const IMPORT_FROM = /(?<![\w$.])import\s+(?!type\s)(?:([A-Za-z_$][\w$]*)\s*,?\s*)?(?:\{([^}]*)\})?\s*from\s*(["'])([^"'\n]+)\3/g;
+const EXPORT_FROM = /(?<![\w$.])export\s+(?!type\s)(?:\{([^}]*)\}|\*)\s*from\s*(["'])([^"'\n]+)\2/g;
+const EXPORT_LIST = /(?<![\w$.])export\s*\{([^}]*)\}(?!\s*from)/g;
+const EXPORT_DEFAULT_NAME = /(?<![\w$.])export\s+default\s+([A-Za-z_$][\w$]*)\s*(?:;|$)/m;
+
+/**
+ * The object literal a name stands for in a file, read without running anything: a top-level const (or export default)
+ * in it, or one an import brings in from another of the app's files, followed through re-exports. Undefined otherwise.
+ */
+function objectNamed(file: ScriptFile, name: string, byPath: Map<string, ScriptFile>, seen = new Set<string>()): { file: ScriptFile; obj: Obj } | undefined {
+  const key = `${file.source.path}#${name}`;
+  if (seen.has(key) || seen.size > 32) return undefined;
+  seen.add(key);
+  const root = file.roots.find((r) => r.name === name);
+  if (root) return { file, obj: root.obj };
+  const text = maskComments(file.source.text, "script");
+  const follow = (spec: string, exported: string) => {
+    const module = moduleFile(file, spec, byPath);
+    return module ? objectNamed(module, exported, byPath, seen) : undefined;
+  };
+  if (name === "default") {
+    // export default fonts; (or without the semicolon). export { fonts as default } and export { default } from "./x"
+    // are read below, with the other export lists.
+    const local = text.match(EXPORT_DEFAULT_NAME)?.[1];
+    if (local && !["function", "class", "async"].includes(local)) return objectNamed(file, local, byPath, seen);
+  } else for (const m of text.matchAll(IMPORT_FROM)) {
+    if (m[1] === name) return follow(m[4]!, "default");
+    const bound = m[2] ? bindings(m[2]).find(([, as]) => as === name) : undefined;
+    if (bound) return follow(m[4]!, bound[0]);
+  }
+  for (const m of text.matchAll(EXPORT_LIST)) {
+    const bound = bindings(m[1]!).find(([, as]) => as === name);
+    if (bound && bound[0] !== name) return objectNamed(file, bound[0], byPath, seen);
+  }
+  for (const m of text.matchAll(EXPORT_FROM)) {
+    if (m[1] === undefined) {
+      const found = follow(m[3]!, name);
+      if (found) return found;
+      continue;
+    }
+    const bound = bindings(m[1]).find(([, as]) => as === name);
+    if (bound) return follow(m[3]!, bound[0]);
+  }
+  return undefined;
+}
+
+/**
+ * A locale test for a language in Arabic script choosing between two names: l === "ar" ? "Cairo-Regular" : "Inter-Regular",
+ * with "ar" (or "fa", "ur") on either side, and != or !== swapping the branches.
+ */
+const LOCALE_TERNARY = [
+  /(?<op>[!=]==?)\s*(?<q>["'`])(?:ar|fa|ur)\k<q>\s*\)?\s*\?\s*(?<q1>["'`])(?<first>[^"'`\n]+)\k<q1>\s*:\s*(?<q2>["'`])(?<second>[^"'`\n]+)\k<q2>/g,
+  /(?<q>["'`])(?:ar|fa|ur)\k<q>\s*(?<op>[!=]==?)\s*[\w$.?!()[\]]+\s*\)?\s*\?\s*(?<q1>["'`])(?<first>[^"'`\n]+)\k<q1>\s*:\s*(?<q2>["'`])(?<second>[^"'`\n]+)\k<q2>/g,
+];
+
+/**
+ * A sign the app is used in a language written in Arabic script: a locale test (=== "ar", startsWith("ar")), "ar" among
+ * the languages it lists (["en", "ar"], an i18n resources key ar:, shorthand resources { en, ar } beside another
+ * language), a default language (lng: "ar"), or the layout's right to left (isRTL, forceRTL).
+ */
+const ARABIC_SIGNAL =
+  /[!=]==?\s*(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\1|(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\2\s*[!=]==?|startsWith\(\s*(["'`])(?:ar|fa|ur)\3|\[[^\]\n]*(["'`])(?:ar|fa|ur)\4[^\]\n]*\]|[{,]\s*(["']?)(?:ar|fa|ur)\5\s*:|\{\s*(?:[a-z]{2}\s*,\s*)+(?:ar|fa|ur)\s*[,}]|\{\s*(?:ar|fa|ur)\s*,\s*[a-z]{2}\s*[,}]|\b(?:lng|lang|language|locale|defaultLocale)\s*[:=]\s*(["'`])(?:ar|fa|ur)(?:[-_][A-Za-z]+)?\6|\b(?:isRTL|forceRTL)\b/;
+
+/** A family name that says it's for Arabic, when nothing else does: a last resort. */
+const ARABIC_NAME = /arab|naskh|kufi|thmanyah/i;
+
+/** True for a family Motif's kit ships the Arabic letters of (Readex Pro, Rubik), written either way (ReadexPro). */
+const knownArabic = isKnownArabic;
+
+/** A call that loads fonts: useFonts( or Font.loadAsync( with an object literal, or with a name (group 1) for one. */
+const FONT_LOAD = new RegExp(`(?<![\\w$.])(?:useFonts|(?:Font\\s*\\.\\s*)?loadAsync)\\s*\\(\\s*(?:(?=\\{)|(${IDENT})\\s*[,)])`, "g");
+
+const APP_CONFIGS = ["app.json", "app.config.json", "app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"];
+const FONT_PATH = /\.(?:ttf|otf)$/i;
+
+/**
+ * The fonts expo-font's config plugin embeds, from each app's config (the folder above the code with a package.json):
+ * app.json's or app.config.json's plugins entry ["expo-font", { fonts: [...] }] (its ios and android lists too, paths
+ * or { fontFamily, fontDefinitions }). An app.config.js or .ts is code: it isn't run, and only a literal list of paths
+ * in its expo-font entry is read. Each font's path is root-relative, or undefined when the file isn't there.
+ */
+function pluginFonts(files: SourceFile[]): { family: string; path: string | undefined; from: string; weight: number; style: "normal" | "italic" }[] {
+  const root = files.length > 0 ? rootOf(files[0]!) : null;
+  if (root === null) return [];
+  const apps = new Set<string>();
+  for (const f of files) {
+    for (let d = posix.dirname(f.path); ; d = posix.dirname(d)) {
+      const base = d === "." ? "" : `${d}/`;
+      if (existsSync(`${root}${base}package.json`)) {
+        apps.add(base);
+        break;
+      }
+      if (d === "." || d === "/" || d === "") break;
+    }
+  }
+  const out: ReturnType<typeof pluginFonts> = [];
+  for (const base of [...apps].sort()) {
+    for (const name of APP_CONFIGS) {
+      let text: string;
+      try {
+        text = readFileSync(`${root}${base}${name}`, "utf8").replace(/^﻿/, "");
+      } catch {
+        continue;
+      }
+      const found: { path: string; family?: string; weight?: number; style?: string }[] = [];
+      if (name.endsWith(".json")) {
+        let config: any;
+        try {
+          config = JSON.parse(text);
+        } catch {
+          continue;
+        }
+        const plugins = config?.expo?.plugins ?? config?.plugins;
+        for (const p of Array.isArray(plugins) ? plugins : []) {
+          if (!Array.isArray(p) || p[0] !== "expo-font" || typeof p[1] !== "object" || p[1] === null) continue;
+          for (const list of [p[1].fonts, p[1].ios?.fonts, p[1].android?.fonts]) {
+            for (const item of Array.isArray(list) ? list : []) {
+              if (typeof item === "string") found.push({ path: item });
+              else if (item && typeof item.fontFamily === "string" && Array.isArray(item.fontDefinitions)) {
+                for (const d of item.fontDefinitions) if (typeof d?.path === "string") found.push({ path: d.path, family: item.fontFamily, weight: d.weight, style: d.style });
+              }
+            }
+          }
+        }
+      } else {
+        const code = maskComments(text, "script");
+        for (const m of code.matchAll(/(["'])expo-font\1\s*,\s*\{/g)) {
+          const list = code.slice(m.index!, m.index! + 2000).match(/\bfonts\s*:\s*\[([^\]]*)\]/)?.[1] ?? "";
+          for (const s of list.matchAll(/(["'])([^"'\n]+)\1/g)) found.push({ path: s[2]! });
+        }
+      }
+      for (const f of found) {
+        if (!FONT_PATH.test(f.path)) continue;
+        const file = posix.basename(f.path).replace(FONT_PATH, "");
+        const face = weightStyleOf(file);
+        const path = posix.normalize(base + f.path.replace(/^\.\//, ""));
+        const inside = !(path.startsWith("../") || path === ".." || posix.isAbsolute(path));
+        out.push({
+          family: f.family ?? familyOf(file),
+          path: inside && existsSync(root + path) ? path : undefined,
+          from: `"${f.path}" in ${base}${name}`,
+          weight: typeof f.weight === "number" && f.weight >= 100 && f.weight <= 900 ? Math.round(f.weight / 100) * 100 : face.weight,
+          style: f.style === "italic" ? "italic" : f.style === "normal" ? "normal" : face.style,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 /** Colour properties of a React Native style, which a palette's roles aren't called. */
@@ -382,6 +652,52 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
 
   // ---------- what the styles and animations use ----------
   const fontNames = new Set<string>();
+  /** Families loaded from the app's own font files, by name in lower case: with the files found, or how the code names them. */
+  const ownFonts = new Map<string, ProjectFontEntry | UnfoundFontEntry>();
+  /** Families loaded from @expo-google-fonts. */
+  const googleFonts = new Set<string>();
+  /** A file the app ships for a family: listed with its weight and style, or, when it isn't there, noted as `from`. */
+  const shipped = (family: string, path: string | undefined, from: string, face: { weight: number; style: "normal" | "italic" }) => {
+    const key = family.toLowerCase();
+    const own = ownFonts.get(key);
+    if (!path) {
+      if (!own) ownFonts.set(key, { family, from });
+      return;
+    }
+    const entry = own && "files" in own ? own : { family, files: [] };
+    if (!entry.files.some((f) => f.path === path)) entry.files.push({ path, weight: face.weight, style: face.style });
+    ownFonts.set(key, entry);
+  };
+  const byPath = new Map(scripts.map((f) => [f.source.path, f]));
+  // A family the app gets from @expo-google-fonts is named by its package (Readex Pro), not its export (ReadexPro), as
+  // Google and motif tokens name it; every face name of it (ReadexPro_400Regular) is that family.
+  const googleNames = new Map<string, string>();
+  for (const file of scripts) {
+    for (const g of googleImports(file.source.text)) {
+      for (const face of g.faces) {
+        const stem = familyOf(face);
+        if (!googleNames.has(compactKey(stem))) googleNames.set(compactKey(stem), googleFamily(g.pkg, stem));
+      }
+    }
+  }
+  const familyNamed = (name: string) => {
+    const family = familyOf(name);
+    return googleNames.get(compactKey(family)) ?? family;
+  };
+  /** The families an object of fonts loads (its keys), each a sample once; those from require()d files are the app's own. */
+  const loadedFonts = (file: ScriptFile, obj: Obj) => {
+    for (const e of obj.entries) {
+      const family = familyNamed(e.key);
+      if (family && !fontNames.has(family)) {
+        fontNames.add(family);
+        add("fontFamily", family, where(file, e.keyStart));
+      }
+      // A font loaded from a file the app ships ('Inter-Bold': require('../assets/fonts/Inter-Bold.ttf')) is its own.
+      const required = "text" in e.value ? e.value.text.match(/^require\s*\(\s*(["'])([^"'\n]+\.(?:ttf|otf))\1\s*\)$/i)?.[2] : undefined;
+      if (!family || !required) continue;
+      shipped(family, shippedFont(file.source, required), `require("${required}")`, weightStyleOf(e.key));
+    }
+  };
   for (const file of scripts) {
     const defs = definitions.get(file) ?? [];
     const lines = [0];
@@ -404,7 +720,7 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
           add("fontSize", hit.value!, example);
           break;
         case "font-family":
-          add("fontFamily", familyOf(hit.value!), example);
+          add("fontFamily", familyNamed(hit.value!), example);
           break;
         case "duration":
           add("duration", hit.value!, example);
@@ -416,27 +732,57 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
       }
     }
 
-    // Fonts: useFonts({ Onest_400Regular, 'Inter-Bold': require(…) }) and @expo-google-fonts/* imports.
-    for (const m of file.masked.matchAll(/(?<![\w$.])useFonts\s*\(\s*(?=\{)/g)) {
-      const obj = parseObject(file.masked, file.source.text, m.index! + m[0].length);
-      for (const e of obj.entries) {
-        const family = familyOf(e.key);
-        if (family && !fontNames.has(family)) {
-          fontNames.add(family);
-          add("fontFamily", family, where(file, e.keyStart));
-        }
-      }
+    // Fonts: useFonts({ Onest_400Regular, 'Inter-Bold': require(…) }) or Font.loadAsync({ … }), the object written in
+    // the call or passed by name (useFonts(fontAssets), followed to its object literal in this file or an app module it
+    // imports), and @expo-google-fonts/* imports.
+    for (const m of file.masked.matchAll(FONT_LOAD)) {
+      const found = m[1] ? objectNamed(file, m[1], byPath) : { file, obj: parseObject(file.masked, file.source.text, m.index! + m[0].length) };
+      if (found) loadedFonts(found.file, found.obj);
     }
-    for (const m of file.source.text.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']@expo-google-fonts\/[\w-]+["']/g)) {
-      for (const name of m[1]!.split(",").map((s) => s.trim().split(/\s+as\s+/)[0]!.trim()).filter((s) => /^[A-Z]/.test(s))) {
-        const family = familyOf(name);
+    for (const g of googleImports(file.source.text)) {
+      for (const name of g.faces) {
+        const family = familyNamed(name);
+        googleFonts.add(family);
         if (!fontNames.has(family)) {
           fontNames.add(family);
-          add("fontFamily", family, where(file, m.index!));
+          add("fontFamily", family, where(file, g.index));
         }
       }
     }
   }
+  // Fonts expo-font's config plugin embeds in the app ("plugins": [["expo-font", { "fonts": [...] }]]).
+  for (const font of pluginFonts(files)) shipped(font.family, font.path, font.from, font);
+  const projectFonts = [...ownFonts.values()].filter((f): f is ProjectFontEntry => "files" in f);
+  // The Arabic companion, a family the app loads other than its main one (as Flutter's is found): the "ar" branch of a
+  // locale ternary; else, only when the app shows a sign of Arabic (ARABIC_SIGNAL), a family Motif knows is Arabic, or
+  // whose shipped font file has Arabic letters, or, as a last resort, one whose name says so. A family on a ternary's
+  // Latin side never is.
+  const families = sortedSamples(buckets.fontFamily).filter((f) => !isMonospace(f.value) && !/^(?:system-ui|sans-serif|serif|monospace)$/i.test(f.value));
+  const main = families[0]?.value.toLowerCase();
+  const arabicSide = new Set<string>();
+  const latinSide = new Set<string>();
+  let arabicApp = false;
+  for (const file of scripts) {
+    const text = maskComments(file.source.text, "script");
+    arabicApp ||= ARABIC_SIGNAL.test(text);
+    for (const re of LOCALE_TERNARY) {
+      for (const m of text.matchAll(re)) {
+        const { op, first, second } = m.groups!;
+        const equal = op!.startsWith("=");
+        arabicSide.add(familyNamed((equal ? first : second)!.trim()).toLowerCase());
+        latinSide.add(familyNamed((equal ? second : first)!.trim()).toLowerCase());
+      }
+    }
+  }
+  const candidates = families.filter((f) => f.value.toLowerCase() !== main && fontNames.has(f.value) && !latinSide.has(f.value.toLowerCase())).map((f) => f.value);
+  const root = scripts[0] ? rootOf(scripts[0].source) : null;
+  const fontWeightRanges = axisWeightRanges(root, projectFonts);
+  const shipsArabic = (family: string) =>
+    root !== null && projectFonts.some((p) => p.family.toLowerCase() === family.toLowerCase() && p.files.some((f) => coversArabic(root + f.path)));
+  const companion =
+    candidates.find((f) => arabicSide.has(f.toLowerCase())) ??
+    (arabicApp ? (candidates.find((f) => knownArabic(f) || shipsArabic(f)) ?? candidates.find((f) => ARABIC_NAME.test(f))) : undefined);
+  const unfoundFonts = [...ownFonts.values()].filter((f): f is UnfoundFontEntry => "from" in f);
 
   return {
     colors: sortedSamples(buckets.colors), space: sortedSamples(buckets.space), radius: sortedSamples(buckets.radius), fontSize: sortedSamples(buckets.fontSize),
@@ -449,5 +795,10 @@ export function collectReactNative(files: SourceFile[], _shared: SourceFile[] = 
     source: "script",
     ...(Object.keys(variantLabels).length ? { variantLabels } : {}),
     ...(notes.length ? { notes } : {}),
+    ...(companion ? { companion } : {}),
+    ...(projectFonts.length ? { projectFonts } : {}),
+    ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
+    ...(googleFonts.size ? { googleFonts: [...googleFonts] } : {}),
+    ...(unfoundFonts.length ? { unfoundFonts } : {}),
   };
 }

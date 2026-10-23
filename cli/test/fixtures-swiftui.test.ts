@@ -196,6 +196,14 @@ describe("the SwiftUI contract app (Qahwa)", () => {
     }
   });
 
+  test("a field is named by its label, not its prompt, so VoiceOver and a state's app.type(…, into: \"Email\") find it (v0.5.0 sweep)", () => {
+    // With a prompt, iOS names a TextField by its prompt ("name@example.com"); the label above it is hidden from VoiceOver.
+    const field = read(`${SOURCES}/Components/AppField.swift`);
+    expect(field).toContain(".accessibilityHidden(true)");
+    expect(field).toMatch(/\n {12}field\n {16}\.accessibilityLabel\(label\)\n/);
+    expect(read(`${SOURCES}/Features/SignIn/SignInScreen.swift`)).toContain('AppField(label: "Email", text: $email, prompt: "name@example.com"');
+  });
+
   test("screenshots get a signed-in member and the variant's own switch, from design/states/Setup.swift", () => {
     const setup = read("design/states/Setup.swift");
     expect(setup).toContain("func motifSetup(variant: String, locale: Locale, dark: Bool) {");

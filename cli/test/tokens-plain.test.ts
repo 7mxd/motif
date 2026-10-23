@@ -71,4 +71,12 @@ describe("motif tokens on a plain web site", () => {
     expect(readFileSync(join(root, "public/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
     expect(JSON.parse(readFileSync(join(root, "design/generated/tokens.flat.json"), "utf8")).variants.men["color.surface"].dark).toBe("#654321");
   });
+
+  test("a font list that only native apps would skip gets no note on a web site: CSS reads the whole list (fix round 1)", async () => {
+    const t = validTokens();
+    t.font.heading.$value.fontFamily = ["-apple-system", "BlinkMacSystemFont", "Readex Pro", "sans-serif"];
+    const r = await run(makeProject({ "design/tokens.json": JSON.stringify(t), "public/index.html": "<title>Site</title>" }));
+    expect(r.code).toBe(0);
+    expect(r.notes.join("\n")).not.toContain("native apps");
+  });
 });

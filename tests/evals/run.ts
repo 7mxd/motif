@@ -5,12 +5,13 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
-import { CASES, isCompose, isFlutter, isReactNative, isSwiftUI, macOnly, macOnlyNote, needsBrowser, selectCases, type EvalCase } from "./cases";
+import { CASES, isCompose, isFlutter, isReactNative, isSwiftUI, macOnly, macOnlyNote, needsBrowser, needsNode, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
 import { paths, preflight, type Ready } from "./preflight";
+import { NO_PURGE_NOTE, removeProjectData } from "./purge";
 import { renderReport, testVerdicts } from "./report";
 import { runSession, type SessionOutcome, type SessionSpec } from "./session";
 import { gitState, loadRun, newRunId, remaining, reserveRunId, runDir, saveRun, type RunState, type SessionSummary } from "./state";
@@ -36,12 +37,14 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
   --claude <path>        The Claude Code program to use`;
 
 export interface RunDeps {
-  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean): Promise<Ready | { error: string }>;
+  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean, needsNode?: boolean): Promise<Ready | { error: string }>;
   prepare(c: EvalCase, dir: string): Promise<Workspace>;
   session(spec: SessionSpec): Promise<SessionOutcome>;
   collect(c: EvalCase, ws: Workspace, out: string, judge: JudgeFn): Promise<Grade>;
   /** Clears Claude Code's saved data for a folder; says why when it couldn't. */
   purge(claude: string, cwd: string): Promise<string | void>;
+  /** For a Claude Code without `claude purge`: removes that folder's saved transcripts itself; says why when it couldn't. */
+  removeData(cwd: string): string | void;
   removeDir(dir: string): void;
   git(): { commit: string; dirty: boolean };
   now(): Date;
@@ -200,7 +203,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 0;
   }
 
-  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose), todo.some(isSwiftUI));
+  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose), todo.some(isSwiftUI), todo.some(needsNode));
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;
@@ -238,7 +241,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
 
   const finish = (): number => writeReport(state, dir, deps);
   const purge = async (cwd: string) => {
-    const why = await deps.purge(ready.claude, cwd);
+    const why = ready.purge ? await deps.purge(ready.claude, cwd) : deps.removeData(cwd);
     if (why) deps.log(`Couldn't clear Claude Code's saved data for ${cwd}: ${why}`);
   };
   const pause = (at?: number): number => {
@@ -248,6 +251,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   };
 
   deps.log(`Run ${state.id}: ${todo.length} cases. Each starts a fresh Claude Code session on your plan. Stop any time with Ctrl+C, then continue with --resume ${state.id}.`);
+  if (!ready.purge) deps.log(NO_PURGE_NOTE);
   for (const c of todo) {
     const cs = state.cases[c.id]!;
     const out = join(dir, c.id);
@@ -429,10 +433,10 @@ if (import.meta.main) {
   const code = await runEvals(
     process.argv.slice(2),
     {
-      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode) =>
+      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode, needsNode) =>
         preflight(
           p, needsBrowser, { which: (cmd) => Bun.which(cmd), run: runCmd, env: process.env, bun: process.execPath, ...(claude ? { claudeOverride: resolve(claude) } : {}) },
-          needsFlutter, needsAndroid, needsXcode,
+          needsFlutter, needsAndroid, needsXcode, needsNode,
         ),
       prepare: (c, dir) => prepareWorkspace(c, dir, runCmd),
       session: runSession,
@@ -441,6 +445,7 @@ if (import.meta.main) {
         const r = await runCmd([claude, "purge", "-y", cwd], repo, 60_000);
         if (r.code !== 0 || r.timedOut) return r.timedOut ? "it didn't finish within a minute" : r.stderr.trim().split("\n").pop() || `exit code ${r.code}`;
       },
+      removeData: (cwd) => removeProjectData(homedir(), cwd),
       removeDir,
       git: () => gitState(repo),
       now: () => new Date(),

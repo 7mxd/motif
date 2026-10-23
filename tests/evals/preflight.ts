@@ -9,6 +9,7 @@ import { composeDoctor } from "../../cli/src/stacks/compose/doctor";
 import { FLUTTER_INSTALL, FLUTTER_MIN, olderThanFlutterMin } from "../../cli/src/stacks/flutter/doctor";
 import { swiftUIDoctor, XCODE_MIN } from "../../cli/src/stacks/swiftui/doctor";
 import { CASES, isCompose, isFlutter, isSwiftUI, needsBrowser as caseNeedsBrowser } from "./cases";
+import { supportsPurge } from "./purge";
 import { resolveClaude, sessionEnv } from "./claude";
 import { tail, type Run } from "./tools";
 
@@ -18,7 +19,13 @@ export function paths(repo: string): Paths {
   return { repo, cli: join(repo, "cli"), motifBin: join(repo, "dist", process.platform === "win32" ? "motif.exe" : "motif"), pluginDir: join(repo, "dist", "claude-code") };
 }
 
-export interface Ready { claude: string; claudeVersion: string; browser: boolean }
+export interface Ready {
+  claude: string;
+  claudeVersion: string;
+  browser: boolean;
+  /** Whether this Claude Code has `claude purge`; older ones don't, and the runner removes a case's transcripts itself. */
+  purge: boolean;
+}
 
 export interface PreflightDeps {
   which: (cmd: string) => string | null;
@@ -98,7 +105,7 @@ function androidProblem(d: PreflightDeps, repo: string): string | null {
 }
 
 export async function preflight(
-  p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false, needsXcode = false,
+  p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false, needsXcode = false, needsNode = true,
 ): Promise<Ready | { error: string }> {
   const found = resolveClaude(d.claudeOverride ?? d.which("claude"));
   if ("error" in found) return found;
@@ -118,6 +125,9 @@ export async function preflight(
   if (status?.loggedIn !== true || !["claude.ai", "oauth_token"].includes(status.authMethod)) {
     return { error: "The evals run on your Claude plan through Claude Code, never with an API key. Sign in with your Claude account (claude auth login), then run this again." };
   }
+  // Claude Code before purge existed prints its main usage for "purge --help".
+  const help = await d.run([found.exe, "purge", "--help"], p.repo, 60_000, env);
+  const purge = help.code === 0 && supportsPurge(`${help.stdout}\n${help.stderr}`);
   // Before the builds, which take a while.
   if (needsFlutter) {
     const problem = await flutterProblem(d, p.repo);
@@ -140,10 +150,14 @@ export async function preflight(
     return { error: "The build didn't produce dist/motif and dist/claude-code; run bun run build and bun run plugin in cli to see why." };
   }
 
-  const node = await d.run(["node", "--version"], p.repo, 30_000);
-  const [major = 0, minor = 0] = node.stdout.trim().replace(/^v/, "").split(".").map(Number);
-  if (node.code !== 0 || !d.which("npm") || major < 20 || (major === 20 && minor < 9)) {
-    return { error: "Node.js 20.9 or later, with npm, is needed to install and build the eval apps. Install it, then run this again." };
+  // Only the cases that install or build with npm (web, React Native) need Node. Flutter, Compose and SwiftUI don't, and
+  // the tool and plugin builds above run on Bun.
+  if (needsNode) {
+    const node = await d.run(["node", "--version"], p.repo, 30_000);
+    const [major = 0, minor = 0] = node.stdout.trim().replace(/^v/, "").split(".").map(Number);
+    if (node.code !== 0 || !d.which("npm") || major < 20 || (major === 20 && minor < 9)) {
+      return { error: "Node.js 20.9 or later, with npm, is needed to install and build the eval apps. Install it, then run this again." };
+    }
   }
 
   const doctor = await d.run([p.motifBin, "doctor", "--json"], p.repo, 60_000);
@@ -164,5 +178,5 @@ export async function preflight(
       error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, and the React Native cases draw their screens through Expo's web target in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${noBrowser(false)}) don't need one.${onMac}`,
     };
   }
-  return { claude: found.exe, claudeVersion: version.stdout.trim(), browser };
+  return { claude: found.exe, claudeVersion: version.stdout.trim(), browser, purge };
 }

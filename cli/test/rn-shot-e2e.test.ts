@@ -106,7 +106,7 @@ describe("motif shot on expo-min, through Expo's web target", () => {
     // useColorScheme() follows the emulated prefers-color-scheme on react-native-web.
     expect(png("index.mobile.png").equals(png("index.mobile.dark.png"))).toBe(false);
     expect(r.text).toContain("React Native screenshots are of Expo's web target in Chrome");
-    expect(notesOf(r.data).join("\n")).not.toContain("Dark mode looks exactly like light");
+    expect(notesOf(r.data).join("\n")).not.toContain("Dark mode looks the same as light");
   }, 600_000);
 
   test.skipIf(!ready)("--variant all draws +partner files that differ, and the default's are in the default although the app passes partner (skipped without Node, npm or a browser)", async () => {
@@ -120,7 +120,7 @@ describe("motif shot on expo-min, through Expo's web target", () => {
     ]);
     expect(png("index.mobile.png").equals(png("index+partner.mobile.png"))).toBe(false);
     expect(png("index.mobile.dark.png").equals(png("index+partner.mobile.dark.png"))).toBe(false);
-    expect(notesOf(r.data).join("\n")).not.toContain("looks exactly like the default");
+    expect(notesOf(r.data).join("\n")).not.toContain("looks the same as the default");
   }, 600_000);
 
   test.skipIf(!ready)("--rtl draws .rtl files in Arabic, right to left, in the Arabic companion font, though the app turns right to left only on a phone (skipped without Node, npm or a browser)", async () => {

@@ -317,8 +317,8 @@ describe("Dukkan and its seeded copy, installed, type-checked and drawn through 
     expect((r.data.shots as string[]).length).toBe(4 * 8);
     const notes = JSON.stringify(r.data.notes ?? []);
     expect(notes).toContain("React Native screenshots are of Expo's web target in Chrome");
-    expect(notes).not.toContain("looks exactly like the default");
-    expect(notes).not.toContain("Dark mode looks exactly like light");
+    expect(notes).not.toContain("looks the same as the default");
+    expect(notes).not.toContain("Dark mode looks the same as light");
     expect(r.data.findings).toEqual([]);
     expect(r.exitCode).toBe(0);
   }, 900_000);

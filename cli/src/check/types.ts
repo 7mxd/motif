@@ -32,6 +32,8 @@ export interface Hit {
   variant?: string;
   /** For backgrounds: set on the page itself (html, body, :root), not on a card or a button. */
   page?: true;
+  /** For sizes: the literal was negative (.padding(.bottom, -2)); `value` is its size, so the closest role takes a minus. */
+  negative?: true;
   /** For grouped output: the closest role to use instead (motif check). */
   suggestion?: string;
 }

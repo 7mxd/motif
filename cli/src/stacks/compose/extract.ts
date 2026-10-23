@@ -1,12 +1,15 @@
 // motif extract for Jetpack Compose: a draft design guide from an app's theme code — its colour constants, its
 // lightColorScheme/darkColorScheme calls and custom colour classes (parallel ones become design variants), its Typography,
 // and the values its composables use.
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { SourceFile } from "../../check/files";
 import { callArgs } from "../../check/calls";
 import { inRanges, maskComments, maskStrings } from "../../check/mask";
 import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
+import { axisWeightRanges, rootOf } from "../../extract/own-fonts";
 import { locator } from "../../text";
 import { kebab as dartKebab, pairInstances, SLOT_NAMES, title, TEXT_SLOTS, type Paired } from "../flutter/extract";
 import { scanKotlin } from "./rules";
@@ -163,6 +166,42 @@ function familyFromResource(resource: string): string {
   const parts = resource.split("_").filter(Boolean);
   const cut = parts.findIndex((p, i) => i > 0 && /^(?:thin|extralight|light|regular|normal|medium|semibold|bold|extrabold|black|italic|variable)$/i.test(p));
   return (cut > 0 ? parts.slice(0, cut) : parts).map((p) => title(p.toLowerCase())).join(" ");
+}
+
+type ProjectFontEntry = NonNullable<Occurrences["projectFonts"]>[number];
+type UnfoundFontEntry = NonNullable<Occurrences["unfoundFonts"]>[number];
+
+/** Each Font(R.font.…) in a FontFamily(…) call: its resource, and its weight and style (400 and normal unless it gives them). */
+function fontCalls(code: string): { resource: string; weight: number; style: "normal" | "italic" }[] {
+  const out: { resource: string; weight: number; style: "normal" | "italic" }[] = [];
+  for (const m of code.matchAll(/(?<![\w$.])Font\s*\(/g)) {
+    const call = callArgs(code, m.index! + m[0].length - 1, "=");
+    if (!call) continue;
+    const args = code.slice(m.index!, call.close);
+    const resource = args.match(/(?:^|[^\w$])R\.font\.([A-Za-z_]\w*)/)?.[1];
+    if (!resource) continue;
+    const w = args.match(/\bFontWeight\s*(?:\.\s*(?:W([1-9])00|(Thin|ExtraLight|Light|Normal|Medium|SemiBold|Bold|ExtraBold|Black))\b|\(\s*([1-9]00)\s*\))/);
+    const weight = w ? (w[1] ? Number(w[1]) * 100 : w[2] ? WEIGHTS[w[2]]! : Number(w[3])) : 400;
+    out.push({ resource, weight, style: /\bFontStyle\s*\.\s*Italic\b/.test(args) ? "italic" : "normal" });
+  }
+  return out;
+}
+
+/**
+ * A font resource's file (root-relative): a .ttf or .otf of that name (or another kind, given in `exts`) in the res/font
+ * folder of a source set above the Kotlin file.
+ */
+function resFontFile(source: SourceFile, resource: string, exts = [".ttf", ".otf"]): string | undefined {
+  const root = rootOf(source);
+  if (root === null) return undefined;
+  const dirs = source.path.split("/").slice(0, -1);
+  for (let n = dirs.length; n >= 0; n--) {
+    for (const ext of exts) {
+      const path = [...dirs.slice(0, n), "res", "font", `${resource}${ext}`].join("/");
+      if (existsSync(join(root, path))) return path;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -330,6 +369,10 @@ export function collectCompose(files: SourceFile[], shared: SourceFile[] = []): 
   }
 
   // ---------- what the composables use ----------
+  /** Families built from the app's font resources, by name in lower case: with the files found, or how the code names them. */
+  const ownFonts = new Map<string, ProjectFontEntry | UnfoundFontEntry>();
+  /** Families downloaded from Google Fonts (GoogleFont("Inter")). */
+  const googleFonts = new Set<string>();
   for (const file of kotlin) {
     const defs = definitions.get(file) ?? [];
     for (const hit of file.hits) {
@@ -374,14 +417,30 @@ export function collectCompose(files: SourceFile[], shared: SourceFile[] = []): 
       if (!resource) continue;
       const owner = file.code.slice(Math.max(0, m.index! - 80), m.index!).match(new RegExp(`val\\s+(${IDENT})\\s*(?::\\s*FontFamily\\s*)?=\\s*$`))?.[1];
       const family = owner ? words(owner).map(title).join(" ") : familyFromResource(resource);
-      if (family) add("fontFamily", family, where(file, m.index!));
+      if (!family) continue;
+      add("fontFamily", family, where(file, m.index!));
+      // The family's files are the app's own: each Font(R.font.…) in it, found in a res/font folder above the file.
+      if (ownFonts.has(family.toLowerCase())) continue;
+      const files: ProjectFontEntry["files"] = [];
+      for (const f of fontCalls(file.code.slice(m.index!, call.close))) {
+        const path = resFontFile(file.source, f.resource);
+        if (path && !files.some((x) => x.path === path)) files.push({ path, weight: f.weight, style: f.style });
+      }
+      // An XML font family (res/font/inter.xml) names its files, or a download, in a way Motif doesn't read yet.
+      const xml = files.length > 0 ? undefined : resFontFile(file.source, resource, [".xml"]);
+      ownFonts.set(family.toLowerCase(), files.length > 0 ? { family, files } : { family, from: `R.font.${resource}`, ...(xml ? { xml } : {}) });
     }
     for (const m of file.code.matchAll(/(?<![\w$.])GoogleFont\s*\(/g)) {
       const family = file.text.slice(m.index!).match(/^GoogleFont\s*\(\s*(?:name\s*=\s*)?"([^"\n]+)"/)?.[1]?.trim();
-      if (family) add("fontFamily", family, where(file, m.index!));
+      if (!family) continue;
+      add("fontFamily", family, where(file, m.index!));
+      googleFonts.add(family);
     }
   }
   const typeRoles = typographyRoles(kotlin);
+  const projectFonts = [...ownFonts.values()].filter((f): f is ProjectFontEntry => "files" in f);
+  const unfoundFonts = [...ownFonts.values()].filter((f): f is UnfoundFontEntry => "from" in f);
+  const fontWeightRanges = axisWeightRanges(files[0] ? rootOf(files[0]) : null, projectFonts);
 
   return {
     colors: sortedSamples(buckets.colors), space: sortedSamples(buckets.space), radius: sortedSamples(buckets.radius), fontSize: sortedSamples(buckets.fontSize),
@@ -395,5 +454,9 @@ export function collectCompose(files: SourceFile[], shared: SourceFile[] = []): 
     ...(Object.keys(variantLabels).length ? { variantLabels } : {}),
     ...(notes.length ? { notes } : {}),
     ...(typeRoles ? { typeRoles } : {}),
+    ...(projectFonts.length ? { projectFonts } : {}),
+    ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
+    ...(googleFonts.size ? { googleFonts: [...googleFonts] } : {}),
+    ...(unfoundFonts.length ? { unfoundFonts } : {}),
   };
 }

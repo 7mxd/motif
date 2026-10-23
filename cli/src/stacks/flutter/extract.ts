@@ -8,6 +8,7 @@ import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
 import { isMonospace } from "../../contract/defaults";
+import { axisWeightRanges, rootOf } from "../../extract/own-fonts";
 import { locator, stripBom } from "../../text";
 import { fontAssets } from "./project";
 import { callArgs, colorContext, namedArgument, scanDart } from "./rules";
@@ -530,6 +531,11 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
   }
 
   // ---------- what the widgets use ----------
+  /** Families the app loads with google_fonts (GoogleFonts.inter(…), GoogleFonts.getFont('Inter')). */
+  const googleFonts = new Set<string>();
+  /** Families (in lower case) named in a fontFamilyFallback list, and those named anywhere else in the code. */
+  const fallbacks = new Set<string>();
+  const namedFonts = new Set<string>();
   for (const file of dart) {
     const defs = definitions.get(file) ?? [];
     for (const hit of file.hits) {
@@ -553,6 +559,9 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
           break;
         case "font-family":
           add("fontFamily", hit.value!, example);
+          if (hit.text.startsWith("GoogleFonts.")) googleFonts.add(hit.value!);
+          // A family named only as a string in a fontFamilyFallback list is a fallback; any other mention names it.
+          (/^r?["']/.test(hit.text) ? fallbacks : namedFonts).add(hit.value!.toLowerCase());
           break;
         case "duration":
           add("duration", hit.value!, example);
@@ -570,14 +579,18 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
   const bundled = pubspecFonts([...files, ...shared]);
   for (const { family, path } of bundled) add("fontFamily", family, path);
   const typeRoles = textThemeRoles(dart);
-  // The family the app uses most (not a code font) is its main one, never the companion.
-  const main = sortedSamples(buckets.fontFamily).find((f) => !isMonospace(f.value) && !/^(?:system-ui|sans-serif|serif|monospace)$/i.test(f.value))?.value;
+  // The family the app uses most (not a code font) is its main one, never the companion: a family the code names only in
+  // a fontFamilyFallback list is passed over while another one is used.
+  const textFamilies = sortedSamples(buckets.fontFamily).filter((f) => !isMonospace(f.value) && !/^(?:system-ui|sans-serif|serif|monospace)$/i.test(f.value));
+  const onlyFallback = (f: string) => fallbacks.has(f.toLowerCase()) && !namedFonts.has(f.toLowerCase());
+  const main = (textFamilies.find((f) => !onlyFallback(f.value)) ?? textFamilies[0])?.value;
   const companion = companionFamily(dart, [...new Set(bundled.map((b) => b.family))], main);
+  // Every family a pubspec bundles is the app's own (the draft keeps those its roles use); the first pubspec's, when two name it.
   const projectFonts = bundled
-    .filter((b) => b.family === companion)
     .map((b) => ({ family: b.family, files: b.files.filter((f) => /\.(ttf|otf)$/i.test(f.path)) }))
-    .filter((b) => b.files.length > 0)
-    .slice(0, 1);
+    .filter((b, i, all) => b.files.length > 0 && all.findIndex((o) => o.family.toLowerCase() === b.family.toLowerCase() && o.files.length > 0) === i);
+  const someFile = [...files, ...shared][0];
+  const fontWeightRanges = axisWeightRanges(someFile ? rootOf(someFile) : null, projectFonts);
 
   const sorted = sortedSamples;
   return {
@@ -594,5 +607,7 @@ export function collectFlutter(files: SourceFile[], shared: SourceFile[] = []): 
     ...(typeRoles ? { typeRoles } : {}),
     ...(companion ? { companion } : {}),
     ...(projectFonts.length ? { projectFonts } : {}),
+    ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
+    ...(googleFonts.size ? { googleFonts: [...googleFonts] } : {}),
   };
 }

@@ -1,4 +1,5 @@
-import { bundledCoverage } from "../preview/font-list";
+import type { StackId } from "../detect/stacks";
+import { bundledCoverage, isKnownArabic } from "../preview/font-list";
 import type { Theme } from "./theme";
 
 export interface ThemeFontUse {
@@ -28,15 +29,42 @@ export function firstFamily(css: string): string | null {
   return first && !GENERIC.has(first.toLowerCase()) ? first : null;
 }
 
+/** A font list's families, unquoted, in order. */
+const listFamilies = (css: string) => css.split(",").map((part) => part.trim().replace(/^(["'])(.*)\1$/, "$2").trim());
+
+/** True for a family Motif knows covers Arabic: an Arabic companion its kit ships the letters of (ReadexPro counts too). */
+const knownArabic = isKnownArabic;
+
+/** The Latin font a developer would name on each native stack when the guide has none: the platform's own. */
+export const PLATFORM_LATIN: Partial<Record<StackId, string>> = { swiftui: "SF Pro", compose: "Roboto", flutter: "Roboto" };
+
+/** The Latin font to suggest before an Arabic one: the theme's own first family, else the stack's platform font, else Onest. */
+export function latinExample(theme: Theme, stack: StackId | null | undefined): string {
+  return themeFonts(theme).find((f) => !f.companion)?.family ?? (stack ? PLATFORM_LATIN[stack] : undefined) ?? "Onest";
+}
+
+/**
+ * A type role's families: the first, then its companions. The first is null when the list starts with a generic family
+ * (the platform's system font) and an Arabic companion comes right after it, as in "system-ui, Readex Pro": Latin text
+ * in the system font, Arabic text in the companion. A list with no named family to load is empty.
+ */
+export type FamilyStack = [] | [first: string | null, ...companions: string[]];
+
 /**
  * The families a page loads for a type role: the first, and each one after it up to the first generic or system font.
  * A companion second in the list (an Arabic font) counts; fallbacks after a system font are never loaded or installed.
+ * After a generic first family (the system font), only a family Motif knows covers Arabic qualifies, as the companion:
+ * anything else there ("system-ui, Avenir, Helvetica") is a fallback, and the list is empty, as a web page reads it.
  */
-export function stackFamilies(css: string): string[] {
-  const all = css.split(",").map((part) => part.trim().replace(/^(["'])(.*)\1$/, "$2").trim());
+export function stackFamilies(css: string): FamilyStack {
+  const all = listFamilies(css);
   const first = all[0];
-  if (!first || GENERIC.has(first.toLowerCase())) return [];
-  const families = [first];
+  if (!first) return [];
+  if (GENERIC.has(first.toLowerCase())) {
+    const next = all[1];
+    return next && knownArabic(next) ? [null, next] : [];
+  }
+  const families: [string, ...string[]] = [first];
   for (const family of all.slice(1)) {
     const key = family.toLowerCase();
     if (!family || GENERIC.has(key) || SYSTEM.has(key)) break;
@@ -45,12 +73,52 @@ export function stackFamilies(css: string): string[] {
   return families;
 }
 
+/** A family a font list names that native apps skip, though it may be meant as the roles' Arabic companion. */
+export interface SkippedCompanion {
+  family: string;
+  /** The generic family its list starts with. */
+  after: string;
+  /** The type roles whose list names it, in the theme's order. */
+  roles: string[];
+  /**
+   * project: a project font right after a generic family (Motif can't tell whether it covers Arabic) ·
+   * after-generics: a font Motif knows covers Arabic, after more than one generic family.
+   */
+  kind: "project" | "after-generics";
+}
+
+/**
+ * The families native apps skip in lists that start with a generic family, where the guide may have meant an Arabic
+ * companion. Fallbacks Motif can't call Arabic (Avenir, Roboto) aren't named: those are what such lists are for.
+ */
+export function skippedCompanions(theme: Theme): SkippedCompanion[] {
+  const own = new Set(theme.projectFonts.map((f) => f.family.toLowerCase()));
+  const found = new Map<string, SkippedCompanion>();
+  for (const font of theme.fonts) {
+    const all = listFamilies(font.family);
+    if (!all[0] || !GENERIC.has(all[0].toLowerCase())) continue;
+    let i = 1;
+    while (i < all.length && GENERIC.has(all[i]!.toLowerCase())) i++;
+    const family = all[i];
+    if (!family || SYSTEM.has(family.toLowerCase())) continue;
+    const kind = own.has(family.toLowerCase()) && !knownArabic(family) ? "project" : i > 1 && knownArabic(family) ? "after-generics" : null;
+    if (!kind) continue;
+    // Grouped by the generic family each list starts with, so every note names its own lists' start.
+    const key = `${family.toLowerCase()}\u0000${all[0].toLowerCase()}\u0000${kind}`;
+    const entry = found.get(key) ?? { family, after: all[0], roles: [], kind };
+    if (!entry.roles.includes(font.name)) entry.roles.push(font.name);
+    found.set(key, entry);
+  }
+  return [...found.values()];
+}
+
 /** Each family the theme's type roles name (the first, and any companion after it), with the weights used. */
 export function themeFonts(theme: Theme): ThemeFontUse[] {
   const uses = new Map<string, ThemeFontUse>();
   const own = new Set(theme.projectFonts.map((f) => f.family.toLowerCase()));
   for (const font of theme.fonts) {
     stackFamilies(font.family).forEach((family, i) => {
+      if (family === null) return;
       const key = family.toLowerCase();
       // The kit has only the Arabic letters of a style's Arabic companion: enough second in a list, not first.
       const coverage = bundledCoverage(family);

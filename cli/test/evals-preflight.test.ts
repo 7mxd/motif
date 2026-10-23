@@ -9,7 +9,7 @@ import { cleanupTempDirs, tempDir } from "./tmp";
 afterAll(cleanupTempDirs);
 
 const ok = (stdout = ""): RunResult => ({ code: 0, stdout, stderr: "", timedOut: false });
-type Step = "version" | "auth" | "build" | "plugin" | "node" | "doctor" | "flutter";
+type Step = "purge" | "version" | "auth" | "build" | "plugin" | "node" | "doctor" | "flutter";
 // Flutter prints an "upgrade available" banner before the JSON at times.
 const flutterVersion = (v: string) => ok(`A new version of Flutter is available!\n{\n  "frameworkVersion": "${v}",\n  "dartSdkVersion": "3.10.0"\n}\n`);
 
@@ -24,6 +24,7 @@ function setup(answers: Partial<Record<Step, RunResult>> = {}, which: Record<str
         seen.flutter = cmd;
         return answers.flutter ?? flutterVersion("3.44.8");
       }
+      if (cmd[1] === "purge") return answers.purge ?? ok("Usage: claude purge [options] [path]\n\nDelete all Claude Code state for a project\n");
       if (cmd[1] === "--version") return answers.version ?? ok("2.1.289 (Claude Code)\n");
       if (cmd[1] === "auth") {
         seen.authEnv = env;
@@ -53,8 +54,17 @@ function setup(answers: Partial<Record<Step, RunResult>> = {}, which: Record<str
 describe("before a run", () => {
   test("ready: Claude Code signed in with a Claude account, this checkout built, Node.js, a browser", async () => {
     const { p, deps, seen } = setup();
-    expect(await preflight(p, true, deps)).toEqual({ claude: "/bin/claude", claudeVersion: "2.1.289 (Claude Code)", browser: true });
+    expect(await preflight(p, true, deps)).toEqual({ claude: "/bin/claude", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true });
     expect(seen.authEnv?.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  test("claude purge is recorded as there or not: older Claude Code prints its main usage for purge --help", async () => {
+    const old = setup({ purge: ok("Usage: claude [options] [command] [prompt]\n\nClaude Code - starts an interactive session\n") });
+    expect(await preflight(old.p, false, old.deps)).toMatchObject({ purge: false });
+    const failing = setup({ purge: { code: 1, stdout: "", stderr: "error: unknown command", timedOut: false } });
+    expect(await preflight(failing.p, false, failing.deps)).toMatchObject({ purge: false });
+    const current = setup();
+    expect(await preflight(current.p, false, current.deps)).toMatchObject({ purge: true });
   });
 
   test("Claude Code not installed", async () => {
@@ -82,6 +92,19 @@ describe("before a run", () => {
   test("Node.js older than 20.9", async () => {
     const { p, deps } = setup({ node: ok("v18.19.0") });
     expect(await preflight(p, false, deps)).toEqual({ error: expect.stringContaining("Node.js 20.9") });
+  });
+
+  test("Node.js is checked only when a chosen case needs it: a SwiftUI-only run installs nothing with npm", async () => {
+    const none = { node: { code: 1, stdout: "", stderr: "node: not found", timedOut: false } };
+    const swift = setup(none, { node: null, npm: null });
+    expect(await preflight(swift.p, false, swift.deps, false, false, false, false)).not.toHaveProperty("error");
+    for (const answers of [none, { node: ok("v18.19.0") }]) {
+      const web = setup(answers, { npm: null });
+      expect(await preflight(web.p, false, web.deps, false, false, false, true)).toEqual({ error: expect.stringContaining("Node.js 20.9 or later, with npm") });
+    }
+    // Asked nothing, it still checks: a caller that doesn't say gets the old behaviour.
+    const dflt = setup(none);
+    expect(await preflight(dflt.p, false, dflt.deps)).toEqual({ error: expect.stringContaining("Node.js 20.9") });
   });
 
   test("a browser is needed only for tests C and D, and is never downloaded for you", async () => {

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { launchBrowser } from "../browser/cdp";
-import { pngSize } from "../browser/png";
+import { decodePng, pngSize } from "../browser/png";
 import { MAX_HEIGHT, screenOf, type Screen } from "./capture";
 
 export interface ComparePair {
@@ -138,10 +138,91 @@ export function missingStateFrames(frames: string[], allShots: string[]): string
   return [...new Set(frames.filter((f) => frameState(f) && captured.has(variantOf(f)) && !shotFor(f, shots)).map(frameState))];
 }
 
+/** How far apart two pictures may be and still look the same: a channel within 8 of 255, and at most 0.5% of pixels past it. */
+const SAME_CHANNEL = 8;
+const SAME_SHARE = 0.005;
+/** Where pixels differ, a colour (to 5 bits a channel) over this share of the picture, or 64 pixels, that the other lacks is new. */
+const NEW_COLOR_SHARE = 0.0005;
+const NEW_COLOR_MIN_PX = 64;
 /**
- * The variants whose every screenshot in this run is byte-identical to the default's of the same screen, state, size,
- * scheme and direction: the app likely didn't switch to them. A variant screenshot with no default one to compare with
- * leaves its variant out.
+ * Where pixels differ, a hue (one of 24, for pixels with a chroma of 24 or more) that one picture has over this share of
+ * a screen, or 16 pixels, and the other lacks there is new: anti-aliasing spreads a recoloured link over many colours,
+ * but not over many hues. 0.007% sits between what the review's real-browser "same" cases bring (a blue caret, at most
+ * 0.003%; a text run moved by a pixel, 0.002%) and one recoloured line of link text (0.016% and up), at 1x, 2x and 3x.
+ * A screen is the picture's width by at most 2.2 times its width (a phone's), so a long page doesn't hide a link.
+ */
+const NEW_HUE_SHARE = 0.00007;
+const NEW_HUE_MIN_PX = 16;
+const MIN_CHROMA = 24;
+const HUE_BINS = 24;
+
+/**
+ * True when two screenshots look the same: the same size, with nearly every pixel matching (a loading spinner drawn at
+ * another angle, a blinking caret, or a colour a few steps off, doesn't make them differ), and no new colour where they
+ * differ, by colour or by hue. A spinner moves its colours around, so where the pictures differ each has the other's
+ * colours; a variant's accent button or links bring a colour, or a hue, the other picture doesn't have there. Pictures Motif can't decode are compared
+ * by their bytes; one that can't be read is never the same.
+ */
+export function looksTheSame(a: string, b: string): boolean {
+  const x = readFileSync(a);
+  const y = readFileSync(b);
+  if (x.equals(y)) return true;
+  let p: ReturnType<typeof decodePng>;
+  let q: ReturnType<typeof decodePng>;
+  try {
+    p = decodePng(x);
+    q = decodePng(y);
+  } catch {
+    return false;
+  }
+  if (p.width !== q.width || p.height !== q.height) return false;
+  const allowed = Math.floor(p.width * p.height * SAME_SHARE);
+  let differ = 0;
+  // Each picture's colours where the two differ, to 5 bits a channel.
+  const colors: [Map<number, number>, Map<number, number>] = [new Map(), new Map()];
+  const key = (rgba: Uint8Array, i: number) => ((rgba[i]! >> 3) << 10) | ((rgba[i + 1]! >> 3) << 5) | (rgba[i + 2]! >> 3);
+  // And their hues, for pixels with colour in them.
+  const hues: [number[], number[]] = [new Array(HUE_BINS).fill(0), new Array(HUE_BINS).fill(0)];
+  const hue = (rgba: Uint8Array, i: number) => {
+    const [r, g, b] = [rgba[i]!, rgba[i + 1]!, rgba[i + 2]!];
+    const max = Math.max(r, g, b);
+    const chroma = max - Math.min(r, g, b);
+    if (chroma < MIN_CHROMA) return -1;
+    let h = max === r ? ((g - b) / chroma) % 6 : max === g ? (b - r) / chroma + 2 : (r - g) / chroma + 4;
+    if (h < 0) h += 6;
+    return Math.floor((h * HUE_BINS) / 6) % HUE_BINS;
+  };
+  for (let i = 0; i < p.rgba.length; i += 4) {
+    if (
+      Math.abs(p.rgba[i]! - q.rgba[i]!) > SAME_CHANNEL ||
+      Math.abs(p.rgba[i + 1]! - q.rgba[i + 1]!) > SAME_CHANNEL ||
+      Math.abs(p.rgba[i + 2]! - q.rgba[i + 2]!) > SAME_CHANNEL ||
+      Math.abs(p.rgba[i + 3]! - q.rgba[i + 3]!) > SAME_CHANNEL
+    ) {
+      if (++differ > allowed) return false;
+      for (const [k, rgba] of [[0, p.rgba], [1, q.rgba]] as const) {
+        colors[k].set(key(rgba, i), (colors[k].get(key(rgba, i)) ?? 0) + 1);
+        const h = hue(rgba, i);
+        if (h >= 0) hues[k][h]!++;
+      }
+    }
+  }
+  const most = Math.max(p.width * p.height * NEW_COLOR_SHARE, NEW_COLOR_MIN_PX);
+  const [ours, theirs] = colors;
+  for (const [mine, other] of [[ours, theirs], [theirs, ours]] as const) {
+    for (const [color, count] of mine) if (count > most && !other.has(color)) return false;
+  }
+  const mostHue = Math.max(p.width * Math.min(p.height, 2.2 * p.width) * NEW_HUE_SHARE, NEW_HUE_MIN_PX);
+  for (const [mine, other] of [[hues[0], hues[1]], [hues[1], hues[0]]] as const) {
+    for (let h = 0; h < HUE_BINS; h++) if (mine[h]! > mostHue && other[h] === 0) return false;
+  }
+  return true;
+}
+
+/**
+ * The variants whose every screenshot in this run looks the same (looksTheSame) as the default's of the same screen,
+ * state, size, scheme and direction: the app likely didn't switch to them. A variant screenshot with no default one to
+ * compare with leaves its variant out.
  */
 export function identicalVariants(shots: string[]): string[] {
   const taken = new Set(shots);
@@ -152,7 +233,7 @@ export function identicalVariants(shots: string[]): string[] {
     const dflt = join(dirname(shot), withoutVariant(basename(shot)));
     let equal = false;
     try {
-      equal = taken.has(dflt) && readFileSync(shot).equals(readFileSync(dflt));
+      equal = taken.has(dflt) && looksTheSame(shot, dflt);
     } catch {
       // A screenshot that can't be read can't show the variant looks the same: no note for it.
     }
@@ -162,12 +243,12 @@ export function identicalVariants(shots: string[]): string[] {
 }
 
 /**
- * Notes for variants that look exactly like the default. how says how Motif sets a variant on this stack, so the
+ * Notes for variants that look the same as the default. how says how Motif sets a variant on this stack, so the
  * developer can see why the app may not follow it (on the web: data-variant on <html>).
  */
 export function identicalVariantNotes(shots: string[], how: string): string[] {
   return identicalVariants(shots).map(
-    (id) => `The ${id} variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (${how}).`,
+    (id) => `The ${id} variant looks the same as the default on every screen: the app may not switch variants the way Motif sets them (${how}).`,
   );
 }
 
@@ -327,8 +408,8 @@ export async function renderComparisons(opts: {
 }
 
 /**
- * True when the run took dark screenshots and every one is byte-identical to its light twin (same screen, state, size,
- * variant and direction): the app didn't draw a dark mode. A dark screenshot with no light twin, or one that can't be
+ * True when the run took dark screenshots and every one looks the same (looksTheSame) as its light twin (same screen,
+ * state, size, variant and direction): the app didn't draw a dark mode. A dark screenshot with no light twin, or one that can't be
  * read, makes it false.
  */
 export function darkLooksLikeLight(shots: string[]): boolean {
@@ -338,7 +419,7 @@ export function darkLooksLikeLight(shots: string[]): boolean {
   return dark.every((shot) => {
     const light = `${shot.slice(0, -".dark.png".length)}.png`;
     try {
-      return taken.has(light) && readFileSync(shot).equals(readFileSync(light));
+      return taken.has(light) && looksTheSame(shot, light);
     } catch {
       return false;
     }

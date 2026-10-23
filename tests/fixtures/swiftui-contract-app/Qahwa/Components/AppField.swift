@@ -17,12 +17,14 @@ struct AppField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: MotifSpace.s1) {
-            // The field says its own name, so VoiceOver doesn't read the label twice.
+            // The field says its own name, so VoiceOver doesn't read the label twice. With a prompt, iOS would name the
+            // field by its prompt ("name@example.com"), so its name is set to the label.
             Text(label)
                 .motifFont(.label)
                 .foregroundStyle(colors.textSecondary)
                 .accessibilityHidden(true)
             field
+                .accessibilityLabel(label)
                 .motifFont(.body)
                 .foregroundStyle(colors.textPrimary)
                 .focused($focused)

@@ -12,7 +12,7 @@ import { CASELESS, renderPngs, type RenderTarget } from "../preview/render";
 import { startPreviewServer } from "../preview/server";
 import { loadThemeFile } from "../preview/theme-file";
 import { TOKENS_JSON } from "./validate";
-import { variantRefusal } from "./variant-flag";
+import { onePaletteNote, variantRefusal } from "./variant-flag";
 
 export interface PreviewDeps {
   findBrowser: () => BrowserInfo | null;
@@ -225,12 +225,19 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
 
   // The variants to render for each mockup: its own set (a design direction has its own), the default without a suffix.
   const variantsFor = new Map<string, (string | undefined)[]>();
+  /** Who has one palette, for --variant all: "This design guide", or each design direction by its folder, as refusals name it. */
+  const onePalette = new Set<string>();
   if (variantFlag !== undefined) {
     for (const file of files) {
       const ids = variantIds(setOf(file));
       const who = directionTokens(cwd, file) ? posix.dirname(file) : "This design guide";
       const refusal = variantRefusal(who, variantFlag, ids);
       if (refusal) return fail(refusal.exitCode, refusal.text, refusal.data);
+      // One palette: the mockup is drawn once, in its default, as with no --variant.
+      if (variantFlag === "all" && ids.length === 0) {
+        onePalette.add(who);
+        continue;
+      }
       const chosen = variantFlag === "all" ? ids : [variantFlag];
       variantsFor.set(file, chosen.map((id) => (id === ids[0] ? undefined : id)));
     }
@@ -268,7 +275,7 @@ export async function runPreview(cwd: string, ctx: RunContext, deps: PreviewDeps
         }),
       );
 
-  const notes: string[] = [...compared.notes];
+  const notes: string[] = [...compared.notes, ...[...onePalette].map(onePaletteNote)];
   let pngs: string[] = [];
   let missingFonts: string[] = [];
   // Motif's own PNGs, known before each is written: saving them is no change to the mockups.

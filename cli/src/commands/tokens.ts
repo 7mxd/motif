@@ -12,13 +12,14 @@ import { flatTokensFile, generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
 import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
 import { buildThemeSet, type ThemeSet } from "../generate/theme";
-import { themeFonts } from "../generate/theme-fonts";
+import { latinExample, skippedCompanions, themeFonts, type SkippedCompanion } from "../generate/theme-fonts";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { ignoredByGit, ignoredNotes } from "../project/git";
 import { readSettingsJson, writeSettings, type AppSetting, type MotifSettings } from "../project/settings";
 import { motifCss } from "../generate/motif-css";
 import { nativeStack } from "../stacks/native";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
+import { andList } from "../text";
 import { TOKENS_JSON } from "./validate";
 
 export type FileStatus = "created" | "updated" | "unchanged" | "protected" | "skipped";
@@ -296,6 +297,11 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
         : `${appLabel(app)}: Motif couldn't tell which framework this app uses, so it wrote plain CSS variables and design/generated/tokens.flat.json. For full support, add the app and its stack to design/motif.json.`);
     }
   }
+  // Native apps read only the start of a font list; on the web, CSS reads the whole list, so there's nothing to say.
+  if (apps.some((a) => nativeStack(a.stack)?.generate)) {
+    const latin = latinExample(theme, apps.find((a) => nativeStack(a.stack)?.generate)?.stack);
+    for (const s of skippedCompanions(theme)) notes.push(skippedCompanionNote(s, latin));
+  }
   if (needsFallback) files.push(...generateFallback(theme, set.variants));
   else if (needsFlat) files.push(flatTokensFile(theme, set.variants));
 
@@ -350,4 +356,13 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     text: lines.join("\n"),
     data: { files: results, notes, fonts },
   };
+}
+
+/** What native apps do with a family a font list hides from them, and how to write the list to use it. */
+function skippedCompanionNote(s: SkippedCompanion, latin: string): string {
+  const roles = s.roles.length === 1 ? `the ${s.roles[0]} role's font list` : `the font lists of the ${andList(s.roles)} roles`;
+  const them = s.roles.length === 1 ? "the role" : "these roles";
+  return s.kind === "after-generics"
+    ? `${s.family} comes after more than one generic family in ${roles}, so native apps never use it. If it's meant for Arabic text, start the list with one: "system-ui, ${s.family}".`
+    : `${s.family} comes after ${s.after} in ${roles}. Motif can't tell whether a project font covers Arabic, so native apps draw ${them} in the system font and skip ${s.family}. To use it for Arabic text, name a Latin font first, as in "${latin}, ${s.family}".`;
 }

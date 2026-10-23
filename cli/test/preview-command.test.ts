@@ -517,6 +517,26 @@ describe("motif preview --variant", () => {
     expect(f.calls.render).toHaveLength(0);
   });
 
+  test("all on a guide with one palette renders the default and says so once; a name is refused; no flag adds no note", async () => {
+    const NOTE = "This design guide has one palette, so --variant all is the same as leaving --variant out.";
+    const all = fakes();
+    const r = await runPreview(project(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "all" }), all.deps);
+    expect(r.exitCode).toBe(0);
+    // One target, the default: toEqual([undefined]) alone would also pass for no targets at all.
+    expect(all.calls.render[0]!.targets).toHaveLength(1);
+    expect(all.calls.render[0]!.targets[0]!.variant).toBeUndefined();
+    expect(r.text.split(NOTE)).toHaveLength(2);
+    expect((r.data as { notes: string[] }).notes).toContain(NOTE);
+    const named = fakes();
+    const refused = await runPreview(project(), ctx(["design/previews/home.html"], { ...pngOnly, variant: "men" }), named.deps);
+    expect(refused.exitCode).toBe(2);
+    expect(refused.text).toContain("Leave out --variant to use its one look.");
+    expect(named.calls.render).toHaveLength(0);
+    const none = fakes();
+    const plain = await runPreview(project(), ctx(["design/previews/home.html"], pngOnly), none.deps);
+    expect(plain.text).not.toContain("one palette");
+  });
+
   test("a design direction uses its own variants", async () => {
     const f = fakes();
     const root = makeProject({ "design/tokens.json": JSON.stringify(validTokens()), "design/directions/a/home.html": MOCKUP, "design/directions/a/tokens.json": JSON.stringify(twoVariantTokens()) });
@@ -547,4 +567,15 @@ describe("motif preview refuses variants and project fonts that motif validate r
       expect(f.calls.render).toHaveLength(0);
     });
   }
+});
+
+describe("final fix wave: the one-palette note names a design direction", () => {
+  test("--variant all on a direction with one palette says the direction, as the refusal does", async () => {
+    const f = fakes();
+    const root = makeProject({ "design/tokens.json": JSON.stringify(twoVariantTokens()), "design/directions/a/home.html": MOCKUP, "design/directions/a/tokens.json": JSON.stringify(validTokens()) });
+    const r = await runPreview(root, ctx(["design/directions/a/home.html"], { "png-only": true, variant: "all" }), f.deps);
+    expect(r.exitCode).toBe(0);
+    expect((r.data as { notes: string[] }).notes).toContain("design/directions/a has one palette, so --variant all is the same as leaving --variant out.");
+    expect(r.text).not.toContain("This design guide has one palette");
+  });
 });

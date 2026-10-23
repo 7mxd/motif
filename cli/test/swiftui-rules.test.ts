@@ -173,6 +173,19 @@ describe("off-scale in Swift", () => {
     expect(scan(src)).toEqual([]);
   });
 
+  test("a negative size keeps its sign in the message, and is on the scale when its size is (as the other stacks judge it)", () => {
+    const src = "v.padding(.bottom, -2)\n";
+    const hit = one(src);
+    expect(pick(hit)).toEqual({ rule: "off-scale", ...at(src, ".padding"), kind: "space", text: ".padding(.bottom, -2)", violation: true, value: "2px" });
+    expect(hit.message).toBe("Spacing -2pt isn't on your spacing scale.");
+    expect(one("v.padding(.top, -8)")).toMatchObject({ violation: false, value: "8px", message: "Spacing -8pt isn't on your spacing scale." });
+    expect(one("HStack(spacing: -6) { }")).toMatchObject({ violation: true, value: "6px", message: "Spacing -6pt isn't on your spacing scale." });
+    expect(one("v.padding(EdgeInsets(top: -3, leading: MotifSpace.s0))")).toMatchObject({
+      violation: true, message: "Spacing -3pt isn't on your spacing scale.",
+    });
+    expect(one("v.padding(13)").message).toBe("Spacing 13pt isn't on your spacing scale.");
+  });
+
   test("zero is on every scale", () => {
     expect(pick(one("v.padding(0)"))).toMatchObject({ kind: "space", violation: false, value: "0px" });
   });

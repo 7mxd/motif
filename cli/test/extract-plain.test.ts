@@ -218,7 +218,10 @@ describe("final review of Plan 2C: plain-site drafts never get worse than before
   test("text roles only take a name used as text by that variable, never a background's name, and stay readable", async () => {
     const r = await draftOf(`${base} :root { --bg-muted: #f4f4f5; --secondary: #0d9488; --grey: #6b7280; } .hero { color: #f5f5f5; background: var(--bg-muted); }
       .a { color: var(--grey); } .b { color: var(--grey); } .c { color: var(--grey); } .d { color: var(--grey); } .e { color: var(--grey); } .f { color: var(--secondary); }`);
-    expect(hex(r.tokens, "text-secondary", "light")).toBe("#6B7280");
+    // --grey (#6b7280) is the text colour, but it reads at 4.39:1 on the drafted surface (--surface, #f4f4f5), short of
+    // validate's 4.5:1, so it's darkened a little and the notes say so (v0.5.0 sweep). Never --bg-muted's #f4f4f5.
+    expect(hex(r.tokens, "text-secondary", "light")).toBe("#686F7D");
+    expect(r.report.notes.join("\n")).toContain("Text colour #6b7280 (4.39:1 on the surface, needs 4.5:1) was darkened to #686f7d so it reads on every background; check it.");
   });
 
   test("var() with a fallback counts once", async () => {

@@ -171,9 +171,13 @@ function textStyle(font: ThemeFont, google: Set<string>, googleFonts: boolean): 
     // google_fonts sets its own fallback list (the plain family); _font replaces it with the companions.
     return call("_font(", [dartString(first), call("const TextStyle(", props), ...(fallback.length > 0 ? [call("[", fallback, "]")] : [])]);
   }
-  const allConst = fallback.every((f) => typeof f === "string");
+  // A role in the system font with a companion names the platform's family: without one, Flutter takes the first
+  // fallback as the preferred family, for Latin text too, wherever the style isn't merged onto an inherited family.
+  const system = first === null;
+  const allConst = !system && fallback.every((f) => typeof f === "string");
   const fallbackArg = fallback.length > 0 ? [call("fontFamilyFallback: [", fallback, "]")] : [];
-  const args: Expr[] = [...(first ? [`fontFamily: ${dartString(first)}`] : []), ...fallbackArg, ...props];
+  const family = first ? [`fontFamily: ${dartString(first)}`] : system ? ["fontFamily: _systemFamily"] : [];
+  const args: Expr[] = [...family, ...fallbackArg, ...props];
   return call(`${allConst ? "const " : ""}TextStyle(`, args);
 }
 
@@ -193,6 +197,16 @@ const FONT_HELPER = [
   "        ? font",
   "        : font.copyWith(fontFamilyFallback: fallback);",
   "  }",
+];
+
+/** The platform's own family, for roles in the system font with a companion. */
+const SYSTEM_FAMILY_HELPER = [
+  "  /// The platform's own family (Roboto, San Francisco, Segoe UI…), as Material",
+  "  /// names it: a role in the system font draws Latin text in it, never in its",
+  "  /// Arabic companion.",
+  "  static String? get _systemFamily => Typography.material2021(",
+  "    platform: defaultTargetPlatform,",
+  "  ).black.bodyMedium?.fontFamily;",
 ];
 
 /** A fallback family's name, loaded through google_fonts when it has the font. */
@@ -374,10 +388,12 @@ export function generateFlutter(set: ThemeSet, opts: { googleFonts: boolean }): 
   const usesFont = styles.some((s) => flat(s.style).includes("_font("));
   const usesFamily = styles.some((s) => flat(s.style).includes("_family("));
   const usesGoogleFonts = usesFont || usesFamily;
+  const usesSystemFamily = styles.some((s) => flat(s.style).includes("_systemFamily"));
 
   const lines = [
     TS_HEADER,
     "",
+    ...(usesSystemFamily ? ["import 'package:flutter/foundation.dart' show defaultTargetPlatform;"] : []),
     "import 'package:flutter/material.dart';",
     ...(usesGoogleFonts ? ["import 'package:google_fonts/google_fonts.dart';"] : []),
     "",
@@ -423,6 +439,7 @@ export function generateFlutter(set: ThemeSet, opts: { googleFonts: boolean }): 
         ...styles.flatMap(({ font, style }, i) => [...(i > 0 ? [""] : []), ...render(style, 2, `static TextStyle get ${member(font.name, "t")} => `, ";")]),
         ...(usesFont ? ["", ...FONT_HELPER] : []),
         ...(usesFamily ? ["", ...FAMILY_HELPER] : []),
+        ...(usesSystemFamily ? ["", ...SYSTEM_FAMILY_HELPER] : []),
       ],
     ),
     ...themeBlock(set),

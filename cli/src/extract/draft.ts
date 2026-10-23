@@ -7,9 +7,12 @@ import { inRanges, maskComments, rangesOf } from "../check/mask";
 import { scanFile } from "../check/run";
 import { colorContext, CSS_COLOR_LITERAL, CSS_DECLARATION, isPageSelector } from "../check/rules/colors";
 import type { Hit } from "../check/types";
-import { locator } from "../text";
-import { FONT_ROLES, FULL_RADIUS_PX, MONO_ROLE, MONO_STACK, SPACE_SCALE, defaultShadows, isMonospace, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
+import { andList, locator } from "../text";
+import { contrastRatio } from "../contract/color";
+import { MIN_RATIO } from "../contract/contrast";
+import { FONT_ROLES, FULL_RADIUS_PX, MONO_ROLE, MONO_STACK, SPACE_SCALE, STANDARD_PAIRS, defaultShadows, isMonospace, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { clusterColors, parseColor, type ColorCluster, type Sample } from "./cluster";
+import { webFonts } from "./own-fonts";
 import type { TailwindDefaults } from "./tailwind-theme";
 
 /** A colour variable: its :root values, and the values a design variant's block gives it (by variant id). */
@@ -53,8 +56,16 @@ export interface Occurrences {
   typeRoles?: { from: string; roles: Partial<Record<string, { size: number; weight?: number; lineHeight?: number }>> };
   /** A second family the app's theme picks for another script (a bundled Arabic font): every type role's fallback. */
   companion?: string;
+  /** Project fonts the guide's fonts list keeps though no role uses them (a registered Arabic font Motif can't make the companion). */
+  keptFonts?: string[];
   /** Fonts the project bundles itself, for the guide's fonts list (paths from the project's root). */
   projectFonts?: { family: string; files: { path: string; weight: number; style: "normal" | "italic" }[] }[];
+  /** Families the app loads from Google Fonts: google_fonts, @expo-google-fonts, a Google Fonts link or @import, GoogleFont(…). */
+  googleFonts?: string[];
+  /** Families the app's code loads from its own font files, though the files weren't found (`from` is how the code names them). */
+  unfoundFonts?: { family: string; from: string; xml?: string }[];
+  /** A project font's weight range (a web @font-face's font-weight: 200 1000): its file serves every weight in it. */
+  fontWeightRanges?: { family: string; min: number; max: number }[];
 }
 
 export interface ExtractReport {
@@ -78,7 +89,7 @@ const MAX_EXAMPLES = 5;
 /** The lists of samples collected; variables and the settings are kept apart. */
 type Bucket = Exclude<
   keyof Occurrences,
-  "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables" | "source" | "variantLabels" | "notes" | "typeRoles" | "companion" | "projectFonts"
+  "variables" | "aliases" | "roleNames" | "variableUses" | "followVariables" | "source" | "variantLabels" | "notes" | "typeRoles" | "companion" | "keptFonts" | "projectFonts" | "googleFonts" | "unfoundFonts" | "fontWeightRanges"
 >;
 
 // ---------- collecting ----------
@@ -358,7 +369,8 @@ export function collectOccurrences(
   };
   const sized = (bucket: "radius" | "fontSize", hit: Hit, table: Map<string, number> | undefined) => {
     const v = hit.value!;
-    if (/^\d/.test(v)) return add(bucket, v, hit);
+    // A size as written (13px, 0.875rem); Tailwind's text-2xl and rounded-3xl are names in its theme, not 2 and 3.
+    if (/^\d/.test(v) && !/^\d+xl$/.test(v)) return add(bucket, v, hit);
     const px = table?.get(v) ?? (bucket === "radius" && v === "none" ? 0 : bucket === "radius" && v === "full" ? 9999 : undefined);
     if (px !== undefined) add(bucket, `${px}px`, hit);
     else add("unresolved", hit.text, hit);
@@ -549,6 +561,7 @@ export function collectOccurrences(
       return { ...v, ...(light ? { light } : {}), ...(dark ? { dark } : {}) };
     }),
     ...(files.some(followFor) ? { aliases: Object.fromEntries(aliases), roleNames: [...roleNames], variableUses, followVariables: true } : {}),
+    ...webFonts(files),
   };
 }
 
@@ -594,12 +607,29 @@ export function mergeOccurrences(parts: Occurrences[]): Occurrences {
     ...(notes.length ? { notes } : {}),
     ...firstOf(parts, "typeRoles"),
     ...firstOf(parts, "companion"),
-    ...firstOf(parts, "projectFonts"),
+    ...listOf(parts, "projectFonts"),
+    ...listOf(parts, "googleFonts"),
+    ...listOf(parts, "unfoundFonts"),
+    ...listOf(parts, "keptFonts"),
+    ...(parts.some((o) => o.fontWeightRanges) ? { fontWeightRanges: parts.flatMap((o) => o.fontWeightRanges ?? []) } : {}),
   };
 }
 
+/** Every part's fonts of one kind, each family once (the first part's). */
+function listOf<K extends "projectFonts" | "googleFonts" | "unfoundFonts" | "keptFonts">(parts: Occurrences[], key: K): Pick<Occurrences, K> | Record<string, never> {
+  const seen = new Set<string>();
+  const list: unknown[] = [];
+  for (const item of parts.flatMap((o) => (o[key] ?? []) as unknown[])) {
+    const family = (typeof item === "string" ? item : (item as { family: string }).family).toLowerCase();
+    if (seen.has(family)) continue;
+    seen.add(family);
+    list.push(item);
+  }
+  return list.length > 0 ? ({ [key]: list } as Pick<Occurrences, K>) : {};
+}
+
 /** The first part's value of a setting one stack gives (a Flutter app's text theme), as a spreadable object. */
-function firstOf<K extends "typeRoles" | "companion" | "projectFonts">(parts: Occurrences[], key: K): Pick<Occurrences, K> | Record<string, never> {
+function firstOf<K extends "typeRoles" | "companion">(parts: Occurrences[], key: K): Pick<Occurrences, K> | Record<string, never> {
   const found = parts.find((o) => o[key] !== undefined);
   return found ? ({ [key]: found[key] } as Pick<Occurrences, K>) : {};
 }
@@ -814,6 +844,12 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const roles: Record<string, string> = {};
   const defaulted: string[] = [];
   const primitiveFor = (role: string): string => {
+    const own = textLight[role];
+    if (own) {
+      const name = addPrimitive(own.name, own.hex);
+      roles[`color.${role}`] = name;
+      return name;
+    }
     const cluster = chosen[role];
     if (cluster) {
       primitives[cluster.id] = { $value: srgbColor(cluster.hex) };
@@ -823,7 +859,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     const name = `default-${role}`;
     primitives[name] = { $value: srgbColor(DEFAULT_COLORS[role]!) };
     roles[`color.${role}`] = "default";
-    if (["success", "warning", "danger", "info", "action-primary", "text-primary", "background", "border"].includes(role)) defaulted.push(role);
+    // A text role whose colour didn't read has its own note.
+    if (!textNoted.has(role) && ["success", "warning", "danger", "info", "action-primary", "text-primary", "background", "border"].includes(role)) defaulted.push(role);
     return name;
   };
   const hexOf = (name: string) => (primitives[name] as { $value: { hex: string } }).$value.hex;
@@ -869,6 +906,158 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     return solidHex(chainLight(chain)) ? chain : undefined;
   };
 
+  const inCluster = (cluster: ColorCluster | undefined, value: string | undefined) =>
+    Boolean(cluster && solidHex(value) && cluster.members.some((m) => solidHex(m.value) === solidHex(value)));
+  /** A role's own dark value from the app (a variable's dark block, or a see-through field over the dark background). */
+  const darkHexOf = (role: string): string | undefined => {
+    const source = sourceOf(role);
+    if (source) return solidHex(chainDark(source));
+    const candidates = (occ.variables ?? []).filter((x) => solidHex(x.dark) && inCluster(chosen[role], x.light));
+    const entries = follow ? roleNames.filter((e) => e.role === role) : [];
+    const v =
+      candidates.find((x) => entries.some((entry) => nameScore(x.name, entry) >= 0)) ??
+      candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ??
+      candidates[0];
+    return v ? solidHex(v.dark) : undefined;
+  };
+
+  // Drafted text always reads on the drafted fills, as motif validate checks it (its text pairs, ratios and contrast helper):
+  // the background and the surface (surface-raised is the surface, and so are secondary buttons without a fill of their own),
+  // in light mode and in dark. Each text role takes, in order: the colour found, when it reads; that colour darkened or
+  // lightened a little, when it's on the right side of every fill and already reads at 3:1 on each; the default; then ink or
+  // white (a grey for secondary text, so it still differs from the primary). Its dark value is drafted the same way from the
+  // dark fills when its own, or its light one, doesn't read there. Each change has a note.
+  const TEXT_NAMES: Record<string, string> = { [INK]: "ink", [WHITE]: "white", "#4B5563": "gray-600", "#374151": "gray-700", "#D1D5DB": "gray-300", "#9CA3AF": "gray-400" };
+  const TEXT_FILLS = ["background", "surface"];
+  type Fills = Record<string, string>;
+  /** Validate's pairs for a text role, by the drafted fill each sits on (surface-raised is the surface). */
+  const pairsOf = (role: string) => [
+    ...new Map(STANDARD_PAIRS.filter(([fg]) => fg === role).map(([, on, kind]) => {
+      const fill = on === "surface-raised" ? "surface" : on;
+      return [fill, { fill, min: MIN_RATIO[kind] }] as const;
+    })).values(),
+  ];
+  const ratioOn = (fg: string, bg: string) => contrastRatio(srgbColor(fg), srgbColor(bg));
+  /** The first of a text role's pairs (in validate's order) a colour doesn't read on; undefined when it reads on all. */
+  const missOf = (role: string, hex: string, fills: Fills, only?: string) =>
+    pairsOf(role)
+      .filter((p) => !only || p.fill === only)
+      .map((p) => ({ ...p, on: fills[p.fill]!, ratio: ratioOn(hex, fills[p.fill]!) }))
+      .find((p) => p.ratio < p.min);
+  const shown = (ratio: number) => (Math.floor(ratio * 100) / 100).toFixed(2);
+  const lightHex = (role: string) => chosen[role]?.hex ?? DEFAULT_COLORS[role]!;
+  const lightFills: Fills = Object.fromEntries(TEXT_FILLS.map((f) => [f, lightHex(f)]));
+  const darkFills: Fills = Object.fromEntries(TEXT_FILLS.map((f) => [f, (chosen[f] ? darkHexOf(f) : undefined) ?? lightFills[f]!]));
+  /** Ink or white for the primary text; a grey, then ink or white, for the secondary. */
+  const ladder = (role: string, fills: Fills) => {
+    const light = onColor(fills.background!) === INK;
+    const solid = light ? [INK, WHITE] : [WHITE, INK];
+    return role === "text-primary" ? solid : [...(light ? ["#4B5563", "#374151"] : ["#D1D5DB", "#9CA3AF"]), ...solid];
+  };
+  /** The first option that reads on every fill; else the first that reads on the background, and the surface it doesn't. */
+  const firstReading = (role: string, options: string[], fills: Fills): { hex: string; surface?: string } => {
+    const all = options.find((h) => !missOf(role, h, fills));
+    if (all) return { hex: all };
+    return { hex: options.find((h) => !missOf(role, h, fills, "background")) ?? options[0]!, surface: fills.surface };
+  };
+  const butSurface = (pick: { surface?: string }) => (pick.surface ? ` for the background, though nothing reads on both it and the surface (${pick.surface.toLowerCase()})` : "");
+  /** A found colour darkened or lightened in OKLCH, keeping its hue and chroma, until it reads on every fill. */
+  const nudge = (role: string, hex: string, fills: Fills) => {
+    const lum = wcagLuminance(hex);
+    const fillLums = TEXT_FILLS.map((f) => wcagLuminance(fills[f]!));
+    const darker = fillLums.every((l) => lum < l);
+    if (!darker && !fillLums.every((l) => lum > l)) return undefined;
+    if (TEXT_FILLS.some((f) => ratioOn(hex, fills[f]!) < 3)) return undefined;
+    const start = toOklch(parseColor(hex)!);
+    for (let step = 1; step <= 200; step++) {
+      const l = (start.l ?? 0) + (darker ? -step : step) * 0.005;
+      if (l < 0 || l > 1) break;
+      const next = formatHex({ ...start, l })?.toUpperCase();
+      if (next && !missOf(role, next, fills)) return { hex: next, darker };
+    }
+    return undefined;
+  };
+  /** A found colour as the notes name it: as written, with a word for white and black. */
+  const foundName = (c: ColorCluster) => {
+    const value = (c.members[0]?.value ?? c.hex).toLowerCase();
+    return c.hex.toUpperCase() === WHITE ? `White (${value})` : c.hex.toUpperCase() === "#000000" ? `Black (${value})` : value;
+  };
+  const ownDarkHex = (role: string) => {
+    if (!chosen[role]) return undefined;
+    const field = flattened.get(role);
+    if (!field) return darkHexOf(role);
+    const flat = flatten(chainDark(chainOf(field)), darkFills.background!);
+    return flat && flat !== chosen[role]!.hex ? flat : undefined;
+  };
+  /** Light values drafted for a text role (a found colour nudged, or ink, white or a grey): role → primitive name and colour. */
+  const textLight: Record<string, { name: string; hex: string }> = {};
+  /** Dark values drafted for a text role; null when it has none of its own (its light value shows in dark mode). */
+  const textDark: Record<string, { name: string; hex: string } | null> = {};
+  /** Roles whose colour didn't read: their note says so, not "No colour was found". */
+  const textNoted = new Set<string>();
+  /** Found colours set aside for the default: the note's start → the roles that keep their defaults. */
+  const keptDefault = new Map<string, string[]>();
+  const textNotes: string[] = [];
+  /** Text roles whose dark value Motif drafted (not the app's). */
+  const draftedDark = new Set<string>();
+  for (const role of ["text-primary", "text-secondary"]) {
+    const cluster = chosen[role];
+    const ownDark = cluster ? ownDarkHex(role) : undefined;
+    let light = cluster?.hex ?? DEFAULT_COLORS[role]!;
+    let darkOwn = ownDark;
+    const miss = missOf(role, light, lightFills);
+    if (miss) {
+      textNoted.add(role);
+      const said = `reads at ${shown(miss.ratio)}:1 on the ${miss.fill} (${miss.on.toLowerCase()}), needs ${miss.min}:1`;
+      const nudged = cluster ? nudge(role, cluster.hex, lightFills) : undefined;
+      if (nudged) {
+        light = nudged.hex;
+        textLight[role] = { name: `${cluster!.id}-${nudged.darker ? "darker" : "lighter"}`, hex: light };
+        flattened.delete(role);
+        textNotes.push(
+          `Text colour ${(cluster!.members[0]?.value ?? cluster!.hex).toLowerCase()} (${shown(miss.ratio)}:1 on the ${miss.fill}, needs ${miss.min}:1) was ${nudged.darker ? "darkened" : "lightened"} to ${light.toLowerCase()} so it reads on every background; check it.`,
+        );
+      } else {
+        // The light colour is set aside; the app's own dark value stays when it reads in dark mode.
+        darkOwn = ownDark && !missOf(role, ownDark, darkFills) ? ownDark : undefined;
+        if (cluster) {
+          chosen[role] = undefined;
+          flattened.delete(role);
+        }
+        const fallback = DEFAULT_COLORS[role]!;
+        if (cluster && !missOf(role, fallback, lightFills)) {
+          light = fallback;
+          const start = `${foundName(cluster)} was found for text but ${said}`;
+          keptDefault.set(start, [...(keptDefault.get(start) ?? []), role]);
+        } else {
+          const pick = firstReading(role, ladder(role, lightFills), lightFills);
+          light = pick.hex;
+          textLight[role] = { name: TEXT_NAMES[light]!, hex: light };
+          const what = cluster
+            ? `${foundName(cluster)} was found for text but ${said}, and the default (${fallback.toLowerCase()}) doesn't read either`
+            : `No text colour was found, and the default for ${role} (${fallback.toLowerCase()}) ${said}`;
+          textNotes.push(`${what}, so ${role} is drafted as ${light.toLowerCase()}${butSurface(pick)}; check it.`);
+        }
+      }
+    }
+    // Dark mode: the role's own dark value (kept when its light colour was kept or nudged), or its light one.
+    const dark = darkOwn ?? light;
+    // Dark mode copied from light (no dark colours from the app for this role or its fills) fails as light does, which
+    // its light note already says: nothing to draft or say for it.
+    const copied = dark === light && TEXT_FILLS.every((f) => darkFills[f] === lightFills[f]);
+    const darkMiss = copied ? undefined : missOf(role, dark, darkFills);
+    if (darkMiss) {
+      const pick = firstReading(role, ladder(role, darkFills), darkFills);
+      textDark[role] = { name: TEXT_NAMES[pick.hex]!, hex: pick.hex };
+      draftedDark.add(role);
+      textNotes.push(
+        `In dark mode, ${role} (${dark.toLowerCase()}) reads at ${shown(darkMiss.ratio)}:1 on the ${darkMiss.fill} (${darkMiss.on.toLowerCase()}), needs ${darkMiss.min}:1, so its dark value is drafted as ${pick.hex.toLowerCase()}${butSurface(pick)}; check it.`,
+      );
+    } else if (miss) {
+      textDark[role] = darkOwn ? { name: `${cluster!.id}-dark`, hex: darkOwn } : null;
+    }
+  }
+
   const base: Record<string, string> = {};
   for (const role of BASE_ROLES) {
     base[role] = primitiveFor(role);
@@ -890,23 +1079,10 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   roles["color.surface-raised"] = roles["color.surface"]!;
   roles["color.focus"] = roles["color.action-primary"]!;
   // Dark values from the CSS: a colour variable set in a light block and in a dark block gives its role a real dark value.
-  const inCluster = (cluster: ColorCluster | undefined, value: string | undefined) =>
-    Boolean(cluster && solidHex(value) && cluster.members.some((m) => solidHex(m.value) === solidHex(value)));
   const darkBase: Record<string, string> = {};
   for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
-    if (flattened.has(role)) continue;
-    const source = sourceOf(role);
-    let darkValue: string | undefined;
-    if (source) darkValue = solidHex(chainDark(source));
-    else {
-      const candidates = (occ.variables ?? []).filter((x) => solidHex(x.dark) && inCluster(chosen[role], x.light));
-      const entries = follow ? roleNames.filter((e) => e.role === role) : [];
-      const v =
-        candidates.find((x) => entries.some((entry) => nameScore(x.name, entry) >= 0)) ??
-        candidates.find((x) => colorContext(x.name) === ROLE_CONTEXT[role]) ??
-        candidates[0];
-      darkValue = v ? solidHex(v.dark) : undefined;
-    }
+    if (flattened.has(role) || role in textDark) continue;
+    const darkValue = darkHexOf(role);
     if (!darkValue) continue;
     // Roles that share a colour group (a grey-50 page and its white cards) can have different dark values.
     const value = srgbColor(darkValue);
@@ -920,6 +1096,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   for (const [role, field] of flattened) {
     const darkHex = flatten(chainDark(chainOf(field)), hexOf(darkBase.background ?? base.background!));
     if (darkHex && darkHex !== hexOf(base[role]!)) darkBase[role] = addPrimitive(`${chosen[role]!.id}-dark`, darkHex);
+  }
+  // Text roles whose dark value was drafted to read on the dark fills, or that keep their light one.
+  for (const [role, own] of Object.entries(textDark)) {
+    if (own) darkBase[role] = addPrimitive(own.name, own.hex);
+    else delete darkBase[role];
   }
   if (darkBase.surface) darkBase["surface-raised"] = darkBase.surface;
   if (darkBase.surface && !secondaryFill) darkBase["action-secondary"] = darkBase.surface;
@@ -1049,8 +1230,20 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const body = given("body") ?? (bodySample ? pxOf(bodySample) : 16);
   const smaller = sizes.filter((v) => v < body);
   const larger = sizes.filter((v) => v > body);
-  let caption = smaller[0] ?? Math.round(body * 0.75);
-  let label = smaller.length >= 2 ? smaller[smaller.length - 1]! : Math.round(body * 0.875);
+  // With more than two smaller sizes, caption and label are the two the app uses most (a size used once isn't the
+  // caption while a near one is used far more); between sizes used as often, the smallest and the largest win.
+  const uses = new Map<number, number>();
+  for (const s of occ.fontSize) uses.set(pxOf(s), (uses.get(pxOf(s)) ?? 0) + s.count);
+  const edge = (v: number) => Math.min(smaller.indexOf(v), smaller.length - 1 - smaller.indexOf(v));
+  // Two roles less than 5% apart (13 and 13.5) aren't two sizes: the more used one stays, with the next most used size
+  // at least 5% from it, if there is one; with only those two, the other role takes its default.
+  const ranked = [...smaller].sort((a, b) => uses.get(b)! - uses.get(a)! || edge(a) - edge(b) || a - b);
+  const close = (a: number, b: number) => Math.abs(a - b) < 0.05 * Math.max(a, b);
+  const apart = ranked.length > 2 && close(ranked[0]!, ranked[1]!) ? ranked.find((v) => !close(v, ranked[0]!)) : undefined;
+  const small =
+    smaller.length > 2 ? [ranked[0]!, apart ?? ranked[1]!].sort((a, b) => a - b) : smaller.length === 2 && close(ranked[0]!, ranked[1]!) ? [ranked[0]!] : smaller;
+  let caption = small[0] ?? Math.round(body * 0.75);
+  let label = small.length >= 2 ? small[small.length - 1]! : Math.round(body * 0.875);
   if (caption > label) [caption, label] = [label, caption];
   caption = given("caption") ?? caption;
   label = given("label") ?? label;
@@ -1089,9 +1282,18 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     : [120, 200, 320];
   const standard = occ.easing[0]?.value.match(/\(([^)]*)\)/)?.[1]?.split(",").map((n) => Number(n.trim())) ?? [0.2, 0, 0, 1];
 
-  // The fonts the project bundles that a role uses (the companion, or the main family), for the guide's fonts list.
-  const usedFamilies = new Set([family, ...(companion ? [companion] : [])].map((f) => f.toLowerCase()));
-  const projectFonts = (occ.projectFonts ?? []).filter((f) => usedFamilies.has(f.family.toLowerCase()) && f.files.length > 0);
+  // The fonts the project bundles that a role uses (the main family, the companion or the code font), for the guide's
+  // fonts list: a family the app ships is its own, even when it also loads it from Google.
+  const usedFamilies = new Set([family, ...(companion ? [companion] : []), ...(code !== undefined && !GENERIC.has(code.toLowerCase()) ? [code] : [])].map((f) => f.toLowerCase()));
+  // A family the stack keeps (a registered Arabic font no role can use yet) stays too, ready for when one names it.
+  const kept = new Set((occ.keptFonts ?? []).map((f) => f.toLowerCase()));
+  const projectFonts = (occ.projectFonts ?? []).filter((f) => (usedFamilies.has(f.family.toLowerCase()) || kept.has(f.family.toLowerCase())) && f.files.length > 0);
+  const ownFamily = (f: string) => projectFonts.some((p) => p.family.toLowerCase() === f.toLowerCase());
+  /** Google's name and the app's for one family can differ in spaces and case (Readex Pro, ReadexPro). */
+  const fontKey = (f: string) => f.toLowerCase().replace(/[\s_-]+/g, "");
+  const fromGoogle = new Set((occ.googleFonts ?? []).map(fontKey));
+  const alsoGoogle = projectFonts.filter((f) => fromGoogle.has(fontKey(f.family))).map((f) => f.family);
+  const unfound = (occ.unfoundFonts ?? []).filter((f) => usedFamilies.has(f.family.toLowerCase()) && !ownFamily(f.family));
   const designVariants =
     variantIds.length > 0 ? ["default", ...variantIds].map((id) => ({ id, label: occ.variantLabels?.[id] ?? id[0]!.toUpperCase() + id.slice(1) })) : [];
   const tokens: Record<string, unknown> = {
@@ -1120,7 +1322,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     spring: { snappy: springGroup(0.25, 0), smooth: springGroup(0.4, 0.1), bouncy: springGroup(0.5, 0.3) },
   };
 
-  const darkRoles = Object.keys(darkBase).filter((r) => BASE_ROLES.includes(r));
+  const darkRoles = Object.keys(darkBase).filter((r) => BASE_ROLES.includes(r) && !draftedDark.has(r));
   const dart = occ.source === "dart" || occ.source === "kotlin" || occ.source === "swift" || occ.source === "script";
   const themeCode = occ.source === "script" ? "your theme code" : occ.source === "kotlin" ? "your Kotlin theme code" : occ.source === "swift" ? "your Swift theme code" : "your Dart theme code";
   const themeCodeSets =
@@ -1154,6 +1356,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   // A role whose colour is see-through (a hairline at 8%) is drafted solid: say so. The colour is the variable's that named
   // the role, when one did (a solid --text beside much-used see-through text of the same hue isn't see-through).
   for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
+    // A text colour changed to read on the fills has its own note.
+    if (textLight[role]) continue;
     const field = flattened.get(role);
     if (field) {
       notes.push(
@@ -1168,6 +1372,12 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
       notes.push(`${role} comes from a see-through colour (${value}), drafted as solid ${chosen[role]!.hex}; check it.`);
     }
   }
+  // Text colours that didn't read on the drafted fills: what was set aside or changed, and why.
+  for (const [start, which] of keptDefault) {
+    notes.push(which.length === 1 ? `${start}, so ${which[0]} keeps the default; check it.` : `${start}, so ${which.join(" and ")} keep their defaults; check them.`);
+  }
+  // Both text roles can take the same nudged colour: its note is said once.
+  notes.push(...new Set(textNotes));
   if (defaulted.length) notes.push(`No colour was found for ${defaulted.join(", ")}, so Motif used defaults.`);
   const themeRoles = FONT_ROLES.map(([role]) => role).filter((role) => fromTheme[role]);
   if (occ.typeRoles && themeRoles.length > 0) {
@@ -1179,13 +1389,43 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   }
   if (companion) {
     const bundled = projectFonts.some((f) => f.family.toLowerCase() === companion.toLowerCase());
+    const files = bundled ? ", and its font files are in the guide's fonts list" : "";
     notes.push(
-      `Your theme also uses ${companion} (for Arabic text, or as a fallback), so it's each type role's companion after ${family}${bundled ? ", and its font files are in the guide's fonts list" : ""}.`,
+      GENERIC.has(family.toLowerCase())
+        ? `Your app registers ${companion} for Arabic text, so the draft makes it each type role's companion after the system font${files}.`
+        : `Your theme also uses ${companion} (for Arabic text, or as a fallback), so it's each type role's companion after ${family}${files}.`,
     );
   }
   if (code !== undefined) {
     const which = GENERIC.has(code.toLowerCase()) ? "The system's monospace fonts" : code;
     notes.push(`${which} became the optional mono role (font.mono), for code text${family === code ? `; ${code} stays your text font too` : ""}.`);
+  }
+  for (const f of alsoGoogle) {
+    notes.push(`${f} ships with your app and is also loaded from Google Fonts. The draft uses the files your app ships (the guide's fonts list), so motif tokens won't load it from Google; check that they have every weight you use.`);
+  }
+  for (const f of unfound) {
+    notes.push(
+      f.xml
+        ? `${f.family} comes from an XML font family (${f.xml}), which Motif doesn't read yet, so the draft treats it as a Google font. Add its font files to the guide's fonts list, or check that Google Fonts has it.`
+        : `${f.family} comes from your app's font files (${f.from}), but Motif didn't find them, so the draft treats it as a Google font. Add its files to the guide's fonts list, or check that Google Fonts has it.`,
+    );
+  }
+  // A shipped family needs a file for each weight its roles use (a weight range covers the weights in it).
+  const sansWeights = FONT_ROLES.map(([role]) => (font[role] as { $value: { fontWeight: number } }).$value.fontWeight);
+  for (const f of projectFonts) {
+    const key = f.family.toLowerCase();
+    const used = new Set([
+      ...([family, companion].some((s) => s?.toLowerCase() === key) ? sansWeights : []),
+      ...(code?.toLowerCase() === key ? [MONO_ROLE[1]] : []),
+    ]);
+    // A variable font serves every weight on its axis: each stack reads it from the file (axisWeightRanges).
+    const has = [...new Set(f.files.filter((file) => file.style === "normal").map((file) => file.weight))].sort((a, b) => a - b);
+    const ranges = (occ.fontWeightRanges ?? []).filter((r) => r.family.toLowerCase() === key);
+    const missing = [...used].filter((w) => !has.includes(w) && !ranges.some((r) => r.min <= w && w <= r.max)).sort((a, b) => a - b);
+    if (missing.length === 0 || has.length === 0) continue;
+    notes.push(
+      `${f.family}'s files have ${has.length === 1 ? "weight" : "weights"} ${andList(has.map(String))} only, but the type roles also use ${andList(missing.map(String))}. Add files for ${missing.length === 1 ? "that weight" : "those weights"} to the guide's fonts list, or change the roles' weights.`,
+    );
   }
   const offScale = spacing.filter((s) => !s.onScale).length;
   if (offScale) notes.push(`${offScale} spacing ${offScale === 1 ? "value wasn't" : "values weren't"} on a 4px scale; the report shows the nearest step for each.`);

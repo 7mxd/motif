@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { cpSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { runExtract } from "../src/commands/extract";
 import type { SourceFile } from "../src/check/files";
-import { readPairs } from "../src/contract/contrast";
+import { checkContrastAll, readPairs } from "../src/contract/contrast";
 import { checkRoles } from "../src/contract/roles";
 import { validateTokens } from "../src/contract/tokens";
 import { checkVariants } from "../src/contract/variants";
@@ -8,7 +11,8 @@ import type { Sample } from "../src/extract/cluster";
 import { isMonospace } from "../src/contract/defaults";
 import { buildDraft, collectOccurrences, type Occurrences } from "../src/extract/draft";
 import type { TailwindDefaults } from "../src/extract/tailwind-theme";
-import { docFrom } from "./helpers";
+import { docFrom, FIXTURES } from "./helpers";
+import { cleanupTempDirs, tempDir } from "./tmp";
 
 const tw: TailwindDefaults = {
   colors: new Map([["blue-500", "oklch(62.3% 0.214 259.815)"], ["white", "#fff"]]),
@@ -102,7 +106,9 @@ describe("buildDraft", () => {
       "color.text-primary": "found-1",
       "color.background": "found-2",
       "color.action-primary": "found-3",
-      "color.text-secondary": "found-4",
+      // #6B7280 is the second text colour, but it reads at 4.39:1 on the found-5 cards (#F3F4F6), short of validate's
+      // 4.5:1, so it's darkened a little to read there (v0.5.0 sweep, Landmarks problem 7).
+      "color.text-secondary": "found-4-darker",
       "color.surface": "found-5",
       "color.border": "found-6",
       "color.success": "found-7",
@@ -303,5 +309,255 @@ describe("the see-through note names only a see-through value (Task 15 wave B, #
   test("a role whose own value is see-through still is", () => {
     const { report } = buildDraft({ ...occ, variables: [{ name: "--background", light: "#ffffff" }], roleNames: ["--background"], variableUses: { "--background": { background: 1 } } });
     expect(report.notes.join("\n")).toContain("text-primary comes from a see-through colour (#0a1733a6)");
+  });
+});
+
+describe("drafted text always reads on the drafted fills (v0.5.0 sweep, Landmarks problem 7)", () => {
+  /** The low-contrast findings for the text roles' pairs (and on-action-secondary, the main text on secondary buttons), in every mode. */
+  const textProblems = (tokens: Record<string, unknown>) =>
+    checkContrastAll(docFrom(tokens)).findings.filter((f) => f.code === "low-contrast" && /^color\.(text-(primary|secondary)|on-action-secondary)$/.test(f.path ?? ""));
+  const none = { space: [], radius: [], fontSize: [], fontFamily: [], duration: [], easing: [], unresolved: [] };
+  const hexOf = (tokens: any, role: string, mode: "light" | "dark") => {
+    const ref = mode === "light" ? tokens.color[role].$value : tokens.color[role].$extensions["dev.motif"].modes.dark;
+    return tokens.primitive.color[ref.slice("{primitive.color.".length, -1)].$value.hex;
+  };
+  // Landmarks: the views' only typed colour is .white, on photos; no background is found, so the page is the default.
+  const landmarks: Occurrences = {
+    ...none,
+    colors: [{ value: "#ffffff", count: 8, contexts: { text: 8 }, examples: ["Landmarks/Views/CircleImage.swift:14"] }],
+    source: "swift",
+  };
+
+  test("Landmarks: white text on a light page is the wrong way round, so both text roles keep their defaults", () => {
+    const { tokens, report } = buildDraft(landmarks);
+    expect(report.roles["color.text-primary"]).toBe("default");
+    expect(report.roles["color.text-secondary"]).toBe("default");
+    expect(textProblems(tokens)).toEqual([]);
+    expect(checkContrastAll(docFrom(tokens)).findings).toEqual([]);
+    const notes = report.notes.join("\n");
+    expect(notes).toContain(
+      "White (#ffffff) was found for text but reads at 1.04:1 on the background (#f9fafb), needs 4.5:1, so text-primary and text-secondary keep their defaults; check them.",
+    );
+    // A colour was found for text, so the draft doesn't say none was.
+    expect(notes).not.toMatch(/No colour was found for [^.]*text-primary/);
+  });
+
+  test("Tailwind's near miss: #6b7280 on #f3f4f6 cards (4.39:1) is darkened, keeping its hue, not replaced", () => {
+    const { tokens, report } = buildDraft(occ);
+    const nudged = hexOf(tokens, "text-secondary", "light");
+    expect(report.roles["color.text-secondary"]).toBe("found-4-darker");
+    expect(nudged).not.toBe("#6B7280");
+    expect(nudged).not.toBe("#4B5563");
+    expect(textProblems(tokens)).toEqual([]);
+    expect(report.notes.join("\n")).toContain(
+      `Text colour #6b7280 (4.39:1 on the surface, needs 4.5:1) was darkened to ${nudged.toLowerCase()} so it reads on every background; check it.`,
+    );
+  });
+
+  test("a found text colour that reads on the page but not quite on the cards is darkened", () => {
+    // Mid-grey text reads on the white page (4.54:1) but not on the near-white cards (3.98:1).
+    const r = buildDraft({
+      ...none,
+      colors: [
+        { value: "#ffffff", count: 9, contexts: { background: 9, page: 1 }, examples: [] },
+        { value: "#767676", count: 6, contexts: { text: 6 }, examples: [] },
+        { value: "#f0f0f0", count: 4, contexts: { background: 4 }, examples: [] },
+      ],
+    });
+    expect(r.report.roles["color.surface"]).toBe("found-3");
+    expect(r.report.roles["color.text-primary"]).toBe("found-2-darker");
+    expect(r.report.notes.join("\n")).toMatch(/Text colour #767676 \(3\.98:1 on the surface, needs 4\.5:1\) was darkened to #[0-9a-f]{6} so it reads on every background; check it\./);
+    // Both text roles took that colour; the note says it once.
+    expect(r.report.notes.filter((n) => n.startsWith("Text colour #767676"))).toHaveLength(1);
+    expect(textProblems(r.tokens)).toEqual([]);
+  });
+
+  test("a found text colour whose dark value fails the dark page keeps its light value; only the dark one is drafted", () => {
+    const r = buildDraft({
+      ...none,
+      colors: [
+        { value: "#111827", count: 10, contexts: { text: 10 }, examples: [] },
+        { value: "#ffffff", count: 8, contexts: { background: 8, page: 1 }, examples: [] },
+      ],
+      variables: [{ name: "--ink", light: "#111827", dark: "#1f2937" }, { name: "--page", light: "#ffffff", dark: "#030712" }],
+    });
+    expect(r.report.roles["color.text-primary"]).toBe("found-1");
+    expect(hexOf(r.tokens, "text-primary", "light")).toBe("#111827");
+    expect(hexOf(r.tokens, "text-primary", "dark")).toBe("#FFFFFF");
+    // The drafted dark value isn't one the app's CSS gave.
+    expect(r.report.notes[0]).toBe("Dark-mode colours came from your CSS for background, surface; the others were copied from light mode. Review them before turning on dark mode.");
+    expect(r.report.notes.join("\n")).toContain(
+      "In dark mode, text-primary (#1f2937) reads at 1.37:1 on the background (#030712), needs 4.5:1, so its dark value is drafted as #ffffff; check it.",
+    );
+    expect(textProblems(r.tokens)).toEqual([]);
+  });
+
+  test("a found text colour set aside in light mode keeps its own dark value when that reads (re-review of the fix round)", () => {
+    const r = buildDraft({
+      ...none,
+      colors: [
+        { value: "#9a9a9a", count: 10, contexts: { text: 10 }, examples: [] },
+        { value: "#fff8ec", count: 8, contexts: { background: 8, page: 1 }, examples: [] },
+      ],
+      variables: [{ name: "--text", light: "#9a9a9a", dark: "#e5e5e5" }, { name: "--page", light: "#fff8ec", dark: "#101010" }],
+    });
+    // Light: #9a9a9a doesn't read and is too far to nudge, so the default; dark: the app's own #e5e5e5 reads, so it stays.
+    expect(hexOf(r.tokens, "text-primary", "light")).toBe("#111827");
+    expect(hexOf(r.tokens, "text-primary", "dark")).toBe("#E5E5E5");
+    expect(r.report.notes.join("\n")).not.toContain("In dark mode, text-primary");
+    expect(textProblems(r.tokens)).toEqual([]);
+  });
+
+  test("a dark page found with text that has no dark value: the text's dark values are drafted from the dark page", () => {
+    const r = buildDraft({
+      ...none,
+      colors: [
+        { value: "#222222", count: 10, contexts: { text: 10 }, examples: [] },
+        { value: "#ffffff", count: 8, contexts: { background: 8, page: 1 }, examples: [] },
+      ],
+      variables: [{ name: "--page", light: "#ffffff", dark: "#030712" }],
+    });
+    expect(hexOf(r.tokens, "text-primary", "light")).toBe("#222222");
+    expect(hexOf(r.tokens, "text-primary", "dark")).toBe("#FFFFFF");
+    // Secondary text takes a light grey, so it still differs from the primary.
+    expect(hexOf(r.tokens, "text-secondary", "dark")).toBe("#D1D5DB");
+    expect(r.report.notes.join("\n")).toContain("In dark mode, text-primary (#222222) reads at");
+    expect(textProblems(r.tokens)).toEqual([]);
+  });
+
+  test("no text found on a dark page: the default ink is set aside for white, and a light grey for secondary text", () => {
+    const r = buildDraft({ ...none, colors: [{ value: "#1e1e2e", count: 8, contexts: { background: 8, page: 1 }, examples: [] }] });
+    expect(hexOf(r.tokens, "text-primary", "light")).toBe("#FFFFFF");
+    expect(hexOf(r.tokens, "text-secondary", "light")).toBe("#D1D5DB");
+    const notes = r.report.notes.join("\n");
+    expect(notes).toContain("No text colour was found, and the default for text-primary (#111827) reads at 1.");
+    expect(notes).not.toMatch(/No colour was found for [^.]*text-primary/);
+    expect(textProblems(r.tokens)).toEqual([]);
+  });
+
+  test("when nothing reads on both a dark page and light cards, text is drafted for the page and the note names the cards", () => {
+    const r = buildDraft({
+      ...none,
+      colors: [
+        { value: "#111111", count: 9, contexts: { background: 9, page: 1 }, examples: [] },
+        { value: "#f5f5f5", count: 4, contexts: { background: 4 }, examples: [] },
+      ],
+      variables: [{ name: "--background", light: "#111111" }, { name: "--surface", light: "#f5f5f5" }],
+      roleNames: ["--background", "--surface"],
+      variableUses: { "--background": { background: 1 }, "--surface": { background: 1 } },
+      followVariables: true,
+    });
+    expect(r.report.roles["color.surface"]).not.toBe(r.report.roles["color.background"]);
+    expect(hexOf(r.tokens, "text-primary", "light")).toBe("#FFFFFF");
+    expect(r.report.notes.join("\n")).toContain("nothing reads on both it and the surface (#f5f5f5)");
+    expect(textProblems(r.tokens).filter((f) => f.message.includes('on "background"'))).toEqual([]);
+  });
+
+  test("a found text colour that passes keeps it, and no note sets it aside", () => {
+    // The shared fixture, with secondary text that reads on its grey cards (#4b5563 rather than #6b7280).
+    const passing: Occurrences = { ...occ, colors: occ.colors.map((c) => (c.value === "#6B7280" ? { ...c, value: "#4B5563" } : c)) };
+    const { tokens, report } = buildDraft(passing);
+    expect(report.roles["color.text-primary"]).toBe("found-1");
+    expect(report.roles["color.text-secondary"]).toBe("found-4");
+    expect((tokens as any).primitive.color["found-1"].$value.hex).toBe("#111827");
+    expect(textProblems(tokens)).toEqual([]);
+    expect(report.notes.join("\n")).not.toMatch(/was found for text but|Text colour|In dark mode, text-/);
+  });
+});
+
+describe("drafts whose found text passes stay byte-identical (v0.5.0 sweep, Task 2; snapshots taken at c829bb6^)", () => {
+  afterAll(cleanupTempDirs);
+  for (const fixture of ["flutter-palettes", "rn-palettes"]) {
+    test(`${fixture}: the whole draft and report`, async () => {
+      const root = tempDir("motif-draft-snapshot-");
+      cpSync(join(FIXTURES, fixture), root, { recursive: true });
+      expect((await runExtract(root, { positionals: [] })).exitCode).toBe(0);
+      expect(readFileSync(join(root, "design/tokens.draft.json"), "utf8")).toMatchSnapshot();
+      expect(readFileSync(join(root, "design/extract-report.json"), "utf8")).toMatchSnapshot();
+    });
+  }
+});
+
+describe("the small type roles come from the small sizes the app uses most (HiSalon, v0.5.0 sweep problem 6)", () => {
+  const sizes = (fontSize: Sample[]) => {
+    const t = buildDraft({ ...occ, fontSize }).tokens as any;
+    return Object.fromEntries(["caption", "label", "body", "heading", "title", "display"].map((r) => [r, t.font[r].$value.fontSize.value]));
+  };
+  // HiSalon's text sizes and how often each is used: 12px (22 uses) and 13px (42) are its small text; 10px is used once.
+  const HISALON = [
+    s("13px", 42), s("14px", 30), s("12px", 22), s("15px", 12), s("16px", 12), s("18px", 12), s("11px", 11), s("26px", 8), s("22px", 6),
+    s("30px", 3), s("17px", 2), s("36px", 2), s("10px", 1), s("20px", 1), s("28px", 1), s("34px", 1),
+  ];
+
+  test("a size used once doesn't become the caption while a smaller size is used far more", () => {
+    expect(sizes(HISALON)).toEqual({ caption: 12, label: 13, body: 14, heading: 15, title: 16, display: 36 });
+  });
+
+  test("small sizes used equally often keep the smallest as caption and the largest as label", () => {
+    expect(sizes([s("16px", 10), s("10px", 2), s("11px", 2), s("12px", 2), s("13px", 2)])).toMatchObject({ caption: 10, label: 13, body: 16 });
+  });
+
+  test("one or two small sizes are the caption and label, however often each is used", () => {
+    expect(sizes([s("16px", 10), s("14px", 9), s("11px", 1)])).toMatchObject({ caption: 11, label: 14 });
+    expect(sizes([s("16px", 10), s("12px", 1)])).toMatchObject({ caption: 12, label: 14 });
+  });
+});
+
+describe("Tailwind's text-2xl and text-3xl are sizes from the theme, not 2px and 3px (found with problem 6)", () => {
+  const app: SourceFile = { path: "src/App.tsx", abs: "", lang: "script", text: '<h1 className="text-2xl" /><h2 className="text-3xl" /><p className="text-sm" />' };
+  test("with Tailwind's sizes, they resolve", () => {
+    const occ = collectOccurrences([app], { ...tw, textPx: new Map([["sm", 14], ["2xl", 24], ["3xl", 30]]) });
+    expect(values(occ.fontSize).sort()).toEqual(["14px", "24px", "30px"]);
+  });
+  test("without them, they're unresolved, as text-sm is", () => {
+    expect(values(collectOccurrences([app], null).unresolved).sort()).toEqual(["text-2xl", "text-3xl", "text-sm"]);
+  });
+});
+
+describe("Task 5 fix round 1: type and corner sizes", () => {
+  const sizes = (fontSize: Sample[]) => {
+    const t = buildDraft({ ...occ, fontSize }).tokens as any;
+    return Object.fromEntries(["caption", "label", "body"].map((r) => [r, t.font[r].$value.fontSize.value]));
+  };
+  test("caption and label less than 5% apart: the more used one stays, with the next most used size at least 5% from it (HiSalon's Flutter admin, 3.7%)", () => {
+    const ADMIN = [
+      s("13px", 29), s("13.5px", 14), s("12px", 4), s("22px", 4), s("14.5px", 3), s("15px", 2), s("17px", 2), s("18px", 2), s("10px", 1), s("12.5px", 1),
+      s("19px", 1), s("20px", 1), s("26px", 1), s("28px", 1),
+    ];
+    expect(sizes(ADMIN)).toEqual({ caption: 12, label: 13, body: 14.5 });
+  });
+  test("fix round 2: two sizes 5% or more apart are both kept (ataaflow's 11.2px and 12px, 6.7% apart)", () => {
+    const ATAAFLOW = [
+      s("12px", 50), s("11.2px", 38), s("12.8px", 31), s("14.4px", 23), s("10.4px", 17), s("16px", 16), s("14px", 13), s("13.6px", 12), s("13px", 10),
+      s("17.6px", 10), s("15.2px", 9), s("11px", 7), s("10px", 3), s("8px", 1),
+    ];
+    expect(sizes(ATAAFLOW)).toEqual({ caption: 11.2, label: 12, body: 14.4 });
+  });
+  test("with no size 5% away, the close pair stays", () => {
+    expect(sizes([s("16px", 10), s("13px", 9), s("13.5px", 8), s("12.6px", 1)])).toEqual({ caption: 13, label: 13.5, body: 16 });
+  });
+  const app: SourceFile = { path: "src/App.tsx", abs: "", lang: "script", text: '<div className="rounded-xl" /><div className="rounded-2xl" /><div className="rounded-3xl" />' };
+  test("rounded-2xl and rounded-3xl are Tailwind's radii, not 2px and 3px corners", () => {
+    const o = collectOccurrences([app], { ...tw, radiusPx: new Map([["md", 6], ["xl", 12], ["2xl", 16], ["3xl", 24]]) });
+    expect(values(o.radius).sort()).toEqual(["12px", "16px", "24px"]);
+    expect(values(collectOccurrences([app], null).unresolved).sort()).toEqual(["rounded-2xl", "rounded-3xl", "rounded-xl"]);
+  });
+});
+
+describe("final fix wave: draft rules", () => {
+  test("two small sizes less than 5% apart are one: the more used is kept, and the other role takes its default", () => {
+    const t = buildDraft({ ...occ, fontSize: [s("16px", 10), s("13px", 9), s("13.5px", 4)] }).tokens as any;
+    expect(["caption", "label"].map((r) => t.font[r].$value.fontSize.value)).toEqual([13, 14]);
+    const apart = buildDraft({ ...occ, fontSize: [s("16px", 10), s("12px", 9), s("14px", 4)] }).tokens as any;
+    expect(["caption", "label"].map((r) => apart.font[r].$value.fontSize.value)).toEqual([12, 14]);
+  });
+
+  test("with no dark colours from the app, a light pair nothing can fix gets no dark-mode note, and the draft stays valid", () => {
+    // A mid-grey page (#777777): neither ink nor white reads on it at 4.5:1, and dark mode is light's copy.
+    const { tokens, report } = buildDraft({ ...occ, colors: [s("#777777", 9, "background")] });
+    const notes = report.notes.join("\n");
+    expect(notes).toContain("so text-primary is drafted as #ffffff for the background, though nothing reads on both it and the surface (#777777)");
+    expect(notes).not.toContain("In dark mode");
+    expect(validateTokens(docFrom(tokens))).toEqual([]);
   });
 });

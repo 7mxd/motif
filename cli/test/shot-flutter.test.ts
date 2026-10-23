@@ -203,7 +203,7 @@ describe("motif shot on a Flutter app", () => {
     expect(r.exitCode).toBe(1);
     expect(r.text).toContain("/home  2 screenshots (went to /sign-in)");
     expect(r.text).toContain("/gone  ✗ The app has no page at /gone");
-    expect(r.text).toContain(`The partner variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (${FLUTTER_VARIANT_HOW}).`);
+    expect(r.text).toContain(`The partner variant looks the same as the default on every screen: the app may not switch variants the way Motif sets them (${FLUTTER_VARIANT_HOW}).`);
     expect(r.text).toContain("• Requests nothing answered on /home: GET https://api.example.com/salons. Add them to design/states/http.json.");
     const data = r.data.routes as { route: string; landedOn?: string; status: number }[];
     expect(data[0]).toMatchObject({ route: "/home", landedOn: "/sign-in", status: 200 });

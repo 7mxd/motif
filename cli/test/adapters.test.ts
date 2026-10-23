@@ -397,6 +397,8 @@ describe("the SwiftUI guide", () => {
       "A macOS app needs no simulator.", "not only its command-line tools",
       "Xcode 16", "iOS 17", "macOS 14", "**Swift 5**", "**Swift 6**", "design/motif.json", "themeDir", "## Monorepos", "one guide for the web dashboard and the iPhone app", "platform notes", "--app",
       "#Preview", "synchronized folder", "Podfile", "Package.swift",
+      // A family the app ships is drafted as its own (sweep Task 3, SwiftUI).
+      "the guide's fonts list", "`UIAppFonts`",
     ]);
   });
 
@@ -407,6 +409,8 @@ describe("the SwiftUI guide", () => {
       "## Switching variants", "@AppStorage", "MotifVariant(rawValue:", ".motifTheme(variant:", "MotifTheme.debugVariantOverride", "colours only",
       // A new App for each root screenshot: its init runs; its delegate's launch work doesn't (final review).
       "`App`'s `init` runs before each screenshot of the root",
+      // Init work that can't run twice stops the root's screenshots: guard it (v0.5.0 sweep).
+      "can't run twice", "`if FirebaseApp.app() == nil { FirebaseApp.configure() }`",
     ]);
     expect(read("swiftui/tokens.md")).not.toContain("what the `App` sets up in its `init`");
   });
@@ -415,6 +419,8 @@ describe("the SwiftUI guide", () => {
     has("components.md", [
       "Components/", "Features/<Feature>/", "`private` views are parts of a screen", "ButtonStyle", "configuration.isPressed", "@Environment(\\.isEnabled)",
       "@FocusState", ".accessibilityLabel", ".contentShape", "44", ".frame(minWidth: 44, minHeight: 44)", "Label(",
+      // With a prompt, iOS names a field by its prompt: give it its label as its name (v0.5.0 sweep, Qahwa's email field).
+      "iOS names the field by its prompt", "`.accessibilityLabel(label)`",
     ]);
     for (const c of ["Button", "IconButton", "Field", "Checkbox", "Switch", "Card", "ListItem", "TopBar", "TabBar", "Sheet", "Dialog", "Toast", "Skeleton", "EmptyState", "ErrorState", "Avatar", "Badge"]) {
       expect(read("swiftui/components.md")).toContain(`\`${c}\``);
@@ -440,9 +446,18 @@ describe("the SwiftUI guide", () => {
       "design/states/Setup.swift", "func motifSetup(variant: String, locale: Locale, dark: Bool)", "@MainActor func motifState(_ app: MotifHarness) async throws",
       "MotifHarness", "app.tap(", "app.type(", "app.waitFor(", "app.exists(", "15 seconds", "top-level",
       "--screen", "#Preview", "--rtl", "--state", "a Mac", "1440×900", "900×700", "--sizes 1440",
+      // How a state finds a field: its title, its prompt on iOS when it shows one, its label when it has one (c51cea3, fix round 1).
+      "its title, or on iOS its prompt when it shows one, unless the field has an `.accessibilityLabel` (then that label)",
+      // The Mac's title bar mirrors right to left (v0.5.0 sweep, Landmarks 5).
+      "the window's buttons are at the top right",
       // A new App, and its own @State, for each root screenshot, and the note when it can't be kept (Task 15, final review).
       "a new `App` for each screenshot of `/`", "the run's note names the `@State` that wasn't kept", "@Previewable @State",
       "`App`'s `init` runs before each screenshot of the root",
+      "can't run twice", "`if FirebaseApp.app() == nil { FirebaseApp.configure() }`", "Default app has already been configured",
+      // A negative padding keeps its sign and is judged by its size (v0.5.0 sweep, Landmarks 9).
+      "`.padding(.bottom, -2)`", "`-MotifSpace.s1`",
+      // Sizes kept in a constants type aren't traced, so the guide says to replace them with roles (Landmarks 8).
+      "static let standardPadding: CGFloat = 14", "can't see where the views use it", "replace each constant with the theme's role", "not a `shadowRadius`",
     ]);
   });
 

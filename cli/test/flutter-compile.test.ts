@@ -46,6 +46,44 @@ void main() {
 }
 `;
 
+/**
+ * A role in the system font with a companion, in a DefaultTextStyle with no Material above it: Latin text must be in
+ * the platform's family. Without a family of its own, Flutter would take the companion (the first fallback) as the
+ * preferred family (fix round 1).
+ */
+const SYSTEM_FAMILY_TEST = `import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_min/design/system_plain_theme.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  testWidgets(
+    'a role in the system font names the platform family, not its companion',
+    (tester) async {
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: DefaultTextStyle(style: MotifText.body, child: const Text('Hi')),
+        ),
+      );
+      final style = tester.widget<RichText>(find.byType(RichText)).text.style!;
+      final platform = Typography.material2021(
+        platform: defaultTargetPlatform,
+      ).black.bodyMedium!.fontFamily;
+      expect(platform, isNotNull);
+      expect(style.fontFamily, platform);
+      expect(style.fontFamilyFallback, ['Readex Pro']);
+    },
+    variant: const TargetPlatformVariant({
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+    }),
+  );
+}
+`;
+
 function run(cmd: string[], cwd: string): { code: number; out: string } {
   const r = Bun.spawnSync(cmd, { cwd, stdout: "pipe", stderr: "pipe" });
   return { code: r.exitCode ?? 1, out: `${r.stdout.toString()}\n${r.stderr.toString()}` };
@@ -80,9 +118,25 @@ describe("the generated Dart", () => {
     // The other shape: no variants, and plain family names.
     const [plain] = generateFlutter(buildThemeSet(docFrom(withCompanion(validTokens()))), { googleFonts: false });
     writeFileSync(join(dir, "lib/design/plain_theme.dart"), plain!.content);
+    // The system font with an Arabic companion: no family of its own, the companion as its fallback (v0.5.0 sweep).
+    const systemTokens = validTokens();
+    systemTokens.font.body.$value.fontFamily = ["system-ui", "Readex Pro"];
+    systemTokens.font.heading.$value.fontFamily = ["system-ui", "Readex Pro"];
+    const [system] = generateFlutter(buildThemeSet(docFrom(systemTokens)), { googleFonts: true });
+    expect(system!.content).toContain("fontFamilyFallback: [_family('Readex Pro')],");
+    writeFileSync(join(dir, "lib/design/system_theme.dart"), system!.content);
+    const [systemPlain] = generateFlutter(buildThemeSet(docFrom(systemTokens)), { googleFonts: false });
+    expect(systemPlain!.content).toContain("fontFamily: _systemFamily,\n    fontFamilyFallback: ['Readex Pro'],");
+    writeFileSync(join(dir, "lib/design/system_plain_theme.dart"), systemPlain!.content);
+    mkdirSync(join(dir, "test"), { recursive: true });
+    writeFileSync(join(dir, "test/system_family_test.dart"), SYSTEM_FAMILY_TEST);
 
     const analyze = run([flutter, "analyze", "lib/design"], dir);
     if (analyze.code !== 0) console.log(analyze.out);
     expect(analyze.code).toBe(0);
+
+    const widget = run([flutter, "test", "test/system_family_test.dart"], dir);
+    if (widget.code !== 0) console.log(widget.out);
+    expect(widget.code).toBe(0);
   }, 600_000);
 });

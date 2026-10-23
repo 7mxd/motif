@@ -68,6 +68,11 @@ export function bundledCoverage(family: string): "full" | "arabic" | null {
   return font ? (font.arabic ? "arabic" : "full") : null;
 }
 
+/** True for a family the kit ships the Arabic letters of, written with its spaces or without (Readex Pro, ReadexPro). */
+export function isKnownArabic(family: string): boolean {
+  return (bundledCoverage(family) ?? bundledCoverage(family.replace(/([a-z])([A-Z])/g, "$1 $2"))) === "arabic";
+}
+
 export function isBundledFamily(family: string): boolean {
   return bundledCoverage(family) === "full";
 }

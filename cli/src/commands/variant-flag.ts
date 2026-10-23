@@ -19,6 +19,8 @@ export function brokenVariants(flag: string | undefined): VariantRefusal {
  * and shot so both say it the same way.
  */
 export function variantRefusal(who: string, flag: string, ids: string[]): VariantRefusal | null {
+  // "all" on one palette is the default alone: drawn, with ONE_PALETTE_NOTE, not refused.
+  if (ids.length === 0 && flag === "all") return null;
   if (ids.length === 0) return { exitCode: 2, text: `${who} has no variants. Leave out --variant to use its one look.`, data: { error: "no-such-variant", variant: flag, variants: [] } };
   if (flag !== "all" && !ids.includes(flag)) {
     const list = ids.map((id, n) => (n === 0 ? `${id} (the default)` : id)).join(", ");
@@ -26,3 +28,9 @@ export function variantRefusal(who: string, flag: string, ids: string[]): Varian
   }
   return null;
 }
+
+/** What --variant all says when `who` (the guide, or a design direction) has one palette and it was drawn. */
+export const onePaletteNote = (who: string) => `${who} has one palette, so --variant all is the same as leaving --variant out.`;
+
+/** The note for the design guide itself. */
+export const ONE_PALETTE_NOTE = onePaletteNote("This design guide");

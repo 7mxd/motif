@@ -214,6 +214,8 @@ struct AppField: View {
 }
 ```
 
+A field that also shows a prompt (`TextField(label, text: $text, prompt: Text("name@example.com"))`) needs one more line: with a prompt, iOS names the field by its prompt, not its title, so VoiceOver says "name@example.com" and a state's `app.type(…, into: "Email")` finds nothing called "Email". Give the field its label as its name, `.accessibilityLabel(label)`, on the `TextField` or `SecureField`.
+
 In a form, give the screen a `@FocusState` over an enum of its fields, and move it on `.onSubmit`, so Return goes to the next field.
 
 ## The starter set

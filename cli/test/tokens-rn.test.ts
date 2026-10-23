@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { runCheck } from "../src/commands/check";
 import { runTokens } from "../src/commands/tokens";
 import { TS_HEADER } from "../src/generate/header";
-import { partnerTokens, validTokens } from "./helpers";
+import { partnerTokens, READEX_FILE, systemCompanionTokens, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -252,6 +252,23 @@ registerRootComponent(App);
     expect(statuses(await runTokens(root, ctx))["app/assets/fonts/BrandSans-Bold.ttf"]).toBe("unchanged");
     writeFileSync(join(root, "app/assets/fonts/BrandSans-Bold.ttf"), "mine");
     expect(statuses(await runTokens(root, ctx))["app/assets/fonts/BrandSans-Bold.ttf"]).toBe("protected");
+  });
+
+  test("an Arabic project font after the system font is copied, required in motifFonts, and the role's Arabic style (v0.5.0 sweep)", async () => {
+    const root = makeProject({
+      "design/tokens.json": JSON.stringify(systemCompanionTokens()),
+      [READEX_FILE]: "readex",
+      "app/package.json": pkg(),
+      "app/src/app/_layout.tsx": "export default null;\n",
+    });
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(statuses(r)["app/assets/fonts/ReadexPro-Regular.ttf"]).toBe("created");
+    expect(readFileSync(join(root, "app/assets/fonts/ReadexPro-Regular.ttf"), "utf8")).toBe("readex");
+    const ts = readFileSync(join(root, "app/src/design/motif-theme.tsx"), "utf8");
+    expect(ts).toContain('  "Readex Pro_400": require("../../assets/fonts/ReadexPro-Regular.ttf"),');
+    expect(ts).toContain('export const typeArabic: Partial<Record<MotifTypeRole, MotifTextStyle>> = {\n  body: { fontFamily: "Readex Pro_400", fontSize: 16, lineHeight: 24 },');
+    expect(ts).toContain('  body: { fontSize: 16, lineHeight: 24, fontWeight: "400" },');
   });
 
   test("font files already inside the app stay where they are", async () => {

@@ -99,9 +99,11 @@ const FITS: Record<string, RegExp> = { text: /^(?:text|on)-/, background: /^(?:b
 function nativeSuggestion(hit: Hit, theme: Theme, role: (kind: ValueKind, name: string) => string): string | undefined {
   const px = Number.parseFloat(hit.value ?? "");
   const join = (items: string[]) => (items.length > 0 ? items.join(" or ") : undefined);
-  if (hit.kind === "font-size") return join(nearest(theme.fonts, px, (f) => f.sizePx).map((f) => `${role("font-size", f.name)} (${f.sizePx}px)`));
-  if (hit.kind === "space") return join(nearest(theme.space, px, (s) => s.px).map((s) => `${role("space", s.name)} (${s.px}px)`));
-  if (hit.kind === "radius") return join(nearestRadius(theme.radius, px).map((r) => `${role("radius", r.name)} (${r.px}px)`));
+  // A negative size (a pull, .padding(.bottom, -2)) keeps its direction: -MotifSpace.s1 (-4px). A step of 0 has none.
+  const sized = (name: string, size: number) => (hit.negative && size > 0 ? `-${name} (-${size}px)` : `${name} (${size}px)`);
+  if (hit.kind === "font-size") return join(nearest(theme.fonts, px, (f) => f.sizePx).map((f) => sized(role("font-size", f.name), f.sizePx)));
+  if (hit.kind === "space") return join(nearest(theme.space, px, (s) => s.px).map((s) => sized(role("space", s.name), s.px)));
+  if (hit.kind === "radius") return join(nearestRadius(theme.radius, px).map((r) => sized(role("radius", r.name), r.px)));
   if (hit.kind === "color") {
     const wanted = parseColor(hit.value ?? "");
     if (!wanted) return undefined;

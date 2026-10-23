@@ -3,7 +3,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import { loadTokenDocument } from "../contract/load";
 import { readVariants } from "../contract/variants";
-import { brokenVariants, variantRefusal, type VariantRefusal } from "./variant-flag";
+import { brokenVariants, ONE_PALETTE_NOTE, variantRefusal, type VariantRefusal } from "./variant-flag";
 import { defaultDoctorDeps, type DoctorDeps } from "./doctor";
 import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
@@ -183,7 +183,7 @@ export function readStates(cwd: string, value: unknown): StateScript[] | { error
   return states;
 }
 
-/** How Motif sets a design variant on a web page, for the note when a variant looks exactly like the default. */
+/** How Motif sets a design variant on a web page, for the note when a variant looks the same as the default. */
 export const WEB_VARIANT_HOW = "data-variant on <html>";
 
 /**
@@ -214,7 +214,7 @@ function guideVariants(cwd: string): { ids: string[]; broken: boolean } {
  * What --variant asks for: the variants to capture besides the default, or the refusal; and the default's id when the
  * guide has variants that validate, which the default's screenshots set too.
  */
-function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): { variants: string[]; defaultId?: string } | { error: CommandResult } {
+function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): { variants: string[]; defaultId?: string; note?: string } | { error: CommandResult } {
   const { ids, broken } = guideVariants(cwd);
   const refuse = (r: VariantRefusal): { error: CommandResult } => ({ error: { command: "shot", ...r } });
   // An audit with no --variant checks what people see in every variant.
@@ -223,6 +223,7 @@ function chooseVariants(cwd: string, flag: string | undefined, audit: boolean): 
   if (flag === undefined) return { variants: audit ? ids.slice(1) : [], ...defaultId };
   const refusal = variantRefusal("This design guide", flag, ids);
   if (refusal) return refuse(refusal);
+  if (flag === "all" && ids.length === 0) return { variants: [], note: ONE_PALETTE_NOTE };
   return { variants: flag === "all" ? ids.slice(1) : flag === ids[0] ? [] : [flag], ...defaultId };
 }
 
@@ -378,6 +379,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const all = reordered ? signInFirst(discovery.routes) : discovery.routes;
   const routes = all.slice(0, MAX_ROUTES);
   const notes: string[] = settingProblems.map((f) => f.message);
+  if (chosen.note) notes.push(chosen.note);
   if (all.length > routes.length) {
     const left = all.slice(MAX_ROUTES);
     const named = left.length > LEFT_OUT_NAMED + 1 ? `${left.slice(0, LEFT_OUT_NAMED).join(", ")} and ${left.length - LEFT_OUT_NAMED} more` : andList(left);
@@ -508,7 +510,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       );
     } else if (darkLooksLikeLight(captured.routes.filter(rendered).flatMap((r) => r.shots))) {
       // Only screens that drew without an error: a crashed screen looks the same in both.
-      notes.push("Dark mode looks exactly like light on every screen: the app doesn't follow the phone's setting on the web. MotifProvider reads it with useColorScheme(); use its colours.");
+      notes.push("Dark mode looks the same as light on every screen: the app doesn't follow the phone's setting on the web. MotifProvider reads it with useColorScheme(); use its colours.");
     }
     // Said the first time a folder of screenshots is made.
     const marker = join(outDir, RN_NOTE_MARKER);

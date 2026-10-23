@@ -941,13 +941,53 @@ function compilerErrors(output: string): string {
 
 /**
  * Why the app stopped, from xcodebuild's output: Swift's `Fatal error: …`, else an Objective-C exception's
- * `Terminating app due to uncaught exception '…', reason: '…'`; null when it gave neither.
+ * `Terminating app due to uncaught exception '…', reason: '…'`, else an exception XCTest caught in the harness's test
+ * (`<file>:<line>: error: -[MotifShots.MotifShotTests testShots] : <reason> (<name>)`, as Firebase's second
+ * `FirebaseApp.configure()` in an App's init gives); null when it gave none of them.
  */
 export function crashReason(output: string): string | null {
   const fatal = /(?:^|\n)(?:[^\n]*?: )?(Fatal error: [^\n]*)/.exec(output);
   if (fatal) return fatal[1]!.trim();
   const exception = /(Terminating app due to uncaught exception [^\n]*)/.exec(output);
-  return exception ? exception[1]!.trim() : null;
+  if (exception) return exception[1]!.trim();
+  const caught = caughtByXCTest(output);
+  if (!caught) return null;
+  return caught.exception ? `An exception was raised: ${caught.reason}` : `The test stopped: ${caught.reason}`;
+}
+
+/**
+ * What XCTest caught in the harness's test, from its `error: -[MotifShots.MotifShotTests testShots] : …` line: an
+ * exception raised by the app's code (Xcode 27 writes `<reason> (<name>)`, an older XCTest `failed: caught "<name>",
+ * "<reason>"`), or not one (`failed: caught error: "…"`, a Swift error the harness threw itself: its options didn't
+ * decode, a result it couldn't write).
+ */
+function caughtByXCTest(output: string): { exception: boolean; reason: string } | null {
+  const line = /: error: -\[MotifShots\.MotifShotTests testShots\] : ([^\n]+)/.exec(output)?.[1]?.trim();
+  if (!line) return null;
+  const swiftError = /^failed: caught error: "([\s\S]*)"$/.exec(line);
+  if (swiftError) return { exception: false, reason: swiftError[1]! };
+  const older = /^failed: caught "([^"]+)", "([\s\S]*)"$/.exec(line);
+  if (older) return { exception: true, reason: `${older[2]} (${older[1]})` };
+  return /^failed\b/.test(line) ? { exception: false, reason: line } : { exception: true, reason: line };
+}
+
+/** The harness's own error (a Swift error its test threw), when that, and not the app, is why the run stopped. */
+function harnessOwnError(output: string): string | null {
+  const caught = caughtByXCTest(output);
+  const app = /Fatal error: |Terminating app due to uncaught exception /.test(output);
+  return caught && !caught.exception && !app ? caught.reason : null;
+}
+
+/** A reason as a sentence of its own: "…doesn't exist." stays, "…container" gets its full stop. */
+const sentence = (reason: string) => (/[.!?]["”']?$/.test(reason) ? reason : `${reason}.`);
+
+const ASK_AGAIN = "Run motif shot again; if it happens again, tell Motif's maintainers which Xcode you use.";
+
+/** What to say after xcodebuild's last lines when there's no result: the harness's own error, or the app stopping. */
+function noResultReason(output: string, launches: string): string {
+  const own = harnessOwnError(output);
+  if (own) return `Motif's harness stopped before the first screenshot: ${sentence(own)} ${ASK_AGAIN}`;
+  return `${crashReason(output) ? "The app stopped before the first screenshot. " : ""}Check that the app launches ${launches}, then run motif shot again.`;
 }
 
 /** True when `dir` is `parent` or inside it. */
@@ -1095,7 +1135,7 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
           result: merged.shots.length ? merged : null,
           problem: skipped
             ? "The harness's test ran without its options and drew nothing. Run motif shot again; if it happens again, tell Motif's maintainers which Xcode you use."
-            : `xcodebuild ran the harness, but it wrote no result:\n${tail(output)}\n${crashReason(output) ? "The app stopped before the first screenshot. " : ""}Check that the app launches ${LAUNCHES[platform]}, then run motif shot again.`,
+            : `xcodebuild ran the harness, but it wrote no result:\n${tail(output)}\n${noResultReason(output, LAUNCHES[platform])}`,
         });
       }
       if (written.done) break;
@@ -1103,12 +1143,21 @@ export async function runSwiftUIHarness(run: SwiftUIHarnessRun): Promise<SwiftUI
       // screen. Its other shots fail with the same reason, and the other screens are drawn in a new launch.
       const current = written.current;
       const reason = crashReason(tested.stdout + tested.stderr) ?? "the app stopped without a reason Motif could read";
+      // A Swift error the harness threw itself (a result it couldn't write) is neither the app's nor the screen's.
+      const own = harnessOwnError(tested.stdout + tested.stderr);
       if (!current) {
-        return done({ result: merged.shots.length ? merged : null, problem: `The app stopped before drawing its first screen: ${reason}. Check that it launches ${LAUNCHES[platform]}, then run motif shot again.` });
+        return done({
+          result: merged.shots.length ? merged : null,
+          problem: own
+            ? `Motif's harness stopped before drawing its first screen: ${sentence(own)} ${ASK_AGAIN}`
+            : `The app stopped before drawing its first screen: ${reason}. Check that it launches ${LAUNCHES[platform]}, then run motif shot again.`,
+        });
       }
       const drawn = new Set(written.shots.map((s) => s.file));
       const rest = remaining.filter((s) => !drawn.has(s.file));
-      const error = `${current.screen === "/" ? "The app's root view" : `The preview ${current.screen}`} stopped the app: ${reason}`;
+      const error = own
+        ? `Motif's harness stopped while drawing ${current.screen === "/" ? "the app's root view" : `the preview ${current.screen}`}: ${own}`
+        : `${current.screen === "/" ? "The app's root view" : `The preview ${current.screen}`} stopped the app: ${reason}`;
       for (const s of rest.filter((s) => s.screen === current.screen)) merged.shots.push({ file: s.file, error });
       if (!merged.notes.includes(error)) merged.notes.push(error);
       remaining = rest.filter((s) => s.screen !== current.screen);

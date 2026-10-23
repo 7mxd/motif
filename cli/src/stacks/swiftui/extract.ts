@@ -7,13 +7,46 @@ import { inRanges, maskComments, maskStrings } from "../../check/mask";
 import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
+import { axisWeightRanges, rootOf } from "../../extract/own-fonts";
+import { PLATFORM_LATIN } from "../../generate/theme-fonts";
+import { bundledCoverage } from "../../preview/font-list";
 import { locator } from "../../text";
 import { kebab as dartKebab, pairInstances, title, type Paired } from "../flutter/extract";
+import { appFontFiles, fontKey, isSystemFamily, type FontFile } from "./font-files";
 import { CUSTOM_FONT, scanSwift } from "./rules";
 
 const MAX_EXAMPLES = 5;
 const IDENT = "[A-Za-z_][\\w]*";
 const NUMBER = /^-?\d[\d_]*(?:\.\d[\d_]*)?$/;
+/** `static let standardPadding: CGFloat = 14` (CGFloat, Double, Float or no type), a plain number and nothing after it. */
+const SIZE_CONSTANT = new RegExp(`(?<![\\w$.])static\\s+(?:let|var)\\s+(${IDENT})\\s*(?::\\s*(?:CGFloat|Double|Float)\\s*)?=\\s*(-?\\d[\\d_]*(?:\\.\\d[\\d_]*)?)(?=[ \\t]*(?:[;}\\r\\n]|$))`, "g");
+const SHOWN_CONSTANTS = 5;
+const SPACE_WORDS = new Set(["padding", "paddings", "spacing", "inset", "insets", "gap", "gaps", "margin", "margins"]);
+const RADIUS_WORDS = new Set(["radius", "radii", "corner", "corners"]);
+/** Words that make a size word something else: shadowRadius, blurRadius, paddingMultiplier, spacingRatio. */
+const NOT_SIZE_WORDS = new Set([
+  "shadow", "shadows", "blur", "multiplier", "ratio", "factor", "scale", "count", "opacity", "alpha", "duration", "delay",
+]);
+
+/** A Swift name's words, lower case: standardPadding, HPadding, padding8, VSpacing_large, UIInsetTop. */
+const nameWords = (name: string) =>
+  name
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
+    .replace(/([A-Za-z])(\d)|(\d)([A-Za-z])/g, (_, a, b, c, d) => (a ? `${a} ${b}` : `${c} ${d}`))
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+/** Which samples a size constant's name puts it in: a corner (cornerRadius), a spacing (standardPadding), or none. */
+function sizeBucket(name: string): "radius" | "space" | undefined {
+  const words = nameWords(name);
+  if (words.some((w) => NOT_SIZE_WORDS.has(w))) return undefined;
+  if (words.some((w) => RADIUS_WORDS.has(w))) return "radius";
+  if (words.some((w) => SPACE_WORDS.has(w))) return "space";
+  return undefined;
+}
 const sortedSamples = (m: Map<string, Sample>) => [...m.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 
 /** A Swift or asset name in kebab case: AccentColor → accent-color, Purple80 → purple-80. */
@@ -188,6 +221,13 @@ function readFile(source: SourceFile): SwiftFile {
  */
 export function collectSwiftUI(files: SourceFile[]): Occurrences {
   const swift = files.filter((f) => f.lang === "swift").map(readFile);
+  // The font files the app ships, and the family each Font.custom name finds among them (its family, full or PostScript
+  // name, or its file's name): SwiftUI can't load a font from Google, so a family the app draws is one it ships.
+  const root = swift.length ? rootOf(swift[0]!.source) : null;
+  const fontFiles = root === null ? [] : appFontFiles(root);
+  const shippedFamily = (name: string) => fontFiles.find((f) => f.keys.has(fontKey(name)))?.family;
+  /** Each family name the code writes (Font.custom, UIFont(name:)), with the call it is written in. */
+  const written = new Map<string, string>();
   type Bucket = "colors" | "space" | "radius" | "fontSize" | "fontFamily" | "duration" | "easing";
   const buckets: Record<Bucket, Map<string, Sample>> = {
     colors: new Map(), space: new Map(), radius: new Map(), fontSize: new Map(), fontFamily: new Map(), duration: new Map(), easing: new Map(),
@@ -301,6 +341,24 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
     add("colors", c.value, c.at, nameContext(name));
   }
 
+  // ---------- sizes kept in a constants type: struct Constants { static let standardPadding: CGFloat = 14 } ----------
+  // Like a Color constant, each is one sample at its definition: its uses (Constants.standardPadding) aren't traced.
+  const sizes: string[] = [];
+  for (const file of swift) {
+    for (const m of file.code.matchAll(SIZE_CONSTANT)) {
+      const bucket = sizeBucket(m[1]!);
+      if (!bucket) continue;
+      add(bucket, `${Math.abs(Number(m[2]!.replace(/_/g, "")))}px`, `${file.source.path}:${file.lineOf(m.index!)}`);
+      sizes.push(m[1]!);
+    }
+  }
+  if (sizes.length > 0) {
+    const shown = sizes.length > SHOWN_CONSTANTS ? `${sizes.slice(0, SHOWN_CONSTANTS).join(", ")} and ${sizes.length - SHOWN_CONSTANTS} more` : sizes.join(", ");
+    notes.push(
+      `${sizes.length === 1 ? "1 size is" : `${sizes.length} sizes are`} kept as named constants (${shown}), so each counts once, where it is defined: neither extract nor motif check sees where the views use them. Once the app uses Motif's theme, replace them with MotifSpace and MotifRadius roles.`,
+    );
+  }
+
   // ---------- what the views use ----------
   for (const file of swift) {
     const defs = definitions.get(file) ?? [];
@@ -321,9 +379,12 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
         case "font-size":
           add("fontSize", hit.value!, example);
           break;
-        case "font-family":
-          add("fontFamily", hit.value!, example);
+        case "font-family": {
+          const kit = /^(UIFont|NSFont)(?![\w$])/.exec(hit.text)?.[1];
+          if (!written.has(hit.value!)) written.set(hit.value!, kit ? `${kit}(name: "${hit.value}")` : `Font.custom("${hit.value}")`);
+          add("fontFamily", shippedFamily(hit.value!) ?? hit.value!, example);
           break;
+        }
         case "duration":
           add("duration", hit.value!, example);
           break;
@@ -343,6 +404,10 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
     }
   }
 
+  const { note: fontNote, ...fonts } = shippedFonts(fontFiles, written, shippedFamily);
+  if (fontNote) notes.push(fontNote);
+  // A variable font's axis is its weight range, read as every stack reads it.
+  const fontWeightRanges = axisWeightRanges(root, fonts.projectFonts ?? []);
   return {
     colors: sortedSamples(buckets.colors), space: sortedSamples(buckets.space), radius: sortedSamples(buckets.radius), fontSize: sortedSamples(buckets.fontSize),
     fontFamily: sortedSamples(buckets.fontFamily), duration: sortedSamples(buckets.duration), easing: sortedSamples(buckets.easing), unresolved: [],
@@ -354,5 +419,41 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
     source: "swift",
     ...(Object.keys(variantLabels).length ? { variantLabels } : {}),
     ...(notes.length ? { notes } : {}),
+    ...fonts,
+    ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
+  };
+}
+
+/**
+ * The fonts a SwiftUI app ships, for the draft: each family the code names whose files are in the app, with every file
+ * of that family (a variable font's weight axis as a range), and an Arabic companion; and the names whose files Motif
+ * didn't find, unless the system has them. The companion is a family the app ships that covers Arabic: one the code
+ * names beside a family that doesn't, or, when the code names none, one the Info.plist registers (Qahwa's Readex Pro).
+ * After the system font, a companion must be one Motif knows covers Arabic (bundledCoverage), as motif tokens reads the
+ * guide: the contract can't yet mark a project font as Arabic. A registered one it doesn't know gets a note instead.
+ */
+function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFamily: (name: string) => string | undefined): Pick<Occurrences, "projectFonts" | "unfoundFonts" | "companion" | "keptFonts"> & { note?: string } {
+  const named = [...new Set([...written.keys()].flatMap((n) => shippedFamily(n) ?? []))];
+  const ofFamily = (family: string) => files.filter((f) => fontKey(f.family) === fontKey(family));
+  const covers = (family: string) => ofFamily(family).some((f) => f.arabic);
+  const latin = [...written.keys()].some((n) => !covers(shippedFamily(n) ?? n));
+  const registered = written.size === 0 ? files.find((f) => f.registered && f.arabic) : undefined;
+  const known = registered !== undefined && bundledCoverage(registered.family) === "arabic";
+  const companion = written.size === 0 ? (known ? registered.family : undefined) : latin ? named.find(covers) : undefined;
+  const note =
+    registered && !known
+      ? `${registered.family} is registered in your app's Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so no type role uses it yet; its files are in the guide's fonts list. To use it, name a Latin font first ("${PLATFORM_LATIN.swiftui}, ${registered.family}"); until a type role names it, motif validate warns that it isn't used.`
+      : undefined;
+  // A registered Arabic font Motif can't make the companion keeps its files in the guide's fonts list (keptFonts).
+  const kept = registered && !known ? [registered.family] : [];
+  const families = [...new Set([...named, ...(companion ? [companion] : []), ...kept])];
+  const projectFonts = families.map((family) => ({ family, files: ofFamily(family).map((f) => ({ path: f.path, weight: f.weight, style: f.style })) }));
+  const unfoundFonts = [...written].filter(([name]) => !shippedFamily(name) && !isSystemFamily(name)).map(([family, from]) => ({ family, from }));
+  return {
+    ...(projectFonts.length ? { projectFonts } : {}),
+    ...(unfoundFonts.length ? { unfoundFonts } : {}),
+    ...(companion ? { companion } : {}),
+    ...(kept.length ? { keptFonts: kept } : {}),
+    ...(note ? { note } : {}),
   };
 }
