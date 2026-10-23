@@ -841,7 +841,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
 
   // A border, text or surface colour that is see-through (a hairline at 8%) is drafted as it shows over the drafted
   // background, as a see-through palette field is: the variable that sets that colour, when one does, gives its dark value
-  // (over the dark background) and each variant's (over that variant's). surface-raised follows the surface. The background
+  // (over the dark background) and each variant's (over that variant's); when none does, the same colour is laid over the dark
+  // background and each variant's, and only without a dark background is its light value copied. surface-raised follows the surface. The background
   // itself stays solid: nothing is under it. Status and action colours stay solid too: a danger red found only as a 10%
   // tint is still red where it's used as text or a fill.
   /** Roles drafted from a see-through colour no variable sets, laid over the background: role → that colour. */
@@ -946,8 +947,17 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
 
   const inCluster = (cluster: ColorCluster | undefined, value: string | undefined) =>
     Boolean(cluster && solidHex(value) && cluster.members.some((m) => solidHex(m.value) === solidHex(value)));
-  /** A role's own dark value from the app (a variable's dark block, or a see-through field over the dark background). */
+  /**
+   * A role's own dark value from the app: a variable's dark block, or a see-through colour no variable sets laid over the
+   * dark background, as it shows there (none when the app has no dark background: its light value is copied, as any role's).
+   */
   const darkHexOf = (role: string): string | undefined => {
+    const seeThrough = shownOver.get(role);
+    if (seeThrough) {
+      const background = darkHexOf("background");
+      const flat = background ? flatten(seeThrough, background) : undefined;
+      return flat && flat !== chosen[role]?.hex ? flat : undefined;
+    }
     const source = sourceOf(role);
     if (source) return solidHex(chainDark(source));
     const candidates = (occ.variables ?? []).filter((x) => solidHex(x.dark) && inCluster(chosen[role], x.light));
@@ -1219,6 +1229,19 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
         (variantRoles[role] ??= {})[id] = { value, dark };
       }
     }
+    // A see-through colour no variable sets shows over each variant's background, in each mode.
+    for (const [role, seeThrough] of shownOver) {
+      const defaultDark = darkBase[role] ?? base[role]!;
+      for (const [id, bg] of Object.entries(variantRoles.background ?? {})) {
+        const lightHex = flatten(seeThrough, hexOf(bg.value));
+        const darkHex = flatten(seeThrough, hexOf(bg.dark));
+        const value = !lightHex || lightHex === hexOf(base[role]!) ? base[role]! : addPrimitive(`${chosen[role]!.id}-${id}`, lightHex);
+        // A text colour whose dark value Motif drafted (it didn't read as it shows) keeps that drafted value.
+        const dark =
+          draftedDark.has(role) || !darkHex || darkHex === hexOf(defaultDark) ? defaultDark : addPrimitive(`${chosen[role]!.id}-${id}-dark`, darkHex);
+        (variantRoles[role] ??= {})[id] = { value, dark };
+      }
+    }
     // The roles that follow another role, as in the default palette.
     const follows: [string, string][] = [["surface-raised", "surface"], ["focus", "action-primary"], ["text-inverse", "background"]];
     for (const [role, source] of follows) if (variantRoles[source]) variantRoles[role] = variantRoles[source]!;
@@ -1411,7 +1434,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     }
     const seeThrough = shownOver.get(role);
     if (seeThrough && chosen[role]) {
-      notes.push(`${role} comes from a see-through colour (${seeThrough}): drafted as ${chosen[role]!.hex}, how it shows over the background. Check it.`);
+      // Laid over the dark background, or a variant's, too when the app has one.
+      const theirs = darkHexOf("background") || Object.keys(variantRoles.background ?? {}).length > 0 ? " (in dark mode and each variant, over theirs)" : "";
+      notes.push(`${role} comes from a see-through colour (${seeThrough}): drafted as ${chosen[role]!.hex}, how it shows over the background${theirs}. Check it.`);
       continue;
     }
     const byName = chosen[role] && chosen[role] === named[role] ? namedVar[role] : undefined;

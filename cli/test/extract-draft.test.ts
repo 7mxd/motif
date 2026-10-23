@@ -354,6 +354,32 @@ describe("a see-through role colour is drafted as it shows (v0.5.0 gate, Task 4)
     valid(tokens);
   });
 
+  test("with no variable of its own, it's laid over the dark background in dark mode, not copied from light (final review)", () => {
+    const { tokens, report } = buildDraft({ ...hisalon, variables: [{ name: "--page", light: "#f7f9f8", dark: "#0f1413" }] });
+    const border = role(tokens, "border");
+    expect(border.light).toBe("#E5EAE8");
+    expect(border.dark).toBe(over("#0f3c3214", "#0F1413"));
+    expect(border.dark).toBe("#0F1715");
+    const notes = report.notes.join("\n");
+    expect(notes).toContain(
+      "border comes from a see-through colour (#0f3c3214): drafted as #E5EAE8, how it shows over the background (in dark mode and each variant, over theirs). Check it.",
+    );
+    expect(notes).not.toContain("drafted as solid");
+    valid(tokens);
+  });
+
+  test("with no variable of its own, each variant's background has it laid over it too, in each mode (final review)", () => {
+    const { tokens } = buildDraft({
+      ...hisalon,
+      variables: [{ name: "--page", light: "#f7f9f8", dark: "#0f1413", variants: { men: { light: "#ffffff", dark: "#000000" } } }],
+    });
+    const border = role(tokens, "border");
+    expect([border.light, border.dark]).toEqual(["#E5EAE8", "#0F1715"]);
+    expect(border.men).toEqual([over("#0f3c3214", "#FFFFFF"), over("#0f3c3214", "#000000")]);
+    valid(tokens);
+    expect(checkVariants(docFrom(tokens)).filter((f) => f.severity === "error")).toEqual([]);
+  });
+
   test("the variable that sets it gives its dark and variant values, each over its own background", () => {
     const { tokens, report } = buildDraft({
       ...hisalon,
