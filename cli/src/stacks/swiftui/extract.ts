@@ -7,8 +7,10 @@ import { inRanges, maskComments, maskStrings } from "../../check/mask";
 import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
+import { rootOf } from "../../extract/own-fonts";
 import { locator } from "../../text";
 import { kebab as dartKebab, pairInstances, title, type Paired } from "../flutter/extract";
+import { appFontFiles, fontKey, isSystemFamily, type FontFile } from "./font-files";
 import { CUSTOM_FONT, scanSwift } from "./rules";
 
 const MAX_EXAMPLES = 5;
@@ -217,6 +219,13 @@ function readFile(source: SourceFile): SwiftFile {
  */
 export function collectSwiftUI(files: SourceFile[]): Occurrences {
   const swift = files.filter((f) => f.lang === "swift").map(readFile);
+  // The font files the app ships, and the family each Font.custom name finds among them (its family, full or PostScript
+  // name, or its file's name): SwiftUI can't load a font from Google, so a family the app draws is one it ships.
+  const root = swift.length ? rootOf(swift[0]!.source) : null;
+  const fontFiles = root === null ? [] : appFontFiles(root);
+  const shippedFamily = (name: string) => fontFiles.find((f) => f.keys.has(fontKey(name)))?.family;
+  /** Each family name the code writes (Font.custom, UIFont(name:)), with the call it is written in. */
+  const written = new Map<string, string>();
   type Bucket = "colors" | "space" | "radius" | "fontSize" | "fontFamily" | "duration" | "easing";
   const buckets: Record<Bucket, Map<string, Sample>> = {
     colors: new Map(), space: new Map(), radius: new Map(), fontSize: new Map(), fontFamily: new Map(), duration: new Map(), easing: new Map(),
@@ -368,8 +377,12 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
         case "font-size":
           add("fontSize", hit.value!, example);
           break;
-        case "font-family":
-          add("fontFamily", hit.value!, example);
+        case "font-family": {
+          const kit = /^(UIFont|NSFont)/.exec(hit.text)?.[1];
+          if (!written.has(hit.value!)) written.set(hit.value!, kit ? `${kit}(name: "${hit.value}")` : `Font.custom("${hit.value}")`);
+          add("fontFamily", shippedFamily(hit.value!) ?? hit.value!, example);
+          break;
+        }
           break;
         case "duration":
           add("duration", hit.value!, example);
@@ -390,6 +403,7 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
     }
   }
 
+  const fonts = shippedFonts(fontFiles, written, shippedFamily);
   return {
     colors: sortedSamples(buckets.colors), space: sortedSamples(buckets.space), radius: sortedSamples(buckets.radius), fontSize: sortedSamples(buckets.fontSize),
     fontFamily: sortedSamples(buckets.fontFamily), duration: sortedSamples(buckets.duration), easing: sortedSamples(buckets.easing), unresolved: [],
@@ -401,5 +415,38 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
     source: "swift",
     ...(Object.keys(variantLabels).length ? { variantLabels } : {}),
     ...(notes.length ? { notes } : {}),
+    ...fonts,
+  };
+}
+
+/**
+ * The fonts a SwiftUI app ships, for the draft: each family the code names whose files are in the app, with every file
+ * of that family (a variable font's weight axis as a range), and an Arabic companion; and the names whose files Motif
+ * didn't find, unless the system has them. The companion is a family the app ships that covers Arabic: one the code
+ * names beside a family that doesn't, or, when the code names none, one the Info.plist registers (Qahwa's Readex Pro).
+ */
+function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFamily: (name: string) => string | undefined): Pick<Occurrences, "projectFonts" | "unfoundFonts" | "fontWeightRanges" | "companion"> {
+  const named = [...new Set([...written.keys()].flatMap((n) => shippedFamily(n) ?? []))];
+  const ofFamily = (family: string) => files.filter((f) => fontKey(f.family) === fontKey(family));
+  const covers = (family: string) => ofFamily(family).some((f) => f.arabic);
+  const latin = [...written.keys()].some((n) => !covers(shippedFamily(n) ?? n));
+  const companion =
+    written.size === 0
+      ? files.find((f) => f.registered && f.arabic)?.family
+      : latin
+        ? named.find(covers)
+        : undefined;
+  const families = [...new Set([...named, ...(companion ? [companion] : [])])];
+  const projectFonts = families.map((family) => ({ family, files: ofFamily(family).map((f) => ({ path: f.path, weight: f.weight, style: f.style })) }));
+  const fontWeightRanges = families.flatMap((family) => {
+    const axes = ofFamily(family).flatMap((f) => (f.wght ? [f.wght] : []));
+    return axes.length ? [{ family, min: Math.min(...axes.map((a) => a.min)), max: Math.max(...axes.map((a) => a.max)) }] : [];
+  });
+  const unfoundFonts = [...written].filter(([name]) => !shippedFamily(name) && !isSystemFamily(name)).map(([family, from]) => ({ family, from }));
+  return {
+    ...(projectFonts.length ? { projectFonts } : {}),
+    ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
+    ...(unfoundFonts.length ? { unfoundFonts } : {}),
+    ...(companion ? { companion } : {}),
   };
 }

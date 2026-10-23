@@ -397,6 +397,8 @@ describe("the SwiftUI guide", () => {
       "A macOS app needs no simulator.", "not only its command-line tools",
       "Xcode 16", "iOS 17", "macOS 14", "**Swift 5**", "**Swift 6**", "design/motif.json", "themeDir", "## Monorepos", "one guide for the web dashboard and the iPhone app", "platform notes", "--app",
       "#Preview", "synchronized folder", "Podfile", "Package.swift",
+      // A family the app ships is drafted as its own (sweep Task 3, SwiftUI).
+      "the guide's fonts list", "`UIAppFonts`",
     ]);
   });
 

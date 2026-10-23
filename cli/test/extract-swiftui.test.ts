@@ -1,12 +1,18 @@
-import { cpSync, readFileSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, readFileSync } from "node:fs";
 import { afterAll, describe, expect, test } from "bun:test";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { assemble } from "../../tests/fixtures/assemble";
+import { runValidate } from "../src/commands/validate";
+import { checkProjectFontFiles, readProjectFonts } from "../src/contract/fonts";
+import { validateTokens } from "../src/contract/tokens";
+import { buildThemeSet } from "../src/generate/theme";
+import { themeFonts } from "../src/generate/theme-fonts";
 import { runExtract } from "../src/commands/extract";
 import { buildDraft } from "../src/extract/draft";
 import { SWIFTUI } from "../src/stacks/swiftui";
 import { collectSwiftUI } from "../src/stacks/swiftui/extract";
 import type { AppInfo } from "../src/detect/stacks";
-import { FIXTURES } from "./helpers";
+import { docFrom, FIXTURES } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -334,5 +340,106 @@ describe("motif extract on a SwiftUI app", () => {
     expect(report.variables.find((v: any) => v.name === "--primary")).toMatchObject({ light: "#6750a4", dark: "#d0bcff", role: "color.action-primary" });
     expect(report.designVariants.map((v: any) => v.id)).toEqual(["default", "men", "women"]);
     expect(r.text).toContain("your Swift theme code");
+  });
+});
+
+describe("collectSwiftUI: a font the app ships is drafted as its own, not as a Google font (sweep Task 3, SwiftUI)", () => {
+  const READEX = join(import.meta.dir, "../../tests/fixtures/swiftui-contract-app/Qahwa/Fonts/ReadexPro.ttf");
+  /** Each family the drafted roles use, with the source `motif tokens` gives it. */
+  const sources = (tokens: unknown) => Object.fromEntries(themeFonts(buildThemeSet(docFrom(tokens)).base).map((f) => [f.family, f.source]));
+  const fontsList = (tokens: any) => tokens.$extensions["dev.motif"].fonts;
+  /** The draft is a valid guide whose project fonts' files are all there. */
+  const valid = (root: string, tokens: unknown) => {
+    const doc = docFrom(tokens);
+    expect(validateTokens(doc)).toEqual([]);
+    const { fonts, findings } = readProjectFonts(doc);
+    expect(findings).toEqual([]);
+    expect(checkProjectFontFiles(root, fonts, doc)).toEqual([]);
+  };
+  const shop = (files: Record<string, string>, fonts: Record<string, string> = {}) => {
+    const root = makeProject(files);
+    for (const [to, from] of Object.entries(fonts)) {
+      mkdirSync(dirname(join(root, to)), { recursive: true });
+      copyFileSync(from, join(root, to));
+    }
+    return root;
+  };
+
+  test("a Font.custom family whose file is in the app is a project font, by its family or its PostScript name", () => {
+    const root = shop(
+      {
+        "Shop/CartView.swift": 'import SwiftUI\nstruct CartView: View {\n    var body: some View {\n        Text("Cart").font(.custom("Readex Pro", size: 22))\n        Text("Total").font(.custom("ReadexPro-Regular", size: 14))\n    }\n}\n',
+      },
+      { "Shop/Fonts/ReadexPro.ttf": READEX },
+    );
+    const occ = collect(root);
+    // The PostScript name is the same family: one sample, counted twice.
+    expect(occ.fontFamily.map((s) => [s.value, s.count])).toEqual([["Readex Pro", 2]]);
+    expect(occ.projectFonts).toEqual([{ family: "Readex Pro", files: [{ path: "Shop/Fonts/ReadexPro.ttf", weight: 400, style: "normal" }] }]);
+    // A variable font: its file serves the weights of its wght axis.
+    expect(occ.fontWeightRanges).toEqual([{ family: "Readex Pro", min: 160, max: 700 }]);
+    const { tokens, report } = buildDraft(occ);
+    expect((tokens as any).primitive.font.sans.$value[0]).toBe("Readex Pro");
+    expect(fontsList(tokens)).toEqual([{ family: "Readex Pro", files: [{ path: "Shop/Fonts/ReadexPro.ttf", weight: 400, style: "normal" }] }]);
+    expect(sources(tokens)).toEqual({ "Readex Pro": "project" });
+    expect(report.notes.join("\n")).not.toMatch(/weight 400 only|didn't find them|Google/);
+    valid(root, tokens);
+  });
+
+  test("files Motif can't read are matched by their names: Inter-Regular.ttf and Inter-Bold.ttf for Font.custom(\"Inter\")", () => {
+    const root = makeProject({
+      "Shop/Type.swift": 'import SwiftUI\nlet body = Font.custom("Inter", size: 16)\nlet title = Font.custom("Inter-Bold", size: 22)\n',
+      "Shop/Fonts/Inter-Regular.ttf": "font",
+      "Shop/Fonts/Inter-Bold.ttf": "font",
+      "build/Fonts/Inter-Black.ttf": "font",
+    });
+    const occ = collect(root);
+    expect(occ.fontFamily.map((s) => [s.value, s.count])).toEqual([["Inter", 2]]);
+    expect(occ.projectFonts).toEqual([
+      { family: "Inter", files: [{ path: "Shop/Fonts/Inter-Bold.ttf", weight: 700, style: "normal" }, { path: "Shop/Fonts/Inter-Regular.ttf", weight: 400, style: "normal" }] },
+    ]);
+    expect(sources(buildDraft(occ).tokens)).toEqual({ Inter: "project" });
+  });
+
+  test("a Font.custom family with no files is noted; one of the system's own fonts isn't", () => {
+    const root = makeProject({
+      "Shop/Type.swift": 'import SwiftUI\nlet a = Font.custom("Brandon Grotesque", size: 16)\nlet b = Font.custom("Brandon Grotesque", size: 18)\nlet c = Font.custom("AvenirNext-Bold", size: 22)\n',
+    });
+    const occ = collect(root);
+    expect(occ.projectFonts ?? []).toEqual([]);
+    expect(occ.unfoundFonts).toEqual([{ family: "Brandon Grotesque", from: 'Font.custom("Brandon Grotesque")' }]);
+    expect(buildDraft(occ).report.notes).toContain(
+      'Brandon Grotesque comes from your app\'s font files (Font.custom("Brandon Grotesque")), but Motif didn\'t find them, so the draft treats it as a Google font. Add its files to the guide\'s fonts list, or check that Google Fonts has it.',
+    );
+  });
+
+  test("a font the app registers (UIAppFonts) that covers Arabic, and no Font.custom names, is the companion", () => {
+    const root = shop(
+      {
+        "Shop/Info.plist": '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n\t<key>UIAppFonts</key>\n\t<array>\n\t\t<string>ReadexPro.ttf</string>\n\t</array>\n</dict>\n</plist>\n',
+        "Shop/CartView.swift": 'import SwiftUI\nstruct CartView: View { var body: some View { Text("Cart").font(.title) } }\n',
+      },
+      { "Shop/Fonts/ReadexPro.ttf": READEX },
+    );
+    const occ = collect(root);
+    expect(occ.companion).toBe("Readex Pro");
+    expect(occ.fontFamily).toEqual([]);
+    const { tokens } = buildDraft(occ);
+    expect((tokens as any).primitive.font.sans.$value).toEqual(["system-ui", "Readex Pro", "sans-serif"]);
+    expect(sources(tokens)).toEqual({ "Readex Pro": "project" });
+    valid(root, tokens);
+  });
+
+  test("Qahwa's Readex Pro, which only its Info.plist and generated theme name, drafts as a project font, and the draft validates", async () => {
+    const root = join(makeProject({}), "Qahwa");
+    assemble("swiftui-contract-app", root);
+    const r = await runExtract(root, { positionals: [], flags: {} });
+    expect(r.exitCode).toBe(0);
+    const tokens = JSON.parse(readFileSync(join(root, "design", "tokens.draft.json"), "utf8"));
+    expect(tokens.primitive.font.sans.$value).toEqual(["system-ui", "Readex Pro", "sans-serif"]);
+    expect(fontsList(tokens)).toEqual([{ family: "Readex Pro", files: [{ path: "Qahwa/Fonts/ReadexPro.ttf", weight: 400, style: "normal" }] }]);
+    expect(sources(tokens)).toEqual({ "Readex Pro": "project" });
+    valid(root, tokens);
+    expect((await runValidate(root, { tokens: "design/tokens.draft.json" })).exitCode).toBe(0);
   });
 });
