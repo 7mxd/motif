@@ -367,8 +367,8 @@ export function collectOccurrences(
   };
   const sized = (bucket: "radius" | "fontSize", hit: Hit, table: Map<string, number> | undefined) => {
     const v = hit.value!;
-    // A size as written (13px, 0.875rem); Tailwind's text-2xl and text-3xl are names in its theme, not 2 and 3.
-    if (/^\d/.test(v) && !(bucket === "fontSize" && /^\d+xl$/.test(v))) return add(bucket, v, hit);
+    // A size as written (13px, 0.875rem); Tailwind's text-2xl and rounded-3xl are names in its theme, not 2 and 3.
+    if (/^\d/.test(v) && !/^\d+xl$/.test(v)) return add(bucket, v, hit);
     const px = table?.get(v) ?? (bucket === "radius" && v === "none" ? 0 : bucket === "radius" && v === "full" ? 9999 : undefined);
     if (px !== undefined) add(bucket, `${px}px`, hit);
     else add("unresolved", hit.text, hit);
@@ -1229,8 +1229,11 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const uses = new Map<number, number>();
   for (const s of occ.fontSize) uses.set(pxOf(s), (uses.get(pxOf(s)) ?? 0) + s.count);
   const edge = (v: number) => Math.min(smaller.indexOf(v), smaller.length - 1 - smaller.indexOf(v));
-  const small =
-    smaller.length > 2 ? [...smaller].sort((a, b) => uses.get(b)! - uses.get(a)! || edge(a) - edge(b) || a - b).slice(0, 2).sort((a, b) => a - b) : smaller;
+  // Two roles less than 1px apart aren't two sizes: the more used one stays, with the next most used size at least 1px
+  // from it, if there is one.
+  const ranked = [...smaller].sort((a, b) => uses.get(b)! - uses.get(a)! || edge(a) - edge(b) || a - b);
+  const apart = ranked.length > 2 && Math.abs(ranked[0]! - ranked[1]!) < 1 ? ranked.find((v) => Math.abs(v - ranked[0]!) >= 1) : undefined;
+  const small = smaller.length > 2 ? [ranked[0]!, apart ?? ranked[1]!].sort((a, b) => a - b) : smaller;
   let caption = small[0] ?? Math.round(body * 0.75);
   let label = small.length >= 2 ? small[small.length - 1]! : Math.round(body * 0.875);
   if (caption > label) [caption, label] = [label, caption];

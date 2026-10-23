@@ -513,3 +513,26 @@ describe("Tailwind's text-2xl and text-3xl are sizes from the theme, not 2px and
     expect(values(collectOccurrences([app], null).unresolved).sort()).toEqual(["text-2xl", "text-3xl", "text-sm"]);
   });
 });
+
+describe("Task 5 fix round 1: type and corner sizes", () => {
+  const sizes = (fontSize: Sample[]) => {
+    const t = buildDraft({ ...occ, fontSize }).tokens as any;
+    return Object.fromEntries(["caption", "label", "body"].map((r) => [r, t.font[r].$value.fontSize.value]));
+  };
+  test("caption and label less than 1px apart: the more used one stays, with the next most used size at least 1px from it (HiSalon's Flutter admin)", () => {
+    const ADMIN = [
+      s("13px", 29), s("13.5px", 14), s("12px", 4), s("22px", 4), s("14.5px", 3), s("15px", 2), s("17px", 2), s("18px", 2), s("10px", 1), s("12.5px", 1),
+      s("19px", 1), s("20px", 1), s("26px", 1), s("28px", 1),
+    ];
+    expect(sizes(ADMIN)).toEqual({ caption: 12, label: 13, body: 14.5 });
+  });
+  test("with no size 1px away, the close pair stays", () => {
+    expect(sizes([s("16px", 10), s("13px", 9), s("13.5px", 8), s("12.6px", 1)])).toEqual({ caption: 13, label: 13.5, body: 16 });
+  });
+  const app: SourceFile = { path: "src/App.tsx", abs: "", lang: "script", text: '<div className="rounded-xl" /><div className="rounded-2xl" /><div className="rounded-3xl" />' };
+  test("rounded-2xl and rounded-3xl are Tailwind's radii, not 2px and 3px corners", () => {
+    const o = collectOccurrences([app], { ...tw, radiusPx: new Map([["md", 6], ["xl", 12], ["2xl", 16], ["3xl", 24]]) });
+    expect(values(o.radius).sort()).toEqual(["12px", "16px", "24px"]);
+    expect(values(collectOccurrences([app], null).unresolved).sort()).toEqual(["rounded-2xl", "rounded-3xl", "rounded-xl"]);
+  });
+});
