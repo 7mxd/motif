@@ -4,7 +4,7 @@
 
 Design guide tools for AI coding agents: build web and mobile apps with polished UI, UX and motion — and keep them consistent as your app and team grow.
 
-> **Preview (v0.4.2).** Motif works in Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI and OpenCode, for React web apps and plain web sites. Flutter, Jetpack Compose, React Native (Expo) and SwiftUI apps arrive in v0.5.0 ([what each stack gets](docs/parity.md)). More stacks and the first full release come next.
+> **Preview (v0.5.0).** Motif works in Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI and OpenCode, for React web apps, plain web sites, and Flutter, Jetpack Compose, React Native (Expo) and SwiftUI apps ([what each stack gets](docs/parity.md)). Vue, Svelte, Angular and the first full release come next.
 
 ## Install
 
@@ -46,7 +46,7 @@ gemini extensions install https://github.com/7mxd/motif --ref plugins --auto-upd
 
 Then ask for design work ("make this screen look better"), or start Motif: `/motif:design` in Claude Code, `$motif` in Codex, `/motif` everywhere else.
 
-You need git, and Claude Code 2.1.224 or later if you use Claude Code. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v0.4.2) and checks it against the release's checksums. See the [release notes](docs/releases/v0.4.2.md), or build and try Motif from source: [Claude Code](plugin/claude-code/README.md), [other agents](plugin/agents/README.md).
+You need git, and Claude Code 2.1.224 or later if you use Claude Code. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v0.5.0) and checks it against the release's checksums. See the [release notes](docs/releases/v0.5.0.md), or build and try Motif from source: [Claude Code](plugin/claude-code/README.md), [other agents](plugin/agents/README.md).
 
 ## The `motif` tool
 
@@ -64,7 +64,7 @@ You need git, and Claude Code 2.1.224 or later if you use Claude Code. The first
 
 Add `--json` for machine-readable output and `--cwd <folder>` to run elsewhere. In a project with several apps, `--app <path>` picks one.
 
-Full support in v0.4.2: React web apps and plain web sites (HTML, CSS and JavaScript without a framework: a folder with an `index.html` in it, `public/`, `src/`, `site/` or `www/`). Flutter apps, also inside a monorepo (apps under `mobile/`, say, with a shared package), arrive in v0.5.0. Jetpack Compose apps (Android) arrive in v0.5.0 too; in a Gradle project with several modules, Motif finds each app module and reads its own code, and names the Compose library modules it depends on, which it doesn't read yet. React Native apps made with Expo (SDK 52 or later), also inside a monorepo, arrive in v0.5.0 too; React Native without Expo isn't supported, though theme code, checks and drafts work on it. SwiftUI apps for iPhone, iPad and the Mac, in an Xcode project or a Swift package, arrive in v0.5.0 too: theme code, checks and drafts work on any computer, and screenshots need a Mac with Xcode. `motif check` and `motif extract` read CSS where it is, including `<style>` blocks and `style=""` attributes. Other stacks are detected, and Motif helps on them with general guidance; [the parity checklist](docs/parity.md) says what a stack gets once it's supported.
+Full support in v0.5.0: React web apps and plain web sites (HTML, CSS and JavaScript without a framework: a folder with an `index.html` in it, `public/`, `src/`, `site/` or `www/`). Flutter apps, also inside a monorepo (apps under `mobile/`, say, with a shared package). Jetpack Compose apps (Android); in a Gradle project with several modules, Motif finds each app module and reads its own code, and names the Compose library modules it depends on, which it doesn't read yet. React Native apps made with Expo (SDK 52 or later), also inside a monorepo; React Native without Expo isn't supported, though theme code, checks and drafts work on it. SwiftUI apps for iPhone, iPad and the Mac, in an Xcode project or a Swift package: theme code, checks and drafts work on any computer, and screenshots need a Mac with Xcode. `motif check` and `motif extract` read CSS where it is, including `<style>` blocks and `style=""` attributes. Other stacks are detected, and Motif helps on them with general guidance; [the parity checklist](docs/parity.md) says what a stack gets once it's supported.
 
 From v0.5.0, on Flutter, `motif shot` needs the Flutter SDK (3.27 or later; `motif doctor` checks it) and draws the screens with `flutter test`: no device, simulator or Mac. It takes the app's routes (go_router or named routes) at three phone sizes and a tablet, and `--screen <Widget>` adds a widget no route opens. A state is a Dart script (`--state design/states/<name>.dart`). Screens behind sign-in or live data need `design/states/setup.dart`, which runs before the app starts (sign someone in, store settings, pick the variant), and `design/states/http.json`, which answers the app's requests from files under `design/`; nothing leaves your computer. Motif's harness lives in the app's `.motif/` folder, which git ignores.
 

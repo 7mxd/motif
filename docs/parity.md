@@ -32,7 +32,7 @@ A stack is supported when the developer gets the whole of Motif on it, not part 
 | Svelte / SvelteKit | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | Angular | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 
-React web and plain web were finished in Part 1 and plan 2A; right-to-left screenshots and the accessible-name audit came to them with Flutter (plan 2E). Flutter (plan 2E), React Native with Expo (plan 2G) and Jetpack Compose (plan 2F) are done, and SwiftUI (plan 2H), the last of Phase A, is done but for its evals; Vue, Svelte and Angular are Phase B. Motif still helps on those stacks with general guidance: `motif tokens` writes plain CSS variables and `design/generated/tokens.flat.json` to map by hand.
+React web and plain web were finished in Part 1 and plan 2A; right-to-left screenshots and the accessible-name audit came to them with Flutter (plan 2E). Flutter (plan 2E), React Native with Expo (plan 2G) and Jetpack Compose (plan 2F) are done, and SwiftUI (plan 2H), the last of Phase A, is done; all four ship in v0.5.0. Vue, Svelte and Angular are Phase B. Motif still helps on those stacks with general guidance: `motif tokens` writes plain CSS variables and `design/generated/tokens.flat.json` to map by hand.
 
 ## Flutter: the tests that show it
 
