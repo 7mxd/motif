@@ -1,9 +1,10 @@
 // Helpers for telling a family the app ships (its own font files) from one it loads from Google Fonts.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { posix } from "node:path";
 import type { SourceFile } from "../check/files";
 import { maskComments } from "../check/mask";
 import type { Occurrences } from "./draft";
+import { readFontTables } from "./font-file";
 
 type ProjectFontEntry = NonNullable<Occurrences["projectFonts"]>[number];
 type UnfoundFontEntry = NonNullable<Occurrences["unfoundFonts"]>[number];
@@ -144,39 +145,7 @@ export function webFonts(files: SourceFile[]): Pick<Occurrences, "projectFonts" 
   };
 }
 
-/**
- * True when a TrueType or OpenType file's character map has Arabic letters: at least 28 code points of U+0600–06FF
- * (the alphabet). Read from the file's cmap table (formats 4 and 12) only; a file that isn't one, or can't be read, is false.
- */
+/** True when a TrueType or OpenType file's character map has the Arabic letters (the shared reader's cmap check). Never throws. */
 export function coversArabic(path: string): boolean {
-  let b: Buffer;
-  try {
-    b = readFileSync(path);
-  } catch {
-    return false;
-  }
-  const u16 = (at: number) => (at + 2 <= b.length ? b.readUInt16BE(at) : -1);
-  const u32 = (at: number) => (at + 4 <= b.length ? b.readUInt32BE(at) : -1);
-  const tag = u32(0);
-  if (tag !== 0x00010000 && tag !== 0x4f54544f && tag !== 0x74727565) return false;
-  let cmap = -1;
-  for (let i = 0, n = u16(4); i < n; i++) {
-    const rec = 12 + i * 16;
-    if (b.toString("latin1", rec, rec + 4) === "cmap") cmap = u32(rec + 8);
-  }
-  if (cmap < 0) return false;
-  const [lo, hi] = [0x0600, 0x06ff];
-  const overlap = (start: number, end: number) => Math.max(0, Math.min(end, hi) - Math.max(start, lo) + 1);
-  for (let i = 0, n = u16(cmap + 2); i < n && i < 64; i++) {
-    const sub = cmap + u32(cmap + 4 + i * 8 + 4);
-    let covered = 0;
-    if (u16(sub) === 4) {
-      const segs = u16(sub + 6) / 2;
-      for (let k = 0; k < segs; k++) covered += overlap(u16(sub + 16 + segs * 2 + k * 2), u16(sub + 14 + k * 2));
-    } else if (u16(sub) === 12) {
-      for (let k = 0, groups = u32(sub + 12); k < groups && k < 100_000; k++) covered += overlap(u32(sub + 16 + k * 12), u32(sub + 20 + k * 12));
-    }
-    if (covered >= 28) return true;
-  }
-  return false;
+  return readFontTables(path)?.arabic === true;
 }
