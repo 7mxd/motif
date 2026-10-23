@@ -1,4 +1,4 @@
-import { copyFileSync, cpSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { afterAll, describe, expect, test } from "bun:test";
 import { dirname, join } from "node:path";
 import { assemble } from "../../tests/fixtures/assemble";
@@ -11,6 +11,7 @@ import { runExtract } from "../src/commands/extract";
 import { buildDraft } from "../src/extract/draft";
 import { SWIFTUI } from "../src/stacks/swiftui";
 import { collectSwiftUI } from "../src/stacks/swiftui/extract";
+import { appFontFiles, isSystemFamily } from "../src/stacks/swiftui/font-files";
 import type { AppInfo } from "../src/detect/stacks";
 import { docFrom, FIXTURES } from "./helpers";
 import { makeProject } from "./project";
@@ -441,5 +442,143 @@ describe("collectSwiftUI: a font the app ships is drafted as its own, not as a G
     expect(sources(tokens)).toEqual({ "Readex Pro": "project" });
     valid(root, tokens);
     expect((await runValidate(root, { tokens: "design/tokens.draft.json" })).exitCode).toBe(0);
+  });
+});
+
+describe("collectSwiftUI's font files: fix round 1 (sweep Task 3, SwiftUI)", () => {
+  const READEX_BYTES = readFileSync(join(import.meta.dir, "../../tests/fixtures/swiftui-contract-app/Qahwa/Fonts/ReadexPro.ttf"));
+  const sources = (tokens: unknown) => Object.fromEntries(themeFonts(buildThemeSet(docFrom(tokens)).base).map((f) => [f.family, f.source]));
+  /** The name table's records: [record offset, platform, nameID]. */
+  const nameRecords = (b: Buffer) => {
+    let at = -1;
+    for (let i = 0, n = b.readUInt16BE(4); i < n; i++) if (b.toString("latin1", 12 + i * 16, 16 + i * 16) === "name") at = b.readUInt32BE(12 + i * 16 + 8);
+    return Array.from({ length: b.readUInt16BE(at + 2) }, (_, i) => at + 6 + i * 12).map((rec) => [rec, b.readUInt16BE(rec), b.readUInt16BE(rec + 6)] as const);
+  };
+  /** A small TrueType file of a name table and a format 4 cmap with the given ranges: enough for Motif's reader. */
+  const sfnt = (family: string, ranges: [number, number][]) => {
+    const text = Buffer.from(family, "utf16le").swap16();
+    const name = Buffer.alloc(18 + text.length);
+    [0, 1, 18, 3, 1, 0x409, 1, text.length, 0].forEach((v, i) => name.writeUInt16BE(v, i * 2));
+    text.copy(name, 18);
+    const segs: [number, number][] = [...ranges, [0xffff, 0xffff]];
+    const sub = Buffer.alloc(16 + segs.length * 8);
+    sub.writeUInt16BE(4, 0);
+    sub.writeUInt16BE(sub.length, 2);
+    sub.writeUInt16BE(segs.length * 2, 6);
+    segs.forEach(([start, end], k) => {
+      sub.writeUInt16BE(end, 14 + k * 2);
+      sub.writeUInt16BE(start, 16 + segs.length * 2 + k * 2);
+      sub.writeUInt16BE(1, 16 + segs.length * 4 + k * 2);
+    });
+    const cmap = Buffer.concat([Buffer.from([0, 0, 0, 1, 0, 3, 0, 1, 0, 0, 0, 12]), sub]);
+    const head = Buffer.alloc(12 + 2 * 16);
+    head.writeUInt32BE(0x00010000, 0);
+    head.writeUInt16BE(2, 4);
+    const tables: [string, Buffer][] = [["cmap", cmap], ["name", name]];
+    let offset = head.length;
+    tables.forEach(([tag, data], i) => {
+      head.write(tag, 12 + i * 16, "latin1");
+      head.writeUInt32BE(offset, 12 + i * 16 + 8);
+      head.writeUInt32BE(data.length, 12 + i * 16 + 12);
+      offset += data.length;
+    });
+    return Buffer.concat([head, ...tables.map(([, data]) => data)]);
+  };
+  const withFonts = (swift: Record<string, string>, fonts: Record<string, Buffer>) => {
+    const root = makeProject(swift);
+    for (const [path, bytes] of Object.entries(fonts)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), bytes);
+    }
+    return root;
+  };
+  const PLIST = (file: string) =>
+    `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n\t<key>UIAppFonts</key>\n\t<array>\n\t\t<string>${file}</string>\n\t</array>\n</dict>\n</plist>\n`;
+
+  // The odd-length record (its family name) is skipped, so the family is its file's name; its other tables still give
+  // its weight (Regular, 400, whatever its file says).
+  test("a font with an odd-length name record, or cut short, doesn't stop extract: it's matched by its file's name", async () => {
+    const odd = Buffer.from(READEX_BYTES);
+    const [rec] = nameRecords(odd).find(([, platform, id]) => platform === 3 && id === 1)!;
+    odd.writeUInt16BE(odd.readUInt16BE(rec + 8) - 1, rec + 8);
+    const root = withFonts(
+      { "Shop/Cart.swift": 'import SwiftUI\nlet a = Font.custom("ReadexPro", size: 16)\nlet b = Font.custom("Inter", size: 14)\n' },
+      { "Shop/Fonts/ReadexPro-Bold.ttf": odd, "Shop/Fonts/Inter-Regular.ttf": READEX_BYTES.subarray(0, 200) },
+    );
+    expect(collect(root).projectFonts).toEqual([
+      { family: "ReadexPro", files: [{ path: "Shop/Fonts/ReadexPro-Bold.ttf", weight: 400, style: "normal" }] },
+      { family: "Inter", files: [{ path: "Shop/Fonts/Inter-Regular.ttf", weight: 400, style: "normal" }] },
+    ]);
+    // End to end, as the review saw it: extract drafts; it doesn't stop with "Motif hit an unexpected problem".
+    const app = makeProject({});
+    cpSync(join(FIXTURES, "swiftui-min"), app, { recursive: true });
+    writeFileSync(join(app, "SwiftUIMin/Fonts/NotoNaskhArabic.ttf"), odd);
+    expect((await runExtract(app, { positionals: [], flags: {} })).exitCode).toBe(0);
+  });
+
+  test("the reader never throws: 200 damaged copies of a real font, random bytes, and a file over 30 MB read by its name", () => {
+    let seed = 7;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    const fonts: Record<string, Buffer> = {};
+    for (let s = 0; s < 200; s++) {
+      const b = Buffer.from(READEX_BYTES.subarray(0, 4000 + s * 50));
+      for (let k = 0; k < 40; k++) b[Math.floor(random() * Math.min(b.length, 4000))] = Math.floor(random() * 256);
+      b.writeUInt32BE(0x00010000, 0);
+      fonts[`F/M${s}.ttf`] = b;
+    }
+    const noise = Buffer.from(Array.from({ length: 3000 }, () => Math.floor(random() * 256)));
+    noise.writeUInt32BE(0x00010000, 0);
+    fonts["F/Noise.ttf"] = noise;
+    const root = withFonts({ "F/V.swift": "import SwiftUI\n" }, fonts);
+    // Larger than any real font: read as its name, not its tables (Readex Pro's tables at its head would say Readex Pro).
+    writeFileSync(join(root, "F/Huge-Bold.ttf"), Buffer.concat([READEX_BYTES, Buffer.alloc(31 * 1024 * 1024)]));
+    const files = appFontFiles(root);
+    expect(files.length).toBe(202);
+    expect(files.find((f) => f.path === "F/Huge-Bold.ttf")).toMatchObject({ family: "Huge", weight: 700 });
+  });
+
+  test("a registered Arabic font Motif doesn't know isn't the companion after the system font, which motif tokens would drop: a note says how to use it", () => {
+    const root = withFonts(
+      { "Shop/Info.plist": PLIST("ReqdexPro.ttf"), "Shop/Cart.swift": 'import SwiftUI\nstruct Cart: View { var body: some View { Text("Cart") } }\n' },
+      { "Shop/Fonts/ReqdexPro.ttf": sfnt("Reqdex Pro", [[0x20, 0x7e], [0x0600, 0x06ff]]) },
+    );
+    const occ = collect(root);
+    expect(occ.companion).toBeUndefined();
+    expect(occ.notes).toContain(
+      'Reqdex Pro is registered in your app\'s Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so the draft leaves it out. To use it, name a Latin font first ("SF Pro, Reqdex Pro") and add its files (Shop/Fonts/ReqdexPro.ttf) to the guide\'s fonts list.',
+    );
+    expect((buildDraft(occ).tokens as any).primitive.font.sans.$value).toEqual(["system-ui", "sans-serif"]);
+  });
+
+  test("a named Latin family beside a named shipped Arabic family: the Arabic one is the companion, both are the app's own", () => {
+    const root = withFonts(
+      { "Shop/Cart.swift": 'import SwiftUI\nlet a = Font.custom("Inter", size: 16)\nlet b = Font.custom("Inter", size: 22)\nlet c = Font.custom("Readex Pro", size: 16)\n' },
+      { "Shop/Fonts/Inter.ttf": sfnt("Inter", [[0x20, 0x7e], [0xa0, 0x17f]]), "Shop/Fonts/ReadexPro.ttf": READEX_BYTES },
+    );
+    const occ = collect(root);
+    expect(occ.companion).toBe("Readex Pro");
+    const { tokens } = buildDraft(occ);
+    expect((tokens as any).primitive.font.sans.$value).toEqual(["Inter", "Readex Pro", "system-ui", "sans-serif"]);
+    expect(sources(tokens)).toEqual({ Inter: "project", "Readex Pro": "project" });
+  });
+
+  test("a Latin font's character map doesn't read as Arabic; Readex Pro's does", () => {
+    const root = withFonts({ "F/V.swift": "import SwiftUI\n" }, { "F/Latin.ttf": sfnt("Latin Sans", [[0x20, 0x7e], [0xa0, 0x24f]]), "F/Readex.ttf": READEX_BYTES });
+    expect(appFontFiles(root).map((f) => [f.family, f.arabic])).toEqual([["Latin Sans", false], ["Readex Pro", true]]);
+  });
+
+  test("UIFont(name:)'s family is noted as written in UIFont(name:)", () => {
+    const occ = collect(makeProject({ "Shop/Kit.swift": 'import UIKit\nlet f = UIFont(name: "Brandon Grotesque", size: 16)\n' }));
+    expect(occ.unfoundFonts).toEqual([{ family: "Brandon Grotesque", from: 'UIFont(name: "Brandon Grotesque")' }]);
+  });
+
+  test("the system's own families by their PostScript names aren't noted as missing (ArialMT, TimesNewRomanPS-BoldMT, SF Arabic…)", () => {
+    const system = [
+      "NewYorkMedium-Bold", "ArialMT", "Arial-BoldMT", "TimesNewRomanPSMT", "TimesNewRomanPS-BoldMT", "CourierNewPSMT", "SF Arabic", "SFArabic-Regular",
+      "SF Arabic Rounded", "SF Compact Rounded", "SF Compact", "New York Small", "New York Extra Large", "Hiragino Kaku Gothic ProN", "Sinhala Sangam MN",
+      "Gurmukhi MN", "Noto Sans Kannada", "BodoniSvtyTwoITCTT-Book",
+    ];
+    for (const n of system) expect([n, isSystemFamily(n)]).toEqual([n, true]);
+    for (const n of ["Tajawal", "Brandon Grotesque", "Inter"]) expect([n, isSystemFamily(n)]).toEqual([n, false]);
   });
 });

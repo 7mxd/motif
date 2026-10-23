@@ -8,6 +8,7 @@ import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
 import { rootOf } from "../../extract/own-fonts";
+import { bundledCoverage } from "../../preview/font-list";
 import { locator } from "../../text";
 import { kebab as dartKebab, pairInstances, title, type Paired } from "../flutter/extract";
 import { appFontFiles, fontKey, isSystemFamily, type FontFile } from "./font-files";
@@ -378,12 +379,11 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
           add("fontSize", hit.value!, example);
           break;
         case "font-family": {
-          const kit = /^(UIFont|NSFont)/.exec(hit.text)?.[1];
+          const kit = /^(UIFont|NSFont)(?![\w$])/.exec(hit.text)?.[1];
           if (!written.has(hit.value!)) written.set(hit.value!, kit ? `${kit}(name: "${hit.value}")` : `Font.custom("${hit.value}")`);
           add("fontFamily", shippedFamily(hit.value!) ?? hit.value!, example);
           break;
         }
-          break;
         case "duration":
           add("duration", hit.value!, example);
           break;
@@ -403,7 +403,8 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
     }
   }
 
-  const fonts = shippedFonts(fontFiles, written, shippedFamily);
+  const { note: fontNote, ...fonts } = shippedFonts(fontFiles, written, shippedFamily);
+  if (fontNote) notes.push(fontNote);
   return {
     colors: sortedSamples(buckets.colors), space: sortedSamples(buckets.space), radius: sortedSamples(buckets.radius), fontSize: sortedSamples(buckets.fontSize),
     fontFamily: sortedSamples(buckets.fontFamily), duration: sortedSamples(buckets.duration), easing: sortedSamples(buckets.easing), unresolved: [],
@@ -424,18 +425,21 @@ export function collectSwiftUI(files: SourceFile[]): Occurrences {
  * of that family (a variable font's weight axis as a range), and an Arabic companion; and the names whose files Motif
  * didn't find, unless the system has them. The companion is a family the app ships that covers Arabic: one the code
  * names beside a family that doesn't, or, when the code names none, one the Info.plist registers (Qahwa's Readex Pro).
+ * After the system font, a companion must be one Motif knows covers Arabic (bundledCoverage), as motif tokens reads the
+ * guide: the contract can't yet mark a project font as Arabic. A registered one it doesn't know gets a note instead.
  */
-function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFamily: (name: string) => string | undefined): Pick<Occurrences, "projectFonts" | "unfoundFonts" | "fontWeightRanges" | "companion"> {
+function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFamily: (name: string) => string | undefined): Pick<Occurrences, "projectFonts" | "unfoundFonts" | "fontWeightRanges" | "companion"> & { note?: string } {
   const named = [...new Set([...written.keys()].flatMap((n) => shippedFamily(n) ?? []))];
   const ofFamily = (family: string) => files.filter((f) => fontKey(f.family) === fontKey(family));
   const covers = (family: string) => ofFamily(family).some((f) => f.arabic);
   const latin = [...written.keys()].some((n) => !covers(shippedFamily(n) ?? n));
-  const companion =
-    written.size === 0
-      ? files.find((f) => f.registered && f.arabic)?.family
-      : latin
-        ? named.find(covers)
-        : undefined;
+  const registered = written.size === 0 ? files.find((f) => f.registered && f.arabic) : undefined;
+  const known = registered !== undefined && bundledCoverage(registered.family) === "arabic";
+  const companion = written.size === 0 ? (known ? registered.family : undefined) : latin ? named.find(covers) : undefined;
+  const note =
+    registered && !known
+      ? `${registered.family} is registered in your app's Info.plist and covers Arabic, but Motif can only treat a font it knows as the Arabic companion after the system font, so the draft leaves it out. To use it, name a Latin font first ("SF Pro, ${registered.family}") and add its files (${ofFamily(registered.family).map((f) => f.path).join(", ")}) to the guide's fonts list.`
+      : undefined;
   const families = [...new Set([...named, ...(companion ? [companion] : [])])];
   const projectFonts = families.map((family) => ({ family, files: ofFamily(family).map((f) => ({ path: f.path, weight: f.weight, style: f.style })) }));
   const fontWeightRanges = families.flatMap((family) => {
@@ -448,5 +452,6 @@ function shippedFonts(files: FontFile[], written: Map<string, string>, shippedFa
     ...(fontWeightRanges.length ? { fontWeightRanges } : {}),
     ...(unfoundFonts.length ? { unfoundFonts } : {}),
     ...(companion ? { companion } : {}),
+    ...(note ? { note } : {}),
   };
 }

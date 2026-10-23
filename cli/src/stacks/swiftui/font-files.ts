@@ -49,13 +49,23 @@ interface Tables {
 }
 
 /** A TrueType or OpenType file's names (1, 4, 6, 16), OS/2 weight and italic bit, fvar weight axis and Arabic coverage. */
+/** Larger than any font an app ships (a CJK family's file is about 20 MB): such a file is read by its name alone. */
+const MAX_FONT_BYTES = 30 * 1024 * 1024;
+
+/**
+ * A font file's tables, or null when it can't be read (missing, too large, not a TrueType or OpenType file, or
+ * malformed): the file is then known by its name. Never throws.
+ */
 function readTables(path: string): Tables | null {
-  let b: Buffer;
   try {
-    b = readFileSync(path);
+    if (statSync(path).size > MAX_FONT_BYTES) return null;
+    return parseTables(readFileSync(path));
   } catch {
     return null;
   }
+}
+
+function parseTables(b: Buffer): Tables | null {
   const u16 = (at: number) => (at >= 0 && at + 2 <= b.length ? b.readUInt16BE(at) : -1);
   const u32 = (at: number) => (at >= 0 && at + 4 <= b.length ? b.readUInt32BE(at) : -1);
   const fixed = (at: number) => (at >= 0 && at + 4 <= b.length ? b.readInt32BE(at) / 65536 : NaN);
@@ -77,8 +87,10 @@ function readTables(path: string): Tables | null {
     for (let i = 0; i < count && i < 1000; i++) {
       const rec = name + 6 + i * 12;
       const [platform, encoding, language, id, length, offset] = [u16(rec), u16(rec + 2), u16(rec + 4), u16(rec + 6), u16(rec + 8), u16(rec + 10)];
-      if (![1, 4, 6, 16].includes(id) || strings + offset + length > b.length) continue;
+      if (![1, 4, 6, 16].includes(id) || strings < 0 || offset < 0 || length < 0 || strings + offset + length > b.length) continue;
       const raw = b.subarray(strings + offset, strings + offset + length);
+      // UTF-16 names have an even length; an odd one is malformed, and skipped.
+      if ((platform === 3 || platform === 0) && length % 2 === 1) continue;
       let text: string | undefined;
       let score = 0;
       if (platform === 3 && (encoding === 1 || encoding === 10)) {
@@ -215,11 +227,20 @@ const SYSTEM_FAMILIES = new Set(
     "Noto Nastaliq Urdu", "Optima", "Palatino", "Papyrus", "Party LET", "PingFang HK", "PingFang SC", "PingFang TC", "Rockwell",
     "Savoye LET", "SF Pro", "SF Pro Display", "SF Pro Text", "SF Pro Rounded", "SF Mono", "SF Compact", "Snell Roundhand",
     "STIX Two Math", "STIX Two Text", "Symbol", "Thonburi", "Times", "Times New Roman", "Trebuchet MS", "Verdana",
-    "Zapf Dingbats", "Zapfino", "Lucida Grande", "Baghdad", "Geneva",
+    "Zapf Dingbats", "Zapfino", "Lucida Grande", "Baghdad", "Geneva", "SF Arabic", "SF Arabic Rounded", "SF Compact Display",
+    "SF Compact Text", "SF Compact Rounded", "SF Hebrew", "SF Armenian", "SF Georgian", "New York Small", "New York Medium",
+    "New York Large", "New York Extra Large", "Hiragino Kaku Gothic ProN", "Hiragino Kaku Gothic Pro", "Bangla Sangam MN",
+    "Gujarati Sangam MN", "Gurmukhi MN", "Kannada Sangam MN", "Khmer Sangam MN", "Lao Sangam MN", "Malayalam Sangam MN",
+    "Myanmar Sangam MN", "Oriya Sangam MN", "Sinhala Sangam MN", "Tamil Sangam MN", "Telugu Sangam MN", "Grantha Sangam MN",
+    "Noto Sans Kannada", "Noto Sans Myanmar", "Noto Sans Oriya", "Mukta Mahee", "Apple Braille", "Bodoni Ornaments",
+    "BodoniSvtyTwoITCTT", "BodoniSvtyTwoOSITCTT", "BodoniSvtyTwoSCITCTT", "Gurmukhi Sangam MN",
   ].map(fontKey),
 );
 
 /** True for a family (or a PostScript name of one: AvenirNext-Bold) the system has itself. */
 export function isSystemFamily(name: string): boolean {
-  return SYSTEM_FAMILIES.has(fontKey(name)) || SYSTEM_FAMILIES.has(fontKey(name.split("-")[0]!)) || name.startsWith(".");
+  if (name.startsWith(".")) return true;
+  // A PostScript name's family part, without Monotype's and Adobe's suffixes: ArialMT, TimesNewRomanPS-BoldMT, CourierNewPSMT.
+  const part = name.split("-")[0]!.replace(/(?:PSMT|MT|PS)$/, "");
+  return [name, name.split("-")[0]!, part].some((n) => SYSTEM_FAMILIES.has(fontKey(n)));
 }
