@@ -1,7 +1,9 @@
 // SwiftUI theme code: one Swift file with the guide's colours (every variant, light and dark), type, sizes and motion.
+import { srgbColor } from "../../contract/defaults";
 import type { DtcgColor } from "../../contract/values";
 import { num } from "../../generate/css-values";
 import { TS_HEADER, type GeneratedFile } from "../../generate/header";
+import { readableAction, type ModePair, type ReadableAction } from "../../generate/readable-action";
 import type { Theme, ThemeFont, ThemeSet, ThemeShadowLayer } from "../../generate/theme";
 import { stackFamilies, themeFonts, type ThemeFontUse } from "../../generate/theme-fonts";
 import { lowerCamel, RESERVED, swiftIdentifier } from "../naming";
@@ -135,30 +137,48 @@ function variantsBlock(set: ThemeSet): string[] {
   ];
 }
 
-function colorsBlock(set: ThemeSet, variants: boolean): string[] {
-  const colors = set.base.colors;
+/** MotifColors' members: one per role, never one of the type's own names (resolve, light, dark, the variants'). */
+function colorFields(set: ThemeSet): { taken: Set<string>; fields: string[] } {
   const instanceNames = ["light", "dark", ...set.variants.flatMap((v) => [`${swiftIdentifier(v.id)}Light`, `${swiftIdentifier(v.id)}Dark`])];
   const taken = new Set(["resolve", ...instanceNames]);
-  const fields = colors.map((c) => swiftMember(c.name, "c", taken));
-  const instance = (name: string, theme: Theme, mode: "light" | "dark", what: string): string[] => {
+  return { taken, fields: set.base.colors.map((c) => swiftMember(c.name, "c", taken)) };
+}
+
+/**
+ * MotifColors' member for the readable action colour, there when the guide's own action colour doesn't read as text:
+ * actionText, unless the guide has a role of that name.
+ */
+function actionTextField(set: ThemeSet): string {
+  const { taken, fields } = colorFields(set);
+  return swiftMember("action-text", "c", new Set([...taken, ...fields]));
+}
+
+function colorsBlock(set: ThemeSet, variants: boolean, readable: ReadableAction | null): string[] {
+  const colors = set.base.colors;
+  const { fields } = colorFields(set);
+  const actionText = actionTextField(set);
+  const instance = (name: string, theme: Theme, mode: "light" | "dark", what: string, pair?: ModePair): string[] => {
     const byName = new Map(theme.colors.map((c) => [c.name, c]));
+    const values = colors.map((c, i) => `${fields[i]}: ${swiftColor((byName.get(c.name) ?? c)[mode])}`);
+    if (pair) values.push(`${actionText}: ${swiftColor(srgbColor(pair[mode].text))}`);
     return [
       ...doc([what], 4),
       `    static let ${name} = MotifColors(`,
-      ...colors.map((c, i) => `        ${fields[i]}: ${swiftColor((byName.get(c.name) ?? c)[mode])}${i < colors.length - 1 ? "," : ""}`),
+      ...values.map((v, i) => `        ${v}${i < values.length - 1 ? "," : ""}`),
       "    )",
     ];
   };
   const cap = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
   const defaultName = set.defaultLabel && variants ? `${oneLine(set.defaultLabel)} variant, ` : "";
   const instances = [
-    ...instance("light", set.base, "light", cap(`${defaultName}light mode.`)),
+    ...instance("light", set.base, "light", cap(`${defaultName}light mode.`), readable?.base),
     "",
-    ...instance("dark", set.base, "dark", cap(`${defaultName}dark mode.`)),
+    ...instance("dark", set.base, "dark", cap(`${defaultName}dark mode.`), readable?.base),
     ...set.variants.flatMap((v) => {
       const id = swiftIdentifier(v.id);
       const what = (mode: string) => `${oneLine(v.label)} variant, ${mode} mode.`;
-      return ["", ...instance(`${id}Light`, v.theme, "light", what("light")), "", ...instance(`${id}Dark`, v.theme, "dark", what("dark"))];
+      const pair = readable?.variants[v.id];
+      return ["", ...instance(`${id}Light`, v.theme, "light", what("light"), pair), "", ...instance(`${id}Dark`, v.theme, "dark", what("dark"), pair)];
     }),
   ];
   const resolve = variants
@@ -180,6 +200,7 @@ function colorsBlock(set: ThemeSet, variants: boolean): string[] {
     ...doc(["The guide's colour roles, light and dark.", "", "Read them in a view with @Environment(\\.motifColors) private var colors."]),
     "struct MotifColors: Equatable, Sendable {",
     ...fields.map((f) => `    let ${f}: Color`),
+    ...(readable ? ["", ...doc(["The action colour for text, readable on the background."], 4), `    let ${actionText}: Color`] : []),
     "",
     ...instances,
     "",
@@ -499,7 +520,10 @@ function typeBlock(t: Theme): string[] {
 export function generateSwiftUI(set: ThemeSet): GeneratedFile[] {
   const t = set.base;
   const variants = set.variants.length > 0 && set.defaultId !== null;
-  const accent = t.colors.some((c) => c.name === "action-primary") ? swiftMember("action-primary", "c") : null;
+  // SwiftUI draws the tint as text (borderless buttons, links, toolbar buttons): a light action colour gets a readable
+  // version, and the tint is that.
+  const readable = readableAction(set);
+  const accent = readable ? actionTextField(set) : t.colors.some((c) => c.name === "action-primary") ? swiftMember("action-primary", "c") : null;
   const lines = [
     TS_HEADER,
     "",
@@ -510,7 +534,7 @@ export function generateSwiftUI(set: ThemeSet): GeneratedFile[] {
     "import AppKit",
     "#endif",
     ...(variants ? variantsBlock(set) : []),
-    ...colorsBlock(set, variants),
+    ...colorsBlock(set, variants, readable),
     ...environmentBlock(set, variants, accent),
     ...sizesBlock("MotifSpace", "Spacing, in points.", t.space, "s"),
     ...sizesBlock("MotifRadius", "Corner radii, in points.", t.radius, "r"),

@@ -46,6 +46,8 @@ Add `.motifTheme()` to each `#Preview` too, so Xcode's canvas shows the guide's 
 
 `.motifTheme()` sets the views' tint from the guide's `actionPrimary`, so buttons, toggles, links and pickers take the guide's colour. Motif doesn't change the asset catalogue: a view outside `.motifTheme()` still shows its `AccentColor` (the system blue in a new project). The colours follow the system's appearance, light or dark, by themselves; never force one with `.preferredColorScheme` unless the guide asks for it.
 
+SwiftUI draws the tint as text: borderless buttons, links and toolbar buttons. When `actionPrimary` is too light to read as text (under 4.5:1 on `background`, or on `surface`) in some mode or variant, as a mint or a yellow often is on a light page, `MotifColors` gets one more member, `actionText`: the action colour darkened (or lightened, on a dark page) with the same hue until it reads, `textPrimary` when no shade of it does, and `actionPrimary` itself wherever that already reads. `.motifTheme()` then tints with `actionText` instead, so those read on the page. A `.borderedProminent` button fills with the tint too, so it fills with `actionText`: for the brand fill, use the guide's button ([components](components.md)), which draws `actionPrimary`. A guide whose action colour reads has no `actionText` at all. When the file has it, use `colors.actionText` for any text or icon in the action colour on the page, such as a link; keep `actionPrimary` for fills.
+
 ## Reading theme values in views
 
 Views read the colours from the environment. `colors` follows light, dark and the variant by itself, so a view never asks which one it is in:
