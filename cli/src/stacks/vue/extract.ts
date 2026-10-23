@@ -16,10 +16,7 @@ const VUETIFY_NAMES: Record<string, string> = {
   primary: "action-primary",
   secondary: "action-secondary",
   "on-surface": "text-primary",
-  error: "status-error",
-  warning: "status-warning",
-  success: "status-success",
-  info: "status-info",
+  error: "danger",
 };
 
 interface Theme { name: string; dark: boolean; colors: Record<string, string>; at: number; file: SourceFile }

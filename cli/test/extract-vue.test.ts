@@ -146,7 +146,7 @@ describe("Vuetify themes", () => {
     expect(byName["--background"]).toMatchObject({ light: "#FFFFFF", dark: "#121212" });
     expect(byName["--surface"]).toMatchObject({ light: "#F5F5F5", dark: "#1E1E1E" });
     expect(byName["--text-primary"]).toMatchObject({ light: "#1F1F1F", dark: "#EEEEEE" });
-    expect(byName["--status-error"]).toMatchObject({ light: "#B00020", dark: "#CF6679" });
+    expect(byName["--danger"]).toMatchObject({ light: "#B00020", dark: "#CF6679" });
     expect(byName["--accent"]).toMatchObject({ light: "#82B1FF", dark: "#FF4081" });
     expect(byName["--action-secondary"]).toMatchObject({ light: "#48A9A6" });
   });
@@ -181,6 +181,25 @@ describe("Vuetify themes", () => {
     expect(tokens.$extensions["dev.motif"].variants).toEqual([{ id: "default", label: "Default", default: true }, { id: "harvest", label: "Harvest" }]);
     expect(pairOf(tokens, "action-primary")).toEqual(["#1867C0", "#2196F3"]);
     expect(validateTokens(docFrom(tokens))).toEqual([]);
+  });
+
+  test("error, success, warning and info become the draft's danger, success, warning and info roles", async () => {
+    const root = makeProject({
+      "package.json": NUXT_PKG,
+      "app/plugins/vuetify.ts": `import { createVuetify } from 'vuetify'
+export default createVuetify({ theme: { themes: {
+  light: { dark: false, colors: { primary: '#1867C0', background: '#FFFFFF', surface: '#F5F5F5', 'on-surface': '#1F1F1F', error: '#C62828', success: '#2E7D32', warning: '#EF6C00', info: '#0277BD' } },
+  dark: { dark: true, colors: { primary: '#2196F3', background: '#121212', surface: '#1E1E1E', 'on-surface': '#EEEEEE', error: '#EF9A9A', success: '#A5D6A7', warning: '#FFCC80', info: '#81D4FA' } },
+} } })
+`,
+      "app/app.vue": "<template><v-app /></template>\n",
+    });
+    await runExtract(root, ctx);
+    const tokens = draftOf(root);
+    expect(pairOf(tokens, "danger")).toEqual(["#C62828", "#EF9A9A"]);
+    expect(pairOf(tokens, "success")).toEqual(["#2E7D32", "#A5D6A7"]);
+    expect(pairOf(tokens, "warning")).toEqual(["#EF6C00", "#FFCC80"]);
+    expect(pairOf(tokens, "info")).toEqual(["#0277BD", "#81D4FA"]);
   });
 
   test("a Nuxt app's vuetify.config.ts is read too", async () => {
