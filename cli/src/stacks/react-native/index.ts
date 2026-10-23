@@ -52,7 +52,7 @@ function rootComponent(appDir: string): string {
   return app ? `your root component (${existsSync(join(appDir, app)) ? app : `src/${app}`})` : "your root component";
 }
 
-/** How a design variant is set in Expo apps, for the note when a variant looks exactly like the default. */
+/** How a design variant is set in Expo apps, for the note when a variant looks the same as the default. */
 export const RN_VARIANT_HOW = "MotifProvider, which follows data-variant on the web";
 /** Expo apps are drawn at phone sizes only, so the reduced-motion check runs at a phone. */
 export const RN_MOTION_SIZE = { width: 390, text: "the 390 px phone size" };

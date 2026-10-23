@@ -119,7 +119,7 @@ describe("a fresh flutter create app on the installed Flutter", () => {
     expect(pngSize(readFileSync(join(app, "design/shots/index.mobile.png")))).toEqual({ width: 780, height: 1688 });
     const shot = (name: string) => readFileSync(join(app, "design/shots", name));
     expect(Buffer.compare(shot("index.mobile.png"), shot("index+men.mobile.png"))).not.toBe(0);
-    expect(r.text).not.toContain("looks exactly like the default");
+    expect(r.text).not.toContain("looks the same as the default");
     expect(existsSync(join(app, "design/shots/audit.json"))).toBe(true);
   }, 600_000);
 });

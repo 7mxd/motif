@@ -301,7 +301,7 @@ describe("motif shot on a Compose app", () => {
     });
     const r = await runShot(root, ctx({ routes: "/", variant: "partner" }), deps);
     expect(r.text).toContain(
-      "The partner variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (MotifTheme(variant = …), or design/states/Setup.kt for an app that switches its own palette).",
+      "The partner variant looks the same as the default on every screen: the app may not switch variants the way Motif sets them (MotifTheme(variant = …), or design/states/Setup.kt for an app that switches its own palette).",
     );
   });
 });

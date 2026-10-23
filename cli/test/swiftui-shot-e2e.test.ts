@@ -238,7 +238,7 @@ describe("motif shot on a SwiftUI app, in a simulator Motif owns", () => {
       expect(near("#FDE68A")(background("index+partner.mobile.png"))).toBe(true);
       expect(near("#FDE68A")(background("index.mobile.png"))).toBe(false);
       expect(Buffer.compare(png("index.mobile.dark.png"), png("index+partner.mobile.dark.png"))).not.toBe(0);
-      expect(r.text).not.toContain("looks exactly like the default");
+      expect(r.text).not.toContain("looks the same as the default");
       // The App's .environment(store) on its scene reached the root, though the store holds a ModelContainer: the state
       // found its title (the root would have stopped the app otherwise). The .modelContainer(for:) on the scene, which
       // SwiftData keeps as a provider, isn't given to the root, and the run says so; nothing else is left out.

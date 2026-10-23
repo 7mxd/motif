@@ -1023,7 +1023,7 @@ describe("motif shot on a SwiftUI app", () => {
     });
     const r = await runShot(root, ctx({ variant: "all", sizes: "390" }), deps);
     expect(r.text).toContain(
-      "The partner variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (.motifTheme(variant:), or design/states/Setup.swift for an app that switches its own palette).",
+      "The partner variant looks the same as the default on every screen: the app may not switch variants the way Motif sets them (.motifTheme(variant:), or design/states/Setup.swift for an app that switches its own palette).",
     );
   });
 });

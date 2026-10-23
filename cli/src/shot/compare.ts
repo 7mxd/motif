@@ -141,11 +141,16 @@ export function missingStateFrames(frames: string[], allShots: string[]): string
 /** How far apart two pictures may be and still look the same: a channel within 8 of 255, and at most 0.5% of pixels past it. */
 const SAME_CHANNEL = 8;
 const SAME_SHARE = 0.005;
+/** Where pixels differ, a colour (to 5 bits a channel) over this share of the picture, or 64 pixels, that the other lacks is new. */
+const NEW_COLOR_SHARE = 0.0005;
+const NEW_COLOR_MIN_PX = 64;
 
 /**
  * True when two screenshots look the same: the same size, with nearly every pixel matching (a loading spinner drawn at
- * another angle, or a colour a few steps off, doesn't make them differ). Pictures Motif can't decode are compared by
- * their bytes; one that can't be read is never the same.
+ * another angle, a blinking caret, or a colour a few steps off, doesn't make them differ), and no new colour where they
+ * differ. A spinner moves its colours around, so where the pictures differ each has the other's colours; a variant's
+ * accent button or links bring a colour the other picture doesn't have there. Pictures Motif can't decode are compared
+ * by their bytes; one that can't be read is never the same.
  */
 export function looksTheSame(a: string, b: string): boolean {
   const x = readFileSync(a);
@@ -162,6 +167,9 @@ export function looksTheSame(a: string, b: string): boolean {
   if (p.width !== q.width || p.height !== q.height) return false;
   const allowed = Math.floor(p.width * p.height * SAME_SHARE);
   let differ = 0;
+  // Each picture's colours where the two differ, to 5 bits a channel.
+  const colors: [Map<number, number>, Map<number, number>] = [new Map(), new Map()];
+  const key = (rgba: Uint8Array, i: number) => ((rgba[i]! >> 3) << 10) | ((rgba[i + 1]! >> 3) << 5) | (rgba[i + 2]! >> 3);
   for (let i = 0; i < p.rgba.length; i += 4) {
     if (
       Math.abs(p.rgba[i]! - q.rgba[i]!) > SAME_CHANNEL ||
@@ -170,7 +178,13 @@ export function looksTheSame(a: string, b: string): boolean {
       Math.abs(p.rgba[i + 3]! - q.rgba[i + 3]!) > SAME_CHANNEL
     ) {
       if (++differ > allowed) return false;
+      for (const [k, rgba] of [[0, p.rgba], [1, q.rgba]] as const) colors[k].set(key(rgba, i), (colors[k].get(key(rgba, i)) ?? 0) + 1);
     }
+  }
+  const most = Math.max(p.width * p.height * NEW_COLOR_SHARE, NEW_COLOR_MIN_PX);
+  const [ours, theirs] = colors;
+  for (const [mine, other] of [[ours, theirs], [theirs, ours]] as const) {
+    for (const [color, count] of mine) if (count > most && !other.has(color)) return false;
   }
   return true;
 }
@@ -199,12 +213,12 @@ export function identicalVariants(shots: string[]): string[] {
 }
 
 /**
- * Notes for variants that look exactly like the default. how says how Motif sets a variant on this stack, so the
+ * Notes for variants that look the same as the default. how says how Motif sets a variant on this stack, so the
  * developer can see why the app may not follow it (on the web: data-variant on <html>).
  */
 export function identicalVariantNotes(shots: string[], how: string): string[] {
   return identicalVariants(shots).map(
-    (id) => `The ${id} variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (${how}).`,
+    (id) => `The ${id} variant looks the same as the default on every screen: the app may not switch variants the way Motif sets them (${how}).`,
   );
 }
 

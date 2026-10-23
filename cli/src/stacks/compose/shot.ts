@@ -28,7 +28,7 @@ import { composeScreenProblem, discoverComposeScreens, previewSlug, type Preview
 
 export { MOTION_WIDTH };
 
-/** How Motif sets a design variant on a Compose app, for the note when a variant looks exactly like the default. */
+/** How Motif sets a design variant on a Compose app, for the note when a variant looks the same as the default. */
 export const COMPOSE_VARIANT_HOW = "MotifTheme(variant = …), or design/states/Setup.kt for an app that switches its own palette";
 
 /** Said before the first run on a computer starts, and in its notes. */

@@ -252,7 +252,7 @@ describe("motif shot on compose-min, drawn by Robolectric", () => {
     expect(ink(png("index.mobile.rtl.png"), 48, 300, 140, 210)).toBe(0);
     expect(ink(png("index.mobile.png"), 48, 300, 140, 210)).toBeGreaterThan(200);
     const notes = JSON.stringify(r.data.notes ?? []);
-    expect(notes).not.toContain("looks exactly like the default");
+    expect(notes).not.toContain("looks the same as the default");
     expect(notes).not.toContain("doesn't offer");
     // Only the ignored .motif folder is left.
     for (const file of [HARNESS_SRC, INIT_SCRIPT, CONFIG_FILE]) expect(existsSync(join(app, file))).toBe(false);

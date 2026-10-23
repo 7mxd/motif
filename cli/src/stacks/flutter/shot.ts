@@ -22,7 +22,7 @@ import { libDartFiles } from "./routes";
 import { scriptName } from "./scripts";
 import { FLUTTER_INSTALL } from "./doctor";
 
-/** How Motif sets a design variant on a Flutter app, for the note when a variant looks exactly like the default. */
+/** How Motif sets a design variant on a Flutter app, for the note when a variant looks the same as the default. */
 export const FLUTTER_VARIANT_HOW = "MotifTheme, or design/states/setup.dart for an app that switches its own palette";
 
 /** The time limit of a run (decision 0007): long enough for a large app's first compile, and for slow screens. */

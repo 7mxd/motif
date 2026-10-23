@@ -239,7 +239,7 @@ describe("the app's own light or dark (Expo's userInterfaceStyle)", () => {
         return { route, url: `${o.baseUrl}${route}`, status: 200, shots: [join(o.outDir, `${slug}.mobile.png`), join(o.outDir, `${slug}.mobile.dark.png`)] };
       });
     const r = await runShot(withConfig({ userInterfaceStyle: "automatic" }), ctx(), fakes({ results: pairs }).deps);
-    expect(r.text).toContain("Dark mode looks exactly like light on every screen: the app doesn't follow the phone's setting on the web. MotifProvider reads it with useColorScheme(); use its colours.");
+    expect(r.text).toContain("Dark mode looks the same as light on every screen: the app doesn't follow the phone's setting on the web. MotifProvider reads it with useColorScheme(); use its colours.");
     // One that differs somewhere: no note.
     const { deps } = fakes({ results: pairs });
     const differs: ShotDeps = {
@@ -250,13 +250,13 @@ describe("the app's own light or dark (Expo's userInterfaceStyle)", () => {
         return out;
       },
     };
-    expect((await runShot(withConfig({ userInterfaceStyle: "automatic" }), ctx(), differs)).text).not.toContain("Dark mode looks exactly like light");
+    expect((await runShot(withConfig({ userInterfaceStyle: "automatic" }), ctx(), differs)).text).not.toContain("Dark mode looks the same as light");
     // A screen that threw shows Expo's error overlay in both: that says nothing about dark mode.
     const crashed = (o: CaptureOptions) => pairs(o).map((r) => ({ ...r, pageErrors: ["TypeError: x is not a function"] }));
-    expect((await runShot(withConfig({ userInterfaceStyle: "automatic" }), ctx(), fakes({ results: crashed }).deps)).text).not.toContain("Dark mode looks exactly like light");
+    expect((await runShot(withConfig({ userInterfaceStyle: "automatic" }), ctx(), fakes({ results: crashed }).deps)).text).not.toContain("Dark mode looks the same as light");
     // A light-only app has its own note instead.
     const r2 = await runShot(withConfig({ userInterfaceStyle: "light" }), ctx(), fakes({ results: pairs }).deps);
-    expect(r2.text).not.toContain("Dark mode looks exactly like light");
+    expect(r2.text).not.toContain("Dark mode looks the same as light");
   });
 });
 

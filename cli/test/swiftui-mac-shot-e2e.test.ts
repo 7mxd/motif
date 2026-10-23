@@ -245,7 +245,7 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
       expect(near("#FDE68A")(pixel("index+partner.desktop.png", 2400, 1500))).toBe(true);
       expect(near("#FDE68A")(pixel("index.desktop.png", 2400, 1500))).toBe(false);
       expect(Buffer.compare(png("index.desktop.dark.png"), png("index+partner.desktop.dark.png"))).not.toBe(0);
-      expect(r.text).not.toContain("looks exactly like the default");
+      expect(r.text).not.toContain("looks the same as the default");
 
       // The setup's signed-in square, at the detail pane's leading edge: past the sidebar on the left, and on the right
       // when the window is right to left (the sidebar then on the far right).

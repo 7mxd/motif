@@ -110,7 +110,7 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     expect(Buffer.compare(png("index.mobile.png"), png("index+partner.mobile.png"))).not.toBe(0);
     expect(Buffer.compare(png("index.mobile.dark.png"), png("index+partner.mobile.dark.png"))).not.toBe(0);
     expect(Buffer.compare(png("index.mobile.png"), png("index.mobile.rtl.png"))).not.toBe(0);
-    expect(JSON.stringify(r.data.notes ?? [])).not.toContain("looks exactly like the default");
+    expect(JSON.stringify(r.data.notes ?? [])).not.toContain("looks the same as the default");
     expect(JSON.stringify(r.data.notes ?? [])).not.toContain("doesn't offer ar");
   }, 600_000);
 

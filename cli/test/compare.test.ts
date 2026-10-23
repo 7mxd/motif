@@ -376,7 +376,7 @@ describe("variants that look like the default", () => {
     });
     expect(identicalVariants(shots)).toEqual(["men"]);
     expect(identicalVariantNotes(shots, "data-variant on <html>")).toEqual([
-      "The men variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (data-variant on <html>).",
+      "The men variant looks the same as the default on every screen: the app may not switch variants the way Motif sets them (data-variant on <html>).",
     ]);
   });
 
@@ -407,18 +407,28 @@ describe("darkLooksLikeLight (Task 7)", () => {
 describe("nearly the same pictures count as the same (v0.5.0 sweep, HiSalon problem 7)", () => {
   // A 200 × 200 screen: a white page with a dark header, as an app draws it light.
   const SIZE = 200;
-  const page = (paint?: (x: number, y: number) => [number, number, number] | undefined) => {
+  type Paint = (x: number, y: number) => [number, number, number] | undefined;
+  const page = (...paints: Paint[]) => {
     const rgba = new Uint8Array(SIZE * SIZE * 4);
     for (let y = 0; y < SIZE; y++) {
       for (let x = 0; x < SIZE; x++) {
-        const [r, g, b] = paint?.(x, y) ?? (y < 40 ? [20, 30, 40] : [255, 255, 255]);
+        const [r, g, b] = paints.reduce<[number, number, number] | undefined>((c, p) => c ?? p(x, y), undefined) ?? (y < 40 ? [20, 30, 40] : [255, 255, 255]);
         rgba.set([r, g, b, 255], (y * SIZE + x) * 4);
       }
     }
     return encodePng(SIZE, SIZE, rgba);
   };
-  /** The page with a spinner of side n px at (100, 100), drawn at another angle: n × n pixels differ. */
-  const spinner = (n: number) => page((x, y) => (x >= 100 && x < 100 + n && y >= 100 && y < 100 + n ? [90, 90, 90] : undefined));
+  const INK: [number, number, number] = [40, 40, 40];
+  /**
+   * A spinner's glyph of side n px at (100, 100), ink on the page, drawn at one of two angles: one half of its box at the
+   * first, the other half at the second. Between the angles nearly n × n pixels differ, and both colours are in both.
+   */
+  const spinner = (n: number, angle: 0 | 1): Paint => (x, y) => {
+    const [dx, dy] = [x - 100, y - 100];
+    if (dx < 0 || dy < 0 || dx >= n || dy >= n || dx === dy) return undefined;
+    return (dx < dy) === (angle === 0) ? INK : [255, 255, 255];
+  };
+  const light = page(spinner(12, 0));
   const dark = page((_x, y) => (y < 40 ? [20, 30, 40] : [18, 18, 18]));
   const write = (dir: string, files: Record<string, Uint8Array>) =>
     Object.entries(files).map(([name, bytes]) => {
@@ -426,15 +436,21 @@ describe("nearly the same pictures count as the same (v0.5.0 sweep, HiSalon prob
       return join(dir, name);
     });
 
-  test("a dark screenshot that differs from light only in a spinner (0.25% of its pixels) looks like light", () => {
+  test("a dark screenshot that differs from light only in a spinner's angle (0.33% of its pixels) looks like light", () => {
     const dir = tempDir("motif-near-");
-    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": spinner(10) }))).toBe(true);
+    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": light, "index.mobile.dark.png": page(spinner(12, 1)) }))).toBe(true);
   });
 
-  test("a variant that differs from the default only in a spinner looks like the default", () => {
+  test("a variant that differs from the default only in a spinner's angle looks like the default", () => {
     const dir = tempDir("motif-near-");
-    const shots = write(dir, { "index.mobile.png": page(), "index+men.mobile.png": spinner(10) });
+    const shots = write(dir, { "index.mobile.png": light, "index+men.mobile.png": page(spinner(12, 1)) });
     expect(identicalVariants(shots)).toEqual(["men"]);
+  });
+
+  test("a text field's caret, shown in one and blinked off in the other, is the same", () => {
+    const dir = tempDir("motif-near-");
+    const caret: Paint = (x, y) => (x >= 60 && x < 62 && y >= 150 && y < 170 ? INK : undefined);
+    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(caret), "index.mobile.dark.png": page() }))).toBe(true);
   });
 
   test("colours a few steps apart in every pixel (8 of 255 or fewer) are the same", () => {
@@ -443,10 +459,18 @@ describe("nearly the same pictures count as the same (v0.5.0 sweep, HiSalon prob
     expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": shifted }))).toBe(true);
   });
 
+  test("a variant whose only change is a new colour in under 0.5% of the pixels isn't the same: an accent button, a run of links", () => {
+    const dir = tempDir("motif-near-");
+    const button = (c: [number, number, number]): Paint => (x, y) => (x >= 50 && x < 64 && y >= 100 && y < 114 ? c : undefined);
+    expect(identicalVariants(write(dir, { "index.mobile.png": page(button([37, 99, 235])), "index+rose.mobile.png": page(button([225, 29, 72])) }))).toEqual([]);
+    const links = (c: [number, number, number]): Paint => (x, y) => (x >= 20 && x < 100 && y >= 60 && y < 67 && (x + y) % 3 === 0 ? c : undefined);
+    expect(identicalVariants(write(dir, { "home.mobile.png": page(links([37, 99, 235])), "home+rose.mobile.png": page(links([225, 29, 72])) }))).toEqual([]);
+  });
+
   test("a real dark mode, a change in 1% of the pixels, a change of 9 steps, or another size isn't the same", () => {
     const dir = tempDir("motif-near-");
     expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": dark }))).toBe(false);
-    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": spinner(20) }))).toBe(false);
+    expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(spinner(22, 0)), "index.mobile.dark.png": page(spinner(22, 1)) }))).toBe(false);
     expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": page((_x, y) => (y < 40 ? [20, 30, 40] : [246, 255, 255])) }))).toBe(false);
     const wide = encodePng(SIZE + 1, SIZE, new Uint8Array((SIZE + 1) * SIZE * 4).fill(255));
     expect(darkLooksLikeLight(write(dir, { "index.mobile.png": page(), "index.mobile.dark.png": wide }))).toBe(false);

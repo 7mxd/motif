@@ -183,7 +183,7 @@ export function readStates(cwd: string, value: unknown): StateScript[] | { error
   return states;
 }
 
-/** How Motif sets a design variant on a web page, for the note when a variant looks exactly like the default. */
+/** How Motif sets a design variant on a web page, for the note when a variant looks the same as the default. */
 export const WEB_VARIANT_HOW = "data-variant on <html>";
 
 /**
@@ -510,7 +510,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       );
     } else if (darkLooksLikeLight(captured.routes.filter(rendered).flatMap((r) => r.shots))) {
       // Only screens that drew without an error: a crashed screen looks the same in both.
-      notes.push("Dark mode looks exactly like light on every screen: the app doesn't follow the phone's setting on the web. MotifProvider reads it with useColorScheme(); use its colours.");
+      notes.push("Dark mode looks the same as light on every screen: the app doesn't follow the phone's setting on the web. MotifProvider reads it with useColorScheme(); use its colours.");
     }
     // Said the first time a folder of screenshots is made.
     const marker = join(outDir, RN_NOTE_MARKER);

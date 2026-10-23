@@ -644,7 +644,7 @@ describe("motif shot --variant", () => {
     expect(r.text).toContain('The "before" set has no screenshots in the men variant, so those were compared with its default ones.');
   });
 
-  const SAME = "The men variant looks exactly like the default on every screen: the app may not switch variants the way Motif sets them (data-variant on <html>).";
+  const SAME = "The men variant looks the same as the default on every screen: the app may not switch variants the way Motif sets them (data-variant on <html>).";
 
   test("a variant whose screenshots are byte-identical to the default's says the app may not switch the way Motif sets it (backlog)", async () => {
     const same = await runShot(withVariants(), ctx({ url: URL_, variant: "men" }), fakes({ results: perVariant }).deps);
@@ -663,7 +663,7 @@ describe("motif shot --variant", () => {
       },
     });
     const r = await runShot(withVariants(), ctx({ url: URL_, variant: "men" }), differ.deps);
-    expect(r.text).not.toContain("looks exactly like the default");
+    expect(r.text).not.toContain("looks the same as the default");
     expect(r.data.notes).toBeUndefined();
   });
 });
