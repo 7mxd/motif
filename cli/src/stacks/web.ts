@@ -30,6 +30,8 @@ export interface WebStack {
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];
   /** What to use instead of a hit, in the framework's own syntax. */
   fix?(hit: Hit): string;
+  /** Files besides sourceFiles that motif extract reads (Vuetify's config, which the usual ignores leave out); check never scans them. */
+  extractFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
   /** What the app's own files say about its design, for motif extract. */
   collect?(files: SourceFile[]): Occurrences;
   /** The pages of the app, for motif shot without --routes. */

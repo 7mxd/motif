@@ -22,7 +22,7 @@ const sortedSamples = (m: Map<string, Sample>) => [...m.values()].sort((a, b) =>
 const GENERIC = new Set([...GENERIC_WORDS, "palettes", "themes", "variants", "modes", "schemes"]);
 
 /** Comments and string contents blanked (quotes and positions kept), so structure is read from code alone. */
-function maskCode(original: string): string {
+export function maskCode(original: string): string {
   const text = maskComments(original, "script");
   const out = text.split("");
   let quote: string | null = null;
@@ -41,10 +41,10 @@ function maskCode(original: string): string {
   return out.join("");
 }
 
-interface Entry { key: string; keyStart: number; value: Obj | Leaf }
-interface Obj { entries: Entry[]; start: number; end: number }
-interface Leaf { text: string; start: number }
-const isObj = (v: Obj | Leaf): v is Obj => "entries" in v;
+export interface Entry { key: string; keyStart: number; value: Obj | Leaf }
+export interface Obj { entries: Entry[]; start: number; end: number }
+export interface Leaf { text: string; start: number }
+export const isObj = (v: Obj | Leaf): v is Obj => "entries" in v;
 
 const IDENT = "[A-Za-z_$][\\w$]*";
 const KEY = new RegExp(`${IDENT}|\\d+`, "y");
@@ -64,7 +64,7 @@ function valueEnd(m: string, from: number): number {
 }
 
 /** The object literal whose "{" is at `open`: its keys and their values, nested objects read too. Spreads and computed keys are skipped. */
-function parseObject(m: string, o: string, open: number): Obj {
+export function parseObject(m: string, o: string, open: number): Obj {
   const entries: Entry[] = [];
   let i = open + 1;
   const skipSpace = () => {

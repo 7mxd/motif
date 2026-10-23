@@ -211,12 +211,10 @@ describe("motif check on a Nuxt app", () => {
 });
 
 describe("motif check on a Vue app without a design guide", () => {
-  // Task 5 gives Vue a collect: extract then reads Vue, and this expectation flips to "motif extract".
-  test("points at the review (/design), because motif extract can't read Vue yet", async () => {
+  test("points at motif extract, which reads Vue", async () => {
     const root = makeProject({ "package.json": pkg(), "src/App.vue": "<template><p /></template>\n" });
     const r = await check(root);
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("Start one with /design");
-    expect(r.text).not.toContain("motif extract");
+    expect(r.text).toContain("Draft one from your code with motif extract");
   });
 });
