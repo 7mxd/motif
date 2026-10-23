@@ -393,6 +393,26 @@ describe("a see-through role colour is drafted as it shows (v0.5.0 gate, Task 4)
     valid(faint.tokens);
   });
 
+  test("status and action colours found only see-through stay solid, with the solid note (fix round 1)", () => {
+    // A danger red found only as a 10% tint, and buttons filled with indigo at 80%: still red and indigo as text or a fill.
+    const { tokens, report } = buildDraft({
+      ...hisalon,
+      colors: [
+        ...hisalon.colors,
+        { value: "#dc26261a", count: 4, contexts: { background: 4 }, examples: [] },
+        { value: "#4338cacc", count: 6, contexts: { action: 6, background: 6 }, examples: [] },
+      ],
+    });
+    expect(role(tokens, "danger").light).toBe("#DC2626");
+    expect(role(tokens, "action-primary").light).toBe("#4338CA");
+    const notes = report.notes.join("\n");
+    expect(notes).toContain("danger comes from a see-through colour (#dc26261a), drafted as solid #DC2626; check it.");
+    expect(notes).toContain("action-primary comes from a see-through colour (#4338cacc), drafted as solid #4338CA; check it.");
+    // The border beside them is still drafted as it shows.
+    expect(role(tokens, "border").light).toBe("#E5EAE8");
+    expect(validateTokens(docFrom(tokens))).toEqual([]);
+  });
+
   test("a see-through background isn't laid over itself: it, and a surface that is it, stay its solid colour", () => {
     const { tokens, report } = buildDraft({
       ...none,

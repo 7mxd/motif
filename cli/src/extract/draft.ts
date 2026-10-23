@@ -833,15 +833,17 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   const pageLike = (c: ColorCluster) =>
     same(c, chosen.background) || same(c, chosen.surface) || (chosen.background !== undefined && wcagContrast(c.hex, chosen.background.hex) < 1.5);
   chosen["action-primary"] = named["action-primary"] ?? by("action").find((c) => !isData(c) && !pageLike(c)) ?? saturated[0];
-  const secondaryFound = by("action-secondary").find((c) => !isData(c) && !same(c, chosen["action-primary"]));
+  const secondaryFill = by("action-secondary").find((c) => !isData(c) && !same(c, chosen["action-primary"]));
   const remaining = saturated.filter((c) => !same(c, chosen["action-primary"]));
   for (const [role, [hue, width]] of Object.entries(STATUS)) {
     chosen[role] = named[role] ?? remaining.find((c) => hueDistance(c.h, hue) <= width && !Object.values(chosen).some((x) => same(x, c)));
   }
 
-  // A role whose colour is see-through (a hairline at 8%) is drafted as it shows over the drafted background, as a
-  // see-through palette field is: the variable that sets that colour, when one does, gives its dark value (over the dark
-  // background) and each variant's (over that variant's). The background itself stays solid: nothing is under it.
+  // A border, text or surface colour that is see-through (a hairline at 8%) is drafted as it shows over the drafted
+  // background, as a see-through palette field is: the variable that sets that colour, when one does, gives its dark value
+  // (over the dark background) and each variant's (over that variant's). surface-raised follows the surface. The background
+  // itself stays solid: nothing is under it. Status and action colours stay solid too: a danger red found only as a 10%
+  // tint is still red where it's used as text or a fill.
   /** Roles drafted from a see-through colour no variable sets, laid over the background: role → that colour. */
   const shownOver = new Map<string, string>();
   const shownClusters = new Map<ColorCluster, { cluster: ColorCluster; field?: string }>();
@@ -873,8 +875,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     else shownOver.set(role, value);
     return shown.cluster;
   };
-  for (const role of BASE_ROLES) if (role !== "background") chosen[role] = asShown(role, chosen[role]);
-  const secondaryFill = asShown("action-secondary", secondaryFound);
+  for (const role of ["border", "text-primary", "text-secondary", "surface"]) chosen[role] = asShown(role, chosen[role]);
 
   // Primitive colours: one per cluster used, plus defaults, white and ink.
   const primitives: Record<string, unknown> = {};
@@ -1395,8 +1396,8 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     notes.push(`Your CSS sets ${variables.length} colour ${variables.length === 1 ? "variable" : "variables"}; design/extract-report.json shows the role each matches, so you can define them from Motif's (--bg: var(--motif-color-background)).`);
   }
   notes.push(...(occ.notes ?? []));
-  // A role whose colour is see-through (a hairline at 8%) is drafted as it shows over the background, and the background
-  // itself solid: say so. The colour is the variable's that named the role, when one did (a solid --text beside much-used
+  // A border, text or surface colour that is see-through (a hairline at 8%) is drafted as it shows over the background, and
+  // the background, status and action colours solid: say so. The colour is the variable's that named the role, when one did (a solid --text beside much-used
   // see-through text of the same hue isn't see-through).
   for (const role of [...BASE_ROLES, ...(secondaryFill ? ["action-secondary"] : [])]) {
     // A text colour changed to read on the fills has its own note.
