@@ -137,3 +137,49 @@ export const routes: RouteRecordRaw[] = [
     expect(discoverVueRoutes(root)).toEqual({ routes: ["/"], skipped: [] });
   });
 });
+
+describe("discoverVueRoutes edge cases", () => {
+  test("children that are only spreads leave the parent a page", () => {
+    const root = makeProject({
+      "package.json": vuePkg,
+      "src/router.ts": "import { createRouter } from 'vue-router'\nexport default createRouter({ history, routes: [{ path: '/account', component: A, children: [...accountRoutes] }] })\n",
+    });
+    expect(discoverVueRoutes(root).routes).toEqual(["/", "/account"]);
+  });
+
+  test("an untyped routes array in a file that imports nothing from vue-router is read", () => {
+    const root = makeProject({
+      "package.json": vuePkg,
+      "src/router/routes.js": "export const routes = [\n  { path: '/', component: Home },\n  { path: '/pricing', component: Pricing },\n]\n",
+    });
+    expect(discoverVueRoutes(root).routes).toEqual(["/", "/pricing"]);
+  });
+
+  test("a parameter anywhere in a segment needs a value", () => {
+    const root = makeProject({
+      "package.json": vuePkg,
+      "src/router.ts": "import { createRouter } from 'vue-router'\nexport default createRouter({ history, routes: [{ path: '/p/prefix-:id', component: P }, { path: '/ok', component: O }] })\n",
+    });
+    expect(discoverVueRoutes(root)).toEqual({ routes: ["/", "/ok"], skipped: ["/p/prefix-:id"] });
+    const nuxt = makeProject({ "package.json": JSON.stringify({ dependencies: { nuxt: "^4.0.0" } }), "app/pages/p/prefix-[id].vue": SFC });
+    expect(discoverVueRoutes(nuxt).skipped).toEqual(["/p/prefix-[id]"]);
+  });
+
+  test("a repeating parameter (/files/:path*) is skipped, not dropped", () => {
+    const root = makeProject({
+      "package.json": vuePkg,
+      "src/router.ts": "import { createRouter } from 'vue-router'\nexport default createRouter({ history, routes: [{ path: '/files/:path*', component: F }, { path: '/:pathMatch(.*)*', component: N }] })\n",
+    });
+    expect(discoverVueRoutes(root)).toEqual({ routes: ["/"], skipped: ["/files/:path*"] });
+  });
+
+  test("without a src folder the walk leaves dist and design alone", () => {
+    const root = makeProject({
+      "package.json": vuePkg,
+      "router.ts": "import { createRouter } from 'vue-router'\nexport default createRouter({ history, routes: [{ path: '/real', component: R }] })\n",
+      "dist/router.js": "import { createRouter } from 'vue-router'\ncreateRouter({ routes: [{ path: '/built', component: B }] })\n",
+      "design/router.ts": "import { createRouter } from 'vue-router'\ncreateRouter({ routes: [{ path: '/sketch', component: S }] })\n",
+    });
+    expect(discoverVueRoutes(root).routes).toEqual(["/", "/real"]);
+  });
+});

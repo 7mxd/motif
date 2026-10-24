@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { maskComments } from "../../check/mask";
 import { stripBom } from "../../text";
 import type { RouteDiscovery } from "../react-web/routes";
+import { entries, inside, isDir, splitTop } from "../route-source";
 import { isNuxt, nuxtSrcDir, usesFileRoutes } from "./project";
 
 const PAGE = /\.vue$/i;
@@ -10,21 +11,9 @@ const NOT_A_PAGE = /\.(test|spec|stories)\./i;
 const SOURCE = /\.(ts|js|mts|mjs)$/;
 const MAX_FILES = 500;
 
-const isDir = (path: string) => {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-};
-const entries = (dir: string) => {
-  try {
-    return readdirSync(dir).sort();
-  } catch {
-    return [];
-  }
-};
-const needsValue = (segment: string) => segment.startsWith("[") || segment.startsWith(":");
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", "design", "coverage", "out"]);
+/** A segment that takes a value: [id], :id, prefix-:id, prefix-[id]. */
+const needsValue = (segment: string) => segment.includes("[") || segment.includes(":");
 
 function add(out: RouteDiscovery, segments: string[]): void {
   (segments.some(needsValue) ? out.skipped : out.routes).push("/" + segments.join("/"));
@@ -46,40 +35,6 @@ function fileRoutes(dir: string, segments: string[], out: RouteDiscovery): void 
   }
 }
 
-/** Splits text at its top-level commas, leaving strings and nested brackets whole. */
-function splitTop(text: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!;
-    if (c === '"' || c === "'" || c === "`") {
-      for (i++; i < text.length && text[i] !== c; i++) if (text[i] === "\\") i++;
-    } else if (c === "{" || c === "[" || c === "(") depth++;
-    else if (c === "}" || c === "]" || c === ")") depth--;
-    else if (c === "," && depth === 0) {
-      parts.push(text.slice(start, i));
-      start = i + 1;
-    }
-  }
-  parts.push(text.slice(start));
-  return parts.map((p) => p.trim()).filter(Boolean);
-}
-
-/** The text between the bracket at `open` and its match. */
-function inside(text: string, open: number): string {
-  const closer = text[open] === "[" ? "]" : "}";
-  let depth = 0;
-  for (let i = open; i < text.length; i++) {
-    const c = text[i]!;
-    if (c === '"' || c === "'" || c === "`") {
-      for (i++; i < text.length && text[i] !== c; i++) if (text[i] === "\\") i++;
-    } else if (c === text[open]) depth++;
-    else if (c === closer && --depth === 0) return text.slice(open + 1, i);
-  }
-  return text.slice(open + 1);
-}
-
 function routeRecords(arrayBody: string, parent: string, out: RouteDiscovery): void {
   for (const element of splitTop(arrayBody)) {
     if (!element.startsWith("{")) continue;
@@ -94,13 +49,21 @@ function routeRecords(arrayBody: string, parent: string, out: RouteDiscovery): v
     const full = own.startsWith("/") ? own : `${parent}/${own}`;
     const path = full.replace(/\/{2,}/g, "/").replace(/\/+$/, "") || "/";
     const children = props.get("children");
-    if (children?.startsWith("[")) routeRecords(inside(children, 0), path === "/" ? "" : path, out);
-    if (children?.startsWith("[") && !children.startsWith("[]")) continue;
+    if (children?.startsWith("[")) {
+      const kids = inside(children, 0);
+      routeRecords(kids, path === "/" ? "" : path, out);
+      // Children that are all spreads ([...userRoutes]) say nothing: the parent is still a page of its own.
+      if (splitTop(kids).some((k) => k.startsWith("{"))) continue;
+    }
     if (props.has("redirect") && !props.has("component") && !props.has("components")) continue;
-    if (path.includes("(.*)") || path.includes("*")) continue;
+    if (path.includes("(.*)") || (path.includes("*") && !path.includes(":"))) continue;
     add(out, path.split("/").filter(Boolean));
   }
 }
+
+const READS_ROUTES = /vue-router|createRouter|RouteRecordRaw/;
+/** A route record's path, for a routes array that imports nothing from vue-router. */
+const PATH_RECORD = /\bpath\s*:\s*["'`]\//;
 
 const ARRAY_STARTS = [
   /\broutes\s*:\s*\[/g,
@@ -112,7 +75,7 @@ function routerConfigs(appDir: string, out: RouteDiscovery): void {
   const files: string[] = [];
   const visit = (dir: string) => {
     for (const entry of entries(dir)) {
-      if (files.length >= MAX_FILES || entry === "node_modules" || entry.startsWith(".")) continue;
+      if (files.length >= MAX_FILES || SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
       const path = join(dir, entry);
       if (isDir(path)) visit(path);
       else if (SOURCE.test(entry) && !NOT_A_PAGE.test(entry)) files.push(path);
@@ -127,7 +90,7 @@ function routerConfigs(appDir: string, out: RouteDiscovery): void {
     } catch {
       continue;
     }
-    if (!/vue-router|createRouter|RouteRecordRaw/.test(text)) continue;
+    if (!READS_ROUTES.test(text) && !(PATH_RECORD.test(text) && /\bcomponent\s*:/.test(text))) continue;
     const seen = new Set<number>();
     for (const re of ARRAY_STARTS) {
       for (const m of text.matchAll(re)) {
