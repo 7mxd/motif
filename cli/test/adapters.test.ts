@@ -405,7 +405,9 @@ describe("the Vue guide", () => {
       "npm create vue@latest", "npm create nuxt@latest", "npx vue-tsc --noEmit", "nuxi typecheck", "npm run dev",
       "design/motif.json", "themeDir", "srcDir", "Vue 3", "Nuxt 3", "Node 22.22.3", "Vue 2 and Nuxt 2 aren't supported",
       "browser frame", "Vite about 2 seconds", "Nuxt with server rendering about 7 seconds",
+      "motif shot --url", "dev server included, typical:", "a Vue 2 app is recognised too",
     ]);
+    expect(read("vue/README.md")).not.toContain("measured on Windows");
   });
 
   test("tokens.md: the files, wiring them in, the starter's variables, and switching variants", () => {
@@ -439,7 +441,7 @@ describe("the Vue guide", () => {
   test("checks.md: every rule, the audit, state scripts as JavaScript, and --rtl", () => {
     const checks = read("vue/checks.md");
     for (const id of RULE_IDS) expect(checks).toContain(`## \`${id}\``);
-    has("checks.md", ["## Contrast", "## Target size", "## Reduced motion", "motif-ok", "<!-- motif-ok", "--state design/states/", "are JavaScript", "--rtl", "## Screens behind a form or a click"]);
+    has("checks.md", ["## Contrast", "## Target size", "## Reduced motion", "motif-ok", "<!-- motif-ok", "--state design/states/", "are JavaScript", "--rtl", "## Screens behind a form or a click", "data-ready"]);
   });
 
   test("the code examples pass motif check as they are", async () => {
@@ -573,6 +575,88 @@ describe("the SwiftUI guide", () => {
       }
     }
     expect([...reported].sort()).toEqual(["off-scale", "raw-color", "raw-font", "raw-motion", "reduced-motion"]);
+  });
+});
+
+describe("the Svelte guide", () => {
+  const has = (file: string, strings: string[]) => {
+    const text = read(`svelte/${file}`);
+    for (const s of strings) expect(text).toContain(s);
+  };
+
+  test("has exactly the template's files", () => {
+    expect(readdirSync(join(ADAPTERS, "svelte")).sort()).toEqual(GUIDE_FILES);
+  });
+
+  test("README: both starters, the commands, the theme folder, the floors, Svelte 4, mockups and the first-screenshot times", () => {
+    has("README.md", [
+      "npx sv create", "npm create vite@latest", "npx svelte-check", "npm run dev", "design/motif.json", "themeDir", "srcDir",
+      "Svelte 5", "SvelteKit 2 or 3", "Node 22.17", "Svelte 4 isn't supported", "motif shot --url", "browser frame",
+      "SvelteKit 2 about 4 seconds", "Svelte with Vite about 3 seconds", "SvelteKit 3 about 4 seconds",
+    ]);
+  });
+
+  test("tokens.md: the files, wiring them in, the starter's variables, and switching variants", () => {
+    has("tokens.md", [
+      "motif.css", "motif.tailwind.css", "$lib/styles/motif.css", "#lib/styles/motif.css", "+layout.svelte", "src/main.ts", "var(--motif-color-", "bg-action-primary",
+      "data-variant", "## Switching variants", "document.documentElement.dataset.variant", "transformPageChunk", "hooks.server.ts", "%variant%",
+    ]);
+  });
+
+  test("components.md: where components live, runes, snippets, every state, names and the starter set", () => {
+    has("components.md", [
+      "src/lib/components/", "$props()", "{@render", "<button", ":hover", ":focus-visible", ":disabled", ":active", "aria-label", "<style>", "var(--motif-", "PascalCase",
+    ]);
+    for (const c of STARTER_SET) expect(read("svelte/components.md")).toContain(`\`${c}\``);
+  });
+
+  test("motion.md: transitions, the CSS roles, Spring and Tween, Motion for the refresh-independent spring, and reduced motion", () => {
+    has("motion.md", [
+      "transition:fly", "duration.", "easing.", "Spring", "spring.", "Tween", "prefersReducedMotion", "animate(", "motionSpring.", "120 Hz", "var(--motif-duration-fast)",
+    ]);
+  });
+
+  test("platform.md: right to left, logical properties, the page's lang and dir, and server rendering", () => {
+    has("platform.md", [
+      'dir="rtl"', "margin-inline-start", "padding-inline-end", "src/app.html", "<html lang", "transformPageChunk", "server rendering", "onMount", "$effect",
+    ]);
+  });
+
+  test("checks.md: every rule, the audit, state scripts as JavaScript, and --rtl", () => {
+    const checks = read("svelte/checks.md");
+    for (const id of RULE_IDS) expect(checks).toContain(`## \`${id}\``);
+    has("checks.md", ["## Contrast", "## Target size", "## Reduced motion", "motif-ok", "<!-- motif-ok", "--state design/states/", "are JavaScript", "--rtl", "## Screens behind a form or a click", "data-ready"]);
+  });
+
+  test("the code examples pass motif check as they are", async () => {
+    const files: Record<string, string> = {
+      "package.json": JSON.stringify({
+        name: "x", private: true, type: "module", scripts: { dev: "vite dev" },
+        devDependencies: { "@sveltejs/kit": "^2.70.0", "@sveltejs/vite-plugin-svelte": "^7.0.0", svelte: "^5.57.0", typescript: "~5.9.0", vite: "^8.0.0", tailwindcss: "^4.1.0", "@tailwindcss/vite": "^4.1.0" },
+        dependencies: { motion: "^14.6.0" },
+      }),
+      "svelte.config.js": "export default { kit: {} };\n",
+      "src/app.html": '<!doctype html>\n<html lang="en">%sveltekit.head%%sveltekit.body%</html>\n',
+      "src/routes/+page.svelte": "<h1>Welcome</h1>\n",
+      "src/lib/pref.ts": 'import { prefersReducedMotion } from "svelte/motion";\nexport const calm = () => prefersReducedMotion.current;\n',
+      "design/tokens.json": readFileSync(join(FIXTURES, "contract/design/tokens.json"), "utf8"),
+    };
+    const examples: string[] = [];
+    for (const file of GUIDE_FILES) {
+      const text = read(`svelte/${file}`);
+      for (const [i, m] of [...text.matchAll(/```(svelte|ts|css)\n([\s\S]*?)```/g)].entries()) {
+        // The block that fills a placeholder in the page is a hook, not code to scan beside a layout.
+        const path = `src/lib/examples/${file.replace(".md", "")}-${i + 1}.${m[1] === "svelte" ? "svelte" : m[1]}`;
+        files[path] = m[2]!;
+        examples.push(path);
+      }
+    }
+    expect(examples.filter((p) => p.endsWith(".svelte")).length).toBeGreaterThan(8);
+    const root = makeProject(files);
+    expect((await runTokens(root, { positionals: [] })).exitCode).toBe(0);
+    const result = await runCheck(root, { positionals: [] });
+    const hits = ((result.data as any).violations as any[]).filter((h) => h.file.startsWith("src/lib/examples/")).map((h) => `${h.file}:${h.line} ${h.rule} ${h.text}`);
+    expect(hits).toEqual([]);
   });
 });
 
