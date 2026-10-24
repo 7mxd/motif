@@ -204,11 +204,14 @@ function once(hits: Hit[]): Hit[] {
 function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Theme, opts: { paths?: string[]; ignore?: string[]; variants?: ThemeVariant[]; set?: ThemeSet }): AppCheck {
   const appDir = join(root, app.path);
   const srcDir = app.srcDir ?? web.srcDir(appDir);
-  const scale = buildScale(theme, srcDir);
   const tailwindVersion = detectTailwind(appDir);
   const v3Roles: ThemeRoles | undefined = tailwindVersion === "v3" ? tailwind3Roles(theme, appDir) : undefined;
   const set: ThemeSet = opts.set ?? { base: theme, defaultId: null, defaultLabel: null, variants: opts.variants ?? [] };
   const expected = web.generate ? web.generate(set, { root, app, srcDir, tailwind: tailwindVersion }).files : [];
+  // The motion file the stack writes (a Nuxt 3 app at the project root keeps it in motion/), as a path in the app.
+  const motion = expected.find((f) => /motion\.ts$/.test(f.path))?.path;
+  const scale = buildScale(theme, srcDir);
+  if (motion) scale.motionImport = (motion.startsWith(`${app.path}/`) ? motion.slice(app.path.length + 1) : motion).replace(/\.ts$/, "");
   const views = (f: SourceFile) => (web.views ? web.views(f) : expandHtml([f]));
 
   const all = web.sourceFiles(root, app, { ignore: opts.ignore });

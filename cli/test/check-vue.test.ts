@@ -198,6 +198,18 @@ describe("motif check on a Nuxt app", () => {
     ]);
   });
 
+  test("a Nuxt 3 app at the project root: a Tailwind timing names its motion file, motion/motif-motion", async () => {
+    const root = makeProject({
+      "package.json": JSON.stringify({ name: "n", dependencies: { nuxt: "^3.15.0", vue: "^3.5.0", "motion-v": "^2.0.0", ...TW4 } }),
+      "app.vue": "<template><NuxtPage /></template>\n",
+      "pages/index.vue": `<template><p class="transition duration-[250ms]">hi</p></template>\n`,
+      "design/tokens.json": TOKENS,
+    });
+    expect((await runTokens(root, { positionals: [] })).exitCode).toBe(0);
+    const hit = (((await check(root)).data as any).violations as any[]).find((h) => h.rule === "raw-motion");
+    expect(hit.fix).toContain('import { duration } from "motion/motif-motion"');
+  });
+
   test("a Nuxt 4 app reads app/ and its pages", async () => {
     const root = makeProject({
       "package.json": JSON.stringify({ name: "n", dependencies: { nuxt: "^4.0.0", vue: "^3.5.0" } }),
