@@ -172,17 +172,17 @@ export async function preflight(
       return { error: "Node.js 20.9 or later, with npm, is needed to install and build the eval apps. Install it, then run this again." };
     }
     const mac = (d.platform ?? process.platform) === "darwin";
-    const found = node.stdout.trim().replace(/^v/, "");
+    const nodeVersion = node.stdout.trim().replace(/^v/, "");
     const named = (pick: (c: (typeof CASES)[number]) => boolean) => CASES.filter(pick).map((c) => c.id).join(", ");
     const others = CASES.filter((c) => !needsVite8(c) && !needsSvelteKit3(c) && (mac || !c.mac)).map((c) => c.id).join(",");
     if (nodeNeeds.vite8 && !runsVite8(major, minor)) {
       return {
-        error: `The Vue and Svelte cases (${named(needsVite8)}) need Node.js 20.19 or later, or 22.12 or later on Node 22 (Bustan's and Adawat's Vite 8 needs it). This is Node.js ${found}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases ${others}`,
+        error: `The Vue and Svelte cases (${named(needsVite8)}) need Node.js 20.19 or later, or 22.12 or later on Node 22 (Bustan's and Adawat's Vite 8 needs it). This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases ${others}`,
       };
     }
     if (nodeNeeds.svelteKit3 && !runsSvelteKit3(major, minor)) {
       return {
-        error: `The new Svelte app (${named(needsSvelteKit3)}) needs Node.js 22.17 or later, since npx sv create makes a SvelteKit 3 app and SvelteKit 3 needs it. This is Node.js ${found}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases ${others}`,
+        error: `The new Svelte app (${named(needsSvelteKit3)}) needs Node.js 22.17 or later, since npx sv create makes a SvelteKit 3 app and SvelteKit 3 needs it. This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases ${others}`,
       };
     }
   }

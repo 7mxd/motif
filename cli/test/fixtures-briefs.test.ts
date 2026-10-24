@@ -5,7 +5,7 @@ import { join } from "node:path";
 const BRIEFS = join(import.meta.dir, "../../tests/fixtures/briefs");
 
 describe("the new-app briefs", () => {
-  test("there are eight", () => {
+  test("there are nine", () => {
     expect(readdirSync(BRIEFS).sort()).toEqual(["bloom.md", "darb.md", "ledgerly.md", "masar.md", "nabta.md", "nuzha.md", "rihla.md", "sahm.md", "stride.md"]);
   });
 
