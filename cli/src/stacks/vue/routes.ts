@@ -1,19 +1,13 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { maskComments } from "../../check/mask";
-import { stripBom } from "../../text";
 import type { RouteDiscovery } from "../react-web/routes";
-import { entries, inside, isDir, splitTop } from "../route-source";
+import { entries, inside, isDir, listRouteSources, needsValue, splitTop } from "../route-source";
 import { isNuxt, nuxtSrcDir, usesFileRoutes } from "./project";
 
 const PAGE = /\.vue$/i;
 const NOT_A_PAGE = /\.(test|spec|stories)\./i;
 const SOURCE = /\.(ts|js|mts|mjs)$/;
-const MAX_FILES = 500;
 
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", "design", "coverage", "out"]);
-/** A segment that takes a value: [id], :id, prefix-:id, prefix-[id]. */
-const needsValue = (segment: string) => segment.includes("[") || segment.includes(":");
 
 function add(out: RouteDiscovery, segments: string[]): void {
   (segments.some(needsValue) ? out.skipped : out.routes).push("/" + segments.join("/"));
@@ -72,24 +66,8 @@ const ARRAY_STARTS = [
 ];
 
 function routerConfigs(appDir: string, out: RouteDiscovery): void {
-  const files: string[] = [];
-  const visit = (dir: string) => {
-    for (const entry of entries(dir)) {
-      if (files.length >= MAX_FILES || SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
-      const path = join(dir, entry);
-      if (isDir(path)) visit(path);
-      else if (SOURCE.test(entry) && !NOT_A_PAGE.test(entry)) files.push(path);
-    }
-  };
-  const src = join(appDir, "src");
-  visit(isDir(src) ? src : appDir);
-  for (const file of files) {
-    let text: string;
-    try {
-      text = maskComments(stripBom(readFileSync(file, "utf8")), "script");
-    } catch {
-      continue;
-    }
+  for (const file of listRouteSources(appDir, SOURCE)) {
+    const text = maskComments(file.text, "script");
     if (!READS_ROUTES.test(text) && !(PATH_RECORD.test(text) && /\bcomponent\s*:/.test(text))) continue;
     const seen = new Set<number>();
     for (const re of ARRAY_STARTS) {

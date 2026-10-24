@@ -1,4 +1,6 @@
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { stripBom } from "../text";
 
 export const isDir = (path: string) => {
   try {
@@ -47,4 +49,38 @@ export function inside(text: string, open: number): string {
     else if (c === closer && --depth === 0) return text.slice(open + 1, i);
   }
   return text.slice(open + 1);
+}
+
+const NOT_A_PAGE = /\.(test|spec|stories)\./i;
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", "design", "coverage", "out"]);
+const MAX_FILES = 500;
+
+/** A segment that takes a value: [id], :id, prefix-:id, prefix-[id]. */
+export const needsValue = (segment: string) => segment.includes("[") || segment.includes(":");
+
+/**
+ * The source files (matching `sourceRe`, tests and stories left out) a router config can be in, with their text:
+ * src/ when the app has one, else the whole app, without build output, design/ or dot folders. At most 500 files.
+ */
+export function listRouteSources(appDir: string, sourceRe: RegExp): { path: string; text: string }[] {
+  const files: string[] = [];
+  const visit = (dir: string) => {
+    for (const entry of entries(dir)) {
+      if (files.length >= MAX_FILES || SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
+      const path = join(dir, entry);
+      if (isDir(path)) visit(path);
+      else if (sourceRe.test(entry) && !NOT_A_PAGE.test(entry)) files.push(path);
+    }
+  };
+  const src = join(appDir, "src");
+  visit(isDir(src) ? src : appDir);
+  const out: { path: string; text: string }[] = [];
+  for (const path of files) {
+    try {
+      out.push({ path, text: stripBom(readFileSync(path, "utf8")) });
+    } catch {
+      continue;
+    }
+  }
+  return out;
 }

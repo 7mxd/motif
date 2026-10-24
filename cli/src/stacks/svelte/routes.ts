@@ -1,21 +1,14 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { maskComments } from "../../check/mask";
-import { stripBom } from "../../text";
 import type { RouteDiscovery } from "../react-web/routes";
-import { entries, inside, isDir, splitTop } from "../route-source";
+import { entries, inside, isDir, listRouteSources, needsValue, splitTop } from "../route-source";
 import { isSvelteKit, routesDir } from "./project";
 
 /** +page.svelte, or a layout reset: +page@.svelte, +page@(group).svelte, +page@[id].svelte. */
 const PAGE = /^\+page(@[^.]*)?\.svelte$/;
 const SOURCE = /\.(svelte|ts|js|mts|mjs)$/;
-const NOT_A_PAGE = /\.(test|spec|stories)\./i;
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", "design", "coverage", "out", ".svelte-kit"]);
-const MAX_FILES = 500;
 
 const isOptional = (segment: string) => /^\[\[[^\]]+\]\]$/.test(segment);
-/** A segment that takes a value: [slug], [...rest], [id=integer], prefix-[id], :id. */
-const needsValue = (segment: string) => segment.includes("[") || segment.includes(":");
 
 /** A route with an optional [[lang]] segment exists without it too: the short form is a page, the full one needs a value. */
 function add(out: RouteDiscovery, segments: string[]): void {
@@ -45,24 +38,8 @@ function addPath(out: RouteDiscovery, raw: string): void {
 
 /** svelte-spa-router's `{ '/': Home, '/about': About }` objects and svelte-routing's <Route path="…">. */
 function routerRoutes(appDir: string, out: RouteDiscovery): void {
-  const files: string[] = [];
-  const visit = (dir: string) => {
-    for (const entry of entries(dir)) {
-      if (files.length >= MAX_FILES || SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
-      const path = join(dir, entry);
-      if (isDir(path)) visit(path);
-      else if (SOURCE.test(entry) && !NOT_A_PAGE.test(entry)) files.push(path);
-    }
-  };
-  const src = join(appDir, "src");
-  visit(isDir(src) ? src : appDir);
-  for (const file of files) {
-    let text: string;
-    try {
-      text = stripBom(readFileSync(file, "utf8"));
-    } catch {
-      continue;
-    }
+  for (const file of listRouteSources(appDir, SOURCE)) {
+    let text = file.text;
     if (!/svelte-spa-router|svelte-routing/.test(text)) continue;
     text = maskComments(maskComments(text, "markup"), "script");
     if (text.includes("svelte-spa-router")) {
