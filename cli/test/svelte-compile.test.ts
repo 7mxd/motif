@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { runTokens } from "../src/commands/tokens";
-import { FIXTURES, validTokens } from "./helpers";
+import { FIXTURES, heavyStackTests, validTokens } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 // Removing an installed node_modules takes longer than a hook's default 5 s on Windows.
@@ -10,9 +10,10 @@ afterAll(cleanupTempDirs, 120_000);
 
 const node = Bun.which("node");
 const npm = Bun.which("npm");
-// Needs Node and npm (and the network the first time, for npm ci); without them the test skips.
-const toolchain = Boolean(node && npm);
-if (!toolchain) console.log("[svelte-compile] skipped: Node or npm isn't installed");
+// Needs Node and npm (and the network the first time, for npm ci); without them the test skips. In CI it runs in the svelte job.
+const gate = heavyStackTests("svelte", Boolean(node && npm));
+const toolchain = gate.run;
+if (!toolchain) console.log(`[svelte-compile] skipped: ${!node || !npm ? "Node or npm isn't installed" : gate.reason}`);
 
 function run(cmd: string[], cwd: string): { code: number; out: string } {
   const r = Bun.spawnSync(cmd, { cwd, stdout: "pipe", stderr: "pipe" });

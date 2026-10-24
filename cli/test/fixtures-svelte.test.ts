@@ -9,6 +9,7 @@ import { runValidate } from "../src/commands/validate";
 import { findBrowser } from "../src/detect/browser";
 import { CSS_HEADER, TS_HEADER } from "../src/generate/header";
 import { discoverSvelteRoutes } from "../src/stacks/svelte/routes";
+import { heavyStackTests } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 // Removing an installed node_modules takes longer than a hook's default 5 s on Windows.
@@ -281,9 +282,10 @@ describe("the assembled Svelte seeded app", () => {
 const npm = Bun.which("npm");
 const node = Bun.which("node");
 const browser = findBrowser() !== null;
-const hasNode = Boolean(npm && node);
+const gate = heavyStackTests("svelte", Boolean(npm && node));
+const hasNode = gate.run;
 const ready = hasNode && browser;
-if (!hasNode) console.log("[fixtures-svelte] the installed tests are skipped: Node and npm aren't installed.");
+if (!hasNode) console.log(`[fixtures-svelte] the installed tests are skipped: ${!npm || !node ? "Node and npm aren't installed" : gate.reason}.`);
 else if (!browser) console.log("[fixtures-svelte] the screenshot tests are skipped: no Chrome, Edge or Chromium was found.");
 
 describe("Adawat and its seeded copy, installed, type-checked and drawn through SvelteKit", () => {

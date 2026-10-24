@@ -96,7 +96,7 @@ describe("the release workflow", () => {
 
   test("publishes with written notes and the notices, only after checking the notes exist", () => {
     const publish = section("publish");
-    expect(publish).toContain("needs: [build, plugin, test, flutter, compose, react-native, vue, swiftui, swiftui-fixtures]");
+    expect(publish).toContain("needs: [build, plugin, test, flutter, compose, react-native, vue, svelte, swiftui, swiftui-fixtures]");
     expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre');
     expect(publish).not.toContain("--generate-notes");
     expect(publish).toContain("cp THIRD-PARTY-NOTICES.txt dist/");
@@ -230,6 +230,7 @@ describe("each stack job and its heavy tests agree on its name", () => {
     compose: { stack: "compose", files: ["compose-compile", "compose-render", "compose-shot-e2e", "fixtures-compose", "compose-agp9", "compose-flavors", "compose-junit-platform"] },
     "react-native": { stack: "react-native", files: ["rn-compile", "rn-shot-e2e", "fixtures-rn"] },
     vue: { stack: "vue", files: ["vue-compile", "vue-shot-e2e", "fixtures-vue"] },
+    svelte: { stack: "svelte", files: ["svelte-compile", "svelte-shot-e2e", "fixtures-svelte"] },
     swiftui: { stack: "swiftui", files: ["swiftui-compile", "swiftui-guide-compile", "swiftui-render", "swiftui-shot-e2e", "swiftui-mac-shot-e2e"] },
     "swiftui-fixtures": { stack: "swiftui", files: ["fixtures-swiftui"] },
   };
@@ -300,7 +301,7 @@ describe("the release workflows are hardened (backlog)", () => {
   test("a tag publishes only after the tests pass", () => {
     const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
     expect(wf).toContain("\n  test:\n");
-    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose, react-native, vue, swiftui, swiftui-fixtures]/);
+    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose, react-native, vue, svelte, swiftui, swiftui-fixtures]/);
   });
 
   test("every action is pinned to a commit, with its version beside it", () => {
