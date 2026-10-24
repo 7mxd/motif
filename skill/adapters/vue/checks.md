@@ -173,12 +173,12 @@ const field = document.querySelector("input[name=q]");
 if (!field) return;
 field.value = "linen";
 field.dispatchEvent(new Event("input", { bubbles: true }));
-// A field outside a <form>: click the page's own button instead.
+// Submit the form. A field outside a <form> has none: click the page's own button instead.
 field.form?.requestSubmit();
 ```
 
 - It runs in every page `motif shot` captures: start it with a guard that returns on other pages (`if (!field) return;`), or capture only its page with `--routes`.
-- On a Nuxt app, wait for the page to hydrate before clicking: the script runs after load, and a click before hydration does nothing. A short `await new Promise((r) => setTimeout(r, 500))` at the top is enough.
+- On a Nuxt app, wait for the page to hydrate before clicking: the script runs after load, and a click before hydration does nothing. Don't wait a fixed time; wait for something only the running app shows. Have the page set `data-ready` on `<body>` in `onMounted`, and start the script with `for (let i = 0; i < 50 && !document.body.hasAttribute("data-ready"); i++) await new Promise((r) => setTimeout(r, 100));`, which waits for the attribute and gives up after five seconds.
 - Screenshots are named after the page and the state (`search@searched.mobile.png`); each starts as a first visit, and a script still running after 15 seconds is stopped and reported.
 - Use the same `--state` options for `--save` and `--against`, and mock data only.
 - For an app with right-to-left languages (Arabic, Hebrew), add `--rtl` to screenshot every screen right to left too.

@@ -8,11 +8,11 @@ How Motif works with Vue apps (Vite) and Nuxt apps: what it expects, how to star
 - Vue 3 with Vite (Vue's own starter), or Nuxt (3 or 4).
 - Tailwind CSS v4, or plain CSS. Tailwind v3 projects get CSS variables only; [theme code](tokens.md) explains how to use them.
 - Motion for Vue (`motion-v` 1 or later) for animation that CSS can't do. Vue's own `<Transition>` and CSS for the rest.
-- **Vue 2 and Nuxt 2 aren't supported.** `motif doctor` says so plainly. What still works there: the CSS theme (`motif.css`), `motif check` and `motif extract` on the `.vue` files. Motif writes no `motion.ts` for them, because Motion for Vue needs Vue 3; animate with the `--motif-duration-*` and `--motif-easing-*` variables.
+- **Vue 2 and Nuxt 2 aren't supported.** `motif doctor` says so plainly. What still works there: the CSS theme (`motif.css`), `motif check` and `motif extract` on the `.vue` files, and `motif shot --url` against a running app. Motif writes no `motion.ts` for them, because Motion for Vue needs Vue 3; animate with the `--motif-duration-*` and `--motif-easing-*` variables.
 
 ## How Motif recognises it
 
-An app with `vue` (version 3) in its `package.json` is a Vue app, and one with `nuxt` is a Nuxt app. `motif doctor --json` lists it in `apps` with the stack `vue`. In a monorepo, `design/motif.json` maps each app's folder to its stack, and `srcDir` records where its source lives.
+An app with `vue` in its `package.json` is a Vue app (a Vue 2 app is recognised too, so `doctor` can say it isn't supported), and one with `nuxt` is a Nuxt app. `motif doctor --json` lists it in `apps` with the stack `vue`. In a monorepo, `design/motif.json` maps each app's folder to its stack, and `srcDir` records where its source lives.
 
 ## Starting a new project
 
@@ -57,7 +57,7 @@ Use the developer's package manager (its lockfile says which): `pnpm create vue@
 
 - Routes come from Nuxt's `pages/` folder, vue-router 5's file routes, or the routes in a Vue Router config. A dynamic route (`/orders/:id`) needs a value, so Motif lists it as skipped; draw one with `--routes /orders/1`.
 - Sizes are the phone widths (360, 390, 430), a tablet (768) and a desktop. State scripts are JavaScript ([checks](checks.md#screens-behind-a-form-or-a-click)).
-- Time to the first screenshot on a cold start, dev server included, measured on Windows: Vite about 2 seconds, Nuxt with server rendering about 7 seconds. A Nuxt app with many pages compiles each on its first visit, so a long run takes more; use `--sizes 390` and `--routes` while working.
+- Time to the first screenshot on a cold start, dev server included, typical: Vite about 2 seconds, Nuxt with server rendering about 7 seconds. A Nuxt app with many pages compiles each on its first visit, so a long run takes more; use `--sizes 390` and `--routes` while working.
 - Mockups for a Vue or Nuxt app are drawn in the preview kit's browser frame (`mk-browser`), as for any web app.
 
 ## The rest of this guide
