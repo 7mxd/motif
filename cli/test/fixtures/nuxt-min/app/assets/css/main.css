@@ -1,0 +1,56 @@
+/* The app's own fonts, served from public/fonts: the guide's Onest, and Noto Naskh Arabic, its Arabic companion. */
+@font-face {
+  font-family: "Onest";
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/onest.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Naskh Arabic";
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/NotoNaskhArabic.ttf") format("truetype");
+}
+
+body {
+  margin: 0;
+  background: var(--motif-color-background);
+  color: var(--motif-color-text-primary);
+  font-family: var(--motif-font-body-family);
+  font-size: var(--motif-font-body-size);
+  line-height: var(--motif-font-body-line-height);
+}
+
+nav {
+  display: flex;
+  gap: var(--motif-space-2);
+  padding: 0 var(--motif-space-2);
+  border-bottom: 1px solid var(--motif-color-border);
+}
+
+nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--motif-space-2);
+  color: var(--motif-color-action-primary);
+  font-family: var(--motif-font-label-family);
+  font-size: var(--motif-font-label-size);
+  text-decoration: none;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--motif-space-4);
+  padding: var(--motif-space-4);
+}
+
+h1 {
+  margin: 0;
+  font-family: var(--motif-font-title-family);
+  font-size: var(--motif-font-title-size);
+  font-weight: var(--motif-font-title-weight);
+  line-height: var(--motif-font-title-line-height);
+}

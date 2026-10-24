@@ -3,7 +3,7 @@
 import type { SourceFile } from "./files";
 
 // A start tag; quoted attribute values may hold ">".
-const TAG = /<[a-zA-Z][^\s/>]*(?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>/g;
+export const TAG = /<[a-zA-Z][^\s/>]*(?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>/g;
 const STYLE_ATTR = /(\sstyle\s*=\s*)("([^"]*)"|'([^']*)')/gi;
 /**
  * What may start a region: a comment, a CDATA section (an SVG's), a script, or a style block (<style-guide> and
@@ -25,26 +25,57 @@ function blank(chars: string[], from: number, to: number): void {
   for (let i = from; i < to; i++) if (chars[i] !== "\n" && chars[i] !== "\r") chars[i] = " ";
 }
 
-interface Regions {
+/** The text with these ranges blank, its line breaks kept. */
+export function blanked(text: string, ranges: [number, number][]): string {
+  const chars = text.split("");
+  for (const [a, b] of ranges) blank(chars, a, b);
+  return chars.join("");
+}
+
+/** Where a start tag's content begins: after its own ">", not one in a quoted attribute (media="(width >= 600px)"). */
+function contentStartOf(text: string, at: number): number {
+  const tag = new RegExp(TAG.source, "y");
+  tag.lastIndex = at;
+  const t = tag.exec(text);
+  const tagEnd = t ? at + t[0].length - 1 : text.indexOf(">", at);
+  return tagEnd === -1 ? text.length : tagEnd + 1;
+}
+
+export interface Regions {
   comments: [number, number][];
   cdata: [number, number][];
-  scripts: [number, number][];
+  /** [tag start, content start, content end, block end] */
+  scripts: [number, number, number, number][];
   /** [tag start, content start, content end, block end, dark only] */
   styles: [number, number, number, number, boolean][];
 }
 
+/** Where a self-closing start tag at `at` ends (<script src="./x.ts" />), or null when it isn't one. */
+function selfClosedAt(text: string, at: number): number | null {
+  const tag = new RegExp(TAG.source, "y");
+  tag.lastIndex = at;
+  const t = tag.exec(text);
+  return t && t[0].endsWith("/>") ? at + t[0].length : null;
+}
+
 /**
  * The comments, CDATA sections, scripts and style blocks, found in order: what's inside a script ("<!--" in a string, '<style>')
- * starts nothing, and a comment marker inside a style block is just CSS's old way of hiding it.
+ * starts nothing, and a comment marker inside a style block is just CSS's old way of hiding it. In HTML a <script /> still
+ * reads on to its </script>; with `selfClosing` (a component file's blocks, Vue's <style src="./a.css" />) it's empty.
  */
-function regions(text: string): Regions {
+export function regions(text: string, opts: { selfClosing?: boolean } = {}): Regions {
   const found: Regions = { comments: [], cdata: [], scripts: [], styles: [] };
   const opener = new RegExp(OPENER.source, "gi");
   let m: RegExpExecArray | null;
   while ((m = opener.exec(text))) {
     const at = m.index;
     const kind = m[0].toLowerCase();
-    if (kind === "<!--") {
+    const closed = opts.selfClosing && (kind === "<script" || kind === "<style") ? selfClosedAt(text, at) : null;
+    if (closed !== null) {
+      if (kind === "<script") found.scripts.push([at, closed, closed, closed]);
+      else found.styles.push([at, closed, closed, closed, false]);
+      opener.lastIndex = closed;
+    } else if (kind === "<!--") {
       const close = text.indexOf("-->", at + 4);
       const end = close === -1 ? text.length : close + 3;
       found.comments.push([at, end]);
@@ -59,16 +90,12 @@ function regions(text: string): Regions {
       const close = /<\/script\s*>/gi;
       close.lastIndex = at;
       const c = close.exec(text);
+      const contentEnd = c ? c.index : text.length;
       const end = c ? c.index + c[0].length : text.length;
-      found.scripts.push([at, end]);
+      found.scripts.push([at, Math.min(contentStartOf(text, at), contentEnd), contentEnd, end]);
       opener.lastIndex = end;
     } else {
-      // The tag ends at its own ">", not one in a quoted attribute: media="(width >= 600px)".
-      const tag = new RegExp(TAG.source, "y");
-      tag.lastIndex = at;
-      const t = tag.exec(text);
-      const tagEnd = t ? at + t[0].length - 1 : text.indexOf(">", at);
-      const contentStart = tagEnd === -1 ? text.length : tagEnd + 1;
+      const contentStart = contentStartOf(text, at);
       const close = /<\/style\s*>/gi;
       close.lastIndex = contentStart;
       const c = close.exec(text);
@@ -81,63 +108,70 @@ function regions(text: string): Regions {
   return found;
 }
 
-export function htmlViews(text: string): { css: string; rest: string; dark: [number, number][] } {
-  const { comments, cdata, scripts, styles } = regions(text);
-  // Comments hide what's inside them from both views.
-  const open = text.split("");
-  for (const [a, b] of comments) blank(open, a, b);
-  const uncommented = open.join("");
+/** What the CSS view keeps, and the characters it reads differently from the text. */
+export interface CssParts {
+  keep: [number, number][];
+  /** In the CSS view, each attribute's quotes become ";" so its declarations never run into another region's. */
+  separators: number[];
+  /** Characters read differently, entities in attributes as their characters: [start, replacement of the same length]. */
+  replacements: [number, string][];
+}
 
-  const keep: [number, number][] = [];
-  const dark: [number, number][] = [];
-  // In the CSS view, each attribute's quotes become ";" so its declarations never run into another region's.
-  const separators: number[] = [];
-  // Entities in attributes, read as their characters: [start, replacement of the same length].
-  const entities: [number, string][] = [];
-  for (const [, contentStart, contentEnd, , darkOnly] of styles) {
-    keep.push([contentStart, contentEnd]);
-    if (darkOnly) dark.push([contentStart, contentEnd]);
+/** A style="" attribute's value, its opening quote at `quote`: kept, between separators, with its entities read. */
+export function addStyleAttr(parts: CssParts, quote: number, value: string): void {
+  parts.keep.push([quote + 1, quote + 1 + value.length]);
+  parts.separators.push(quote, quote + 1 + value.length);
+  // "&quot;Inter&quot;" reads as "Inter": an opening quote keeps its padding before it, a closing one after it.
+  let quotes = 0;
+  for (const e of value.matchAll(ENTITY)) {
+    const at = quote + 1 + e.index!;
+    const ch = /amp|#38|#x26/i.test(e[0]) ? "&" : /quot|#34|#x22/i.test(e[0]) ? '"' : "'";
+    const pad = " ".repeat(e[0].length - 1);
+    parts.replacements.push([at, ch === "&" ? ch + pad : quotes++ % 2 === 0 ? pad + ch : ch + pad]);
   }
-  // style="" only in tags: not inside <style> or <script> blocks, or CDATA's text.
-  const tagsOnly = uncommented.split("");
-  for (const [a, , , b] of styles) blank(tagsOnly, a, b);
-  for (const [a, b] of [...scripts, ...cdata]) blank(tagsOnly, a, b);
-  const tags = tagsOnly.join("");
-  for (const t of tags.matchAll(TAG)) {
-    for (const a of t[0].matchAll(STYLE_ATTR)) {
-      const quote = t.index! + a.index! + a[1]!.length;
-      const value = a[3] ?? a[4] ?? "";
-      keep.push([quote + 1, quote + 1 + value.length]);
-      separators.push(quote, quote + 1 + value.length);
-      // "&quot;Inter&quot;" reads as "Inter": an opening quote keeps its padding before it, a closing one after it.
-      let quotes = 0;
-      for (const e of value.matchAll(ENTITY)) {
-        const at = quote + 1 + e.index!;
-        const ch = /amp|#38|#x26/i.test(e[0]) ? "&" : /quot|#34|#x22/i.test(e[0]) ? '"' : "'";
-        const pad = " ".repeat(e[0].length - 1);
-        entities.push([at, ch === "&" ? ch + pad : quotes++ % 2 === 0 ? pad + ch : ch + pad]);
-      }
-    }
-  }
+}
 
-  const inCss = new Uint8Array(text.length);
-  for (const [a, b] of keep) inCss.fill(1, a, b);
+/**
+ * The CSS view of the uncommented text: what `parts` keeps, the rest blank. `styles` are the style blocks it keeps;
+ * `inCss` says which characters it holds, for the other views to leave out.
+ */
+export function cssView(uncommented: string, styles: Regions["styles"], parts: CssParts): { css: string; inCss: Uint8Array } {
+  const inCss = new Uint8Array(uncommented.length);
+  for (const [a, b] of parts.keep) inCss.fill(1, a, b);
   const css = uncommented.split("");
-  const rest = uncommented.split("");
-  for (let i = 0; i < text.length; i++) {
-    if (css[i] === "\n" || css[i] === "\r") continue;
-    if (inCss[i]) rest[i] = " ";
-    else css[i] = " ";
-  }
+  for (let i = 0; i < css.length; i++) if (!inCss[i] && css[i] !== "\n" && css[i] !== "\r") css[i] = " ";
   // Inside a style block, the old "<!--" and "-->" that hid CSS from very old browsers, and an SVG's CDATA, are just
   // markers.
   for (const [, contentStart, contentEnd] of styles) {
-    const block = text.slice(contentStart, contentEnd);
+    const block = uncommented.slice(contentStart, contentEnd);
     for (const marker of block.matchAll(/<!--|-->|<!\[CDATA\[|\]\]>/g)) blank(css, contentStart + marker.index!, contentStart + marker.index! + marker[0].length);
   }
-  for (const [at, replacement] of entities) for (let i = 0; i < replacement.length; i++) css[at + i] = replacement[i]!;
-  for (const s of separators) css[s] = ";";
-  return { css: css.join(""), rest: rest.join(""), dark };
+  for (const [at, replacement] of parts.replacements) for (let i = 0; i < replacement.length; i++) css[at + i] = replacement[i]!;
+  for (const s of parts.separators) css[s] = ";";
+  return { css: css.join(""), inCss };
+}
+
+export function htmlViews(text: string): { css: string; rest: string; dark: [number, number][] } {
+  const { comments, cdata, scripts, styles } = regions(text);
+  // Comments hide what's inside them from both views.
+  const uncommented = blanked(text, comments);
+
+  const parts: CssParts = { keep: [], separators: [], replacements: [] };
+  const dark: [number, number][] = [];
+  for (const [, contentStart, contentEnd, , darkOnly] of styles) {
+    parts.keep.push([contentStart, contentEnd]);
+    if (darkOnly) dark.push([contentStart, contentEnd]);
+  }
+  // style="" only in tags: not inside <style> or <script> blocks, or CDATA's text.
+  const tags = blanked(uncommented, [...styles.map(([a, , , b]): [number, number] => [a, b]), ...scripts.map(([a, , , b]): [number, number] => [a, b]), ...cdata]);
+  for (const t of tags.matchAll(TAG)) {
+    for (const a of t[0].matchAll(STYLE_ATTR)) addStyleAttr(parts, t.index! + a.index! + a[1]!.length, a[3] ?? a[4] ?? "");
+  }
+
+  const { css, inCss } = cssView(uncommented, styles, parts);
+  const rest = uncommented.split("");
+  for (let i = 0; i < rest.length; i++) if (inCss[i] && rest[i] !== "\n" && rest[i] !== "\r") rest[i] = " ";
+  return { css, rest: rest.join(""), dark };
 }
 
 const HTML_FILE = /\.html?$/i;

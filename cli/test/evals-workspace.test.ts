@@ -141,7 +141,7 @@ describe("a case's folder", () => {
     expect(findApp(ws.app)).toBeNull();
     expect(ws.baseline).toBeUndefined();
     // The other briefs still start from an empty folder.
-    for (const id of ["d-stride", "d-sahm", "d-nabta", "d-rihla"]) {
+    for (const id of ["d-stride", "d-sahm", "d-nabta", "d-rihla", "d-darb"]) {
       expect(readdirSync((await prepareWorkspace(byId(id), join(tempDir("motif-ws-"), id), run)).app)).toEqual(["brief.md"]);
     }
   });

@@ -1,5 +1,5 @@
 // Measures what a finished case left behind: the motif tool's checks, the build and the type check (on a plain site, the page in a browser; on Flutter,
-// flutter analyze and the page as Flutter draws it; on React Native, tsc and the page as Expo's web target draws it; on SwiftUI, xcodebuild build and
+// flutter analyze and the page as Flutter draws it; on React Native, tsc and the page as Expo's web target draws it; on Vue, vue-tsc, the build and the page at a phone's and a laptop's width; on SwiftUI, xcodebuild build and
 // the page's #Preview as the simulator draws it), what the session changed, and for test C the review report, graded against the seeded list (match.ts)
 // and by the model grader (judge.ts).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -16,9 +16,10 @@ import { findAndroidSdk, gradleJava } from "../../cli/src/stacks/compose/doctor"
 import { gradleProjectPath, gradleTaskCommand } from "../../cli/src/stacks/compose/harness";
 import { discoverComposeScreens, previewSlug, type Preview } from "../../cli/src/stacks/compose/screens";
 import { discoverExpoRoutes } from "../../cli/src/stacks/react-native/routes";
+import { discoverVueRoutes } from "../../cli/src/stacks/vue/routes";
 import { swiftUIApp } from "../../cli/src/stacks/swiftui/project";
 import { discoverSwiftUIScreens, previewSlug as swiftUIPreviewSlug, type SwiftUIPreview } from "../../cli/src/stacks/swiftui/screens";
-import { isCompose, isFlutter, isPlain, isReactNative, isSwiftUI, type EvalCase } from "./cases";
+import { isCompose, isFlutter, isPlain, isReactNative, isSwiftUI, isVue, type EvalCase } from "./cases";
 import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
 import { Paused, type JudgeFn, type JudgeInput, type JudgeVerdict } from "./judge";
 import { gradeExact, parseReport, type SeededIssue } from "./match";
@@ -52,13 +53,19 @@ async function motifJson(k: Collectors, args: string[], cwd: string, out: string
   return r;
 }
 
-async function buildAndTypecheck(dir: string, k: Collectors, out: string): Promise<{ build: CmdFacts; typecheck: CmdFacts }> {
+async function buildAndTypecheck(dir: string, k: Collectors, out: string, typecheckCommand: string[] = ["npx", "--no", "tsc", "--noEmit"]): Promise<{ build: CmdFacts; typecheck: CmdFacts }> {
   const build = await k.run([packageManager(dir), "run", "build"], dir, 900_000);
   save(out, "build.log", `${build.stdout}\n${build.stderr}`);
-  const typecheck = await k.run(["npx", "--no", "tsc", "--noEmit"], dir, 600_000);
+  const typecheck = await k.run(typecheckCommand, dir, 600_000);
   save(out, "typecheck.log", `${typecheck.stdout}\n${typecheck.stderr}`);
   return { build: { code: build.code, timedOut: build.timedOut }, typecheck: { code: typecheck.code, timedOut: typecheck.timedOut } };
 }
+
+/** A Vue app's type check, over its .vue files as well as its .ts ones; the build (npm run build) is run beside it. */
+const VUE_TYPECHECK = ["npx", "vue-tsc", "--noEmit"];
+
+/** motif shot's sizes for a Vue app: a phone and a laptop, since it is a web app used on both. */
+const VUE_SIZES = ["--sizes", "390,1440"];
 
 /**
  * A Flutter app's type check: its packages got again (the session may have added some, and flutter pub get also writes
@@ -472,6 +479,47 @@ function declarations(code: string): Decl[] {
   }));
 }
 
+export interface VueComponents {
+  /** New .vue files under components/: they count against the limit unless the design guide records them. */
+  newComponents: string[];
+  /** New .vue files under views/ or pages/: the page a route shows (a Nuxt page named index is named by its folder). */
+  screens: string[];
+  /** Always empty: a view's own parts are components too, and count. */
+  screenParts: string[];
+  /** A new layout (navigation), and a component with no template. */
+  notUi: string[];
+}
+
+/**
+ * A Vue or Nuxt app's new components, from the session's diff: .vue files the session adds under components/ (the app's
+ * shared ones), minus those it moved. A file under views/ or pages/ is a screen. The generated theme is never a .vue
+ * file, and tests never count. A component with no template draws nothing and is not UI.
+ */
+export function vueComponents(diff: string): VueComponents {
+  const all = diffFiles(diff).filter((f) => /\.vue$/.test(f.path) && !/\.(test|spec|stories)\.vue$/.test(f.path));
+  const name = (path: string) => {
+    const file = basename(path, ".vue");
+    return file === "index" ? posix.basename(posix.dirname(path)) : file;
+  };
+  const moved = new Set(all.filter((f) => f.deleted).map((f) => name(f.path)));
+  const found: VueComponents = { newComponents: [], screens: [], screenParts: [], notUi: [] };
+  const seen = new Set<string>();
+  const add = (list: string[], n: string) => {
+    if (!seen.has(n)) {
+      seen.add(n);
+      list.push(n);
+    }
+  };
+  for (const f of all.filter((x) => x.isNew && !x.deleted)) {
+    const n = name(f.path);
+    if (moved.has(n)) continue;
+    if (/^(?:(?:src|app)\/)?layouts\/.+\.vue$/.test(f.path)) add(found.notUi, n);
+    else if (/^(?:(?:src|app)\/)?(?:views|pages)\/.+\.vue$/.test(f.path)) add(found.screens, n);
+    else if (/^(?:(?:src|app)\/)?components\/.+\.vue$/.test(f.path)) add(/<template[\s>]/.test(reallyAdded(f).join("\n")) ? found.newComponents : found.notUi, n);
+  }
+  return found;
+}
+
 const isTestFile = (path: string) => /\.(test|spec|stories|d)\.(tsx|jsx)$/.test(path);
 
 /**
@@ -655,7 +703,9 @@ export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComp
       ? flutterComponents(diff)
       : isReactNative(c)
         ? rnComponents(diff)
-        : isSwiftUI(c)
+        : isVue(c)
+          ? vueComponents(diff)
+          : isSwiftUI(c)
           ? swiftUIComponents(diff, c.test === "B" ? c.routes[0] : undefined)
           : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
   return { ...found, recorded: recordedIn(diff, found.newComponents) };
@@ -799,6 +849,13 @@ export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: s
       typecheck: await rnTypecheck(ws.app, k, out), render: await renderFacts(k, ws.app, route, out, PHONE_SIZES), ...components,
     };
   }
+  if (isVue(c)) {
+    const { build, typecheck } = await buildAndTypecheck(ws.app, k, out, VUE_TYPECHECK);
+    return {
+      route, pageExists: discoverVueRoutes(ws.app).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
+      build, typecheck, render: await renderFacts(k, ws.app, route, out, VUE_SIZES), ...components,
+    };
+  }
   const { build, typecheck } = await buildAndTypecheck(ws.app, k, out);
   return {
     route, pageExists: discoverRoutes(ws.app).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
@@ -933,7 +990,7 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
       ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) }
       : isReactNative(c)
         ? { build: undefined, typecheck: await rnTypecheck(app, k, out) }
-        : swift ? { build: undefined, typecheck: await swiftUIBuild(app, join(ws.dir, "DerivedData"), k, out) } : await buildAndTypecheck(app, k, out);
+        : swift ? { build: undefined, typecheck: await swiftUIBuild(app, join(ws.dir, "DerivedData"), k, out) } : await buildAndTypecheck(app, k, out, isVue(c) ? VUE_TYPECHECK : undefined);
   // SwiftUI: the root, and the #Previews the prompt names that the app has (by File.swift:line, which nothing else
   // shares), each reported under the case's own name; one the app lacks isn't asked for, so it shows as not captured.
   const named = new Map<string, string>();
@@ -944,7 +1001,7 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
     }
   }
   const targets = swift ? ["--routes", "/", ...(named.size > 0 ? ["--screen", [...named.keys()].join(",")] : [])] : ["--routes", c.routes.join(",")];
-  const shot = await motifJson(k, ["shot", "--audit", ...targets, ...(flutter || compose || swift || isReactNative(c) ? PHONE_SIZES : [])], app, out, "shot.json", compose || swift ? 1_800_000 : 900_000);
+  const shot = await motifJson(k, ["shot", "--audit", ...targets, ...(flutter || compose || swift || isReactNative(c) ? PHONE_SIZES : isVue(c) ? VUE_SIZES : [])], app, out, "shot.json", compose || swift ? 1_800_000 : 900_000);
   copyShots(app, shot.json, join(out, "shots"));
   const screens = Array.isArray(shot.json?.routes)
     ? shot.json.routes.map((r: any) => ({ route: named.get(String(r.route)) ?? String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))

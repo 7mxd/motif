@@ -6,6 +6,7 @@ import type { Theme, ThemeSet, ThemeVariant } from "../generate/theme";
 import { prefixPath } from "../project/apps";
 import { motifCss } from "../generate/motif-css";
 import { nativeStack, type NativeStack } from "../stacks/native";
+import { webStack, type WebStack } from "../stacks/web";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
 import { exceptionFor } from "./exceptions";
 import { listSourceFiles, matchesPaths, type SourceFile } from "./files";
@@ -130,6 +131,8 @@ export function checkApp(
     if (!opts.set) throw new Error(`checkApp needs the ThemeSet (opts.set) to check ${app.path} (${app.stack}).`);
     return checkNativeApp(root, app, native, native.scan, opts.set, opts);
   }
+  const web = webStack(app.stack);
+  if (web?.scan) return checkWebStackApp(root, app, web, theme, opts);
   const appDir = join(root, app.path);
   const plain = app.stack === "plain-web";
   const srcDir = plain ? siteDir(root, app) : (app.srcDir ?? chooseSrcDir(appDir));
@@ -182,6 +185,57 @@ function sortOut(found: Hit[], lines: Map<string, string[]>, decorate: (hit: Hit
     else violations.push(hit);
   }
   return { violations, exceptions };
+}
+
+/** The same hit found twice (two rules reading one binding): the first is kept. */
+function once(hits: Hit[]): Hit[] {
+  const seen = new Set<string>();
+  return hits.filter((h) => {
+    const key = [h.rule, h.file, h.line, h.column, h.text].join("|");
+    return seen.has(key) ? false : (seen.add(key), true);
+  });
+}
+
+/**
+ * An app of a web framework with its own file format (Vue): the web's rules on each view of its files, the stack's own
+ * rules after them, with React web's Tailwind and suggestions. The stack lists the files, and writes the theme files
+ * Motif expects (never scanned; `generated-edited` when one was changed).
+ */
+function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Theme, opts: { paths?: string[]; ignore?: string[]; variants?: ThemeVariant[]; set?: ThemeSet }): AppCheck {
+  const appDir = join(root, app.path);
+  const srcDir = app.srcDir ?? web.srcDir(appDir);
+  const tailwindVersion = detectTailwind(appDir);
+  const v3Roles: ThemeRoles | undefined = tailwindVersion === "v3" ? tailwind3Roles(theme, appDir) : undefined;
+  const set: ThemeSet = opts.set ?? { base: theme, defaultId: null, defaultLabel: null, variants: opts.variants ?? [] };
+  const expected = web.generate ? web.generate(set, { root, app, srcDir, tailwind: tailwindVersion }).files : [];
+  // The motion file the stack writes (a Nuxt 3 app at the project root keeps it in motion/), as a path in the app.
+  const motion = expected.find((f) => /motion\.ts$/.test(f.path))?.path;
+  const scale = buildScale(theme, srcDir);
+  if (motion) scale.motionImport = (motion.startsWith(`${app.path}/`) ? motion.slice(app.path.length + 1) : motion).replace(/\.ts$/, "");
+  const views = (f: SourceFile) => (web.views ? web.views(f) : expandHtml([f]));
+
+  const all = web.sourceFiles(root, app, { ignore: opts.ignore });
+  const generated = all.filter((f) => isMotifGenerated(f.path, f.text));
+  const appFiles = all.filter((f) => !isMotifGenerated(f.path, f.text));
+  const files = appFiles.filter((f) => matchesPaths(f.path, opts.paths ?? []));
+  const inScope = new Set(files.map((f) => f.path));
+  // Exceptions are read from the files as written, not from their views.
+  const lines = new Map(files.map((f) => [f.path, f.text.split(/\r?\n/)]));
+
+  const appWide = (web.appWide?.(appFiles.flatMap(views), generated.flatMap(views)) ?? []).filter((h) => inScope.has(h.file));
+  const scanned = files.flatMap(views).flatMap((v) => [...(web.scan?.(v, scale) ?? []), ...scanFile(v, scale, { v3Roles })]);
+  const { violations, exceptions } = sortOut([...once(scanned), ...appWide], lines, (found) => {
+    const suggestion = suggestRole(found, theme, { tailwind3: tailwindVersion === "v3", variants: opts.variants });
+    const variantHint = found.kind === "color" && found.variant ? suggestion : undefined;
+    return { ...found, ...(web.fix ? { fix: web.fix(found) } : {}), ...(variantHint ? { fix: variantHint } : suggestion ? { suggestion } : {}) };
+  });
+  return {
+    app: app.path,
+    files: files.length,
+    violations: violations.sort(byPosition),
+    exceptions: exceptions.sort(byPosition),
+    warnings: generatedEditedHits(root, expected.map((f) => ({ path: f.path, content: f.content }))),
+  };
 }
 
 /**

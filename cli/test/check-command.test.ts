@@ -87,12 +87,12 @@ describe("runCheck", () => {
     expect(r.text).toContain("Warnings:");
   });
 
-  test("only React web apps, plain web sites, Flutter apps, Jetpack Compose apps and SwiftUI apps are checked in this version", async () => {
-    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "src/App.vue": "", "design/tokens.json": TOKENS });
+  test("only React web apps, plain web sites, Vue apps and the native stacks are checked in this version", async () => {
+    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { svelte: "^5" } }), "src/App.svelte": "", "design/tokens.json": TOKENS });
     const r = await runCheck(root, ctx());
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("Vue / Nuxt");
-    expect(r.text).toContain("Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, React web apps and plain web sites");
+    expect(r.text).toContain("Svelte / SvelteKit");
+    expect(r.text).toContain("Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, Vue / Nuxt apps, React web apps and plain web sites");
   });
 
   test("no design guide → exit 2", async () => {
@@ -144,10 +144,10 @@ describe("runCheck: skipped apps", () => {
       "apps/web/package.json": PKG, "apps/web/src/Clean.tsx": CLEAN,
       "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
       "apps/mobile/lib/main.dart": "void main() {}\n",
-      "apps/admin/package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "apps/admin/src/App.vue": "",
+      "apps/admin/package.json": JSON.stringify({ dependencies: { svelte: "^5" } }), "apps/admin/src/App.svelte": "",
     });
     const text = (await runCheck(root, ctx())).text;
-    expect(text).toContain("Skipped (not supported yet): apps/admin (Vue / Nuxt).");
+    expect(text).toContain("Skipped (not supported yet): apps/admin (Svelte / SvelteKit).");
     // Flutter apps are checked from 2E on.
     expect(text).not.toContain("apps/mobile (Flutter)");
   });

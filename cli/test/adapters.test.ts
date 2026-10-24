@@ -13,7 +13,10 @@ import { composeReducedMotion, scanKotlin } from "../src/stacks/compose/rules";
 import { NO_ANDROID_SDK } from "../src/stacks/compose/doctor";
 import { rnReducedMotion, scanReactNative } from "../src/stacks/react-native/rules";
 import { scanSwift, swiftUIReducedMotion } from "../src/stacks/swiftui/rules";
-import { docFrom, validTokens } from "./helpers";
+import { runCheck } from "../src/commands/check";
+import { runTokens } from "../src/commands/tokens";
+import { docFrom, FIXTURES, validTokens } from "./helpers";
+import { makeProject } from "./project";
 
 const ADAPTERS = join(import.meta.dir, "../../skill/adapters");
 const read = (rel: string) => readFileSync(join(ADAPTERS, rel), "utf8").replace(/\r\n/g, "\n");
@@ -387,6 +390,84 @@ describe("the React Native guide", () => {
   });
 });
 
+describe("the Vue guide", () => {
+  const has = (file: string, strings: string[]) => {
+    const text = read(`vue/${file}`);
+    for (const s of strings) expect(text).toContain(s);
+  };
+
+  test("has exactly the template's files", () => {
+    expect(readdirSync(join(ADAPTERS, "vue")).sort()).toEqual(GUIDE_FILES);
+  });
+
+  test("README: both starters, the commands, the theme folder, the floors, Vue 2, mockups and the first-screenshot times", () => {
+    has("README.md", [
+      "npm create vue@latest", "npm create nuxt@latest", "npx vue-tsc --noEmit", "nuxi typecheck", "npm run dev",
+      "design/motif.json", "themeDir", "srcDir", "Vue 3", "Nuxt 3", "Node 22.22.3", "Vue 2 and Nuxt 2 aren't supported",
+      "browser frame", "Vite about 2 seconds", "Nuxt with server rendering about 7 seconds",
+    ]);
+  });
+
+  test("tokens.md: the files, wiring them in, the starter's variables, and switching variants", () => {
+    has("tokens.md", [
+      "motif.css", "motif.tailwind.css", "nuxt.config.ts", "css: ['~/assets/css/motif.css']", "src/main.ts", "var(--motif-color-", "bg-action-primary",
+      "data-variant", "## Switching variants", "document.documentElement.dataset.variant", "useHead({ htmlAttrs: { 'data-variant'",
+      "--color-background: var(--motif-color-background)", "base.css",
+    ]);
+  });
+
+  test("components.md: where components live, script setup, every state, names and the starter set", () => {
+    has("components.md", [
+      "src/components/", "components/", "auto-imports", '<script setup lang="ts">', "defineProps", "slot", "<button", ":hover", ":focus-visible", ":disabled", ":active",
+      "aria-label", "<style scoped>", "var(--motif-",
+    ]);
+    for (const c of STARTER_SET) expect(read("vue/components.md")).toContain(`\`${c}\``);
+  });
+
+  test("motion.md: Transition, the CSS roles, Motion for Vue and reduced motion", () => {
+    has("motion.md", [
+      "<Transition>", "var(--motif-duration-base)", "motion-v", "<motion.div", ':transition="spring.', "duration.", "useReducedMotion", '<MotionConfig reduced-motion="user">',
+    ]);
+  });
+
+  test("platform.md: right to left, logical properties, head tags, i18n and server rendering", () => {
+    has("platform.md", [
+      'dir="rtl"', "margin-inline-start", "padding-inline-end", "useHead({ htmlAttrs: { lang, dir } })", "vue-i18n", "server rendering", "onMounted",
+    ]);
+  });
+
+  test("checks.md: every rule, the audit, state scripts as JavaScript, and --rtl", () => {
+    const checks = read("vue/checks.md");
+    for (const id of RULE_IDS) expect(checks).toContain(`## \`${id}\``);
+    has("checks.md", ["## Contrast", "## Target size", "## Reduced motion", "motif-ok", "<!-- motif-ok", "--state design/states/", "are JavaScript", "--rtl", "## Screens behind a form or a click"]);
+  });
+
+  test("the code examples pass motif check as they are", async () => {
+    const files: Record<string, string> = {
+      "package.json": JSON.stringify({ name: "x", scripts: { dev: "vite" }, dependencies: { vue: "^3.5.0", "motion-v": "^2.0.0", tailwindcss: "^4.1.0", "@tailwindcss/vite": "^4.1.0" } }),
+      "index.html": '<div id="app"></div><script type="module" src="/src/main.ts"></script>',
+      "src/main.ts": 'import { createApp } from "vue";\nimport App from "./App.vue";\ncreateApp(App).mount("#app");\n',
+      "src/App.vue": '<script setup lang="ts">\nimport { MotionConfig } from "motion-v";\n</script>\n<template><MotionConfig reduced-motion="user"><main /></MotionConfig></template>\n',
+      "design/tokens.json": readFileSync(join(FIXTURES, "contract/design/tokens.json"), "utf8"),
+    };
+    const examples: string[] = [];
+    for (const file of GUIDE_FILES) {
+      const text = read(`vue/${file}`);
+      for (const [i, m] of [...text.matchAll(/```(vue|ts|css)\n([\s\S]*?)```/g)].entries()) {
+        const path = `src/examples/${file.replace(".md", "")}-${i + 1}.${m[1]}`;
+        files[path] = m[2]!;
+        examples.push(path);
+      }
+    }
+    expect(examples.filter((p) => p.endsWith(".vue")).length).toBeGreaterThan(5);
+    const root = makeProject(files);
+    expect((await runTokens(root, { positionals: [] })).exitCode).toBe(0);
+    const result = await runCheck(root, { positionals: [] });
+    const hits = ((result.data as any).violations as any[]).filter((h) => h.file.startsWith("src/examples/")).map((h) => `${h.file}:${h.line} ${h.rule} ${h.text}`);
+    expect(hits).toEqual([]);
+  });
+});
+
 describe("the SwiftUI guide", () => {
   const has = (file: string, strings: string[]) => {
     const text = read(`swiftui/${file}`);
@@ -511,22 +592,22 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web, Flutter, React Native, Jetpack Compose and SwiftUI have every area done; the stacks still to come have none", () => {
-    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose", "SwiftUI"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+  test("React web, plain web, Flutter, React Native, Jetpack Compose, SwiftUI and Vue have every area done; the stacks still to come have none", () => {
+    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose", "SwiftUI", "Vue / Nuxt"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
     // SwiftUI's proof names the runs its four cases passed in (2H Task 15).
     const swiftEvals = table.find((r) => r[0] === "Evals" && r[1]!.includes("fixtures-swiftui.test.ts"))!;
     for (const s of ["eval run 20261022-061913", "It passed in run 20261022-085041"]) expect(swiftEvals[1]).toContain(s);
     // The cell and its proof agree: each Evals proof names the run that passed.
-    for (const fixtureTest of ["fixtures-rn.test.ts", "fixtures-compose.test.ts"]) {
+    for (const fixtureTest of ["fixtures-rn.test.ts", "fixtures-compose.test.ts", "fixtures-vue.test.ts"]) {
       const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes(fixtureTest))!;
       expect([fixtureTest, proof[1]!.includes("Recorded in eval run")]).toEqual([fixtureTest, true]);
     }
-    for (const stack of ["Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
+    for (const stack of ["Svelte / SvelteKit", "Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }
   });
 
-  test("Flutter's, Jetpack Compose's, React Native's and SwiftUI's proofs name every area, and every file they link to exists", () => {
+  test("Flutter's, Jetpack Compose's, React Native's, SwiftUI's and Vue's proofs name every area, and every file they link to exists", () => {
     const section = (heading: string) => {
       const start = parity.indexOf(heading);
       expect(start).toBeGreaterThan(-1);
@@ -535,7 +616,7 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     };
     for (const proof of [
       section("## Flutter: the tests that show it"), section("## Jetpack Compose: the tests that show it"), section("## React Native (Expo): the tests that show it"),
-      section("## SwiftUI: the tests that show it"),
+      section("## SwiftUI: the tests that show it"), section("## Vue / Nuxt: the tests that show it"),
     ]) {
       for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
     }
@@ -543,6 +624,9 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     const swift = section("## SwiftUI: the tests that show it");
     expect(swift).toContain("(decisions/0010-swiftui-rendering.md)");
     for (const job of ["`swiftui`", "`swiftui-fixtures`"]) expect(swift).toContain(job);
+    const vue = section("## Vue / Nuxt: the tests that show it");
+    expect(vue).toContain("`vue`");
+    expect(vue).toContain("(notes/2026-10-24-vue-hands-on.md)");
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");

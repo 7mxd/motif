@@ -11,6 +11,7 @@ import { isMotifGenerated } from "../generate/header";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
 import { nativeStack, nativeStacks, type NativeStack } from "../stacks/native";
+import { webStack, webStacks, type WebStack } from "../stacks/web";
 import { andList, plural } from "../text";
 
 /**
@@ -46,31 +47,43 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   const isWeb = (a: AppInfo) => a.stack !== null && WEB_STACKS.includes(a.stack);
   /** A native stack (Flutter) whose code motif extract reads. */
   const native = (a: AppInfo) => (isWeb(a) ? null : nativeStack(a.stack)?.collect ? nativeStack(a.stack) : null);
-  const supported = apps.filter((a) => isWeb(a) || native(a) !== null);
+  /** A web stack with its own file format (Vue) whose code motif extract reads, supported or not yet. */
+  const framework = (a: AppInfo) => (webStack(a.stack)?.collect ? webStack(a.stack) : null);
+  const supported = apps.filter((a) => isWeb(a) || framework(a) !== null || native(a) !== null);
   if (supported.length === 0) {
     const others = apps.filter((a) => a.stack).map((a) => `${appLabel(a)} (${STACK_LABELS[a.stack!]})`);
-    const drafted = nativeStacks().filter((s) => s.collect).map((s) => `${STACK_LABELS[s.id]} apps`);
+    const readable = [...webStacks(), ...nativeStacks()].filter((s) => s.collect);
+    const web = ["React web apps", "plain web sites", ...readable.filter((s) => WEB_STACKS.includes(s.id)).map((s) => `${STACK_LABELS[s.id]} apps`)];
+    const drafted = readable.filter((s) => !WEB_STACKS.includes(s.id)).map((s) => `${STACK_LABELS[s.id]} apps`);
     return {
       command: "extract",
       exitCode: 2,
-      text: `motif extract works on React web apps and plain web sites${drafted.length > 0 ? `, and on ${andList(drafted)}` : ""}, in this version.${others.length ? ` Found: ${others.join(", ")}.` : " None of them was found here."} Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.`,
+      text: `motif extract works on ${andList(web)}${drafted.length > 0 ? `, and on ${andList(drafted)}` : ""}, in this version.${others.length ? ` Found: ${others.join(", ")}.` : " None of them was found here."} Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.`,
       data: { error: "unsupported-stack" },
     };
   }
 
   const ignore = readIgnorePatterns(cwd);
   const noTailwind = new Set<SourceFile>();
-  const web = supported.filter(isWeb);
+  const web = supported.filter((a) => isWeb(a) || framework(a) !== null);
+  /** A framework app's files (Vue), by stack. */
+  const frameworkFiles = new Map<WebStack, SourceFile[]>();
   const webFiles = web.flatMap((a) => {
-    // The site's root: a plain site's folder, or a React app's public/ (or the app itself).
+    // The site's root: a plain site's folder, or a React or Vue app's public/ (or the app itself).
     const roots = a.stack === "plain-web" ? [prefixPath(a.path, siteDir(cwd, a))] : [prefixPath(a.path, "public"), a.path];
-    const own = expandHtml(darkLinked(appSourceFiles(cwd, a, { ignore }).filter((f) => !isMotifGenerated(f.path, f.text)), roots));
+    const stack = framework(a);
+    // A Vue app's files are read as their views (a .vue file's style blocks, script and template), not as HTML pages.
+    const raw = stack ? stack.sourceFiles(cwd, a, { ignore }) : appSourceFiles(cwd, a, { ignore });
+    const kept = darkLinked(raw.filter((f) => !isMotifGenerated(f.path, f.text)), roots);
+    const own = stack?.views ? kept.flatMap(stack.views) : expandHtml(kept);
+    const extra = (stack?.extractFiles?.(cwd, a, { ignore }) ?? []).filter((f) => !isMotifGenerated(f.path, f.text));
+    if (stack) frameworkFiles.set(stack, [...(frameworkFiles.get(stack) ?? []), ...own, ...extra]);
     if (a.stack === "plain-web") for (const f of own) noTailwind.add(f);
     return own;
   });
   const parts: Occurrences[] = [];
   if (web.length > 0) {
-    const react = web.filter((a) => a.stack === "react-web");
+    const react = web.filter((a) => a.stack !== "plain-web");
     const defaults = readTailwindDefaults([...react.map((a) => join(cwd, a.path)), cwd]);
     // The app's own spacing step (@theme { --spacing }) wins over Tailwind's default.
     const ownSpacing = ownSpacingPx(webFiles.filter((f) => f.lang === "css" && !noTailwind.has(f)).map((f) => f.text));
@@ -79,6 +92,8 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
     // a plain site's scripts are data, but a React app's theme objects (MUI's createTheme) are its theme.
     parts.push(collectOccurrences(webFiles, tw, (f) => !noTailwind.has(f), () => true, (f) => noTailwind.has(f)));
   }
+  // A framework's own reading of its apps' code (Vue: Vuetify's themes), beside what the web's collector found.
+  for (const [stack, own] of frameworkFiles) parts.push(stack.collect!(own));
   // Native apps (Flutter): each stack reads all its apps' own files (not Motif's) together. With a web app as well, the
   // values found in both are put together into one draft.
   // Their shared packages (a Flutter path: dependency) add their theme code, not their widgets.

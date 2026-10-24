@@ -354,6 +354,33 @@ describe("React Native in the skill and the modes", () => {
   });
 });
 
+describe("Vue in the skill and the modes", () => {
+  test("SKILL.md sends Vue and Nuxt apps to their guide", () => {
+    const skill = read("SKILL.md");
+    expect(skill).toContain("(adapters/vue/README.md)");
+    expect(skill).toContain("Nuxt");
+  });
+
+  test("init names both starters", () => {
+    const init = read("modes/init.md");
+    for (const s of ["npm create vue@latest", "npm create nuxt@latest", "(../adapters/vue/README.md)"]) expect(init).toContain(s);
+  });
+
+  test("feature lists a Vue app's components from its guide", () => {
+    expect(read("modes/feature.md")).toContain("(../adapters/vue/components.md)");
+  });
+
+  test("review links Vue's checks and state scripts", () => {
+    const review = read("modes/review.md");
+    for (const s of ["(../adapters/vue/checks.md)", "(../adapters/vue/checks.md#screens-behind-a-form-or-a-click)"]) expect(review).toContain(s);
+  });
+
+  test("variants: switching a Vue or Nuxt app's variant", () => {
+    const variants = read("knowledge/variants.md");
+    for (const s of ["data-variant", "useHead", "(../adapters/vue/tokens.md#switching-variants)"]) expect(variants).toContain(s);
+  });
+});
+
 describe("Flutter in the skill and the modes", () => {
   test("SKILL.md sends Flutter apps to their guide, and the toolchain row names the Flutter SDK", () => {
     const skill = read("SKILL.md");

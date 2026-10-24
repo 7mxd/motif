@@ -62,6 +62,14 @@ const EXEC: Record<PackageManager, string[]> = { npm: ["npx"], pnpm: ["pnpm", "e
 
 const lockfileIn = (dir: string) => LOCKFILES.find(([file]) => existsSync(join(dir, file)))?.[1];
 
+/** The app's package manager, by its lockfile (or, in a monorepo, the workspace root's): npm when there is none. */
+export function packageManager(appDir: string): PackageManager {
+  return lockfileIn(appDir) ?? lockfileIn(installRoot(appDir)) ?? "npm";
+}
+
+/** The command that adds packages to the app, in its package manager's words. */
+export const addPackages = (pm: PackageManager, packages: string) => `${pm} ${pm === "npm" ? "install" : "add"} ${packages}`;
+
 /** How to start this app's dev server, or a plain explanation of why Motif can't. */
 export function devCommand(
   appDir: string,
@@ -76,7 +84,7 @@ export function devCommand(
     return { error: 'This app has no "dev" script in package.json. Start it yourself and pass its address with --url.' };
   }
   const root = installRoot(appDir);
-  const pm = lockfileIn(appDir) ?? lockfileIn(root) ?? "npm";
+  const pm = packageManager(appDir);
   const exe = which(pm);
   if (!exe) {
     return { error: `This app uses ${pm}, which isn't installed (or isn't on PATH). Install it, or start the app yourself and pass its address with --url.` };
@@ -150,17 +158,27 @@ export function killTree(pid: number, force = false): void {
   }
 }
 
-/** Whether something answers at the address (a local dev server's own https certificate is fine). */
-export async function answers(url: string): Promise<boolean> {
+/** The HTTP status at the address, or null when nothing answers (a local dev server's own https certificate is fine). */
+async function answerStatus(url: string): Promise<number | null> {
   try {
-    await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(5000), tls: { rejectUnauthorized: false } });
-    return true;
+    const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(5000), tls: { rejectUnauthorized: false } });
+    await res.body?.cancel();
+    return res.status;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export async function startDevServer(opts: { cwd: string; command: string[]; timeoutMs?: number; env?: Record<string, string> }): Promise<DevServer> {
+/** Whether something answers at the address (a local dev server's own https certificate is fine). */
+export async function answers(url: string): Promise<boolean> {
+  return (await answerStatus(url)) !== null;
+}
+
+/**
+ * Starts the dev server and waits until it answers. With buildingStatus (Nuxt's 503), an answer with that status is the
+ * server's loading screen while it builds the app, not the app: it waits on for another.
+ */
+export async function startDevServer(opts: { cwd: string; command: string[]; timeoutMs?: number; env?: Record<string, string>; buildingStatus?: number }): Promise<DevServer> {
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const proc = spawn(opts.command[0]!, opts.command.slice(1), {
     cwd: opts.cwd,
@@ -212,6 +230,8 @@ export async function startDevServer(opts: { cwd: string; command: string[]; tim
   let url: string | null = null;
   // An address not on a "Local" line (another program's, printed first) is taken only if no Local line comes soon.
   let otherSince: number | null = null;
+  // Whether the last answer was the server's loading screen.
+  let building = false;
   try {
     while (Date.now() < deadline) {
       if (failure.error) throw new Error(`Couldn't run "${opts.command.join(" ")}": ${failure.error.message}`);
@@ -222,10 +242,14 @@ export async function startDevServer(opts: { cwd: string; command: string[]; tim
       const found = findLocalAddress(output);
       if (found && !found.onLocalLine) otherSince ??= Date.now();
       url = found && (found.onLocalLine || Date.now() - otherSince! >= 1500) ? found.url : null;
-      if (url && (await answers(url))) return { url, pid: proc.pid!, stop };
+      const status = url ? await answerStatus(url) : null;
+      building = status !== null && status === opts.buildingStatus;
+      if (status !== null && !building) return { url: url!, pid: proc.pid!, stop };
       await Bun.sleep(250);
     }
-    throw new Error(`The dev server didn't ${url ? `answer at ${url}` : "say where it's running"} within ${Math.round(timeoutMs / 1000)} s.${tail()}`);
+    const limit = `${Math.round(timeoutMs / 1000)} s`;
+    if (building) throw new Error(`The dev server at ${url} was still building the app after ${limit} (it answered HTTP ${opts.buildingStatus}). If the page really answers ${opts.buildingStatus}, start the app yourself and pass its address with --url.${tail()}`);
+    throw new Error(`The dev server didn't ${url ? `answer at ${url}` : "say where it's running"} within ${limit}.${tail()}`);
   } catch (e) {
     await stop();
     throw e;

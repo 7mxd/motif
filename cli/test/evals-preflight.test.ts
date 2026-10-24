@@ -107,6 +107,23 @@ describe("before a run", () => {
     expect(await preflight(dflt.p, false, dflt.deps)).toEqual({ error: expect.stringContaining("Node.js 20.9") });
   });
 
+  test("the Vue cases need the Node.js Vite 8 runs on: 20.19 or later, or 22.12 or later on Node 22", async () => {
+    for (const v of ["v20.18.1", "v21.7.3", "v22.11.0"]) {
+      const { p, deps } = setup({ node: ok(`${v}\n`) });
+      const r = (await preflight(p, false, deps, false, false, false, true, true)) as { error: string };
+      expect([v, r.error]).toEqual([v, expect.stringContaining(`The Vue cases (b-vue-history, b-vue-settings, c-vue, d-darb) need Node.js 20.19 or later, or 22.12 or later on Node 22 (Bustan's Vite 8 needs it). This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases `)]);
+      expect(r.error).not.toMatch(/--cases .*vue/);
+      expect(r.error).not.toMatch(/--cases .*swiftui/);
+    }
+    for (const v of ["v20.19.0", "v22.12.0", "v24.1.0"]) {
+      const { p, deps } = setup({ node: ok(`${v}\n`) });
+      expect([v, await preflight(p, false, deps, false, false, false, true, true)]).toEqual([v, expect.not.objectContaining({ error: expect.anything() })]);
+    }
+    // Without a Vue case, the web's floor stays 20.9.
+    const web = setup({ node: ok("v20.18.1\n") });
+    expect(await preflight(web.p, false, web.deps, false, false, false, true, false)).not.toHaveProperty("error");
+  });
+
   test("a browser is needed only for tests C and D, and is never downloaded for you", async () => {
     const noBrowser = ok(JSON.stringify({ items: [{ id: "browser", status: "needed" }] }));
     const a = setup({ doctor: noBrowser });
@@ -141,7 +158,7 @@ describe("before a run", () => {
 
 describe("before a run with SwiftUI cases", () => {
   const swiftUICases = "b-swiftui-orders, b-swiftui-rewards, c-swiftui, d-masar";
-  const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,b-rn-orders,b-rn-favourites,c-review,c-plain,c-flutter,c-compose,c-rn,d-stride,d-ledgerly,d-bloom,d-sahm,d-nabta,d-rihla";
+  const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,c-review,c-plain,c-flutter,c-compose,c-rn,c-vue,d-stride,d-ledgerly,d-bloom,d-sahm,d-nabta,d-rihla,d-darb";
   /** A Mac with (or without) Xcode and an iOS simulator, as doctor sees it. */
   function mac(opts: { xcode?: string; simulator?: boolean }): DoctorDeps {
     return {
@@ -190,7 +207,7 @@ describe("before a run with SwiftUI cases", () => {
 
   test("on a Mac, a missing Flutter or Android SDK offers the SwiftUI cases among the others", async () => {
     const withSwiftUI =
-      "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-swiftui-orders,b-swiftui-rewards,c-review,c-plain,c-rn,c-swiftui,d-stride,d-ledgerly,d-bloom,d-rihla,d-masar";
+      "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-swiftui-orders,b-swiftui-rewards,c-review,c-plain,c-rn,c-vue,c-swiftui,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-masar";
     const a = setup({}, { flutter: null });
     const flutter = (await preflight(a.p, false, { ...a.deps, platform: "darwin" }, true)) as { error: string };
     expect(flutter.error).toEndWith(`Or run the web, Expo and SwiftUI cases without it: ${withSwiftUI}`);
@@ -207,7 +224,7 @@ describe("before a run with SwiftUI cases", () => {
 });
 
 describe("before a run with Flutter cases", () => {
-  const otherCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,c-review,c-plain,c-rn,d-stride,d-ledgerly,d-bloom,d-rihla";
+  const otherCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,c-review,c-plain,c-rn,c-vue,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb";
 
   test("ready: Flutter 3.27 or later on the PATH", async () => {
     const { p, deps, seen } = setup();
@@ -243,7 +260,7 @@ describe("before a run with Flutter cases", () => {
 });
 
 describe("before a run with Compose cases", () => {
-  const webCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,c-review,c-plain,c-rn,d-stride,d-ledgerly,d-bloom,d-rihla";
+  const webCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,c-review,c-plain,c-rn,c-vue,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb";
   const java = (v: string) => ({ code: 0, stdout: "", stderr: `openjdk version "${v}" 2024-07-16
 ` });
   /** A computer with (or without) a JDK and an SDK, as doctor sees it. */

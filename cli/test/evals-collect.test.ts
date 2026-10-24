@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
-import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, composeComponents, flutterComponents, reactComponents, recordedIn, rnComponents, swiftUIComponents } from "../../tests/evals/collect";
+import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, composeComponents, flutterComponents, reactComponents, recordedIn, rnComponents, swiftUIComponents, vueComponents } from "../../tests/evals/collect";
 import { gradeB, gradeD } from "../../tests/evals/grade";
 import { Paused, type JudgeFn } from "../../tests/evals/judge";
 import type { SeededIssue } from "../../tests/evals/match";
@@ -785,6 +785,130 @@ describe("test B on React Native", () => {
   test("no page at the feature's route: Dukkan has no /favourites", async () => {
     const ws = await prepareWorkspace(byId("b-rn-favourites"), join(tempDir("motif-col-"), "brn2"), run);
     expect((await collectB(byId("b-rn-favourites"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"))).pageExists).toBe(false);
+  });
+});
+
+describe("new components on Vue, from the session's diff", () => {
+  test("a new .vue file under components/ counts; one under views/ is the page itself", () => {
+    const diff = [
+      newFile("src/components/HistoryRow.vue", "<script setup lang=\"ts\"></script>\n<template>\n  <li />\n</template>"),
+      newFile("src/components/SeasonTag.vue", "<template><span /></template>"),
+      newFile("src/views/HistoryView.vue", "<template><main /></template>"),
+    ].join("\n");
+    expect(vueComponents(diff)).toEqual({ newComponents: ["HistoryRow", "SeasonTag"], screens: ["HistoryView"], screenParts: [], notUi: [] });
+  });
+
+  test("Nuxt's folders: pages/ are screens (index is its folder), layouts are navigation, nested components count", () => {
+    const diff = [
+      newFile("app/pages/settings/index.vue", "<template><main /></template>"),
+      newFile("app/pages/history.vue", "<template><main /></template>"),
+      newFile("app/layouts/garden.vue", "<template><slot /></template>"),
+      newFile("app/components/history/Row.vue", "<template><li /></template>"),
+      newFile("components/Toggle.vue", "<template><button /></template>"),
+    ].join("\n");
+    expect(vueComponents(diff)).toEqual({ newComponents: ["Row", "Toggle"], screens: ["settings", "history"], screenParts: [], notUi: ["garden"] });
+  });
+
+  test("a component with no template draws nothing; tests, stories, the generated theme and edits to existing files never count; a moved component isn't new", () => {
+    const diff = [
+      newFile("src/components/useBooking.vue", "<script setup lang=\"ts\">\nexport const x = 1;\n</script>"),
+      newFile("src/components/Row.test.vue", "<template><i /></template>"),
+      newFile("src/components/Row.stories.vue", "<template><i /></template>"),
+      newFile("src/styles/motif.css", ":root { --motif-x: 1; }"),
+      newFile("src/design/motion.ts", "export const m = 1;"),
+      newFile("src/components/Moved.vue", "<template><i /></template>"),
+      "diff --git a/src/components/old/Moved.vue b/src/components/old/Moved.vue\ndeleted file mode 100644\nindex 1111111..0000000\n--- a/src/components/old/Moved.vue\n+++ /dev/null\n@@ -1 +0,0 @@\n-<template><i /></template>",
+      edit("src/components/AppButton.vue", ["<template><button /></template>"], ["<template><button class=\"x\" /></template>"]),
+      newFile("src/App.vue", "<template><RouterView /></template>"),
+    ].join("\n");
+    expect(vueComponents(diff)).toEqual({ newComponents: [], screens: [], screenParts: [], notUi: ["useBooking"] });
+  });
+
+  test("componentFacts routes a Vue case here and records the names DESIGN.md mentions", () => {
+    const diff = [
+      newFile("src/components/HistoryRow.vue", "<template><li /></template>"),
+      newFile("src/components/SeasonTag.vue", "<template><span /></template>"),
+      newFile("src/views/HistoryView.vue", "<template><main /></template>"),
+      newFile("DESIGN.md", "- **Components:** SeasonTag, a chip for a season."),
+    ].join("\n");
+    expect(componentFacts(byId("b-vue-history"), diff)).toEqual({ newComponents: ["HistoryRow", "SeasonTag"], screens: ["HistoryView"], screenParts: [], notUi: [], recorded: ["SeasonTag"] });
+  });
+});
+
+describe("test B on Vue", () => {
+  test("the page (from Vue Router), the build, vue-tsc and the page drawn at 390 and 1440", async () => {
+    const ws = await prepareWorkspace(byId("b-vue-history"), join(tempDir("motif-col-"), "bvue"), run);
+    expect(commands.at(-1)).toEqual(["npm", "ci", "--no-audit", "--no-fund"]);
+    const router = join(ws.app, "src/router/index.ts");
+    writeFileSync(router, readFileSync(router, "utf8").replace('{ path: "/harvest"', '{ path: "/history", name: "history", component: () => import("../views/HistoryView.vue") },\n    { path: "/harvest"'));
+    writeFileSync(join(ws.app, "src/views/HistoryView.vue"), "<template>\n  <main />\n</template>\n");
+    writeFileSync(join(ws.app, "src/components/HistoryRow.vue"), "<template>\n  <li />\n</template>\n");
+    const saved = outputs.shot;
+    outputs.shot = { command: "shot", ok: true, exitCode: 0, shots: [], routes: [{ route: "/history", status: 200, shots: [] }] };
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    try {
+      const before = commands.length;
+      const out = join(ws.dir, "results");
+      const f = await collectB(byId("b-vue-history"), ws, { run, motif: recording, judge: noJudge }, out);
+      expect(f).toMatchObject({
+        route: "/history", pageExists: true, build: { code: 0 }, typecheck: { code: 0 }, render: { route: "/history", status: 200, pageErrors: 0 },
+        newComponents: ["HistoryRow"], screens: ["HistoryView"],
+      });
+      expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm run build", "npx vue-tsc --noEmit"]);
+      expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--routes", "/history", "--sizes", "390,1440"]);
+      for (const file of ["check.json", "validate.json", "diff.patch", "build.log", "typecheck.log", "shot.json"]) expect(existsSync(join(out, file))).toBe(true);
+    } finally {
+      outputs.shot = saved;
+    }
+  });
+
+  test("no page at the feature's route: Bustan has no /settings", async () => {
+    const ws = await prepareWorkspace(byId("b-vue-settings"), join(tempDir("motif-col-"), "bvue2"), run);
+    expect((await collectB(byId("b-vue-settings"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"))).pageExists).toBe(false);
+  });
+});
+
+describe("test C on the Vue seeded app", () => {
+  test("is graded against its own list", async () => {
+    const seededApp: SeededIssue[] = JSON.parse(readFileSync(join(REPO, "tests/fixtures/vue-seeded-app/seeded-issues.json"), "utf8")).issues;
+    const ws = await prepareWorkspace(byId("c-vue"), join(tempDir("motif-col-"), "cvue"), run);
+    const v01 = seededApp.find((i) => i.id === "V-01")!;
+    mkdirSync(join(ws.app, "design/reviews"), { recursive: true });
+    writeFileSync(join(ws.app, "design/reviews/2026-10-24-whole-app.json"), JSON.stringify({ motifReview: 1, scope: "whole app", date: "2026-10-24", findings: [
+      { id: "F-001", severity: "major", category: v01.categories[0], source: "exact", location: v01.location, summary: v01.summary, fix: "Use the success role." },
+    ] }));
+    const f = await collectC(byId("c-vue"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"));
+    expect(f.exact.found).toEqual(["V-01"]);
+    expect(f.exact.missed).toHaveLength(seededApp.filter((i) => i.kind === "exact").length - 1);
+    expect(f.changedCode).toEqual([]);
+  });
+});
+
+describe("test D on Vue", () => {
+  test("installs the packages when the session didn't, builds, runs vue-tsc and draws the starter screens at 390 and 1440", async () => {
+    const ws = await prepareWorkspace(byId("d-darb"), join(tempDir("motif-col-"), "dvue"), run);
+    const app = join(ws.app, "darb");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "DESIGN.md"), readFileSync(join(REPO, "tests/fixtures/vue-contract-app/DESIGN.md"), "utf8"));
+    writeFileSync(join(app, "package.json"), "{}");
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    const before = commands.length;
+    const out = join(ws.dir, "results");
+    const f = await collectD(byId("d-darb"), ws, { run, motif: recording, judge: noJudge }, out);
+    expect(f.app).toBe(app);
+    expect(f.build).toEqual({ code: 0, timedOut: false });
+    expect(f.typecheck).toEqual({ code: 0, timedOut: false });
+    expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm install", "npm run build", "npx vue-tsc --noEmit"]);
+    expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/,/sign-in,/meetups", "--sizes", "390,1440"]);
+    for (const file of ["DESIGN.md", "validate.json", "check.json", "shot.json", "install.log", "build.log", "typecheck.log"]) expect(existsSync(join(out, file))).toBe(true);
   });
 });
 

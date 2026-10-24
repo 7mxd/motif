@@ -59,6 +59,12 @@ const EXPO_PAGES: Record<string, string> = {
   "/expo-textless": '<div id="root"><div style="position:absolute;inset:0;background:#123456"></div></div>',
 };
 
+// What a framework's dev server adds to every page: Nuxt DevTools' floating panel (#nuxt-devtools-container), Vue
+// DevTools' (vite-plugin-vue-devtools: #__vue-devtools-container__) and Next.js's badge (<nextjs-portal>). Each is a red
+// box over the top left here, holding a small button with no name.
+const OVERLAY = '<div style="position:fixed;top:0;left:0;width:120px;height:120px;background:#ff0000"><button style="width:16px;height:16px"></button></div>';
+const DEVTOOLS_PAGE = `<h1 style="margin:40px 0 0">Home</h1><div id="nuxt-devtools-container">${OVERLAY}</div><div id="__vue-devtools-container__">${OVERLAY}</div><nextjs-portal>${OVERLAY}</nextjs-portal>`;
+
 beforeAll(() => {
   server = Bun.serve({
     hostname: "127.0.0.1",
@@ -80,6 +86,7 @@ beforeAll(() => {
       // loaded route) on react-navigation's grey card, or a root with nothing drawn (a layout waiting for useFonts).
       // Neither fetches anything, so the quiet wait passes during it.
       if (path.startsWith("/expo-")) return html(EXPO_PAGES[path] ?? "", EXPO_PAGES[path] ? 200 : 404);
+      if (path === "/devtools") return html(DEVTOOLS_PAGE);
       return html("<h1>Not found</h1>", 404);
     },
   });
@@ -177,6 +184,17 @@ describe.skipIf(!browser)("an Expo screen that is still loading (needs Chrome, E
     const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: base(), routes: ["/expo-bundling"], outDir: out, settleMs: 50, viewports: PHONE });
     expect(routes[0]!.error).toBeUndefined();
     expect(topLeft(join(out, "expo-bundling.mobile.png"))).toEqual([0xf2, 0xf2, 0xf2]);
+  }, 120_000);
+});
+
+describe.skipIf(!browser)("a dev server's own tools (needs Chrome, Edge or Chromium)", () => {
+  test("Nuxt DevTools, Vue DevTools and Next.js's badge are hidden from the screenshots and the audit: they aren't the app", async () => {
+    const PHONE = [{ name: "mobile" as const, width: 390, height: 844, scale: 2, mobile: true }];
+    const out = tempDir("motif-shots-");
+    const { routes, issues } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/devtools"], outDir: out, settleMs: 50, viewports: PHONE, audit: true });
+    expect(routes[0]!.error).toBeUndefined();
+    expect(pixel(readFileSync(join(out, "devtools.mobile.png")), 120, 120).slice(0, 3)).toEqual([255, 255, 255]);
+    expect(issues).toEqual([]);
   }, 120_000);
 });
 

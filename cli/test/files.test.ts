@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listRnFiles, listSourceFiles, listSwiftFiles, SWIFTUI_IGNORES } from "../src/check/files";
+import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listRnFiles, listSourceFiles, listVueFiles, listSwiftFiles, SWIFTUI_IGNORES } from "../src/check/files";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -176,6 +176,28 @@ describe("listRnFiles", () => {
   test("an app in a monorepo is listed from its folder", () => {
     const root = makeProject({ "mobile/a/app/index.tsx": "x", "mobile/a/ios/z.js": "x", "mobile/b/app/index.tsx": "x" });
     expect(paths(listRnFiles(root, "mobile/a"))).toEqual(["mobile/a/app/index.tsx"]);
+  });
+});
+
+describe("listVueFiles", () => {
+  test("reads .vue files with scripts and styles, not build output, generated types or tests", () => {
+    const root = makeProject({
+      "package.json": "{}",
+      "src/App.vue": "x", "src/main.ts": "x", "src/assets/base.css": "x", "pages/index.vue": "x", "index.html": "x",
+      ".nuxt/a.vue": "x", ".output/b.mjs": "x", ".data/c.ts": "x", "dist/d.js": "x", ".vite/e.js": "x", ".motif/f.vue": "x",
+      "auto-imports.d.ts": "x", "components.d.ts": "x", "typed-router.d.ts": "x", "src/a.test.ts": "x",
+    });
+    const files = listVueFiles(root, ".");
+    expect(paths(files)).toEqual(["index.html", "pages/index.vue", "src/App.vue", "src/assets/base.css", "src/main.ts"]);
+    expect(files.find((f) => f.path === "src/App.vue")!.lang).toBe("markup");
+  });
+
+  test("the project's design/ folder is Motif's only at the project root", () => {
+    const root = makeProject({
+      "design/tokens.json": "{}", "design/Notes.vue": "x", "pages/index.vue": "x", "components/Card.vue": "x", "assets/main.css": "x",
+      "apps/web/design/Hero.vue": "x", "apps/web/app.vue": "x",
+    });
+    expect(paths(listVueFiles(root, "."))).toEqual(["apps/web/app.vue", "apps/web/design/Hero.vue", "assets/main.css", "components/Card.vue", "pages/index.vue"]);
   });
 });
 

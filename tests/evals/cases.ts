@@ -1,5 +1,5 @@
 // The eval cases (spec §13.2 and the plain web spec §11): test B's features on copies of the contract apps and site, test C's reviews of the seeded apps and site,
-// and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose, React Native (Expo) and SwiftUI (on a Mac only). Each prompt switches approvals
+// and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose, React Native (Expo), Vue and SwiftUI (on a Mac only). Each prompt switches approvals
 // off in the skill's own words.
 
 import type { StackId } from "../../cli/src/detect/stacks";
@@ -29,7 +29,7 @@ export interface EvalCase {
   minutes: number;
   /**
    * The app's stack when it isn't a web one: a Flutter case is type-checked with flutter analyze and drawn by Flutter,
-   * a Compose case with Gradle and drawn by Robolectric, a React Native one with tsc and drawn through Expo's web target, and
+   * a Compose case with Gradle and drawn by Robolectric, a React Native one with tsc and drawn through Expo's web target, a Vue one with vue-tsc and built with Vite, and
    * a SwiftUI one built with xcodebuild and drawn in an iOS simulator.
    */
   stack?: StackId;
@@ -51,6 +51,9 @@ export const isCompose = (c: EvalCase): boolean => c.stack === "compose";
 
 /** A case on an Expo app: its screens are drawn through Expo's web target, in a browser. */
 export const isReactNative = (c: EvalCase): boolean => c.stack === "react-native";
+
+/** A case on a Vue app (Bustan, or a new one from a brief): a web app, built with npm and drawn in a browser. */
+export const isVue = (c: EvalCase): boolean => c.stack === "vue";
 
 /** A case on a SwiftUI app: it needs a Mac with Xcode and an iOS simulator. */
 export const isSwiftUI = (c: EvalCase): boolean => c.stack === "swiftui";
@@ -81,10 +84,10 @@ export function macOnly(cases: EvalCase[], platform: NodeJS.Platform): { run: Ev
 
 /**
  * Whether grading needs a browser: C and D always, and B on a plain site, whose new page is checked in one, and on an
- * Expo app, whose new screen is drawn through its web target. Flutter, Compose and SwiftUI draw their own screens, so
+ * Expo app, whose new screen is drawn through its web target, and on a Vue app, whose new page is drawn at two sizes. Flutter, Compose and SwiftUI draw their own screens, so
  * their cases never do.
  */
-export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c) && (c.test !== "B" || isPlain(c) || isReactNative(c));
+export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c) && (c.test !== "B" || isPlain(c) || isReactNative(c) || isVue(c));
 
 /**
  * Whether the case installs or builds with npm: the web and React Native apps (npm ci, npm run build, npx tsc). Flutter, Compose and
@@ -113,6 +116,11 @@ const rnFeature = (id: string, title: string, route: string, what: string): Eval
   ...feature(id, title, route, what), fixture: "rn-contract-app", stack: "react-native", minutes: 120,
 });
 
+/** A feature on Bustan, a Vue app. It is built and drawn, so these get longer than Larder's. */
+const vueFeature = (id: string, title: string, route: string, what: string): EvalCase => ({
+  ...feature(id, title, route, what), fixture: "vue-contract-app", stack: "vue", minutes: 120,
+});
+
 /**
  * A feature on Qahwa, on a Mac only. SwiftUI's screens have no address, so the feature's page is the #Preview the prompt
  * names (its title, as motif shot's --screen takes it). Every screenshot builds the app for the simulator, so these get as
@@ -125,7 +133,7 @@ const swiftUIFeature = (id: string, title: string, preview: string, what: string
 /** A new app from a brief; `home` is the name of its third screen, which Rihla calls /trips. */
 const newApp = (brief: string, title: string, stack?: StackId, home = "home"): EvalCase => ({
   id: `d-${brief}`, test: "D", title, brief, routes: ["/", "/sign-in", `/${home}`],
-  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${stack ? "screen" : "page"} at /, sign-in at /sign-in and ${home} at /${home}.\n\n${UNATTENDED}`,
+  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${stack && stack !== "vue" ? "screen" : "page"} at /, sign-in at /sign-in and ${home} at /${home}.\n\n${UNATTENDED}`,
   maxTurns: 400, maxBudgetUsd: 80, minutes: 180,
   ...(stack ? { stack } : {}),
 });
@@ -171,6 +179,11 @@ export const CASES: EvalCase[] = [
   rnFeature("b-rn-favourites", "Favourites saved from a product (React Native)", "/favourites",
     "Add favourites at /favourites: a heart on a product's page saves or removes that product, and the favourites screen lists the saved products, each opening its page, with an empty state that says how to save one. Link to it from the app's home screen. Keep the saved products in memory; there's no back end."),
 
+  vueFeature("b-vue-history", "A plot's booking history with an empty state (Vue)", "/history",
+    "Add a booking history at /history: every season a plot has been booked, newest first, each with the season, who held the plot, the dates and its status, and an empty state for a plot that has never been booked that leads back to the plots. Link to it from a plot's page. Mock data only."),
+  vueFeature("b-vue-settings", "Settings with the look switch (Vue)", "/settings",
+    "Add settings at /settings: a switch for harvest-week reminders, the email address the sign-in link goes to with a way to change it, a choice between the garden's growing-season look and its harvest look, and a sign-out button. Link to it from the top bar. Keep the choices in memory; there's no back end."),
+
   swiftUIFeature("b-swiftui-orders", "Past orders with an empty state (SwiftUI)", "Orders",
     "Add past orders: a screen with every order newest first, each with the day it was placed, its drinks, its total and the stamps it earned, and an empty state for before the first order that leads back to the menu. Give it a #Preview titled \"Orders\", and link to it from the menu. Mock data only."),
   swiftUIFeature("b-swiftui-rewards", "Rewards history grouped by month (SwiftUI)", "Rewards history",
@@ -207,6 +220,14 @@ ${UNATTENDED}`,
     maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
   },
   {
+    id: "c-vue", test: "C", title: "Review of the seeded Vue app", fixture: "vue-seeded-app", stack: "vue",
+    routes: ["/", "/plots/by-the-gate", "/harvest", "/sign-in"],
+    prompt: `/motif:review Review the whole app: its screens are /, /plots/by-the-gate (a plot), /harvest and /sign-in. Write the report only: stop after the report step and don't change the app's code.
+
+${UNATTENDED}`,
+    maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
+  },
+  {
     id: "c-swiftui", test: "C", title: "Review of the seeded SwiftUI app", fixture: "swiftui-seeded-app", stack: "swiftui", mac: true,
     routes: ["/", "Menu", "Drink", "Loyalty card", "Sign in"],
     prompt: `/motif:review Review the whole app: its screens are / (the root view: the menu, once signed in) and the previews Menu, Drink (a drink's page), Loyalty card and Sign in. Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
@@ -218,6 +239,7 @@ ${UNATTENDED}`,
   newApp("sahm", "New Flutter app: Sahm (university carpools)", "flutter"),
   newApp("nabta", "New Compose app: Nabta (plant care)", "compose"),
   newApp("rihla", "New Expo app: Rihla (a trip planner)", "react-native", "trips"),
+  newApp("darb", "New Vue app: Darb (a running club's meetups)", "vue", "meetups"),
   swiftUINewApp("masar", "New SwiftUI app: Masar (a running tracker)", "swiftui-starter-masar"),
 ];
 

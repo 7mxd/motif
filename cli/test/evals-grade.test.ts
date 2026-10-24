@@ -173,6 +173,27 @@ describe("test B and D on Compose", () => {
   });
 });
 
+describe("test B on Vue", () => {
+  const okVue: BFacts = {
+    route: "/history", pageExists: true, check: { violations: 0, exceptions: 0, warnings: 0 }, validate: { errors: 0, warnings: 0, missingSections: [] },
+    build: { code: 0 }, typecheck: { code: 0, command: "vue-tsc" }, render: { route: "/history", status: 200, pageErrors: 0 }, newComponents: [], recorded: [],
+  };
+  test("the build, vue-tsc and the drawn page all count: a Vue app has all three", () => {
+    const g = gradeB({ ...okVue, newComponents: ["HistoryRow"], screens: ["HistoryView"] });
+    expect(g.pass).toBe(true);
+    expect(g.criteria.map((c) => c.id)).toEqual(["feature", "check", "exceptions", "validate", "build", "typecheck", "renders", "components"]);
+    expect(failing(gradeB({ ...okVue, build: { code: 1 } }))).toEqual(["build"]);
+    expect(failing(gradeB({ ...okVue, typecheck: { code: 2, command: "vue-tsc" } }))).toEqual(["typecheck"]);
+    expect(failing(gradeB({ ...okVue, render: { route: "/history", status: 500, pageErrors: 0 } }))).toEqual(["renders"]);
+    expect(failing(gradeB({ ...okVue, render: { error: "no browser" } }))).toEqual(["renders"]);
+  });
+
+  test("React web, with a build and no drawn page, is graded as before", () => {
+    const { render: _, ...web } = okVue;
+    expect(gradeB(web).criteria.map((c) => c.id)).toEqual(["feature", "check", "exceptions", "validate", "build", "typecheck", "components"]);
+  });
+});
+
 describe("test B on React Native", () => {
   const okRn: BFacts = {
     route: "/orders", pageExists: true, check: { violations: 0, exceptions: 0, warnings: 0 }, validate: { errors: 0, warnings: 0, missingSections: [] },

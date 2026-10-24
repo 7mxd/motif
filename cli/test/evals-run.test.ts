@@ -88,7 +88,7 @@ describe("the eval runner", () => {
 
   test("Node.js is required only when a chosen case installs or builds with npm", async () => {
     const cases: [string, boolean][] = [
-      ["b-search", true], ["c-review", true], ["c-rn", true], ["d-stride", true], ["d-rihla", true],
+      ["b-search", true], ["c-review", true], ["c-rn", true], ["d-stride", true], ["d-rihla", true], ["b-vue-history", true], ["c-vue", true], ["d-darb", true],
       ["b-plain", false], ["c-plain", false], ["b-flutter-search", false], ["c-compose", false], ["d-sahm", false], ["d-nabta", false],
       ["b-search,b-flutter-search", true],
     ];
@@ -112,6 +112,20 @@ describe("the eval runner", () => {
       },
     });
     await runEvals(["--cases", "c-swiftui,b-swiftui-orders"], h.deps, h.where);
+  });
+
+  test("preflight is told whether a Vue case was chosen, for the Node.js Vite 8 needs", async () => {
+    for (const [ids, needs] of [["b-vue-history", true], ["b-search,c-vue", true], ["b-search,b-rn-orders", false]] as const) {
+      const seen: (boolean | undefined)[] = [];
+      const h = harness({
+        preflight: async (_b, _c, _f, _a, _x, _n, vue) => {
+          seen.push(vue);
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
+        },
+      });
+      await runEvals(["--cases", ids], h.deps, h.where);
+      expect([ids, seen]).toEqual([ids, [needs]]);
+    }
   });
 
   test("with claude purge, it clears each folder with it and says nothing about transcripts", async () => {
@@ -596,18 +610,18 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
       for (const id of ["b-swiftui-orders", "c-swiftui"]) expect(cases[id]).toEqual({ status: "skipped", attempts: 0, note: SKIP_NOTE });
       const md = readFileSync(join(h.where.results, RUN, "report.md"), "utf8");
       expect(md).toContain(`## c-swiftui: Review of the seeded SwiftUI app\n\nSkipped: ${SKIP_NOTE}`);
-      expect(md).toContain("1 of 13 cases graded; b-swiftui-orders was skipped (it needs a Mac).");
+      expect(md).toContain("1 of 15 cases graded; b-swiftui-orders was skipped (it needs a Mac).");
     }
   });
 
   test("off a Mac, a whole run passes when every case it can run passes: verdicts and exit code agree", async () => {
     const h = harness({ platform: "win32" });
     expect(await runEvals(["--work", h.work], h.deps, h.where)).toBe(0);
-    expect(h.calls.prepare).toHaveLength(23);
+    expect(h.calls.prepare).toHaveLength(27);
     const { verdicts } = JSON.parse(readFileSync(join(h.where.results, RUN, "report.json"), "utf8"));
     expect(verdicts).toEqual([
-      { test: "B", status: "pass", detail: "All 12 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
-      { test: "C", status: "pass", detail: "All 5 cases run passed; c-swiftui was skipped (it needs a Mac)." },
+      { test: "B", status: "pass", detail: "All 14 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
+      { test: "C", status: "pass", detail: "All 6 cases run passed; c-swiftui was skipped (it needs a Mac)." },
       { test: "D", status: "pass", detail: "The new apps passed, and B and C passed with no design sources connected; d-masar was skipped (it needs a Mac)." },
     ]);
     // A failing case that ran still fails it.

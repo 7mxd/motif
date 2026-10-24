@@ -12,6 +12,8 @@ import { ignoredByGit, ignoredNotes } from "../project/git";
 import { nativeStack } from "../stacks/native";
 import { isExpoApp } from "../stacks/react-native/project";
 import { packageLimit, swiftUIApp } from "../stacks/swiftui/project";
+import { vueMajor } from "../stacks/vue/project";
+import { webStack } from "../stacks/web";
 import { VERSION } from "../version";
 import { runValidate } from "./validate";
 
@@ -89,6 +91,8 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
         label,
         "React Native without Expo detected. Motif fully supports Expo apps; here theme code, checks and drafts work, and for screenshots, run the app on react-native-web and pass its address to motif shot --url.",
       );
+    } else if (app.stack === "vue" && (vueMajor(join(cwd, app.path)) ?? 3) < 3) {
+      // A Vue 2 app is told it isn't supported, and what still works, by the Vue item below: no second line here.
     } else if (app.stack === "swiftui" && swiftUIApp(join(cwd, app.path))?.kind === "package") {
       // motif shot refuses a Swift package app; the line says so in its words.
       push(`app:${app.path}`, "ok", label, `Full support for SwiftUI but for screenshots: ${packageLimit(swiftUIApp(join(cwd, app.path))!.name)}`);
@@ -111,9 +115,10 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
     else push("node", "needed", "Node.js", "Not found. Your app needs Node.js to run — install it from nodejs.org.");
   }
 
-  // Each native stack's toolchain (Flutter's SDK; the JDK and Android SDK), once however many of its apps there are.
+  // Each native or web stack's items (Flutter's SDK; the JDK and Android SDK; Vue's versions), once however many of its apps there are.
   for (const id of new Set(apps.map((a) => a.stack))) {
-    items.push(...(nativeStack(id)?.doctor?.(deps, { root: cwd, apps: apps.filter((a) => a.stack === id) }) ?? []));
+    const ctx = { root: cwd, apps: apps.filter((a) => a.stack === id) };
+    items.push(...(nativeStack(id)?.doctor?.(deps, ctx) ?? []), ...(webStack(id)?.doctor?.(deps, ctx) ?? []));
   }
 
   const hasGuide = existsSync(join(cwd, "DESIGN.md")) && existsSync(join(cwd, "design", "tokens.json"));

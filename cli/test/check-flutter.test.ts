@@ -148,10 +148,10 @@ describe("motif check on a Flutter app", () => {
   });
 
   test("names the stacks it reads when it can't read an app", async () => {
-    const root = makeProject({ "design/tokens.json": TOKENS, "package.json": JSON.stringify({ dependencies: { vue: "^3" } }), "src/App.vue": "" });
+    const root = makeProject({ "design/tokens.json": TOKENS, "package.json": JSON.stringify({ dependencies: { svelte: "^5" } }), "src/App.svelte": "" });
     const r = await check(root);
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("motif check works on Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, React web apps and plain web sites in this version.");
+    expect(r.text).toContain("motif check works on Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, Vue / Nuxt apps, React web apps and plain web sites in this version.");
   });
 });
 

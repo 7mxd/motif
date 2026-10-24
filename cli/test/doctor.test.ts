@@ -87,11 +87,41 @@ describe("runDoctor", () => {
   });
 
   test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
-    const dir = tempDir("motif-vue-");
-    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { vue: "^3" } }));
+    const dir = tempDir("motif-svelte-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { svelte: "^5" } }));
     const app = item((await runDoctor(dir, deps())).data.items as DoctorItem[], "app:.")!;
     expect(app.status).toBe("optional");
-    expect(app.detail).toContain("Vue / Nuxt detected. Full support is coming soon");
+    expect(app.detail).toContain("Svelte / SvelteKit detected. Full support is coming soon");
+  });
+
+  test("a Vue 3 app has full support, with its version line beside it (2I Task 13)", async () => {
+    const dir = tempDir("motif-vue3-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { vue: "^3.5.13" }, devDependencies: { vite: "^6.0.0" } }));
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toMatchObject({ status: "ok", detail: "Full support for Vue / Nuxt." });
+    expect(item(items, "vue:.")).toMatchObject({ status: "ok", detail: "Vue 3.5 with Vite." });
+    expect(r.text).not.toContain("coming soon");
+  });
+
+  test("a Nuxt 3 app has full support (2I Task 13)", async () => {
+    const dir = tempDir("motif-nuxt3-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { nuxt: "^3.17.0", vue: "^3.5.13" } }));
+    const app = item((await runDoctor(dir, deps())).data.items as DoctorItem[], "app:.")!;
+    expect(app).toMatchObject({ status: "ok", detail: "Full support for Vue / Nuxt." });
+  });
+
+  test("a Vue 2 app is told Vue 2 isn't supported, once, and what still works", async () => {
+    const dir = tempDir("motif-vue2-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { vue: "^2.7.16" } }));
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toBeUndefined();
+    expect(item(items, "vue:.")).toMatchObject({ status: "optional" });
+    expect(item(items, "vue:.")!.detail).toStartWith("Vue 2 isn't supported");
+    expect(r.text).not.toContain("coming soon");
+    expect(r.text).not.toContain("Full support");
+    expect(r.text.match(/Vue 2 isn't supported/g)).toHaveLength(1);
   });
 
   describe("the Flutter toolchain", () => {

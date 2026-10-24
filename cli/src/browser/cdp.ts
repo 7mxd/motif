@@ -342,9 +342,11 @@ export async function launchBrowser(
         }
       };
       listeners.add(onError);
+      let viewport: { width: number; height: number } | undefined;
       return {
         async setViewport(width, height, scale = 1, mobile = false) {
           await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: scale, mobile }, sessionId);
+          viewport = { width, height };
           // Phones and tablets are touch screens: (pointer: coarse) and (hover: none) match, as on the real devices.
           await send("Emulation.setTouchEmulationEnabled", { enabled: mobile, ...(mobile ? { maxTouchPoints: 5 } : {}) }, sessionId);
         },
@@ -388,7 +390,20 @@ export async function launchBrowser(
           return r.result.value as T;
         },
         async screenshot(clip) {
-          const params = clip ? { format: "png", captureBeyondViewport: true, clip: { ...clip, scale: 1 } } : { format: "png" };
+          // A clip that is just what the screen shows (a page that fits it) is captured as shown. Capturing beyond the
+          // viewport, Chrome first lays the page out 1 px wide (a scrollbar workaround in its page_handler.cc,
+          // crbug.com/40727379): a right-to-left page overflows to the left there, and when the shot is the screen's
+          // own size nothing lays it out again, so it came out shifted right by that overflow (task 10b). Any other
+          // size is laid out again at that size, and drawn where it belongs.
+          const onScreen =
+            clip !== undefined &&
+            viewport !== undefined &&
+            clip.x === 0 &&
+            clip.y === 0 &&
+            clip.width === viewport.width &&
+            clip.height === viewport.height &&
+            (await send("Runtime.evaluate", { expression: "scrollX === 0 && scrollY === 0", returnByValue: true }, sessionId)).result?.value === true;
+          const params = clip ? { format: "png", ...(onScreen ? {} : { captureBeyondViewport: true }), clip: { ...clip, scale: 1 } } : { format: "png" };
           const r = await send("Page.captureScreenshot", params, sessionId);
           return new Uint8Array(Buffer.from(r.data, "base64"));
         },
