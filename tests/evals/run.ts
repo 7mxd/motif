@@ -5,12 +5,12 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
-import { CASES, isCompose, isFlutter, isReactNative, isSwiftUI, isVue, macOnly, macOnlyNote, needsBrowser, needsNode, selectCases, type EvalCase } from "./cases";
+import { CASES, isCompose, isFlutter, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, macOnlyNote, needsBrowser, needsNode, needsSvelteKit3, needsVite8, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
-import { paths, preflight, type Ready } from "./preflight";
+import { paths, preflight, type NodeNeeds, type Ready } from "./preflight";
 import { NO_PURGE_NOTE, removeProjectData } from "./purge";
 import { renderReport, testVerdicts } from "./report";
 import { runSession, type SessionOutcome, type SessionSpec } from "./session";
@@ -37,7 +37,7 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
   --claude <path>        The Claude Code program to use`;
 
 export interface RunDeps {
-  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean, needsNode?: boolean, needsVue?: boolean): Promise<Ready | { error: string }>;
+  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean, needsNode?: boolean, nodeNeeds?: NodeNeeds): Promise<Ready | { error: string }>;
   prepare(c: EvalCase, dir: string): Promise<Workspace>;
   session(spec: SessionSpec): Promise<SessionOutcome>;
   collect(c: EvalCase, ws: Workspace, out: string, judge: JudgeFn): Promise<Grade>;
@@ -203,7 +203,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 0;
   }
 
-  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose), todo.some(isSwiftUI), todo.some(needsNode), todo.some(isVue));
+  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose), todo.some(isSwiftUI), todo.some(needsNode), { vite8: todo.some(needsVite8), svelteKit3: todo.some(needsSvelteKit3) });
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;
@@ -342,7 +342,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       if (instructions.length > 0) throw new Stopped(`The grader would read these instruction files: ${instructions.join(", ")}. Move them aside, then --resume.`);
       const r = await deps.session({
         command: [ready.claude], args: judgeArgs({ mcpConfigFile, schema: JUDGE_SCHEMA, maxTurns: 40, model: state.options.judgeModel, appDir: app }), cwd: own, env: withTempFolder(env, join(own, "tmp")),
-        prompt: judgePrompt(input, undefined, app, isCompose(c) ? "Jetpack Compose app" : isFlutter(c) ? "Flutter app" : isReactNative(c) ? "Expo (React Native) app" : isVue(c) ? "Vue app" : isSwiftUI(c) ? "SwiftUI app" : "web app"), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
+        prompt: judgePrompt(input, undefined, app, isCompose(c) ? "Jetpack Compose app" : isFlutter(c) ? "Flutter app" : isReactNative(c) ? "Expo (React Native) app" : isVue(c) ? "Vue app" : isSvelte(c) ? "Svelte app" : isSwiftUI(c) ? "SwiftUI app" : "web app"), transcript: join(out, "judge.jsonl"), timeoutMs: 30 * 60_000, expect: { auto: false, tools: JUDGE_EXPECTED_TOOLS, personal },
       });
       await purge(own);
       if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "The grader's session didn't start.");
@@ -433,10 +433,10 @@ if (import.meta.main) {
   const code = await runEvals(
     process.argv.slice(2),
     {
-      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode, needsNode, needsVue) =>
+      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds) =>
         preflight(
           p, needsBrowser, { which: (cmd) => Bun.which(cmd), run: runCmd, env: process.env, bun: process.execPath, ...(claude ? { claudeOverride: resolve(claude) } : {}) },
-          needsFlutter, needsAndroid, needsXcode, needsNode, needsVue,
+          needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds,
         ),
       prepare: (c, dir) => prepareWorkspace(c, dir, runCmd),
       session: runSession,

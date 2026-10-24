@@ -1,5 +1,5 @@
 // Measures what a finished case left behind: the motif tool's checks, the build and the type check (on a plain site, the page in a browser; on Flutter,
-// flutter analyze and the page as Flutter draws it; on React Native, tsc and the page as Expo's web target draws it; on Vue, vue-tsc, the build and the page at a phone's and a laptop's width; on SwiftUI, xcodebuild build and
+// flutter analyze and the page as Flutter draws it; on React Native, tsc and the page as Expo's web target draws it; on Vue and Svelte, vue-tsc or svelte-check, the build and the page at a phone's and a laptop's width; on SwiftUI, xcodebuild build and
 // the page's #Preview as the simulator draws it), what the session changed, and for test C the review report, graded against the seeded list (match.ts)
 // and by the model grader (judge.ts).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -16,10 +16,11 @@ import { findAndroidSdk, gradleJava } from "../../cli/src/stacks/compose/doctor"
 import { gradleProjectPath, gradleTaskCommand } from "../../cli/src/stacks/compose/harness";
 import { discoverComposeScreens, previewSlug, type Preview } from "../../cli/src/stacks/compose/screens";
 import { discoverExpoRoutes } from "../../cli/src/stacks/react-native/routes";
+import { discoverSvelteRoutes } from "../../cli/src/stacks/svelte/routes";
 import { discoverVueRoutes } from "../../cli/src/stacks/vue/routes";
 import { swiftUIApp } from "../../cli/src/stacks/swiftui/project";
 import { discoverSwiftUIScreens, previewSlug as swiftUIPreviewSlug, type SwiftUIPreview } from "../../cli/src/stacks/swiftui/screens";
-import { isCompose, isFlutter, isPlain, isReactNative, isSwiftUI, isVue, type EvalCase } from "./cases";
+import { isCompose, isFlutter, isPlain, isReactNative, isSvelte, isSwiftUI, isViteWebApp, isVue, type EvalCase } from "./cases";
 import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
 import { Paused, type JudgeFn, type JudgeInput, type JudgeVerdict } from "./judge";
 import { gradeExact, parseReport, type SeededIssue } from "./match";
@@ -58,14 +59,33 @@ async function buildAndTypecheck(dir: string, k: Collectors, out: string, typech
   save(out, "build.log", `${build.stdout}\n${build.stderr}`);
   const typecheck = await k.run(typecheckCommand, dir, 600_000);
   save(out, "typecheck.log", `${typecheck.stdout}\n${typecheck.stderr}`);
-  return { build: { code: build.code, timedOut: build.timedOut }, typecheck: { code: typecheck.code, timedOut: typecheck.timedOut } };
+  // Vue's build script type-checks before it builds (vue-tsc --noEmit && vite build), so a type error fails both. It is
+  // counted once, as the type check's: the build's failure is marked as only that, and the grade leaves it out.
+  const typeErrorsOnly = build.code !== 0 && typecheck.code !== 0 && stoppedByTypeErrors(`${build.stdout}\n${build.stderr}`);
+  return {
+    build: { code: build.code, timedOut: build.timedOut, ...(typeErrorsOnly ? { typeErrorsOnly } : {}) },
+    typecheck: { code: typecheck.code, timedOut: typecheck.timedOut },
+  };
+}
+
+/** Whether a failed build's output is TypeScript errors with no bundler output after them: the build stopped at its type check. */
+export function stoppedByTypeErrors(output: string): boolean {
+  return /\berror TS\d+/.test(output) && !/error during build|building (?:client|ssr|for production)|transforming\.\.\.|Build failed/i.test(output);
 }
 
 /** A Vue app's type check, over its .vue files as well as its .ts ones; the build (npm run build) is run beside it. */
 const VUE_TYPECHECK = ["npx", "vue-tsc", "--noEmit"];
 
-/** motif shot's sizes for a Vue app: a phone and a laptop, since it is a web app used on both. */
-const VUE_SIZES = ["--sizes", "390,1440"];
+/**
+ * A Svelte app's type check: svelte-check over its .svelte and .ts files, where warnings fail it too. The build (vite build)
+ * runs before it, which also brings SvelteKit's generated types up to date.
+ */
+const SVELTE_TYPECHECK = ["npx", "svelte-check", "--fail-on-warnings"];
+
+/** motif shot's sizes for a Vue or Svelte app: a phone and a laptop, since it is a web app used on both. */
+const WEB_APP_SIZES = ["--sizes", "390,1440"];
+
+const webTypecheck = (c: EvalCase): string[] | undefined => (isVue(c) ? VUE_TYPECHECK : isSvelte(c) ? SVELTE_TYPECHECK : undefined);
 
 /**
  * A Flutter app's type check: its packages got again (the session may have added some, and flutter pub get also writes
@@ -491,8 +511,8 @@ export interface VueComponents {
 }
 
 /**
- * A Vue or Nuxt app's new components, from the session's diff: .vue files the session adds under components/ (the app's
- * shared ones), minus those it moved. A file under views/ or pages/ is a screen. The generated theme is never a .vue
+ * A Vue or Nuxt app's new components, from the session's diff: .vue files the session adds in a components/ folder (the app's
+ * shared ones, at the root, under src/ or app/, or in a feature's folder), minus those it moved. A file under views/ or pages/ is a screen. The generated theme is never a .vue
  * file, and tests never count. A component with no template draws nothing and is not UI.
  */
 export function vueComponents(diff: string): VueComponents {
@@ -515,7 +535,48 @@ export function vueComponents(diff: string): VueComponents {
     if (moved.has(n)) continue;
     if (/^(?:(?:src|app)\/)?layouts\/.+\.vue$/.test(f.path)) add(found.notUi, n);
     else if (/^(?:(?:src|app)\/)?(?:views|pages)\/.+\.vue$/.test(f.path)) add(found.screens, n);
-    else if (/^(?:(?:src|app)\/)?components\/.+\.vue$/.test(f.path)) add(/<template[\s>]/.test(reallyAdded(f).join("\n")) ? found.newComponents : found.notUi, n);
+    else if (/(?:^|\/)components\/.+\.vue$/.test(f.path)) add(/<template[\s>]/.test(reallyAdded(f).join("\n")) ? found.newComponents : found.notUi, n);
+  }
+  return found;
+}
+
+/** A Svelte or SvelteKit app's new components: the same lists as Vue's. */
+export type SvelteComponents = VueComponents;
+
+/** Whether a .svelte file draws anything: markup outside its script, style and comments. */
+const hasMarkup = (source: string) =>
+  source.replace(/<!--[\s\S]*?-->/g, "").replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/g, "").replace(/<svelte:options\b[^>]*>/g, "").trim() !== "";
+
+/**
+ * A SvelteKit app's new components, from the session's diff: .svelte files the session adds under src/lib/ (the app's
+ * shared ones, $lib), in a components/ folder, or beside a route, minus those it moved. A +page.svelte is the page a
+ * route shows (named by its folder; the root is "home"), and +layout and +error are navigation and not counted. The
+ * generated theme is never a .svelte file, and tests never count. A file with no markup draws nothing and is not UI.
+ */
+export function svelteComponents(diff: string): SvelteComponents {
+  const all = diffFiles(diff).filter((f) => /\.svelte$/.test(f.path) && !/\.(test|spec|stories)\.svelte$/.test(f.path));
+  const name = (path: string) => {
+    const file = basename(path, ".svelte");
+    if (!file.startsWith("+")) return file;
+    const folder = posix.basename(posix.dirname(path));
+    return folder === "routes" ? "home" : folder;
+  };
+  const moved = new Set(all.filter((f) => f.deleted && !basename(f.path).startsWith("+")).map((f) => name(f.path)));
+  const found: SvelteComponents = { newComponents: [], screens: [], screenParts: [], notUi: [] };
+  const seen = new Set<string>();
+  const add = (list: string[], n: string) => {
+    if (!seen.has(n)) {
+      seen.add(n);
+      list.push(n);
+    }
+  };
+  for (const f of all.filter((x) => x.isNew && !x.deleted)) {
+    const file = basename(f.path);
+    const n = name(f.path);
+    if (/^\+(?:layout|error)/.test(file)) add(found.notUi, `${posix.basename(posix.dirname(f.path))}/${basename(file, ".svelte")}`);
+    else if (file.startsWith("+page")) add(found.screens, n);
+    else if (moved.has(n)) continue;
+    else if (/^src\/(?:lib|routes)\/|\/components\//.test(f.path)) add(hasMarkup(reallyAdded(f).join("\n")) ? found.newComponents : found.notUi, n);
   }
   return found;
 }
@@ -705,6 +766,8 @@ export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComp
         ? rnComponents(diff)
         : isVue(c)
           ? vueComponents(diff)
+          : isSvelte(c)
+          ? svelteComponents(diff)
           : isSwiftUI(c)
           ? swiftUIComponents(diff, c.test === "B" ? c.routes[0] : undefined)
           : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
@@ -849,11 +912,12 @@ export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: s
       typecheck: await rnTypecheck(ws.app, k, out), render: await renderFacts(k, ws.app, route, out, PHONE_SIZES), ...components,
     };
   }
-  if (isVue(c)) {
-    const { build, typecheck } = await buildAndTypecheck(ws.app, k, out, VUE_TYPECHECK);
+  if (isViteWebApp(c)) {
+    const { build, typecheck } = await buildAndTypecheck(ws.app, k, out, webTypecheck(c));
+    const routes = isSvelte(c) ? discoverSvelteRoutes(ws.app).routes : discoverVueRoutes(ws.app).routes;
     return {
-      route, pageExists: discoverVueRoutes(ws.app).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
-      build, typecheck, render: await renderFacts(k, ws.app, route, out, VUE_SIZES), ...components,
+      route, pageExists: routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
+      build, typecheck, render: await renderFacts(k, ws.app, route, out, WEB_APP_SIZES), ...components,
     };
   }
   const { build, typecheck } = await buildAndTypecheck(ws.app, k, out);
@@ -990,7 +1054,7 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
       ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) }
       : isReactNative(c)
         ? { build: undefined, typecheck: await rnTypecheck(app, k, out) }
-        : swift ? { build: undefined, typecheck: await swiftUIBuild(app, join(ws.dir, "DerivedData"), k, out) } : await buildAndTypecheck(app, k, out, isVue(c) ? VUE_TYPECHECK : undefined);
+        : swift ? { build: undefined, typecheck: await swiftUIBuild(app, join(ws.dir, "DerivedData"), k, out) } : await buildAndTypecheck(app, k, out, webTypecheck(c));
   // SwiftUI: the root, and the #Previews the prompt names that the app has (by File.swift:line, which nothing else
   // shares), each reported under the case's own name; one the app lacks isn't asked for, so it shows as not captured.
   const named = new Map<string, string>();
@@ -1001,7 +1065,7 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
     }
   }
   const targets = swift ? ["--routes", "/", ...(named.size > 0 ? ["--screen", [...named.keys()].join(",")] : [])] : ["--routes", c.routes.join(",")];
-  const shot = await motifJson(k, ["shot", "--audit", ...targets, ...(flutter || compose || swift || isReactNative(c) ? PHONE_SIZES : isVue(c) ? VUE_SIZES : [])], app, out, "shot.json", compose || swift ? 1_800_000 : 900_000);
+  const shot = await motifJson(k, ["shot", "--audit", ...targets, ...(flutter || compose || swift || isReactNative(c) ? PHONE_SIZES : isViteWebApp(c) ? WEB_APP_SIZES : [])], app, out, "shot.json", compose || swift ? 1_800_000 : 900_000);
   copyShots(app, shot.json, join(out, "shots"));
   const screens = Array.isArray(shot.json?.routes)
     ? shot.json.routes.map((r: any) => ({ route: named.get(String(r.route)) ?? String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))
