@@ -428,6 +428,10 @@ describe("componentViews: the shared tag grammar", () => {
     expect(holds(v.css, text, ".a { gap: 13px }")).toBe(true);
     const html = '<template lang="html"><p :width="300">Hi</p></template>';
     expect(holds(vueViews(html).script, html, "300")).toBe(true);
+    // An empty lang is HTML, as no lang is.
+    const empty = '<template lang=""><p :width="300">Hi</p></template>';
+    expect(holds(vueViews(empty).script, empty, "300")).toBe(true);
+    expect(holds(vueViews(empty).markup, empty, ">Hi</p>")).toBe(true);
   });
 
   test("an attribute's value is read by the one grammar: a style= in another attribute's quoted value is text, in HTML too", () => {

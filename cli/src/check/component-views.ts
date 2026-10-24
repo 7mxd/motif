@@ -22,7 +22,7 @@ export interface Binding {
 /** The style languages read as CSS (postcss is CSS with Tailwind's @apply); a block in another (stylus) is left out of every view. */
 const CSS_LANGS = new Set(["css", "scss", "sass", "less", "postcss"]);
 /** A Svelte block's or tag's keyword ({#if …}, {:else if …}, {/each}, {@html …}): markup; what follows it is script. */
-const BLOCK_KEYWORD =/^[#:/@](?:else\s+if|[a-zA-Z]+)/;
+const BLOCK_KEYWORD = /^[#:/@](?:else\s+if|[a-zA-Z]+)/;
 
 function lang(text: string, tag: Tag): string | null {
   return attrValue(text, tag, "lang")?.toLowerCase() ?? null;
@@ -79,7 +79,7 @@ function unreadBlocks(text: string, blocks: string[]): [number, number][] {
     const name = tag.name.toLowerCase();
     const [contentEnd, end] = tag.closed ? [tag.end, tag.end] : blockEnd(text, name, tag.end);
     if (!blocks.includes(name)) found.push([lt, end]);
-    else if (name === "template" && (lang(text, tag) ?? "html") !== "html") found.push([tag.end, contentEnd]);
+    else if (name === "template" && (lang(text, tag) || "html") !== "html") found.push([tag.end, contentEnd]);
     i = end;
   }
   return found;
