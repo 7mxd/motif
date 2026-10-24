@@ -62,6 +62,14 @@ const EXEC: Record<PackageManager, string[]> = { npm: ["npx"], pnpm: ["pnpm", "e
 
 const lockfileIn = (dir: string) => LOCKFILES.find(([file]) => existsSync(join(dir, file)))?.[1];
 
+/** The app's package manager, by its lockfile (or, in a monorepo, the workspace root's): npm when there is none. */
+export function packageManager(appDir: string): PackageManager {
+  return lockfileIn(appDir) ?? lockfileIn(installRoot(appDir)) ?? "npm";
+}
+
+/** The command that adds packages to the app, in its package manager's words. */
+export const addPackages = (pm: PackageManager, packages: string) => `${pm} ${pm === "npm" ? "install" : "add"} ${packages}`;
+
 /** How to start this app's dev server, or a plain explanation of why Motif can't. */
 export function devCommand(
   appDir: string,
@@ -76,7 +84,7 @@ export function devCommand(
     return { error: 'This app has no "dev" script in package.json. Start it yourself and pass its address with --url.' };
   }
   const root = installRoot(appDir);
-  const pm = lockfileIn(appDir) ?? lockfileIn(root) ?? "npm";
+  const pm = packageManager(appDir);
   const exe = which(pm);
   if (!exe) {
     return { error: `This app uses ${pm}, which isn't installed (or isn't on PATH). Install it, or start the app yourself and pass its address with --url.` };

@@ -86,6 +86,14 @@ describe("generateVue", () => {
     expect(gen(nuxt, { srcDir: "." }, "none").notes[0]).toContain("motion/motif-motion.ts is for Motion for Vue: npm install motion-v.");
   });
 
+  test("the install line is the lockfile's package manager's (Task 13 hands-on: a pnpm Nuxt app was told npm install)", () => {
+    const line = (lockfile: string) => gen(makeProject({ "package.json": pkg({ nuxt: "^4.0.0" }), "app/app.vue": "", [lockfile]: "" }), { srcDir: "app" }, "none").notes[0];
+    expect(line("pnpm-lock.yaml")).toBe("app/design/motion.ts is for Motion for Vue: pnpm add motion-v. Vue's <Transition> can use the CSS variables in motif.css instead.");
+    expect(line("yarn.lock")).toContain(": yarn add motion-v.");
+    expect(line("bun.lock")).toContain(": bun add motion-v.");
+    expect(line("package-lock.json")).toContain(": npm install motion-v.");
+  });
+
   test("an app inside a folder prefixes every path", () => {
     const root = makeProject({ "web/package.json": pkg(VITE) });
     expect(paths(gen(root, { path: "web" }))[0]).toBe("web/src/styles/motif.css");

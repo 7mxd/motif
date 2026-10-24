@@ -5,6 +5,7 @@ import type { GeneratedFile } from "../../generate/header";
 import type { ThemeSet } from "../../generate/theme";
 import { motifCss, motionTs, tailwindCss, type TailwindVersion } from "../react-web/generate";
 import { appLabel, prefixPath } from "../../project/apps";
+import { addPackages, packageManager } from "../../shot/devserver";
 import type { AppInfo } from "../../detect/stacks";
 import { declared } from "../react-native/project";
 import { isNuxt, vueMajor } from "./project";
@@ -50,7 +51,7 @@ export function generateVue(set: ThemeSet, ctx: VueCtx): { files: GeneratedFile[
   } else {
     files.push({ path: where.motion, content: motionTs(set.base) });
     if (declared(appDir, "motion-v") === null) {
-      notes.push(`${where.motion} is for Motion for Vue: npm install motion-v. Vue's <Transition> can use the CSS variables in motif.css instead.`);
+      notes.push(`${where.motion} is for Motion for Vue: ${addPackages(packageManager(appDir), "motion-v")}. Vue's <Transition> can use the CSS variables in motif.css instead.`);
     }
   }
   return { files, notes };
