@@ -6,6 +6,7 @@ import type { WebStack } from "../web";
 import { svelteDoctor, svelteUnsupported } from "./doctor";
 import { generateSvelte, svelteWiring } from "./generate";
 import { svelteSrcDir } from "./project";
+import { discoverSvelteRoutes } from "./routes";
 import { scanSvelte, svelteFix, svelteReducedMotionHits } from "./rules";
 
 /**
@@ -48,5 +49,6 @@ export const SVELTE: WebStack = {
   fix: svelteFix,
   doctor: svelteDoctor,
   unsupported: svelteUnsupported,
+  routes: discoverSvelteRoutes,
   collect: collectSvelte,
 };
