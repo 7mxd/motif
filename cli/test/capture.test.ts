@@ -27,6 +27,15 @@ describe("names and addresses", () => {
     expect(routeUrl("http://localhost:3000", "/")).toBe("http://localhost:3000/");
     expect(routeUrl("http://localhost:3000/", "/settings")).toBe("http://localhost:3000/settings");
     expect(routeUrl("http://localhost:5173/app/", "/settings?tab=billing")).toBe("http://localhost:5173/app/settings?tab=billing");
+    expect(routeUrl("http://localhost:3000/#top", "/a/b")).toBe("http://localhost:3000/a/b");
+    expect(routeUrl("http://localhost:3000", "/search?q=a%20b")).toBe("http://localhost:3000/search?q=a%20b");
+  });
+  test("routeUrl keeps a route's fragment (a hash router's page) and routeSlug names it like the path", () => {
+    expect(routeUrl("http://localhost:5173", "/#/about")).toBe("http://localhost:5173/#/about");
+    expect(routeUrl("http://localhost:5173/app/", "/#/user/7?tab=a")).toBe("http://localhost:5173/app/#/user/7?tab=a");
+    expect(routeUrl("http://localhost:5173", "/page?x=1#section")).toBe("http://localhost:5173/page?x=1#section");
+    expect(routeSlug("/#/about")).toBe("about");
+    expect(routeSlug("/#/")).toBe("index");
   });
   test("a state script starts on the first line, so its errors name its own lines (backlog)", () => {
     expect(stateExpression("first();\nsecond();").split("\n")[0]).toContain("first();");

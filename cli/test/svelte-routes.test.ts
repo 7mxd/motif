@@ -122,7 +122,7 @@ describe("discoverSvelteRoutes", () => {
     expect(discoverSvelteRoutes(root)).toEqual({ routes: ["/"], skipped: [] });
   });
 
-  test("svelte-spa-router's routes object: wildcards and :params are skipped, comments are not read", () => {
+  test("svelte-spa-router is a hash router: its routes are /#/about, and / stays /; wildcards and :params are skipped, comments are not read", () => {
     const root = makeProject({
       "package.json": vitePkg,
       "src/routes.ts": `import Home from './Home.svelte'
@@ -137,7 +137,7 @@ export const routes = {
 }
 `,
     });
-    expect(discoverSvelteRoutes(root)).toEqual({ routes: ["/", "/about"], skipped: ["/user/:id"] });
+    expect(discoverSvelteRoutes(root)).toEqual({ routes: ["/", "/#/about"], skipped: ["/#/user/:id"] });
   });
 
   test("svelte-routing's <Route path>", () => {

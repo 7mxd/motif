@@ -29,11 +29,13 @@ function fileRoutes(dir: string, segments: string[], out: RouteDiscovery): void 
   }
 }
 
-function addPath(out: RouteDiscovery, raw: string): void {
+/** svelte-spa-router is a hash router: its /about is served at /#/about, and / at /. */
+function addPath(out: RouteDiscovery, raw: string, hash = false): void {
   const path = ("/" + raw.trim()).replace(/\/{2,}/g, "/").replace(/\/+$/, "") || "/";
   const segments = path.split("/").filter(Boolean);
-  if (segments.some(needsValue)) out.skipped.push(path);
-  else if (!path.includes("*")) out.routes.push(path);
+  const address = hash && path !== "/" ? `/#${path}` : path;
+  if (segments.some(needsValue)) out.skipped.push(address);
+  else if (!path.includes("*")) out.routes.push(address);
 }
 
 /** svelte-spa-router's `{ '/': Home, '/about': About }` objects and svelte-routing's <Route path="…">. */
@@ -46,7 +48,7 @@ function routerRoutes(appDir: string, out: RouteDiscovery): void {
       for (const m of text.matchAll(/\b(?:const|let|var)\s+\w*[rR]outes\w*\s*(?::[^=]+)?=\s*\{/g)) {
         for (const entry of splitTop(inside(text, m.index! + m[0].length - 1))) {
           const key = /^(["'`])([^"'`$]*)\1\s*:/.exec(entry)?.[2];
-          if (key !== undefined && key.startsWith("/")) addPath(out, key);
+          if (key !== undefined && key.startsWith("/")) addPath(out, key, true);
         }
       }
     }

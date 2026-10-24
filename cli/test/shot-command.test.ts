@@ -283,6 +283,7 @@ describe("motif shot", () => {
 describe("parseRoutes", () => {
   test("adds the leading slash and drops repeats and blanks", () => {
     expect(parseRoutes("/, settings ,/about,,/settings")).toEqual(["/", "/settings", "/about"]);
+    expect(parseRoutes("/#/about, #/team", {})).toEqual(["/#/about", "/#/team"]);
   });
   test("undoes Git Bash's rewriting of addresses that start with /", () => {
     const gitBash = { EXEPATH: "C:\\Program Files\\Git\\bin" };
