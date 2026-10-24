@@ -32,7 +32,7 @@
 ## Carried from plan 2J (its final review's "wait for 2K" triage)
 
 Fold each into the task that touches its code; none is a task of its own.
-- Task 1: hoist before a third copy: `shown`/`NO_VERSION` (vue/doctor, svelte/doctor); the Node-floor check (`nodeVersion`/`older`, now with an `engines` range reader); reduced-motion helpers (`CSS_ANIMATION`/`TW_ANIMATION`/`REDUCED_QUERY` and the report closure, Vue's and Svelte's copies); `readJson` (three places); `kebab`/`title` out of `flutter/extract` into a shared module (RN, Compose, SwiftUI re-pointed). A `WebStack.devScript?(appDir, port)` hook replaces `devCommand`'s hard-coded `"dev"`.
+- Task 1: hoist before a third copy: `shown`/`NO_VERSION` (vue/doctor, svelte/doctor); the Node-floor check (`nodeVersion`/`older`, now with an `engines` range reader); reduced-motion helpers (`CSS_ANIMATION`/`TW_ANIMATION`/`REDUCED_QUERY` and the report closure, Vue's and Svelte's copies); `readJson` (three places: `project/package.ts`, `shot/devserver.ts`, `react-native/project.ts`; export the first); `kebab`/`title` imported from `text.ts`, not through `flutter/extract`'s re-export (RN, Compose, SwiftUI, Vue re-pointed). A `WebStack.devScript?(appDir, port)` hook replaces `devCommand`'s hard-coded `"dev"`.
 - Task 2: generalise `componentViews`' `braces: boolean` into an expression-grammar option (delimiters plus a block-keyword pattern); `<style lang="">` is skipped as non-CSS (treat an empty lang as CSS, as `<template lang="">` was fixed in 2J's wave); regex literals in `{…}` (`readExpression`) only if Angular's reader reuses it.
 - Task 4: stop matching fixes by their wording: `svelteFix`/`vueFix` recognise the web motion fix by text; hits get a fix kind (`Hit.fixKind?`) and each stack's `fix` switches on it. Svelte 4's Motion `animate()` fix points at CSS variables in ms while Motion takes seconds: say "seconds" (divide by 1000) in that fix.
 
@@ -65,8 +65,8 @@ Fold each into the task that touches its code; none is a task of its own.
 ### Task 1: Groundwork: Angular apps, shared helpers, and the dev-script hook
 
 **Files:**
-- Create: `cli/src/stacks/angular/{project,index,doctor}.ts`, `cli/src/project/node-floor.ts` (the hoisted Node-floor check), `cli/src/stacks/web-doctor.ts` (`shown`, `NO_VERSION`), `cli/src/check/reduced-motion.ts` (hoisted helpers), `cli/src/util/names.ts` (`kebab`, `title`), `cli/src/util/json.ts` (`readJson`)
-- Modify: `cli/src/stacks/web.ts` (register `ANGULAR`; add `devScript?`), `cli/src/stacks/{vue,svelte}/{doctor,rules}.ts`, `cli/src/shot/devserver.ts`, `cli/src/check/files.ts`, the `kebab`/`title` and `readJson` import sites
+- Create: `cli/src/stacks/angular/{project,index,doctor}.ts`, `cli/src/project/node-floor.ts` (the hoisted Node-floor check), `cli/src/stacks/web-doctor.ts` (`shown`, `NO_VERSION`), `cli/src/check/reduced-motion.ts` (hoisted helpers)
+- Modify: `cli/src/stacks/web.ts` (register `ANGULAR`; add `devScript?`), `cli/src/stacks/{vue,svelte}/{doctor,rules}.ts`, `cli/src/shot/devserver.ts`, `cli/src/check/files.ts`, the `kebab`/`title` and `readJson` import sites (`kebab`/`title` from `cli/src/text.ts`, where they already live; `readJson` exported once from `cli/src/project/package.ts`)
 - Test: `cli/test/angular-detect.test.ts`, `cli/test/files.test.ts`, `cli/test/doctor.test.ts`, `cli/test/devserver.test.ts`; Vue's and Svelte's detect, doctor and rules tests unchanged
 
 **Interfaces:**
@@ -192,14 +192,14 @@ Fold each into the task that touches its code; none is a task of its own.
 - [ ] **Step 1–4:** tests (every code block run through `motif tokens` and `motif check` in a temp Angular app, as 2J did for Svelte), write, run (plus `bun test test/agents-package.test.ts test/plugin.test.ts`).
 - [ ] **Step 5: Commit** `docs(skill): the Angular stack guide`.
 
-### Task 10: Angular fixtures: Rafiq, and a seeded copy
+### Task 10: Angular fixtures: Ataa, and a seeded copy
 
 **Files:**
-- Create: `tests/fixtures/angular-contract-app/`: **Rafiq**, a volunteer-shift board for a food bank (open shifts, a shift's page, my shifts, sign-in) in English and Arabic, Angular 21.2 standalone + TypeScript + Tailwind 4, in-memory data, the generated theme, Noto Kufi Arabic as the Arabic companion, variants `default` and `harvest-night` (a dusk palette, colours only), one `animate.enter` with reduced motion respected; `tests/fixtures/angular-seeded-app/{overlay/,seeded-issues.json,README.md}` with at least 8 exact problems (typed colour in `[style.color]`, off-scale padding in a component `.css`, off-scale gap in an inline `styles:`, off-scale radius as a Tailwind class, typed font size, a raw `@angular/animations` timing, low-contrast caption, unnamed icon button) and 4 judgement problems (a cramped shift card, two primary buttons on one screen, no empty state for "my shifts", `margin-left` that doesn't mirror in Arabic).
+- Create: `tests/fixtures/angular-contract-app/`: **Ataa**, a volunteer-shift board for a food bank (open shifts, a shift's page, my shifts, sign-in) in English and Arabic, Angular 21.2 standalone + TypeScript + Tailwind 4, in-memory data, the generated theme, Noto Kufi Arabic as the Arabic companion, variants `default` and `harvest-night` (a dusk palette, colours only), one `animate.enter` with reduced motion respected; `tests/fixtures/angular-seeded-app/{overlay/,seeded-issues.json,README.md}` with at least 8 exact problems (typed colour in `[style.color]`, off-scale padding in a component `.css`, off-scale gap in an inline `styles:`, off-scale radius as a Tailwind class, typed font size, a raw `@angular/animations` timing, low-contrast caption, unnamed icon button) and 4 judgement problems (a cramped shift card, two primary buttons on one screen, no empty state for "my shifts", `margin-left` that doesn't mirror in Arabic).
 - Modify: `tests/fixtures/assemble.ts`
 - Test: `cli/test/fixtures-angular.test.ts` (sorted hit lists, not membership)
-- [ ] **Step 1–4:** as plan 2J's Task 10. Rafiq has no `/history` or `/settings` page.
-- [ ] **Step 5: Commit** `feat(fixtures): Rafiq, an Angular volunteer-shift board with a harvest-night variant and Arabic, and its seeded copy`.
+- [ ] **Step 1–4:** as plan 2J's Task 10. Ataa has no `/history` or `/settings` page.
+- [ ] **Step 5: Commit** `feat(fixtures): Ataa, an Angular volunteer-shift board with a harvest-night variant and Arabic, and its seeded copy`.
 
 ### Task 11: Angular eval cases and grading
 
@@ -210,7 +210,7 @@ Fold each into the task that touches its code; none is a task of its own.
 
 **Interfaces:**
 - Produces: `b-angular-history` (a volunteer's shift history at `/history`, with an empty state), `b-angular-settings` (settings at `/settings` with the variant switch), `c-angular`, `d-sanad` (routes `/`, `/sign-in`, `/requests`), `stack: "angular"`. Grading: `build` = `npm run build` (`ng build` type-checks templates in strict mode, so `typecheck` = the build's type errors only, through 2J's `typeErrorsOnly`); render through `motif shot --sizes 390,1440`; a route exists when `discoverAngularRoutes` lists it; `angularComponents(diff)` counts new `@Component` classes in files under `src/app/` that aren't routed pages. Preflight: Node and a browser, and Angular 22's Node range when `ng new` would install it (`nodeNeeds.angular22`).
-- [ ] **Step 1–4:** tests, implement, run. **Step 5: Commit** `feat(evals): Angular cases — two features on Rafiq, the seeded review, and a new app from a brief`.
+- [ ] **Step 1–4:** tests, implement, run. **Step 5: Commit** `feat(evals): Angular cases — two features on Ataa, the seeded review, and a new app from a brief`.
 
 ### Task 12: CI runs the Angular tests
 
