@@ -87,11 +87,11 @@ describe("runDoctor", () => {
   });
 
   test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
-    const dir = tempDir("motif-svelte-");
-    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { svelte: "^5" } }));
+    const dir = tempDir("motif-angular-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { "@angular/core": "^20.0.0" } }));
     const app = item((await runDoctor(dir, deps())).data.items as DoctorItem[], "app:.")!;
     expect(app.status).toBe("optional");
-    expect(app.detail).toContain("Svelte / SvelteKit detected. Full support is coming soon");
+    expect(app.detail).toContain("Angular detected. Full support is coming soon");
   });
 
   test("a Vue 3 app has full support, with its version line beside it (2I Task 13)", async () => {
@@ -133,12 +133,21 @@ describe("runDoctor", () => {
     expect(item((await runDoctor(nuxt, deps())).data.items as DoctorItem[], "vue:.")!.detail).toBe("Nuxt (version not found in package.json).");
   });
 
-  test("a Svelte 5 app keeps the coming-soon line until its adapters exist, with its version line beside it", async () => {
+  test("a SvelteKit app on Svelte 5 has full support, with its version line beside it (2J Task 13)", async () => {
     const dir = tempDir("motif-svelte5-");
     writeFileSync(join(dir, "package.json"), JSON.stringify({ devDependencies: { "@sveltejs/kit": "^2.70.0", svelte: "^5.57.0" } }));
-    const items = (await runDoctor(dir, deps())).data.items as DoctorItem[];
-    expect(item(items, "app:.")!.detail).toContain("coming soon");
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toMatchObject({ status: "ok", detail: "Full support for Svelte / SvelteKit." });
     expect(item(items, "svelte:.")).toMatchObject({ status: "ok", detail: "Svelte 5.57 with SvelteKit 2.70." });
+    expect(r.text).not.toContain("coming soon");
+  });
+
+  test("a Svelte 5 app with Vite has full support (2J Task 13)", async () => {
+    const dir = tempDir("motif-svelte5-vite-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ devDependencies: { svelte: "^5.57.0", vite: "^7.0.0" } }));
+    const app = item((await runDoctor(dir, deps())).data.items as DoctorItem[], "app:.")!;
+    expect(app).toMatchObject({ status: "ok", detail: "Full support for Svelte / SvelteKit." });
   });
 
   test("a Svelte 4 app is told Svelte 4 isn't supported, once, and what still works", async () => {
@@ -150,7 +159,19 @@ describe("runDoctor", () => {
     expect(item(items, "svelte:.")).toMatchObject({ status: "optional" });
     expect(item(items, "svelte:.")!.detail).toStartWith("Svelte 4 isn't supported");
     expect(r.text).not.toContain("coming soon");
+    expect(r.text).not.toContain("Full support");
     expect(r.text.match(/Svelte 4 isn't supported/g)).toHaveLength(1);
+  });
+
+  test("a SvelteKit 1 app keeps its unsupported line, not full support (2J Task 13)", async () => {
+    const dir = tempDir("motif-kit1-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ devDependencies: { "@sveltejs/kit": "^1.30.0", svelte: "^4.2.19" } }));
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toBeUndefined();
+    expect(item(items, "svelte:.")).toMatchObject({ status: "optional" });
+    expect(r.text).not.toContain("Full support");
+    expect(r.text).not.toContain("coming soon");
   });
 
   test("SvelteKit 3 on a Node.js older than 22.17 is told to update", async () => {

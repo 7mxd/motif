@@ -28,7 +28,7 @@ export const STACK_LABELS: Record<StackId, string> = {
  * adapter is built; a release lists it only once its parity row (docs/parity.md) is done in every area, which the
  * release workflow checks (test/release-gate.test.ts, with MOTIF_RELEASE=1).
  */
-export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web", "vue", "flutter", "compose", "react-native", "swiftui"];
+export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web", "vue", "svelte", "flutter", "compose", "react-native", "swiftui"];
 /**
  * The supported web stacks: motif extract reads their CSS and markup (Vue's .vue and Svelte's .svelte files through their registered stacks);
  * Flutter, Compose, React Native and SwiftUI go through their own stacks.

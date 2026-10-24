@@ -717,12 +717,16 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
       const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes(fixtureTest))!;
       expect([fixtureTest, proof[1]!.includes("Recorded in eval run")]).toEqual([fixtureTest, true]);
     }
-    for (const stack of ["Svelte / SvelteKit", "Angular"]) {
+    for (const stack of ["Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }
   });
 
-  test("Flutter's, Jetpack Compose's, React Native's, SwiftUI's and Vue's proofs name every area, and every file they link to exists", () => {
+  test("Svelte / SvelteKit has every area done but its evals, whose run is pending (2J Task 13)", () => {
+    expect(row("Svelte / SvelteKit")!.slice(1)).toEqual(AREAS.map((a) => (a === "Evals" ? "pending" : "done")));
+  });
+
+  test("Flutter's, Jetpack Compose's, React Native's, SwiftUI's, Vue's and Svelte's proofs name every area, and every file they link to exists", () => {
     const section = (heading: string) => {
       const start = parity.indexOf(heading);
       expect(start).toBeGreaterThan(-1);
@@ -731,7 +735,7 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     };
     for (const proof of [
       section("## Flutter: the tests that show it"), section("## Jetpack Compose: the tests that show it"), section("## React Native (Expo): the tests that show it"),
-      section("## SwiftUI: the tests that show it"), section("## Vue / Nuxt: the tests that show it"),
+      section("## SwiftUI: the tests that show it"), section("## Vue / Nuxt: the tests that show it"), section("## Svelte / SvelteKit: the tests that show it"),
     ]) {
       for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
     }
@@ -742,6 +746,11 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     const vue = section("## Vue / Nuxt: the tests that show it");
     expect(vue).toContain("`vue`");
     expect(vue).toContain("(notes/2026-10-24-vue-hands-on.md)");
+    const svelte = section("## Svelte / SvelteKit: the tests that show it");
+    expect(svelte).toContain("`svelte`");
+    expect(svelte).toContain("CI run 40109256191");
+    expect(svelte).toContain("(decisions/0011-");
+    expect(svelte).toContain("(notes/2026-10-24-svelte-hands-on.md)");
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");
