@@ -8,6 +8,7 @@ import type { ThemeSet } from "../generate/theme";
 import type { IssueRule } from "../shot/audit";
 import type { TailwindVersion } from "./react-web/generate";
 import type { RouteDiscovery } from "./react-web/routes";
+import { SVELTE } from "./svelte";
 import { VUE } from "./vue";
 
 /**
@@ -54,9 +55,11 @@ export interface WebStack {
   auditFixes?: Partial<Record<IssueRule, string>>;
   /** The items for this stack, given the project root and this stack's apps in it. */
   doctor?(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[];
+  /** What doctor says for an app on a version Motif doesn't support (and what still works), or null when the version is fine. */
+  unsupported?(appDir: string): string | null;
 }
 
-const STACKS = new Map<StackId, WebStack>([[VUE.id, VUE]]);
+const STACKS = new Map<StackId, WebStack>([[VUE.id, VUE], [SVELTE.id, SVELTE]]);
 
 /** Every web stack of this kind Motif has, registered. */
 export function webStacks(): WebStack[] {

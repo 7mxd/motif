@@ -9,7 +9,7 @@ import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
 import { isMonospace } from "../../contract/defaults";
 import { axisWeightRanges, rootOf } from "../../extract/own-fonts";
-import { locator, stripBom } from "../../text";
+import { kebab, locator, stripBom, title, words } from "../../text";
 import { fontAssets } from "./project";
 import { callArgs, colorContext, namedArgument, scanDart } from "./rules";
 
@@ -51,19 +51,7 @@ export const GENERIC_WORDS = new Set(["theme", "palette", "colors", "colours", "
 const IDENT = "[A-Za-z_$][\\w$]*";
 const escape = (s: string) => s.replace(/[$]/g, "\\$");
 
-/** A Dart name in kebab case: textMuted → text-muted, HiSalonColors → hi-salon-colors. */
-export function kebab(name: string): string {
-  return name
-    .replace(/^[_$]+/, "")
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
-    .replace(/[_$]+/g, "-")
-    .toLowerCase();
-}
-
-/** The words of a name: HighContrast → High, Contrast; high_contrast → high, contrast. */
-export const words = (name: string) => kebab(name).split("-").filter(Boolean);
-export const title = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+export { kebab, title, words };
 
 /**
  * True when a declaration at `index` is a palette's: a top-level one, or a static member of a class (mixin, extension)

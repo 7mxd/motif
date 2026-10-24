@@ -6,9 +6,9 @@ import type { GeneratedFile } from "../../generate/header";
 import type { ThemeSet } from "../../generate/theme";
 import { motifCss, motionTs, tailwindCss, type TailwindVersion } from "../react-web/generate";
 import { appLabel, prefixPath } from "../../project/apps";
-import { addPackages, packageManager } from "../../shot/devserver";
+import { addPackages, packageManager } from "../../project/package";
 import type { AppInfo } from "../../detect/stacks";
-import { declared } from "../react-native/project";
+import { declared } from "../../project/package";
 import { isNuxt, vueMajor } from "./project";
 
 interface VueCtx {

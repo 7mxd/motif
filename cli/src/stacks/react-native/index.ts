@@ -13,7 +13,8 @@ import { rnDoctor } from "./doctor";
 import { collectReactNative } from "./extract";
 import { rnFonts } from "./fonts";
 import { generateReactNative } from "./generate";
-import { aliasBase, declared, srcRoot, usesExpoRouter } from "./project";
+import { declared } from "../../project/package";
+import { aliasBase, srcRoot, usesExpoRouter } from "./project";
 import { discoverExpoRoutes } from "./routes";
 import { rnFix, rnPaletteFile, rnReducedMotion, rnRole, scanReactNative } from "./rules";
 

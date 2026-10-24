@@ -3,9 +3,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { onExit } from "../cleanup";
 import { windowsExe } from "../system";
+import { installRoot, packageManager, type PackageManager } from "../project/package";
 import { isExpoApp } from "../stacks/react-native/project";
 
-export type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
+export { addPackages, packageManager, type PackageManager } from "../project/package";
 
 export interface DevCommand {
   command: string[];
@@ -22,9 +23,6 @@ export interface DevServer {
   stop(): Promise<void>;
 }
 
-const LOCKFILES: [string, PackageManager][] = [
-  ["bun.lock", "bun"], ["bun.lockb", "bun"], ["pnpm-lock.yaml", "pnpm"], ["yarn.lock", "yarn"], ["package-lock.json", "npm"],
-];
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 
 function readJson(path: string): any {
@@ -33,18 +31,6 @@ function readJson(path: string): any {
   } catch {
     return null;
   }
-}
-
-/** The app folder, or in a monorepo the workspace root above it, where the lockfile and node_modules live. */
-function installRoot(appDir: string): string {
-  let dir = appDir;
-  for (let i = 0; i < 5; i++) {
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-    if (existsSync(join(dir, "pnpm-workspace.yaml")) || readJson(join(dir, "package.json"))?.workspaces) return dir;
-  }
-  return appDir;
 }
 
 /** A port nothing is listening on, for a server that must be told one. */
@@ -59,16 +45,6 @@ function freePort(): number {
 const EXPO_ENV = { CI: "1", EXPO_NO_TELEMETRY: "1" };
 /** How each package manager runs a program from the app's dependencies. */
 const EXEC: Record<PackageManager, string[]> = { npm: ["npx"], pnpm: ["pnpm", "exec"], yarn: ["yarn"], bun: ["bunx"] };
-
-const lockfileIn = (dir: string) => LOCKFILES.find(([file]) => existsSync(join(dir, file)))?.[1];
-
-/** The app's package manager, by its lockfile (or, in a monorepo, the workspace root's): npm when there is none. */
-export function packageManager(appDir: string): PackageManager {
-  return lockfileIn(appDir) ?? lockfileIn(installRoot(appDir)) ?? "npm";
-}
-
-/** The command that adds packages to the app, in its package manager's words. */
-export const addPackages = (pm: PackageManager, packages: string) => `${pm} ${pm === "npm" ? "install" : "add"} ${packages}`;
 
 /** How to start this app's dev server, or a plain explanation of why Motif can't. */
 export function devCommand(

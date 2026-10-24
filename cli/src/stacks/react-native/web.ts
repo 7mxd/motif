@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { routeUrl } from "../../shot/capture";
 import { RN_START_TIMEOUT_MS } from "./index";
-import { declared } from "./project";
+import { declared } from "../../project/package";
 
 /** How to keep native-only code out of the web target. */
 const STUB = "move the code that uses it into a file of its own and add a .web.tsx twin of that file that leaves it out (Expo's web target, and so Motif's screenshots, use the .web.tsx file).";

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listRnFiles, listSourceFiles, listVueFiles, listSwiftFiles, SWIFTUI_IGNORES } from "../src/check/files";
+import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listRnFiles, listSourceFiles, listVueFiles, listSvelteFiles, listSwiftFiles, SWIFTUI_IGNORES } from "../src/check/files";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -198,6 +198,25 @@ describe("listVueFiles", () => {
       "apps/web/design/Hero.vue": "x", "apps/web/app.vue": "x",
     });
     expect(paths(listVueFiles(root, "."))).toEqual(["apps/web/app.vue", "apps/web/design/Hero.vue", "assets/main.css", "components/Card.vue", "pages/index.vue"]);
+  });
+});
+
+describe("listSvelteFiles", () => {
+  test("reads .svelte files with scripts and styles, not build output, generated types, config or tests", () => {
+    const root = makeProject({
+      "package.json": "{}",
+      "src/App.svelte": "x", "src/routes/+page.svelte": "x", "src/app.css": "x", "src/lib/a.ts": "x", "src/app.html": "x", "index.html": "x",
+      ".svelte-kit/a.svelte": "x", "build/b.js": "x", ".vercel/c.js": "x", ".netlify/d.js": "x", ".output/e.mjs": "x", "dist/f.js": "x", ".motif/g.svelte": "x",
+      "src/app.d.ts": "x", "svelte.config.js": "x", "vite.config.ts": "x", "src/a.test.ts": "x", "src/b.spec.ts": "x",
+    });
+    const files = listSvelteFiles(root, ".");
+    expect(paths(files)).toEqual(["index.html", "src/App.svelte", "src/app.css", "src/app.html", "src/lib/a.ts", "src/routes/+page.svelte"]);
+    expect(files.find((f) => f.path === "src/App.svelte")!.lang).toBe("markup");
+  });
+
+  test("an app inside a monorepo keeps its own build folders out", () => {
+    const root = makeProject({ "package.json": "{}", "apps/web/src/routes/+page.svelte": "x", "apps/web/.svelte-kit/a.svelte": "x", "apps/web/build/x.js": "x" });
+    expect(paths(listSvelteFiles(root, "apps/web"))).toEqual(["apps/web/src/routes/+page.svelte"]);
   });
 });
 

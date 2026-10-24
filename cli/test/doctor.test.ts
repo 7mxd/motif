@@ -124,6 +124,47 @@ describe("runDoctor", () => {
     expect(r.text.match(/Vue 2 isn't supported/g)).toHaveLength(1);
   });
 
+  test("a Vue or Nuxt app whose version can't be read says so, not just a bare name", async () => {
+    const vue = tempDir("motif-vue-nover-");
+    writeFileSync(join(vue, "package.json"), JSON.stringify({ dependencies: { vue: "workspace:*" } }));
+    expect(item((await runDoctor(vue, deps())).data.items as DoctorItem[], "vue:.")!.detail).toBe("Vue (version not found in package.json).");
+    const nuxt = tempDir("motif-nuxt-nover-");
+    writeFileSync(join(nuxt, "package.json"), JSON.stringify({ dependencies: { nuxt: "latest" } }));
+    expect(item((await runDoctor(nuxt, deps())).data.items as DoctorItem[], "vue:.")!.detail).toBe("Nuxt (version not found in package.json).");
+  });
+
+  test("a Svelte 5 app keeps the coming-soon line until its adapters exist, with its version line beside it", async () => {
+    const dir = tempDir("motif-svelte5-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ devDependencies: { "@sveltejs/kit": "^2.70.0", svelte: "^5.57.0" } }));
+    const items = (await runDoctor(dir, deps())).data.items as DoctorItem[];
+    expect(item(items, "app:.")!.detail).toContain("coming soon");
+    expect(item(items, "svelte:.")).toMatchObject({ status: "ok", detail: "Svelte 5.57 with SvelteKit 2.70." });
+  });
+
+  test("a Svelte 4 app is told Svelte 4 isn't supported, once, and what still works", async () => {
+    const dir = tempDir("motif-svelte4-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { svelte: "^4.2.19" } }));
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toBeUndefined();
+    expect(item(items, "svelte:.")).toMatchObject({ status: "optional" });
+    expect(item(items, "svelte:.")!.detail).toStartWith("Svelte 4 isn't supported");
+    expect(r.text).not.toContain("coming soon");
+    expect(r.text.match(/Svelte 4 isn't supported/g)).toHaveLength(1);
+  });
+
+  test("SvelteKit 3 on a Node.js older than 22.17 is told to update", async () => {
+    const dir = tempDir("motif-kit3-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ devDependencies: { "@sveltejs/kit": "^3.0.0", svelte: "^5.60.0" } }));
+    const old = (await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v22.14.0\n" }) }))).data.items as DoctorItem[];
+    expect(item(old, "svelte:.")).toMatchObject({
+      status: "needed",
+      detail: "SvelteKit 3 needs Node.js 22.17 or later; this computer has 22.14.0. Install a newer Node.js from nodejs.org.",
+    });
+    const current = (await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v24.1.0\n" }) }))).data.items as DoctorItem[];
+    expect(item(current, "svelte:.")!.status).toBe("ok");
+  });
+
   describe("the Flutter toolchain", () => {
     const flutterApp = () => {
       const dir = tempDir("motif-flutter-sdk-");

@@ -6,8 +6,8 @@ import { colorContext } from "../../check/rules/colors";
 import { parseColor, type Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
 import { locator } from "../../text";
-import { kebab, title } from "../flutter/extract";
-import { isObj, maskCode, parseObject, type Obj } from "../react-native/extract";
+import { kebab, title } from "../../text";
+import { isObj, maskCode, parseObject, type Obj } from "../../extract/object-literal";
 
 const MAX_EXAMPLES = 5;
 

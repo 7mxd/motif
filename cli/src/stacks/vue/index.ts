@@ -3,7 +3,7 @@ import type { AppInfo } from "../../detect/stacks";
 import { DEFAULT_IGNORES, listSourceFiles, listVueFiles, VUE_IGNORES, WEB_LANGS, type SourceFile } from "../../check/files";
 import { expandHtml } from "../../check/html";
 import type { WebStack } from "../web";
-import { vueDoctor } from "./doctor";
+import { vueDoctor, vueUnsupported } from "./doctor";
 import { collectVue } from "./extract";
 import { generateVue, vueWiring } from "./generate";
 import { isNuxt, vueSrcDir } from "./project";
@@ -76,6 +76,7 @@ export const VUE: WebStack = {
   fix: vueFix,
   collect: collectVue,
   doctor: vueDoctor,
+  unsupported: vueUnsupported,
   routes: discoverVueRoutes,
   startTimeoutMs: (appDir) => (isNuxt(appDir) ? NUXT_START_TIMEOUT_MS : undefined),
   devEnv: (appDir) => (isNuxt(appDir) ? NUXT_DEV_ENV : undefined),
