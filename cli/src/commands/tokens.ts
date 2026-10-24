@@ -304,9 +304,10 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       ? `Next: in your main CSS file, add an @import for ${e.path} right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.`
       : `Next: load ${e.path} once: @import it from your main CSS file, or import it in your app's entry file.`);
   }
+  const leftAlone = new Set(results.filter((r) => r.status === "protected" || r.status === "skipped").map((r) => r.path));
   for (const w of webWiring) {
-    // A theme stylesheet left alone (or skipped with it) isn't Motif's, so there is nothing to wire up. motion.ts is imported where it's used.
-    const leftAlone = new Set(results.filter((r) => r.status === "protected" || r.status === "skipped").map((r) => r.path));
+    // A theme stylesheet left alone (or skipped with it) isn't Motif's, so there is nothing to wire up. A motion.ts
+    // left alone doesn't matter here: it's imported where it's used.
     if (w.files.some((f) => /(^|\/)motif(\.tailwind)?\.css$/.test(f.path) && leftAlone.has(f.path))) continue;
     const written = w.files.filter((f) => !leftAlone.has(f.path));
     const note = w.wire(cwd, w.app, written, set);
