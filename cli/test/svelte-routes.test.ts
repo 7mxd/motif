@@ -108,6 +108,16 @@ describe("discoverSvelteRoutes", () => {
     expect(discoverSvelteRoutes(root)).toEqual({ routes: ["/", "/team"], skipped: [] });
   });
 
+  test("SvelteKit 3 keeps files.routes in vite.config.ts (sveltekit({ files })); svelte.config.* is read first", () => {
+    const kit3 = (files: Record<string, string>) =>
+      makeProject({ "package.json": JSON.stringify({ devDependencies: { "@sveltejs/kit": "^3.1.0", svelte: "^5.57.0" } }), ...files });
+    const vite = "import { sveltekit } from '@sveltejs/kit/vite';\nexport default { plugins: [sveltekit({ files: { routes: 'src/pages' } })] };\n";
+    const pages = { "src/pages/+page.svelte": PAGE, "src/pages/team/+page.svelte": PAGE, "src/routes/ignored/+page.svelte": PAGE };
+    expect(discoverSvelteRoutes(kit3({ "vite.config.ts": vite, ...pages }))).toEqual({ routes: ["/", "/team"], skipped: [] });
+    const both = kit3({ "svelte.config.js": "export default { kit: { files: { routes: 'src/routes' } } };\n", "vite.config.ts": vite, ...pages });
+    expect(discoverSvelteRoutes(both)).toEqual({ routes: ["/", "/ignored"], skipped: [] });
+  });
+
   test("a SvelteKit app with no routes folder has / only", () => {
     expect(discoverSvelteRoutes(kit({}))).toEqual({ routes: ["/"], skipped: [] });
   });

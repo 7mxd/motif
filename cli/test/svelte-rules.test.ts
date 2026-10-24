@@ -201,6 +201,14 @@ describe("the motion fix names where motion.ts is", () => {
     expect(svelteFix(hit("src/routes/+page.svelte"), web(unmapped))).toBe(MOTION_FIX.replace("$lib/design/motion", "../lib/design/motion"));
   });
 
+  test("kit.files.lib names another folder: $lib reaches motion.ts there", () => {
+    const kit = makeProject({
+      "package.json": JSON.stringify({ devDependencies: { "@sveltejs/kit": "^2.70.0", svelte: "^5.0.0" } }),
+      "svelte.config.js": "export default { kit: { files: { lib: 'src/shared' } } };\n",
+    });
+    expect(svelteFix(hit("src/routes/+page.svelte"), { appDir: kit, appPath: ".", motionImport: "src/shared/design/motion" })).toBe(MOTION_FIX);
+  });
+
   test("an app in a folder of the project: the file's path is the project's, the motion path the app's", () => {
     const vite = makeProject({ "web/package.json": JSON.stringify({ devDependencies: { svelte: "^5.0.0" } }) });
     expect(svelteFix(hit("web/src/lib/Counter.svelte"), { appDir: `${vite}/web`, appPath: "web", motionImport: "src/lib/design/motion" })).toContain("from ./design/motion and");

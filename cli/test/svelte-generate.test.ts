@@ -63,6 +63,20 @@ describe("generateSvelte", () => {
     expect(paths(gen(root, { path: "web" }))).toEqual(["web/src/lib/styles/motif.css", "web/src/lib/styles/motif.tailwind.css", "web/src/lib/design/motion.ts"]);
   });
 
+  test("SvelteKit's files.lib (svelte.config.*, else vite.config.* in SvelteKit 3) is where the theme goes; a Vite app keeps src/lib", () => {
+    const kit2 = makeProject({ "package.json": pkg(KIT), "svelte.config.js": "export default { kit: { files: { lib: 'src/shared' } } };\n" });
+    expect(paths(gen(kit2))).toEqual(["src/shared/styles/motif.css", "src/shared/styles/motif.tailwind.css", "src/shared/design/motion.ts"]);
+    const kit3 = makeProject({
+      "package.json": pkg({ ...KIT, "@sveltejs/kit": "^3.1.0" }),
+      "vite.config.ts": "export default { plugins: [sveltekit({ files: { lib: './src/shared/' } })] };\n",
+    });
+    expect(paths(gen(kit3, {}, "none"))).toEqual(["src/shared/styles/motif.css", "src/shared/design/motion.ts"]);
+    const mono = makeProject({ "web/package.json": pkg(KIT), "web/svelte.config.js": "export default { kit: { files: { lib: 'src/shared' } } };\n" });
+    expect(paths(gen(mono, { path: "web" }, "none"))).toEqual(["web/src/shared/styles/motif.css", "web/src/shared/design/motion.ts"]);
+    const vite = makeProject({ "package.json": pkg(VITE), "vite.config.ts": "export default { files: { lib: 'src/shared' } };\n" });
+    expect(paths(gen(vite, {}, "none"))).toEqual(["src/lib/styles/motif.css", "src/lib/design/motion.ts"]);
+  });
+
   test("Svelte 4 or SvelteKit 1 gets the CSS files only, and the reason", () => {
     const note = "motion.ts uses Svelte 5's Spring and Tween, so Motif didn't write it. Animate with the CSS variables in motif.css (--motif-duration-*, --motif-easing-*).";
     const svelte4 = makeProject({ "package.json": pkg({ svelte: "^4.2.0", vite: "^5.0.0", "@tailwindcss/vite": "^4.1.0" }) });
@@ -244,6 +258,25 @@ describe("the one-step wiring note", () => {
     expect(wire(mono, ["shared/theme/motif.css"], { path: "web", themeDir: "shared/theme" })).toBe(
       "Next: import '../../../shared/theme/motif.css' once in web/src/routes/+layout.svelte (in its <script>).",
     );
+  });
+
+  test("SvelteKit 3 keeps files.routes and files.lib in vite.config.ts: the note names that +layout.svelte", () => {
+    const kit3 = { ...KIT, "@sveltejs/kit": "^3.1.0" };
+    const vite = "import { sveltekit } from '@sveltejs/kit/vite';\nexport default { plugins: [sveltekit({ files: { routes: 'src/pages' } })] };\n";
+    const root = makeProject({ "package.json": pkg(kit3), "vite.config.ts": vite, "src/pages/+page.svelte": "" });
+    expect(wire(root, ["src/lib/styles/motif.css"])).toBe("Next: import '../lib/styles/motif.css' once in src/pages/+layout.svelte (in its <script>).");
+    // files.lib moves the theme, and #lib still reaches it where package.json maps #lib/* there.
+    const imports = { "#lib/*": "./src/shared/*" };
+    const shared = makeProject({
+      "package.json": JSON.stringify({ name: "app", devDependencies: kit3, imports }),
+      "vite.config.ts": "export default { plugins: [sveltekit({ files: { routes: 'src/pages', lib: 'src/shared' } })] };\n",
+    });
+    expect(wire(shared, ["src/shared/styles/motif.css"])).toBe("Next: import '#lib/styles/motif.css' once in src/pages/+layout.svelte (in its <script>).");
+  });
+
+  test("SvelteKit 2's kit.files.lib: $lib names that folder", () => {
+    const root = makeProject({ "package.json": pkg(KIT), "svelte.config.js": "export default { kit: { files: { lib: 'src/shared' } } };\n" });
+    expect(wire(root, ["src/shared/styles/motif.css"])).toBe("Next: import '$lib/styles/motif.css' once in src/routes/+layout.svelte (in its <script>).");
   });
 
   test("Vite: import it in main.ts", () => {

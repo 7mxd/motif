@@ -167,7 +167,7 @@ export function svelteReducedMotionHits(files: SourceFile[], generated: SourceFi
   return hits;
 }
 
-/** The import path of motion.ts from a file: $lib/… (#lib/… in SvelteKit 3) when it is in src/lib, else relative to the file. */
+/** The import path of motion.ts from a file: $lib/… (#lib/… in SvelteKit 3) when it is in the lib folder, else relative to the file. */
 function motionSpecifier(hit: Hit, ctx: WebFixContext & { motionImport: string }): string {
   const lib = libSpecifier(ctx.appDir, ctx.motionImport);
   if (lib !== null) return lib;
