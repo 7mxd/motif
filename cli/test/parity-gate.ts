@@ -11,6 +11,7 @@ export const PARITY_ROWS: Partial<Record<StackId, string>> = {
   compose: "Jetpack Compose",
   "react-native": "React Native (Expo)",
   swiftui: "SwiftUI",
+  vue: "Vue / Nuxt",
 };
 
 /**

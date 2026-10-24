@@ -306,7 +306,7 @@ describe("final review: extract's refusal lists the stacks from the registry (Mi
     const r = await runExtract(root, { positionals: [], flags: {} });
     expect(r.exitCode).toBe(2);
     expect(r.text).toBe(
-      "motif extract works on React web apps and plain web sites, and on Vue / Nuxt apps, Flutter apps, Jetpack Compose apps, React Native (Expo) apps and SwiftUI apps, in this version. Found: Your app (Svelte / SvelteKit). Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.",
+      "motif extract works on React web apps, plain web sites and Vue / Nuxt apps, and on Flutter apps, Jetpack Compose apps, React Native (Expo) apps and SwiftUI apps, in this version. Found: Your app (Svelte / SvelteKit). Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.",
     );
   });
 });

@@ -47,16 +47,18 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   const isWeb = (a: AppInfo) => a.stack !== null && WEB_STACKS.includes(a.stack);
   /** A native stack (Flutter) whose code motif extract reads. */
   const native = (a: AppInfo) => (isWeb(a) ? null : nativeStack(a.stack)?.collect ? nativeStack(a.stack) : null);
-  /** A web stack with its own file format (Vue) whose code motif extract reads. */
-  const framework = (a: AppInfo) => (isWeb(a) ? null : webStack(a.stack)?.collect ? webStack(a.stack) : null);
+  /** A web stack with its own file format (Vue) whose code motif extract reads, supported or not yet. */
+  const framework = (a: AppInfo) => (webStack(a.stack)?.collect ? webStack(a.stack) : null);
   const supported = apps.filter((a) => isWeb(a) || framework(a) !== null || native(a) !== null);
   if (supported.length === 0) {
     const others = apps.filter((a) => a.stack).map((a) => `${appLabel(a)} (${STACK_LABELS[a.stack!]})`);
-    const drafted = [...webStacks(), ...nativeStacks()].filter((s) => s.collect).map((s) => `${STACK_LABELS[s.id]} apps`);
+    const readable = [...webStacks(), ...nativeStacks()].filter((s) => s.collect);
+    const web = ["React web apps", "plain web sites", ...readable.filter((s) => WEB_STACKS.includes(s.id)).map((s) => `${STACK_LABELS[s.id]} apps`)];
+    const drafted = readable.filter((s) => !WEB_STACKS.includes(s.id)).map((s) => `${STACK_LABELS[s.id]} apps`);
     return {
       command: "extract",
       exitCode: 2,
-      text: `motif extract works on React web apps and plain web sites${drafted.length > 0 ? `, and on ${andList(drafted)}` : ""}, in this version.${others.length ? ` Found: ${others.join(", ")}.` : " None of them was found here."} Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.`,
+      text: `motif extract works on ${andList(web)}${drafted.length > 0 ? `, and on ${andList(drafted)}` : ""}, in this version.${others.length ? ` Found: ${others.join(", ")}.` : " None of them was found here."} Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.`,
       data: { error: "unsupported-stack" },
     };
   }

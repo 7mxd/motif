@@ -602,12 +602,16 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
       const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes(fixtureTest))!;
       expect([fixtureTest, proof[1]!.includes("Recorded in eval run")]).toEqual([fixtureTest, true]);
     }
-    for (const stack of ["Vue / Nuxt", "Svelte / SvelteKit", "Angular"]) {
+    for (const stack of ["Svelte / SvelteKit", "Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }
   });
 
-  test("Flutter's, Jetpack Compose's, React Native's and SwiftUI's proofs name every area, and every file they link to exists", () => {
+  test("Vue / Nuxt has every area done but its evals, whose run is pending (2I Task 13)", () => {
+    expect(row("Vue / Nuxt")!.slice(1)).toEqual(AREAS.map((a) => (a === "Evals" ? "pending" : "done")));
+  });
+
+  test("Flutter's, Jetpack Compose's, React Native's, SwiftUI's and Vue's proofs name every area, and every file they link to exists", () => {
     const section = (heading: string) => {
       const start = parity.indexOf(heading);
       expect(start).toBeGreaterThan(-1);
@@ -616,7 +620,7 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     };
     for (const proof of [
       section("## Flutter: the tests that show it"), section("## Jetpack Compose: the tests that show it"), section("## React Native (Expo): the tests that show it"),
-      section("## SwiftUI: the tests that show it"),
+      section("## SwiftUI: the tests that show it"), section("## Vue / Nuxt: the tests that show it"),
     ]) {
       for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
     }
@@ -624,6 +628,9 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     const swift = section("## SwiftUI: the tests that show it");
     expect(swift).toContain("(decisions/0010-swiftui-rendering.md)");
     for (const job of ["`swiftui`", "`swiftui-fixtures`"]) expect(swift).toContain(job);
+    const vue = section("## Vue / Nuxt: the tests that show it");
+    expect(vue).toContain("`vue`");
+    expect(vue).toContain("(notes/2026-10-24-vue-hands-on.md)");
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");
