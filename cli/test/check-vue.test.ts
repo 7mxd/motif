@@ -222,6 +222,15 @@ describe("motif check on a Nuxt app", () => {
   });
 });
 
+describe("motif check on paths with nothing it reads", () => {
+  test("names .vue among the files it reads", async () => {
+    const root = makeProject({ "package.json": pkg(), "src/App.vue": "<template><p /></template>\n", "assets/logo.png": "png", "design/tokens.json": TOKENS });
+    const r = await check(root, ["assets"]);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toBe("None of these paths contain files motif check reads (.vue, .css, .ts, .tsx, .js, .jsx, .html, …), or they're ignored: assets.");
+  });
+});
+
 describe("motif check on a Vue app without a design guide", () => {
   test("points at motif extract, which reads Vue", async () => {
     const root = makeProject({ "package.json": pkg(), "src/App.vue": "<template><p /></template>\n" });

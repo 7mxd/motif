@@ -16,6 +16,8 @@ import { VUE } from "./vue";
  */
 export interface WebStack {
   id: StackId;
+  /** The framework's own file extensions (".vue"), which motif check reads beside the web's. */
+  extensions?: string[];
   /** The files motif check and extract read: the framework's own files beside scripts, styles and HTML. */
   sourceFiles(root: string, app: AppInfo, opts: { ignore?: string[]; paths?: string[] }): SourceFile[];
   /** The parts of one source file (a .vue file's template, script and style blocks) as files for the web scanners. */

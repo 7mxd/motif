@@ -64,6 +64,7 @@ const VUE_AUDIT_FIXES = {
 /** Vue 3 and Nuxt 3 or later: apps with Vite (Vue's own starter) or Nuxt. The parts that come later are filled in by their tasks. */
 export const VUE: WebStack = {
   id: "vue",
+  extensions: [".vue"],
   sourceFiles: (root, app, opts) => listVueFiles(root, app.path, opts),
   views: vueViews,
   extractFiles: vuetifyConfigs,
