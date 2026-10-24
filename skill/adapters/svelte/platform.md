@@ -23,24 +23,33 @@ Use logical properties only, so right-to-left languages mirror for free:
 | `text-align: left` | `text-align: start` |
 | Tailwind `pl-4`, `ml-2`, `text-left` | `ps-4`, `ms-2`, `text-start` |
 
-Set `dir="rtl"` on `<html>` for right-to-left languages, and mirror icons that point a direction (back, next). Write both attributes in `src/app.html` as placeholders that aren't SvelteKit's own `%sveltekit.*%`:
+Set `dir="rtl"` on `<html>` for right-to-left languages, and mirror icons that point a direction (back, next). Write the attributes in `src/app.html` as placeholders that aren't SvelteKit's own `%sveltekit.*%`, with the variant's beside them ([theme code](tokens.md#switching-variants)):
 
 ```html
-<html lang="%lang%" dir="%dir%">
+<html lang="%lang%" dir="%dir%" data-variant="%variant%">
 ```
 
-and set them per request in `src/hooks.server.ts` with `transformPageChunk`, from the locale the app chose (a cookie, the address, or `event.locals`):
+and set them per request in `src/hooks.server.ts` with one `transformPageChunk`, from the language and variant the app chose (a cookie here; the address or `event.locals` work too). The values come from the visitor, so check them before they go into the page, and give `replace` a function so a `$&` in a value isn't read as a pattern. A file has one `handle`: this one replaces any other (or join hooks with `sequence` from `@sveltejs/kit/hooks`).
 
 ```ts
 import type { Handle } from '@sveltejs/kit'
 
+const LANG = /^[a-z]{2,3}(-[A-Za-z0-9]+)*$/
+const VARIANT = /^[a-z0-9-]+$/
 const RTL = new Set(['ar', 'he', 'fa', 'ur'])
 
 export const handle: Handle = async ({ event, resolve }) => {
-  const lang = event.cookies.get('lang') ?? 'en'
-  const dir = RTL.has(lang) ? 'rtl' : 'ltr'
+  const savedLang = event.cookies.get('lang') ?? ''
+  const lang = LANG.test(savedLang) ? savedLang : 'en'
+  const dir = RTL.has(lang.split('-')[0]!.toLowerCase()) ? 'rtl' : 'ltr'
+  const savedVariant = event.cookies.get('variant') ?? ''
+  const variant = VARIANT.test(savedVariant) ? savedVariant : ''
   return resolve(event, {
-    transformPageChunk: ({ html }) => html.replace('%lang%', lang).replace('%dir%', dir),
+    transformPageChunk: ({ html }) =>
+      html
+        .replace('%lang%', () => lang)
+        .replace('%dir%', () => dir)
+        .replace('%variant%', () => variant),
   })
 }
 ```

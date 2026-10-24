@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { RULE_IDS } from "../src/check/types";
 import { expandHtml } from "../src/check/html";
 import type { Lang } from "../src/check/files";
@@ -17,6 +18,7 @@ import { runCheck } from "../src/commands/check";
 import { runTokens } from "../src/commands/tokens";
 import { docFrom, FIXTURES, validTokens } from "./helpers";
 import { makeProject } from "./project";
+import { tempDir } from "./tmp";
 
 const ADAPTERS = join(import.meta.dir, "../../skill/adapters");
 const read = (rel: string) => readFileSync(join(ADAPTERS, rel), "utf8").replace(/\r\n/g, "\n");
@@ -645,7 +647,6 @@ describe("the Svelte guide", () => {
     for (const file of GUIDE_FILES) {
       const text = read(`svelte/${file}`);
       for (const [i, m] of [...text.matchAll(/```(svelte|ts|css)\n([\s\S]*?)```/g)].entries()) {
-        // The block that fills a placeholder in the page is a hook, not code to scan beside a layout.
         const path = `src/lib/examples/${file.replace(".md", "")}-${i + 1}.${m[1] === "svelte" ? "svelte" : m[1]}`;
         files[path] = m[2]!;
         examples.push(path);
@@ -657,6 +658,36 @@ describe("the Svelte guide", () => {
     const result = await runCheck(root, { positionals: [] });
     const hits = ((result.data as any).violations as any[]).filter((h) => h.file.startsWith("src/lib/examples/")).map((h) => `${h.file}:${h.line} ${h.rule} ${h.text}`);
     expect(hits).toEqual([]);
+  });
+});
+
+describe("the Svelte guide's hook for the page's language and variant", () => {
+  const PAGE = '<html lang="%lang%" dir="%dir%" data-variant="%variant%">';
+  // The hook exactly as platform.md writes it, run over a sample app.html.
+  async function render(cookies: Record<string, string>): Promise<string> {
+    const block = [...read("svelte/platform.md").matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!).find((b) => b.includes("transformPageChunk"))!;
+    const dir = tempDir("motif-hook-");
+    const file = join(dir, "hooks.server.ts");
+    writeFileSync(file, block);
+    const { handle } = await import(pathToFileURL(file).href);
+    const event = { cookies: { get: (name: string) => cookies[name] } };
+    let html = "";
+    await handle({ event, resolve: async (_e: unknown, opts: any) => { html = opts.transformPageChunk({ html: PAGE }); return new Response(html); } });
+    return html;
+  }
+
+  test("a saved language and variant fill the placeholders, and Arabic is right to left", async () => {
+    expect(await render({ lang: "en-GB", variant: "calm-2" })).toBe('<html lang="en-GB" dir="ltr" data-variant="calm-2">');
+    expect(await render({ lang: "ar" })).toBe('<html lang="ar" dir="rtl" data-variant="">');
+  });
+
+  test("with no cookies the page is English, left to right, in the default variant", async () => {
+    expect(await render({})).toBe('<html lang="en" dir="ltr" data-variant="">');
+  });
+
+  test("a hostile cookie is refused, and a $& in it is never read as a pattern", async () => {
+    expect(await render({ lang: 'en" onload="x', variant: 'a" onload="x' })).toBe('<html lang="en" dir="ltr" data-variant="">');
+    expect(await render({ lang: "$&", variant: "$&" })).toBe('<html lang="en" dir="ltr" data-variant="">');
   });
 });
 

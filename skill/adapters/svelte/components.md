@@ -4,7 +4,7 @@ How to build Svelte components that follow the design guide, and the starter set
 
 ## Where they live
 
-`src/lib/components/`, one per file, named in PascalCase (`Button.svelte`, `TopBar.svelte`). A feature's own components go in `src/lib/components/<feature>/`, or next to the route that uses them (`src/routes/orders/OrderRow.svelte`) when nothing else will. Import them with the app's path to `src/lib`: `$lib/components/Button.svelte` in SvelteKit 2, `#lib/components/Button.svelte` in SvelteKit 3, a relative path in a Vite app.
+`src/lib/components/`, one per file, named in PascalCase (`Button.svelte`, `TopBar.svelte`). A feature's own components go in `src/lib/components/<feature>/`, or next to the route that uses them (`src/routes/orders/OrderRow.svelte`) when nothing else will. Import them with the app's path to `src/lib`: `$lib/components/Button.svelte` in SvelteKit 2, `#lib/components/Button.svelte` in SvelteKit 3, a relative path in a Vite app, or in a SvelteKit 3 app whose `package.json` has no `#lib/*` entry in `imports`.
 
 To list what exists (the first step of adding a feature), read the components folder, then each component's `$props()` for its variants and states.
 

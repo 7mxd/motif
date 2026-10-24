@@ -33,7 +33,7 @@ Use the developer's package manager (its lockfile says which): `pnpm dlx sv crea
 
 ## Folders
 
-- **SvelteKit:** pages are `src/routes/**/+page.svelte`, wrapped by `+layout.svelte` files; server code is `+page.server.ts`, `+server.ts` and `src/hooks.server.ts`. Shared code is `src/lib/`, imported as `$lib/…` in SvelteKit 2 and as `#lib/…` in SvelteKit 3, which removed `$lib` (the starter's `package.json` maps `#lib/*` in `imports`).
+- **SvelteKit:** pages are `src/routes/**/+page.svelte`, wrapped by `+layout.svelte` files; server code is `+page.server.ts`, `+server.ts` and `src/hooks.server.ts`. Shared code is `src/lib/`, imported as `$lib/…` in SvelteKit 2 and as `#lib/…` in SvelteKit 3, which removed `$lib` (the starter's `package.json` maps `#lib/*` in `imports`; without that map, use a relative path).
 - **Vite:** everything in `src/`: `src/App.svelte`, `src/main.ts`, shared components in `src/lib/`. Imports are relative.
 - **Components:** `src/lib/components/` ([components](components.md)).
 - **Mock data:** one file, `src/lib/mock-data.ts`, with obviously fictional content.
