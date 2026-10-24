@@ -15,7 +15,7 @@ An app with `svelte` in its `package.json` is a Svelte app, and one with `@svelt
 
 ## Starting a new project
 
-SvelteKit is the default: it has routes, server rendering and the `$lib` folder. Use plain Svelte with Vite for a single page with no routes of its own. Run the starter in an empty folder the developer chose.
+SvelteKit is the default: it has routes, server rendering and a `src/lib` folder for shared code (imported as `$lib` on SvelteKit 2, and as `#lib` on SvelteKit 3 through the imports map in `package.json`). Use plain Svelte with Vite for a single page with no routes of its own. Run the starter in an empty folder the developer chose.
 
 ```bash
 npx sv create my-app --template minimal --types ts --no-add-ons --install npm
