@@ -62,10 +62,10 @@ describe("motif extract on a plain web site", () => {
   });
 
   test("on a stack it can't read yet, extract and check point at the review instead of a dead end", async () => {
-    const vue = makeProject({ "package.json": JSON.stringify({ dependencies: { svelte: "^5" } }), "src/App.svelte": "" });
+    const vue = makeProject({ "package.json": JSON.stringify({ dependencies: { "@angular/core": "^19" } }), "src/app/app.component.html": "" });
     const e = await runExtract(vue, { positionals: [] });
     expect(e.exitCode).toBe(2);
-    expect(e.text).toContain("React web apps, plain web sites and Vue / Nuxt apps");
+    expect(e.text).toContain("React web apps, plain web sites, Vue / Nuxt apps and Svelte / SvelteKit apps");
     expect(e.text).toContain("review");
     const c = await runCheck(vue, { positionals: [] });
     expect(c.text).toContain("Start one with /design");

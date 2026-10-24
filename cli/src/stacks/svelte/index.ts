@@ -1,6 +1,7 @@
 import { componentFiles, type Binding } from "../../check/component-views";
 import { listSvelteFiles, type SourceFile } from "../../check/files";
 import { expandHtml } from "../../check/html";
+import type { Occurrences } from "../../extract/draft";
 import type { WebStack } from "../web";
 import { svelteDoctor, svelteUnsupported } from "./doctor";
 import { generateSvelte, svelteWiring } from "./generate";
@@ -25,6 +26,14 @@ function svelteViews(file: SourceFile): SourceFile[] {
   return SVELTE_FILE.test(file.path) ? componentFiles(file, { bindings: SVELTE_BINDINGS, braces: true }) : expandHtml([file]);
 }
 
+/**
+ * Svelte's common theme systems (Skeleton, shadcn-svelte) are CSS variables, which the web's collector reads from the
+ * views. Nothing stack-specific is left to find; collect exists so `motif extract` treats Svelte apps as readable.
+ */
+function collectSvelte(): Occurrences {
+  return { colors: [], space: [], radius: [], fontSize: [], fontFamily: [], duration: [], easing: [], unresolved: [] };
+}
+
 /** Svelte 5 apps with SvelteKit or with Vite. */
 export const SVELTE: WebStack = {
   id: "svelte",
@@ -39,4 +48,5 @@ export const SVELTE: WebStack = {
   fix: svelteFix,
   doctor: svelteDoctor,
   unsupported: svelteUnsupported,
+  collect: collectSvelte,
 };

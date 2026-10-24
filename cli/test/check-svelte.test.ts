@@ -220,3 +220,12 @@ describe("motif check on a Vite Svelte app", () => {
     expect(violations(r).find((h) => h.rule === "raw-motion").fix).toBe("Import { duration, easing, spring } from ./design/motion and pass them: transition:fly={{ duration: duration.base, easing: easing.standard }}.");
   });
 });
+
+describe("motif check on a Svelte app without a design guide", () => {
+  test("points at motif extract, which reads Svelte", async () => {
+    const root = makeProject({ "package.json": pkg(KIT), "src/routes/+page.svelte": "<p>hi</p>\n" });
+    const r = await check(root);
+    expect(r.exitCode).toBe(2);
+    expect(r.text).toContain("Draft one from your code with motif extract");
+  });
+});
