@@ -150,6 +150,32 @@ describe("motif extract on a SvelteKit app", () => {
     const tokens = draftOf(root);
     expect(hexOf(tokens, tokens.color.background.$value)).toBe("#F4F4F5");
   });
+
+  test.each([
+    ["class", '<html lang="en" class="dark">', ".dark { --bg: #111111; --ink: #f4f4f5; }"],
+    ["data-theme", '<html lang="en" data-theme="dark">', '[data-theme="dark"] { --bg: #111111; --ink: #f4f4f5; }'],
+  ])("a dark mode set by %s on <html> in src/app.html: the same variables as a plain web page's", async (_kind, html, darkBlock) => {
+    const css = `:root { --bg: #ffffff; --ink: #18181b; }
+${darkBlock}
+body { background: var(--bg); color: var(--ink); }
+`;
+    const kit = makeProject({
+      "package.json": KIT_PKG,
+      "src/app.html": `<!doctype html>
+${html}<head>%sveltekit.head%</head><body>%sveltekit.body%</body></html>
+`,
+      "src/app.css": css,
+      "src/routes/+page.svelte": "<main><h1>Hi</h1></main>\n",
+    });
+    const plain = makeProject({ "index.html": `<!doctype html>
+${html}<head><style>${css}</style></head><body><main><h1>Hi</h1></main></body></html>
+` });
+    await runExtract(kit, ctx);
+    await runExtract(plain, ctx);
+    for (const root of [kit, plain]) expect(byName(reportOf(root))["--bg"]).toMatchObject({ light: "#ffffff", dark: "#111111" });
+    expect(pairOf(draftOf(kit), "background")).toEqual(pairOf(draftOf(plain), "background"));
+    expect(pairOf(draftOf(kit), "background")).toEqual(["#FFFFFF", "#111111"]);
+  });
 });
 
 describe("motif extract on a Vite Svelte app", () => {
@@ -183,5 +209,8 @@ describe("motif extract on a monorepo with Svelte and Vue", () => {
     const report = reportOf(root);
     expect(Object.keys(byName(report))).toEqual(expect.arrayContaining(["--brand", "--accent"]));
     expect(report.spacing.map((s: any) => s.px)).toEqual(expect.arrayContaining([20, 28]));
+    const vars = byName(report);
+    expect([vars["--brand"].light, vars["--accent"].light]).toEqual(["#0f766e", "#b45309"]);
+    expect(validateTokens(docFrom(draftOf(root)))).toEqual([]);
   });
 });
