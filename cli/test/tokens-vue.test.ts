@@ -91,6 +91,14 @@ describe("motif tokens for a Vite Vue app", () => {
     expect(readFileSync(join(root, "src/styles/motif.css"), "utf8")).toBe(".mine { color: red }\n");
   });
 
+  test("a motion.ts that isn't Motif's is protected, and the theme's note is still given", async () => {
+    const root = viteApp({ "src/design/motion.ts": "export const mine = 1;\n" });
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)["src/design/motion.ts"]).toBe("protected");
+    expect(statuses(r)["src/styles/motif.tailwind.css"]).toBe("created");
+    expect(notes(r).join("\n")).toContain('Next: in your main CSS file, add an @import for src/styles/motif.tailwind.css right after @import "tailwindcss"');
+  });
+
   test("Tailwind 3 gets the CSS only, with the note", async () => {
     const root = viteApp({ "package.json": pkg({ ...VITE, "@tailwindcss/vite": undefined, tailwindcss: "^3.4.0" }) });
     const r = await runTokens(root, ctx);

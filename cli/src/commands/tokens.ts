@@ -305,9 +305,10 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       : `Next: load ${e.path} once: @import it from your main CSS file, or import it in your app's entry file.`);
   }
   for (const w of webWiring) {
-    // A file left alone isn't Motif's, so there is nothing to wire up.
-    const written = w.files.filter((f) => !blockedPaths.has(f.path));
-    if (written.length < w.files.length) continue;
+    // A theme stylesheet left alone (or skipped with it) isn't Motif's, so there is nothing to wire up. motion.ts is imported where it's used.
+    const leftAlone = new Set(results.filter((r) => r.status === "protected" || r.status === "skipped").map((r) => r.path));
+    if (w.files.some((f) => /(^|\/)motif(\.tailwind)?\.css$/.test(f.path) && leftAlone.has(f.path))) continue;
+    const written = w.files.filter((f) => !leftAlone.has(f.path));
     const note = w.wire(cwd, w.app, written, set);
     if (note && !notes.includes(note)) notes.push(note);
   }
