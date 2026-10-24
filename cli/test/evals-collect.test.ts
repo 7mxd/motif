@@ -919,6 +919,44 @@ describe("a build that stopped at its type check", () => {
     expect(stoppedByTypeErrors("Error: Cannot find module './x'\n")).toBe(false);
     expect(stoppedByTypeErrors("")).toBe(false);
   });
+
+  /** collectD on a new app whose build and type check exit with these codes and outputs (git and the rest as usual). */
+  async function measured(id: string, folder: string, contract: string, build: { code: number; stdout: string }, typecheckCode: number) {
+    const failing: Run = async (cmd, cwd, t, env) => {
+      if (cmd[0] !== "git" && cmd.join(" ") === "npm run build") return { ...build, stderr: "", timedOut: false };
+      if (cmd[0] !== "git" && cmd.includes("--noEmit")) return { code: typecheckCode, stdout: "error TS2322: bad", stderr: "", timedOut: false };
+      return run(cmd, cwd, t, env);
+    };
+    const ws = await prepareWorkspace(byId(id), join(tempDir("motif-col-"), `${folder}-${build.code}`), failing);
+    const app = join(ws.app, folder);
+    mkdirSync(join(app, "node_modules"), { recursive: true });
+    writeFileSync(join(app, "DESIGN.md"), readFileSync(join(REPO, `tests/fixtures/${contract}/DESIGN.md`), "utf8"));
+    writeFileSync(join(app, "package.json"), "{}");
+    return collectD(byId(id), ws, { run: failing, motif, judge: noJudge }, join(ws.dir, "results"));
+  }
+  const TYPE_ERRORS = "> vue-tsc --noEmit && vite build\n\nsrc/views/A.vue(4,7): error TS2322: Type 'string' is not assignable to type 'number'.\n";
+
+  test("collect marks a build that stopped at the type check's errors, and the grade counts them once, as the type check's", async () => {
+    const f = await measured("d-darb", "darb", "vue-contract-app", { code: 1, stdout: TYPE_ERRORS }, 2);
+    expect(f.build).toEqual({ code: 1, timedOut: false, typeErrorsOnly: true });
+    expect(f.typecheck).toEqual({ code: 2, timedOut: false });
+    const ids = gradeD(f).criteria.map((c) => c.id);
+    expect(ids).toContain("typecheck");
+    expect(ids).not.toContain("build");
+  });
+
+  test("a build that failed in the bundler is the build's own failure, type errors or not", async () => {
+    const bundler = `${TYPE_ERRORS}vite v8.0.0 building for production...\ntransforming...\nerror during build:\n[vite]: Rollup failed to resolve import "x"\n`;
+    const f = await measured("d-darb", "darb", "vue-contract-app", { code: 1, stdout: bundler }, 2);
+    expect(f.build).toEqual({ code: 1, timedOut: false });
+    expect(gradeD(f).criteria.find((c) => c.id === "build")?.pass).toBe(false);
+  });
+
+  test("the same for any web app whose build script type-checks first: React's tsc -b && vite build", async () => {
+    const react = "> tsc -b && vite build\n\nsrc/App.tsx(3,7): error TS2322: Type 'string' is not assignable to type 'number'.\n";
+    const f = await measured("d-stride", "stride", "react-contract-app", { code: 2, stdout: react }, 2);
+    expect(f.build).toEqual({ code: 2, timedOut: false, typeErrorsOnly: true });
+  });
 });
 
 describe("new components on Svelte, from the session's diff", () => {

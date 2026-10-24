@@ -59,8 +59,9 @@ async function buildAndTypecheck(dir: string, k: Collectors, out: string, typech
   save(out, "build.log", `${build.stdout}\n${build.stderr}`);
   const typecheck = await k.run(typecheckCommand, dir, 600_000);
   save(out, "typecheck.log", `${typecheck.stdout}\n${typecheck.stderr}`);
-  // Vue's build script type-checks before it builds (vue-tsc --noEmit && vite build), so a type error fails both. It is
-  // counted once, as the type check's: the build's failure is marked as only that, and the grade leaves it out.
+  // A web app's build script may type-check before it builds (Vue's vue-tsc --noEmit && vite build, React's tsc -b && vite
+  // build), so a type error fails both. It is counted once, as the type check's: the build's failure is marked as only
+  // that, and the grade leaves it out.
   const typeErrorsOnly = build.code !== 0 && typecheck.code !== 0 && stoppedByTypeErrors(`${build.stdout}\n${build.stderr}`);
   return {
     build: { code: build.code, timedOut: build.timedOut, ...(typeErrorsOnly ? { typeErrorsOnly } : {}) },
