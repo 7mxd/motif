@@ -93,7 +93,7 @@ A timed change that CSS can't do (a number counting up, a value that several thi
 <output>{Math.round(shown.current)}</output>
 ```
 
-**Springs and screens.** Svelte moves a spring one step per frame, and `spring.*` is the guide's spring at 60 frames a second, exact there (the same motion as the native stacks). On a 120 Hz screen the same pair is stiffer and more damped, and a bouncy role barely bounces. When the spring must feel the same on every screen, use Motion's `animate()` with `motionSpring`, which runs by the clock. Motion takes 1.2 times as long as the guide's model for the same role (a fifth longer), so `motionSpring.snappy` settles about a sixth later than `spring.snappy`: that is the same on React web and Vue, and it is expected.
+**Springs and screens.** Svelte moves a spring one step per frame, and `spring.*` is the guide's spring at 60 frames a second, exact there (the same motion as the native stacks). On a 120 Hz screen the same pair is stiffer and more damped, and a bouncy role barely bounces. When the spring must feel the same on every screen, use Motion's `animate()` with `motionSpring`, which runs by the clock. Motion takes 1.2 times as long as the guide's model for the same role, so `motionSpring.snappy` settles about a fifth later than `spring.snappy` (put the other way, `spring.snappy` settles about a sixth sooner): that is the same on React web and Vue, and it is expected.
 
 ## Motion
 
