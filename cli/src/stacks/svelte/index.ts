@@ -35,6 +35,11 @@ function collectSvelte(): Occurrences {
   return { colors: [], space: [], radius: [], fontSize: [], fontFamily: [], duration: [], easing: [], unresolved: [] };
 }
 
+/** The audit's fixes in Svelte's terms: svelte/motion's prefersReducedMotion is a reactive value read in script. */
+const SVELTE_AUDIT_FIXES = {
+  motion: "Check prefersReducedMotion.current from svelte/motion before animating, and keep CSS animations inside @media (prefers-reduced-motion: no-preference).",
+};
+
 /** Svelte 5 apps with SvelteKit or with Vite. */
 export const SVELTE: WebStack = {
   id: "svelte",
@@ -51,4 +56,6 @@ export const SVELTE: WebStack = {
   unsupported: svelteUnsupported,
   routes: discoverSvelteRoutes,
   collect: collectSvelte,
+  variantHow: "motif.css, which follows data-variant on <html>",
+  auditFixes: SVELTE_AUDIT_FIXES,
 };
