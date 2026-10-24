@@ -4,8 +4,8 @@ import { maskComments } from "../mask";
 import { makeHit, type Hit, type RuleId, type Scale, type ValueKind } from "../types";
 import { NAMED_COLORS } from "./colors";
 
-/** Class boundary, optional variants (hover:, md:, dark:…), optional ! and a negative sign. */
-export const CLASS_PREFIX = "(?<![\\w-])(?:[\\w-]+:)*!?-?";
+/** Class boundary, optional variants (hover:, md:, dark:…), optional ! and a negative sign. Svelte's class: directive (class:p-[13px]={on}) is no variant: the class is the name after it. */
+export const CLASS_PREFIX = "(?<![\\w-])(?!class:)(?:[\\w-]+:)*!?-?";
 
 const ARBITRARY = new RegExp(`${CLASS_PREFIX}([a-z]+(?:-[a-z]+)*)-\\[([^\\]\\s]+)\\]`, "g");
 const TW_COLORS = "slate|gray|zinc|neutral|stone|mauve|olive|mist|taupe|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose";

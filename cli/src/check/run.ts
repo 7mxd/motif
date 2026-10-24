@@ -6,7 +6,7 @@ import type { Theme, ThemeSet, ThemeVariant } from "../generate/theme";
 import { prefixPath } from "../project/apps";
 import { motifCss } from "../generate/motif-css";
 import { nativeStack, type NativeStack } from "../stacks/native";
-import { webStack, type WebStack } from "../stacks/web";
+import { webStack, type WebFixContext, type WebStack } from "../stacks/web";
 import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
 import { exceptionFor } from "./exceptions";
 import { listSourceFiles, matchesPaths, type SourceFile } from "./files";
@@ -213,6 +213,7 @@ function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Them
   const scale = buildScale(theme, srcDir);
   if (motion) scale.motionImport = (motion.startsWith(`${app.path}/`) ? motion.slice(app.path.length + 1) : motion).replace(/\.ts$/, "");
   const views = (f: SourceFile) => (web.views ? web.views(f) : expandHtml([f]));
+  const fixContext: WebFixContext = { appDir, appPath: app.path, ...(motion ? { motionImport: scale.motionImport } : {}) };
 
   const all = web.sourceFiles(root, app, { ignore: opts.ignore });
   const generated = all.filter((f) => isMotifGenerated(f.path, f.text));
@@ -227,7 +228,7 @@ function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Them
   const { violations, exceptions } = sortOut([...once(scanned), ...appWide], lines, (found) => {
     const suggestion = suggestRole(found, theme, { tailwind3: tailwindVersion === "v3", variants: opts.variants });
     const variantHint = found.kind === "color" && found.variant ? suggestion : undefined;
-    return { ...found, ...(web.fix ? { fix: web.fix(found) } : {}), ...(variantHint ? { fix: variantHint } : suggestion ? { suggestion } : {}) };
+    return { ...found, ...(web.fix ? { fix: web.fix(found, fixContext) } : {}), ...(variantHint ? { fix: variantHint } : suggestion ? { suggestion } : {}) };
   });
   return {
     app: app.path,

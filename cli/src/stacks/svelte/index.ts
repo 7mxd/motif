@@ -5,6 +5,7 @@ import type { WebStack } from "../web";
 import { svelteDoctor, svelteUnsupported } from "./doctor";
 import { generateSvelte, svelteWiring } from "./generate";
 import { svelteSrcDir } from "./project";
+import { scanSvelte, svelteFix, svelteReducedMotionHits } from "./rules";
 
 /**
  * What a .svelte file binds beyond its {…} values, which are all expressions (onclick={…}, bind:value={…},
@@ -24,7 +25,7 @@ function svelteViews(file: SourceFile): SourceFile[] {
   return SVELTE_FILE.test(file.path) ? componentFiles(file, { bindings: SVELTE_BINDINGS, braces: true }) : expandHtml([file]);
 }
 
-/** Svelte 5 apps with SvelteKit or with Vite. The parts that come later are filled in by their tasks. */
+/** Svelte 5 apps with SvelteKit or with Vite. */
 export const SVELTE: WebStack = {
   id: "svelte",
   extensions: [".svelte"],
@@ -33,6 +34,9 @@ export const SVELTE: WebStack = {
   srcDir: svelteSrcDir,
   generate: generateSvelte,
   wiring: (root, app, files) => svelteWiring(root, app, files, svelteSrcDir),
+  scan: scanSvelte,
+  appWide: svelteReducedMotionHits,
+  fix: svelteFix,
   doctor: svelteDoctor,
   unsupported: svelteUnsupported,
 };

@@ -11,6 +11,13 @@ import type { RouteDiscovery } from "./react-web/routes";
 import { SVELTE } from "./svelte";
 import { VUE } from "./vue";
 
+/** What a stack's fix may need to know about the app: where it is, and the motion.ts Motif wrote for it (an app path, without ".ts"), if any. */
+export interface WebFixContext {
+  appDir: string;
+  appPath: string;
+  motionImport?: string;
+}
+
 /**
  * What a web framework with its own file format (Vue's .vue; later Svelte and Angular) adds to Motif. React web and plain
  * web keep their own code paths and aren't registered here. Each stack fills in the parts it supports.
@@ -33,7 +40,7 @@ export interface WebStack {
   scan?(file: SourceFile, scale: Scale): Hit[];
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];
   /** What to use instead of a hit, in the framework's own syntax. */
-  fix?(hit: Hit): string;
+  fix?(hit: Hit, ctx?: WebFixContext): string;
   /** Files besides sourceFiles that motif extract reads (Vuetify's config, which the usual ignores leave out); check never scans them. */
   extractFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
   /** What the app's own files say about its design, for motif extract. */
