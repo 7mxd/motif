@@ -5,7 +5,7 @@ import { keepRanges, maskComments } from "../../check/mask";
 import { makeHit, type Hit, type Scale } from "../../check/types";
 import { scanColors } from "../../check/rules/colors";
 import { fontFix, IMPORTS_MOTION, LENGTH, MOTION_TIME, offScaleHit, RADIUS_PROP, SPACE_PROP } from "../../check/rules/values";
-import { isSvelteKit } from "./project";
+import { libSpecifier } from "./project";
 import type { WebFixContext } from "../web";
 
 // The rules for what a .svelte file binds and animates. The script view holds each {…} value at its place, without the
@@ -167,9 +167,10 @@ export function svelteReducedMotionHits(files: SourceFile[], generated: SourceFi
   return hits;
 }
 
-/** The import path of motion.ts from a file: $lib/… in a SvelteKit app when it is in src/lib, else relative to the file. */
+/** The import path of motion.ts from a file: $lib/… (#lib/… in SvelteKit 3) when it is in src/lib, else relative to the file. */
 function motionSpecifier(hit: Hit, ctx: WebFixContext & { motionImport: string }): string {
-  if (isSvelteKit(ctx.appDir) && ctx.motionImport.startsWith("src/lib/")) return `$lib/${ctx.motionImport.slice("src/lib/".length)}`;
+  const lib = libSpecifier(ctx.appDir, ctx.motionImport);
+  if (lib !== null) return lib;
   const inApp = ctx.appPath === "." ? hit.file : hit.file.slice(ctx.appPath.length + 1);
   const relative = posix.relative(posix.dirname(inApp), ctx.motionImport);
   return relative.startsWith(".") ? relative : `./${relative}`;

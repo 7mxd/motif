@@ -222,6 +222,19 @@ describe("the one-step wiring note", () => {
     expect(wire(kit(), ["src/lib/styles/motif.css", "src/lib/design/motion.ts"])).toBe("Next: import '$lib/styles/motif.css' once in src/routes/+layout.svelte (in its <script>).");
   });
 
+  test("SvelteKit 3 removed $lib: #lib where package.json's imports map it (sv's starter), else a path from the layout", () => {
+    const kit3 = { ...KIT, "@sveltejs/kit": "^3.1.0" };
+    const imports = { "#lib": "./src/lib/index.js", "#lib/*": "./src/lib/*" };
+    const layout = { "src/routes/+layout.svelte": "{@render children()}\n" };
+    const mapped = makeProject({ "package.json": JSON.stringify({ name: "app", devDependencies: kit3, imports }), ...layout });
+    expect(wire(mapped, ["src/lib/styles/motif.css"])).toBe("Next: import '#lib/styles/motif.css' once in src/routes/+layout.svelte (in its <script>).");
+    const unmapped = makeProject({ "package.json": pkg(kit3), ...layout });
+    expect(wire(unmapped, ["src/lib/styles/motif.css"])).toBe("Next: import '../lib/styles/motif.css' once in src/routes/+layout.svelte (in its <script>).");
+    // SvelteKit 2 reads #lib through the same map, so the app's own choice is kept.
+    const kit2 = makeProject({ "package.json": JSON.stringify({ name: "app", devDependencies: KIT, imports }), ...layout });
+    expect(wire(kit2, ["src/lib/styles/motif.css"])).toBe("Next: import '#lib/styles/motif.css' once in src/routes/+layout.svelte (in its <script>).");
+  });
+
   test("SvelteKit with a themeDir outside src/lib, a custom routes folder, or in a subfolder", () => {
     expect(wire(kit(), ["src/theme/motif.css"], { themeDir: "src/theme" })).toBe("Next: import '../theme/motif.css' once in src/routes/+layout.svelte (in its <script>).");
     const custom = kit({ "svelte.config.js": "export default { kit: { files: { routes: 'app/pages' } } };\n" });

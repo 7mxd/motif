@@ -24,6 +24,13 @@ export function declared(dir: string, name: string): string | null {
   return null;
 }
 
+/** Where package.json's "imports" sends a subpath import ("#lib/*" → "./src/lib/*"), when it names one path; else null. */
+export function subpathImport(dir: string, specifier: string): string | null {
+  const imports = readJson(join(dir, "package.json"))?.imports;
+  const target = imports && typeof imports === "object" ? (imports as Record<string, unknown>)[specifier] : undefined;
+  return typeof target === "string" ? target : null;
+}
+
 /** The version of a package installed in the app's node_modules, or null. */
 export function installedVersion(dir: string, name: string): string | null {
   const v = readJson(join(dir, "node_modules", name, "package.json"))?.version;

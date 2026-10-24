@@ -193,6 +193,14 @@ describe("the motion fix names where motion.ts is", () => {
     expect(svelteFix(hit("src/routes/a/+page.svelte", "Use the generated src/lib/design/motion.ts: import { duration, easing, spring } from it (path relative to this file), e.g. transition={spring.smooth}."), web(kit))).toBe(MOTION_FIX);
   });
 
+  test("SvelteKit 3, which removed $lib: #lib/design/motion where package.json maps #lib/*, else a path relative to the file", () => {
+    const kit3 = { "@sveltejs/kit": "^3.1.0", svelte: "^5.57.0" };
+    const mapped = makeProject({ "package.json": JSON.stringify({ devDependencies: kit3, imports: { "#lib/*": "./src/lib/*" } }) });
+    const unmapped = makeProject({ "package.json": JSON.stringify({ devDependencies: kit3 }) });
+    expect(svelteFix(hit("src/routes/+page.svelte"), web(mapped))).toBe(MOTION_FIX.replace("$lib/design/motion", "#lib/design/motion"));
+    expect(svelteFix(hit("src/routes/+page.svelte"), web(unmapped))).toBe(MOTION_FIX.replace("$lib/design/motion", "../lib/design/motion"));
+  });
+
   test("an app in a folder of the project: the file's path is the project's, the motion path the app's", () => {
     const vite = makeProject({ "web/package.json": JSON.stringify({ devDependencies: { svelte: "^5.0.0" } }) });
     expect(svelteFix(hit("web/src/lib/Counter.svelte"), { appDir: `${vite}/web`, appPath: "web", motionImport: "src/lib/design/motion" })).toContain("from ./design/motion and");

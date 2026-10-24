@@ -8,7 +8,7 @@ import type { Theme, ThemeSet } from "../../generate/theme";
 import { appLabel, prefixPath } from "../../project/apps";
 import type { AppInfo } from "../../detect/stacks";
 import { motifCss, tailwindCss, tailwindV3Note, tailwindWiringNote, tsKey, type TailwindVersion } from "../react-web/generate";
-import { beforeSvelte5, isSvelteKit, routesDir } from "./project";
+import { beforeSvelte5, isSvelteKit, libSpecifier, routesDir } from "./project";
 
 interface SvelteCtx {
   root: string;
@@ -19,7 +19,7 @@ interface SvelteCtx {
 
 const norm = (p: string) => posix.normalize(p).replace(/^\.\//, "");
 
-/** Where each theme file goes, relative to the project root: under src/lib (SvelteKit's $lib), unless themeDir says. */
+/** Where each theme file goes, relative to the project root: under src/lib (SvelteKit's $lib, #lib in SvelteKit 3), unless themeDir says. */
 function layout({ app, srcDir }: SvelteCtx): { css: string; tailwind: string; motion: string } {
   if (app.themeDir) return { css: `${app.themeDir}/motif.css`, tailwind: `${app.themeDir}/motif.tailwind.css`, motion: `${app.themeDir}/motion.ts` };
   const lib = prefixPath(app.path, norm(`${srcDir}/lib`));
@@ -183,7 +183,7 @@ export function svelteWiring(root: string, app: AppInfo, files: GeneratedFile[],
     return r.startsWith(".") ? r : `./${r}`;
   };
   if (routes !== null) {
-    const spec = inApp.startsWith("src/lib/") ? `$lib/${inApp.slice("src/lib/".length)}` : relative(routes);
+    const spec = libSpecifier(appDir, inApp) ?? relative(routes);
     return `Next: import '${spec}' once in ${prefixPath(app.path, `${routes}/+layout.svelte`)} (in its <script>).`;
   }
   return `Next: import '${relative(srcDir)}' once in ${prefixPath(app.path, posix.join(srcDir, "main.ts"))} (or main.js).`;
