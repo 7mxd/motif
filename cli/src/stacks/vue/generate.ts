@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
-import { isReferenced } from "../../generate/referenced";
+import { FALLBACK_DIR } from "../../generate/fallback";
+import { isReferenced, mentions } from "../../generate/referenced";
 import type { GeneratedFile } from "../../generate/header";
 import type { ThemeSet } from "../../generate/theme";
 import { motifCss, motionTs, tailwindCss, type TailwindVersion } from "../react-web/generate";
@@ -74,7 +75,9 @@ export function vueWiring(root: string, app: AppInfo, files: GeneratedFile[], sr
   try {
     configs = readdirSync(appDir).filter((e) => CONFIG_FILE.test(e)).map((e) => readFileSync(join(appDir, e), "utf8"));
   } catch {}
-  if ((nuxt && configs.some((t) => t.includes(name))) || isReferenced(join(appDir, srcDir), name, SOURCE_FILE)) return null;
+  // An import of design/generated/motif.css is an earlier Motif's theme, which motif tokens no longer updates.
+  const old = [`${FALLBACK_DIR}/`];
+  if ((nuxt && configs.some((t) => mentions(t, name, old))) || isReferenced(join(appDir, srcDir), name, SOURCE_FILE, old)) return null;
 
   const inApp = app.path === "." ? entry.path : entry.path.slice(app.path.length + 1);
   if (nuxt) {

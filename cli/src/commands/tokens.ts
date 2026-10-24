@@ -8,7 +8,7 @@ import { validateTokens } from "../contract/tokens";
 import { checkVariants } from "../contract/variants";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { formatFindings, type Finding } from "../findings";
-import { flatTokensFile, generateFallback } from "../generate/fallback";
+import { FALLBACK_DIR, FALLBACK_FILES, flatTokensFile, generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
 import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
 import { buildThemeSet, type ThemeSet } from "../generate/theme";
@@ -222,6 +222,8 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   const copies: { from: string; to: string }[] = [];
   const webWiring: { app: AppInfo; files: GeneratedFile[]; wire: NonNullable<WebStack["wiring"]> }[] = [];
   const wiring: { app: AppInfo; path: string; note: (root: string, app: AppInfo, file: string, set: ThemeSet) => string | null }[] = [];
+  /** The theme files of apps whose stack writes its own theme now and got design/generated before (Vue, until 0.5.0). */
+  const ownThemes: string[] = [];
 
   for (const app of apps) {
     const appDir = join(cwd, app.path);
@@ -265,6 +267,8 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       for (const f of out.files) if (!files.some((g) => g.path === f.path)) files.push(f);
       for (const n of out.notes) if (!notes.includes(n)) notes.push(n);
       if (web.wiring) webWiring.push({ app, files: out.files, wire: web.wiring.bind(web) });
+      const entry = out.files.find((f) => f.path.endsWith("motif.tailwind.css")) ?? out.files.find((f) => f.path.endsWith("motif.css"));
+      if (entry) ownThemes.push(entry.path);
     } else if (app.stack) {
       needsFallback = true;
       notes.push(`${appLabel(app)}: ${STACK_LABELS[app.stack]} support is coming soon. Motif wrote plain CSS variables and design/generated/tokens.flat.json to map by hand.`);
@@ -282,6 +286,10 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   }
   if (needsFallback) files.push(...generateFallback(theme, set.variants));
   else if (needsFlat) files.push(flatTokensFile(theme, set.variants));
+  if (ownThemes.length > 0) {
+    const note = staleFallbackNote(cwd, files, ownThemes);
+    if (note) notes.push(note);
+  }
 
   const results = writeGenerated(cwd, files);
   const copied = copyFiles(cwd, copies);
@@ -341,6 +349,28 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
     text: lines.join("\n"),
     data: { files: results, notes, fonts },
   };
+}
+
+/**
+ * An earlier Motif wrote design/generated/ for a stack that now has its own theme files, and the app may still import
+ * it. Names the files this run left as they were, the file to use instead, and what to delete; null when there are none.
+ */
+function staleFallbackNote(root: string, written: GeneratedFile[], themes: string[]): string | null {
+  const stale = FALLBACK_FILES.filter((p) => !written.some((f) => f.path === p))
+    .filter((p) => {
+      try {
+        return isMotifGenerated(p, readFileSync(join(root, p), "utf8"));
+      } catch {
+        return false;
+      }
+    });
+  if (stale.length === 0) return null;
+  let others: string[] = [];
+  try {
+    others = readdirSync(join(root, FALLBACK_DIR)).filter((e) => !stale.includes(`${FALLBACK_DIR}/${e}`));
+  } catch {}
+  const del = others.length === 0 ? `${FALLBACK_DIR}/` : andList(stale);
+  return `${andList(stale)} ${stale.length === 1 ? "is" : "are"} from an earlier version of Motif and ${stale.length === 1 ? "is" : "are"} no longer updated: import ${andList(themes)} instead, then delete ${del}.`;
 }
 
 /** What native apps do with a family a font list hides from them, and how to write the list to use it. */

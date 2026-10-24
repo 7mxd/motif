@@ -4,6 +4,10 @@ import { JSON_COMMENT, type GeneratedFile } from "./header";
 import type { Theme, ThemeVariant } from "./theme";
 
 export const FALLBACK_DIR = "design/generated";
+const FALLBACK_CSS = `${FALLBACK_DIR}/motif.css`;
+const FLAT_JSON = `${FALLBACK_DIR}/tokens.flat.json`;
+/** Every file motif tokens writes in design/generated. */
+export const FALLBACK_FILES = [FALLBACK_CSS, FLAT_JSON];
 
 /** Every role with CSS-ready values, for agents to map by hand onto stacks Motif doesn't support yet. */
 export function flatTokens(theme: Theme, variants: ThemeVariant[] = []): Record<string, unknown> {
@@ -29,9 +33,9 @@ export function flatTokens(theme: Theme, variants: ThemeVariant[] = []): Record<
 }
 
 export function flatTokensFile(theme: Theme, variants: ThemeVariant[] = []): GeneratedFile {
-  return { path: `${FALLBACK_DIR}/tokens.flat.json`, content: JSON.stringify(flatTokens(theme, variants), null, 2) + "\n" };
+  return { path: FLAT_JSON, content: JSON.stringify(flatTokens(theme, variants), null, 2) + "\n" };
 }
 
 export function generateFallback(theme: Theme, variants: ThemeVariant[] = []): GeneratedFile[] {
-  return [{ path: `${FALLBACK_DIR}/motif.css`, content: motifCss(theme, variants) }, flatTokensFile(theme, variants)];
+  return [{ path: FALLBACK_CSS, content: motifCss(theme, variants) }, flatTokensFile(theme, variants)];
 }
