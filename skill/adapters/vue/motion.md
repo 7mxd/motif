@@ -43,7 +43,7 @@ For springs, gestures and layout animation, install `motion-v` (`npm install mot
 import { duration, easing, spring } from '~/design/motion'
 ```
 
-In a Vite app use a relative path (`../design/motion`) or your alias. Then:
+A Nuxt 3 app at the project root has the file at `motion/motif-motion.ts`: import from `~/motion/motif-motion`. In a Vite app use a relative path (`../design/motion`) or your alias. Then:
 
 - Springs: `:transition="spring.smooth"` (or `spring.snappy`, `spring.bouncy`).
 - Timed changes: `:transition="{ duration: duration.base, ease: easing.standard }"`.

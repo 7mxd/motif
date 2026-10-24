@@ -77,7 +77,7 @@ Importing it before Tailwind would let Tailwind's defaults win. `motif tokens` r
 | `easing.standard` | `ease-standard` | `var(--motif-easing-standard)` |
 | `duration.base` with `easing.standard` | `transition` | `var(--motif-duration-base)` |
 
-In a component's `<style scoped>`, use the CSS variables; in a template, use the classes (Tailwind) or a scoped class. In a `:style` binding, give a variable: `:style="{ color: 'var(--motif-color-text-primary)' }"`. Import motion values from the generated `motion.ts` (`~/design/motion` in Nuxt, a relative path or your `@/` alias in Vite).
+In a component's `<style scoped>`, use the CSS variables; in a template, use the classes (Tailwind) or a scoped class. In a `:style` binding, give a variable: `:style="{ color: 'var(--motif-color-text-primary)' }"`. Import motion values from the generated `motion.ts` (`~/design/motion` in Nuxt, or `~/motion/motif-motion` for a Nuxt 3 app at the project root; a relative path or your `@/` alias in Vite).
 
 ## Dark mode
 

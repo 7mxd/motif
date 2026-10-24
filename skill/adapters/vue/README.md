@@ -4,7 +4,7 @@ How Motif works with Vue apps (Vite) and Nuxt apps: what it expects, how to star
 
 ## What Motif expects
 
-- **The floors:** Vue 3 and Nuxt 3, with TypeScript. Nuxt 4.5 and later need Node 22.22.3 or later.
+- **The floors:** Vue 3 and Nuxt 3, with TypeScript. Nuxt 4.6 needs Node 22.22.3, or 24.15 or later (Nuxt 4.5 needs 22.19); npm warns when Node is older.
 - Vue 3 with Vite (Vue's own starter), or Nuxt (3 or 4).
 - Tailwind CSS v4, or plain CSS. Tailwind v3 projects get CSS variables only; [theme code](tokens.md) explains how to use them.
 - Motion for Vue (`motion-v` 1 or later) for animation that CSS can't do. Vue's own `<Transition>` and CSS for the rest.

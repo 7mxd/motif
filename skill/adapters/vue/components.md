@@ -97,7 +97,7 @@ Everything here comes from the theme: the colours, the spacing, the corner radiu
 
 ## The starter set
 
-Every new app gets these, each with all the states it needs:
+Every new app gets these, each with all the states it needs. The names are roles: the files take a prefix (`BaseButton.vue`, `BaseInput.vue`, `AppCard.vue`), because Vue's lint (`vue/multi-word-component-names`) rejects a one-word name.
 
 | Component | For | Built on | Must show |
 |---|---|---|---|
