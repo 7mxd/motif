@@ -111,7 +111,8 @@ jobs:
 
   # The Svelte tests that run npm ci on Vite and SvelteKit apps, type-check with svelte-check and start their dev servers
   # skip in the test job (MOTIF_STACK_JOB is not set there); this one runs them. Chrome is on the runner. Node 22's latest
-  # satisfies SvelteKit 3 (22.17 or later), which kit3-min needs; its own Node gate stays in the test.
+  # satisfies SvelteKit 3 (22.17 or later), which kit3-min needs. Its own Node gate stays in the test, where it skips on an
+  # older Node; here the job fails first instead, so kit3-min can't skip silently in CI.
   svelte:
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -133,6 +134,9 @@ jobs:
             tests/fixtures/svelte-contract-app/package-lock.json
       - name: Node version
         run: node --version
+      - name: Node 22.17 or later (SvelteKit 3)
+        run: |
+          node -e "const [a, b] = process.versions.node.split('.').map(Number); if (a < 22 || (a === 22 && b < 17)) { console.error('SvelteKit 3 needs Node 22.17 or later; this is Node ' + process.versions.node); process.exit(1) }"
       - name: Install
         working-directory: cli
         run: bun install --frozen-lockfile

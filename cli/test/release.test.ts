@@ -283,6 +283,15 @@ describe("each stack job and its heavy tests agree on its name", () => {
     }
   });
 
+  test("the svelte job fails on a Node older than 22.17 before its tests, so kit3-min can't skip there", () => {
+    for (const name of ["ci.yml", "release.yml"]) {
+      const job = jobsOf(workflow(name)).find((j) => j.id === "svelte")!.body;
+      const gate = job.indexOf("SvelteKit 3 needs Node 22.17");
+      expect([name, gate > 0, job.includes("process.versions.node"), job.includes("process.exit(1)")]).toEqual([name, true, true, true]);
+      expect([name, gate < job.indexOf("- name: Svelte tests")]).toEqual([name, true]);
+    }
+  });
+
   test("the SwiftUI fixtures' job runs on the swiftui job's image with the same Xcode, and the release waits for it", () => {
     for (const name of ["ci.yml", "release.yml"]) {
       const jobs = jobsOf(workflow(name));
