@@ -434,13 +434,14 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     const webStartLimit = web?.startTimeoutMs?.(appDir);
     if ("error" in how) return usage(how.error, { error: "cant-start" });
     const webEnv = web?.devEnv?.(appDir);
+    const buildingStatus = web?.buildingStatus?.(appDir);
     const env = how.env || webEnv ? { ...how.env, ...webEnv } : undefined;
     // Expo's start limit covers its server and its first web bundle.
     const started = Date.now();
     try {
       server = await deps.startDevServer({
         cwd: appDir, command: how.command, ...(env ? { env } : {}), ...(rn ? { timeoutMs: RN_START_TIMEOUT_MS } : {}),
-        ...(webStartLimit !== undefined ? { timeoutMs: webStartLimit } : {}),
+        ...(webStartLimit !== undefined ? { timeoutMs: webStartLimit } : {}), ...(buildingStatus !== undefined ? { buildingStatus } : {}),
       });
     } catch (e) {
       return usage(`Couldn't start the app with "${how.display}". ${message(e)}`, { error: "dev-server-failed" });

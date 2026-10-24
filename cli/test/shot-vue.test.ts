@@ -49,13 +49,13 @@ const WHICH = (cmd: string) => `/usr/bin/${cmd}`;
 const shotName = (route: string, variant?: string) => `${route === "/" ? "index" : route.slice(1)}${variant ? `+${variant}` : ""}.mobile.png`;
 
 function fakes(over: Partial<ShotDeps> & { results?: (o: CaptureOptions) => RouteResult[] } = {}) {
-  const calls = { started: [] as { cwd: string; command: string[]; timeoutMs?: number; env?: Record<string, string> }[], stopped: 0, captured: [] as CaptureOptions[] };
+  const calls = { started: [] as { cwd: string; command: string[]; timeoutMs?: number; env?: Record<string, string>; buildingStatus?: number }[], stopped: 0, captured: [] as CaptureOptions[] };
   const { results, ...rest } = over;
   const deps: ShotDeps = {
     findBrowser: () => CHROME,
     devCommand: (dir) => devCommand(dir, { platform: "linux", which: WHICH }),
     startDevServer: async (o) => {
-      calls.started.push({ cwd: o.cwd, command: o.command, timeoutMs: o.timeoutMs, env: o.env });
+      calls.started.push({ cwd: o.cwd, command: o.command, timeoutMs: o.timeoutMs, env: o.env, buildingStatus: o.buildingStatus });
       return { url: "http://localhost:5173", pid: 1, stop: async () => void calls.stopped++ };
     },
     serveStatic: () => ({ url: "http://127.0.0.1:1", stop: () => {} }),
@@ -86,6 +86,7 @@ describe("motif shot: a Vue app", () => {
     expect(calls.started[0]!.command).toEqual(["/usr/bin/npm", "run", "dev"]);
     expect(calls.started[0]!.timeoutMs).toBeUndefined();
     expect(calls.started[0]!.env).toBeUndefined();
+    expect(calls.started[0]!.buildingStatus).toBeUndefined();
     expect(calls.captured[0]!.routes).toEqual(["/", "/about"]);
     expect(calls.captured[0]!.baseUrl).toBe("http://localhost:5173");
     // No sizes passed: the capture's own web sizes, the desktop included.
@@ -99,6 +100,12 @@ describe("motif shot: a Vue app", () => {
     expect(r.exitCode).toBe(0);
     expect(calls.started[0]!.timeoutMs).toBe(180_000);
     expect(calls.captured[0]!.routes).toEqual(["/"]);
+  });
+
+  test("a Nuxt app is drawn once it is built: its loading screen (HTTP 503) isn't the app (Task 13 hands-on, nuxt/movies)", async () => {
+    const { deps, calls } = fakes();
+    expect((await runShot(makeProject(NUXT_APP), ctx(), deps)).exitCode).toBe(0);
+    expect(calls.started[0]!.buildingStatus).toBe(503);
   });
 
   test("a Nuxt app starts in development, whatever NODE_ENV says: under NODE_ENV=test, nuxt dev doesn't print its address", async () => {

@@ -39,6 +39,11 @@ export interface WebStack {
   routes?(appDir: string): RouteDiscovery;
   /** How long this app's dev server may take to answer its first page, in ms, when the web's usual limit is too short (undefined: the usual). */
   startTimeoutMs?(appDir: string): number | undefined;
+  /**
+   * The HTTP status this app's dev server answers with while it is still building the app (Nuxt's loading screen, 503),
+   * or undefined when any answer means it's ready: Motif waits for another answer before drawing.
+   */
+  buildingStatus?(appDir: string): number | undefined;
   /** Variables this app's dev server needs besides the usual, or undefined for none. */
   devEnv?(appDir: string): Record<string, string> | undefined;
   /** How the framework sets a design variant, for the note when a variant looks the same as the default. */

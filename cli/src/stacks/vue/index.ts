@@ -53,6 +53,8 @@ const NUXT_START_TIMEOUT_MS = 180_000;
  * and all, so Motif would wait for a line that never comes.
  */
 const NUXT_DEV_ENV = { NODE_ENV: "development" };
+/** nuxt dev answers at once, with its loading screen (HTTP 503) until the app is built: that page isn't the app. */
+const NUXT_BUILDING_STATUS = 503;
 
 /** The audit's fixes in Vue's terms: Motion for Vue animates in script, where React web's MotionConfig isn't. */
 const VUE_AUDIT_FIXES = {
@@ -76,6 +78,7 @@ export const VUE: WebStack = {
   routes: discoverVueRoutes,
   startTimeoutMs: (appDir) => (isNuxt(appDir) ? NUXT_START_TIMEOUT_MS : undefined),
   devEnv: (appDir) => (isNuxt(appDir) ? NUXT_DEV_ENV : undefined),
+  buildingStatus: (appDir) => (isNuxt(appDir) ? NUXT_BUILDING_STATUS : undefined),
   variantHow: "motif.css, which follows data-variant on <html>",
   auditFixes: VUE_AUDIT_FIXES,
 };

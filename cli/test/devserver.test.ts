@@ -150,6 +150,19 @@ writeFileSync("server.pid", String(process.pid));
 const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("<h1>Hi</h1>", { headers: { "content-type": "text/html" } }) });
 console.log("\\x1b[32m  ➜  Local:\\x1b[0m   http://localhost:" + s.port + "/");
 `;
+/** Nuxt's dev server: it answers at once, with its loading screen (HTTP 503) until the app is built, here for 1.5 s. */
+const BUILDING = `
+const started = Date.now();
+const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => Date.now() - started < 1500
+  ? new Response("building server · step 6/7", { status: 503 })
+  : new Response("<h1>The app</h1>", { headers: { "content-type": "text/html" } }) });
+console.log("  ➜ Local:    http://localhost:" + s.port + "/");
+`;
+/** A dev server that never gets past its loading screen. */
+const STILL_BUILDING = `
+const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("Loading...", { status: 503 }) });
+console.log("  ➜ Local:    http://localhost:" + s.port + "/");
+`;
 const CRASH = `console.error("Error: Cannot find module 'vite'"); process.exit(1);`;
 const SILENT = `
 import { writeFileSync } from "node:fs";
@@ -202,6 +215,39 @@ describe("startDevServer", () => {
       (e: Error) => e.message,
     );
     expect(message).toContain("café");
+  }, 30_000);
+
+  test("a server that answers with its loading screen first is waited for when the stack names that status (Vue Task 13 hands-on)", async () => {
+    const dir = tempDir("motif-dev-");
+    writeFileSync(join(dir, "building.ts"), BUILDING);
+    const server = await startDevServer({ cwd: dir, command: viaShell(dir, "building.ts"), timeoutMs: 20_000, buildingStatus: 503 });
+    try {
+      const page = await fetch(server.url);
+      expect([page.status, await page.text()]).toEqual([200, "<h1>The app</h1>"]);
+    } finally {
+      await server.stop();
+    }
+  }, 30_000);
+
+  test("without a building status, any answer means the server is ready, as before", async () => {
+    const dir = tempDir("motif-dev-");
+    writeFileSync(join(dir, "building.ts"), BUILDING);
+    const server = await startDevServer({ cwd: dir, command: viaShell(dir, "building.ts"), timeoutMs: 20_000 });
+    try {
+      expect((await fetch(server.url)).status).toBe(503);
+    } finally {
+      await server.stop();
+    }
+  }, 30_000);
+
+  test("a server still on its loading screen at the limit says so, and is stopped", async () => {
+    const dir = tempDir("motif-dev-");
+    writeFileSync(join(dir, "building.ts"), STILL_BUILDING);
+    const message = await startDevServer({ cwd: dir, command: viaShell(dir, "building.ts"), timeoutMs: 3000, buildingStatus: 503 }).then(
+      async (server) => (await server.stop(), "started"),
+      (e: Error) => e.message,
+    );
+    expect(message).toMatch(/^The dev server at http:\/\/localhost:\d+\/ was still building the app after 3 s \(it answered HTTP 503\)\./);
   }, 30_000);
 
   test("a server that never says where it's running times out and is stopped", async () => {
