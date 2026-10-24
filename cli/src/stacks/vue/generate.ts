@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { FALLBACK_DIR } from "../../generate/fallback";
 import { isReferenced, mentions } from "../../generate/referenced";
@@ -90,6 +90,8 @@ export function vueWiring(root: string, app: AppInfo, files: GeneratedFile[], sr
   if (tailwind) {
     return `Next: in your main CSS file, add an @import for ${entry.path} right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.`;
   }
-  const from = posix.relative(posix.dirname(`${norm(srcDir)}/main.ts`), inApp);
-  return `Next: import ${entry.path} once in ${norm(srcDir)}/main.ts (import '${from.startsWith(".") ? from : `./${from}`}'), or @import it from your main CSS file.`;
+  // create-vue writes main.ts with TypeScript and main.js without.
+  const main = existsSync(join(appDir, srcDir, "main.js")) && !existsSync(join(appDir, srcDir, "main.ts")) ? "main.js" : "main.ts";
+  const from = posix.relative(norm(srcDir) || ".", inApp);
+  return `Next: import ${entry.path} once in ${posix.join(norm(srcDir), main)} (import '${from.startsWith(".") ? from : `./${from}`}'), or @import it from your main CSS file.`;
 }

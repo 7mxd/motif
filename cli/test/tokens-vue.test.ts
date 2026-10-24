@@ -72,6 +72,16 @@ describe("motif tokens for a Vite Vue app", () => {
     expect(notes(r)).toContain("Next: import src/styles/motif.css once in src/main.ts (import './styles/motif.css'), or @import it from your main CSS file.");
   });
 
+  test("create-vue without TypeScript: the note names src/main.js", async () => {
+    const root = makeProject({
+      "package.json": pkg({ vue: "^3.5.0", "motion-v": "^2.0.0" }),
+      "src/main.js": "import { createApp } from 'vue'\nimport App from './App.vue'\ncreateApp(App).mount('#app')\n",
+      "src/App.vue": "<template><p /></template>\n",
+      "design/tokens.json": TOKENS,
+    });
+    expect(notes(await runTokens(root, ctx))).toContain("Next: import src/styles/motif.css once in src/main.js (import './styles/motif.css'), or @import it from your main CSS file.");
+  });
+
   test("no note once a .vue file imports the theme; a second run is up to date", async () => {
     const root = viteApp({ "src/App.vue": '<template><RouterView /></template>\n<style>@import "./styles/motif.tailwind.css";</style>\n' });
     const first = await runTokens(root, ctx);
