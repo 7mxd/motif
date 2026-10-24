@@ -247,7 +247,7 @@ describe("startDevServer", () => {
       async (server) => (await server.stop(), "started"),
       (e: Error) => e.message,
     );
-    expect(message).toMatch(/^The dev server at http:\/\/localhost:\d+\/ was still building the app after 3 s \(it answered HTTP 503\)\./);
+    expect(message).toMatch(/^The dev server at http:\/\/localhost:\d+\/ was still building the app after 3 s \(it answered HTTP 503\)\. If the page really answers 503, start the app yourself and pass its address with --url\./);
   }, 30_000);
 
   test("a server that never says where it's running times out and is stopped", async () => {

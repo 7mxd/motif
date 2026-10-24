@@ -248,7 +248,7 @@ export async function startDevServer(opts: { cwd: string; command: string[]; tim
       await Bun.sleep(250);
     }
     const limit = `${Math.round(timeoutMs / 1000)} s`;
-    if (building) throw new Error(`The dev server at ${url} was still building the app after ${limit} (it answered HTTP ${opts.buildingStatus}).${tail()}`);
+    if (building) throw new Error(`The dev server at ${url} was still building the app after ${limit} (it answered HTTP ${opts.buildingStatus}). If the page really answers ${opts.buildingStatus}, start the app yourself and pass its address with --url.${tail()}`);
     throw new Error(`The dev server didn't ${url ? `answer at ${url}` : "say where it's running"} within ${limit}.${tail()}`);
   } catch (e) {
     await stop();
