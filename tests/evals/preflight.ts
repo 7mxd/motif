@@ -8,7 +8,7 @@ import { defaultDoctorDeps, type DoctorDeps } from "../../cli/src/commands/docto
 import { composeDoctor } from "../../cli/src/stacks/compose/doctor";
 import { FLUTTER_INSTALL, FLUTTER_MIN, olderThanFlutterMin } from "../../cli/src/stacks/flutter/doctor";
 import { swiftUIDoctor, XCODE_MIN } from "../../cli/src/stacks/swiftui/doctor";
-import { CASES, isCompose, isFlutter, isSwiftUI, needsBrowser as caseNeedsBrowser } from "./cases";
+import { CASES, isCompose, isFlutter, isSwiftUI, isVue, needsBrowser as caseNeedsBrowser } from "./cases";
 import { supportsPurge } from "./purge";
 import { resolveClaude, sessionEnv } from "./claude";
 import { tail, type Run } from "./tools";
@@ -104,8 +104,13 @@ function androidProblem(d: PreflightDeps, repo: string): string | null {
   return `The Compose cases (${composeCases.join(", ")}) need a JDK 17 or later and the Android SDK. ${needed.map((i) => i.detail).join(" ")} Then run this again. Or run ${others.what} without them: --cases ${others.ids.join(",")}`;
 }
 
+/** Vite 8's Node.js: 20.19 or later on Node 20, 22.12 or later from Node 22 on (Node 21 isn't one). */
+function runsVite8(major: number, minor: number): boolean {
+  return (major === 20 && minor >= 19) || (major === 22 && minor >= 12) || major > 22;
+}
+
 export async function preflight(
-  p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false, needsXcode = false, needsNode = true,
+  p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false, needsXcode = false, needsNode = true, needsVue = false,
 ): Promise<Ready | { error: string }> {
   const found = resolveClaude(d.claudeOverride ?? d.which("claude"));
   if ("error" in found) return found;
@@ -157,6 +162,14 @@ export async function preflight(
     const [major = 0, minor = 0] = node.stdout.trim().replace(/^v/, "").split(".").map(Number);
     if (node.code !== 0 || !d.which("npm") || major < 20 || (major === 20 && minor < 9)) {
       return { error: "Node.js 20.9 or later, with npm, is needed to install and build the eval apps. Install it, then run this again." };
+    }
+    if (needsVue && !runsVite8(major, minor)) {
+      const mac = (d.platform ?? process.platform) === "darwin";
+      const vueCases = CASES.filter(isVue).map((c) => c.id).join(", ");
+      const others = CASES.filter((c) => !isVue(c) && (mac || !c.mac)).map((c) => c.id).join(",");
+      return {
+        error: `The Vue cases (${vueCases}) need Node.js 20.19 or later, or 22.12 or later on Node 22 (Bustan's Vite 8 needs it). This is Node.js ${node.stdout.trim().replace(/^v/, "")}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases ${others}`,
+      };
     }
   }
 

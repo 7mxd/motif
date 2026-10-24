@@ -114,6 +114,20 @@ describe("the eval runner", () => {
     await runEvals(["--cases", "c-swiftui,b-swiftui-orders"], h.deps, h.where);
   });
 
+  test("preflight is told whether a Vue case was chosen, for the Node.js Vite 8 needs", async () => {
+    for (const [ids, needs] of [["b-vue-history", true], ["b-search,c-vue", true], ["b-search,b-rn-orders", false]] as const) {
+      const seen: (boolean | undefined)[] = [];
+      const h = harness({
+        preflight: async (_b, _c, _f, _a, _x, _n, vue) => {
+          seen.push(vue);
+          return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
+        },
+      });
+      await runEvals(["--cases", ids], h.deps, h.where);
+      expect([ids, seen]).toEqual([ids, [needs]]);
+    }
+  });
+
   test("with claude purge, it clears each folder with it and says nothing about transcripts", async () => {
     const h = harness();
     await runEvals(["--cases", "b-search", "--work", h.work], h.deps, h.where);

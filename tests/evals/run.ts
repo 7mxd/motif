@@ -37,7 +37,7 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
   --claude <path>        The Claude Code program to use`;
 
 export interface RunDeps {
-  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean, needsNode?: boolean): Promise<Ready | { error: string }>;
+  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean, needsNode?: boolean, needsVue?: boolean): Promise<Ready | { error: string }>;
   prepare(c: EvalCase, dir: string): Promise<Workspace>;
   session(spec: SessionSpec): Promise<SessionOutcome>;
   collect(c: EvalCase, ws: Workspace, out: string, judge: JudgeFn): Promise<Grade>;
@@ -203,7 +203,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 0;
   }
 
-  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose), todo.some(isSwiftUI), todo.some(needsNode));
+  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose), todo.some(isSwiftUI), todo.some(needsNode), todo.some(isVue));
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;
@@ -433,10 +433,10 @@ if (import.meta.main) {
   const code = await runEvals(
     process.argv.slice(2),
     {
-      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode, needsNode) =>
+      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode, needsNode, needsVue) =>
         preflight(
           p, needsBrowser, { which: (cmd) => Bun.which(cmd), run: runCmd, env: process.env, bun: process.execPath, ...(claude ? { claudeOverride: resolve(claude) } : {}) },
-          needsFlutter, needsAndroid, needsXcode, needsNode,
+          needsFlutter, needsAndroid, needsXcode, needsNode, needsVue,
         ),
       prepare: (c, dir) => prepareWorkspace(c, dir, runCmd),
       session: runSession,
