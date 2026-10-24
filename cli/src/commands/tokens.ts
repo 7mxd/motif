@@ -20,7 +20,7 @@ import { motifCss } from "../generate/motif-css";
 import { isReferenced } from "../generate/referenced";
 import { nativeStack } from "../stacks/native";
 import { webStack, type WebStack } from "../stacks/web";
-import { chooseSrcDir, detectTailwind, generateReactWeb } from "../stacks/react-web/generate";
+import { chooseSrcDir, detectTailwind, generateReactWeb, tailwindV3Note, tailwindWiringNote } from "../stacks/react-web/generate";
 import { andList } from "../text";
 import { TOKENS_JSON } from "./validate";
 
@@ -241,7 +241,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       const tailwind = detectTailwind(appDir);
       srcDirs.set(app.path, srcDir);
       if (tailwind === "v3") {
-        notes.push(`${appLabel(app)}: Tailwind v3 found, so Motif wrote CSS variables only. Use them as bg-[var(--motif-color-action-primary)], or upgrade to Tailwind v4 for Motif's Tailwind theme.`);
+        notes.push(tailwindV3Note(appLabel(app)));
       }
       for (const f of generateReactWeb(theme, { srcDir, tailwind }, set.variants)) files.push({ path: prefixPath(app.path, f.path), content: f.content });
       const entry = tailwind === "v4" ? "motif.tailwind.css" : "motif.css";
@@ -301,7 +301,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   for (const e of entries) {
     if (blockedPaths.has(e.cssPath) || isReferenced(e.dir, e.entry)) continue;
     notes.push(e.tailwind
-      ? `Next: in your main CSS file, add an @import for ${e.path} right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.`
+      ? tailwindWiringNote(e.path)
       : `Next: load ${e.path} once: @import it from your main CSS file, or import it in your app's entry file.`);
   }
   const leftAlone = new Set(results.filter((r) => r.status === "protected" || r.status === "skipped").map((r) => r.path));

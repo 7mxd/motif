@@ -2,16 +2,14 @@ import { resolve } from "node:path";
 import type { DoctorDeps, DoctorItem } from "../../commands/doctor";
 import type { AppInfo } from "../../detect/stacks";
 import { declared, packageVersion, type PackageVersion } from "../../project/package";
-import { isSvelteKit, kitMajor, svelteMajor } from "./project";
+import { beforeSvelte5, isSvelteKit } from "./project";
 
 const SVELTE_4 =
   "Svelte 4 isn't supported: Motif supports Svelte 5 (runes). Theme code (CSS only), checks and drafts still work; for screenshots, start the app and pass its address to motif shot --url.";
 
 /** What doctor says for a Svelte 4 (or earlier) app or SvelteKit 1, or null for a version the app can use. */
 export function svelteUnsupported(appDir: string): string | null {
-  const svelte = svelteMajor(appDir);
-  const kit = isSvelteKit(appDir) ? kitMajor(appDir) : null;
-  return (svelte !== null && svelte < 5) || (kit !== null && kit < 2) ? SVELTE_4 : null;
+  return beforeSvelte5(appDir) ? SVELTE_4 : null;
 }
 
 /** SvelteKit 3's floor: its engines say Node.js 22.17 or later. */

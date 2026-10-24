@@ -3,6 +3,7 @@ import { listSvelteFiles, type SourceFile } from "../../check/files";
 import { expandHtml } from "../../check/html";
 import type { WebStack } from "../web";
 import { svelteDoctor, svelteUnsupported } from "./doctor";
+import { generateSvelte, svelteWiring } from "./generate";
 import { svelteSrcDir } from "./project";
 
 /**
@@ -30,6 +31,8 @@ export const SVELTE: WebStack = {
   sourceFiles: (root, app, opts) => listSvelteFiles(root, app.path, opts),
   views: svelteViews,
   srcDir: svelteSrcDir,
+  generate: generateSvelte,
+  wiring: (root, app, files) => svelteWiring(root, app, files, svelteSrcDir),
   doctor: svelteDoctor,
   unsupported: svelteUnsupported,
 };

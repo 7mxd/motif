@@ -4,7 +4,7 @@ import { FALLBACK_DIR } from "../../generate/fallback";
 import { isReferenced, mentions } from "../../generate/referenced";
 import type { GeneratedFile } from "../../generate/header";
 import type { ThemeSet } from "../../generate/theme";
-import { motifCss, motionTs, tailwindCss, type TailwindVersion } from "../react-web/generate";
+import { motifCss, motionTs, tailwindCss, tailwindV3Note, tailwindWiringNote, type TailwindVersion } from "../react-web/generate";
 import { appLabel, prefixPath } from "../../project/apps";
 import { addPackages, packageManager } from "../../project/package";
 import type { AppInfo } from "../../detect/stacks";
@@ -45,7 +45,7 @@ export function generateVue(set: ThemeSet, ctx: VueCtx): { files: GeneratedFile[
   const notes: string[] = [];
   if (ctx.tailwind === "v4") files.push({ path: where.tailwind, content: tailwindCss(set.base) });
   if (ctx.tailwind === "v3") {
-    notes.push(`${appLabel(ctx.app)}: Tailwind v3 found, so Motif wrote CSS variables only. Use them as bg-[var(--motif-color-action-primary)], or upgrade to Tailwind v4 for Motif's Tailwind theme.`);
+    notes.push(tailwindV3Note(appLabel(ctx.app)));
   }
   if (vueMajor(appDir) === 2) {
     notes.push("motion.ts is for Motion for Vue, which needs Vue 3, so Motif didn't write it. Animate with the CSS variables in motif.css (--motif-duration-*, --motif-easing-*).");
@@ -88,7 +88,7 @@ export function vueWiring(root: string, app: AppInfo, files: GeneratedFile[], sr
       : `Next: add '${alias}' to the css list in nuxt.config.ts (css: ['${alias}']), before your own styles.`;
   }
   if (tailwind) {
-    return `Next: in your main CSS file, add an @import for ${entry.path} right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.`;
+    return tailwindWiringNote(entry.path);
   }
   // create-vue writes main.ts with TypeScript and main.js without.
   const main = existsSync(join(appDir, srcDir, "main.js")) && !existsSync(join(appDir, srcDir, "main.ts")) ? "main.js" : "main.ts";
