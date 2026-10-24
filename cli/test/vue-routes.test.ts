@@ -38,6 +38,16 @@ describe("discoverVueRoutes", () => {
     expect(discoverVueRoutes(root)).toEqual({ routes: ["/"], skipped: [] });
   });
 
+  test("a Nuxt page drawn only on the client or the server is its route, without .client or .server", () => {
+    const root = makeProject({
+      "package.json": JSON.stringify({ dependencies: { nuxt: "^4.0.0" } }),
+      "app/pages/index.client.vue": SFC,
+      "app/pages/about.client.vue": SFC,
+      "app/pages/terms.server.vue": SFC,
+    });
+    expect(discoverVueRoutes(root)).toEqual({ routes: ["/", "/about", "/terms"], skipped: [] });
+  });
+
   test("Nuxt's pages folder", () => {
     const root = makeProject({
       "package.json": JSON.stringify({ dependencies: { nuxt: "^4.0.0" } }),

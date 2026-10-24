@@ -39,7 +39,8 @@ function fileRoutes(dir: string, segments: string[], out: RouteDiscovery): void 
       const group = entry.startsWith("(") && entry.endsWith(")");
       fileRoutes(path, group ? segments : [...segments, entry], out);
     } else if (PAGE.test(entry) && !NOT_A_PAGE.test(entry)) {
-      const name = entry.replace(PAGE, "");
+      // Nuxt draws a .client.vue page only in the browser and a .server.vue page only on the server: the route is the same.
+      const name = entry.replace(PAGE, "").replace(/\.(client|server)$/, "");
       add(out, name === "index" ? segments : [...segments, name]);
     }
   }
