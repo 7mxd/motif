@@ -7,9 +7,10 @@ export type CheckFacts = { violations: number; exceptions: number; warnings: num
 export type ValidateFacts = { errors: number; warnings: number; missingSections: string[] } | { error: string };
 /**
  * A command's exit; `command`, when given, is named in the details (flutter analyze, as Flutter's type check), and
- * `detail` replaces them when the command couldn't run properly (its packages couldn't be got, say).
+ * `detail` replaces them when the command couldn't run properly (its packages couldn't be got, say). `typeErrorsOnly` marks a
+ * failed build that stopped at its own type check (Vue's build script runs vue-tsc first): the type check already counts those errors.
  */
-export interface CmdFacts { code: number; timedOut?: boolean; command?: string; detail?: string }
+export interface CmdFacts { code: number; timedOut?: boolean; command?: string; detail?: string; typeErrorsOnly?: boolean }
 
 const MAX_EXCEPTIONS = 2;
 
@@ -38,15 +39,15 @@ function validateCriterion(v: ValidateFacts): Criterion {
 
 /** The build, when the stack has one (Flutter's checks need none), and the type check. */
 const buildCriteria = (build: CmdFacts | undefined, typecheck: CmdFacts): Criterion[] => [
-  ...(build ? [{ id: "build", label: "The app builds", pass: build.code === 0, detail: ran(build, "The build") }] : []),
-  { id: "typecheck", label: "The app type-checks", pass: typecheck.code === 0, detail: ran(typecheck, "The type check") },
+  ...(build && !build.typeErrorsOnly ? [{ id: "build", label: "The app builds", pass: build.code === 0, detail: ran(build, "The build") }] : []),
+  { id: "typecheck", label: "The app type-checks", pass: typecheck.code === 0, detail: `${ran(typecheck, "The type check")}${build?.typeErrorsOnly ? " The build stopped at the same errors, so it isn't counted again." : ""}` },
 ];
 
 export interface BFacts {
   route: string; pageExists: boolean; check: CheckFacts; validate: ValidateFacts;
   /** React web: the build and the type check. Flutter: flutter analyze as the type check, and no build. */
   build?: CmdFacts; typecheck?: CmdFacts;
-  /** A plain site and a Flutter app have nothing to build: their new page, as motif shot draws it (a Vue app has both a build and a drawn page). */
+  /** A plain site and a Flutter app have nothing to build: their new page, as motif shot draws it (a Vue or Svelte app has both a build and a drawn page). */
   render?: ScreenFacts | { error: string };
   /** New components: React files under src/; a plain site's new "Component:" lines; Flutter's public widget classes under lib/. */
   newComponents: string[];
@@ -85,7 +86,7 @@ export function gradeB(f: BFacts): Grade {
     { id: "feature", label: `The feature's page exists (${f.route})`, pass: f.pageExists, detail: f.pageExists ? `${f.route} is a page of the app.` : `There's no page at ${f.route}.` },
     ...checkCriteria(f.check),
     validateCriterion(f.validate),
-    // React web builds and type-checks; a plain site is loaded in a browser; Flutter is analyzed and drawn; Vue is built, type-checked and drawn.
+    // React web builds and type-checks; a plain site is loaded in a browser; Flutter is analyzed and drawn; Vue and Svelte are built, type-checked and drawn.
     ...(f.typecheck ? buildCriteria(f.build, f.typecheck) : []),
     ...(f.build && !f.render ? [] : [renderCriterion(f.route, f.render)]),
     componentsCriterion(f),

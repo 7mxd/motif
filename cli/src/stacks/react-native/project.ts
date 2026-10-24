@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseJsonc } from "jsonc-parser";
+import { declared } from "../../project/package";
 import { stripBom } from "../../text";
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -23,17 +24,6 @@ export function aliasBase(appDir: string): string | null {
   } catch {
     return null;
   }
-}
-
-/** The version range of a package in an app's package.json (dependencies, then devDependencies), or null. */
-export function declared(dir: string, name: string): string | null {
-  const pkg = readJson(join(dir, "package.json"));
-  for (const key of ["dependencies", "devDependencies"]) {
-    const group = pkg?.[key];
-    const v = group && typeof group === "object" ? (group as Record<string, unknown>)[name] : undefined;
-    if (typeof v === "string") return v;
-  }
-  return null;
 }
 
 /** True when the app lists expo in its dependencies or devDependencies, as stack detection reads them. */

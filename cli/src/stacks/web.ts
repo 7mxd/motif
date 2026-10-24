@@ -8,7 +8,15 @@ import type { ThemeSet } from "../generate/theme";
 import type { IssueRule } from "../shot/audit";
 import type { TailwindVersion } from "./react-web/generate";
 import type { RouteDiscovery } from "./react-web/routes";
+import { SVELTE } from "./svelte";
 import { VUE } from "./vue";
+
+/** What a stack's fix may need to know about the app: where it is, and the motion.ts Motif wrote for it (an app path, without ".ts"), if any. */
+export interface WebFixContext {
+  appDir: string;
+  appPath: string;
+  motionImport?: string;
+}
 
 /**
  * What a web framework with its own file format (Vue's .vue; later Svelte and Angular) adds to Motif. React web and plain
@@ -32,7 +40,7 @@ export interface WebStack {
   scan?(file: SourceFile, scale: Scale): Hit[];
   appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];
   /** What to use instead of a hit, in the framework's own syntax. */
-  fix?(hit: Hit): string;
+  fix?(hit: Hit, ctx?: WebFixContext): string;
   /** Files besides sourceFiles that motif extract reads (Vuetify's config, which the usual ignores leave out); check never scans them. */
   extractFiles?(root: string, app: AppInfo, opts: { ignore?: string[] }): SourceFile[];
   /** What the app's own files say about its design, for motif extract. */
@@ -54,9 +62,11 @@ export interface WebStack {
   auditFixes?: Partial<Record<IssueRule, string>>;
   /** The items for this stack, given the project root and this stack's apps in it. */
   doctor?(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[];
+  /** What doctor says for an app on a version Motif doesn't support (and what still works), or null when the version is fine. */
+  unsupported?(appDir: string): string | null;
 }
 
-const STACKS = new Map<StackId, WebStack>([[VUE.id, VUE]]);
+const STACKS = new Map<StackId, WebStack>([[VUE.id, VUE], [SVELTE.id, SVELTE]]);
 
 /** Every web stack of this kind Motif has, registered. */
 export function webStacks(): WebStack[] {

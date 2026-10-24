@@ -1,0 +1,73 @@
+/* The app's own fonts: the guide's Onest, and Noto Naskh Arabic, its Arabic companion. */
+@font-face {
+  font-family: 'Onest';
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/onest.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Noto Naskh Arabic';
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./assets/fonts/NotoNaskhArabic.ttf') format('truetype');
+}
+
+body {
+  margin: 0;
+  background: var(--motif-color-background);
+  color: var(--motif-color-text-primary);
+  font-family: var(--motif-font-body-family);
+  font-size: var(--motif-font-body-size);
+  line-height: var(--motif-font-body-line-height);
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--motif-space-4);
+  padding: var(--motif-space-4);
+}
+
+h1 {
+  margin: 0;
+  font-family: var(--motif-font-title-family);
+  font-size: var(--motif-font-title-size);
+  font-weight: var(--motif-font-title-weight);
+  line-height: var(--motif-font-title-line-height);
+}
+
+p {
+  margin: 0;
+  color: var(--motif-color-text-secondary);
+}
+
+.card {
+  padding: var(--motif-space-4);
+  border-radius: var(--motif-radius-md);
+  background: var(--motif-color-surface);
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--motif-space-2);
+  font-family: var(--motif-font-label-family);
+  font-size: var(--motif-font-label-size);
+}
+
+input {
+  padding: var(--motif-space-3);
+  border: 1px solid var(--motif-color-border);
+  border-radius: var(--motif-radius-md);
+  background: var(--motif-color-surface);
+  color: var(--motif-color-text-primary);
+  font: inherit;
+}
+
+.spinner {
+  width: var(--motif-space-8);
+  height: var(--motif-space-8);
+  border-radius: var(--motif-radius-sm);
+  background: var(--motif-color-action-primary);
+}

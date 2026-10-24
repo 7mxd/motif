@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { RULE_IDS } from "../src/check/types";
 import { expandHtml } from "../src/check/html";
 import type { Lang } from "../src/check/files";
@@ -17,6 +18,7 @@ import { runCheck } from "../src/commands/check";
 import { runTokens } from "../src/commands/tokens";
 import { docFrom, FIXTURES, validTokens } from "./helpers";
 import { makeProject } from "./project";
+import { tempDir } from "./tmp";
 
 const ADAPTERS = join(import.meta.dir, "../../skill/adapters");
 const read = (rel: string) => readFileSync(join(ADAPTERS, rel), "utf8").replace(/\r\n/g, "\n");
@@ -405,7 +407,9 @@ describe("the Vue guide", () => {
       "npm create vue@latest", "npm create nuxt@latest", "npx vue-tsc --noEmit", "nuxi typecheck", "npm run dev",
       "design/motif.json", "themeDir", "srcDir", "Vue 3", "Nuxt 3", "Node 22.22.3", "Vue 2 and Nuxt 2 aren't supported",
       "browser frame", "Vite about 2 seconds", "Nuxt with server rendering about 7 seconds",
+      "motif shot --url", "dev server included, typical:", "a Vue 2 app is recognised too",
     ]);
+    expect(read("vue/README.md")).not.toContain("measured on Windows");
   });
 
   test("tokens.md: the files, wiring them in, the starter's variables, and switching variants", () => {
@@ -439,7 +443,7 @@ describe("the Vue guide", () => {
   test("checks.md: every rule, the audit, state scripts as JavaScript, and --rtl", () => {
     const checks = read("vue/checks.md");
     for (const id of RULE_IDS) expect(checks).toContain(`## \`${id}\``);
-    has("checks.md", ["## Contrast", "## Target size", "## Reduced motion", "motif-ok", "<!-- motif-ok", "--state design/states/", "are JavaScript", "--rtl", "## Screens behind a form or a click"]);
+    has("checks.md", ["## Contrast", "## Target size", "## Reduced motion", "motif-ok", "<!-- motif-ok", "--state design/states/", "are JavaScript", "--rtl", "## Screens behind a form or a click", "data-ready"]);
   });
 
   test("the code examples pass motif check as they are", async () => {
@@ -576,6 +580,117 @@ describe("the SwiftUI guide", () => {
   });
 });
 
+describe("the Svelte guide", () => {
+  const has = (file: string, strings: string[]) => {
+    const text = read(`svelte/${file}`);
+    for (const s of strings) expect(text).toContain(s);
+  };
+
+  test("has exactly the template's files", () => {
+    expect(readdirSync(join(ADAPTERS, "svelte")).sort()).toEqual(GUIDE_FILES);
+  });
+
+  test("README: both starters, the commands, the theme folder, the floors, Svelte 4, mockups and the first-screenshot times", () => {
+    has("README.md", [
+      "npx sv create", "npm create vite@latest", "npx svelte-check", "npm run dev", "design/motif.json", "themeDir", "srcDir",
+      "Svelte 5", "SvelteKit 2 or 3", "Node 22.17", "Svelte 4 isn't supported", "motif shot --url", "browser frame",
+      "SvelteKit 2 about 4 seconds", "Svelte with Vite about 3 seconds", "SvelteKit 3 about 4 seconds",
+    ]);
+  });
+
+  test("tokens.md: the files, wiring them in, the starter's variables, and switching variants", () => {
+    has("tokens.md", [
+      "motif.css", "motif.tailwind.css", "$lib/styles/motif.css", "#lib/styles/motif.css", "+layout.svelte", "src/main.ts", "var(--motif-color-", "bg-action-primary",
+      "data-variant", "## Switching variants", "document.documentElement.dataset.variant", "transformPageChunk", "hooks.server.ts", "%variant%",
+    ]);
+  });
+
+  test("components.md: where components live, runes, snippets, every state, names and the starter set", () => {
+    has("components.md", [
+      "src/lib/components/", "$props()", "{@render", "<button", ":hover", ":focus-visible", ":disabled", ":active", "aria-label", "<style>", "var(--motif-", "PascalCase",
+    ]);
+    for (const c of STARTER_SET) expect(read("svelte/components.md")).toContain(`\`${c}\``);
+  });
+
+  test("motion.md: transitions, the CSS roles, Spring and Tween, Motion for the refresh-independent spring, and reduced motion", () => {
+    has("motion.md", [
+      "transition:fly", "duration.", "easing.", "Spring", "spring.", "Tween", "prefersReducedMotion", "animate(", "motionSpring.", "120 Hz", "var(--motif-duration-fast)",
+    ]);
+  });
+
+  test("platform.md: right to left, logical properties, the page's lang and dir, and server rendering", () => {
+    has("platform.md", [
+      'dir="rtl"', "margin-inline-start", "padding-inline-end", "src/app.html", "<html lang", "transformPageChunk", "server rendering", "onMount", "$effect",
+    ]);
+  });
+
+  test("checks.md: every rule, the audit, state scripts as JavaScript, and --rtl", () => {
+    const checks = read("svelte/checks.md");
+    for (const id of RULE_IDS) expect(checks).toContain(`## \`${id}\``);
+    has("checks.md", ["## Contrast", "## Target size", "## Reduced motion", "motif-ok", "<!-- motif-ok", "--state design/states/", "are JavaScript", "--rtl", "## Screens behind a form or a click", "data-ready"]);
+  });
+
+  test("the code examples pass motif check as they are", async () => {
+    const files: Record<string, string> = {
+      "package.json": JSON.stringify({
+        name: "x", private: true, type: "module", scripts: { dev: "vite dev" },
+        devDependencies: { "@sveltejs/kit": "^2.70.0", "@sveltejs/vite-plugin-svelte": "^7.0.0", svelte: "^5.57.0", typescript: "~5.9.0", vite: "^8.0.0", tailwindcss: "^4.1.0", "@tailwindcss/vite": "^4.1.0" },
+        dependencies: { motion: "^14.6.0" },
+      }),
+      "svelte.config.js": "export default { kit: {} };\n",
+      "src/app.html": '<!doctype html>\n<html lang="en">%sveltekit.head%%sveltekit.body%</html>\n',
+      "src/routes/+page.svelte": "<h1>Welcome</h1>\n",
+      "src/lib/pref.ts": 'import { prefersReducedMotion } from "svelte/motion";\nexport const calm = () => prefersReducedMotion.current;\n',
+      "design/tokens.json": readFileSync(join(FIXTURES, "contract/design/tokens.json"), "utf8"),
+    };
+    const examples: string[] = [];
+    for (const file of GUIDE_FILES) {
+      const text = read(`svelte/${file}`);
+      for (const [i, m] of [...text.matchAll(/```(svelte|ts|css)\n([\s\S]*?)```/g)].entries()) {
+        const path = `src/lib/examples/${file.replace(".md", "")}-${i + 1}.${m[1] === "svelte" ? "svelte" : m[1]}`;
+        files[path] = m[2]!;
+        examples.push(path);
+      }
+    }
+    expect(examples.filter((p) => p.endsWith(".svelte")).length).toBeGreaterThan(8);
+    const root = makeProject(files);
+    expect((await runTokens(root, { positionals: [] })).exitCode).toBe(0);
+    const result = await runCheck(root, { positionals: [] });
+    const hits = ((result.data as any).violations as any[]).filter((h) => h.file.startsWith("src/lib/examples/")).map((h) => `${h.file}:${h.line} ${h.rule} ${h.text}`);
+    expect(hits).toEqual([]);
+  });
+});
+
+describe("the Svelte guide's hook for the page's language and variant", () => {
+  const PAGE = '<html lang="%lang%" dir="%dir%" data-variant="%variant%">';
+  // The hook exactly as platform.md writes it, run over a sample app.html.
+  async function render(cookies: Record<string, string>): Promise<string> {
+    const block = [...read("svelte/platform.md").matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!).find((b) => b.includes("transformPageChunk"))!;
+    const dir = tempDir("motif-hook-");
+    const file = join(dir, "hooks.server.ts");
+    writeFileSync(file, block);
+    const { handle } = await import(pathToFileURL(file).href);
+    const event = { cookies: { get: (name: string) => cookies[name] } };
+    let html = "";
+    await handle({ event, resolve: async (_e: unknown, opts: any) => { html = opts.transformPageChunk({ html: PAGE }); return new Response(html); } });
+    return html;
+  }
+
+  test("a saved language and variant fill the placeholders, and Arabic is right to left", async () => {
+    expect(await render({ lang: "en-GB", variant: "calm-2" })).toBe('<html lang="en-GB" dir="ltr" data-variant="calm-2">');
+    expect(await render({ lang: "ar" })).toBe('<html lang="ar" dir="rtl" data-variant="">');
+  });
+
+  test("with no cookies the page is English, left to right, in the default variant", async () => {
+    expect(await render({})).toBe('<html lang="en" dir="ltr" data-variant="">');
+  });
+
+  test("a hostile cookie is refused, and a $& in it is never read as a pattern", async () => {
+    expect(await render({ lang: 'en" onload="x', variant: 'a" onload="x' })).toBe('<html lang="en" dir="ltr" data-variant="">');
+    expect(await render({ lang: "$&", variant: "$&" })).toBe('<html lang="en" dir="ltr" data-variant="">');
+  });
+});
+
 describe("the parity checklist (docs/parity.md, Task 15)", () => {
   const REPO = join(import.meta.dir, "../..");
   const AREAS = ["Detect and set up", "Theme code", "Checks", "Drafting a guide", "Components", "Mockups", "Screenshots", "Audit", "Skill", "Evals", "Agents"];
@@ -592,22 +707,22 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web, Flutter, React Native, Jetpack Compose, SwiftUI and Vue have every area done; the stacks still to come have none", () => {
-    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose", "SwiftUI", "Vue / Nuxt"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
+  test("React web, plain web, Flutter, React Native, Jetpack Compose, SwiftUI, Vue and Svelte have every area done; the stacks still to come have none", () => {
+    for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose", "SwiftUI", "Vue / Nuxt", "Svelte / SvelteKit"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
     // SwiftUI's proof names the runs its four cases passed in (2H Task 15).
     const swiftEvals = table.find((r) => r[0] === "Evals" && r[1]!.includes("fixtures-swiftui.test.ts"))!;
     for (const s of ["eval run 20261022-061913", "It passed in run 20261022-085041"]) expect(swiftEvals[1]).toContain(s);
     // The cell and its proof agree: each Evals proof names the run that passed.
-    for (const fixtureTest of ["fixtures-rn.test.ts", "fixtures-compose.test.ts", "fixtures-vue.test.ts"]) {
+    for (const fixtureTest of ["fixtures-rn.test.ts", "fixtures-compose.test.ts", "fixtures-vue.test.ts", "fixtures-svelte.test.ts"]) {
       const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes(fixtureTest))!;
       expect([fixtureTest, proof[1]!.includes("Recorded in eval run")]).toEqual([fixtureTest, true]);
     }
-    for (const stack of ["Svelte / SvelteKit", "Angular"]) {
+    for (const stack of ["Angular"]) {
       expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
     }
   });
 
-  test("Flutter's, Jetpack Compose's, React Native's, SwiftUI's and Vue's proofs name every area, and every file they link to exists", () => {
+  test("Flutter's, Jetpack Compose's, React Native's, SwiftUI's, Vue's and Svelte's proofs name every area, and every file they link to exists", () => {
     const section = (heading: string) => {
       const start = parity.indexOf(heading);
       expect(start).toBeGreaterThan(-1);
@@ -616,7 +731,7 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     };
     for (const proof of [
       section("## Flutter: the tests that show it"), section("## Jetpack Compose: the tests that show it"), section("## React Native (Expo): the tests that show it"),
-      section("## SwiftUI: the tests that show it"), section("## Vue / Nuxt: the tests that show it"),
+      section("## SwiftUI: the tests that show it"), section("## Vue / Nuxt: the tests that show it"), section("## Svelte / SvelteKit: the tests that show it"),
     ]) {
       for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
     }
@@ -627,6 +742,11 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     const vue = section("## Vue / Nuxt: the tests that show it");
     expect(vue).toContain("`vue`");
     expect(vue).toContain("(notes/2026-10-24-vue-hands-on.md)");
+    const svelte = section("## Svelte / SvelteKit: the tests that show it");
+    expect(svelte).toContain("`svelte`");
+    expect(svelte).toContain("CI run 40109256191");
+    expect(svelte).toContain("(decisions/0011-");
+    expect(svelte).toContain("(notes/2026-10-24-svelte-hands-on.md)");
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");

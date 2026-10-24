@@ -8,7 +8,8 @@ import type { Theme } from "../../generate/theme";
 import { themeFonts } from "../../generate/theme-fonts";
 import { prefixPath } from "../../project/apps";
 import { assetNames, FONT_ASSETS } from "../flutter/fonts";
-import { declared, expoSdk } from "./project";
+import { declared } from "../../project/package";
+import { expoSdk } from "./project";
 import { THEME_FILE, type RnOptions } from "./generate";
 
 const RN_FONT = /\.(ttf|otf)$/i;

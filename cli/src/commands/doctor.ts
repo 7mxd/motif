@@ -12,7 +12,6 @@ import { ignoredByGit, ignoredNotes } from "../project/git";
 import { nativeStack } from "../stacks/native";
 import { isExpoApp } from "../stacks/react-native/project";
 import { packageLimit, swiftUIApp } from "../stacks/swiftui/project";
-import { vueMajor } from "../stacks/vue/project";
 import { webStack } from "../stacks/web";
 import { VERSION } from "../version";
 import { runValidate } from "./validate";
@@ -91,8 +90,8 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
         label,
         "React Native without Expo detected. Motif fully supports Expo apps; here theme code, checks and drafts work, and for screenshots, run the app on react-native-web and pass its address to motif shot --url.",
       );
-    } else if (app.stack === "vue" && (vueMajor(join(cwd, app.path)) ?? 3) < 3) {
-      // A Vue 2 app is told it isn't supported, and what still works, by the Vue item below: no second line here.
+    } else if (webStack(app.stack)?.unsupported?.(join(cwd, app.path)) != null) {
+      // An app on a version Motif doesn't support (Vue 2, Svelte 4) is told so, and what still works, by its stack's item below: no second line here.
     } else if (app.stack === "swiftui" && swiftUIApp(join(cwd, app.path))?.kind === "package") {
       // motif shot refuses a Swift package app; the line says so in its words.
       push(`app:${app.path}`, "ok", label, `Full support for SwiftUI but for screenshots: ${packageLimit(swiftUIApp(join(cwd, app.path))!.name)}`);

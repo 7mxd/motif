@@ -12,6 +12,7 @@ export const PARITY_ROWS: Partial<Record<StackId, string>> = {
   "react-native": "React Native (Expo)",
   swiftui: "SwiftUI",
   vue: "Vue / Nuxt",
+  svelte: "Svelte / SvelteKit",
 };
 
 /**

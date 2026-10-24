@@ -42,7 +42,7 @@ The design guide has no breakpoint roles, so use Tailwind's defaults (`sm` 40rem
 ## Phones on the web
 
 - The viewport meta tag (Next.js adds it).
-- For bars pinned to the bottom, `viewport-fit=cover` and padding of `env(safe-area-inset-bottom)`, so they clear the home indicator. A safe-area inset isn't a design value: mark it `motif-ok: safe area` if `motif check` reports it.
+- For bars pinned to the bottom, `viewport-fit=cover` and padding of `env(safe-area-inset-bottom)`, so they clear the home indicator. A safe-area inset isn't a design value, and `motif check` doesn't report `env(…)`, so it needs no `motif-ok`.
 - Inputs at least 16 px, so iOS doesn't zoom in when one is focused (the `body` role is 16 px in every starting style).
 
 ## Forms

@@ -109,6 +109,41 @@ jobs:
         working-directory: cli
         run: bun test --timeout 600000 test/vue-*.test.ts test/check-vue.test.ts test/extract-vue.test.ts test/fixtures-vue.test.ts test/shot-vue.test.ts test/tokens-vue.test.ts test/component-views.test.ts
 
+  # The Svelte tests that run npm ci on Vite and SvelteKit apps, type-check with svelte-check and start their dev servers
+  # skip in the test job (MOTIF_STACK_JOB is not set there); this one runs them. Chrome is on the runner. Node 22's latest
+  # satisfies SvelteKit 3 (22.17 or later), which kit3-min needs. Its own Node gate stays in the test, where it skips on an
+  # older Node; here the job fails first instead, so kit3-min can't skip silently in CI.
+  svelte:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      MOTIF_STACK_JOB: svelte
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            cli/test/fixtures/svelte-min/package-lock.json
+            cli/test/fixtures/svelte-vite-min/package-lock.json
+            cli/test/fixtures/kit3-min/package-lock.json
+            tests/fixtures/svelte-contract-app/package-lock.json
+      - name: Node version
+        run: node --version
+      - name: Node 22.17 or later (SvelteKit 3)
+        run: |
+          node -e "const [a, b] = process.versions.node.split('.').map(Number); if (a < 22 || (a === 22 && b < 17)) { console.error('SvelteKit 3 needs Node 22.17 or later; this is Node ' + process.versions.node); process.exit(1) }"
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: Svelte tests
+        working-directory: cli
+        run: bun test --timeout 600000 test/svelte-*.test.ts test/check-svelte.test.ts test/extract-svelte.test.ts test/tokens-svelte.test.ts test/shot-svelte.test.ts test/fixtures-svelte.test.ts test/component-views.test.ts
+
   # The oldest Flutter Motif supports (FLUTTER_MIN in cli/src/stacks/flutter/doctor.ts): a fresh flutter create app gets
   # the theme, passes flutter analyze, and is drawn and audited. The fixtures need a newer Dart, so only this test runs.
   flutter-floor:

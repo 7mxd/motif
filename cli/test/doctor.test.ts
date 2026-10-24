@@ -87,11 +87,11 @@ describe("runDoctor", () => {
   });
 
   test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
-    const dir = tempDir("motif-svelte-");
-    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { svelte: "^5" } }));
+    const dir = tempDir("motif-angular-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { "@angular/core": "^20.0.0" } }));
     const app = item((await runDoctor(dir, deps())).data.items as DoctorItem[], "app:.")!;
     expect(app.status).toBe("optional");
-    expect(app.detail).toContain("Svelte / SvelteKit detected. Full support is coming soon");
+    expect(app.detail).toContain("Angular detected. Full support is coming soon");
   });
 
   test("a Vue 3 app has full support, with its version line beside it (2I Task 13)", async () => {
@@ -122,6 +122,68 @@ describe("runDoctor", () => {
     expect(r.text).not.toContain("coming soon");
     expect(r.text).not.toContain("Full support");
     expect(r.text.match(/Vue 2 isn't supported/g)).toHaveLength(1);
+  });
+
+  test("a Vue or Nuxt app whose version can't be read says so, not just a bare name", async () => {
+    const vue = tempDir("motif-vue-nover-");
+    writeFileSync(join(vue, "package.json"), JSON.stringify({ dependencies: { vue: "workspace:*" } }));
+    expect(item((await runDoctor(vue, deps())).data.items as DoctorItem[], "vue:.")!.detail).toBe("Vue (version not found in package.json).");
+    const nuxt = tempDir("motif-nuxt-nover-");
+    writeFileSync(join(nuxt, "package.json"), JSON.stringify({ dependencies: { nuxt: "latest" } }));
+    expect(item((await runDoctor(nuxt, deps())).data.items as DoctorItem[], "vue:.")!.detail).toBe("Nuxt (version not found in package.json).");
+  });
+
+  test("a SvelteKit app on Svelte 5 has full support, with its version line beside it (2J Task 13)", async () => {
+    const dir = tempDir("motif-svelte5-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ devDependencies: { "@sveltejs/kit": "^2.70.0", svelte: "^5.57.0" } }));
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toMatchObject({ status: "ok", detail: "Full support for Svelte / SvelteKit." });
+    expect(item(items, "svelte:.")).toMatchObject({ status: "ok", detail: "Svelte 5.57 with SvelteKit 2.70." });
+    expect(r.text).not.toContain("coming soon");
+  });
+
+  test("a Svelte 5 app with Vite has full support (2J Task 13)", async () => {
+    const dir = tempDir("motif-svelte5-vite-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ devDependencies: { svelte: "^5.57.0", vite: "^7.0.0" } }));
+    const app = item((await runDoctor(dir, deps())).data.items as DoctorItem[], "app:.")!;
+    expect(app).toMatchObject({ status: "ok", detail: "Full support for Svelte / SvelteKit." });
+  });
+
+  test("a Svelte 4 app is told Svelte 4 isn't supported, once, and what still works", async () => {
+    const dir = tempDir("motif-svelte4-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { svelte: "^4.2.19" } }));
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toBeUndefined();
+    expect(item(items, "svelte:.")).toMatchObject({ status: "optional" });
+    expect(item(items, "svelte:.")!.detail).toStartWith("Svelte 4 isn't supported");
+    expect(r.text).not.toContain("coming soon");
+    expect(r.text).not.toContain("Full support");
+    expect(r.text.match(/Svelte 4 isn't supported/g)).toHaveLength(1);
+  });
+
+  test("a SvelteKit 1 app keeps its unsupported line, not full support (2J Task 13)", async () => {
+    const dir = tempDir("motif-kit1-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ devDependencies: { "@sveltejs/kit": "^1.30.0", svelte: "^4.2.19" } }));
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toBeUndefined();
+    expect(item(items, "svelte:.")).toMatchObject({ status: "optional" });
+    expect(r.text).not.toContain("Full support");
+    expect(r.text).not.toContain("coming soon");
+  });
+
+  test("SvelteKit 3 on a Node.js older than 22.17 is told to update", async () => {
+    const dir = tempDir("motif-kit3-");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ devDependencies: { "@sveltejs/kit": "^3.0.0", svelte: "^5.60.0" } }));
+    const old = (await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v22.14.0\n" }) }))).data.items as DoctorItem[];
+    expect(item(old, "svelte:.")).toMatchObject({
+      status: "needed",
+      detail: "SvelteKit 3 needs Node.js 22.17 or later; this computer has 22.14.0. Install a newer Node.js from nodejs.org.",
+    });
+    const current = (await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v24.1.0\n" }) }))).data.items as DoctorItem[];
+    expect(item(current, "svelte:.")!.status).toBe("ok");
   });
 
   describe("the Flutter toolchain", () => {

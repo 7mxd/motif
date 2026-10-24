@@ -36,3 +36,17 @@ export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 
 export function andList(items: string[]): string {
   return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
+
+/** A name in kebab case: textMuted → text-muted, HiSalonColors → hi-salon-colors. */
+export function kebab(name: string): string {
+  return name
+    .replace(/^[_$]+/, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
+    .replace(/[_$]+/g, "-")
+    .toLowerCase();
+}
+
+/** The words of a name: HighContrast → High, Contrast; high_contrast → high, contrast. */
+export const words = (name: string) => kebab(name).split("-").filter(Boolean);
+export const title = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);

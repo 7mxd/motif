@@ -43,9 +43,9 @@ const nuxt4Starter = () => makeProject({
 });
 
 describe("the web-stack registry", () => {
-  test("Vue is registered and the others are not", () => {
+  test("Vue and Svelte are registered and the others are not", () => {
     expect(webStack("vue")?.id).toBe("vue");
-    expect(webStacks().map((s) => s.id)).toEqual(["vue"]);
+    expect(webStacks().map((s) => s.id)).toEqual(["vue", "svelte"]);
     expect(webStack("react-web")).toBeNull();
     expect(webStack("plain-web")).toBeNull();
     expect(webStack(null)).toBeNull();

@@ -33,6 +33,8 @@ On React Native, a variant changes colours only too. The app switches with `<Mot
 
 On Vue and Nuxt, a variant switches as on the web: `data-variant` on `<html>`, set from the app's state, and with `useHead` in Nuxt so a server-rendered page starts in the right variant ([how](../adapters/vue/tokens.md#switching-variants)).
 
+On Svelte and SvelteKit, a variant switches as on the web: `data-variant` on `<html>`, set from the app's state with an `$effect`, and in SvelteKit with `transformPageChunk` in `hooks.server.ts` so a server-rendered page starts in the right variant ([how](../adapters/svelte/tokens.md#switching-variants)).
+
 ## What never varies
 
 The app must still read as one brand, and every variant must be as usable as the others:

@@ -1,36 +1,6 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join } from "node:path";
-import { stripBom } from "../../text";
-import { declared } from "../react-native/project";
-
-function installedVersion(dir: string, name: string): string | null {
-  try {
-    const v = JSON.parse(stripBom(readFileSync(join(dir, "node_modules", name, "package.json"), "utf8")))?.version;
-    return typeof v === "string" ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-export interface PackageVersion {
-  major: number;
-  minor: number | null;
-}
-
-/** 4.6 from "4.6.2" or "^4.6.0", 3 from "^3"; null when the text names no version ("latest", "workspace:*"). */
-function majorMinor(v: string): PackageVersion | null {
-  const m = /^[^\d]*(\d+)(?:\.(\d+))?/.exec(v);
-  return m ? { major: Number(m[1]), minor: m[2] === undefined ? null : Number(m[2]) } : null;
-}
-
-/** A package's version as the app has it: the installed package's, else the range in package.json; null when neither says. */
-export function packageVersion(dir: string, name: string): PackageVersion | null {
-  const installed = installedVersion(dir, name);
-  const fromInstalled = installed === null ? null : majorMinor(installed);
-  if (fromInstalled) return fromInstalled;
-  const range = declared(dir, name);
-  return range === null ? null : majorMinor(range);
-}
+import { declared, packageVersion, readConfig } from "../../project/package";
 
 /** True when the app lists nuxt in its dependencies or devDependencies. */
 export function isNuxt(appDir: string): boolean {
@@ -57,19 +27,6 @@ const isDir = (path: string) => {
     return false;
   }
 };
-
-/** The text of the first <base>.<ext> config file the app has, or null. */
-function readConfig(appDir: string, base: string): string | null {
-  for (const ext of ["ts", "js", "mjs", "mts", "cjs", "cts"]) {
-    const path = join(appDir, `${base}.${ext}`);
-    if (existsSync(path)) {
-      try {
-        return stripBom(readFileSync(path, "utf8"));
-      } catch {}
-    }
-  }
-  return null;
-}
 
 /**
  * Where a Nuxt app's source lives relative to the app: srcDir from nuxt.config.* when it is a string literal; else app

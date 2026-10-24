@@ -65,7 +65,7 @@ describe("runExtract", () => {
   });
 
   test("other stacks (Svelte) aren't supported yet, and nothing is written", async () => {
-    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { svelte: "5", vite: "5" } }), "src/App.svelte": "<p></p>" });
+    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { "@angular/core": "19" } }), "src/app/app.component.html": "<p></p>" });
     const r = await runExtract(root, ctx);
     expect(r.exitCode).toBe(2);
     expect(existsSync(join(root, "design/tokens.draft.json"))).toBe(false);
@@ -101,9 +101,9 @@ describe("runExtract: follow-ups", () => {
   test("apps on other stacks are named as skipped", async () => {
     const root = makeProject({
       "apps/web/package.json": PKG, "apps/web/src/App.tsx": APP,
-      "apps/site/package.json": JSON.stringify({ dependencies: { svelte: "5", vite: "5" } }), "apps/site/src/App.svelte": "<p></p>",
+      "apps/site/package.json": JSON.stringify({ dependencies: { "@angular/core": "19" } }), "apps/site/src/app/app.component.html": "<p></p>",
     });
-    expect((await runExtract(root, ctx)).text).toContain("apps/site (Svelte / SvelteKit)");
+    expect((await runExtract(root, ctx)).text).toContain("apps/site (Angular)");
   });
 });
 
@@ -301,12 +301,12 @@ body { @apply bg-bg text-ink; }
 });
 
 describe("final review: extract's refusal lists the stacks from the registry (Minor #10)", () => {
-  test("a Svelte app: the same words as before, with Vue, Flutter, Compose, Expo and SwiftUI named from their registrations", async () => {
-    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { svelte: "5", vite: "5" } }), "src/App.svelte": "<p></p>" });
+  test("an Angular app: the same words as before, with Vue, Svelte, Flutter, Compose, Expo and SwiftUI named from their registrations", async () => {
+    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { "@angular/core": "19" } }), "src/app/app.component.html": "<p></p>" });
     const r = await runExtract(root, { positionals: [], flags: {} });
     expect(r.exitCode).toBe(2);
     expect(r.text).toBe(
-      "motif extract works on React web apps, plain web sites and Vue / Nuxt apps, and on Flutter apps, Jetpack Compose apps, React Native (Expo) apps and SwiftUI apps, in this version. Found: Your app (Svelte / SvelteKit). Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.",
+      "motif extract works on React web apps, plain web sites, Vue / Nuxt apps and Svelte / SvelteKit apps, and on Flutter apps, Jetpack Compose apps, React Native (Expo) apps and SwiftUI apps, in this version. Found: Your app (Angular). Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.",
     );
   });
 });

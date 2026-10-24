@@ -259,8 +259,8 @@ describe("motif shot: a Vue app", () => {
     expect(fixes.accessibility).toBe("Give it a visible label or an accessible name (aria-label, or alt for an image).");
   });
 
-  test("Svelte is still one Motif can't start", async () => {
-    const files = { "package.json": pkg({ svelte: "^5.0.0", "@sveltejs/kit": "^2.0.0" }), "package-lock.json": "{}", "node_modules/.keep": "", "src/routes/+page.svelte": "" };
+  test("Angular is still one Motif can't start", async () => {
+    const files = { "package.json": pkg({ "@angular/core": "^19.0.0" }), "package-lock.json": "{}", "node_modules/.keep": "", "src/app/app.component.ts": "" };
     const { deps, calls } = fakes();
     const r = await runShot(makeProject(files), ctx(), deps);
     expect(r.exitCode).not.toBe(0);

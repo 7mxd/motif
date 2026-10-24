@@ -381,6 +381,33 @@ describe("Vue in the skill and the modes", () => {
   });
 });
 
+describe("Svelte in the skill and the modes", () => {
+  test("SKILL.md sends Svelte and SvelteKit apps to their guide", () => {
+    const skill = read("SKILL.md");
+    expect(skill).toContain("(adapters/svelte/README.md)");
+    expect(skill).toContain("SvelteKit");
+  });
+
+  test("init names both starters", () => {
+    const init = read("modes/init.md");
+    for (const s of ["npx sv create", "npm create vite@latest", "(../adapters/svelte/README.md)"]) expect(init).toContain(s);
+  });
+
+  test("feature lists a Svelte app's components from its guide", () => {
+    expect(read("modes/feature.md")).toContain("(../adapters/svelte/components.md)");
+  });
+
+  test("review links Svelte's checks and state scripts", () => {
+    const review = read("modes/review.md");
+    for (const s of ["(../adapters/svelte/checks.md)", "(../adapters/svelte/checks.md#screens-behind-a-form-or-a-click)"]) expect(review).toContain(s);
+  });
+
+  test("variants: switching a Svelte or SvelteKit app's variant", () => {
+    const variants = read("knowledge/variants.md");
+    for (const s of ["data-variant", "transformPageChunk", "(../adapters/svelte/tokens.md#switching-variants)"]) expect(variants).toContain(s);
+  });
+});
+
 describe("Flutter in the skill and the modes", () => {
   test("SKILL.md sends Flutter apps to their guide, and the toolchain row names the Flutter SDK", () => {
     const skill = read("SKILL.md");

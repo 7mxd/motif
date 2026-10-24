@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
-import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, composeComponents, flutterComponents, reactComponents, recordedIn, rnComponents, swiftUIComponents, vueComponents } from "../../tests/evals/collect";
+import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, composeComponents, flutterComponents, reactComponents, recordedIn, rnComponents, stoppedByTypeErrors, svelteComponents, swiftUIComponents, vueComponents } from "../../tests/evals/collect";
 import { gradeB, gradeD } from "../../tests/evals/grade";
 import { Paused, type JudgeFn } from "../../tests/evals/judge";
 import type { SeededIssue } from "../../tests/evals/match";
@@ -908,6 +908,175 @@ describe("test D on Vue", () => {
     expect(f.typecheck).toEqual({ code: 0, timedOut: false });
     expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm install", "npm run build", "npx vue-tsc --noEmit"]);
     expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/,/sign-in,/meetups", "--sizes", "390,1440"]);
+    for (const file of ["DESIGN.md", "validate.json", "check.json", "shot.json", "install.log", "build.log", "typecheck.log"]) expect(existsSync(join(out, file))).toBe(true);
+  });
+});
+
+describe("a build that stopped at its type check", () => {
+  test("TypeScript errors with no bundler output after them; anything else is the build's own failure", () => {
+    expect(stoppedByTypeErrors("src/views/A.vue(4,7): error TS2322: Type 'string' is not assignable to type 'number'.\n")).toBe(true);
+    expect(stoppedByTypeErrors("error TS2322: bad\nvite v8.0.0 building for production...\ntransforming...\nerror during build:")).toBe(false);
+    expect(stoppedByTypeErrors("Error: Cannot find module './x'\n")).toBe(false);
+    expect(stoppedByTypeErrors("")).toBe(false);
+  });
+
+  /** collectD on a new app whose build and type check exit with these codes and outputs (git and the rest as usual). */
+  async function measured(id: string, folder: string, contract: string, build: { code: number; stdout: string }, typecheckCode: number) {
+    const failing: Run = async (cmd, cwd, t, env) => {
+      if (cmd[0] !== "git" && cmd.join(" ") === "npm run build") return { ...build, stderr: "", timedOut: false };
+      if (cmd[0] !== "git" && cmd.includes("--noEmit")) return { code: typecheckCode, stdout: "error TS2322: bad", stderr: "", timedOut: false };
+      return run(cmd, cwd, t, env);
+    };
+    const ws = await prepareWorkspace(byId(id), join(tempDir("motif-col-"), `${folder}-${build.code}`), failing);
+    const app = join(ws.app, folder);
+    mkdirSync(join(app, "node_modules"), { recursive: true });
+    writeFileSync(join(app, "DESIGN.md"), readFileSync(join(REPO, `tests/fixtures/${contract}/DESIGN.md`), "utf8"));
+    writeFileSync(join(app, "package.json"), "{}");
+    return collectD(byId(id), ws, { run: failing, motif, judge: noJudge }, join(ws.dir, "results"));
+  }
+  const TYPE_ERRORS = "> vue-tsc --noEmit && vite build\n\nsrc/views/A.vue(4,7): error TS2322: Type 'string' is not assignable to type 'number'.\n";
+
+  test("collect marks a build that stopped at the type check's errors, and the grade counts them once, as the type check's", async () => {
+    const f = await measured("d-darb", "darb", "vue-contract-app", { code: 1, stdout: TYPE_ERRORS }, 2);
+    expect(f.build).toEqual({ code: 1, timedOut: false, typeErrorsOnly: true });
+    expect(f.typecheck).toEqual({ code: 2, timedOut: false });
+    const ids = gradeD(f).criteria.map((c) => c.id);
+    expect(ids).toContain("typecheck");
+    expect(ids).not.toContain("build");
+  });
+
+  test("a build that failed in the bundler is the build's own failure, type errors or not", async () => {
+    const bundler = `${TYPE_ERRORS}vite v8.0.0 building for production...\ntransforming...\nerror during build:\n[vite]: Rollup failed to resolve import "x"\n`;
+    const f = await measured("d-darb", "darb", "vue-contract-app", { code: 1, stdout: bundler }, 2);
+    expect(f.build).toEqual({ code: 1, timedOut: false });
+    expect(gradeD(f).criteria.find((c) => c.id === "build")?.pass).toBe(false);
+  });
+
+  test("the same for any web app whose build script type-checks first: React's tsc -b && vite build", async () => {
+    const react = "> tsc -b && vite build\n\nsrc/App.tsx(3,7): error TS2322: Type 'string' is not assignable to type 'number'.\n";
+    const f = await measured("d-stride", "stride", "react-contract-app", { code: 2, stdout: react }, 2);
+    expect(f.build).toEqual({ code: 2, timedOut: false, typeErrorsOnly: true });
+  });
+});
+
+describe("new components on Svelte, from the session's diff", () => {
+  const markup = "<script lang=\"ts\">\n  let { label } = $props();\n</script>\n\n<span>{label}</span>\n";
+  test("a new .svelte file under src/lib/ counts; a +page.svelte is the page itself", () => {
+    const diff = [
+      newFile("src/lib/components/HistoryRow.svelte", markup),
+      newFile("src/lib/SeasonTag.svelte", "<b>x</b>"),
+      newFile("src/routes/history/+page.svelte", "<main />"),
+      newFile("src/routes/history/+page.ts", "export const load = () => ({});"),
+    ].join("\n");
+    expect(svelteComponents(diff)).toEqual({ newComponents: ["HistoryRow", "SeasonTag"], screens: ["history"], screenParts: [], notUi: [] });
+  });
+
+  test("a layout or error page is navigation; a component with no markup, a test and a moved file never count", () => {
+    const diff = [
+      newFile("src/routes/settings/+layout.svelte", "<slot />"),
+      newFile("src/routes/+error.svelte", "<h1>Oops</h1>"),
+      newFile("src/routes/+page.svelte", "<main />"),
+      newFile("src/lib/components/state.svelte", "<script lang=\"ts\">\n  export const x = 1;\n</script>\n<style>\n  p { color: red }\n</style>\n<!-- <b>commented</b> -->"),
+      newFile("src/lib/components/Row.test.svelte", "<i />"),
+      newFile("src/lib/components/Moved.svelte", "<i />"),
+      "diff --git a/src/lib/old/Moved.svelte b/src/lib/old/Moved.svelte\ndeleted file mode 100644\nindex 1111111..0000000\n--- a/src/lib/old/Moved.svelte\n+++ /dev/null\n@@ -1 +0,0 @@\n-<i />",
+      edit("src/lib/components/Button.svelte", ["<button />"], ["<button class=\"x\" />"]),
+      newFile("src/App.svelte", "<main />"),
+      newFile("src/lib/design/motion.ts", "export const x = 1;"),
+    ].join("\n");
+    expect(svelteComponents(diff)).toEqual({ newComponents: [], screens: ["home"], screenParts: [], notUi: ["settings/+layout", "routes/+error", "state"] });
+  });
+
+  test("a component beside a route, or in a components/ folder elsewhere, counts", () => {
+    const diff = [
+      newFile("src/routes/tools/[id]/LoanPanel.svelte", "<section />"),
+      newFile("src/components/Chip.svelte", "<span />"),
+    ].join("\n");
+    expect(svelteComponents(diff).newComponents).toEqual(["LoanPanel", "Chip"]);
+  });
+
+  test("componentFacts routes a Svelte case here and records the names DESIGN.md mentions", () => {
+    const diff = [
+      newFile("src/lib/components/HistoryRow.svelte", "<li />"),
+      newFile("src/lib/components/SeasonTag.svelte", "<span />"),
+      newFile("src/routes/history/+page.svelte", "<main />"),
+      newFile("DESIGN.md", "| SeasonTag | A season label |"),
+    ].join("\n");
+    expect(componentFacts(byId("b-svelte-history"), diff)).toMatchObject({ newComponents: ["HistoryRow", "SeasonTag"], screens: ["history"], screenParts: [], notUi: [], recorded: ["SeasonTag"] });
+  });
+});
+
+describe("test B on Svelte", () => {
+  test("the page (from SvelteKit's routes), the build, svelte-check and the page drawn at 390 and 1440", async () => {
+    const ws = await prepareWorkspace(byId("b-svelte-history"), join(tempDir("motif-col-"), "bsvelte"), run);
+    mkdirSync(join(ws.app, "src/routes/history"), { recursive: true });
+    writeFileSync(join(ws.app, "src/routes/history/+page.svelte"), "<main />\n");
+    writeFileSync(join(ws.app, "src/lib/components/HistoryRow.svelte"), "<li />\n");
+    const saved = outputs.shot;
+    outputs.shot = { command: "shot", ok: true, exitCode: 0, shots: [], routes: [{ route: "/history", status: 200, shots: [] }] };
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    try {
+      const before = commands.length;
+      const out = join(ws.dir, "results");
+      const f = await collectB(byId("b-svelte-history"), ws, { run, motif: recording, judge: noJudge }, out);
+      expect(f).toMatchObject({
+        route: "/history", pageExists: true, build: { code: 0 }, typecheck: { code: 0 }, render: { route: "/history", status: 200, pageErrors: 0 },
+        newComponents: ["HistoryRow"], screens: ["history"],
+      });
+      expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm run build", "npx svelte-check --fail-on-warnings"]);
+      expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--routes", "/history", "--sizes", "390,1440"]);
+      for (const file of ["check.json", "validate.json", "diff.patch", "build.log", "typecheck.log", "shot.json"]) expect(existsSync(join(out, file))).toBe(true);
+    } finally {
+      outputs.shot = saved;
+    }
+  });
+
+  test("no page at the feature's route: Adawat has no /settings", async () => {
+    const ws = await prepareWorkspace(byId("b-svelte-settings"), join(tempDir("motif-col-"), "bsvelte2"), run);
+    expect((await collectB(byId("b-svelte-settings"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"))).pageExists).toBe(false);
+  });
+});
+
+describe("test C on the Svelte seeded app", () => {
+  test("is graded against its own list", async () => {
+    const seededApp: SeededIssue[] = JSON.parse(readFileSync(join(REPO, "tests/fixtures/svelte-seeded-app/seeded-issues.json"), "utf8")).issues;
+    const ws = await prepareWorkspace(byId("c-svelte"), join(tempDir("motif-col-"), "csvelte"), run);
+    const s01 = seededApp.find((i) => i.id === "S-01")!;
+    mkdirSync(join(ws.app, "design/reviews"), { recursive: true });
+    writeFileSync(join(ws.app, "design/reviews/2026-10-24-whole-app.json"), JSON.stringify({ motifReview: 1, scope: "whole app", date: "2026-10-24", findings: [
+      { id: "F-001", severity: "major", category: s01.categories[0], source: "exact", location: s01.location, summary: s01.summary, fix: "Use the success role." },
+    ] }));
+    const f = await collectC(byId("c-svelte"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"));
+    expect(f.exact.found).toEqual(["S-01"]);
+    expect(f.exact.missed).toHaveLength(seededApp.filter((i) => i.kind === "exact").length - 1);
+    expect(f.changedCode).toEqual([]);
+  });
+});
+
+describe("test D on Svelte", () => {
+  test("installs the packages when the session didn't, builds, runs svelte-check and draws the starter screens at 390 and 1440", async () => {
+    const ws = await prepareWorkspace(byId("d-nuzha"), join(tempDir("motif-col-"), "dsvelte"), run);
+    const app = join(ws.app, "nuzha");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "DESIGN.md"), readFileSync(join(REPO, "tests/fixtures/svelte-contract-app/DESIGN.md"), "utf8"));
+    writeFileSync(join(app, "package.json"), "{}");
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    const before = commands.length;
+    const out = join(ws.dir, "results");
+    const f = await collectD(byId("d-nuzha"), ws, { run, motif: recording, judge: noJudge }, out);
+    expect(f.app).toBe(app);
+    expect(f.build).toEqual({ code: 0, timedOut: false });
+    expect(f.typecheck).toEqual({ code: 0, timedOut: false });
+    expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm install", "npm run build", "npx svelte-check --fail-on-warnings"]);
+    expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/,/sign-in,/trails", "--sizes", "390,1440"]);
     for (const file of ["DESIGN.md", "validate.json", "check.json", "shot.json", "install.log", "build.log", "typecheck.log"]) expect(existsSync(join(out, file))).toBe(true);
   });
 });

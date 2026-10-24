@@ -68,6 +68,9 @@ export const VUE_IGNORES = [
   "/.nuxt/", "/.output/", "/.data/", "/dist/", "/.vite/", "/.motif/", "*.d.ts", "auto-imports.d.ts", "components.d.ts", "typed-router.d.ts",
 ];
 
+/** A Svelte or SvelteKit app's build output, caches and generated types: never the team's own code. */
+export const SVELTE_IGNORES = ["/.svelte-kit/", "/build/", "/.vercel/", "/.netlify/", "/.output/", "/dist/", "/.motif/", "*.d.ts"];
+
 export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_LENGTH = 3000;
 
@@ -162,6 +165,11 @@ export function listRnFiles(root: string, appPath: string, opts: { paths?: strin
 /** A Vue or Nuxt app's .vue files, scripts, styles and HTML, without its build output and generated types. */
 export function listVueFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
   return listSourceFiles(root, appPath, { ...opts, langs: { ...WEB_LANGS, ".vue": "markup" }, extraIgnores: VUE_IGNORES });
+}
+
+/** A Svelte or SvelteKit app's .svelte files, scripts, styles and HTML, without its build output and generated types. */
+export function listSvelteFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
+  return listSourceFiles(root, appPath, { ...opts, langs: { ...WEB_LANGS, ".svelte": "markup" }, extraIgnores: SVELTE_IGNORES });
 }
 
 export function listSourceFiles(

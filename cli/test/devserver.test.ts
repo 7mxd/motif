@@ -54,6 +54,12 @@ describe("findLocalUrl", () => {
       "\x1b[33m  ➜ DevTools: \x1b[39m\x1b[2mpress \x1b[22m\x1b[32mShift\x1b[39m\x1b[2m + \x1b[22m\x1b[32mAlt\x1b[39m\x1b[2m + \x1b[22m\x1b[32mD\x1b[39m\x1b[2m in the browser (v3.4.4)\x1b[22m\n\n\x1b[32m✔\x1b[39m Vite client built in 26ms\n";
     expect(findLocalAddress(real)).toEqual({ url: "http://localhost:3000/", onLocalLine: true });
   });
+  test("reads the banner a real vite dev printed for SvelteKit (Vite 8.3.5, SvelteKit 2.70, on Windows): bold port, a re-optimization line first", () => {
+    // Copied byte for byte from `npm run dev` in a temp copy of cli/test/fixtures/svelte-min (plan 2J, Task 7).
+    const real =
+      "\n> svelte-min@0.0.1 dev\n> vite dev\n\n\x1b[2m2:10:08 PM\x1b[22m \x1b[36m\x1b[1m[vite]\x1b[22m\x1b[39m \x1b[90m\x1b[2m(client)\x1b[22m\x1b[39m Forced re-optimization of dependencies\n\n  \x1b[32m\x1b[1mVITE\x1b[22m v8.3.5\x1b[39m  \x1b[2mready in \x1b[0m\x1b[1m1080\x1b[22m\x1b[2m\x1b[0m ms\x1b[22m\n\n  \x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:   \x1b[36mhttp://localhost:\x1b[1m5173\x1b[22m/\x1b[39m\n\x1b[2m  \x1b[32m➜\x1b[39m  \x1b[1mNetwork\x1b[22m\x1b[2m: use \x1b[22m\x1b[1m--host\x1b[22m\x1b[2m to expose\x1b[22m\n";
+    expect(findLocalAddress(real)).toEqual({ url: "http://localhost:5173/", onLocalLine: true });
+  });
 });
 
 const has = (cmds: string[]) => (cmd: string) => (cmds.includes(cmd) ? `/usr/bin/${cmd}` : null);

@@ -1,5 +1,5 @@
 // The eval cases (spec §13.2 and the plain web spec §11): test B's features on copies of the contract apps and site, test C's reviews of the seeded apps and site,
-// and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose, React Native (Expo), Vue and SwiftUI (on a Mac only). Each prompt switches approvals
+// and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose, React Native (Expo), Vue, Svelte and SwiftUI (on a Mac only). Each prompt switches approvals
 // off in the skill's own words.
 
 import type { StackId } from "../../cli/src/detect/stacks";
@@ -29,7 +29,7 @@ export interface EvalCase {
   minutes: number;
   /**
    * The app's stack when it isn't a web one: a Flutter case is type-checked with flutter analyze and drawn by Flutter,
-   * a Compose case with Gradle and drawn by Robolectric, a React Native one with tsc and drawn through Expo's web target, a Vue one with vue-tsc and built with Vite, and
+   * a Compose case with Gradle and drawn by Robolectric, a React Native one with tsc and drawn through Expo's web target, a Vue one with vue-tsc and built with Vite, a Svelte one with svelte-check and built with Vite, and
    * a SwiftUI one built with xcodebuild and drawn in an iOS simulator.
    */
   stack?: StackId;
@@ -54,6 +54,21 @@ export const isReactNative = (c: EvalCase): boolean => c.stack === "react-native
 
 /** A case on a Vue app (Bustan, or a new one from a brief): a web app, built with npm and drawn in a browser. */
 export const isVue = (c: EvalCase): boolean => c.stack === "vue";
+
+/** A case on a Svelte app (Adawat, or a new SvelteKit one from a brief): a web app, built with npm and drawn in a browser. */
+export const isSvelte = (c: EvalCase): boolean => c.stack === "svelte";
+
+/** A case on a web app that is built and drawn at a phone's and a laptop's width: Vue and Svelte. */
+export const isViteWebApp = (c: EvalCase): boolean => isVue(c) || isSvelte(c);
+
+/**
+ * A case whose app runs on Vite 8 (Bustan and Adawat): Node.js 20.19 or later, or 22.12 or later on Node 22. d-nuzha has
+ * the stricter floor below, so it isn't listed here.
+ */
+export const needsVite8 = (c: EvalCase): boolean => isViteWebApp(c) && !needsSvelteKit3(c);
+
+/** A case whose app is made with `npx sv create`, which installs SvelteKit 3: Node.js 22.17 or later. */
+export const needsSvelteKit3 = (c: EvalCase): boolean => c.id === "d-nuzha";
 
 /** A case on a SwiftUI app: it needs a Mac with Xcode and an iOS simulator. */
 export const isSwiftUI = (c: EvalCase): boolean => c.stack === "swiftui";
@@ -84,10 +99,10 @@ export function macOnly(cases: EvalCase[], platform: NodeJS.Platform): { run: Ev
 
 /**
  * Whether grading needs a browser: C and D always, and B on a plain site, whose new page is checked in one, and on an
- * Expo app, whose new screen is drawn through its web target, and on a Vue app, whose new page is drawn at two sizes. Flutter, Compose and SwiftUI draw their own screens, so
+ * Expo app, whose new screen is drawn through its web target, and on a Vue or Svelte app, whose new page is drawn at two sizes. Flutter, Compose and SwiftUI draw their own screens, so
  * their cases never do.
  */
-export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c) && (c.test !== "B" || isPlain(c) || isReactNative(c) || isVue(c));
+export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c) && (c.test !== "B" || isPlain(c) || isReactNative(c) || isViteWebApp(c));
 
 /**
  * Whether the case installs or builds with npm: the web and React Native apps (npm ci, npm run build, npx tsc). Flutter, Compose and
@@ -121,6 +136,11 @@ const vueFeature = (id: string, title: string, route: string, what: string): Eva
   ...feature(id, title, route, what), fixture: "vue-contract-app", stack: "vue", minutes: 120,
 });
 
+/** A feature on Adawat, a Svelte app. It is built and drawn, so these get as long as Bustan's. */
+const svelteFeature = (id: string, title: string, route: string, what: string): EvalCase => ({
+  ...feature(id, title, route, what), fixture: "svelte-contract-app", stack: "svelte", minutes: 120,
+});
+
 /**
  * A feature on Qahwa, on a Mac only. SwiftUI's screens have no address, so the feature's page is the #Preview the prompt
  * names (its title, as motif shot's --screen takes it). Every screenshot builds the app for the simulator, so these get as
@@ -130,10 +150,13 @@ const swiftUIFeature = (id: string, title: string, preview: string, what: string
   ...feature(id, title, preview, what), fixture: "swiftui-contract-app", stack: "swiftui", mac: true, minutes: 120,
 });
 
-/** A new app from a brief; `home` is the name of its third screen, which Rihla calls /trips. */
-const newApp = (brief: string, title: string, stack?: StackId, home = "home"): EvalCase => ({
+/**
+ * A new app from a brief; `home` is the name of its third screen, which Rihla calls /trips. `noun` is what the stack
+ * calls the welcome view in the prompt: a page on the web, a screen in a native or Expo app.
+ */
+const newApp = (brief: string, title: string, stack?: StackId, home = "home", noun: "page" | "screen" = "page"): EvalCase => ({
   id: `d-${brief}`, test: "D", title, brief, routes: ["/", "/sign-in", `/${home}`],
-  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${stack && stack !== "vue" ? "screen" : "page"} at /, sign-in at /sign-in and ${home} at /${home}.\n\n${UNATTENDED}`,
+  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${noun} at /, sign-in at /sign-in and ${home} at /${home}.\n\n${UNATTENDED}`,
   maxTurns: 400, maxBudgetUsd: 80, minutes: 180,
   ...(stack ? { stack } : {}),
 });
@@ -184,6 +207,11 @@ export const CASES: EvalCase[] = [
   vueFeature("b-vue-settings", "Settings with the look switch (Vue)", "/settings",
     "Add settings at /settings: a switch for harvest-week reminders, the email address the sign-in link goes to with a way to change it, a choice between the garden's growing-season look and its harvest look, and a sign-out button. Link to it from the top bar. Keep the choices in memory; there's no back end."),
 
+  svelteFeature("b-svelte-history", "A tool's borrowing history with an empty state (Svelte)", "/history",
+    "Add a borrowing history at /history: every time a tool has been borrowed, newest first, each with who had it, the dates and whether it came back on time, and an empty state for a tool that has never been borrowed that leads back to the shelf. Link to it from a tool's page. Mock data only."),
+  svelteFeature("b-svelte-settings", "Settings with the look switch (Svelte)", "/settings",
+    "Add settings at /settings: a switch for reminders before a loan is due, the email address the sign-in link goes to with a way to change it, a choice between the library's everyday look and its repair-weekend look, and a sign-out button. Link to it from the top bar. Keep the choices in memory; there's no back end."),
+
   swiftUIFeature("b-swiftui-orders", "Past orders with an empty state (SwiftUI)", "Orders",
     "Add past orders: a screen with every order newest first, each with the day it was placed, its drinks, its total and the stamps it earned, and an empty state for before the first order that leads back to the menu. Give it a #Preview titled \"Orders\", and link to it from the menu. Mock data only."),
   swiftUIFeature("b-swiftui-rewards", "Rewards history grouped by month (SwiftUI)", "Rewards history",
@@ -228,6 +256,14 @@ ${UNATTENDED}`,
     maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
   },
   {
+    id: "c-svelte", test: "C", title: "Review of the seeded Svelte app", fixture: "svelte-seeded-app", stack: "svelte",
+    routes: ["/", "/tools/cordless-drill", "/loans", "/sign-in"],
+    prompt: `/motif:review Review the whole app: its screens are /, /tools/cordless-drill (a tool), /loans and /sign-in. Write the report only: stop after the report step and don't change the app's code.
+
+${UNATTENDED}`,
+    maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
+  },
+  {
     id: "c-swiftui", test: "C", title: "Review of the seeded SwiftUI app", fixture: "swiftui-seeded-app", stack: "swiftui", mac: true,
     routes: ["/", "Menu", "Drink", "Loyalty card", "Sign in"],
     prompt: `/motif:review Review the whole app: its screens are / (the root view: the menu, once signed in) and the previews Menu, Drink (a drink's page), Loyalty card and Sign in. Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
@@ -236,10 +272,11 @@ ${UNATTENDED}`,
   newApp("stride", "New app: Stride (a running club)"),
   newApp("ledgerly", "New app: Ledgerly (invoicing)"),
   newApp("bloom", "New app: Bloom (plant care)"),
-  newApp("sahm", "New Flutter app: Sahm (university carpools)", "flutter"),
-  newApp("nabta", "New Compose app: Nabta (plant care)", "compose"),
-  newApp("rihla", "New Expo app: Rihla (a trip planner)", "react-native", "trips"),
+  newApp("sahm", "New Flutter app: Sahm (university carpools)", "flutter", "home", "screen"),
+  newApp("nabta", "New Compose app: Nabta (plant care)", "compose", "home", "screen"),
+  newApp("rihla", "New Expo app: Rihla (a trip planner)", "react-native", "trips", "screen"),
   newApp("darb", "New Vue app: Darb (a running club's meetups)", "vue", "meetups"),
+  newApp("nuzha", "New Svelte app: Nuzha (a city's parks and trails)", "svelte", "trails"),
   swiftUINewApp("masar", "New SwiftUI app: Masar (a running tracker)", "swiftui-starter-masar"),
 ];
 

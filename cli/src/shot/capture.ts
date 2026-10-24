@@ -205,10 +205,12 @@ export function routeSlug(route: string): string {
 
 export function routeUrl(base: string, route: string): string {
   const url = new URL(base);
-  const [path, query] = route.split("?", 2);
+  // A route may carry a fragment (/#/about, for a hash router): it stays the address's fragment.
+  const hashAt = route.indexOf("#");
+  const [path, query] = (hashAt < 0 ? route : route.slice(0, hashAt)).split("?", 2);
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/${path!.replace(/^\/+/, "")}`;
   url.search = query ? `?${query}` : "";
-  url.hash = "";
+  url.hash = hashAt < 0 ? "" : route.slice(hashAt);
   return url.toString();
 }
 

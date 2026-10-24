@@ -70,7 +70,16 @@ export function tailwindCss(theme: Theme): string {
   return [CSS_HEADER, "", '@import "./motif.css";', "", "@theme inline {", indent(lines, 2), "}", ""].join("\n");
 }
 
-const key = (name: string) => (/^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name));
+/** A role's name as an object key in TypeScript: as it is when it's an identifier, quoted when it isn't. */
+export const tsKey = (name: string) => (/^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name));
+
+/** What the web stacks say when the app has Tailwind 3, whose theme Motif doesn't write. */
+export const tailwindV3Note = (label: string) =>
+  `${label}: Tailwind v3 found, so Motif wrote CSS variables only. Use them as bg-[var(--motif-color-action-primary)], or upgrade to Tailwind v4 for Motif's Tailwind theme.`;
+
+/** The one step that puts Motif's Tailwind theme to use, at its root-relative path. */
+export const tailwindWiringNote = (path: string) =>
+  `Next: in your main CSS file, add an @import for ${path} right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.`;
 
 export function motionTs(theme: Theme): string {
   return [
@@ -78,19 +87,19 @@ export function motionTs(theme: Theme): string {
     "",
     "/** Durations in seconds (the unit Motion uses). */",
     "export const duration = {",
-    ...theme.durations.map((d) => `  ${key(d.name)}: ${num(d.ms / 1000)},`),
+    ...theme.durations.map((d) => `  ${tsKey(d.name)}: ${num(d.ms / 1000)},`),
     "} satisfies Record<string, number>;",
     "",
     "export type Easing = [number, number, number, number];",
     "",
     "export const easing = {",
-    ...theme.easings.map((e) => `  ${key(e.name)}: [${e.points.map(num).join(", ")}],`),
+    ...theme.easings.map((e) => `  ${tsKey(e.name)}: [${e.points.map(num).join(", ")}],`),
     "} satisfies Record<string, Easing>;",
     "",
     'export type Spring = { type: "spring"; visualDuration: number; bounce: number };',
     "",
     "export const spring = {",
-    ...theme.springs.map((s) => `  ${key(s.name)}: { type: "spring", visualDuration: ${num(s.duration)}, bounce: ${num(s.bounce)} },`),
+    ...theme.springs.map((s) => `  ${tsKey(s.name)}: { type: "spring", visualDuration: ${num(s.duration)}, bounce: ${num(s.bounce)} },`),
     "} satisfies Record<string, Spring>;",
     "",
   ].join("\n");

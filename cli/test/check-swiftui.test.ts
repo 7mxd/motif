@@ -178,9 +178,9 @@ extension Color {
   });
 
   test("names SwiftUI among the stacks it reads when it can't read an app", async () => {
-    const root = makeProject({ "design/tokens.json": TOKENS, "package.json": JSON.stringify({ dependencies: { svelte: "^5" } }), "src/App.svelte": "" });
+    const root = makeProject({ "design/tokens.json": TOKENS, "package.json": JSON.stringify({ dependencies: { "@angular/core": "^19" } }), "src/app/app.ts": "" });
     const r = await check(root);
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("motif check works on Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, Vue / Nuxt apps, React web apps and plain web sites in this version.");
+    expect(r.text).toContain("motif check works on Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, Vue / Nuxt apps, Svelte / SvelteKit apps, React web apps and plain web sites in this version.");
   });
 });

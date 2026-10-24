@@ -50,6 +50,6 @@ The design guide has no breakpoint roles, and CSS variables can't be used in med
 ## Phones
 
 - The viewport meta tag on every page: `<meta name="viewport" content="width=device-width, initial-scale=1">`.
-- For bars pinned to the bottom, `viewport-fit=cover` in that tag and `padding-block-end: env(safe-area-inset-bottom)`, so they clear the home indicator. A safe-area inset isn't a design value: mark it `motif-ok: safe area` if `motif check` reports it.
+- For bars pinned to the bottom, `viewport-fit=cover` in that tag and `padding-block-end: env(safe-area-inset-bottom)`, so they clear the home indicator. A safe-area inset isn't a design value, and `motif check` doesn't report `env(…)`, so it needs no `motif-ok`.
 - Inputs at least 16 px, so iOS doesn't zoom in when one is focused (the `body` role is 16 px in every starting style).
 - Things people use together stay on one screen: a live preview and the controls that change it, a field and its error, a total and the button that pays it. `motif shot` captures phones 360, 390 and 430 px wide, a tablet and a desktop: check each.

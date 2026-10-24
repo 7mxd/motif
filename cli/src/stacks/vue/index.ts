@@ -1,9 +1,9 @@
-import { componentViews, type Binding } from "../../check/component-views";
+import { componentFiles, type Binding } from "../../check/component-views";
 import type { AppInfo } from "../../detect/stacks";
 import { DEFAULT_IGNORES, listSourceFiles, listVueFiles, VUE_IGNORES, WEB_LANGS, type SourceFile } from "../../check/files";
 import { expandHtml } from "../../check/html";
 import type { WebStack } from "../web";
-import { vueDoctor } from "./doctor";
+import { vueDoctor, vueUnsupported } from "./doctor";
 import { collectVue } from "./extract";
 import { generateVue, vueWiring } from "./generate";
 import { isNuxt, vueSrcDir } from "./project";
@@ -27,13 +27,7 @@ const VUE_FILE = /\.vue$/i;
 
 /** A .vue file as its CSS, script and markup, each a file with its path; HTML as the web reads it; other files as they are. */
 function vueViews(file: SourceFile): SourceFile[] {
-  if (!VUE_FILE.test(file.path)) return expandHtml([file]);
-  const { css, script, markup, dark, spans } = componentViews(file.text, { bindings: VUE_BINDINGS, blocks: VUE_BLOCKS });
-  return [
-    { ...file, text: css, lang: "css", ...(dark.length > 0 ? { dark } : {}) },
-    { ...file, text: script, lang: "script", spans },
-    { ...file, text: markup, lang: "markup" },
-  ];
+  return VUE_FILE.test(file.path) ? componentFiles(file, { bindings: VUE_BINDINGS, blocks: VUE_BLOCKS }) : expandHtml([file]);
 }
 
 /** Vuetify's config in a Nuxt app (vuetify-nuxt-module reads it from the project's root): a config file, which the usual ignores skip. */
@@ -76,6 +70,7 @@ export const VUE: WebStack = {
   fix: vueFix,
   collect: collectVue,
   doctor: vueDoctor,
+  unsupported: vueUnsupported,
   routes: discoverVueRoutes,
   startTimeoutMs: (appDir) => (isNuxt(appDir) ? NUXT_START_TIMEOUT_MS : undefined),
   devEnv: (appDir) => (isNuxt(appDir) ? NUXT_DEV_ENV : undefined),

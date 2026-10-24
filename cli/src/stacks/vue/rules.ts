@@ -1,6 +1,7 @@
 import { locator } from "../../text";
 import type { SourceFile } from "../../check/files";
 import { makeHit, type Hit, type Scale } from "../../check/types";
+import { keepRanges } from "../../check/mask";
 import { scanColors } from "../../check/rules/colors";
 import { fontFix, IMPORTS_MOTION, MOTION_EASE, MOTION_SPRING, MOTION_TIME, offScaleHit, STYLE_KEYS } from "../../check/rules/values";
 
@@ -54,9 +55,6 @@ export function scanVue(source: SourceFile, scale: Scale | null): Hit[] {
         if (/^\s*var\(/.test(m[3]!)) continue;
         push(m.index!, m[0], { rule: "raw-font", kind: "font-family", value: m[3]!, violation: true, message: `Hard-coded font ${m[3]}.`, fix: fontFix(m[3]!, scale) });
       }
-      // A colour in a style object: found by the colour rule on this binding alone, with a fix in Vue's words.
-      const only = file.text.split("").map((c, i) => (i >= span.start && i < span.end) || c === "\n" || c === "\r" ? c : " ").join("");
-      for (const h of scanColors({ ...file, text: only })) hits.push({ ...h, fix: STYLE_COLOR_FIX });
       continue;
     }
 
@@ -83,6 +81,9 @@ export function scanVue(source: SourceFile, scale: Scale | null): Hit[] {
       }
     }
   }
+  // A colour in a style object: found by the colour rule on the :style bindings alone (one buffer), with a fix in Vue's words.
+  const styles = file.spans!.filter((s) => bound(s.attr) === ":style").map((s): [number, number] => [s.start, s.end]);
+  if (styles.length > 0) for (const h of scanColors({ ...file, text: keepRanges(file.text, styles) })) hits.push({ ...h, fix: STYLE_COLOR_FIX });
   return hits.sort((a, b) => a.line - b.line || a.column - b.column);
 }
 

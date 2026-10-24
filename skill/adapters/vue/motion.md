@@ -87,6 +87,28 @@ defineProps<{ open: boolean }>()
 
 **Sheets and dialogs.** The panel moves with `spring.smooth`; the backdrop fades with `duration.base`. **Lists.** Give each item `layout`, so the others close the gap when one leaves. **Shared elements.** Give a thumbnail and its detail image the same `layout-id`. **Page changes** (`pageTransition` in Nuxt, `<RouterView v-slot>` with `<Transition>` in Vue Router): keep them short, fade the content area only, never block input.
 
+## Skeletons and spinners
+
+A pulsing skeleton or a turning spinner loops, so it has no duration of its own to type: time it from the roles, and `motif check` has nothing to report.
+
+```css
+.skeleton {
+  animation: motif-pulse var(--motif-duration-slow) var(--motif-easing-standard) infinite alternate;
+}
+@keyframes motif-pulse {
+  to { opacity: 0.5; }
+}
+
+.spinner {
+  animation: motif-spin calc(var(--motif-duration-slow) * 2) linear infinite;
+}
+@keyframes motif-spin {
+  to { transform: rotate(1turn); }
+}
+```
+
+`motif.css` stops both when reduced motion is on: the skeleton shows its still frame. A stopped spinner reads as stuck, so for content prefer a skeleton, and keep a spinner to a small control, such as a button that's saving, whose label still says what's happening.
+
 ## Reduced motion
 
 People who ask their system for less movement need it honoured, and `motif check`'s `reduced-motion` rule looks for it.

@@ -235,3 +235,15 @@ export function rangesOf(text: string, re: RegExp): [number, number][] {
 }
 
 export const inRanges = (index: number, ranges: [number, number][]) => ranges.some(([a, b]) => index >= a && index < b);
+
+/**
+ * The text with everything outside the ranges replaced by spaces (every line break kept), in one buffer: for a rule that
+ * reads only some parts of a view (the bindings of one kind) and must report positions in the whole text.
+ */
+export function keepRanges(text: string, ranges: [number, number][]): string {
+  const out = text.replace(/[^\r\n]/g, " ").split("");
+  for (const [start, end] of ranges) {
+    for (let k = start; k < end && k < text.length; k++) if (text[k] !== "\n" && text[k] !== "\r") out[k] = text[k]!;
+  }
+  return out.join("");
+}

@@ -69,6 +69,28 @@ const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 if (!reduce) panel.animate([{ transform: "translateY(0.5rem)" }, { transform: "none" }], { duration: base, easing: css.getPropertyValue("--motif-easing-enter") });
 ```
 
+## Skeletons and spinners
+
+A pulsing skeleton or a turning spinner loops, so it has no duration of its own to type: time it from the roles, and `motif check` has nothing to report.
+
+```css
+.skeleton {
+  animation: motif-pulse var(--motif-duration-slow) var(--motif-easing-standard) infinite alternate;
+}
+@keyframes motif-pulse {
+  to { opacity: 0.5; }
+}
+
+.spinner {
+  animation: motif-spin calc(var(--motif-duration-slow) * 2) linear infinite;
+}
+@keyframes motif-spin {
+  to { transform: rotate(1turn); }
+}
+```
+
+`motif.css` stops both when reduced motion is on: the skeleton shows its still frame. A stopped spinner reads as stuck, so for content prefer a skeleton, and keep a spinner to a small control, such as a button that's saving, whose label still says what's happening.
+
 ## Reduced motion
 
 `motif.css` stops CSS animations and transitions for people who ask their system for less motion, so CSS motion needs nothing more. Script-driven motion doesn't stop on its own: check `prefers-reduced-motion` as above and skip it, or swap movement for a fade. `motif shot --audit` reports anything that still moves when reduced motion is on.

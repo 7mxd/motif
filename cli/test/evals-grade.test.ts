@@ -188,9 +188,31 @@ describe("test B on Vue", () => {
     expect(failing(gradeB({ ...okVue, render: { error: "no browser" } }))).toEqual(["renders"]);
   });
 
+  test("a type error that also stops the build counts once, as the type check's", () => {
+    const g = gradeB({ ...okVue, build: { code: 1, typeErrorsOnly: true }, typecheck: { code: 2, command: "vue-tsc" } });
+    expect(failing(g)).toEqual(["typecheck"]);
+    expect(g.criteria.map((c) => c.id)).not.toContain("build");
+    expect(g.criteria.find((c) => c.id === "typecheck")!.detail).toContain("isn't counted again");
+    // A build that fails for its own reasons still counts, beside a failing type check.
+    expect(failing(gradeB({ ...okVue, build: { code: 1 }, typecheck: { code: 2, command: "vue-tsc" } }))).toEqual(["build", "typecheck"]);
+  });
+
   test("React web, with a build and no drawn page, is graded as before", () => {
     const { render: _, ...web } = okVue;
     expect(gradeB(web).criteria.map((c) => c.id)).toEqual(["feature", "check", "exceptions", "validate", "build", "typecheck", "components"]);
+  });
+});
+
+describe("test B on Svelte", () => {
+  const okSvelte: BFacts = {
+    route: "/history", pageExists: true, check: { violations: 0, exceptions: 0, warnings: 0 }, validate: { errors: 0, warnings: 0, missingSections: [] },
+    build: { code: 0 }, typecheck: { code: 0, command: "svelte-check" }, render: { route: "/history", status: 200, pageErrors: 0 }, newComponents: [], recorded: [],
+  };
+  test("the build, svelte-check and the drawn page all count", () => {
+    expect(gradeB(okSvelte).criteria.map((c) => c.id)).toEqual(["feature", "check", "exceptions", "validate", "build", "typecheck", "renders", "components"]);
+    expect(failing(gradeB({ ...okSvelte, build: { code: 1 } }))).toEqual(["build"]);
+    expect(failing(gradeB({ ...okSvelte, typecheck: { code: 1, command: "svelte-check" } }))).toEqual(["typecheck"]);
+    expect(failing(gradeB({ ...okSvelte, render: { route: "/history", status: 404, pageErrors: 0 } }))).toEqual(["renders"]);
   });
 });
 
