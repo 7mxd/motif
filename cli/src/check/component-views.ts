@@ -191,12 +191,13 @@ export function componentViews(source: string, opts: { bindings: Binding[]; bloc
   for (let m = opener.exec(tags); m; m = opener.exec(tags)) {
     const i = m.index;
     if (tags[i] === "{") {
-      // Text {…}: its keyword in the markup, the rest script.
+      // Text {…}: its keyword in the markup, the rest script. A { that never closes (a file mid-edit) is text, and the
+      // scan goes on after it, so the tags that follow are still read.
       const e = readExpression(tags, i);
-      const end = e.end === -1 ? tags.length : e.end - 1;
-      const keyword = BLOCK_KEYWORD.exec(tags.slice(i + 1, end))?.[0].length ?? 0;
-      toScript(i + 1 + keyword, end);
-      opener.lastIndex = e.end === -1 ? tags.length : e.end;
+      if (e.end === -1) continue;
+      const keyword = BLOCK_KEYWORD.exec(tags.slice(i + 1, e.end - 1))?.[0].length ?? 0;
+      toScript(i + 1 + keyword, e.end - 1);
+      opener.lastIndex = e.end;
       continue;
     }
     const t = readTag(tags, i, { braces });

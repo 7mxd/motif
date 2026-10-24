@@ -166,9 +166,9 @@ function readValue(text: string, at: number, braces: boolean): Omit<NonNullable<
   if (q === '"' || q === "'") {
     for (let i = at + 1; i < text.length; ) {
       if (text[i] === q) return { start: at + 1, end: i, quote: q, exprs };
-      if (braces && text[i] === "{") {
-        const e = readExpression(text, i);
-        if (e.end === -1) return null;
+      // A { that never closes (a file mid-edit) is the value's text, so the tags after it are still read.
+      const e = braces && text[i] === "{" ? readExpression(text, i) : null;
+      if (e && e.end !== -1) {
         exprs.push([i, e.end]);
         i = e.end;
       } else i++;
@@ -177,9 +177,8 @@ function readValue(text: string, at: number, braces: boolean): Omit<NonNullable<
   }
   let i = at;
   while (i < text.length && !UNQUOTED_END.test(text[i]!)) {
-    if (braces && text[i] === "{") {
-      const e = readExpression(text, i);
-      if (e.end === -1) return null;
+    const e = braces && text[i] === "{" ? readExpression(text, i) : null;
+    if (e && e.end !== -1) {
       exprs.push([i, e.end]);
       i = e.end;
     } else i++;

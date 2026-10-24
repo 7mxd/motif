@@ -378,10 +378,21 @@ describe("componentViews: the shared tag grammar", () => {
       const v = vueViews(text);
       expect({ text, css: v.css.trim(), script: v.script.trim(), markup: v.markup.trim() }).toEqual({ text, css: "", script: "", markup: "", ...expected });
     }
-    // In a Svelte file, a {…} that never closes reads to the end as script.
-    const text = "<p>{#if a > b</p>";
-    const v = componentViews(text, { bindings: SVELTE_BINDINGS, braces: true });
-    expect([v.markup.trim(), v.script.trim()]).toEqual(["<p>{#if", "a > b</p>"]);
+  });
+
+  test("a { that never closes in a Svelte file (mid-edit) is markup text: the tags after it are still read", () => {
+    for (const first of ["<p>Use { to open</p>", '<p title="a { b">x</p>', "<p title=a{b>x</p>", "<p title={a>x</p>", "<p {a>x</p>"]) {
+      const text = `${first}\n<p style="gap: 13px" class="p-[13px]">{n}</p>`;
+      const v = svelteViews(text);
+      expect({ first, css: v.css.trim() }).toEqual({ first, css: ";gap: 13px;" });
+      expect({ first, script: v.script.trim() }).toEqual({ first, script: "n" });
+      expect({ first, markup: holds(v.markup, text, first) }).toEqual({ first, markup: true });
+      expect(holds(v.markup, text, 'class="p-[13px]">{')).toBe(true);
+      const file = (t: string, lang: SourceFile["lang"]): SourceFile => ({ path: "src/App.svelte", abs: "/x/src/App.svelte", text: t, lang });
+      const hits = [file(v.css, "css"), file(v.script, "script"), file(v.markup, "markup")].flatMap((f) => scanFile(f, scale)).map((h) => [h.rule, h.text, h.line, h.column]);
+      expect(hits).toContainEqual(["off-scale", "13px", 2, at(text, "13px").column]);
+      expect(hits).toContainEqual(["tailwind-arbitrary", "p-[13px]", 2, at(text, "p-[13px]").column]);
+    }
   });
 
   test("CRLF line endings give the same views as LF, the \\r kept where it was", () => {
@@ -423,6 +434,17 @@ describe("componentViews: the shared tag grammar", () => {
     const html = `<div title="a style='color: #ff0000'" style="gap: 13px"></div>`;
     expect(htmlViews(html).css).not.toContain("#ff0000");
     expect(holds(htmlViews(html).css, html, "gap: 13px")).toBe(true);
+  });
+
+  test("a media= in another attribute's quoted value doesn't make a style block dark-only", () => {
+    const html = `<style title="a media='(prefers-color-scheme: dark)'">.a { color: #111111 }</style>`;
+    expect(htmlViews(html).dark).toEqual([]);
+    expect(holds(htmlViews(html).css, html, ".a { color: #111111 }")).toBe(true);
+  });
+
+  test("a lang= in another attribute's quoted value doesn't change a .vue style block's language", () => {
+    const text = `<style title="a lang='stylus'">.a { color: #ff0000 }</style>`;
+    expect(holds(vueViews(text).css, text, ".a { color: #ff0000 }")).toBe(true);
   });
 });
 
