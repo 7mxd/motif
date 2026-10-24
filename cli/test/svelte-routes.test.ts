@@ -18,10 +18,10 @@ describe("discoverSvelteRoutes", () => {
     expect(SVELTE.routes).toBe(discoverSvelteRoutes);
   });
 
-  test("the sv minimal starter fixture has / and /settings", () => {
+  test("the sv minimal starter fixture has /, /settings and the audit pages", () => {
     const root = tempDir("motif-svelte-min-");
     cpSync(join(import.meta.dir, "fixtures", "svelte-min"), root, { recursive: true });
-    expect(discoverSvelteRoutes(root)).toEqual({ routes: ["/", "/settings"], skipped: [] });
+    expect(discoverSvelteRoutes(root)).toEqual({ routes: ["/", "/audit", "/calm", "/settings"], skipped: [] });
   });
 
   test("the sv demo template's folders: /, /about, /sverdle and /sverdle/how-to-play", () => {
