@@ -65,6 +65,28 @@ Never type a number of milliseconds or a Bézier curve: `motif check` reports th
 
 **Page changes.** Keep them short: fade the content area only, never the navigation, and never block input while it runs.
 
+## Skeletons and spinners
+
+A pulsing skeleton or a turning spinner loops, so it has no duration of its own to type: time it from the roles, and `motif check` has nothing to report.
+
+```css
+.skeleton {
+  animation: motif-pulse var(--motif-duration-slow) var(--motif-easing-standard) infinite alternate;
+}
+@keyframes motif-pulse {
+  to { opacity: 0.5; }
+}
+
+.spinner {
+  animation: motif-spin calc(var(--motif-duration-slow) * 2) linear infinite;
+}
+@keyframes motif-spin {
+  to { transform: rotate(1turn); }
+}
+```
+
+`motif.css` stops both when reduced motion is on: the skeleton shows its still frame. A stopped spinner reads as stuck, so for content prefer a skeleton, and keep a spinner to a small control, such as a button that's saving, whose label still says what's happening.
+
 ## Reduced motion
 
 With `MotionConfig reducedMotion="user"` at the root, Motion turns movement into fades for people who ask for less. For custom cases, such as auto-playing carousels or parallax, check `useReducedMotion()` and turn them off. `motif shot --audit` reports anything that still moves when reduced motion is on.
