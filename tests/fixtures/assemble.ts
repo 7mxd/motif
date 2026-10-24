@@ -8,6 +8,7 @@ export const FIXTURE_NAMES = [
   "rn-contract-app", "rn-seeded-app",
   "swiftui-contract-app", "swiftui-seeded-app",
   "vue-contract-app", "vue-seeded-app",
+  "svelte-contract-app", "svelte-seeded-app",
   // Not an app with a design guide: the project Xcode's iOS App template makes, which test D's d-masar starts from.
   "swiftui-starter-masar",
 ] as const;
@@ -22,6 +23,7 @@ const BASES: Partial<Record<FixtureName, FixtureName>> = {
   "rn-seeded-app": "rn-contract-app",
   "swiftui-seeded-app": "swiftui-contract-app",
   "vue-seeded-app": "vue-contract-app",
+  "svelte-seeded-app": "svelte-contract-app",
 };
 
 const FIXTURES = import.meta.dir;
