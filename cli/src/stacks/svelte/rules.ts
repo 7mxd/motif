@@ -176,12 +176,22 @@ function motionSpecifier(hit: Hit, ctx: WebFixContext & { motionImport: string }
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
 
-/** React web's motion fix names a JSX prop and a path relative to the file; in a .svelte file it is a directive, and $lib in SvelteKit. */
+/** Before Svelte 5 there is no prefersReducedMotion (or motion.ts): the setting is read through matchMedia. */
+const MATCH_MEDIA_FIX =
+  "Check window.matchMedia('(prefers-reduced-motion: reduce)').matches in the script, and skip or shorten them when it is true (a duration of 0).";
+/** The part of Tailwind's motion fix that names motion.ts. */
+const TW_MOTION_IMPORT = /, or import \{ duration \} from "[^"]*"/;
+
+/**
+ * React web's motion fix names a JSX prop and a path relative to the file; in a .svelte file it is a directive, and $lib
+ * in SvelteKit. An app with no motion.ts (before Svelte 5) gets the CSS variables, and matchMedia for reduced motion.
+ */
 export function svelteFix(hit: Hit, ctx?: WebFixContext): string {
+  if (ctx && !ctx.motionImport && hit.rule === "reduced-motion" && hit.text === "motion") return MATCH_MEDIA_FIX;
   if (hit.rule !== "raw-motion") return hit.fix;
   if (!ctx) return isJsMotion(hit) ? MOTION_FIX : hit.fix; // without the app's details: the SvelteKit wording
   const { motionImport } = ctx;
-  if (!motionImport) return isJsMotion(hit) ? CSS_MOTION_FIX : hit.fix;
+  if (!motionImport) return isJsMotion(hit) ? CSS_MOTION_FIX : hit.fix.replace(TW_MOTION_IMPORT, "");
   const spec = motionSpecifier(hit, { ...ctx, motionImport });
   if (isJsMotion(hit)) return MOTION_FIX.replace(SVELTE_MOTION_IMPORT, spec);
   return hit.fix.replace(`"${motionImport}"`, `"${spec}"`);

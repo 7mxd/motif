@@ -188,6 +188,10 @@ describe("the motion fix names where motion.ts is", () => {
     expect(svelteFix(hit("src/App.svelte"), { appDir: vite, appPath: ".", motionImport: undefined })).toBe(
       "Use var(--motif-duration-<role>) and var(--motif-easing-<role>) from motif.css: this app is before Svelte 5, so Motif writes no motion.ts.",
     );
+    // Before Svelte 5, Tailwind's text keeps its CSS variable and drops the motion.ts it can't import.
+    expect(svelteFix(hit("src/App.svelte", 'Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "src/design/motion".'), { appDir: vite, appPath: "." })).toBe(
+      "Use duration-(--motif-duration-base) (or fast/slow).",
+    );
     // Tailwind's and the web's own texts name the path too.
     expect(svelteFix(hit("src/App.svelte", 'Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "src/lib/design/motion".'), web(vite))).toContain('from "./lib/design/motion"');
     expect(svelteFix(hit("src/routes/a/+page.svelte", "Use the generated src/lib/design/motion.ts: import { duration, easing, spring } from it (path relative to this file), e.g. transition={spring.smooth}."), web(kit))).toBe(MOTION_FIX);
@@ -253,6 +257,18 @@ describe("reduced motion", () => {
   test("a tag with a > inside a {…} value is still read as a tag, and prose with in: or out: is not an animation", () => {
     expect(run({ "src/A.svelte": "<p>a</p>\n<div class:big={a > b}\n  in:fade>x</div>" })).toHaveLength(1);
     expect(run({ "src/A.svelte": "<p>Check in:out: transition: here</p>" })).toEqual([]);
+  });
+
+  test("the fix: prefersReducedMotion with motion.ts (Svelte 5), a matchMedia query without it (before Svelte 5)", () => {
+    const [hit] = run({ "src/A.svelte": "<p transition:fade>a</p>" });
+    const appDir = makeProject({ "package.json": JSON.stringify({ devDependencies: { svelte: "^4.2.0" } }) });
+    expect(svelteFix(hit!, { appDir, appPath: ".", motionImport: "src/lib/design/motion" })).toBe(hit!.fix);
+    expect(hit!.fix).toContain("prefersReducedMotion");
+    expect(svelteFix(hit!, { appDir, appPath: "." })).toBe(
+      "Check window.matchMedia('(prefers-reduced-motion: reduce)').matches in the script, and skip or shorten them when it is true (a duration of 0).",
+    );
+    const [css] = run({ "src/A.svelte": "<p>a</p>\n<style>.a { transition: opacity 0.2s }</style>" });
+    expect(svelteFix(css!, { appDir, appPath: "." })).toBe(css!.fix);
   });
 
   test("animations inside a comment are not animations", () => {

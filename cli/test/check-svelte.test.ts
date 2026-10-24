@@ -221,6 +221,35 @@ describe("motif check on a Vite Svelte app", () => {
   });
 });
 
+describe("motif check on a Svelte 4 app, which has no motion.ts", () => {
+  test("every motion fix uses the CSS variables, and the reduced-motion fix a matchMedia query", async () => {
+    const page = [
+      "<script>",
+      "  import { fade } from 'svelte/transition';",
+      "  import { tweened } from 'svelte/motion';",
+      '  import { animate } from "motion";',
+      "  const t = tweened(0, { duration: 400 });",
+      '  animate(el, { opacity: 1 }, { duration: 0.3 });',
+      "</script>",
+      '<p class="duration-[250ms]" transition:fade={{ duration: 300 }}>hi</p>',
+      "",
+    ].join("\n");
+    const root = await viteApp({ "src/App.svelte": page }, { svelte: "^4.2.0", ...TW4 });
+    const r = await check(root);
+    const motion = violations(r).filter((h) => h.rule === "raw-motion");
+    expect(motion.map((h) => h.text)).toEqual(["duration: 400", "duration: 0.3", "duration-[250ms]", "duration: 300"]);
+    for (const h of motion) {
+      expect(h.fix).toContain("--motif-duration-");
+      expect(h.fix).not.toContain("design/motion");
+    }
+    const reduced = violations(r).filter((h) => h.rule === "reduced-motion");
+    expect(reduced).toHaveLength(1);
+    expect(reduced[0].fix).toContain("window.matchMedia('(prefers-reduced-motion: reduce)')");
+    expect(reduced[0].fix).not.toContain("prefersReducedMotion");
+    expect(reduced[0].fix).not.toContain("duration.base");
+  });
+});
+
 describe("motif check on a Svelte app without a design guide", () => {
   test("points at motif extract, which reads Svelte", async () => {
     const root = makeProject({ "package.json": pkg(KIT), "src/routes/+page.svelte": "<p>hi</p>\n" });
