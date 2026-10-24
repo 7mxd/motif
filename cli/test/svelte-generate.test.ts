@@ -248,7 +248,16 @@ describe("the one-step wiring note", () => {
 
   test("Vite: import it in main.ts", () => {
     const root = makeProject({ "package.json": pkg(VITE), "src/main.ts": "import './app.css'\n", "src/App.svelte": "<main />" });
-    expect(wire(root, ["src/lib/styles/motif.css"])).toBe("Next: import './lib/styles/motif.css' once in src/main.ts (or main.js).");
+    expect(wire(root, ["src/lib/styles/motif.css"])).toBe("Next: import './lib/styles/motif.css' once in src/main.ts.");
+  });
+
+  test("Vite: main.js when that is the entry the app has (the JavaScript template), main.ts when it has neither", () => {
+    const js = makeProject({ "package.json": pkg(VITE), "src/main.js": "import './app.css'\n", "src/App.svelte": "<main />" });
+    expect(wire(js, ["src/lib/styles/motif.css"])).toBe("Next: import './lib/styles/motif.css' once in src/main.js.");
+    const both = makeProject({ "package.json": pkg(VITE), "src/main.js": "", "src/main.ts": "" });
+    expect(wire(both, ["src/lib/styles/motif.css"])).toBe("Next: import './lib/styles/motif.css' once in src/main.ts.");
+    const neither = makeProject({ "package.json": pkg(VITE), "src/App.svelte": "<main />" });
+    expect(wire(neither, ["src/lib/styles/motif.css"])).toBe("Next: import './lib/styles/motif.css' once in src/main.ts.");
   });
 
   test("Tailwind 4: the Tailwind import, for either", () => {

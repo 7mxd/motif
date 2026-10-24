@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join, posix } from "node:path";
 import { springPhysics, type SpringParams } from "../../contract/spring";
 import { num } from "../../generate/css-values";
@@ -186,5 +187,7 @@ export function svelteWiring(root: string, app: AppInfo, files: GeneratedFile[],
     const spec = libSpecifier(appDir, inApp) ?? relative(routes);
     return `Next: import '${spec}' once in ${prefixPath(app.path, `${routes}/+layout.svelte`)} (in its <script>).`;
   }
-  return `Next: import '${relative(srcDir)}' once in ${prefixPath(app.path, posix.join(srcDir, "main.ts"))} (or main.js).`;
+  // npm create vite writes main.ts with TypeScript and main.js without.
+  const main = existsSync(join(appDir, srcDir, "main.js")) && !existsSync(join(appDir, srcDir, "main.ts")) ? "main.js" : "main.ts";
+  return `Next: import '${relative(srcDir)}' once in ${prefixPath(app.path, posix.join(srcDir, main))}.`;
 }

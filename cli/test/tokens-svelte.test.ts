@@ -150,7 +150,7 @@ describe("motif tokens for a Svelte app with Vite", () => {
     const r = await runTokens(root, ctx);
     expect(r.exitCode).toBe(0);
     expect(Object.keys(statuses(r))).toEqual(["src/lib/styles/motif.css", "src/lib/design/motion.ts", "design/motif.json"]);
-    expect(notes(r)).toContain("Next: import './lib/styles/motif.css' once in src/main.ts (or main.js).");
+    expect(notes(r)).toContain("Next: import './lib/styles/motif.css' once in src/main.ts.");
     const after = hashAll(root);
     for (const [file, hash] of Object.entries(before)) expect([file, after[file]]).toEqual([file, hash]);
   });
