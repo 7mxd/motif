@@ -7,7 +7,7 @@ import { runTokens } from "../src/commands/tokens";
 import { findBrowser } from "../src/detect/browser";
 import { nodeFloor } from "../src/project/node-floor";
 import { VIEWPORTS } from "../src/shot/capture";
-import { FIXTURES } from "./helpers";
+import { FIXTURES, heavyStackTests } from "./helpers";
 import { pixel } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -23,7 +23,7 @@ import { cleanupTempDirs, tempDir } from "./tmp";
 // when matchMedia says the viewer didn't ask for reduced motion, and a CSS loop through animate.enter, which the theme's
 // reduced-motion rule stops by itself. ng22-min has / , /calm and /settings.
 //
-// CI runs these in its Angular job (Task 12); until then they run wherever the toolchain is, as angular-compile does.
+// In CI they run in the angular job only (MOTIF_STACK_JOB); elsewhere wherever the toolchain is, as angular-compile does.
 const npm = Bun.which("npm");
 const node = Bun.which("node");
 const browser = findBrowser() !== null;
@@ -31,10 +31,11 @@ const version = node ? Bun.spawnSync([node, "--version"], { stdout: "pipe" }).st
 /** The Node versions each Angular runs on (@angular/core's engines). */
 const ANGULAR_21_NODE = "^20.19.0 || ^22.12.0 || >=24.0.0";
 const ANGULAR_22_NODE = "^22.22.3 || ^24.15.0 || >=26.0.0";
-const toolchain = Boolean(npm && node && browser);
+const gate = heavyStackTests("angular", Boolean(npm && node && browser));
+const toolchain = gate.run;
 const fits = (range: string) => version !== null && nodeFloor(range, version);
 const why = (range: string, angular: string) =>
-  !node || !npm ? "Node and npm aren't installed" : !browser ? "no Chrome, Edge or Chromium was found" : `Angular ${angular} needs Node ${range}, and this is Node ${version ?? "of an unknown version"}`;
+  !node || !npm ? "Node and npm aren't installed" : !browser ? "no Chrome, Edge or Chromium was found" : !gate.run ? gate.reason : `Angular ${angular} needs Node ${range}, and this is Node ${version ?? "of an unknown version"}`;
 const ready = toolchain && fits(ANGULAR_21_NODE);
 const ng22Ready = toolchain && fits(ANGULAR_22_NODE);
 if (!ready) console.log(`[angular-shot-e2e] skipped: ${why(ANGULAR_21_NODE, "21")}.`);

@@ -180,6 +180,40 @@ jobs:
         working-directory: cli
         run: bun test --timeout 600000 test/svelte-*.test.ts test/check-svelte.test.ts test/extract-svelte.test.ts test/tokens-svelte.test.ts test/shot-svelte.test.ts test/fixtures-svelte.test.ts test/component-views.test.ts
 
+  # The Angular tests that run npm ci on Angular 21 and 22 apps, build them and start ng serve skip in the test job
+  # (MOTIF_STACK_JOB is not set there); this one runs them. Chrome is on the runner. Node 24's latest satisfies Angular 22
+  # (^22.22.3 || ^24.15.0 || >=26), which ng22-min needs, and ships npm 11, which made its lockfile. Its own Node gate stays
+  # in the test, where it skips on an older Node; here the job fails first instead, so ng22-min can't skip silently in CI.
+  angular:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      MOTIF_STACK_JOB: angular
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: cli/.bun-version
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            cli/test/fixtures/angular-min/package-lock.json
+            cli/test/fixtures/ng22-min/package-lock.json
+            tests/fixtures/angular-contract-app/package-lock.json
+      - name: Node version
+        run: node --version
+      - name: Node inside Angular 22's range (22.22.3, 24.15.0 or 26)
+        run: |
+          node -e "const [a, b, c] = process.versions.node.split('.').map(Number); const ok = a >= 26 || (a === 24 && b >= 15) || (a === 22 && (b > 22 || (b === 22 && c >= 3))); if (!ok) { console.error('Angular 22 needs Node ^22.22.3 || ^24.15.0 || >=26; this is Node ' + process.versions.node); process.exit(1) }"
+      - name: Install
+        working-directory: cli
+        run: bun install --frozen-lockfile
+      - name: Angular tests
+        working-directory: cli
+        run: bun test --timeout 600000 test/angular-*.test.ts test/check-angular.test.ts test/extract-angular.test.ts test/tokens-angular.test.ts test/shot-angular.test.ts test/fixtures-angular.test.ts test/component-views.test.ts
+
   # The SwiftUI tests that build with Xcode and draw on a simulator skip elsewhere (MOTIF_STACK_JOB names this job). macos-15
   # rather than macos-latest: its image has Xcode 16.x (the floor, global constraint "Xcode 16"); the macos-26 image has only 26.x.
   # Xcode 16.4 is the newest 16.x on that image (runner-images, macos-15-arm64 README, Oct 2026); the step fails and lists
@@ -341,7 +375,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [build, plugin, test, flutter, compose, react-native, vue, svelte, swiftui, swiftui-fixtures]
+    needs: [build, plugin, test, flutter, compose, react-native, vue, svelte, angular, swiftui, swiftui-fixtures]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

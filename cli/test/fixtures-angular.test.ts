@@ -10,6 +10,7 @@ import { findBrowser } from "../src/detect/browser";
 import { CSS_HEADER, TS_HEADER } from "../src/generate/header";
 import { nodeFloor } from "../src/project/node-floor";
 import { discoverAngularRoutes } from "../src/stacks/angular/routes";
+import { heavyStackTests } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 // Removing an installed node_modules takes longer than a hook's default 5 s on Windows.
@@ -303,17 +304,19 @@ describe("the assembled Angular seeded app", () => {
 });
 
 // The rest needs Node in Angular 21's range with npm (ng build runs on Node) and, for screenshots, Chrome, Edge or
-// Chromium. bun's skipIf takes no reason, so each name says it. CI gets an Angular job for these in Task 12, as
-// angular-compile's; until then they run wherever the toolchain is. Each copy's node_modules are installed once
+// Chromium. bun's skipIf takes no reason, so each name says it. In CI they run in the angular job only
+// (MOTIF_STACK_JOB), as angular-compile's; elsewhere wherever the toolchain is. Each copy's node_modules are installed once
 // (offline from npm's cache when it can), and each screenshot run starts the app's own start script.
 const ANGULAR_21_NODE = "^20.19.0 || ^22.12.0 || >=24.0.0";
 const npm = Bun.which("npm");
 const node = Bun.which("node");
 const version = node ? Bun.spawnSync([node, "--version"], { stdout: "pipe" }).stdout.toString().trim().replace(/^v/, "") || null : null;
-const hasNode = Boolean(npm && node && version !== null && nodeFloor(ANGULAR_21_NODE, version));
+const nodeFits = Boolean(version !== null && nodeFloor(ANGULAR_21_NODE, version));
+const gate = heavyStackTests("angular", Boolean(npm && node && nodeFits));
+const hasNode = gate.run;
 const browser = findBrowser() !== null;
 const ready = hasNode && browser;
-if (!hasNode) console.log(`[fixtures-angular] the installed tests are skipped: ${!npm || !node ? "Node and npm aren't installed" : `Node ${version} is outside Angular 21's range (${ANGULAR_21_NODE})`}.`);
+if (!hasNode) console.log(`[fixtures-angular] the installed tests are skipped: ${!npm || !node ? "Node and npm aren't installed" : !nodeFits ? `Node ${version} is outside Angular 21's range (${ANGULAR_21_NODE})` : gate.reason}.`);
 else if (!browser) console.log("[fixtures-angular] the screenshot tests are skipped: no Chrome, Edge or Chromium was found.");
 
 describe("Ataa and its seeded copy, installed, built and drawn through ng serve", () => {

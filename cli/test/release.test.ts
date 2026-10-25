@@ -96,7 +96,7 @@ describe("the release workflow", () => {
 
   test("publishes with written notes and the notices, only after checking the notes exist", () => {
     const publish = section("publish");
-    expect(publish).toContain("needs: [build, plugin, test, flutter, compose, react-native, vue, svelte, swiftui, swiftui-fixtures]");
+    expect(publish).toContain("needs: [build, plugin, test, flutter, compose, react-native, vue, svelte, angular, swiftui, swiftui-fixtures]");
     expect(publish).toContain('--notes-file "docs/releases/$GITHUB_REF_NAME.md" $pre');
     expect(publish).not.toContain("--generate-notes");
     expect(publish).toContain("cp THIRD-PARTY-NOTICES.txt dist/");
@@ -231,6 +231,7 @@ describe("each stack job and its heavy tests agree on its name", () => {
     "react-native": { stack: "react-native", files: ["rn-compile", "rn-shot-e2e", "fixtures-rn"] },
     vue: { stack: "vue", files: ["vue-compile", "vue-shot-e2e", "fixtures-vue"] },
     svelte: { stack: "svelte", files: ["svelte-compile", "svelte-shot-e2e", "fixtures-svelte"] },
+    angular: { stack: "angular", files: ["angular-compile", "angular-shot-e2e", "fixtures-angular"] },
     swiftui: { stack: "swiftui", files: ["swiftui-compile", "swiftui-guide-compile", "swiftui-render", "swiftui-shot-e2e", "swiftui-mac-shot-e2e"] },
     "swiftui-fixtures": { stack: "swiftui", files: ["fixtures-swiftui"] },
   };
@@ -292,6 +293,15 @@ describe("each stack job and its heavy tests agree on its name", () => {
     }
   });
 
+  test("the angular job fails on a Node outside Angular 22's range before its tests, so ng22-min can't skip there", () => {
+    for (const name of ["ci.yml", "release.yml"]) {
+      const job = jobsOf(workflow(name)).find((j) => j.id === "angular")!.body;
+      const gate = job.indexOf("Angular 22 needs Node");
+      expect([name, gate > 0, job.includes("process.versions.node"), job.includes("process.exit(1)"), job.includes("node-version: 24\n")]).toEqual([name, true, true, true, true]);
+      expect([name, gate < job.indexOf("- name: Angular tests")]).toEqual([name, true]);
+    }
+  });
+
   test("the SwiftUI fixtures' job runs on the swiftui job's image with the same Xcode, and the release waits for it", () => {
     for (const name of ["ci.yml", "release.yml"]) {
       const jobs = jobsOf(workflow(name));
@@ -310,7 +320,7 @@ describe("the release workflows are hardened (backlog)", () => {
   test("a tag publishes only after the tests pass", () => {
     const wf = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8").replace(/\r\n/g, "\n");
     expect(wf).toContain("\n  test:\n");
-    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose, react-native, vue, svelte, swiftui, swiftui-fixtures]/);
+    expect(wf).toMatch(/\n  publish:\n    needs: \[build, plugin, test, flutter, compose, react-native, vue, svelte, angular, swiftui, swiftui-fixtures]/);
   });
 
   test("every action is pinned to a commit, with its version beside it", () => {

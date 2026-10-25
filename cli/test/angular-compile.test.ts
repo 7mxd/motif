@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node
 import { basename, join } from "node:path";
 import { runTokens } from "../src/commands/tokens";
 import { nodeFloor } from "../src/project/node-floor";
-import { FIXTURES, validTokens } from "./helpers";
+import { FIXTURES, heavyStackTests, validTokens } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 // Removing an installed node_modules takes longer than a hook's default 5 s on Windows.
@@ -17,10 +17,11 @@ const npm = Bun.which("npm");
 const version = node ? Bun.spawnSync([node, "--version"], { stdout: "pipe" }).stdout.toString().trim().replace(/^v/, "") || null : null;
 const nodeFits = version !== null && nodeFloor(ANGULAR_21_NODE, version);
 // Needs Node (in Angular 21's range) and npm, and the network the first time, for npm ci; without them the test skips.
-// CI gets an Angular job for it in Task 12, as Svelte's did.
-const toolchain = Boolean(node && npm && nodeFits);
+// In CI it runs in the angular job only (MOTIF_STACK_JOB), as Svelte's does.
+const gate = heavyStackTests("angular", Boolean(node && npm && nodeFits));
+const toolchain = gate.run;
 if (!toolchain) {
-  const why = !node || !npm ? "Node or npm isn't installed" : `Node ${version ?? "(unknown)"} is outside Angular 21's range (${ANGULAR_21_NODE})`;
+  const why = !node || !npm ? "Node or npm isn't installed" : !nodeFits ? `Node ${version ?? "(unknown)"} is outside Angular 21's range (${ANGULAR_21_NODE})` : gate.reason;
   console.log(`[angular-compile] skipped: ${why}`);
 }
 
