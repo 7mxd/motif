@@ -59,10 +59,11 @@ export interface WebStack {
    */
   buildingStatus?(appDir: string): number | undefined;
   /**
-   * The package.json script that starts this app's dev server and the arguments it takes after -- (a port: Motif picks a
-   * free one), or null when the app has none; without this hook, the app's "dev" script runs.
+   * The package.json script that starts this app's dev server and the arguments it takes (a port: Motif picks a
+   * free one), or null when the app has none (or the refusal in the framework's own words); without this hook, the app's
+   * "dev" script runs.
    */
-  devScript?(appDir: string, port: number): { script: string; args: string[] } | null;
+  devScript?(appDir: string, port: number): { script: string; args: string[] } | { error: string } | null;
   /** Variables this app's dev server needs besides the usual, or undefined for none. */
   devEnv?(appDir: string): Record<string, string> | undefined;
   /** How the framework sets a design variant, for the note when a variant looks the same as the default. */

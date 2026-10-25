@@ -60,6 +60,18 @@ describe("findLocalUrl", () => {
       "\n> svelte-min@0.0.1 dev\n> vite dev\n\n\x1b[2m2:10:08 PM\x1b[22m \x1b[36m\x1b[1m[vite]\x1b[22m\x1b[39m \x1b[90m\x1b[2m(client)\x1b[22m\x1b[39m Forced re-optimization of dependencies\n\n  \x1b[32m\x1b[1mVITE\x1b[22m v8.3.5\x1b[39m  \x1b[2mready in \x1b[0m\x1b[1m1080\x1b[22m\x1b[2m\x1b[0m ms\x1b[22m\n\n  \x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:   \x1b[36mhttp://localhost:\x1b[1m5173\x1b[22m/\x1b[39m\n\x1b[2m  \x1b[32m➜\x1b[39m  \x1b[1mNetwork\x1b[22m\x1b[2m: use \x1b[22m\x1b[1m--host\x1b[22m\x1b[2m to expose\x1b[22m\n";
     expect(findLocalAddress(real)).toEqual({ url: "http://localhost:5173/", onLocalLine: true });
   });
+  test("reads the banner a real ng serve printed (Angular CLI 21.2.28, @angular/build:dev-server, on Windows): the build's table first", () => {
+    // Copied byte for byte from `npm run start -- --port 4377` in a temp copy of cli/test/fixtures/angular-min (plan 2K,
+    // Task 7), run with the env Motif gives it (FORCE_COLOR=0, NO_COLOR=1, NG_CLI_ANALYTICS=false). It printed the
+    // address 2.7-2.9 s after it was started, once the whole app was built, and answered at once.
+    const real =
+      "\n> angular-min@0.0.0 start\n> ng serve --port 4377\n\n❯ Building...\r\n✔ Building...\r\nInitial chunk files | Names         | Raw size\nstyles.css          | styles        |  5.73 kB | \nmain.js             | main          |  4.75 kB | \n\n                    | Initial total | 10.48 kB\n\nLazy chunk files    | Names         | Raw size\nchunk-TAITDC6P.js   | settings      |  2.59 kB | \n\nApplication bundle generation complete. [1.191 seconds] - 2026-10-25T09:42:24.247Z\n\nWatch mode enabled. Watching for file changes...\nNOTE: Raw file sizes do not reflect development server per-request transformations.\n  ➜  Local:   http://localhost:4377/\n";
+    expect(findLocalAddress(real)).toEqual({ url: "http://localhost:4377/", onLocalLine: true });
+  });
+  test("reads the banner Angular 14-16's webpack dev server prints, which has no Local line", () => {
+    const webpack = "** Angular Live Development Server is listening on localhost:4321, open your browser on http://localhost:4321/ **\n";
+    expect(findLocalAddress(webpack)).toEqual({ url: "http://localhost:4321/", onLocalLine: false });
+  });
 });
 
 const has = (cmds: string[]) => (cmd: string) => (cmds.includes(cmd) ? `/usr/bin/${cmd}` : null);
@@ -125,15 +137,29 @@ describe("devCommand with a web stack's dev script", () => {
     expect(devCommand(app({}), { platform: "linux", which, port: 4321 })).toMatchObject({ command: ["/usr/bin/npm", "run", "dev"], display: "npm run dev" });
   });
 
-  test("runs the script the hook names, its arguments after --, through the package manager", () => {
+  test("runs the script the hook names with its arguments, through the package manager: after -- for npm only", () => {
+    // Checked 2026-10-25 with a start script that prints its arguments: npm 11 needs "--" (without it, npm takes --port
+    // as its own config); pnpm 10 and Yarn 4 hand a "--" on to the script as an argument (ng serve would then ignore
+    // the port); Yarn 1 drops it with a warning; bun drops it.
     const dir = ng({ start: "ng serve" });
     expect(devCommand(dir, { platform: "linux", which, port: 4321, devScript: start })).toMatchObject({
       command: ["/usr/bin/npm", "run", "start", "--", "--port", "4321"], display: "npm run start -- --port 4321", packageManager: "npm",
     });
-    expect(devCommand(ng({ start: "ng serve" }, { "pnpm-lock.yaml": "" }), { platform: "linux", which, port: 4321, devScript: start })).toMatchObject({ display: "pnpm run start -- --port 4321" });
+    const run = (lock: string) => devCommand(ng({ start: "ng serve" }, { [lock]: "" }), { platform: "linux", which, port: 4321, devScript: start });
+    expect(run("pnpm-lock.yaml")).toMatchObject({ command: ["/usr/bin/pnpm", "run", "start", "--port", "4321"], display: "pnpm run start --port 4321" });
+    expect(run("yarn.lock")).toMatchObject({ command: ["/usr/bin/yarn", "run", "start", "--port", "4321"], display: "yarn run start --port 4321" });
+    expect(run("bun.lock")).toMatchObject({ command: ["/usr/bin/bun", "run", "start", "--port", "4321"], display: "bun run start --port 4321" });
     expect(devCommand(dir, { platform: "win32", which, vars: {}, port: 4321, devScript: start })).toMatchObject({
       command: ["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", "npm run start -- --port 4321"],
     });
+    expect(devCommand(ng({ start: "ng serve" }, { "pnpm-lock.yaml": "" }), { platform: "win32", which, vars: {}, port: 4321, devScript: start })).toMatchObject({
+      command: ["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", "pnpm run start --port 4321"],
+    });
+  });
+
+  test("a hook's own refusal is given as it is", () => {
+    const refuse = () => ({ error: "This app has no \"start\" script that runs ng serve. Add one, or start it yourself and pass its address with --url." });
+    expect(devCommand(ng({ build: "ng build" }), { platform: "linux", which, devScript: refuse })).toEqual(refuse());
   });
 
   test("the hook is given the port Motif chose, or a free one", () => {

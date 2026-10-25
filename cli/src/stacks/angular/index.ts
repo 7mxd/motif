@@ -1,9 +1,10 @@
-import { posix } from "node:path";
+import { join, posix } from "node:path";
 import { componentFiles } from "../../check/component-views";
 import { stringRegions, withEmbedded } from "../../check/embedded";
 import { listAngularFiles, type SourceFile } from "../../check/files";
 import { expandHtml } from "../../check/html";
 import { maskComments } from "../../check/mask";
+import { readJson } from "../../project/package";
 import type { WebStack } from "../web";
 import { angularDoctor, angularUnsupported } from "./doctor";
 import { withDarkClasses } from "./dark";
@@ -75,6 +76,38 @@ function viewsOf(file: SourceFile, files?: SourceFile[]): SourceFile[] {
   return expandHtml([file]);
 }
 
+/** A script that runs ng serve (or its alias ng s), directly or through npx: it takes --port. */
+const NG_SERVE = /(?:^|[\s;&|(])ng\s+(?:serve|s)(?=\s|$)/;
+const NO_NG_SERVE =
+  'This app has no "start" script that runs ng serve, and no "dev" script. Add "start": "ng serve" to the scripts in its package.json, or start it yourself and pass its address with --url.';
+
+/**
+ * The app's "start" script when it runs ng serve (ng new writes "start": "ng serve"), else its "dev" script; either
+ * given the port Motif chose when it runs ng serve (a --port of the script's own comes first, and the last one wins).
+ */
+function angularDevScript(appDir: string, port: number): { script: string; args: string[] } | { error: string } {
+  const scripts = readJson<{ scripts?: Record<string, unknown> }>(join(appDir, "package.json"))?.scripts ?? {};
+  const runs = (name: string) => (typeof scripts[name] === "string" ? (scripts[name] as string) : null);
+  const start = runs("start");
+  if (start !== null && NG_SERVE.test(start)) return { script: "start", args: ["--port", String(port)] };
+  const dev = runs("dev");
+  if (dev !== null) return { script: "dev", args: NG_SERVE.test(dev) ? ["--port", String(port)] : [] };
+  return { error: NO_NG_SERVE };
+}
+
+/**
+ * ng serve builds the whole app before it prints its address (2.8 s for the angular-min fixture; a large app's first
+ * build, or webpack's in Angular 14-16, can take minutes): the limit Nuxt has, not the web's 120 s.
+ */
+const NG_SERVE_TIMEOUT_MS = 180_000;
+/** With no terminal, ng serve's "share pseudonymous usage data" question would wait for an answer that never comes. */
+const NG_DEV_ENV = { NG_CLI_ANALYTICS: "false" };
+
+/** The audit's fixes in Angular's terms: Motion (motion's animate) in code, CSS animations in a component's styles. */
+const ANGULAR_AUDIT_FIXES = {
+  motion: "Check matchMedia('(prefers-reduced-motion: reduce)') before animating with Motion, and keep CSS animations inside @media (prefers-reduced-motion: no-preference).",
+};
+
 /** Angular 15 or later, with the Angular CLI (or Nx). The parts that come later are filled in by their tasks. */
 export const ANGULAR: WebStack = {
   id: "angular",
@@ -91,4 +124,9 @@ export const ANGULAR: WebStack = {
   unsupported: angularUnsupported,
   collect: collectAngular,
   routes: discoverAngularRoutes,
+  devScript: angularDevScript,
+  devEnv: () => NG_DEV_ENV,
+  startTimeoutMs: () => NG_SERVE_TIMEOUT_MS,
+  variantHow: "motif.css, which follows data-variant on <html>",
+  auditFixes: ANGULAR_AUDIT_FIXES,
 };

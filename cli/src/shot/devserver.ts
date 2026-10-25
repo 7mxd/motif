@@ -45,7 +45,7 @@ const EXEC: Record<PackageManager, string[]> = { npm: ["npx"], pnpm: ["pnpm", "e
 
 /**
  * How to start this app's dev server, or a plain explanation of why Motif can't. A web stack's devScript names the
- * script to run and its arguments (after --), given the port; without one, the app's "dev" script runs.
+ * script to run and its arguments, given the port (or refuses in its own words); without one, the app's "dev" script runs.
  */
 export function devCommand(
   appDir: string,
@@ -64,6 +64,7 @@ export function devCommand(
   const expo = isExpoApp(appDir);
   const own = !expo && env.devScript ? env.devScript(appDir, env.port ?? freePort()) : undefined;
   if (own === null) return { error: NO_DEV_SCRIPT };
+  if (own && "error" in own) return { error: own.error };
   const wanted = own?.script ?? "dev";
   if (!expo && typeof pkg.scripts?.[wanted] !== "string") return { error: noScript(wanted) };
   const root = installRoot(appDir);
@@ -83,7 +84,8 @@ export function devCommand(
   // An Expo app starts its web target: its "web" script, else expo itself on a port Motif chose.
   const script = expo && typeof pkg.scripts?.web === "string" ? "web" : expo ? null : wanted;
   const [bin, ...pre] = script === null ? EXEC[pm] : [pm, "run", script];
-  const args = script === null ? ["expo", "start", "--web", "--port", String(env.port ?? freePort())] : own?.args.length ? ["--", ...own.args] : [];
+  // npm needs -- before a script's arguments; pnpm and Yarn 4 would hand the -- on to the script, Yarn 1 and bun drop it.
+  const args = script === null ? ["expo", "start", "--web", "--port", String(env.port ?? freePort())] : own?.args.length ? [...(pm === "npm" ? ["--"] : []), ...own.args] : [];
   const display = [bin, ...pre, ...args].join(" ");
   // npm, pnpm and yarn are .cmd scripts on Windows, and only cmd.exe can run those.
   const runner = which(bin!);
