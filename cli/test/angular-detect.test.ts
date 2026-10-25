@@ -301,7 +301,7 @@ describe("Angular and Node.js", () => {
   test("Angular 22 on Node 22.14 is told to update", () => {
     expect(doctor(ng22(), "v22.14.0\n")).toMatchObject({
       status: "needed",
-      detail: "Angular 22 needs Node.js 22.22.3 or later (or 24.15 or later); this computer has 22.14.0. Install a newer Node.js from nodejs.org.",
+      detail: "Angular 22 needs Node.js 22.22.3 or later in Node 22, 24.15 or later in Node 24, or Node 26 and later; this computer has 22.14.0. Install a newer Node.js from nodejs.org.",
     });
     expect(doctor(ng22(), "v23.4.0").status).toBe("needed");
   });
@@ -316,7 +316,7 @@ describe("Angular and Node.js", () => {
       "node_modules/@angular/core/package.json": JSON.stringify({ version: "22.0.0", engines: { node: "^22.12.0 || >=24.0.0" } }),
     });
     expect(doctor(dir, "v22.14.0").status).toBe("ok");
-    expect(doctor(dir, "v22.11.0").detail).toBe("Angular 22 needs Node.js 22.12 or later (or 24 or later); this computer has 22.11.0. Install a newer Node.js from nodejs.org.");
+    expect(doctor(dir, "v22.11.0").detail).toBe("Angular 22 needs Node.js 22.12 or later in Node 22, or Node 24 and later; this computer has 22.11.0. Install a newer Node.js from nodejs.org.");
   });
 
   test("Angular 20 and 21 need ^20.19 || ^22.12 || >=24; a Node that can't be read doesn't block", () => {
@@ -324,8 +324,16 @@ describe("Angular and Node.js", () => {
     expect(doctor(ng21, "v22.14.0").status).toBe("ok");
     expect(doctor(ng21, "v20.18.1")).toMatchObject({
       status: "needed",
-      detail: "Angular 21 needs Node.js 20.19 or later (or 22.12 or later); this computer has 20.18.1. Install a newer Node.js from nodejs.org.",
+      detail: "Angular 21 needs Node.js 20.19 or later in Node 20, 22.12 or later in Node 22, or Node 24 and later; this computer has 20.18.1. Install a newer Node.js from nodejs.org.",
     });
+    // Node 21 and 23 are in no part of the range (2K final review).
+    for (const v of ["v21.7.3", "v23.11.0"]) {
+      expect(doctor(ng21, v)).toMatchObject({
+        status: "needed",
+        detail: `Angular 21 needs Node.js 20.19 or later in Node 20, 22.12 or later in Node 22, or Node 24 and later; this computer has ${v.slice(1)}. Install a newer Node.js from nodejs.org.`,
+      });
+    }
+    expect(doctor(ng21, "v24.0.0").status).toBe("ok");
     expect(doctor(ng22(), null).status).toBe("ok");
     expect(doctor(ng22(), "not a version").status).toBe("ok");
   });

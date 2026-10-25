@@ -229,7 +229,7 @@ describe("runDoctor", () => {
     const old = (await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v22.14.0\n" }) }))).data.items as DoctorItem[];
     expect(item(old, "angular:.")).toMatchObject({
       status: "needed",
-      detail: "Angular 22 needs Node.js 22.22.3 or later (or 24.15 or later); this computer has 22.14.0. Install a newer Node.js from nodejs.org.",
+      detail: "Angular 22 needs Node.js 22.22.3 or later in Node 22, 24.15 or later in Node 24, or Node 26 and later; this computer has 22.14.0. Install a newer Node.js from nodejs.org.",
     });
     const current = (await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v24.22.1\n" }) }))).data.items as DoctorItem[];
     expect(item(current, "angular:.")!.status).toBe("ok");

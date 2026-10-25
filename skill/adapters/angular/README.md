@@ -4,7 +4,7 @@ How Motif works with Angular apps: what it expects, how to start a project, and 
 
 ## What Motif expects
 
-- **The floors:** Angular 15 or later, with standalone components, and TypeScript. Angular 22 needs Node 22.22.3 or later (or 24.15 or later); Angular 20 and 21 need Node 20.19 or later (or 22.12 or later). `motif doctor` checks the floor of the Angular the app has installed and says when the computer's Node is too old.
+- **The floors:** Angular 15 or later, with standalone components, and TypeScript. Angular 22 needs Node 22.22.3 or later in Node 22, 24.15 or later in Node 24, or Node 26 and later; Angular 20 and 21 need Node 20.19 or later in Node 20, 22.12 or later in Node 22, or Node 24 and later (not Node 21 or 23). `motif doctor` checks the floor of the Angular the app has installed and says when the computer's Node is too old.
 - An app built from NgModules is still read (checks, drafts and screenshots work), and `motif doctor` says it uses NgModules. Write new components as standalone ones.
 - Tailwind CSS v4, or plain CSS or Sass. Tailwind v3 projects get CSS variables only; [theme code](tokens.md) explains how to use them.
 - Angular's own `animate.enter` and `animate.leave` (Angular 20.2 and later) with CSS classes timed by Motif's variables, and Motion (`npm install motion`) for springs and animation in code. `@angular/animations` is deprecated: don't use it in new code ([motion](motion.md)).

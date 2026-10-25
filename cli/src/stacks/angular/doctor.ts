@@ -14,7 +14,10 @@ export function angularUnsupported(appDir: string): string | null {
     : null;
 }
 
-/** @angular/core's engines.node for each major, for an app whose installed copy doesn't say (or isn't installed). */
+/**
+ * @angular/core's engines.node for each major, for an app whose installed copy doesn't say (or isn't installed). A major
+ * not listed here (an Angular newer than this Motif, or older than 18) has no known range: the Node check is skipped.
+ */
 const NODE_RANGES: Record<number, string> = {
   18: "^18.19.1 || ^20.11.1 || >=22.0.0",
   19: "^18.19.1 || ^20.11.1 || >=22.0.0",
@@ -29,10 +32,17 @@ function nodeRange(appDir: string, major: number): string | null {
   return typeof engines === "string" ? engines : (NODE_RANGES[major] ?? null);
 }
 
-/** "22.22.3 or later (or 24.15 or later)": a range's first two floors, without trailing zeros. */
+/**
+ * Every floor of a range, without trailing zeros: "20.19 or later in Node 20, 22.12 or later in Node 22, or Node 24 and
+ * later", so a Node between the parts (21, 23) isn't implied.
+ */
 function floorWords(range: string): string {
-  const [first, second] = rangeParts(range).map(({ floor: [a, b, c] }) => (c !== 0 ? `${a}.${b}.${c}` : b !== 0 ? `${a}.${b}` : `${a}`));
-  return `${first} or later${second === undefined ? "" : ` (or ${second} or later)`}`;
+  const words = rangeParts(range).map(({ op, floor: [a, b, c] }) => {
+    const v = c !== 0 ? `${a}.${b}.${c}` : b !== 0 ? `${a}.${b}` : `${a}`;
+    if (op === ">=") return b === 0 && c === 0 ? `Node ${a} and later` : `${v} or later`;
+    return `${v} or later in Node ${a}`;
+  });
+  return words.length <= 1 ? (words[0] ?? range) : `${words.slice(0, -1).join(", ")}, or ${words.at(-1)}`;
 }
 
 /** One item per Angular app: its version and how it starts, that its Node.js is too old, or that its Angular isn't supported. */
