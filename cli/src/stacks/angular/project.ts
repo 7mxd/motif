@@ -1,11 +1,22 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
-import { packageVersion, readJson } from "../../project/package";
+import { packageVersion, readJson, type PackageVersion } from "../../project/package";
 import { stripBom } from "../../text";
 
-/** Angular's major version: the installed @angular/core's, else the range in package.json; null when neither says. */
+/**
+ * @angular/core's version: the installed package's, else the range in package.json; an app with no package.json of its
+ * own (an Nx app, a project of an angular.json above it) has the workspace's. Null when none says.
+ */
+export function angularVersion(appDir: string): PackageVersion | null {
+  const own = packageVersion(appDir, "@angular/core");
+  if (own !== null || existsSync(join(appDir, "package.json"))) return own;
+  const workspace = workspaceAbove(appDir, "nx.json") ?? workspaceAbove(dirname(appDir), "angular.json");
+  return workspace === null ? null : packageVersion(workspace, "@angular/core");
+}
+
+/** Angular's major version (angularVersion's); null when nothing says. */
 export function angularMajor(appDir: string): number | null {
-  return packageVersion(appDir, "@angular/core")?.major ?? null;
+  return angularVersion(appDir)?.major ?? null;
 }
 
 /** The application project Motif reads, from angular.json (or an Nx project.json), its paths relative to the app folder. */
@@ -42,11 +53,11 @@ interface ProjectConfig {
 const tidy = (path: string) => path.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "") || ".";
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 
-/** The Nx workspace an app folder is in: the nearest folder at or above it with nx.json, or null. */
-function nxWorkspace(appDir: string): string | null {
+/** The workspace a folder is in: the nearest folder at or above it with the file (nx.json, angular.json), or null. */
+function workspaceAbove(appDir: string, marker: string): string | null {
   let dir = appDir;
   for (let i = 0; i < 8; i++) {
-    if (existsSync(join(dir, "nx.json"))) return dir;
+    if (existsSync(join(dir, marker))) return dir;
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -80,21 +91,37 @@ function readProject(name: string, p: ProjectConfig, path: (p: string) => string
   };
 }
 
+type Workspace = { projects?: Record<string, ProjectConfig | null> };
+
+/** The application projects of an angular.json (never a library), in its order. */
+function applications(workspace: Workspace | null): [string, ProjectConfig][] {
+  return Object.entries(workspace?.projects ?? {}).filter((e): e is [string, ProjectConfig] => {
+    const p = e[1];
+    return p !== null && typeof p === "object" && p.projectType === "application";
+  });
+}
+
 /**
  * The app's first application project in angular.json (a library is never the app), or in an Nx project.json, whose
- * paths are relative to the Nx workspace; null when there is neither, or no application in it.
+ * paths are relative to the Nx workspace; for a folder with neither, the application project of an angular.json above
+ * it whose root is that folder (design/motif.json naming projects/admin). Null when there is none.
  */
 export function angularProject(appDir: string): AngularProject | null {
-  const workspace = readJson<{ projects?: Record<string, ProjectConfig | null> }>(join(appDir, "angular.json"));
+  const workspace = readJson<Workspace>(join(appDir, "angular.json"));
   if (workspace) {
-    for (const [name, p] of Object.entries(workspace.projects ?? {})) {
-      if (p && typeof p === "object" && p.projectType === "application") return readProject(name, p, tidy);
-    }
-    return null;
+    const [first] = applications(workspace);
+    return first ? readProject(first[0], first[1], tidy) : null;
   }
   const nx = readJson<ProjectConfig>(join(appDir, "project.json"));
-  if (nx?.projectType !== "application") return null;
-  const base = nxWorkspace(appDir) ?? appDir;
+  if (nx === null) {
+    const above = workspaceAbove(dirname(appDir), "angular.json");
+    if (above === null) return null;
+    const folder = tidy(relative(above, appDir));
+    const own = applications(readJson<Workspace>(join(above, "angular.json"))).find(([, p]) => tidy(str(p.root) ?? ".") === folder);
+    return own ? readProject(own[0], own[1], (p) => tidy(relative(appDir, join(above, p)))) : null;
+  }
+  if (nx.projectType !== "application") return null;
+  const base = workspaceAbove(appDir, "nx.json") ?? appDir;
   return readProject(str(nx.name) ?? basename(appDir), nx, (p) => tidy(relative(appDir, join(base, p))));
 }
 
@@ -117,4 +144,50 @@ export function isStandalone(appDir: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * When angular.json has more than one application project: which one Motif reads, and how to name another (by its
+ * folder in design/motif.json, which angularProject reads from the angular.json above it). Null otherwise.
+ */
+export function projectChoiceNote(appDir: string): string | null {
+  const apps = applications(readJson<Workspace>(join(appDir, "angular.json")));
+  if (apps.length < 2) return null;
+  const [[first], ...others] = apps;
+  const other = others.find(([, p]) => tidy(str(p.root) ?? ".") !== ".") ?? others[0]!;
+  const folder = tidy(str(other[1].root) ?? ".");
+  return `angular.json has ${apps.length} application projects, and Motif reads the first, ${first}. To read ${others.map(([n]) => n).join(", ")} instead or as well, name it in design/motif.json's "apps" by its folder: { "path": "${folder}", "stack": "angular" }.`;
+}
+
+/** The Nx application projects under a workspace (a project.json with projectType application), by folder, a few levels deep. */
+function nxApplications(root: string): string[] {
+  const found: string[] = [];
+  const walk = (rel: string, depth: number) => {
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(join(root, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const project = rel === "" ? null : readJson<ProjectConfig>(join(root, rel, "project.json"));
+    // An application built by Angular's builders (@angular/build, @nx/angular), not another stack's.
+    if (project?.projectType === "application" && /angular/.test(JSON.stringify(project.targets ?? project.architect ?? {}))) found.push(rel);
+    if (depth >= 3) return;
+    for (const e of entries) {
+      if (e.isDirectory() && !e.name.startsWith(".") && !["node_modules", "dist", "tmp", "coverage"].includes(e.name)) walk(rel === "" ? e.name : `${rel}/${e.name}`, depth + 1);
+    }
+  };
+  walk("", 0);
+  return found.sort();
+}
+
+/**
+ * At an Nx workspace's root with no Angular project of its own (an integrated workspace, whose apps have a project.json
+ * and no package.json): Motif reads one app at a time, named in design/motif.json. Null for any other folder.
+ */
+export function nxWorkspaceNote(appDir: string): string | null {
+  if (!existsSync(join(appDir, "nx.json")) || angularProject(appDir) !== null) return null;
+  const apps = nxApplications(appDir);
+  const shown = apps.length > 1 ? ` (its apps: ${apps.join(", ")})` : "";
+  return `This is an Nx workspace, and Motif reads one app at a time: name each Angular app in design/motif.json's "apps", as { "path": "${apps[0] ?? "apps/web"}", "stack": "angular" }${shown}.`;
 }

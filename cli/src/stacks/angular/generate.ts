@@ -8,7 +8,7 @@ import { appLabel, prefixPath } from "../../project/apps";
 import type { AppInfo } from "../../detect/stacks";
 import { addPackages, declared, packageManager } from "../../project/package";
 import { motifCss, motionTs, tailwindCss, tailwindV3Note, tailwindWiringNote, type TailwindVersion } from "../react-web/generate";
-import { angularProject } from "./project";
+import { angularProject, projectChoiceNote } from "./project";
 
 interface AngularCtx {
   root: string;
@@ -46,6 +46,8 @@ export function generateAngular(set: ThemeSet, ctx: AngularCtx): { files: Genera
   if (ctx.tailwind === "v4") files.push({ path: where.tailwind, content: tailwindCss(set.base) });
   if (ctx.tailwind === "v3") notes.push(tailwindV3Note(appLabel(ctx.app)));
   files.push({ path: where.motion, content: motionTs(set.base) });
+  const choice = projectChoiceNote(appDir);
+  if (choice !== null) notes.push(choice);
   if (declared(appDir, "motion") === null) {
     notes.push(`${where.motion} is for Motion's animate(): ${addPackages(packageManager(appDir), "motion")}. animate.enter and animate.leave can use the CSS variables in motif.css instead.`);
   }

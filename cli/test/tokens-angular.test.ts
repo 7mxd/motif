@@ -148,3 +148,112 @@ describe("motif tokens for an Angular app", () => {
     expect(notes(r)).toContain('Next: add @import "./styles/motif.tailwind.css"; to projects/web/src/styles.css, right after @import "tailwindcss". Importing it before Tailwind undoes the theme.');
   });
 });
+
+const doctorDeps = () => ({ platform: "linux" as const, arch: "x64", home: tempDir("motif-home-"), findBrowser: () => null, which: () => null });
+const NG_MAIN = "import { bootstrapApplication } from '@angular/platform-browser';\nimport { appConfig } from './app/app.config';\nimport { App } from './app/app';\n\nbootstrapApplication(App, appConfig);\n";
+const motifJson = (apps: { path: string; stack: string }[]) => JSON.stringify({ motifContract: 1, apps, ignore: [] });
+
+/** An Nx integrated workspace: one package.json at the root, nx.json, and apps/web with a project.json and no package.json of its own. */
+function nxWorkspace(extra: Record<string, string> = {}): string {
+  return makeProject({
+    "package.json": JSON.stringify({ name: "ws", dependencies: { "@angular/core": "^21.2.0" } }),
+    "nx.json": "{}",
+    "apps/web/project.json": JSON.stringify({
+      name: "web", projectType: "application", sourceRoot: "apps/web/src",
+      targets: {
+        build: { executor: "@angular/build:application", options: { browser: "apps/web/src/main.ts", styles: ["apps/web/src/styles.css"] } },
+        serve: { executor: "@angular/build:dev-server" },
+      },
+    }),
+    "apps/web/src/main.ts": NG_MAIN,
+    "apps/web/src/styles.css": "body { margin: 0; }\n",
+    "apps/web/src/app/app.ts": "export class App {}\n",
+    "libs/ui/project.json": JSON.stringify({ name: "ui", projectType: "library", sourceRoot: "libs/ui/src" }),
+    "design/tokens.json": TOKENS,
+    ...extra,
+  });
+}
+
+describe("an Nx workspace with no package.json per app", () => {
+  const NX_NOTE = 'This is an Nx workspace, and Motif reads one app at a time: name each Angular app in design/motif.json\'s "apps", as { "path": "apps/web", "stack": "angular" }.';
+
+  test("doctor doesn't claim full support at the workspace root: it says to name each app", async () => {
+    const { runDoctor } = await import("../src/commands/doctor");
+    const r = await runDoctor(nxWorkspace(), doctorDeps());
+    const items = (r.data as any).items as any[];
+    expect(items.find((i) => i.id === "app:.")).toBeUndefined();
+    expect(items.find((i) => i.id === "angular:.")).toMatchObject({ status: "needed", detail: NX_NOTE });
+  });
+
+  test("tokens writes nothing at the workspace root, and says the same", async () => {
+    const root = nxWorkspace();
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(1);
+    expect(r.data.files).toEqual([]);
+    expect(notes(r)).toContain(NX_NOTE);
+    expect(existsSync(join(root, "src"))).toBe(false);
+    expect(existsSync(join(root, "design/motif.json"))).toBe(false);
+  });
+
+  test("named in design/motif.json, the app is read from its project.json: doctor and tokens", async () => {
+    const root = nxWorkspace({ "design/motif.json": motifJson([{ path: "apps/web", stack: "angular" }]) });
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(statuses(r)).toMatchObject({ "apps/web/src/styles/motif.css": "created", "apps/web/src/app/design/motion.ts": "created" });
+    expect(notes(r)).toContain('Next: add @import "./styles/motif.css"; at the top of apps/web/src/styles.css.');
+    const { runDoctor } = await import("../src/commands/doctor");
+    const items = ((await runDoctor(root, doctorDeps())).data as any).items as any[];
+    expect(items.find((i) => i.id === "app:apps/web")).toMatchObject({ status: "ok", detail: "Full support for Angular." });
+    expect(items.find((i) => i.id === "angular:apps/web")).toMatchObject({ status: "ok", detail: "Angular 21.2 with standalone components." });
+  });
+});
+
+describe("an angular.json with several application projects", () => {
+  const project = (name: string, root: string, type = "application") => ({
+    projectType: type, root, sourceRoot: `${root}/src`,
+    architect: { build: { builder: "@angular/build:application", options: { browser: `${root}/src/main.ts`, styles: [`${root}/src/styles.css`] } } },
+  });
+  const workspace = (extra: Record<string, string> = {}) =>
+    makeProject({
+      "package.json": JSON.stringify({ name: "ws", dependencies: { "@angular/core": "^21.2.0" } }),
+      "angular.json": JSON.stringify({ version: 1, projects: { "ui-kit": project("ui-kit", "projects/ui-kit", "library"), shop: project("shop", "projects/shop"), admin: project("admin", "projects/admin") } }),
+      "projects/shop/src/main.ts": NG_MAIN,
+      "projects/shop/src/styles.css": "body { margin: 0; }\n",
+      "projects/admin/src/main.ts": NG_MAIN,
+      "projects/admin/src/styles.css": "body { margin: 0; }\n",
+      "design/tokens.json": TOKENS,
+      ...extra,
+    });
+  const CHOICE = 'angular.json has 2 application projects, and Motif reads the first, shop. To read admin instead or as well, name it in design/motif.json\'s "apps" by its folder: { "path": "projects/admin", "stack": "angular" }.';
+
+  test("doctor and tokens say which project they read and how to name another", async () => {
+    const root = workspace();
+    const { runDoctor } = await import("../src/commands/doctor");
+    const items = ((await runDoctor(root, doctorDeps())).data as any).items as any[];
+    expect(items.find((i) => i.id === "angular:.")).toMatchObject({ status: "ok", detail: `Angular 21.2 with standalone components. ${CHOICE}` });
+    const r = await runTokens(root, ctx);
+    expect(statuses(r)).toMatchObject({ "projects/shop/src/styles/motif.css": "created" });
+    expect(notes(r)).toContain(CHOICE);
+  });
+
+  test("one application project: no such line", async () => {
+    const root = makeProject({
+      "package.json": JSON.stringify({ name: "ws", dependencies: { "@angular/core": "^21.2.0" } }),
+      "angular.json": JSON.stringify({ version: 1, projects: { shop: project("shop", "projects/shop") } }),
+      "projects/shop/src/main.ts": NG_MAIN,
+      "design/tokens.json": TOKENS,
+    });
+    expect(notes(await runTokens(root, ctx)).filter((n) => n.includes("application projects"))).toEqual([]);
+  });
+
+  test("named by its folder in design/motif.json, another project is read from the angular.json above it", async () => {
+    const root = workspace({ "design/motif.json": motifJson([{ path: "projects/admin", stack: "angular" }]) });
+    const r = await runTokens(root, ctx);
+    expect(r.exitCode).toBe(0);
+    expect(statuses(r)).toMatchObject({ "projects/admin/src/styles/motif.css": "created", "projects/admin/src/app/design/motion.ts": "created" });
+    expect(notes(r)).toContain('Next: add @import "./styles/motif.css"; at the top of projects/admin/src/styles.css.');
+    const { runDoctor } = await import("../src/commands/doctor");
+    const items = ((await runDoctor(root, doctorDeps())).data as any).items as any[];
+    expect(items.find((i) => i.id === "angular:projects/admin")).toMatchObject({ status: "ok", detail: "Angular 21.2 with standalone components." });
+  });
+});

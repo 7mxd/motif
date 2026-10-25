@@ -75,6 +75,11 @@ export interface WebStack {
   doctor?(deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[];
   /** What doctor says for an app on a version Motif doesn't support (and what still works), or null when the version is fine. */
   unsupported?(appDir: string): string | null;
+  /**
+   * Why the folder isn't one app Motif can read (an Nx workspace's root, whose apps are named in design/motif.json), or
+   * null. doctor says it in place of "Full support", and tokens writes nothing for the folder.
+   */
+  notOneApp?(appDir: string): string | null;
 }
 
 const STACKS = new Map<StackId, WebStack>([[VUE.id, VUE], [SVELTE.id, SVELTE], [ANGULAR.id, ANGULAR]]);

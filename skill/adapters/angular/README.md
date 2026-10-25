@@ -14,7 +14,7 @@ Some features in this guide arrived after Angular 15: signals in 16, the built-i
 
 ## How Motif recognises it
 
-An app with `@angular/core` in its `package.json` is an Angular app; Motif reads its application project from `angular.json` (or Nx's `project.json`). `motif doctor --json` lists it in `apps` with the stack `angular`. In a monorepo, `design/motif.json` maps each app's folder to its stack. The source folder is the project's `sourceRoot` in `angular.json` (usually `src`).
+An app with `@angular/core` in its `package.json` is an Angular app; Motif reads its application project from `angular.json` (or Nx's `project.json`). `motif doctor --json` lists it in `apps` with the stack `angular`. In a monorepo, `design/motif.json` maps each app's folder to its stack. The source folder is the project's `sourceRoot` in `angular.json` (usually `src`). When `angular.json` has several application projects, Motif reads the first (`doctor` and `tokens` name it); name another by its folder in `design/motif.json` (`{ "path": "projects/admin", "stack": "angular" }`) to read it instead or as well. An Nx workspace whose apps have no `package.json` of their own is read one app at a time: name each in `design/motif.json` (`{ "path": "apps/web", "stack": "angular" }`); at the workspace's root `doctor` says so and `tokens` writes nothing.
 
 ## Starting a new project
 

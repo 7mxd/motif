@@ -224,6 +224,8 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   const wiring: { app: AppInfo; path: string; note: (root: string, app: AppInfo, file: string, set: ThemeSet) => string | null }[] = [];
   /** The theme files of apps whose stack writes its own theme now and got design/generated before (Vue, until 0.5.0). */
   const ownThemes: string[] = [];
+  /** Folders that aren't one app (an Nx workspace's root): nothing is written or recorded for them. */
+  const refused = new Set<string>();
 
   for (const app of apps) {
     const appDir = join(cwd, app.path);
@@ -259,6 +261,10 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       files.push({ path: cssPath, content: motifCss(theme, set.variants) });
       links.push({ dir: join(appDir, site), path: cssPath });
       needsFlat = true;
+    } else if (webStack(app.stack)?.notOneApp?.(appDir)) {
+      // A workspace's root (Nx) isn't one app: nothing is written for it, and the note says how to name its apps.
+      notes.push(webStack(app.stack)!.notOneApp!(appDir)!);
+      refused.add(app.path);
     } else if (webStack(app.stack)?.generate) {
       const web = webStack(app.stack)!;
       const srcDir = app.srcDir ?? web.srcDir(appDir);
@@ -294,7 +300,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   const results = writeGenerated(cwd, files);
   const copied = copyFiles(cwd, copies);
   results.push(...copied);
-  const settingsStatus = updateSettings(cwd, detected, srcDirs, notes);
+  const settingsStatus = updateSettings(cwd, detected.filter((a) => !refused.has(a.path)), srcDirs, notes);
   if (settingsStatus) results.push({ path: "design/motif.json", status: settingsStatus });
 
   const blockedPaths = new Set(results.filter((r) => r.status === "protected").map((r) => r.path));
@@ -331,8 +337,9 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
 
   const blocked = results.filter((r) => r.status === "protected");
   const allSame = results.length > 0 && results.every((r) => r.status === "unchanged");
+  const none = results.length === 0 && refused.size > 0;
   const lines = [
-    blocked.length > 0 ? "✗ Some theme files couldn't be written:" : allSame ? "✓ Theme code is up to date." : "✓ Theme code is ready:",
+    none ? "✗ No theme code was written." : blocked.length > 0 ? "✗ Some theme files couldn't be written:" : allSame ? "✓ Theme code is up to date." : "✓ Theme code is ready:",
     ...results.map((r) => `  ${r.status.padEnd(STATUS_WIDTH)} ${r.path}`),
     ...(fonts.length > 0
       ? [`Theme fonts: ${fonts.map((f) => `${f.family} ${f.weights.join(" · ")}`).join(", ")}. Your app needs to load them (your stack's Motif guide shows how).`]
@@ -347,7 +354,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   ];
   return {
     command: "tokens",
-    exitCode: blocked.length > 0 ? 1 : 0,
+    exitCode: blocked.length > 0 || none ? 1 : 0,
     text: lines.join("\n"),
     data: { files: results, notes, fonts },
   };

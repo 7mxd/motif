@@ -2,9 +2,9 @@ import { join, resolve } from "node:path";
 import type { DoctorDeps, DoctorItem } from "../../commands/doctor";
 import type { AppInfo } from "../../detect/stacks";
 import { nodeFloor, nodeVersion, rangeParts } from "../../project/node-floor";
-import { packageVersion, readJson } from "../../project/package";
+import { readJson } from "../../project/package";
 import { NO_VERSION, shown } from "../web-doctor";
-import { angularMajor, isStandalone } from "./project";
+import { angularMajor, angularVersion, isStandalone, nxWorkspaceNote, projectChoiceNote } from "./project";
 
 /** What doctor says for Angular 14 or older, or null for a version the app can use (or one that can't be read). */
 export function angularUnsupported(appDir: string): string | null {
@@ -43,9 +43,11 @@ export function angularDoctor(deps: DoctorDeps, ctx: { root: string; apps: AppIn
       const dir = resolve(ctx.root, app.path);
       const id = `angular:${app.path}`;
       const label = `Angular (${app.path === "." ? "this folder" : app.path})`;
+      const workspace = nxWorkspaceNote(dir);
+      if (workspace !== null) return { id, status: "needed", label, detail: workspace };
       const unsupported = angularUnsupported(dir);
       if (unsupported !== null) return { id, status: "optional", label, detail: unsupported };
-      const v = packageVersion(dir, "@angular/core");
+      const v = angularVersion(dir);
       const range = v === null ? null : nodeRange(dir, v.major);
       const node = range === null ? null : nodeVersion(deps);
       if (v !== null && range !== null && node !== null && !nodeFloor(range, node)) {
@@ -57,6 +59,7 @@ export function angularDoctor(deps: DoctorDeps, ctx: { root: string; apps: AppIn
         };
       }
       const how = isStandalone(dir) ? " with standalone components" : " (NgModules)";
-      return { id, status: "ok", label, detail: `Angular${v === null ? NO_VERSION : shown(v)}${how}.` };
+      const choice = projectChoiceNote(dir);
+      return { id, status: "ok", label, detail: `Angular${v === null ? NO_VERSION : shown(v)}${how}.${choice === null ? "" : ` ${choice}`}` };
     });
 }

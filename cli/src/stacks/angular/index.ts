@@ -10,7 +10,7 @@ import { angularDoctor, angularUnsupported } from "./doctor";
 import { withDarkClasses } from "./dark";
 import { collectAngular } from "./extract";
 import { angularWiring, generateAngular } from "./generate";
-import { angularSrcDir } from "./project";
+import { angularSrcDir, nxWorkspaceNote } from "./project";
 import { discoverAngularRoutes } from "./routes";
 import { angularFix, angularReducedMotionHits, scanAngular } from "./rules";
 import { ANGULAR_BINDINGS, ANGULAR_GRAMMAR } from "./views";
@@ -122,6 +122,7 @@ export const ANGULAR: WebStack = {
   fix: angularFix,
   doctor: angularDoctor,
   unsupported: angularUnsupported,
+  notOneApp: nxWorkspaceNote,
   collect: collectAngular,
   routes: discoverAngularRoutes,
   devScript: angularDevScript,
