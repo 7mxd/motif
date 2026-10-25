@@ -269,6 +269,13 @@ export const routes: Routes = [
   test("useHash: false and other features keep plain addresses", () => {
     const root = standalone("export const routes: Routes = [{ path: 'a', component: A }];\n", {}, CONFIG(", withComponentInputBinding()"));
     expect(discoverAngularRoutes(root).routes).toEqual(["/", "/a"]);
+    const noHash = makeProject({
+      "package.json": PKG,
+      "angular.json": ANGULAR_JSON({ key: "main" }),
+      "src/main.ts": "import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';\nimport { AppModule } from './app/app.module';\n\nplatformBrowserDynamic().bootstrapModule(AppModule);\n",
+      "src/app/app.module.ts": "const routes: Routes = [{ path: 'heroes', component: HeroList }];\n\n@NgModule({ imports: [BrowserModule, RouterModule.forRoot(routes, { useHash: false, enableTracing: true })] })\nexport class AppModule { }\n",
+    });
+    expect(discoverAngularRoutes(noHash).routes).toEqual(["/", "/heroes"]);
   });
 
   test("an array that includes itself through children is read once, with a note, not without end", () => {

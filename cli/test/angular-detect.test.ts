@@ -4,7 +4,7 @@ import { detectApps } from "../src/detect/stacks";
 import { nodeFloor, nodeVersion } from "../src/project/node-floor";
 import { readJson } from "../src/project/package";
 import { angularDoctor, angularUnsupported } from "../src/stacks/angular/doctor";
-import { angularMajor, angularProject, appFolder, isStandalone } from "../src/stacks/angular/project";
+import { angularMajor, angularProject, isStandalone } from "../src/stacks/angular/project";
 import { NO_VERSION, shown } from "../src/stacks/web-doctor";
 import { webStack, webStacks } from "../src/stacks/web";
 import { makeProject } from "./project";
@@ -126,7 +126,6 @@ describe("Angular CLI starters (ng new, CLI 21 and 22)", () => {
       build: "@angular/build:application", serve: "@angular/build:dev-server", inlineStyleLanguage: "css",
     });
     expect(isStandalone(dir)).toBe(true);
-    expect(appFolder(dir)).toBe("src/app");
     expect(angular().srcDir(dir)).toBe("src");
   });
 
@@ -215,7 +214,6 @@ describe("Angular workspaces", () => {
       styles: ["projects/shop/src/styles.scss", "projects/shop/src/theme.css"],
       build: "@angular/build:application", serve: "@angular/build:dev-server", inlineStyleLanguage: "scss",
     });
-    expect(appFolder(dir)).toBe("projects/shop/src/app");
     expect(angular().srcDir(dir)).toBe("projects/shop/src");
     expect(isStandalone(dir)).toBe(true);
   });
@@ -247,7 +245,6 @@ describe("Angular workspaces", () => {
       name: "web", root: ".", sourceRoot: "src", main: "src/main.ts", styles: ["src/styles.css"],
       build: "@angular/build:application", serve: "@angular/build:dev-server", inlineStyleLanguage: "css",
     });
-    expect(appFolder(web)).toBe("src/app");
     expect(paths(angular().sourceFiles(root, apps[1]!, {}))).toEqual(["apps/web/src/app/app.html", "apps/web/src/app/app.ts", "apps/web/src/main.ts"]);
     expect(paths(webStack("svelte")!.sourceFiles(root, apps[0]!, {}))).toEqual(["apps/site/src/routes/+page.svelte"]);
   });
@@ -256,7 +253,6 @@ describe("Angular workspaces", () => {
     const dir = makeProject({ "package.json": ngPackage("^21.2.0") });
     expect(angularProject(dir)).toBeNull();
     expect(angular().srcDir(dir)).toBe("src");
-    expect(appFolder(dir)).toBe("src/app");
     expect(isStandalone(dir)).toBe(false);
     expect(angularProject(makeProject({ "package.json": "{}", "angular.json": "not json" }))).toBeNull();
   });

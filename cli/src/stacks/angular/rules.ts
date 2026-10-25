@@ -329,7 +329,7 @@ export function angularReducedMotionHits(files: SourceFile[], generated: SourceF
 function motionSpecifier(hit: Hit, ctx: WebFixContext & { motionImport: string }): string {
   const inApp = ctx.appPath === "." ? hit.file : hit.file.slice(ctx.appPath.length + 1);
   const relative = posix.relative(posix.dirname(inApp), ctx.motionImport);
-  return relative.startsWith(".") ? relative : `./${relative}`;
+  return relative.startsWith("./") || relative.startsWith("../") ? relative : `./${relative}`;
 }
 
 /**

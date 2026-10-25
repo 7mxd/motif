@@ -124,7 +124,8 @@ export function angularWiring(root: string, app: AppInfo, files: GeneratedFile[]
     return `Next: add "${inApp}" to the build's styles in ${prefixPath(app.path, "angular.json")}, after "${styles}", which is in the git submodule ${submodule}/.`;
   }
   const fromStyles = posix.relative(posix.dirname(styles), inApp);
-  const spec = fromStyles.startsWith(".") ? fromStyles : `./${fromStyles}`;
+  // A dot-folder (.theme/) is a folder like any other: only ./ and ../ make the path relative.
+  const spec = fromStyles.startsWith("./") || fromStyles.startsWith("../") ? fromStyles : `./${fromStyles}`;
   const shown = prefixPath(app.path, styles);
   if (tailwind) return `Next: add @import "${spec}"; to ${shown}, right after @import "tailwindcss". Importing it before Tailwind undoes the theme.`;
   // Sass loads a .css file with @use; the indented syntax (.sass) ends a statement without a semicolon.

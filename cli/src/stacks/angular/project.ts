@@ -130,12 +130,6 @@ export function angularSrcDir(appDir: string): string {
   return angularProject(appDir)?.sourceRoot ?? "src";
 }
 
-/** The folder `ng new` puts the app's components in: <sourceRoot>/app. */
-export function appFolder(appDir: string): string {
-  const src = angularSrcDir(appDir);
-  return src === "." ? "app" : `${src}/app`;
-}
-
 /** True when the app starts with bootstrapApplication (standalone components) in its main.ts, not an NgModule. */
 export function isStandalone(appDir: string): boolean {
   const main = angularProject(appDir)?.main ?? `${angularSrcDir(appDir)}/main.ts`;

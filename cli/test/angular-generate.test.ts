@@ -162,6 +162,15 @@ describe("the one-step wiring note", () => {
       "realworld/assets/theme/styles.css": "",
     }, false);
     expect(wire(listed, ["src/styles/motif.css"])).toBeNull();
+    // With Tailwind, the Tailwind file's note: it goes in the app's own CSS file, right after Tailwind.
+    expect(wire(vendored, ["src/styles/motif.css", "src/styles/motif.tailwind.css"])).toBe(
+      'Next: in your main CSS file, add an @import for src/styles/motif.tailwind.css right after @import "tailwindcss" (write the path relative to that CSS file). Importing it before Tailwind undoes the theme.',
+    );
+  });
+
+  test("a theme in a dot-folder beside the styles file is imported with ./ (./.theme/motif.css, not .theme/motif.css)", () => {
+    expect(wire(ngNew({}, false), ["src/.theme/motif.css"], { themeDir: "src/.theme" })).toBe('Next: add @import "./.theme/motif.css"; at the top of src/styles.css.');
+    expect(wire(ngNew({}, false), [".theme/motif.css"], { themeDir: ".theme" })).toBe('Next: add @import "../.theme/motif.css"; at the top of src/styles.css.');
   });
 
   test("no global styles: add the file to angular.json's styles", () => {
@@ -186,6 +195,15 @@ describe("the one-step wiring note", () => {
     expect(wire(ngNew({ "angular.json": angularJson({ styles: ["src/styles/motif.css", "src/styles.css"] }) }, false), ["src/styles/motif.css"])).toBeNull();
     const outside = ngNew({ "angular.json": angularJson({ styles: ["global.css"] }), "global.css": '@import "./src/styles/motif.css";\n' }, false);
     expect(wire(outside, ["src/styles/motif.css"])).toBeNull();
+  });
+
+  test("a comment that mentions motif.css isn't an import: the note stays (2K Task 8)", () => {
+    const root = ngNew({
+      "src/styles.css": "/* The theme, motif.css, is imported later. */\nbody { margin: 0; }\n",
+      "src/app/app.ts": "// TODO: import './styles/motif.css' once the theme is ready\nexport class App {}\n",
+      "src/app/app.html": "<!-- motif.css styles this page -->\n<p>Hi</p>\n",
+    }, false);
+    expect(wire(root, ["src/styles/motif.css"])).toBe('Next: add @import "./styles/motif.css"; at the top of src/styles.css.');
   });
 
   test("an import of an earlier Motif's design/generated/motif.css doesn't count", () => {
