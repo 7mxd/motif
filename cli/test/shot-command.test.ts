@@ -154,6 +154,8 @@ describe("motif shot: pages that crash, redirect, or couldn't be audited", () =>
     const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/dashboard,/settings", audit: true }), deps);
     expect((r.data.findings as { location: { screen: string } }[]).map((f) => f.location.screen)).toEqual(["/login"]);
     expect(r.text).toContain("/dashboard → /login");
+    // And what to do to capture the page itself.
+    expect(r.text).toContain("Pages that redirected were audited as the page they landed on: /dashboard → /login, /settings → /login. To capture a page behind a sign-in, add --state with a script that signs in on the page it lands on: each page is also captured after the script runs.");
   });
 
   test("an audit that couldn't finish isn't reported as clean", async () => {

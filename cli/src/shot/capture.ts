@@ -347,6 +347,8 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
       }
       // A page whose load never finishes is captured as it is; after the first wait, the others are short.
       let stuck = false;
+      // Whether the first, plain look has said where the page landed in the browser.
+      let redirectChecked = result.finalUrl !== undefined;
 
       const addErrors = (messages: string[]) => {
         if (messages.length > 0) result.pageErrors = [...new Set([...(result.pageErrors ?? []), ...messages])];
@@ -402,8 +404,10 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   }
                   addErrors(loadErrors);
                   // A single-page app's router can send the page elsewhere in the browser (an Angular guard to the sign-in
-                  // page) while the server answered 200: where it landed is recorded as a server's redirect is.
-                  if (!state && !result.finalUrl) {
+                  // page) while the server answered 200: where it landed is recorded as a server's redirect is. Only the
+                  // first, plain look decides: an --rtl look's language (an app sending / to /ar) or a state isn't the route's.
+                  if (!redirectChecked && !state && !lang && !variant) {
+                    redirectChecked = true;
                     const here = await page.evaluate<string>("location.href");
                     const path = (u: string) => new URL(u).pathname.replace(/\/+$/, "");
                     if (path(here) !== path(url)) result.finalUrl = here;

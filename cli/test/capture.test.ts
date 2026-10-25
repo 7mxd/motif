@@ -100,6 +100,8 @@ beforeAll(() => {
       // a Vue or React router redirect): the server answers 200 for both.
       if (path === "/guarded") return html('<h1>Loading</h1><script>history.replaceState(null, "", "/sign-in"); document.querySelector("h1").textContent = "Sign in";</script>');
       if (path === "/sign-in") return html("<h1>Sign in</h1>");
+      // Sent to /ar by the browser's language, as an app with a language picker in its address may do.
+      if (path === "/by-language") return html('<h1>Home</h1><script>if ([navigator.language, Intl.DateTimeFormat().resolvedOptions().locale].some((l) => l.startsWith("ar"))) history.replaceState(null, "", "/ar");</script>');
       return html("<h1>Not found</h1>", 404);
     },
   });
@@ -163,6 +165,12 @@ describe.skipIf(!browser)("a redirect in the browser (needs Chrome, Edge or Chro
   test("a page the app's router sends elsewhere records where it landed, as a server's redirect does (2K hands-on)", async () => {
     const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/guarded", "/sign-in"], outDir: tempDir("motif-shots-"), settleMs: 50, viewports: [VIEWPORTS[0]!] });
     expect(routes.map((r) => [r.route, r.status, r.finalUrl && new URL(r.finalUrl).pathname])).toEqual([["/guarded", 200, "/sign-in"], ["/sign-in", 200, undefined]]);
+  }, 120_000);
+
+  test("only the first, plain look decides: a page sent elsewhere by the language of the --rtl look didn't redirect (2K final review)", async () => {
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/by-language"], outDir: tempDir("motif-shots-"), settleMs: 50, viewports: [VIEWPORTS[0]!], rtl: "ar" });
+    expect(routes[0]!.shots.length).toBeGreaterThan(2);
+    expect(routes[0]!.finalUrl).toBeUndefined();
   }, 120_000);
 });
 

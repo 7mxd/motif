@@ -551,7 +551,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     findings = toFindings(captured.issues.filter((i) => !overlaid.includes(i.route)).map((i) => ({ ...i, ...(!i.fix && fixes?.[i.rule] ? { fix: fixes[i.rule] } : {}), route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
     const redirected = captured.routes.filter((r) => landedOn(r) !== r.route);
     if (redirected.length > 0) {
-      notes.push(`Pages that redirected were audited as the page they landed on: ${redirected.map((r) => `${r.route} → ${landedOn(r)}`).join(", ")}.`);
+      notes.push(
+        `Pages that redirected were audited as the page they landed on: ${redirected.map((r) => `${r.route} → ${landedOn(r)}`).join(", ")}. To capture a page behind a sign-in, add --state with a script that signs in on the page it lands on: each page is also captured after the script runs.`,
+      );
     }
     const file = join(outDir, "audit.json");
     // Every screen the run took: its routes, and the widgets or previews it drew by name.
