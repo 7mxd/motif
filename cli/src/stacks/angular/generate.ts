@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, posix, relative, resolve } from "node:path";
 import { FALLBACK_DIR } from "../../generate/fallback";
 import type { GeneratedFile } from "../../generate/header";
-import { isReferenced, mentions } from "../../generate/referenced";
+import { commentLang, isReferenced, mentions } from "../../generate/referenced";
 import type { ThemeSet } from "../../generate/theme";
 import { appLabel, prefixPath } from "../../project/apps";
 import type { AppInfo } from "../../detect/stacks";
@@ -109,7 +109,7 @@ export function angularWiring(root: string, app: AppInfo, files: GeneratedFile[]
   if (isReferenced(join(appDir, srcDir), name, SOURCE_FILE, old)) return null;
   if (styles !== null) {
     try {
-      if (mentions(readFileSync(join(appDir, styles), "utf8"), name, old)) return null;
+      if (mentions(readFileSync(join(appDir, styles), "utf8"), name, old, commentLang(styles))) return null;
     } catch {}
   }
 

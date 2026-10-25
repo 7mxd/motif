@@ -121,6 +121,15 @@ describe("the one-step wiring note", () => {
     );
   });
 
+  test("a comment that mentions motif.css isn't an import: the note stays (shared, 2K Task 8)", () => {
+    const root = makeProject({
+      "package.json": pkg(VITE),
+      "src/main.ts": "import { createApp } from 'vue'\n// import './styles/motif.css' once the theme is ready\n/* motif.css */\n",
+      "src/App.vue": "<!-- motif.css styles this page -->\n<template><p /></template>\n<style>/* motif.css */</style>\n",
+    });
+    expect(wire(root, ["src/styles/motif.css"])).toBe("Next: import src/styles/motif.css once in src/main.ts (import './styles/motif.css'), or @import it from your main CSS file.");
+  });
+
   test("an import in a .vue file or nuxt.config.ts counts", () => {
     const vite = makeProject({ "package.json": pkg(VITE), "src/App.vue": '<style>@import "./styles/motif.css";</style>' });
     expect(wire(vite, ["src/styles/motif.css"])).toBeNull();
