@@ -401,6 +401,13 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                     }
                   }
                   addErrors(loadErrors);
+                  // A single-page app's router can send the page elsewhere in the browser (an Angular guard to the sign-in
+                  // page) while the server answered 200: where it landed is recorded as a server's redirect is.
+                  if (!state && !result.finalUrl) {
+                    const here = await page.evaluate<string>("location.href");
+                    const path = (u: string) => new URL(u).pathname.replace(/\/+$/, "");
+                    if (path(here) !== path(url)) result.finalUrl = here;
+                  }
                   if (lang && !(await page.evaluate<boolean>(`getComputedStyle(document.documentElement).direction === "rtl"`))) {
                     // The page didn't turn right to left by itself in that language: Motif turns it, and says so.
                     await page.evaluate(`(() => { const html = document.documentElement; html.dir = "rtl"; html.lang = ${JSON.stringify(lang)}; return true; })()`);

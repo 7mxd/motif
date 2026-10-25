@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
-import { captureScreens, routeSlug, routeUrl, shotName, stateExpression } from "../src/shot/capture";
+import { captureScreens, routeSlug, routeUrl, shotName, stateExpression, VIEWPORTS } from "../src/shot/capture";
 import { generateFallback } from "../src/generate/fallback";
 import { motifCss } from "../src/generate/motif-css";
 import { buildThemeSet } from "../src/generate/theme";
@@ -96,6 +96,10 @@ beforeAll(() => {
       // Neither fetches anything, so the quiet wait passes during it.
       if (path.startsWith("/expo-")) return html(EXPO_PAGES[path] ?? "", EXPO_PAGES[path] ? 200 : 404);
       if (path === "/devtools") return html(DEVTOOLS_PAGE);
+      // A single-page app's router sends a page that needs a session to its sign-in page in the browser (an Angular guard,
+      // a Vue or React router redirect): the server answers 200 for both.
+      if (path === "/guarded") return html('<h1>Loading</h1><script>history.replaceState(null, "", "/sign-in"); document.querySelector("h1").textContent = "Sign in";</script>');
+      if (path === "/sign-in") return html("<h1>Sign in</h1>");
       return html("<h1>Not found</h1>", 404);
     },
   });
@@ -152,6 +156,13 @@ describe.skipIf(!browser)("captureScreens (needs Chrome, Edge or Chromium)", () 
     expect(unreachable.routes[0]!.error).toContain("Couldn't reach");
     const silent = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/never"], outDir: out, settleMs: 50, timeoutMs: 2000 });
     expect(silent.routes[0]!.error).toBe("It didn't answer within 2 s.");
+  }, 120_000);
+});
+
+describe.skipIf(!browser)("a redirect in the browser (needs Chrome, Edge or Chromium)", () => {
+  test("a page the app's router sends elsewhere records where it landed, as a server's redirect does (2K hands-on)", async () => {
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/guarded", "/sign-in"], outDir: tempDir("motif-shots-"), settleMs: 50, viewports: [VIEWPORTS[0]!] });
+    expect(routes.map((r) => [r.route, r.status, r.finalUrl && new URL(r.finalUrl).pathname])).toEqual([["/guarded", 200, "/sign-in"], ["/sign-in", 200, undefined]]);
   }, 120_000);
 });
 
