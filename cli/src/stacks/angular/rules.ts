@@ -1,5 +1,6 @@
-import { posix } from "node:path";
-import { locator } from "../../text";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join, posix } from "node:path";
+import { locator, stripBom } from "../../text";
 import type { SourceFile } from "../../check/files";
 import { keepRanges, maskComments } from "../../check/mask";
 import { CSS_ANIMATION, reducedMotionReporter, REDUCED_QUERY, TW_ANIMATION } from "../../check/reduced-motion";
@@ -7,6 +8,7 @@ import { scanColors } from "../../check/rules/colors";
 import { EASING, fontFix, IMPORTS_MOTION, LENGTH, offScaleHit, RADIUS_PROP, SPACE_PROP, TIME } from "../../check/rules/values";
 import { makeHit, type Hit, type Scale } from "../../check/types";
 import type { WebFixContext } from "../web";
+import { angularProject } from "./project";
 
 // The rules for what an Angular template binds and what a component animates. The script view holds each bound value at
 // its place, without the attribute's name; `spans` says which attribute it was ([style.padding.px]="13", [ngStyle]="{…}").
@@ -254,17 +256,47 @@ const SCRIPT_RESPECTS = /prefers-reduced-motion/;
 /** The legacy package's animations turned off. */
 const NOOP_ANIMATIONS = /provideNoopAnimations\s*\(|provideAnimationsAsync\s*\(\s*["']noop["']/;
 
+/** app.config.ts files (app.config.server.ts too): where an app's providers are. */
+const APP_CONFIG = /^app\.config(?:\.[\w-]+)*\.ts$/;
+
+/**
+ * The app's app.config*.ts, beside main.ts or in the app/ folder beside it (where ng new puts them), comments blanked:
+ * the files check's ignores (*.config.*) leave out, read only for the noop animations.
+ */
+function appConfigTexts(appDir: string, srcDir: string): string[] {
+  const main = angularProject(appDir)?.main ?? posix.join(srcDir, "main.ts");
+  const near = dirname(join(appDir, main));
+  const texts: string[] = [];
+  for (const dir of [...new Set([near, join(near, "app"), join(appDir, srcDir, "app")])]) {
+    let names: string[] = [];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names.filter((n) => APP_CONFIG.test(n)).sort()) {
+      try {
+        texts.push(maskComments(stripBom(readFileSync(join(dir, name), "utf8")), "script"));
+      } catch {
+        // Unreadable: no sign from it.
+      }
+    }
+  }
+  return texts;
+}
+
 /**
  * Whether the app animates and nothing respects the "reduce motion" setting. Motion's animate() and @angular/animations
  * follow it only when the script checks it (a matchMedia query; the legacy package's noop animations turn it all off);
  * animate.enter, animate.leave and CSS animations through a prefers-reduced-motion query in CSS (motif.css has one). One
  * hit each, at the first animation.
  */
-export function angularReducedMotionHits(files: SourceFile[], generated: SourceFile[]): Hit[] {
+export function angularReducedMotionHits(files: SourceFile[], generated: SourceFile[], ctx?: { appDir: string; srcDir: string }): Hit[] {
   const everything = [...files, ...generated];
   const hits: Hit[] = [];
   const report = reducedMotionReporter(hits);
   const scripts = everything.filter((f) => f.lang === "script").map((f) => maskComments(f.text, f.lang));
+  if (ctx) scripts.push(...appConfigTexts(ctx.appDir, ctx.srcDir));
   const media = scripts.some((t) => SCRIPT_RESPECTS.test(t));
   const noop = scripts.some((t) => NOOP_ANIMATIONS.test(t));
 
@@ -276,7 +308,7 @@ export function angularReducedMotionHits(files: SourceFile[], generated: SourceF
       unrespected,
       "motion",
       'Animations in script (Motion, @angular/animations) ignore the "reduce motion" setting.',
-      "Check window.matchMedia('(prefers-reduced-motion: reduce)').matches before animating, and skip or shorten the animation when it is true (with @angular/animations, provideAnimationsAsync('noop') turns them off).",
+      "Check window.matchMedia('(prefers-reduced-motion: reduce)').matches before animating, and skip or shorten the animation when it is true (with @angular/animations, provideNoopAnimations() or provideAnimationsAsync('noop') in app.config.ts's providers turns them off).",
     );
   }
 

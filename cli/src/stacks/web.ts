@@ -42,7 +42,8 @@ export interface WebStack {
   wiring?(root: string, app: AppInfo, files: GeneratedFile[], set: ThemeSet): string | null;
   /** The hits in one file. */
   scan?(file: SourceFile, scale: Scale): Hit[];
-  appWide?(files: SourceFile[], generated: SourceFile[]): Hit[];
+  /** Hits about the app as a whole (reduced motion); appDir is the app folder, for a file the ignores leave out (Angular's app.config.ts). */
+  appWide?(files: SourceFile[], generated: SourceFile[], ctx?: { appDir: string; srcDir: string }): Hit[];
   /** What to use instead of a hit, in the framework's own syntax. */
   fix?(hit: Hit, ctx?: WebFixContext): string;
   /** Files besides sourceFiles that motif extract reads (Vuetify's config, which the usual ignores leave out); check never scans them. */

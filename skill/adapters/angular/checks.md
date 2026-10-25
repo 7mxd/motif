@@ -199,7 +199,7 @@ A raw palette value (`primitive.*`) used in product code.
 The app animates, but nothing honours reduced motion. The check is split by what animates:
 
 - **`animate.enter`, `animate.leave` and CSS animations and transitions:** need a `@media (prefers-reduced-motion: reduce)` query. `motif.css` has one, and it counts once it's imported in `src/styles.css` (`motif tokens` says how).
-- **Motion and `@angular/animations`:** need a check of `matchMedia('(prefers-reduced-motion: reduce)')` somewhere in the app's code (or, with the deprecated package, `provideAnimationsAsync('noop')`).
+- **Motion and `@angular/animations`:** need a check of `matchMedia('(prefers-reduced-motion: reduce)')` somewhere in the app's code (or, with the deprecated package, `provideNoopAnimations()` or `provideAnimationsAsync('noop')` in the providers of `app.config.ts`, which `check` reads for this rule only).
 - Fix: check the setting and turn the movement off ([motion](motion.md#reduced-motion)).
 
 ```html

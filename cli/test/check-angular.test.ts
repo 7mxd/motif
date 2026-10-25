@@ -163,6 +163,35 @@ describe("motif check on an Angular app", () => {
     expect(violations(withCheck).filter((h) => h.rule === "reduced-motion")).toEqual([]);
   });
 
+  test("reduced motion: @angular/animations is answered by noop animations in app.config.ts, which check otherwise ignores", async () => {
+    const legacy = [
+      "import { Component } from '@angular/core';",
+      "import { trigger, transition, style, animate } from '@angular/animations';",
+      "@Component({ selector: 'app-fade', template: '<p>a</p>', animations: [trigger('fade', [transition(':enter', [style({ opacity: 0 }), animate('var(--x)')])])] })",
+      "export class Fade {}",
+      "",
+    ].join("\n");
+    const config = (provider: string) =>
+      [
+        "import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';",
+        "import { provideRouter } from '@angular/router';",
+        provider ? "import { provideNoopAnimations } from '@angular/platform-browser/animations';" : "",
+        "import { routes } from './app.routes';",
+        "export const appConfig: ApplicationConfig = {",
+        `  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes)${provider ? `, ${provider}` : ""}]`,
+        "};",
+        "",
+      ].join("\n");
+    const motion = (r: any) => violations(r).filter((h) => h.rule === "reduced-motion").map((h) => h.file);
+    expect(motion(await check(await ngApp({ "src/app/fade.ts": legacy, "src/app/app.config.ts": config("") })))).toEqual(["src/app/fade.ts"]);
+    expect(motion(await check(await ngApp({ "src/app/fade.ts": legacy, "src/app/app.config.ts": config("provideNoopAnimations()") })))).toEqual([]);
+    const async = config("provideAnimationsAsync('noop')").replace("provideNoopAnimations }", "provideAnimationsAsync }").replace("animations';", "animations/async';");
+    expect(motion(await check(await ngApp({ "src/app/fade.ts": legacy, "src/app/app.config.ts": async })))).toEqual([]);
+    // Every other rule still leaves app.config.ts out.
+    const colour = config("provideNoopAnimations()") + "export const brand = '#ff00aa';\n";
+    expect(violations(await check(await ngApp({ "src/app/fade.ts": legacy, "src/app/app.config.ts": colour }))).filter((h) => h.file === "src/app/app.config.ts")).toEqual([]);
+  });
+
   test("paths that hold nothing it reads: the message names Angular's files once each", async () => {
     const root = await ngApp({ "public/robots.txt": "User-agent: *\n" });
     const r = await check(root, ["public"]);

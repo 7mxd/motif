@@ -223,7 +223,7 @@ function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Them
   // Exceptions are read from the files as written, not from their views.
   const lines = new Map(files.map((f) => [f.path, f.text.split(/\r?\n/)]));
 
-  const appWide = (web.appWide?.(appFiles.flatMap(views), generated.flatMap(views)) ?? []).filter((h) => inScope.has(h.file));
+  const appWide = (web.appWide?.(appFiles.flatMap(views), generated.flatMap(views), { appDir, srcDir }) ?? []).filter((h) => inScope.has(h.file));
   const scanned = files.flatMap(views).flatMap((v) => [...(web.scan?.(v, scale) ?? []), ...scanFile(v, scale, { v3Roles })]);
   const { violations, exceptions } = sortOut([...once(scanned), ...appWide], lines, (found) => {
     const suggestion = suggestRole(found, theme, { tailwind3: tailwindVersion === "v3", variants: opts.variants });
