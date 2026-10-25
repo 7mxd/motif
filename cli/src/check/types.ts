@@ -36,6 +36,12 @@ export interface Hit {
   negative?: true;
   /** For grouped output: the closest role to use instead (motif check). */
   suggestion?: string;
+  /**
+   * What the fix is about, so a stack can word it in its own terms without reading the text: "motion", a setting of
+   * Motion's animate() or a transition prop (seconds, from motion.ts); "transition", a framework's own transition
+   * setting (Svelte's transition:fly={{ duration }}, in milliseconds).
+   */
+  fixKind?: "motion" | "transition";
 }
 
 export interface Scale {

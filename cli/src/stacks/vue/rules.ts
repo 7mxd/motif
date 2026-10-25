@@ -130,6 +130,6 @@ export function vueReducedMotionHits(files: SourceFile[], generated: SourceFile[
 
 /** React web's motion fix names a JSX prop; in a .vue file it is :transition. */
 export function vueFix(hit: Hit): string {
-  if (hit.rule === "raw-motion" && hit.fix.includes("transition={")) return MOTION_FIX;
+  if (hit.rule === "raw-motion" && hit.fixKind === "motion") return MOTION_FIX;
   return hit.fix;
 }

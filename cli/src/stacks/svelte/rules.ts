@@ -16,6 +16,9 @@ const SVELTE_MOTION_IMPORT = "$lib/design/motion";
 export const STYLE_COLOR_FIX = "Use 'var(--motif-color-<role>)' in style: or style=\"…\", or a class (bg-<role>) with Tailwind.";
 export const MOTION_FIX = `Import { duration, easing, spring } from ${SVELTE_MOTION_IMPORT} and pass them: transition:fly={{ duration: duration.base, easing: easing.standard }}.`;
 const CSS_MOTION_FIX = "Use var(--motif-duration-<role>) and var(--motif-easing-<role>) from motif.css: this app is before Svelte 5, so Motif writes no motion.ts.";
+/** Motion's animate() takes seconds; the CSS variables are in milliseconds. */
+const CSS_MOTION_SECONDS_FIX =
+  "Use var(--motif-duration-<role>) and var(--motif-easing-<role>) from motif.css: this app is before Svelte 5, so Motif writes no motion.ts. The durations are in milliseconds and Motion takes seconds, so divide by 1000: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--motif-duration-base')) / 1000.";
 
 const ANIMATION_ATTR = /^(?:transition|in|out|animate):/;
 const STYLE_ATTR = /^style:([\w-]+)(?:\|important)?$/;
@@ -67,7 +70,7 @@ export function scanSvelte(source: SourceFile, scale: Scale | null): Hit[] {
   const at = locator(text);
   const hits: Hit[] = [];
   const motion = (index: number, hitText: string, kind: "duration" | "easing" | "spring", value: string, message: string) =>
-    hits.push(makeHit(file, at, index, { rule: "raw-motion", kind, value, text: hitText, violation: true, message, fix: MOTION_FIX }));
+    hits.push(makeHit(file, at, index, { rule: "raw-motion", kind, value, text: hitText, violation: true, message, fix: MOTION_FIX, fixKind: "transition" }));
 
   for (const span of source.spans ?? []) {
     const body = text.slice(span.start, span.end);
@@ -186,10 +189,11 @@ export function svelteFix(hit: Hit, ctx?: WebFixContext): string {
   if (hit.rule !== "raw-motion") return hit.fix;
   if (!ctx) return isJsMotion(hit) ? MOTION_FIX : hit.fix; // without the app's details: the SvelteKit wording
   const { motionImport } = ctx;
-  if (!motionImport) return isJsMotion(hit) ? CSS_MOTION_FIX : hit.fix.replace(TW_MOTION_IMPORT, "");
+  if (!motionImport) return hit.fixKind === "motion" ? CSS_MOTION_SECONDS_FIX : hit.fixKind === "transition" ? CSS_MOTION_FIX : hit.fix.replace(TW_MOTION_IMPORT, "");
   const spec = motionSpecifier(hit, { ...ctx, motionImport });
   if (isJsMotion(hit)) return MOTION_FIX.replace(SVELTE_MOTION_IMPORT, spec);
   return hit.fix.replace(`"${motionImport}"`, `"${spec}"`);
 }
 
-const isJsMotion = (hit: Hit) => hit.fix === MOTION_FIX || hit.fix.includes("transition={");
+/** Svelte's own transition settings, and Motion's (the web's rule): the fix names motion.ts. */
+const isJsMotion = (hit: Hit) => hit.fixKind === "motion" || hit.fixKind === "transition";

@@ -109,9 +109,9 @@ function cliStarter(opts: { core?: string; installed?: string; style?: "css" | "
 }
 
 describe("the web-stack registry", () => {
-  test("Vue, Svelte and Angular are registered; Angular reads no file format of its own", () => {
+  test("Vue, Svelte and Angular are registered; Angular names the files motif check reads", () => {
     expect(webStacks().map((s) => s.id)).toEqual(["vue", "svelte", "angular"]);
-    expect(angular().extensions).toBeUndefined();
+    expect(angular().extensions).toEqual([".ts", ".html", ".css", ".scss"]);
     expect(webStack("react-web")).toBeNull();
   });
 });

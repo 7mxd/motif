@@ -29,8 +29,11 @@ export interface WebStack {
   extensions?: string[];
   /** The files motif check and extract read: the framework's own files beside scripts, styles and HTML. */
   sourceFiles(root: string, app: AppInfo, opts: { ignore?: string[]; paths?: string[] }): SourceFile[];
-  /** The parts of one source file (a .vue file's template, script and style blocks) as files for the web scanners. */
-  views?(file: SourceFile): SourceFile[];
+  /**
+   * The parts of one source file (a .vue file's template, script and style blocks) as files for the web scanners.
+   * `files`, the app's files it is among, says what one file can't (the .ts whose templateUrl names an Angular template).
+   */
+  views?(file: SourceFile, files?: SourceFile[]): SourceFile[];
   /** Where the app's source lives, relative to the app folder. */
   srcDir(appDir: string): string;
   /** Theme code (root-relative files) and notes for the developer. */

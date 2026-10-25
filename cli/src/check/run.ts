@@ -212,10 +212,10 @@ function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Them
   const motion = expected.find((f) => /motion\.ts$/.test(f.path))?.path;
   const scale = buildScale(theme, srcDir);
   if (motion) scale.motionImport = (motion.startsWith(`${app.path}/`) ? motion.slice(app.path.length + 1) : motion).replace(/\.ts$/, "");
-  const views = (f: SourceFile) => (web.views ? web.views(f) : expandHtml([f]));
   const fixContext: WebFixContext = { appDir, appPath: app.path, ...(motion ? { motionImport: scale.motionImport } : {}) };
 
   const all = web.sourceFiles(root, app, { ignore: opts.ignore });
+  const views = (f: SourceFile) => (web.views ? web.views(f, all) : expandHtml([f]));
   const generated = all.filter((f) => isMotifGenerated(f.path, f.text));
   const appFiles = all.filter((f) => !isMotifGenerated(f.path, f.text));
   const files = appFiles.filter((f) => matchesPaths(f.path, opts.paths ?? []));

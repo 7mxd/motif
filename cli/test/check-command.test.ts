@@ -87,12 +87,12 @@ describe("runCheck", () => {
     expect(r.text).toContain("Warnings:");
   });
 
-  test("only React web apps, plain web sites, Vue and Svelte apps and the native stacks are checked in this version", async () => {
-    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { "@angular/core": "^19" } }), "src/app/app.ts": "", "design/tokens.json": TOKENS });
+  test("only React web apps, plain web sites, Vue, Svelte and Angular apps and the native stacks are checked in this version", async () => {
+    const root = makeProject({ "design/motif.json": JSON.stringify({ apps: [{ path: ".", stack: "compose-multiplatform" }] }), "design/tokens.json": TOKENS });
     const r = await runCheck(root, ctx());
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("Angular");
-    expect(r.text).toContain("Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, Vue / Nuxt apps, Svelte / SvelteKit apps, React web apps and plain web sites");
+    expect(r.text).toContain("Compose Multiplatform");
+    expect(r.text).toContain("Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, Vue / Nuxt apps, Svelte / SvelteKit apps, Angular apps, React web apps and plain web sites");
   });
 
   test("no design guide → exit 2", async () => {
@@ -144,10 +144,11 @@ describe("runCheck: skipped apps", () => {
       "apps/web/package.json": PKG, "apps/web/src/Clean.tsx": CLEAN,
       "apps/mobile/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n",
       "apps/mobile/lib/main.dart": "void main() {}\n",
-      "apps/admin/package.json": JSON.stringify({ dependencies: { "@angular/core": "^19" } }), "apps/admin/src/app/app.ts": "",
+      "apps/admin/src/commonMain/kotlin/App.kt": "@Composable fun App() {}\n",
+      "design/motif.json": JSON.stringify({ apps: [{ path: "apps/web", stack: "react-web" }, { path: "apps/mobile", stack: "flutter" }, { path: "apps/admin", stack: "compose-multiplatform" }] }),
     });
     const text = (await runCheck(root, ctx())).text;
-    expect(text).toContain("Skipped (not supported yet): apps/admin (Angular).");
+    expect(text).toContain("Skipped (not supported yet): apps/admin (Compose Multiplatform).");
     // Flutter apps are checked from 2E on.
     expect(text).not.toContain("apps/mobile (Flutter)");
   });
