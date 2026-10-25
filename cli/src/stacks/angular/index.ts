@@ -83,15 +83,17 @@ const NO_NG_SERVE =
 
 /**
  * The app's "start" script when it runs ng serve (ng new writes "start": "ng serve"), else its "dev" script; either
- * given the port Motif chose when it runs ng serve (a --port of the script's own comes first, and the last one wins).
+ * given the port Motif chose when it runs ng serve (a --port of the script's own comes first, and the last one wins),
+ * and --open=false, so a script's own -o never opens a browser tab on every motif shot.
  */
+const SERVE_ARGS = (port: number) => ["--port", String(port), "--open=false"];
 function angularDevScript(appDir: string, port: number): { script: string; args: string[] } | { error: string } {
   const scripts = readJson<{ scripts?: Record<string, unknown> }>(join(appDir, "package.json"))?.scripts ?? {};
   const runs = (name: string) => (typeof scripts[name] === "string" ? (scripts[name] as string) : null);
   const start = runs("start");
-  if (start !== null && NG_SERVE.test(start)) return { script: "start", args: ["--port", String(port)] };
+  if (start !== null && NG_SERVE.test(start)) return { script: "start", args: SERVE_ARGS(port) };
   const dev = runs("dev");
-  if (dev !== null) return { script: "dev", args: NG_SERVE.test(dev) ? ["--port", String(port)] : [] };
+  if (dev !== null) return { script: "dev", args: NG_SERVE.test(dev) ? SERVE_ARGS(port) : [] };
   return { error: NO_NG_SERVE };
 }
 

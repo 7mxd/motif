@@ -90,7 +90,7 @@ describe("motif shot: an Angular app", () => {
     const r = await runShot(makeProject(app()), ctx(), deps);
     expect(r.exitCode).toBe(0);
     expect(calls.started).toHaveLength(1);
-    expect(calls.started[0]!.command).toEqual(["/usr/bin/npm", "run", "start", "--", "--port", String(PORT)]);
+    expect(calls.started[0]!.command).toEqual(["/usr/bin/npm", "run", "start", "--", "--port", String(PORT), "--open=false"]);
     expect(calls.started[0]!.env).toEqual(NO_ANALYTICS);
     expect(calls.started[0]!.timeoutMs).toBe(ANGULAR.startTimeoutMs!("."));
     expect(calls.started[0]!.buildingStatus).toBeUndefined();
@@ -105,7 +105,8 @@ describe("motif shot: an Angular app", () => {
     const { deps, calls } = fakes();
     await runShot(makeProject(app()), ctx(), deps);
     const command = calls.started[0]!.command;
-    expect(command.slice(-2)).toEqual(["--port", String(PORT)]);
+    // And never opens a browser tab of its own (ng s -o): the last --open wins.
+    expect(command.slice(-3)).toEqual(["--port", String(PORT), "--open=false"]);
     expect(command).not.toContain("4200");
   });
 
@@ -119,7 +120,7 @@ describe("motif shot: an Angular app", () => {
       const { deps, calls } = fakes();
       const r = await runShot(makeProject(root), ctx(), deps);
       expect(r.exitCode).toBe(0);
-      expect(calls.displays).toEqual([`npm run start -- --port ${PORT}`]);
+      expect(calls.displays).toEqual([`npm run start -- --port ${PORT} --open=false`]);
       expect(calls.started[0]!.env).toEqual(NO_ANALYTICS);
       expect(calls.captured[0]!.routes).toEqual(["/", "/about"]);
     }
@@ -127,10 +128,10 @@ describe("motif shot: an Angular app", () => {
 
   test("the command follows the lockfile's package manager, each passing the port so ng serve gets it", async () => {
     const cases = [
-      ["pnpm-lock.yaml", `pnpm run start --port ${PORT}`],
-      ["yarn.lock", `yarn run start --port ${PORT}`],
-      ["bun.lock", `bun run start --port ${PORT}`],
-      ["package-lock.json", `npm run start -- --port ${PORT}`],
+      ["pnpm-lock.yaml", `pnpm run start --port ${PORT} --open=false`],
+      ["yarn.lock", `yarn run start --port ${PORT} --open=false`],
+      ["bun.lock", `bun run start --port ${PORT} --open=false`],
+      ["package-lock.json", `npm run start -- --port ${PORT} --open=false`],
     ] as const;
     for (const [lock, display] of cases) {
       const files: Record<string, string> = { ...app(), [lock]: "" };
@@ -144,20 +145,20 @@ describe("motif shot: an Angular app", () => {
   test("on Windows the command runs through cmd.exe", async () => {
     const { deps, calls } = fakes({ platform: "win32" });
     await runShot(makeProject(app()), ctx(), deps);
-    expect(calls.started[0]!.command).toEqual(["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", `npm run start -- --port ${PORT}`]);
+    expect(calls.started[0]!.command).toEqual(["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", `npm run start -- --port ${PORT} --open=false`]);
   });
 
   test("a start script with flags of its own keeps them, and the port Motif chose comes last", async () => {
     const { deps, calls } = fakes();
     await runShot(makeProject(app({ "package.json": pkg("^21.2.0", { start: "ng serve --configuration development" }) })), ctx(), deps);
-    expect(calls.displays).toEqual([`npm run start -- --port ${PORT}`]);
+    expect(calls.displays).toEqual([`npm run start -- --port ${PORT} --open=false`]);
   });
 
   test("a start script that isn't ng serve: the dev script runs instead, given the port only when it runs ng serve", async () => {
     const other = { start: "node server.js" };
     const ngDev = fakes();
     await runShot(makeProject(app({ "package.json": pkg("^21.2.0", { ...other, dev: "ng serve" }) })), ctx(), ngDev.deps);
-    expect(ngDev.calls.displays).toEqual([`npm run dev -- --port ${PORT}`]);
+    expect(ngDev.calls.displays).toEqual([`npm run dev -- --port ${PORT} --open=false`]);
     const viteDev = fakes();
     await runShot(makeProject(app({ "package.json": pkg("^21.2.0", { ...other, dev: "vite" }) })), ctx(), viteDev.deps);
     expect(viteDev.calls.displays).toEqual(["npm run dev"]);
@@ -195,7 +196,7 @@ describe("motif shot: an Angular app", () => {
     });
     const r = await runShot(makeProject(app()), ctx(), down.deps);
     expect(r.exitCode).not.toBe(0);
-    expect(r.text).toContain(`Couldn't start the app with "npm run start -- --port ${PORT}"`);
+    expect(r.text).toContain(`Couldn't start the app with "npm run start -- --port ${PORT} --open=false"`);
     const up = fakes();
     const given = await runShot(makeProject(app()), ctx({ url: "http://localhost:4200" }), up.deps);
     expect(given.exitCode).toBe(0);
@@ -265,10 +266,10 @@ describe("motif shot: an Angular app", () => {
 describe("the Angular stack's dev script", () => {
   const dir = (scripts: Record<string, string>) => makeProject({ "package.json": JSON.stringify({ scripts }) });
   test("start when it runs ng serve (or ng s, or through npx), else dev, else the refusal", () => {
-    expect(ANGULAR.devScript!(dir({ start: "ng serve" }), 5000)).toEqual({ script: "start", args: ["--port", "5000"] });
-    expect(ANGULAR.devScript!(dir({ start: "ng s -o" }), 5000)).toEqual({ script: "start", args: ["--port", "5000"] });
-    expect(ANGULAR.devScript!(dir({ start: "npx ng serve --ssl" }), 5000)).toEqual({ script: "start", args: ["--port", "5000"] });
-    expect(ANGULAR.devScript!(dir({ start: "ng build", dev: "ng serve" }), 5000)).toEqual({ script: "dev", args: ["--port", "5000"] });
+    expect(ANGULAR.devScript!(dir({ start: "ng serve" }), 5000)).toEqual({ script: "start", args: ["--port", "5000", "--open=false"] });
+    expect(ANGULAR.devScript!(dir({ start: "ng s -o" }), 5000)).toEqual({ script: "start", args: ["--port", "5000", "--open=false"] });
+    expect(ANGULAR.devScript!(dir({ start: "npx ng serve --ssl" }), 5000)).toEqual({ script: "start", args: ["--port", "5000", "--open=false"] });
+    expect(ANGULAR.devScript!(dir({ start: "ng build", dev: "ng serve" }), 5000)).toEqual({ script: "dev", args: ["--port", "5000", "--open=false"] });
     expect(ANGULAR.devScript!(dir({ start: "ng build", dev: "nx serve app" }), 5000)).toEqual({ script: "dev", args: [] });
     expect(ANGULAR.devScript!(dir({ start: "ng build" }), 5000)).toHaveProperty("error");
     expect(ANGULAR.devScript!(makeProject({}), 5000)).toHaveProperty("error");
