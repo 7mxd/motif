@@ -6,6 +6,7 @@ import { expandHtml } from "../../check/html";
 import { maskComments } from "../../check/mask";
 import type { WebStack } from "../web";
 import { angularDoctor, angularUnsupported } from "./doctor";
+import { collectAngular } from "./extract";
 import { angularWiring, generateAngular } from "./generate";
 import { angularSrcDir } from "./project";
 import { angularFix, angularReducedMotionHits, scanAngular } from "./rules";
@@ -81,4 +82,5 @@ export const ANGULAR: WebStack = {
   fix: angularFix,
   doctor: angularDoctor,
   unsupported: angularUnsupported,
+  collect: collectAngular,
 };

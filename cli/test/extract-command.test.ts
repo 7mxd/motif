@@ -64,8 +64,8 @@ describe("runExtract", () => {
     expect((r.data.notes as string[]).join("\n")).toContain("design/tokens.json");
   });
 
-  test("other stacks (Svelte) aren't supported yet, and nothing is written", async () => {
-    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { "@angular/core": "19" } }), "src/app/app.component.html": "<p></p>" });
+  test("other stacks (Compose Multiplatform) aren't supported yet, and nothing is written", async () => {
+    const root = makeProject({ "design/motif.json": JSON.stringify({ apps: [{ path: ".", stack: "compose-multiplatform" }] }), "src/commonMain/kotlin/App.kt": "@Composable fun App() {}\n" });
     const r = await runExtract(root, ctx);
     expect(r.exitCode).toBe(2);
     expect(existsSync(join(root, "design/tokens.draft.json"))).toBe(false);
@@ -101,9 +101,10 @@ describe("runExtract: follow-ups", () => {
   test("apps on other stacks are named as skipped", async () => {
     const root = makeProject({
       "apps/web/package.json": PKG, "apps/web/src/App.tsx": APP,
-      "apps/site/package.json": JSON.stringify({ dependencies: { "@angular/core": "19" } }), "apps/site/src/app/app.component.html": "<p></p>",
+      "apps/site/src/commonMain/kotlin/App.kt": "@Composable fun App() {}\n",
+      "design/motif.json": JSON.stringify({ apps: [{ path: "apps/web", stack: "react-web" }, { path: "apps/site", stack: "compose-multiplatform" }] }),
     });
-    expect((await runExtract(root, ctx)).text).toContain("apps/site (Angular)");
+    expect((await runExtract(root, ctx)).text).toContain("apps/site (Compose Multiplatform)");
   });
 });
 
@@ -301,12 +302,12 @@ body { @apply bg-bg text-ink; }
 });
 
 describe("final review: extract's refusal lists the stacks from the registry (Minor #10)", () => {
-  test("an Angular app: the same words as before, with Vue, Svelte, Flutter, Compose, Expo and SwiftUI named from their registrations", async () => {
-    const root = makeProject({ "package.json": JSON.stringify({ dependencies: { "@angular/core": "19" } }), "src/app/app.component.html": "<p></p>" });
+  test("a Compose Multiplatform app: the same words as before, with Vue, Svelte, Angular, Flutter, Compose, Expo and SwiftUI named from their registrations", async () => {
+    const root = makeProject({ "design/motif.json": JSON.stringify({ apps: [{ path: ".", stack: "compose-multiplatform" }] }), "src/commonMain/kotlin/App.kt": "@Composable fun App() {}\n" });
     const r = await runExtract(root, { positionals: [], flags: {} });
     expect(r.exitCode).toBe(2);
     expect(r.text).toBe(
-      "motif extract works on React web apps, plain web sites, Vue / Nuxt apps and Svelte / SvelteKit apps, and on Flutter apps, Jetpack Compose apps, React Native (Expo) apps and SwiftUI apps, in this version. Found: Your app (Angular). Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.",
+      "motif extract works on React web apps, plain web sites, Vue / Nuxt apps, Svelte / SvelteKit apps and Angular apps, and on Flutter apps, Jetpack Compose apps, React Native (Expo) apps and SwiftUI apps, in this version. Found: Your app (Compose Multiplatform). Meanwhile, Motif's review can draft a design guide from your app's code by hand: ask your agent for a design review.",
     );
   });
 });
