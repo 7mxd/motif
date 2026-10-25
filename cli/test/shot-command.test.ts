@@ -267,6 +267,13 @@ describe("motif shot", () => {
     expect(r.text).toContain("✓ Audit: no contrast, tap-target or reduced-motion problems found, and no controls without a name (design/shots/audit.json).");
   });
 
+  test("a clean audit at a phone's size alone names the two checks that ran in a list (plan 2K, Task 8's run)", async () => {
+    const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", audit: true, sizes: "390" }), fakes().deps);
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toContain("✓ Audit: no contrast or tap-target problems found, and no controls without a name (design/shots/audit.json).");
+    expect(r.text).toContain("The reduced-motion check runs at the desktop size, which --sizes left out.");
+  });
+
   test("the dev server is stopped even when capturing fails", async () => {
     const { deps, calls } = fakes({
       capture: async () => {

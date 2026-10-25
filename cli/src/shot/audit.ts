@@ -265,7 +265,9 @@ function installAudit(): boolean {
           width = Math.max(width, r.width);
           height = Math.max(height, r.height);
         }
-        if (width < min || height < min) {
+        // Compared as reported, in whole pixels: padding around a line of text 1.4 times 14 px is 43.6 px tall, which
+        // reads as 44 and would be reported as "44×44 px; 44×44 px is easier to tap".
+        if (Math.round(width) < min || Math.round(height) < min) {
           out.push({ rule: "target-mobile", ...describe(el), width: Math.round(width), height: Math.round(height) });
         }
       }

@@ -1,6 +1,7 @@
-<header class="flex gap-4 p-4">
-  <a routerLink="/">Home</a>
-  <a routerLink="/settings">Settings</a>
-</header>
-
-<router-outlet />
+<div class="min-h-screen bg-background font-body text-body text-text-primary">
+  <nav class="flex gap-2 border-b border-border px-2 text-label">
+    <a routerLink="/" class="inline-flex min-h-11 items-center px-2 text-action-primary">{{ t.home }}</a>
+    <a routerLink="/settings" class="inline-flex min-h-11 items-center px-2 text-action-primary">{{ t.settings }}</a>
+  </nav>
+  <router-outlet />
+</div>

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { runCheck } from "../src/commands/check";
 import { runTokens } from "../src/commands/tokens";
@@ -12,10 +12,15 @@ afterAll(cleanupTempDirs);
 
 const TOKENS = readFileSync(join(FIXTURES, "contract/design/tokens.json"), "utf8");
 
-/** A copy of the angular-min fixture (`ng new --style=tailwind`, Angular 21.2) with a guide, its theme code written by motif tokens, and the files given. */
+/**
+ * A copy of the angular-min fixture (`ng new --style=tailwind`, Angular 21.2) with a guide, its theme code written by motif
+ * tokens, and the files given. The fixture's /audit and /calm pages, planted for motif shot --audit, are left out: their
+ * colours would be findings, and /calm's matchMedia check would answer reduced motion for the whole app.
+ */
 async function ngApp(files: Record<string, string>): Promise<string> {
   const root = tempDir("motif-ng-check-");
   cpSync(join(FIXTURES, "angular-min"), root, { recursive: true, filter: (src) => !["node_modules", ".angular", "dist"].includes(basename(src)) });
+  for (const page of ["audit", "calm"]) rmSync(join(root, "src/app", page), { recursive: true });
   const write = (rel: string, content: string) => {
     mkdirSync(join(root, rel, ".."), { recursive: true });
     writeFileSync(join(root, rel), content);
@@ -28,7 +33,7 @@ async function ngApp(files: Record<string, string>): Promise<string> {
 
 const check = (root: string, positionals: string[] = []) => runCheck(root, { positionals });
 const violations = (r: any) => (r.data as any).violations as any[];
-/** The findings in the files a test wrote (the fixture's own pages use text-2xl, a size off the guide's roles). */
+/** The findings in the files a test wrote, not in the fixture's own pages. */
 const where = (r: any) => violations(r).filter((h) => !/^src\/app\/(?:home|settings)\//.test(h.file)).map((h) => `${h.rule} ${h.file}:${h.line}:${h.column}`);
 const at = (text: string, needle: string, from = 0) => {
   const i = text.indexOf(needle, from);

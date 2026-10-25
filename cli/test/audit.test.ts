@@ -226,7 +226,9 @@ body { margin: 0; padding: 24px; font: 16px/1.5 sans-serif; background: #ffffff;
 <script>let x = 0; (function f() { x = (x + 1) % 100; document.getElementById("mover").style.transform = "translateX(" + x + "px)"; requestAnimationFrame(f); })();</script>
 </body></html>`;
 const CLEAN = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-<body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111"><h1>Clean</h1><button style="width: 48px; height: 48px">OK</button><p>All good.</p></body></html>`;
+<body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111"><h1>Clean</h1><button style="width: 48px; height: 48px">OK</button><p>All good.</p>
+<!-- 44 px tall to the eye: padding around a line of text 1.4 times 14 px, as Tailwind draws py-3 text-sm (plan 2K, Task 8). -->
+<button style="padding: 12px 16px; border: 0; font-size: 14px; line-height: 1.4">Add item</button></body></html>`;
 
 // A browser from before 2022 has no checkVisibility(): the audit still runs there.
 const OLD_BROWSER = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">

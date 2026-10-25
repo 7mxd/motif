@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
+import { strings } from './strings';
 
 @Component({
   selector: 'app-root',
@@ -9,4 +10,5 @@ import { RouterLink, RouterOutlet } from '@angular/router';
 })
 export class App {
   protected readonly title = signal('angular-min');
+  protected readonly t = strings;
 }

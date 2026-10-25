@@ -68,8 +68,8 @@ describe("discoverAngularRoutes", () => {
     expect(discoverAngularRoutes(root)).toEqual({ routes: ["/", "/about"], skipped: [] });
   });
 
-  test("the angular-min fixture has / and /settings", () => {
-    expect(discoverAngularRoutes(join(import.meta.dir, "fixtures", "angular-min"))).toEqual({ routes: ["/", "/settings"], skipped: [] });
+  test("the angular-min fixture has /, /settings, and /audit and /calm for motif shot --audit", () => {
+    expect(discoverAngularRoutes(join(import.meta.dir, "fixtures", "angular-min"))).toEqual({ routes: ["/", "/audit", "/calm", "/settings"], skipped: [] });
   });
 
   test("component and loadComponent pages, pathMatch, titles, redirects, :id and **", () => {

@@ -30,13 +30,16 @@ function hashAll(dir: string, rel = ""): Record<string, string> {
   return out;
 }
 
-/** A copy of the angular-min fixture (`ng new --style=tailwind`, Angular 21.2) with a guide, and any files changed. */
+/** src/styles.css as `ng new --style=tailwind` writes it (the fixture's own also imports the theme and its fonts, for motif shot). */
+const NG_STYLES = "/* You can add global styles to this file, and also import other style files */\n\n@import 'tailwindcss';\n";
+
+/** A copy of the angular-min fixture (`ng new --style=tailwind`, Angular 21.2) with a guide, ng new's styles.css, and any files changed. */
 function ngApp(extra: Record<string, string> = {}): string {
   const dir = tempDir("motif-ng-");
   cpSync(join(FIXTURES, "angular-min"), dir, { recursive: true, filter: (src) => !["node_modules", ".angular", "dist"].includes(basename(src)) });
   mkdirSync(join(dir, "design"), { recursive: true });
   writeFileSync(join(dir, "design/tokens.json"), TOKENS);
-  for (const [rel, content] of Object.entries(extra)) {
+  for (const [rel, content] of Object.entries({ "src/styles.css": NG_STYLES, ...extra })) {
     mkdirSync(join(dir, rel, ".."), { recursive: true });
     writeFileSync(join(dir, rel), content);
   }

@@ -566,7 +566,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       lines.push(`✗ Audit incomplete: ${andList(overlaid)} threw an error as ${one ? "it" : "they"} loaded, so ${one ? "it isn't" : "they aren't"} audited (${one ? "its" : "their"} screenshots may show Expo's error overlay).`);
     }
     if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
-    else if (incomplete.length === 0 && overlaid.length === 0) lines.push(`✓ Audit: no contrast${targetsRan ? ", tap-target" : ""}${motionRan ? " or reduced-motion" : ""} problems found, and no controls without a name (${auditFile}).`);
+    else if (incomplete.length === 0 && overlaid.length === 0) {
+      // "contrast", "contrast or tap-target", "contrast, tap-target or reduced-motion": the checks that ran.
+      const checks = ["contrast", ...(targetsRan ? ["tap-target"] : []), ...(motionRan ? ["reduced-motion"] : [])];
+      const list = checks.length === 1 ? checks[0] : `${checks.slice(0, -1).join(", ")} or ${checks[checks.length - 1]}`;
+      lines.push(`✓ Audit: no ${list} problems found, and no controls without a name (${auditFile}).`);
+    }
     for (const f of findings.slice(0, 15)) {
       const l = f.location;
       const where = `${l.screen}${l.state ? ` in "${l.state}"` : ""} (${l.viewport}${l.scheme ? `, ${l.scheme}` : ""}${l.variant ? `, ${l.variant} variant` : ""}${l.rtl ? ", right to left" : ""})`;
