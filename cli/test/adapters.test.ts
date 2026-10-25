@@ -815,22 +815,18 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web, Flutter, React Native, Jetpack Compose, SwiftUI, Vue and Svelte have every area done; no stack is still to come", () => {
+  test("Every stack has every area done: React web, plain web, Flutter, React Native, Jetpack Compose, SwiftUI, Vue, Svelte and Angular", () => {
     for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose", "SwiftUI", "Vue / Nuxt", "Svelte / SvelteKit"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
     // SwiftUI's proof names the runs its four cases passed in (2H Task 15).
     const swiftEvals = table.find((r) => r[0] === "Evals" && r[1]!.includes("fixtures-swiftui.test.ts"))!;
     for (const s of ["eval run 20261022-061913", "It passed in run 20261022-085041"]) expect(swiftEvals[1]).toContain(s);
     // The cell and its proof agree: each Evals proof names the run that passed.
-    for (const fixtureTest of ["fixtures-rn.test.ts", "fixtures-compose.test.ts", "fixtures-vue.test.ts", "fixtures-svelte.test.ts"]) {
+    for (const fixtureTest of ["fixtures-rn.test.ts", "fixtures-compose.test.ts", "fixtures-vue.test.ts", "fixtures-svelte.test.ts", "fixtures-angular.test.ts"]) {
       const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes(fixtureTest))!;
       expect([fixtureTest, proof[1]!.includes("Recorded in eval run")]).toEqual([fixtureTest, true]);
     }
     // Every stack in the table has been built: none is "not yet" in any area (2K Task 13).
-    for (const r of table.filter((r) => r.length === AREAS.length + 1 && r[0] !== "Stack" && r[0] !== "---")) expect([r[0], r.slice(1).includes("not yet")]).toEqual([r[0], false]);
-  });
-
-  test("Angular has every area done but its evals, whose run is pending (2K Task 13)", () => {
-    expect(row("Angular")!.slice(1)).toEqual(AREAS.map((a) => (a === "Evals" ? "pending" : "done")));
+    for (const r of table.filter((r) => r.length === AREAS.length + 1 && r[0] !== "Stack" && r[0] !== "---")) expect([r[0], r.slice(1)]).toEqual([r[0], AREAS.map(() => "done")]);
   });
 
   test("Flutter's, Jetpack Compose's, React Native's, SwiftUI's, Vue's, Svelte's and Angular's proofs name every area, and every file they link to exists", () => {
@@ -864,7 +860,7 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     expect(angular).toContain("CI run 40218305092");
     expect(angular).toContain("(decisions/0012-angular-motion.md)");
     expect(angular).toContain("(notes/2026-10-25-angular-hands-on.md)");
-    expect(angular).toContain("Their run is pending.");
+    expect(angular).toContain("Recorded in eval run 20261026-000017");
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");
