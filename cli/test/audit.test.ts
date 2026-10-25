@@ -268,6 +268,8 @@ requestAnimationFrame(step);
 // What Angular Material draws (plan 2K's hands-on, Material 22): a 40 px button and a 40 px icon button, each with an empty
 // span inside, absolutely placed, that makes its hit area 48 px tall; and a slide toggle, a role="switch" button named
 // through aria-labelledby, with a 48 px touch target of its own; and RealWorld's logo link, named by its image's alt. A child that takes no taps (pointer-events: none), or one the control clips, is no hit area.
+// Nor is a corner badge (it doesn't cover the control's centre), or a centred touch target a wrapper inside the control
+// clips. A 43.4 px button is 43 px as reported, and too small.
 const LIBRARY = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>button { position: relative; padding: 0 12px; border: 0; height: 40px; font: 14px sans-serif; }
 .touch { position: absolute; top: 50%; left: 0; right: 0; height: 48px; transform: translateY(-50%); }
@@ -282,7 +284,10 @@ const LIBRARY = `<!doctype html><html><head><meta name="viewport" content="width
 <p><button id="bare" role="switch" aria-checked="false" aria-labelledby="bare-label" class="switch"></button><span id="bare-label">Alerts</span></p>
 <p><button id="inert-touch">Later<span class="touch"></span></button></p>
 <p><button id="clipped" style="overflow: hidden">Skip<span class="touch"></span></button></p>
-<p><a id="brand" href="/" style="display: inline-block"><img alt="Conduit" width="88" height="24" style="display: block" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="></a></p></body></html>`;
+<p><a id="brand" href="/" style="display: inline-block"><img alt="Conduit" width="88" height="24" style="display: block" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="></a></p>
+<p><button id="badge" class="icon" aria-label="Inbox" style="width: 40px; padding: 0"><span style="position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; background: #c00000; color: #ffffff; font-size: 10px">3</span></button></p>
+<p><button id="wrapped" class="icon" aria-label="Share" style="width: 40px; padding: 0"><span style="position: relative; display: block; width: 40px; height: 40px; overflow: hidden"><span class="touch"></span></span></button></p>
+<p><button id="near" aria-label="Near" style="width: 43.4px; height: 43.4px; padding: 0"></button></p></body></html>`;
 
 const browser = findBrowser();
 let server: ReturnType<typeof Bun.serve>;
@@ -380,6 +385,9 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
       '#inert-touch: The "Later" button is 56×40 px on a phone; 44×44 px is easier to tap.',
       '#clipped: The "Skip" button is 51×40 px on a phone; 44×44 px is easier to tap.',
       '#brand: The "Conduit" link is 88×24 px on a phone; 44×44 px is easier to tap.',
+      '#badge: The "Inbox" button is 40×40 px on a phone; 44×44 px is easier to tap.',
+      '#wrapped: The "Share" button is 40×40 px on a phone; 44×44 px is easier to tap.',
+      '#near: The "Near" button is 43×43 px on a phone; 44×44 px is easier to tap.',
     ]);
   }, 120_000);
 

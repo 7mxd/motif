@@ -269,14 +269,23 @@ function installAudit(): boolean {
           height = Math.max(height, r.height);
         }
         // A hit area a component library places inside the control is part of what's tapped: Angular Material puts an empty,
-        // absolutely placed 48 px touch target in its 40 px buttons and its slide toggle. A child that takes no taps, or one the
-        // control clips (overflow other than visible), isn't.
+        // absolutely placed 48 px touch target, centred, in its 40 px buttons and its slide toggle. A child that takes no
+        // taps, one that doesn't cover the control's centre (a corner badge, an open tooltip or menu), or one the control
+        // or a wrapper inside it clips (overflow other than visible), isn't.
         let [left, top, right, bottom] = [rect.left, rect.top, rect.right, rect.bottom];
-        for (const child of style.overflowX === "visible" && style.overflowY === "visible" ? el.querySelectorAll("*") : []) {
+        const [cx, cy] = [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2];
+        const clips = (e: Element) => {
+          const s = getComputedStyle(e);
+          return s.overflowX !== "visible" || s.overflowY !== "visible";
+        };
+        for (const child of clips(el) ? [] : el.querySelectorAll("*")) {
           const cs = getComputedStyle(child);
           if (cs.position !== "absolute" || cs.pointerEvents === "none" || cs.display === "none" || cs.visibility === "hidden") continue;
           const r = child.getBoundingClientRect();
-          if (r.width === 0 || r.height === 0) continue;
+          if (r.width === 0 || r.height === 0 || r.left > cx || r.right < cx || r.top > cy || r.bottom < cy) continue;
+          let clipped = false;
+          for (let p = child.parentElement; p && p !== el; p = p.parentElement) if (clips(p)) clipped = true;
+          if (clipped) continue;
           [left, top, right, bottom] = [Math.min(left, r.left), Math.min(top, r.top), Math.max(right, r.right), Math.max(bottom, r.bottom)];
         }
         width = Math.max(width, right - left);
