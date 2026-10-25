@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CASES, isAngular, isCompose, isFlutter, isPlain, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, needsAngular22, needsBrowser, needsSvelteKit3, needsVite8, selectCases, UNATTENDED, type EvalCase } from "../../tests/evals/cases";
+import { CASES, isAngular, isCompose, isFlutter, isPlain, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, needsAngular21, needsAngular22, needsBrowser, needsSvelteKit3, needsVite8, selectCases, UNATTENDED, type EvalCase } from "../../tests/evals/cases";
 
 const REPO = join(import.meta.dir, "../..");
 const ids = (r: EvalCase[] | { error: string }) => ("error" in r ? r : r.map((c) => c.id));
@@ -182,9 +182,10 @@ describe("the eval cases (spec §13.2)", () => {
     expect(brief).toContain("no design files");
   });
 
-  test("the Node.js floors: Vite 8 for Vue and the Svelte fixtures, SvelteKit 3 for the new Svelte app, Angular 22 for the new Angular app", () => {
+  test("the Node.js floors: Vite 8 for Vue and the Svelte fixtures, SvelteKit 3 for the new Svelte app, Angular 21 for Ataa and Angular 22 for the new Angular app", () => {
     expect(CASES.filter(needsVite8).map((c) => c.id)).toEqual(["b-vue-history", "b-vue-settings", "b-svelte-history", "b-svelte-settings", "c-vue", "c-svelte", "d-darb"]);
     expect(CASES.filter(needsSvelteKit3).map((c) => c.id)).toEqual(["d-nuzha"]);
+    expect(CASES.filter(needsAngular21).map((c) => c.id)).toEqual(["b-angular-history", "b-angular-settings", "c-angular"]);
     expect(CASES.filter(needsAngular22).map((c) => c.id)).toEqual(["d-sanad"]);
   });
 

@@ -151,15 +151,12 @@ describe("before a run", () => {
       const r = (await preflight(p, false, deps, false, false, false, true, { angular22: true })) as { error: string };
       expect([v, r.error]).toEqual([v, expect.stringContaining(`The new Angular app (d-sanad) needs Node.js 22.22.3 or later on Node 22, 24.15 or later on Node 24, or 26 or later, since ng new makes an Angular 22 app and Angular 22 needs it. This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases `)]);
       expect(r.error).toContain("--cases b-settings,");
-      // Ataa is Angular 21, whose Node.js floor is lower: its cases stay among the others.
-      expect(r.error).toContain("b-angular-history,b-angular-settings,");
-      expect(r.error).toContain("c-angular,");
-      expect(r.error).not.toMatch(/--cases .*(sanad|nuzha|svelte|vue)/);
+      expect(r.error).not.toMatch(/--cases .*(angular|sanad|nuzha|svelte|vue)/);
       expect(r.error).not.toMatch(/--cases .*swiftui/);
     }
     for (const v of ["v22.22.3", "v22.30.0", "v24.15.0", "v26.0.0", "v27.1.0"]) {
       const { p, deps } = setup({ node: ok(`${v}\n`) });
-      expect([v, await preflight(p, false, deps, false, false, false, true, { vite8: true, svelteKit3: true, angular22: true })]).toEqual([v, expect.not.objectContaining({ error: expect.anything() })]);
+      expect([v, await preflight(p, false, deps, false, false, false, true, { vite8: true, angular21: true, svelteKit3: true, angular22: true })]).toEqual([v, expect.not.objectContaining({ error: expect.anything() })]);
     }
     // The lower floors are checked first: Node 22.16 is told about the new Svelte app, Node 22.17 about the new Angular one.
     const kit = setup({ node: ok("v22.16.0\n") });
@@ -169,6 +166,26 @@ describe("before a run", () => {
     // Without d-sanad chosen, Node 22.12 is enough.
     const ng21 = setup({ node: ok("v22.12.0\n") });
     expect(await preflight(ng21.p, false, ng21.deps, false, false, false, true, { vite8: true, angular22: false })).not.toHaveProperty("error");
+  });
+
+  test("Ataa's cases need Angular 21's Node.js: 20.19 or later on Node 20, 22.12 or later on Node 22, or 24 or later", async () => {
+    for (const v of ["v20.18.1", "v21.7.3", "v22.11.0", "v23.0.0", "v23.11.1"]) {
+      const { p, deps } = setup({ node: ok(`${v}\n`) });
+      const r = (await preflight(p, false, deps, false, false, false, true, { angular21: true })) as { error: string };
+      expect([v, r.error]).toEqual([v, expect.stringContaining(`The Angular cases on Ataa (b-angular-history, b-angular-settings, c-angular) need Node.js 20.19 or later on Node 20, 22.12 or later on Node 22, or 24 or later, since Ataa is Angular 21 and Angular 21 needs it. This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases `)]);
+      expect(r.error).toContain("--cases b-settings,");
+      expect(r.error).not.toMatch(/--cases .*(angular|sanad)/);
+    }
+    for (const v of ["v20.19.0", "v22.12.0", "v22.14.0", "v24.0.0", "v25.1.0"]) {
+      const { p, deps } = setup({ node: ok(`${v}\n`) });
+      expect([v, await preflight(p, false, deps, false, false, false, true, { angular21: true })]).toEqual([v, expect.not.objectContaining({ error: expect.anything() })]);
+    }
+    // Vite 8's floor is the same but for Node 23, which runs Vite 8 and not Angular 21: Node 23 is told about Ataa.
+    const odd = setup({ node: ok("v23.5.0\n") });
+    expect(await preflight(odd.p, false, odd.deps, false, false, false, true, { vite8: true, angular21: true })).toEqual({ error: expect.stringContaining("The Angular cases on Ataa") });
+    // Without them, Node 23 is enough for the others.
+    const others = setup({ node: ok("v23.5.0\n") });
+    expect(await preflight(others.p, false, others.deps, false, false, false, true, { vite8: true, angular21: false })).not.toHaveProperty("error");
   });
 
   test("a browser is needed only for tests C and D, and is never downloaded for you", async () => {

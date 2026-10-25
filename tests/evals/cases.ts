@@ -76,9 +76,12 @@ export const needsSvelteKit3 = (c: EvalCase): boolean => c.id === "d-nuzha";
  */
 export const isAngular = (c: EvalCase): boolean => c.stack === "angular";
 
+/** A case on Ataa, which is Angular 21: Node.js 20.19 or later on Node 20, 22.12 or later on Node 22, or 24 or later. */
+export const needsAngular21 = (c: EvalCase): boolean => isAngular(c) && !needsAngular22(c);
+
 /**
  * A case whose app is made with `ng new`, which installs the latest Angular (22): Node.js 22.22.3 or later on Node 22,
- * 24.15 or later on Node 24, or 26 or later. Ataa is Angular 21 (Node.js 20.19 or later, 22.12 or later on Node 22, or 24 or later), which isn't checked here.
+ * 24.15 or later on Node 24, or 26 or later.
  */
 export const needsAngular22 = (c: EvalCase): boolean => c.id === "d-sanad";
 

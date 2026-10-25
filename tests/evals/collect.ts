@@ -99,12 +99,14 @@ const ANGULAR_TYPECHECK = "ng build";
 /**
  * The errors an Angular build's output reports, each as its first line: TypeScript's (TS2322) and the template type
  * checker's (NG8002, NG9) are the type check's; any other (a module it couldn't resolve, a stylesheet that didn't compile)
- * is the build's own. Read from the application builder's "[ERROR] …" lines and the older builder's "error TS…" ones.
+ * is the build's own; a template's type error comes as TypeScript's (TS2339), followed by "Error occurs in the template of
+ * component …". Read from the application builder's "X [ERROR] …" lines and the older builder's "error TS…" ones, with the
+ * colour codes ng build writes even into a pipe taken out first.
  */
 export function angularBuildErrors(output: string): { typeErrors: string[]; otherErrors: string[] } {
   const typeErrors: string[] = [];
   const otherErrors: string[] = [];
-  for (const raw of output.split("\n")) {
+  for (const raw of output.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").split("\n")) {
     const line = raw.replace(/\r$/, "");
     const message = /\[ERROR\]\s+(.+)$/.exec(line)?.[1] ?? /\berror\s+((?:TS|NG)-?\d+:.*)$/.exec(line)?.[1];
     if (!message) continue;
@@ -608,20 +610,24 @@ function componentClasses(code: string): { name: string; isDefault: boolean }[] 
 
 /**
  * The pages the routes a diff adds show: the classes named by component: and by loadComponent's .then(m => m.X) or
- * .then(({ X }) => X), and the files a loadComponent imports without .then (their default export), by name.
+ * .then(({ X }) => X), over as many lines as the route takes; and the files a loadComponent imports without .then, or
+ * with .then(m => m.default), whose default export is the page (by path, from the routes file's folder, without .ts).
  */
 function routedPages(files: DiffFile[]): { classes: Set<string>; defaultFiles: Set<string> } {
-  const code = maskComments(files.flatMap(reallyAdded).join("\n"), "script");
   const classes = new Set<string>();
   const defaultFiles = new Set<string>();
-  for (const m of code.matchAll(/\bcomponent\s*:\s*([A-Za-z_$][\w$]*)/g)) classes.add(m[1]!);
-  for (const m of code.matchAll(/\bloadComponent\s*:\s*(?:async\s*)?\(\s*\)\s*=>\s*import\s*\(\s*(["'`])([^"'`]+)\1\s*\)((?:(?!\bloadComponent\b)[^\n])*)/g)) {
-    const rest = m[3]!;
-    const named =
-      /\.then\s*\(\s*\(?\s*([\w$]+)\s*\)?\s*=>\s*\1\s*\.\s*([\w$]+)/.exec(rest)?.[2] ??
-      /\.then\s*\(\s*\(\s*\{\s*([\w$]+)\s*\}\s*\)\s*=>\s*\1\b/.exec(rest)?.[1];
-    if (named) classes.add(named);
-    else defaultFiles.add(posix.basename(m[2]!).replace(/\.ts$/, ""));
+  for (const f of files) {
+    const code = maskComments(reallyAdded(f).join("\n"), "script");
+    for (const m of code.matchAll(/\bcomponent\s*:\s*([A-Za-z_$][\w$]*)/g)) classes.add(m[1]!);
+    for (const m of code.matchAll(/\bloadComponent\s*:\s*(?:async\s*)?\(\s*\)\s*=>\s*import\s*\(\s*(["'`])([^"'`]+)\1\s*\)((?:(?!\bloadComponent\b)[\s\S])*)/g)) {
+      // What follows the import, up to the route's own end: a .then at the start of it, if any (the next route's isn't).
+      const then = /^\s*\.then\s*\(/.test(m[3]!) ? m[3]! : "";
+      const named =
+        /^\s*\.then\s*\(\s*\(?\s*([\w$]+)\s*\)?\s*=>\s*\1\s*\.\s*([\w$]+)/.exec(then)?.[2] ??
+        /^\s*\.then\s*\(\s*\(\s*\{\s*([\w$]+)\s*\}\s*\)\s*=>\s*\1\b/.exec(then)?.[1];
+      if (named && named !== "default") classes.add(named);
+      else defaultFiles.add(posix.join(posix.dirname(f.path), m[2]!).replace(/\.ts$/, ""));
+    }
   }
   return { classes, defaultFiles };
 }
@@ -638,7 +644,7 @@ export function angularComponents(diff: string): AngularComponents {
   const found: AngularComponents = { newComponents: [], screens: [], screenParts: [], notUi: [] };
   const seen = new Set<string>();
   for (const f of all.filter((x) => x.isNew && !x.deleted && /(?:^|\/)src\/app\//.test(x.path))) {
-    const stem = basename(f.path, ".ts");
+    const stem = f.path.replace(/\.ts$/, "");
     for (const c of componentClasses(reallyAdded(f).join("\n"))) {
       if (moved.has(c.name) || seen.has(c.name)) continue;
       seen.add(c.name);

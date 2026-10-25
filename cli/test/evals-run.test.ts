@@ -114,12 +114,12 @@ describe("the eval runner", () => {
     await runEvals(["--cases", "c-swiftui,b-swiftui-orders"], h.deps, h.where);
   });
 
-  test("preflight is told which Node.js floors the chosen cases need: Vite 8 (Vue, Svelte), SvelteKit 3 (d-nuzha) and Angular 22 (d-sanad)", async () => {
-    const wanted: [string, { vite8: boolean; svelteKit3: boolean; angular22: boolean }][] = [
-      ["b-vue-history", { vite8: true, svelteKit3: false, angular22: false }], ["b-search,c-vue", { vite8: true, svelteKit3: false, angular22: false }],
-      ["c-svelte", { vite8: true, svelteKit3: false, angular22: false }], ["d-nuzha", { vite8: false, svelteKit3: true, angular22: false }],
-      ["b-svelte-history,d-nuzha", { vite8: true, svelteKit3: true, angular22: false }], ["b-search,b-rn-orders", { vite8: false, svelteKit3: false, angular22: false }],
-      ["b-angular-history,c-angular", { vite8: false, svelteKit3: false, angular22: false }], ["d-sanad", { vite8: false, svelteKit3: false, angular22: true }],
+  test("preflight is told which Node.js floors the chosen cases need: Vite 8 (Vue, Svelte), SvelteKit 3 (d-nuzha), Angular 21 (Ataa) and Angular 22 (d-sanad)", async () => {
+    const wanted: [string, { vite8: boolean; svelteKit3: boolean; angular21: boolean; angular22: boolean }][] = [
+      ["b-vue-history", { vite8: true, svelteKit3: false, angular21: false, angular22: false }], ["b-search,c-vue", { vite8: true, svelteKit3: false, angular21: false, angular22: false }],
+      ["c-svelte", { vite8: true, svelteKit3: false, angular21: false, angular22: false }], ["d-nuzha", { vite8: false, svelteKit3: true, angular21: false, angular22: false }],
+      ["b-svelte-history,d-nuzha", { vite8: true, svelteKit3: true, angular21: false, angular22: false }], ["b-search,b-rn-orders", { vite8: false, svelteKit3: false, angular21: false, angular22: false }],
+      ["b-angular-history,c-angular", { vite8: false, svelteKit3: false, angular21: true, angular22: false }], ["d-sanad", { vite8: false, svelteKit3: false, angular21: false, angular22: true }],
     ];
     for (const [ids, needs] of wanted) {
       const seen: unknown[] = [];

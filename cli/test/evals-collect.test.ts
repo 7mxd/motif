@@ -1097,6 +1097,33 @@ describe("an Angular build's errors", () => {
     ]);
     expect(angularBuildErrors("Initial chunk files | Names | Raw size\nmain.js | main | 200 kB\nApplication bundle generation complete.")).toEqual({ typeErrors: [], otherErrors: [] });
   });
+
+  // Angular CLI 21.2's own output, piped (not a terminal): it is coloured all the same.
+  const REAL = {
+    ts: "Application bundle generation failed. [10.586 seconds] - 2026-10-25T16:45:31.892Z\n\n\u001b[1m\u001b[31m\u001b[31mX \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mTS2322: Type 'string' is not assignable to type 'number'.\u001b[0m \u001b[1m\u001b[35m[plugin angular-compiler]\u001b[0m\n\n    src/app/app.ts:14:13:\n\u001b[37m      14 │ export const \u001b[32mbroken\u001b[37m: number = \"not a number\";\n         ╵              \u001b[32m~~~~~~\u001b[0m\n\n\u001b[39m\u001b[22m\n",
+    template: "Application bundle generation failed. [2.424 seconds] - 2026-10-25T16:45:47.881Z\n\n\u001b[1m\u001b[31m\u001b[31mX \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mTS2339: Property 'missingThing' does not exist on type 'App'.\u001b[0m \u001b[1m\u001b[35m[plugin angular-compiler]\u001b[0m\n\n    src/app/app.html:7:6:\n\u001b[37m      7 │ <p>{{ \u001b[32mmissingThing\u001b[37m.value }}</p>\n        ╵       \u001b[32m~~~~~~~~~~~~\u001b[0m\n\n  Error occurs in the template of component App.\n\n    src/app/app.ts:7:15:\n\u001b[37m      7 │   templateUrl: \u001b[32m'./app.html'\u001b[37m,\n        ╵                \u001b[32m~~~~~~~~~~~~\u001b[0m\n\n\u001b[39m\u001b[22m\n",
+    bundle: "Application bundle generation failed. [2.169 seconds] - 2026-10-25T16:45:51.721Z\n\n\u001b[1m\u001b[31m\u001b[31mX \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mCould not resolve \"./does-not-exist\"\u001b[0m\n\n    src/app/app.ts:3:7:\n\u001b[37m      3 │ import \u001b[32m'./does-not-exist'\u001b[37m;\n        ╵        \u001b[32m~~~~~~~~~~~~~~~~~~\u001b[0m\n\n\u001b[39m\u001b[22m\n",
+  };
+  test("ng build's real output, colour codes and all: a TypeScript error, a template's (TS2339 in a template), and a missing import", () => {
+    expect(angularBuildErrors(REAL.ts)).toEqual({ typeErrors: ["TS2322: Type 'string' is not assignable to type 'number'."], otherErrors: [] });
+    expect(angularBuildErrors(REAL.template)).toEqual({ typeErrors: ["TS2339: Property 'missingThing' does not exist on type 'App'."], otherErrors: [] });
+    expect(angularBuildErrors(REAL.bundle)).toEqual({ typeErrors: [], otherErrors: ["Could not resolve \"./does-not-exist\""] });
+  });
+
+  test("graded from those logs: a type error counts once, as the type check's; a missing import is the build's alone", async () => {
+    const failing = (output: string): Run => async (cmd, cwd, t, env) => {
+      if (cmd[0] === "git") return runCmd(cmd, cwd, t, env);
+      return cmd.join(" ") === "npm run build" ? { code: 1, stdout: output, stderr: "", timedOut: false } : { code: 0, stdout: "ok", stderr: "", timedOut: false };
+    };
+    const ws = await prepareWorkspace(byId("b-angular-history"), join(tempDir("motif-col-"), "bngreal"), run);
+    const failed = async (output: string, name: string) => {
+      const f = await collectB(byId("b-angular-history"), ws, { run: failing(output), motif, judge: noJudge }, join(ws.dir, name));
+      return gradeB(f).criteria.filter((c) => !c.pass && c.id !== "feature" && c.id !== "renders").map((c) => c.id);
+    };
+    expect(await failed(REAL.ts, "ts")).toEqual(["typecheck"]);
+    expect(await failed(REAL.template, "template")).toEqual(["typecheck"]);
+    expect(await failed(REAL.bundle, "bundle")).toEqual(["build"]);
+  });
 });
 
 describe("new components on Angular, from the session's diff", () => {
@@ -1135,6 +1162,31 @@ describe("new components on Angular, from the session's diff", () => {
       ]),
     ].join("\n");
     expect(angularComponents(diff)).toEqual({ newComponents: [], screens: ["Settings", "About", "Help"], screenParts: [], notUi: [] });
+  });
+
+  test("a route written over several lines (as prettier wraps it), and a default export by .then(m => m.default) or no .then at all", () => {
+    const diff = [
+      newFile("src/app/history/history.ts", component("History")),
+      newFile("src/app/reports/reports.ts", component("Reports", "default ")),
+      newFile("src/app/help/help.ts", component("Help", "default ")),
+      // Not the page: the same name in another folder.
+      newFile("src/app/widgets/help.ts", component("HelpWidget", "default ")),
+      routes([
+        "  {",
+        "    path: 'history',",
+        "    loadComponent: () =>",
+        "      import('./history/history').then(",
+        "        (m) => m.History,",
+        "      ),",
+        "  },",
+        "  { path: 'reports', loadComponent: () => import('./reports/reports').then((m) => m.default) },",
+        "  {",
+        "    path: 'help',",
+        "    loadComponent: () => import('./help/help'),",
+        "  },",
+      ]),
+    ].join("\n");
+    expect(angularComponents(diff)).toEqual({ newComponents: ["HelpWidget"], screens: ["History", "Reports", "Help"], screenParts: [], notUi: [] });
   });
 
   test("componentFacts routes an Angular case here and records the names DESIGN.md mentions", () => {
