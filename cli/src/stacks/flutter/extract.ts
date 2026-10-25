@@ -51,8 +51,6 @@ export const GENERIC_WORDS = new Set(["theme", "palette", "colors", "colours", "
 const IDENT = "[A-Za-z_$][\\w$]*";
 const escape = (s: string) => s.replace(/[$]/g, "\\$");
 
-export { kebab, title, words };
-
 /**
  * True when a declaration at `index` is a palette's: a top-level one, or a static member of a class (mixin, extension)
  * body, not a variable inside a function or method.

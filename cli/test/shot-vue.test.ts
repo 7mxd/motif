@@ -259,12 +259,12 @@ describe("motif shot: a Vue app", () => {
     expect(fixes.accessibility).toBe("Give it a visible label or an accessible name (aria-label, or alt for an image).");
   });
 
-  test("Angular is still one Motif can't start", async () => {
-    const files = { "package.json": pkg({ "@angular/core": "^19.0.0" }), "package-lock.json": "{}", "node_modules/.keep": "", "src/app/app.component.ts": "" };
+  test("a stack with no way to start is still one Motif can't start", async () => {
+    const files = { "design/motif.json": JSON.stringify({ apps: [{ path: ".", stack: "compose-multiplatform" }] }), "package.json": pkg({}), "package-lock.json": "{}", "node_modules/.keep": "" };
     const { deps, calls } = fakes();
     const r = await runShot(makeProject(files), ctx(), deps);
     expect(r.exitCode).not.toBe(0);
-    expect(r.text).toContain("Motif can't start");
+    expect(r.text).toContain("Motif can't start Compose Multiplatform apps");
     expect(calls.started).toHaveLength(0);
   });
 });

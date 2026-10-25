@@ -56,8 +56,8 @@ const fakeDeps = (run?: (cmd: string[]) => { code: number; stdout: string }) => 
 });
 
 describe("the web-stack registry", () => {
-  test("Vue and Svelte are registered and the others are not", () => {
-    expect(webStacks().map((s) => s.id)).toEqual(["vue", "svelte"]);
+  test("Vue, Svelte and Angular are registered and the others are not", () => {
+    expect(webStacks().map((s) => s.id)).toEqual(["vue", "svelte", "angular"]);
     expect(svelte().extensions).toEqual([".svelte"]);
     expect(webStack("react-web")).toBeNull();
   });

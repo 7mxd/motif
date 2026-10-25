@@ -8,6 +8,7 @@ import type { ThemeSet } from "../generate/theme";
 import type { IssueRule } from "../shot/audit";
 import type { TailwindVersion } from "./react-web/generate";
 import type { RouteDiscovery } from "./react-web/routes";
+import { ANGULAR } from "./angular";
 import { SVELTE } from "./svelte";
 import { VUE } from "./vue";
 
@@ -19,8 +20,8 @@ export interface WebFixContext {
 }
 
 /**
- * What a web framework with its own file format (Vue's .vue; later Svelte and Angular) adds to Motif. React web and plain
- * web keep their own code paths and aren't registered here. Each stack fills in the parts it supports.
+ * What a web framework with its own file format (Vue's .vue, Svelte's .svelte, Angular's templates) adds to Motif. React
+ * web and plain web keep their own code paths and aren't registered here. Each stack fills in the parts it supports.
  */
 export interface WebStack {
   id: StackId;
@@ -54,6 +55,11 @@ export interface WebStack {
    * or undefined when any answer means it's ready: Motif waits for another answer before drawing.
    */
   buildingStatus?(appDir: string): number | undefined;
+  /**
+   * The package.json script that starts this app's dev server and the arguments it takes after -- (a port: Motif picks a
+   * free one), or null when the app has none; without this hook, the app's "dev" script runs.
+   */
+  devScript?(appDir: string, port: number): { script: string; args: string[] } | null;
   /** Variables this app's dev server needs besides the usual, or undefined for none. */
   devEnv?(appDir: string): Record<string, string> | undefined;
   /** How the framework sets a design variant, for the note when a variant looks the same as the default. */
@@ -66,7 +72,7 @@ export interface WebStack {
   unsupported?(appDir: string): string | null;
 }
 
-const STACKS = new Map<StackId, WebStack>([[VUE.id, VUE], [SVELTE.id, SVELTE]]);
+const STACKS = new Map<StackId, WebStack>([[VUE.id, VUE], [SVELTE.id, SVELTE], [ANGULAR.id, ANGULAR]]);
 
 /** Every web stack of this kind Motif has, registered. */
 export function webStacks(): WebStack[] {

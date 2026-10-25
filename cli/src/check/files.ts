@@ -71,6 +71,9 @@ export const VUE_IGNORES = [
 /** A Svelte or SvelteKit app's build output, caches and generated types: never the team's own code. */
 export const SVELTE_IGNORES = ["/.svelte-kit/", "/build/", "/.vercel/", "/.netlify/", "/.output/", "/dist/", "/.motif/", "*.d.ts"];
 
+/** An Angular app's build output, caches, compiled TypeScript, coverage, tests and generated types: never the team's own code. */
+export const ANGULAR_IGNORES = ["/.angular/", "/dist/", "/out-tsc/", "/coverage/", "/.motif/", "*.d.ts", "*.spec.ts"];
+
 export const MAX_FILE_BYTES = 512 * 1024;
 const MAX_LINE_LENGTH = 3000;
 
@@ -170,6 +173,11 @@ export function listVueFiles(root: string, appPath: string, opts: { paths?: stri
 /** A Svelte or SvelteKit app's .svelte files, scripts, styles and HTML, without its build output and generated types. */
 export function listSvelteFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
   return listSourceFiles(root, appPath, { ...opts, langs: { ...WEB_LANGS, ".svelte": "markup" }, extraIgnores: SVELTE_IGNORES });
+}
+
+/** An Angular app's TypeScript, templates and styles (.css, .scss, .sass, .less), without its build output, caches and tests. */
+export function listAngularFiles(root: string, appPath: string, opts: { paths?: string[]; ignore?: string[] } = {}): SourceFile[] {
+  return listSourceFiles(root, appPath, { ...opts, langs: WEB_LANGS, extraIgnores: ANGULAR_IGNORES });
 }
 
 export function listSourceFiles(

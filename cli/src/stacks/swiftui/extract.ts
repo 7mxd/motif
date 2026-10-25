@@ -10,8 +10,8 @@ import type { Occurrences, Variable } from "../../extract/draft";
 import { axisWeightRanges, rootOf } from "../../extract/own-fonts";
 import { PLATFORM_LATIN } from "../../generate/theme-fonts";
 import { bundledCoverage } from "../../preview/font-list";
-import { locator } from "../../text";
-import { kebab as dartKebab, pairInstances, title, type Paired } from "../flutter/extract";
+import { kebab as dartKebab, locator, title } from "../../text";
+import { pairInstances, type Paired } from "../flutter/extract";
 import { appFontFiles, fontKey, isSystemFamily, type FontFile } from "./font-files";
 import { CUSTOM_FONT, scanSwift } from "./rules";
 

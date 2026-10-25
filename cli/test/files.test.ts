@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { FLUTTER_IGNORES, listDartFiles, listKotlinFiles, listRnFiles, listSourceFiles, listVueFiles, listSvelteFiles, listSwiftFiles, SWIFTUI_IGNORES } from "../src/check/files";
+import { ANGULAR_IGNORES, FLUTTER_IGNORES, listAngularFiles, listDartFiles, listKotlinFiles, listRnFiles, listSourceFiles, listVueFiles, listSvelteFiles, listSwiftFiles, SWIFTUI_IGNORES } from "../src/check/files";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
 
@@ -217,6 +217,27 @@ describe("listSvelteFiles", () => {
   test("an app inside a monorepo keeps its own build folders out", () => {
     const root = makeProject({ "package.json": "{}", "apps/web/src/routes/+page.svelte": "x", "apps/web/.svelte-kit/a.svelte": "x", "apps/web/build/x.js": "x" });
     expect(paths(listSvelteFiles(root, "apps/web"))).toEqual(["apps/web/src/routes/+page.svelte"]);
+  });
+});
+
+describe("listAngularFiles", () => {
+  test("reads TypeScript, templates and styles, not build output, caches, specs, types or config (app.config.ts too)", () => {
+    expect(ANGULAR_IGNORES).toEqual(["/.angular/", "/dist/", "/out-tsc/", "/coverage/", "/.motif/", "*.d.ts", "*.spec.ts"]);
+    const root = makeProject({
+      "package.json": "{}", "angular.json": "{}", "tsconfig.json": "{}",
+      "src/main.ts": "x", "src/index.html": "x", "src/styles.scss": "x", "src/theme.sass": "x", "src/legacy.less": "x", "src/app/app.ts": "x", "src/app/app.html": "x", "src/app/app.css": "x",
+      "src/app/app.spec.ts": "x", "src/typings.d.ts": "x", ".angular/cache/a.js": "x", "dist/ng/main.js": "x", "out-tsc/app/main.js": "x", "coverage/index.html": "x", ".motif/x.ts": "x",
+      "public/favicon.ico": "x", "src/app/app.config.ts": "x",
+    });
+    const files = listAngularFiles(root, ".");
+    expect(paths(files)).toEqual(["src/app/app.css", "src/app/app.html", "src/app/app.ts", "src/index.html", "src/legacy.less", "src/main.ts", "src/styles.scss", "src/theme.sass"]);
+    expect(files.find((f) => f.path === "src/app/app.html")!.lang).toBe("markup");
+    expect(files.find((f) => f.path === "src/styles.scss")!.lang).toBe("css");
+  });
+
+  test("an app inside a monorepo keeps its own build folders out", () => {
+    const root = makeProject({ "package.json": "{}", "apps/web/src/app/app.ts": "x", "apps/web/.angular/a.ts": "x", "apps/web/out-tsc/b.js": "x", "apps/web/coverage/c.html": "x" });
+    expect(paths(listAngularFiles(root, "apps/web"))).toEqual(["apps/web/src/app/app.ts"]);
   });
 });
 

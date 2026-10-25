@@ -430,7 +430,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     site = deps.serveStatic(siteFolderPath);
     baseUrl = site.url;
   } else if (!baseUrl) {
-    const how = deps.devCommand(appDir);
+    const how = deps.devCommand(appDir, web?.devScript ? { devScript: web.devScript.bind(web) } : {});
     const webStartLimit = web?.startTimeoutMs?.(appDir);
     if ("error" in how) return usage(how.error, { error: "cant-start" });
     const webEnv = web?.devEnv?.(appDir);

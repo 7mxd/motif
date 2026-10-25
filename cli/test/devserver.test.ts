@@ -115,6 +115,47 @@ describe("devCommand", () => {
   });
 });
 
+describe("devCommand with a web stack's dev script", () => {
+  const ng = (scripts: Record<string, string>, files: Record<string, string> = {}) =>
+    makeProject({ "package.json": JSON.stringify({ scripts }), "node_modules/.keep": "", ...files });
+  const which = has(["bun", "pnpm", "yarn", "npm", "node"]);
+  const start = (_dir: string, port: number) => ({ script: "start", args: ["--port", String(port)] });
+
+  test("without the hook, the dev script runs as before", () => {
+    expect(devCommand(app({}), { platform: "linux", which, port: 4321 })).toMatchObject({ command: ["/usr/bin/npm", "run", "dev"], display: "npm run dev" });
+  });
+
+  test("runs the script the hook names, its arguments after --, through the package manager", () => {
+    const dir = ng({ start: "ng serve" });
+    expect(devCommand(dir, { platform: "linux", which, port: 4321, devScript: start })).toMatchObject({
+      command: ["/usr/bin/npm", "run", "start", "--", "--port", "4321"], display: "npm run start -- --port 4321", packageManager: "npm",
+    });
+    expect(devCommand(ng({ start: "ng serve" }, { "pnpm-lock.yaml": "" }), { platform: "linux", which, port: 4321, devScript: start })).toMatchObject({ display: "pnpm run start -- --port 4321" });
+    expect(devCommand(dir, { platform: "win32", which, vars: {}, port: 4321, devScript: start })).toMatchObject({
+      command: ["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", "npm run start -- --port 4321"],
+    });
+  });
+
+  test("the hook is given the port Motif chose, or a free one", () => {
+    const ports: number[] = [];
+    const record = (_dir: string, port: number) => (ports.push(port), { script: "start", args: [] });
+    expect(devCommand(ng({ start: "ng serve" }), { platform: "linux", which, port: 4321, devScript: record })).toMatchObject({ display: "npm run start" });
+    devCommand(ng({ start: "ng serve" }), { platform: "linux", which, devScript: record });
+    expect(ports[0]).toBe(4321);
+    expect(ports[1]).toBeGreaterThan(1023);
+  });
+
+  test("a script the app doesn't have is named in the refusal; no script at all is refused too", () => {
+    const error = (r: ReturnType<typeof devCommand>) => ("error" in r ? r.error : "");
+    expect(error(devCommand(ng({ dev: "vite" }), { platform: "linux", which, devScript: start }))).toBe(
+      'This app has no "start" script in package.json. Start it yourself and pass its address with --url.',
+    );
+    expect(error(devCommand(ng({ start: "node server.js" }), { platform: "linux", which, devScript: () => null }))).toBe(
+      "This app has no script in package.json that starts its dev server. Start it yourself and pass its address with --url.",
+    );
+  });
+});
+
 describe("devCommand for an Expo app", () => {
   const expo = (files: Record<string, string>, scripts: Record<string, string> = {}) =>
     makeProject({ "package.json": JSON.stringify({ scripts, dependencies: { expo: "~52.0.0" } }), "node_modules/.keep": "", ...files });

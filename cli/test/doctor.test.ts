@@ -186,6 +186,40 @@ describe("runDoctor", () => {
     expect(item(current, "svelte:.")!.status).toBe("ok");
   });
 
+  test("an Angular app gets its version line beside the app's (2K Task 1)", async () => {
+    const dir = makeProject({
+      "package.json": JSON.stringify({ dependencies: { "@angular/core": "^21.2.0" } }),
+      "angular.json": JSON.stringify({ projects: { web: { projectType: "application", sourceRoot: "src", architect: { build: { options: { browser: "src/main.ts" } } } } } }),
+      "src/main.ts": "bootstrapApplication(App, appConfig);\n",
+    });
+    const items = (await runDoctor(dir, deps())).data.items as DoctorItem[];
+    expect(item(items, "angular:.")).toMatchObject({ status: "ok", label: "Angular (this folder)", detail: "Angular 21.2 with standalone components." });
+  });
+
+  test("Angular 22 on a Node.js outside its engines range is told to update", async () => {
+    const dir = makeProject({ "package.json": JSON.stringify({ dependencies: { "@angular/core": "^22.2.0" } }) });
+    const old = (await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v22.14.0\n" }) }))).data.items as DoctorItem[];
+    expect(item(old, "angular:.")).toMatchObject({
+      status: "needed",
+      detail: "Angular 22 needs Node.js 22.22.3 or later (or 24.15 or later); this computer has 22.14.0. Install a newer Node.js from nodejs.org.",
+    });
+    const current = (await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v24.22.1\n" }) }))).data.items as DoctorItem[];
+    expect(item(current, "angular:.")!.status).toBe("ok");
+  });
+
+  test("an Angular 14 app is told Angular 14 isn't supported, once, and what still works", async () => {
+    const dir = makeProject({ "package.json": JSON.stringify({ dependencies: { "@angular/core": "^14.2.0" } }) });
+    const r = await runDoctor(dir, deps());
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toBeUndefined();
+    expect(item(items, "angular:.")).toMatchObject({
+      status: "optional",
+      detail: "Angular 14 isn't supported: Motif supports Angular 15 and later. Theme code (CSS only), checks and drafts still work; for screenshots, start the app and pass its address to motif shot --url.",
+    });
+    expect(r.text).not.toContain("coming soon");
+    expect(r.text.match(/Angular 14 isn't supported/g)).toHaveLength(1);
+  });
+
   describe("the Flutter toolchain", () => {
     const flutterApp = () => {
       const dir = tempDir("motif-flutter-sdk-");

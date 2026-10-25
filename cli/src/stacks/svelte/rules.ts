@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import { locator } from "../../text";
 import type { SourceFile } from "../../check/files";
+import { CSS_ANIMATION, reducedMotionReporter, REDUCED_QUERY, TW_ANIMATION } from "../../check/reduced-motion";
 import { keepRanges, maskComments } from "../../check/mask";
 import { makeHit, type Hit, type Scale } from "../../check/types";
 import { scanColors } from "../../check/rules/colors";
@@ -123,9 +124,6 @@ export function scanSvelte(source: SourceFile, scale: Scale | null): Hit[] {
 /** transition:fly, in:fade, out:slide, animate:flip on an element's tag (the markup view blanks every {…} value, so a > inside one can't end the tag). */
 const DIRECTIVE = /<[\w:.-]+(?=[\s/>])[^<>]*?\s(?:transition|in|out|animate):[A-Za-z_]/;
 const MOTION_CLASSES = /import\s+(?:type\s+)?[^;"']*\b(?:Spring|Tween|spring|tweened)\b[^;"']*from\s*["']svelte\/motion["']/;
-const CSS_ANIMATION = /(?<![\w-])(?:transition|animation)(?:-[a-z-]+)?\s*:/;
-const TW_ANIMATION = /(?<![\w-])(?:[\w-]+:)*(?:transition-(?:all|colors|opacity|shadow|transform)|animate-[\w-]+)(?![\w-])/;
-const REDUCED_QUERY = /prefers-reduced-motion/;
 /** prefersReducedMotion from svelte/motion (Svelte 5.7), or a matchMedia query of the setting: what lets script-driven animations follow it. */
 const SCRIPT_RESPECTS = /prefersReducedMotion|prefers-reduced-motion/;
 
@@ -138,10 +136,7 @@ const SCRIPT_RESPECTS = /prefersReducedMotion|prefers-reduced-motion/;
 export function svelteReducedMotionHits(files: SourceFile[], generated: SourceFile[]): Hit[] {
   const everything = [...files, ...generated];
   const hits: Hit[] = [];
-  const report = (file: SourceFile, patterns: RegExp[], text: string, message: string, fix: string) => {
-    const index = Math.min(...patterns.map((p) => file.text.search(p)).filter((i) => i >= 0));
-    hits.push(makeHit(file, locator(file.text), index, { rule: "reduced-motion", text, violation: true, message, fix }));
-  };
+  const report = reducedMotionReporter(hits);
 
   const scripted = files.find((f) => (f.lang === "script" && (IMPORTS_MOTION.test(maskComments(f.text, f.lang)) || MOTION_CLASSES.test(maskComments(f.text, f.lang)))) || (f.lang === "markup" && DIRECTIVE.test(maskComments(f.text, f.lang))));
   if (scripted && !everything.some((f) => f.lang === "script" && SCRIPT_RESPECTS.test(maskComments(f.text, f.lang)))) {

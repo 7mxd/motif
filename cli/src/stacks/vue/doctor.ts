@@ -1,7 +1,8 @@
 import { resolve } from "node:path";
 import type { DoctorDeps, DoctorItem } from "../../commands/doctor";
 import type { AppInfo } from "../../detect/stacks";
-import { declared, packageVersion, type PackageVersion } from "../../project/package";
+import { declared, packageVersion } from "../../project/package";
+import { NO_VERSION, shown } from "../web-doctor";
 import { isNuxt, vueMajor } from "./project";
 
 /** What doctor says for a Vue 2 app (and Nuxt 2), or null for a Vue the app can use. */
@@ -11,9 +12,6 @@ export function vueUnsupported(appDir: string): string | null {
 
 const VUE_2 =
   "Vue 2 isn't supported (it reached its end of life in 2023): Motif supports Vue 3 and Nuxt 3 or later. Theme code (CSS only), checks and drafts still work; for screenshots, start the app and pass its address to motif shot --url.";
-
-const shown = (v: PackageVersion | null) => (v === null ? "" : v.minor === null ? ` ${v.major}` : ` ${v.major}.${v.minor}`);
-const NO_VERSION = " (version not found in package.json)";
 
 /** One item per Vue app: its Vue or Nuxt version, or that Vue 2 isn't supported and what still works. */
 export function vueDoctor(_deps: DoctorDeps, ctx: { root: string; apps: AppInfo[] }): DoctorItem[] {

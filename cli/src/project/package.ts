@@ -4,10 +4,14 @@ import { stripBom } from "../text";
 
 /** What an app's package.json and node_modules say: declared ranges, installed versions, the package manager. */
 
-function readJson(path: string): Record<string, unknown> | null {
+/**
+ * A JSON file's object (or array), or null when the file is missing, isn't JSON, or holds a plain value. T describes
+ * what the caller expects to find; nothing checks it, so its fields are best typed as optional and unknown.
+ */
+export function readJson<T extends object = Record<string, unknown>>(path: string): T | null {
   try {
     const v = JSON.parse(stripBom(readFileSync(path, "utf8")));
-    return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+    return v && typeof v === "object" ? (v as T) : null;
   } catch {
     return null;
   }
