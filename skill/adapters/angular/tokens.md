@@ -100,7 +100,35 @@ export class VariantService {
 }
 ```
 
-Inject the service in the root component (`private readonly variant = inject(VariantService);` in `app.ts`), so it runs before the first render on the server and in the browser; a settings screen calls `choose()`. `setAttribute` works on the server's document as on the browser's. A prerendered page has no request: the browser applies the saved variant when the app starts. Set both attributes on `<html>`: the variant selectors are scoped to `:root`.
+Create the service when the app starts, in `src/app/app.config.ts`, so it sets the attribute before the first render on the server and in the browser (`provideAppInitializer` is Angular 19 and later; before that, an `APP_INITIALIZER` provider); a settings screen calls `choose()`:
+
+```ts
+import { ApplicationConfig, inject, provideAppInitializer } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { routes } from './app.routes';
+import { VariantService } from './variant.service';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    provideAppInitializer(() => {
+      inject(VariantService);
+    }),
+  ],
+};
+```
+
+`setAttribute` works on the server's document as on the browser's. A prerendered page has no request, and `ng new --ssr` prerenders every route by default (`renderMode: RenderMode.Prerender` in `src/app/app.routes.server.ts`): such a page shows the default variant until the browser applies the saved one. Render the routes whose first paint depends on the variant on the server for each request instead:
+
+```ts
+import { RenderMode, ServerRoute } from '@angular/ssr';
+
+export const serverRoutes: ServerRoute[] = [
+  { path: '**', renderMode: RenderMode.Server },
+];
+```
+
+(Name the routes, rather than `**`, to keep prerendering the rest.) Set both attributes on `<html>`: the variant selectors are scoped to `:root`.
 
 ## Fonts
 
@@ -110,10 +138,9 @@ Inject the service in the root component (`private readonly variant = inject(Var
 npm install @fontsource/onest
 ```
 
-In `src/styles.css`, after the Motif import:
+In `src/styles.css`, right after the Motif import of [the wiring above](#wiring-it-in-once) (`motif.css`, or with Tailwind `motif.tailwind.css`, which already imports it; don't add the other):
 
 ```css
-@import "./styles/motif.css";
 @import "@fontsource/onest/400.css";
 @import "@fontsource/onest/600.css";
 ```

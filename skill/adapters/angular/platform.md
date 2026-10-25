@@ -54,7 +54,7 @@ export class App {
 
 An app that switches language while it runs (with a runtime library such as Transloco or ngx-translate) sets the same two attributes whenever the language changes. Keep Arabic and English lengths in mind: text grows by a third.
 
-**The CDK and Angular Material** read the direction through `Directionality` from `@angular/cdk/bidi`, which takes `dir` from `<html>` or `<body>` when the app starts. For a direction that changes while the app runs, put `[dir]="dir()"` on an element that wraps the app, with the CDK's `Dir` directive (`imports: [BidiModule]`), so menus, dialogs and sliders follow. In your own components, read `inject(Directionality).value` rather than the DOM, and `valueSignal` (or `change`) to follow it.
+**The CDK and Angular Material** read the direction through `Directionality` from `@angular/cdk/bidi`. The CDK is a package of its own, which `ng new` doesn't install: `ng add @angular/cdk` (or `npm install @angular/cdk`); Angular Material brings it. `Directionality` takes `dir` from `<html>` or `<body>` when the app starts. For a direction that changes while the app runs, put `[dir]="dir()"` on an element that wraps the app, with the CDK's `Dir` directive (`imports: [BidiModule]`), so menus, dialogs and sliders follow. In your own components, read `inject(Directionality).value` rather than the DOM; to follow it, read its `valueSignal` (CDK 20 and later), or on older versions subscribe to its `change` (`toSignal(dir.change, { initialValue: dir.value })`).
 
 ## Server rendering
 

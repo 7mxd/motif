@@ -32,7 +32,7 @@ To list what exists (the first step of adding a feature), read the folders under
 `src/app/button/button.ts`:
 
 ```ts
-import { Component, input } from '@angular/core';
+import { Component, booleanAttribute, input } from '@angular/core';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
@@ -51,8 +51,8 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 })
 export class Button {
   readonly variant = input<ButtonVariant>('primary');
-  readonly loading = input(false);
-  readonly disabled = input(false);
+  readonly loading = input(false, { transform: booleanAttribute });
+  readonly disabled = input(false, { transform: booleanAttribute });
 }
 ```
 
@@ -121,7 +121,7 @@ export class Button {
 }
 ```
 
-Use it on a real button, which keeps every attribute and event of its own: `<button appButton variant="secondary" (click)="save()">Save</button>`, with `Button` in the page's `imports`. Everything here comes from the theme: the colours, the spacing, the corner radius, the label type role and the press timing. Its states are the element's own: `:hover`, `:focus-visible`, `:disabled`, pressed with `:active`, and loading with `aria-busy` and a spinner. For a press spring, use Motion ([motion](motion.md)).
+Use it on a real button, which keeps every attribute and event of its own: `<button appButton variant="secondary" (click)="save()">Save</button>`, `<button appButton disabled>Save</button>` or `<button appButton [loading]="saving()">Save</button>`, with `Button` in the page's `imports`. `booleanAttribute` lets `disabled` and `loading` be written as plain attributes, as on `<button>` itself; without it, `disabled` with no value fails `ng build`'s template check. Everything here comes from the theme: the colours, the spacing, the corner radius, the label type role and the press timing. Its states are the element's own: `:hover`, `:focus-visible`, `:disabled`, pressed with `:active`, and loading with `aria-busy` and a spinner. For a press spring, use Motion ([motion](motion.md)).
 
 ## Example: IconButton
 
