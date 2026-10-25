@@ -37,9 +37,9 @@ export function splitTop(text: string): string[] {
   return parts.map((p) => p.trim()).filter(Boolean);
 }
 
-/** The text between the bracket at `open` and its match. */
+/** The text between the bracket at `open` ("[", "{" or "(") and its match. */
 export function inside(text: string, open: number): string {
-  const closer = text[open] === "[" ? "]" : "}";
+  const closer = text[open] === "[" ? "]" : text[open] === "(" ? ")" : "}";
   let depth = 0;
   for (let i = open; i < text.length; i++) {
     const c = text[i]!;
@@ -49,6 +49,12 @@ export function inside(text: string, open: number): string {
     else if (c === closer && --depth === 0) return text.slice(open + 1, i);
   }
   return text.slice(open + 1);
+}
+
+/** A route's own path joined to its parent's ("" at the top), as an address: /shop/cart, or / for the root. */
+export function joinRoutePath(parent: string, own: string): string {
+  const full = own.startsWith("/") ? own : `${parent}/${own}`;
+  return full.replace(/\/{2,}/g, "/").replace(/\/+$/, "") || "/";
 }
 
 const NOT_A_PAGE = /\.(test|spec|stories)\./i;

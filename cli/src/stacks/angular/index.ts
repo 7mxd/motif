@@ -10,6 +10,7 @@ import { withDarkClasses } from "./dark";
 import { collectAngular } from "./extract";
 import { angularWiring, generateAngular } from "./generate";
 import { angularSrcDir } from "./project";
+import { discoverAngularRoutes } from "./routes";
 import { angularFix, angularReducedMotionHits, scanAngular } from "./rules";
 import { ANGULAR_BINDINGS, ANGULAR_GRAMMAR } from "./views";
 
@@ -89,4 +90,5 @@ export const ANGULAR: WebStack = {
   doctor: angularDoctor,
   unsupported: angularUnsupported,
   collect: collectAngular,
+  routes: discoverAngularRoutes,
 };
