@@ -802,13 +802,25 @@ describe("componentViews: Svelte's {…}", () => {
     expect(v.script).not.toContain("p-");
   });
 
-  test("a regular expression literal holding a brace is part of the expression", () => {
-    const text = "<p title={/[{}]/.test(a) ? x / 2 : /}/g}>{a.replace(/\\}/g, '')}</p>{b}";
-    const v = svelteViews(text);
-    expect(holds(v.script, text, "/[{}]/.test(a) ? x / 2 : /}/g")).toBe(true);
-    expect(holds(v.script, text, "a.replace(/\\}/g, '')")).toBe(true);
-    expect(holds(v.markup, text, "}</p>{")).toBe(true);
-    expect(holds(v.script, text, "b", text.indexOf("{b}"))).toBe(true);
+  test("a / is never a regular expression: {/if} followed by tags on its line reads as before plan 2K (views pinned from 1fbb954)", () => {
+    const pinned: [string, { css: string; script: string; markup: string; spans: { attr: string; tag: string; start: number; end: number }[] }][] = [
+      [
+        "<td>{#if a}<b>A</b>{/if}</td><td>{#if b}<i>B</i>{/if}</td>",
+        { css: " ".repeat(58), script: "         a                            b                   ", markup: "<td>{#if  }<b>A</b>{/if}</td><td>{#if  }<i>B</i>{/if}</td>", spans: [] },
+      ],
+      [
+        '{#if a}x{/if}</p>{#if b}<a href="/{slug}" class="p-[13px]">{t}</a>{/if}',
+        { css: " ".repeat(71), script: "     a                b            slug                     t          ", markup: '{#if  }x{/if}</p>{#if  }<a href="/{    }" class="p-[13px]">{ }</a>{/if}', spans: [{ attr: "href", tag: "a", start: 35, end: 39 }] },
+      ],
+      ['<p>{i++ / 2}</p><a href="/x">{q}</a>', { css: " ".repeat(36), script: "    i++ / 2                   q     ", markup: '<p>{       }</p><a href="/x">{ }</a>', spans: [] }],
+    ];
+    for (const [text, expected] of pinned) {
+      const v = svelteViews(text);
+      expect({ text, css: v.css, script: v.script, markup: v.markup, spans: v.spans }).toEqual({ text, ...expected });
+    }
+    const text = pinned[1]![0];
+    const hits = hitsOf("src/App.svelte", svelteViews(text));
+    expect(hits).toContainEqual(["tailwind-arbitrary", "p-[13px]", 1, at(text, "p-[13px]").column]);
   });
 
   test("without braces (Vue) a {…} is text and a {…} attribute isn't one", () => {
@@ -1018,6 +1030,20 @@ describe("componentViews: Angular's attribute forms", () => {
     expect(v.script.replace(/\s+/g, " ").trim()).toBe("gender n n");
     for (const m of ["He has", "no tools", "}} tools", "They", "<p>{ a } b }</p>"]) expect({ m, markup: holds(v.markup, text, m) }).toEqual({ m, markup: true });
     for (const k of ["select", "male", "plural", "offset:1", "=0", "other"]) expect(v.markup).not.toContain(k);
+  });
+
+  test("a regular expression literal is read only where a value can't end: not after a name or a postfix ++", () => {
+    const text = '<p>{{ i++ / 2 }}</p><a href="/x">{{ q }}</a><b>{{ a / b }}</b><i>{{ s.replace(/[{}]/g, "") }}</i>';
+    const v = ngViews(text);
+    for (const s of [" i++ / 2 ", " q ", " a / b ", ' s.replace(/[{}]/g, "") ']) expect({ s, script: holds(v.script, text, s) }).toEqual({ s, script: true });
+    expect(holds(v.markup, text, '}}</p><a href="/x">{{')).toBe(true);
+  });
+
+  test("only @let starts a statement: a malformed @else doesn't read on to an entity's ;", () => {
+    const text = "<p>@else a&nbsp;b</p>\n@let n = 1;";
+    const v = ngViews(text);
+    expect(holds(v.markup, text, " a&nbsp;b</p>")).toBe(true);
+    expect(v.script.trim()).toBe("n = 1");
   });
 
   test("@-blocks: an unknown @ is text; unclosed blocks and parentheses read to the end without failing", () => {

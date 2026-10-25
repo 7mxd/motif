@@ -87,6 +87,19 @@ describe("stringRegions", () => {
     expect(stringRegions(ts, KEYS).map((r) => ts.slice(r.start, r.end))).toEqual(["<p>f</p>"]);
   });
 
+  test("quoted keys; a regular expression literal holding a quote earlier in the file starts no string", () => {
+    const ts = [
+      "const r = /'/;",
+      "const q = /[\"`]/g;",
+      "@Component({ 'template': '<p>a</p>', \"styles\": ['.a { gap: 13px }'] })",
+      "export class A {}",
+    ].join("\n");
+    expect(stringRegions(ts, KEYS).map((r) => [r.key, ts.slice(r.start, r.end)])).toEqual([
+      ["template", "<p>a</p>"],
+      ["styles", ".a { gap: 13px }"],
+    ]);
+  });
+
   test("a template literal's ${…} parts are left out: each text part is a region", () => {
     const ts = "@Component({ template: `<p class=\"${cls}\" style=\"gap: 13px\">${label} {{ n }}</p>`, styles: [`.a { gap: ${g}px }`] })";
     expect(stringRegions(ts, KEYS).map((r) => [r.kind, ts.slice(r.start, r.end)])).toEqual([
@@ -146,6 +159,18 @@ describe("withEmbedded: a component's .ts file with its inline template and styl
     const crlf = views(TS.replace(/\n/g, "\r\n"));
     for (const key of ["css", "script", "markup"] as const) expect(crlf[key].replace(/\r/g, "")).toBe(v[key]);
     expectExact(TS.replace(/\n/g, "\r\n"), crlf);
+  });
+
+  test("escaped quotes in an inline template string: the tag reads as written, its values at their place", () => {
+    const ts = '@Component({ template: "<p class=\\"p-[13px]\\" style=\\"gap: 13px\\">{{ n }}</p>" })';
+    const w = views(ts);
+    expectExact(ts, w);
+    expect(w.css.slice(ts.indexOf("gap"), ts.indexOf("gap") + 9)).toBe("gap: 13px");
+    expect(w.script.slice(ts.indexOf(" n "), ts.indexOf(" n ") + 3)).toBe(" n ");
+    const hits = hitsOf("src/app/a.ts", w);
+    expect(hits).toContainEqual(["tailwind-arbitrary", "p-[13px]", 1, at(ts, "p-[13px]").column]);
+    expect(hits).toContainEqual(["off-scale", "13px", 1, at(ts, "13px\\").column]);
+    expect(hits.length).toBe(2);
   });
 
   test("a file with no component is all script", () => {

@@ -31,11 +31,12 @@ export interface Grammar extends Delimiters {
   /** A keyword at an expression's start (Svelte's {#if …}, {:else}, {/each}, {@html …}): markup; the rest of the expression is script. */
   blocks?: RegExp;
   /**
-   * A control-flow keyword in the text, matched where it stands (Angular's @if, } @else {, @for, @let): blank in every
-   * view, with the "{" that opens its body and the "}" that closes it. Its (…) parameters are script; a keyword with
-   * neither parameters nor a body (@let total = a + b;) starts a statement, script up to its ";" (blank).
+   * A control-flow keyword in the text, matched where it stands (Angular's @if, } @else {, @for): blank in every view,
+   * with the "{" that opens its body and the "}" that closes it. Its (…) parameters are script.
    */
   flow?: RegExp;
+  /** A keyword in the text that starts a statement (Angular's @let total = a + b;): blank, the rest script up to its ";" (blank). */
+  statement?: RegExp;
   /**
    * ICU messages in the text ({count, plural, =0 {none} other {# tools}}, select, selectordinal): the selector is
    * script; the keywords, case names and braces are blank; each case's text is the template's again.
@@ -263,6 +264,13 @@ export function componentViews(source: string, opts: { bindings: Binding[]; bloc
   /** A control-flow keyword at `i` (`length` long): where the scan goes on. */
   const flowAt = (i: number, length: number): number => {
     hidden.push([i, i + length]);
+    if (grammar?.statement?.test(tags.slice(i, i + length))) {
+      const end = readUntil(tags, i + length, ";");
+      if (end === -1) return i + length;
+      toScript(i + length, end);
+      hidden.push([end, end + 1]);
+      return end + 1;
+    }
     const next = (from: number) => {
       SPACES.lastIndex = from;
       return from + SPACES.exec(tags)![0].length;
@@ -281,11 +289,8 @@ export function componentViews(source: string, opts: { bindings: Binding[]; bloc
       frames.push("block");
       return j + 1;
     }
-    const end = readUntil(tags, i + length, ";");
-    if (end === -1) return i + length;
-    toScript(i + length, end);
-    hidden.push([end, end + 1]);
-    return end + 1;
+    // A keyword with neither (a file mid-edit): the text after it is read as text.
+    return i + length;
   };
 
   // Tags, in order, and with a grammar the text's expressions, blocks and messages between them.

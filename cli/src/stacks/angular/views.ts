@@ -9,7 +9,10 @@ export const ANGULAR_GRAMMAR: Grammar = {
   open: "{{",
   close: "}}",
   flow: /@(?:else\s+if|if|else|for|empty|switch|case|default|defer|placeholder|loading|error|let)(?![\w-])/,
+  statement: /^@let$/,
   icu: true,
+  // Angular 21's templates may hold regular expression literals.
+  regex: true,
 };
 
 /**

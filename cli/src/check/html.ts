@@ -48,17 +48,26 @@ export interface Expression {
   strings: [number, number][];
 }
 
-/** What opens and closes an expression in a template's text and attribute values: Svelte's "{" and "}", Angular's "{{" and "}}" (braces only). */
+/**
+ * What opens and closes an expression in a template's text and attribute values: Svelte's "{" and "}", Angular's "{{"
+ * and "}}" (braces only). With `regex` (Angular's), an expression may hold a regular expression literal; Svelte's
+ * reading leaves it out, so its {/if} is never one.
+ */
 export interface Delimiters {
   open: string;
   close: string;
+  regex?: boolean;
 }
 
-/** What may stand before a "/" that starts a regular expression literal rather than divides. */
-const BEFORE_REGEX = /(?:^|[(,=:[!&|?{};+\-*%<>~^]|(?<![\w$])(?:return|typeof|case|void|delete|in|of|new|instanceof))$/;
+/** What may stand before a "/" that starts a regular expression literal rather than divides (not a postfix ++ or --). */
+const BEFORE_REGEX = /(?:^|(?<![+-])[+-]|[(,=:[!&|?{};*%<>~^]|(?<![\w$])(?:return|typeof|case|void|delete|in|of|new|instanceof))$/;
 
-/** Where the regular expression literal opening at `at` ends (after its flags), or -1 when it doesn't close on its line. */
-function regexEnd(text: string, at: number): number {
+/**
+ * Where the regular expression literal the "/" at `at` opens ends (after its flags), looking back no further than
+ * `from`: -1 when that "/" divides, or the literal doesn't close on its line.
+ */
+export function regexEnd(text: string, at: number, from: number): number {
+  if (!BEFORE_REGEX.test(text.slice(Math.max(from, at - 32), at).trimEnd())) return -1;
   let inClass = false;
   for (let i = at + 1; i < text.length; i++) {
     const c = text[i]!;
@@ -88,11 +97,11 @@ function stringEnd(text: string, at: number): number {
 
 /**
  * The {…} expression opening at `open`, as Svelte reads one: braces nest, and a brace in a string ('…', "…"), a template
- * literal (with its own ${…}), a comment or a regular expression literal (a "/" where no value ends: after "(", "=",
- * "{", an operator or `return`, never after a name, a number or a closing bracket) counts for nothing. `strings` are its
- * string literals, quotes included, and a template literal's text parts.
+ * literal (with its own ${…}) or a comment counts for nothing; with `regex`, in a regular expression literal too (a "/"
+ * where no value ends: after "(", "=", "{", an operator or `return`, never after a name, a number, a closing bracket or
+ * a postfix ++). `strings` are its string literals, quotes included, and a template literal's text parts.
  */
-export function readExpression(text: string, open: number): Expression {
+export function readExpression(text: string, open: number, regex = false): Expression {
   const strings: [number, number][] = [];
   // What each open "{", "${" or "`" is; a template literal keeps where its current text part started.
   const stack: { kind: "{" | "${" | "`"; part: number }[] = [];
@@ -126,8 +135,8 @@ export function readExpression(text: string, open: number): Expression {
     } else if (c === "/" && text[i + 1] === "*") {
       const close = text.indexOf("*/", i + 2);
       i = close === -1 ? text.length : close + 2;
-    } else if (c === "/" && BEFORE_REGEX.test(text.slice(open, i).trimEnd().slice(-12)) && regexEnd(text, i) !== -1) {
-      i = regexEnd(text, i);
+    } else if (c === "/" && regex && regexEnd(text, i, open) !== -1) {
+      i = regexEnd(text, i, open);
     } else if (c === "{") {
       stack.push({ kind: "{", part: 0 });
       i++;
@@ -147,7 +156,7 @@ export function readExpression(text: string, open: number): Expression {
  * a {…}); it never closes when it doesn't end with `d.close`.
  */
 export function readDelimited(text: string, at: number, d: Delimiters): Expression {
-  const e = readExpression(text, at);
+  const e = readExpression(text, at, d.regex === true);
   const closes = e.end !== -1 && e.end - at >= d.open.length + d.close.length && text.startsWith(d.close, e.end - d.close.length);
   return closes ? e : { end: -1, strings: e.strings };
 }

@@ -2,7 +2,7 @@
 // read as the template and the CSS they are, at their place in the file: the file's three views, as a component
 // file's are.
 import { componentViews, type ComponentViews, type Grammar, type Binding } from "./component-views";
-import { blank, readExpression } from "./html";
+import { blank, readExpression, regexEnd } from "./html";
 import { keepRanges, maskComments } from "./mask";
 
 /** A string's text, or one text part of a template literal, that a key of a @Component({…}) holds. */
@@ -14,7 +14,8 @@ export interface StringRegion {
 }
 
 const DECORATOR = /@Component\s*\(\s*\{/y;
-const KEY = /([A-Za-z_$][\w$]*)\s*:\s*/y;
+/** A key and its colon: a name, quoted or not (the name is the first group or the third). */
+const KEY = /(?:([A-Za-z_$][\w$]*)|(["'])([A-Za-z_$][\w$]*)\2)\s*:\s*/y;
 const QUOTES = new Set(['"', "'", "`"]);
 const OPENERS = new Set(["(", "[", "{"]);
 const CLOSERS = new Set([")", "]", "}"]);
@@ -37,7 +38,7 @@ function literal(text: string, at: number): { end: number; parts: [number, numbe
     } else if (quote !== "`" && (c === "\n" || c === "\r")) break;
     else if (quote === "`" && c === "$" && text[i + 1] === "{") {
       parts.push([part, i]);
-      const e = readExpression(text, i + 1);
+      const e = readExpression(text, i + 1, true);
       i = part = e.end === -1 ? text.length : e.end;
     } else i++;
   }
@@ -93,6 +94,12 @@ export function stringRegions(tsText: string, keys: string[]): StringRegion[] {
       i = literal(text, i).end;
       continue;
     }
+    // A regular expression literal (/'/) starts no string.
+    const regex = c === "/" ? regexEnd(text, i, 0) : -1;
+    if (regex !== -1) {
+      i = regex;
+      continue;
+    }
     DECORATOR.lastIndex = i;
     const m = c === "@" ? DECORATOR.exec(text) : null;
     if (!m) {
@@ -105,7 +112,16 @@ export function stringRegions(tsText: string, keys: string[]): StringRegion[] {
     let keyNext = true;
     for (let j = brace + 1; j < end; ) {
       const ch = text[j]!;
-      if (QUOTES.has(ch)) {
+      KEY.lastIndex = j;
+      const k = keyNext && /[A-Za-z_$"']/.test(ch) ? KEY.exec(text) : null;
+      if (k) {
+        keyNext = false;
+        j += k[0].length;
+        const key = k[1] ?? k[3]!;
+        if (!keys.includes(key)) continue;
+        const kind = /^styles?$/.test(key) ? "style" : "template";
+        for (const [start, stop] of valueStrings(text, j)) found.push({ key, start, end: stop, kind });
+      } else if (QUOTES.has(ch)) {
         j = literal(text, j).end;
         keyNext = false;
       } else if (OPENERS.has(ch)) {
@@ -114,19 +130,10 @@ export function stringRegions(tsText: string, keys: string[]): StringRegion[] {
       } else if (ch === ",") {
         keyNext = true;
         j++;
-      } else if (keyNext && /[A-Za-z_$]/.test(ch)) {
-        KEY.lastIndex = j;
-        const k = KEY.exec(text);
-        keyNext = false;
-        if (!k) {
-          j++;
-          continue;
-        }
-        j += k[0].length;
-        if (!keys.includes(k[1]!)) continue;
-        const kind = /^styles?$/.test(k[1]!) ? "style" : "template";
-        for (const [start, stop] of valueStrings(text, j)) found.push({ key: k[1]!, start, end: stop, kind });
-      } else j++;
+      } else {
+        if (!/\s/.test(ch)) keyNext = false;
+        j++;
+      }
     }
     i = end + 1;
   }
@@ -135,14 +142,16 @@ export function stringRegions(tsText: string, keys: string[]): StringRegion[] {
 
 /**
  * A component's TypeScript file as its three views: the strings its @Component({…}) holds as `template` (read through
- * `opts`, the template's grammar and bindings, as a template file is, at their place) and as `styles` (CSS), blank in
- * the script view, which keeps the rest of the file.
+ * `opts`, the template's grammar and bindings, as a template file is, at their place; a backslash that escapes a quote
+ * or a backslash is blank, so <p class=\"x\"> reads as the tag it is) and as `styles` (CSS), blank in the script view,
+ * which keeps the rest of the file.
  */
 export function withEmbedded(tsText: string, opts: { bindings: Binding[]; grammar?: Grammar }): ComponentViews {
   const regions = stringRegions(tsText, ["template", "styles"]);
   const ranges = (kind: StringRegion["kind"]) => regions.filter((r) => r.kind === kind).map((r): [number, number] => [r.start, r.end]);
   const templates = ranges("template");
-  const views = componentViews(keepRanges(tsText, templates), opts);
+  const template = keepRanges(tsText, templates).replace(/\\(["'`\\])/g, " $1");
+  const views = componentViews(template, opts);
   const script = tsText.split("");
   const css = tsText.replace(/[^\r\n]/g, " ").split("");
   const markup = [...css];
