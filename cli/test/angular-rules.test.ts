@@ -137,6 +137,19 @@ describe("which files are templates", () => {
     expect(ANGULAR.views!(css, [css])).toEqual([css]);
   });
 
+  test("a .ts whose templateUrl names another file, or with an inline template:, doesn't make the .html of its name a template", () => {
+    const files = {
+      "src/app/a.ts": "@Component({ templateUrl: './other.html' })\nexport class A {}\n",
+      "src/app/other.html": T,
+      "src/app/a.html": T,
+      "src/app/b.ts": "@Component({ template: '' })\nexport class B {}\n",
+      "src/app/b.html": T,
+    };
+    const all = Object.entries(files).map(([p, t]) => source(p, t));
+    expect(markupOf(files, "src/app/other.html").map((v) => v.lang)).toEqual(["css", "script", "markup"]);
+    for (const p of ["src/app/a.html", "src/app/b.html"]) expect(ANGULAR.views!(all.find((f) => f.path === p)!, all)).toEqual(expandHtml([all.find((f) => f.path === p)!]));
+  });
+
   test("without the other files, an .html is a page", () => {
     const html = source("src/app/tools.html", T);
     expect(ANGULAR.views!(html)).toEqual(expandHtml([html]));
@@ -161,6 +174,21 @@ describe("bindings the stack reads", () => {
     expect(where(html(t)).filter((x) => x.includes(":2:"))).toEqual([`off-scale ${f}:${pos(t, "13 :", line2)} 13`]);
     expect(html(t).find((h) => h.text === "15")).toMatchObject({ kind: "font-size", value: "15px" });
     expect(html(t).find((h) => h.text === "7")).toMatchObject({ kind: "radius", value: "7px" });
+  });
+
+  test("[style.prop.unit]: a number that is a whole branch (?:, ??, ||, parentheses, a minus sign) is a length; an operand of arithmetic isn't", () => {
+    const t = '<p [style.margin-top.px]="index * 13" [style.top.px]="pos.y + 2" [style.left.px]="x - 6" [style.gap.px]="13 / n" [style.padding.px]="2 * 13 % 5"></p>';
+    expect(html(t)).toEqual([]);
+    const branches = '<p [style.padding.px]="on ? 13 : (big ? 16 : 5)" [style.margin.px]="m ?? 9" [style.gap.px]="g || \'7\'" [style.top.px]="-6" [style.left.px]="(on ? a + 2 : 4)"></p>';
+    expect(where(html(branches))).toEqual(
+      [
+        `off-scale ${f}:${pos(branches, "13")} 13`,
+        `off-scale ${f}:${pos(branches, "5)")} 5`,
+        `off-scale ${f}:${pos(branches, "9")} 9`,
+        `off-scale ${f}:${pos(branches, "7'")} 7`,
+        `off-scale ${f}:${pos(branches, "-6")} -6`,
+      ].sort(),
+    );
   });
 
   test("[ngStyle] and [style] objects: unit keys, px strings, colours and fonts, each once at its value", () => {
@@ -266,14 +294,25 @@ describe("ANGULAR.fix", () => {
     expect(ANGULAR.fix!(hit({ fixKind: "motion" }))).toContain("from the generated motion.ts");
   });
 
-  test("Tailwind's motion fix names motion.ts relative to the file; colours in Angular's words, except in a stylesheet", () => {
+  test("Tailwind's motion fix names motion.ts relative to the file; other fixes pass through", () => {
     const tw = 'Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "src/app/design/motion".';
     expect(ANGULAR.fix!(hit({ fix: tw }), ctx)).toBe('Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "../design/motion".');
-    const color = hit({ rule: "raw-color", file: "src/app/a.html", fix: "Use a theme colour instead: …" });
-    expect(ANGULAR.fix!(color, ctx)).toBe(ANGULAR_COLOR_FIX);
-    expect(ANGULAR.fix!({ ...color, file: "src/app/a.ts" }, ctx)).toBe(ANGULAR_COLOR_FIX);
-    expect(ANGULAR.fix!({ ...color, file: "src/styles.css" }, ctx)).toBe("Use a theme colour instead: …");
+    expect(ANGULAR.fix!(hit({ rule: "raw-color", fix: "Use a theme colour instead: …" }), ctx)).toBe("Use a theme colour instead: …");
     expect(ANGULAR.fix!(hit({ rule: "off-scale", fix: "Use var(--motif-space-<step>)." }), ctx)).toBe("Use var(--motif-space-<step>).");
+  });
+
+  test("colours in a component's template, inline template and styles, and stylesheet get Angular's fix; in other code and pages, the web's", () => {
+    const files = {
+      "src/app/a.ts": "@Component({ templateUrl: './a.html', styleUrl: './a.css' })\nexport class A {}\n",
+      "src/app/a.html": '<p style="color: #111111">a</p>',
+      "src/app/a.css": ".a { color: #222222 }",
+      "src/app/b.ts": "@Component({ template: '<p style=\"color: #333333\">b</p>', styles: `.b { color: #444444 }` })\nexport class B {}\n",
+      "src/app/colors.ts": "export const brand = '#555555';\n",
+      "src/index.html": '<!doctype html><html><body style="background: #666666"><app-root></app-root></body></html>',
+      "src/styles.css": "body { color: #777777 }",
+    };
+    const fixes = Object.fromEntries(violations(files).filter((h) => h.rule === "raw-color").map((h) => [h.text, ANGULAR.fix!(h) === ANGULAR_COLOR_FIX ? "angular" : "web"]));
+    expect(fixes).toEqual({ "#111111": "angular", "#222222": "angular", "#333333": "angular", "#444444": "angular", "#555555": "web", "#666666": "web", "#777777": "web" });
   });
 });
 

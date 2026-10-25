@@ -12,7 +12,7 @@ import type { WebFixContext } from "../web";
 // its place, without the attribute's name; `spans` says which attribute it was ([style.padding.px]="13", [ngStyle]="{…}").
 
 export const ANGULAR_COLOR_FIX = "Use 'var(--motif-color-<role>)' in the component's styles or [style.color], or a class (bg-<role>) with Tailwind.";
-export const LEGACY_FIX = "@angular/animations is deprecated: use animate.enter with a class timed by var(--motif-duration-*) and var(--motif-easing-*)";
+export const LEGACY_FIX = "@angular/animations is deprecated: use animate.enter with a class timed by var(--motif-duration-*) and var(--motif-easing-*).";
 
 /** [style.padding.px]="13": one property with a unit, whose value Angular gives the unit (a number, or a numeric string). */
 const STYLE_UNIT = /^\[style\.([\w-]+)\.(px|rem|em|%)\]$/i;
@@ -22,8 +22,8 @@ const STYLE_PROP = /^\[style\.([\w-]+)\]$/i;
 const STYLE_OBJECT = /^\[(?:style|ngStyle)\]$/;
 /** Every binding that sets styles, and style="…"'s {{…}} parts: where a colour is a style's. */
 const STYLED = /^(?:style|\[(?:style|ngStyle)(?:\.[\w%-]+)*\])$/i;
-/** A number the value holds, not a member's or an index's (on ? 13 : 8). */
-const NUMBER = /(?<![\w$.[-])-?\d*\.?\d+(?![\w$.\]])/g;
+/** A whole value that is a number, or a numeric string ('13'): what Angular gives the unit. */
+const WHOLE_NUMBER = /^(["']?)(-?\d*\.?\d+)\1$/;
 /**
  * An entry of a style object: a key (camelCase, or kebab-case in quotes, with a unit as in 'gap.px') and its value, a
  * number (when the key has a unit) or a "13px" string. Groups: quote, key, unit, number, string's quote, its number, its unit.
@@ -88,6 +88,53 @@ function stringsIn(text: string, start: number, end: number): [number, number][]
   return found;
 }
 
+/** The first place at the top level of an expression (outside brackets and strings) where `test` gives a token's length: [where, length], or [-1, 0]. */
+function topLevel(text: string, start: number, end: number, test: (i: number) => number): [number, number] {
+  let depth = 0;
+  for (let i = start; i < end; i++) {
+    const c = text[i]!;
+    if (QUOTES.has(c)) i = Math.min(stringEnd(text, i), end) - 1;
+    else if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (depth === 0) {
+      const length = test(i);
+      if (length > 0) return [i, length];
+    }
+  }
+  return [-1, 0];
+}
+
+/** A ternary's "?" at `i`: not ?? or ?. */
+const isQuestion = (text: string, i: number) => text[i] === "?" && text[i + 1] !== "?" && text[i + 1] !== "." && text[i - 1] !== "?";
+
+/**
+ * The numbers an expression's value can be, each a whole value: the expression itself, or a branch of a ternary
+ * (on ? 13 : 16), of ?? or of ||, in parentheses or not; never an operand of arithmetic (index * 13, pos.y + 2).
+ * As [index, number text].
+ */
+function wholeNumbers(text: string, start: number, end: number): [number, string][] {
+  while (start < end && /\s/.test(text[start]!)) start++;
+  while (end > start && /\s/.test(text[end - 1]!)) end--;
+  if (start >= end) return [];
+  if (text[start] === "(" && closeParen(text, start) === end - 1) return wholeNumbers(text, start + 1, end - 1);
+  // cond ? a : b: the branches (the condition is never the value).
+  const [q] = topLevel(text, start, end, (i) => (isQuestion(text, i) ? 1 : 0));
+  if (q !== -1) {
+    let nested = 0;
+    const [colon] = topLevel(text, q + 1, end, (i) => {
+      if (isQuestion(text, i)) nested++;
+      else if (text[i] === ":" && nested-- === 0) return 1;
+      return 0;
+    });
+    return colon === -1 ? [] : [...wholeNumbers(text, q + 1, colon), ...wholeNumbers(text, colon + 1, end)];
+  }
+  // a ?? b, a || b: either side may be the value.
+  const [or, length] = topLevel(text, start, end, (i) => (text.startsWith("??", i) || text.startsWith("||", i) ? 2 : 0));
+  if (or !== -1) return [...wholeNumbers(text, start, or), ...wholeNumbers(text, or + length, end)];
+  const m = WHOLE_NUMBER.exec(text.slice(start, end));
+  return m ? [[start + m[1]!.length, m[2]!]] : [];
+}
+
 const escape = (name: string) => name.replace(/\$/g, "\\$");
 
 /**
@@ -95,7 +142,9 @@ const escape = (name: string) => name.replace(/\$/g, "\\$");
  * literal, [ngStyle] and [style] objects, and @angular/animations' timings. Motion's animate() is the web's own rule.
  */
 export function scanAngular(source: SourceFile, scale: Scale | null): Hit[] {
-  if (source.lang !== "script") return [];
+  // A component's template and styles (in their own files, or inline): colours with a fix in Angular's words. The web's
+  // colour rule finds the same hits after these, and only these are kept.
+  if (source.lang !== "script") return source.component ? scanColors(source).map((h) => ({ ...h, fix: ANGULAR_COLOR_FIX })) : [];
   const text = maskComments(source.text, "script");
   const file = { ...source, text };
   const at = locator(text);
@@ -108,10 +157,11 @@ export function scanAngular(source: SourceFile, scale: Scale | null): Hit[] {
     const body = text.slice(span.start, span.end);
     const unit = STYLE_UNIT.exec(span.attr);
     if (unit) {
-      // The unit is the binding's: each number in the value is a length in it.
+      // The unit is the binding's: a number that is the whole value, or a whole branch of it (on ? 13 : 16), is a length
+      // in it; an operand (index * 13, pos.y + 2) isn't.
       const kind = sizeKind(unit[1]!);
       const u = unit[2]!.toLowerCase();
-      if (kind && (u === "px" || u === "rem")) for (const m of body.matchAll(NUMBER)) size(span.start + m.index!, m[0], kind, m[0], u);
+      if (kind && (u === "px" || u === "rem")) for (const [a, n] of wholeNumbers(text, span.start, span.end)) size(a, n, kind, n, u);
       continue;
     }
     const prop = STYLE_PROP.exec(span.attr)?.[1];
@@ -250,15 +300,11 @@ function motionSpecifier(hit: Hit, ctx: WebFixContext & { motionImport: string }
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
 
-const STYLESHEET = /\.(?:css|scss|sass|less)$/i;
-
 /**
  * The fixes in Angular's terms: Motion's names motion.ts relative to the file and how animate() takes it (React web's
- * names a JSX prop); Tailwind's motion.ts path relative to the file; a colour in a template or a component's code says
- * where a variable goes there.
+ * names a JSX prop); Tailwind's motion.ts path relative to the file. A colour in a component has its fix from scanAngular.
  */
 export function angularFix(hit: Hit, ctx?: WebFixContext): string {
-  if (hit.rule === "raw-color" && !STYLESHEET.test(hit.file)) return ANGULAR_COLOR_FIX;
   if (hit.rule !== "raw-motion") return hit.fix;
   const spec = ctx?.motionImport ? motionSpecifier(hit, { ...ctx, motionImport: ctx.motionImport }) : null;
   if (hit.fixKind === "motion") {

@@ -188,6 +188,10 @@ describe("the motion fix names where motion.ts is", () => {
     expect(svelteFix(hit("src/App.svelte"), { appDir: vite, appPath: ".", motionImport: undefined })).toBe(
       "Use var(--motif-duration-<role>) and var(--motif-easing-<role>) from motif.css: this app is before Svelte 5, so Motif writes no motion.ts.",
     );
+    // Motion's animate() takes seconds: its fix says how to turn the milliseconds of the CSS variables into them.
+    expect(svelteFix(hit("src/App.svelte", "e.g. transition={spring.smooth}.", "motion"), { appDir: vite, appPath: "." })).toBe(
+      "Use var(--motif-duration-<role>) and var(--motif-easing-<role>) from motif.css: this app is before Svelte 5, so Motif writes no motion.ts. The durations are in milliseconds and Motion takes seconds, so divide by 1000: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--motif-duration-base')) / 1000.",
+    );
     // Before Svelte 5, Tailwind's text keeps its CSS variable and drops the motion.ts it can't import.
     expect(svelteFix(hit("src/App.svelte", 'Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "src/design/motion".'), { appDir: vite, appPath: "." })).toBe(
       "Use duration-(--motif-duration-base) (or fast/slow).",
