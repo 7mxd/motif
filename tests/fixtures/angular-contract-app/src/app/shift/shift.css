@@ -1,0 +1,17 @@
+.details {
+  padding: var(--motif-space-6);
+}
+.description {
+  max-inline-size: 40rem;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--motif-space-1) var(--motif-space-4);
+  padding-block: var(--motif-space-3);
+  border-block-end: 1px solid var(--motif-color-border);
+}
+.row:last-child {
+  border-block-end: 0;
+}

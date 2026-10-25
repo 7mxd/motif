@@ -1,0 +1,45 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--motif-space-2);
+  min-block-size: var(--motif-space-12);
+  padding-inline: var(--motif-space-5);
+  border: 1px solid transparent;
+  border-radius: var(--motif-radius-md);
+  font-family: var(--motif-font-label-family);
+  font-size: var(--motif-font-label-size);
+  font-weight: var(--motif-font-label-weight);
+  line-height: var(--motif-font-label-line-height);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--motif-duration-fast) var(--motif-easing-standard),
+    transform var(--motif-duration-fast) var(--motif-easing-standard);
+}
+:host(.button-primary) {
+  background: var(--motif-color-action-primary);
+  color: var(--motif-color-on-action-primary);
+}
+:host(.button-secondary) {
+  background: var(--motif-color-action-secondary);
+  color: var(--motif-color-on-action-secondary);
+  border-color: var(--motif-color-border);
+}
+@media (hover: hover) {
+  :host(:hover) {
+    filter: brightness(0.95);
+  }
+}
+:host(:active) {
+  transform: scale(0.97);
+}
+:host(:focus-visible) {
+  outline: 2px solid var(--motif-color-focus);
+  outline-offset: 2px;
+}
+:host(:disabled) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+@import './styles/motif.tailwind.css';
+@import '@fontsource/work-sans/400.css';
+@import '@fontsource/work-sans/500.css';
+@import '@fontsource/fraunces/600.css';
+@import '@fontsource/fraunces/700.css';
+@import '@fontsource/noto-kufi-arabic/400.css';
+@import '@fontsource/noto-kufi-arabic/500.css';
+@import '@fontsource/noto-kufi-arabic/600.css';
+@import '@fontsource/noto-kufi-arabic/700.css';
+
+@layer base {
+  body {
+    background: var(--motif-color-background);
+    color: var(--motif-color-text-primary);
+    font-family: var(--motif-font-body-family);
+    font-size: var(--motif-font-body-size);
+    line-height: var(--motif-font-body-line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--motif-color-focus);
+    outline-offset: 2px;
+  }
+}

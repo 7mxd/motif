@@ -1,0 +1,24 @@
+<div class="mx-auto flex w-full max-w-md flex-col gap-6">
+  <header class="flex flex-col gap-3">
+    <h1 class="font-title text-title">{{ locale.t().signInTitle }}</h1>
+    <p class="text-text-secondary">{{ locale.t().signInIntro }}</p>
+  </header>
+  <form class="flex flex-col gap-5 rounded-lg border border-border bg-surface p-6" novalidate (submit)="send($event)">
+    <app-text-field
+      [(value)]="email"
+      name="email"
+      type="email"
+      [label]="locale.t().email"
+      [hint]="locale.t().emailHint"
+      [error]="error()"
+      autocomplete="email"
+      inputmode="email"
+      enterkeyhint="send"
+    />
+    <button appButton type="submit">{{ locale.t().sendLink }}</button>
+    <p class="font-caption text-caption text-text-secondary">{{ locale.t().emailUse }}</p>
+  </form>
+  @if (sentTo(); as address) {
+    <p role="status" class="rounded-lg border border-border bg-surface-raised p-4">{{ locale.t().linkSent(address) }}</p>
+  }
+</div>

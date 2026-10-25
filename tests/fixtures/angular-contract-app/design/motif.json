@@ -1,0 +1,11 @@
+{
+  "motifContract": 1,
+  "apps": [
+    {
+      "path": ".",
+      "stack": "angular",
+      "srcDir": "src"
+    }
+  ],
+  "ignore": []
+}
