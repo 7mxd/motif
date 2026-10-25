@@ -90,7 +90,8 @@ export const routes: Routes = [
   { path: '**', component: NotFound },
 ];
 `);
-    expect(discoverAngularRoutes(root)).toEqual({ routes: ["/", "/help", "/settings", "/tools"], skipped: ["/**", "/tools/:id"] });
+    // ** is a catch-all, not a page that needs a value: it is left out, as Vue and Svelte leave theirs out.
+    expect(discoverAngularRoutes(root)).toEqual({ routes: ["/", "/help", "/settings", "/tools"], skipped: ["/tools/:id"] });
   });
 
   test("an empty path that only redirects isn't a page; / is listed all the same", () => {
@@ -245,6 +246,46 @@ export const routes: Routes = [
       "projects/web/src/app/app.routes.ts": "export const routes: Routes = [{ path: 'inbox', component: Inbox }];\n",
     });
     expect(discoverAngularRoutes(root)).toEqual({ routes: ["/", "/inbox"], skipped: [] });
+  });
+
+  test("provideRouter with withHashLocation(): pages are /#/…, lazy children too; / stays /", () => {
+    const root = standalone("export const routes: Routes = [\n  { path: '', component: Home },\n  { path: 'tools', component: Tools },\n  { path: 'tools/:id', component: Tool },\n  { path: 'admin', loadChildren: () => import('./admin/admin.routes').then(m => m.ADMIN_ROUTES) },\n];\n", {
+      "src/app/admin/admin.routes.ts": "export const ADMIN_ROUTES: Routes = [{ path: 'users', component: Users }, { path: 'shop', children: [{ path: 'cart', component: Cart }] }];\n",
+    }, CONFIG(", withHashLocation()").replace("withComponentInputBinding", "withHashLocation"));
+    expect(discoverAngularRoutes(root)).toEqual({ routes: ["/", "/#/admin/shop/cart", "/#/admin/users", "/#/tools"], skipped: ["/#/tools/:id"] });
+  });
+
+  test("RouterModule.forRoot(routes, { useHash: true }): pages are /#/…, a lazy module's too", () => {
+    const root = makeProject({
+      "package.json": PKG,
+      "angular.json": ANGULAR_JSON({ key: "main" }),
+      "src/main.ts": "import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';\nimport { AppModule } from './app/app.module';\n\nplatformBrowserDynamic().bootstrapModule(AppModule);\n",
+      "src/app/app.module.ts": "const routes: Routes = [\n  { path: 'heroes', component: HeroList },\n  { path: 'admin', loadChildren: () => import('./admin/admin.module').then(m => m.AdminModule) },\n];\n\n@NgModule({ imports: [BrowserModule, RouterModule.forRoot(routes, { useHash: true })] })\nexport class AppModule { }\n",
+      "src/app/admin/admin.module.ts": "@NgModule({ imports: [RouterModule.forChild([{ path: 'audit', component: Audit }])] })\nexport class AdminModule { }\n",
+    });
+    expect(discoverAngularRoutes(root)).toEqual({ routes: ["/", "/#/admin/audit", "/#/heroes"], skipped: [] });
+  });
+
+  test("useHash: false and other features keep plain addresses", () => {
+    const root = standalone("export const routes: Routes = [{ path: 'a', component: A }];\n", {}, CONFIG(", withComponentInputBinding()"));
+    expect(discoverAngularRoutes(root).routes).toEqual(["/", "/a"]);
+  });
+
+  test("an array that includes itself through children is read once, with a note, not without end", () => {
+    const root = standalone("export const routes: Routes = [\n  { path: 'a', component: A },\n  { path: 'k', children: [...routes] },\n];\n");
+    const found = discoverAngularRoutes(root);
+    expect(found.routes).toEqual(["/", "/a"]);
+    expect(found.notes).toEqual([expect.stringContaining("src/app/app.routes.ts")]);
+    expect(found.notes?.[0]).toContain("--routes");
+  });
+
+  test("a path that isn't a quoted string gets one note naming its file", () => {
+    const root = standalone("import { ROUTES } from './paths';\n\nexport const routes: Routes = [\n  { path: ROUTES.tools, component: Tools },\n  { path: ROUTES.settings, component: Settings },\n  { path: 'about', component: About },\n];\n");
+    const found = discoverAngularRoutes(root);
+    expect(found.routes).toEqual(["/", "/about"]);
+    expect(found.notes).toEqual([expect.stringContaining("src/app/app.routes.ts")]);
+    expect(found.notes?.[0]).toContain("ROUTES.tools");
+    expect(found.notes?.[0]).toContain("--routes");
   });
 
   test("an app with no main.ts Motif can read has / only", () => {

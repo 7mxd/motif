@@ -18,10 +18,11 @@ const CHILD_CALL = /\bRouterModule\s*\.\s*forChild\s*\(/g;
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 const LITERAL = /^(["'`])([^"'`$]*)\1$/;
 
-/** A routes array: the text between its brackets, and the file it is in (comments blanked). */
+/** A routes array: the text between its brackets, the file it is in (comments blanked), and whether its router uses hash addresses (/#/tools). */
 interface Routes {
   file: string;
   body: string;
+  hash?: boolean;
 }
 
 interface Context {
@@ -29,6 +30,10 @@ interface Context {
   out: RouteDiscovery;
   notes: Set<string>;
   texts: Map<string, string | null>;
+  /** The files already named in a note about a path that isn't a quoted string. */
+  constantPaths: Set<string>;
+  /** The arrays being read, outermost first: one that includes itself (through a spread or children) is read once. */
+  reading: string[];
 }
 
 const escape = (name: string) => name.replace(/\$/g, "\\$");
@@ -159,19 +164,26 @@ function routerArrays(ctx: Context, start: string, call: RegExp): Routes[] {
   return [];
 }
 
-/** The routes array given as the first argument of the call whose "(" is at `open`. */
+/** A router that serves its pages at /#/tools: provideRouter(routes, withHashLocation()), RouterModule.forRoot(routes, { useHash: true }). */
+const HASH = /\bwithHashLocation\s*\(|\buseHash\s*:\s*true\b/;
+
+/** The routes array given as the first argument of the call whose "(" is at `open`; hashed when the call's other arguments ask for hash addresses. */
 function arrayGiven(ctx: Context, file: string, text: string, open: number): Routes[] {
-  const first = splitTop(inside(text, open))[0] ?? "";
-  if (first.startsWith("[")) return [{ file, body: inside(first, 0) }];
+  const [first = "", ...rest] = splitTop(inside(text, open));
+  const hash = rest.some((arg) => HASH.test(arg));
+  if (first.startsWith("[")) return [{ file, body: inside(first, 0), hash }];
   const found = IDENT.test(first) ? arrayNamed(ctx, file, first) : null;
-  if (found) return [found];
+  if (found) return [{ ...found, hash }];
   if (first) ctx.notes.add(`The routes given to the router as ${first} in ${shown(ctx, file)} weren't found in the app's own files, so their pages weren't read. Name those pages with --routes.`);
   return [];
 }
 
-function add(ctx: Context, path: string): void {
+/** A page's address (/#/tools under a hash router; / stays /); one needing a value is skipped, and a ** catch-all isn't a page. */
+function add(ctx: Context, path: string, hash: boolean): void {
   const segments = path.split("/").filter(Boolean);
-  (segments.some((s) => needsValue(s) || s.includes("*")) ? ctx.out.skipped : ctx.out.routes).push(path);
+  if (segments.some((s) => s.includes("*"))) return;
+  const address = hash && path !== "/" ? `/#${path}` : path;
+  (segments.some(needsValue) ? ctx.out.skipped : ctx.out.routes).push(address);
 }
 
 /** The array a lazy route's loadChildren imports: a routes array (named or default export), or the routes of an NgModule's RouterModule.forChild. */
@@ -202,11 +214,26 @@ function lazyChildren(ctx: Context, file: string, value: string, path: string, d
 
 /** Each route of an array: a page when it has component or loadComponent; children and loadChildren under its path. */
 function walk(ctx: Context, routes: Routes, parent: string, depth: number): void {
+  const key = `${routes.file}\0${routes.body}`;
+  if (ctx.reading.includes(key)) {
+    ctx.notes.add(`The routes in ${shown(ctx, routes.file)} include themselves (through a spread or children), so they were read once. Name any pages missing with --routes.`);
+    return;
+  }
+  ctx.reading.push(key);
+  try {
+    walkRecords(ctx, routes, parent, depth);
+  } finally {
+    ctx.reading.pop();
+  }
+}
+
+function walkRecords(ctx: Context, routes: Routes, parent: string, depth: number): void {
+  const hash = routes.hash ?? false;
   for (const element of splitTop(routes.body)) {
     if (element.startsWith("...")) {
       const name = element.slice(3).trim();
       const spread = IDENT.test(name) ? arrayNamed(ctx, routes.file, name) : null;
-      if (spread) walk(ctx, spread, parent, depth);
+      if (spread) walk(ctx, { ...spread, hash }, parent, depth);
       else ctx.notes.add(`The routes spread from ${name} in ${shown(ctx, routes.file)} weren't read: Motif follows arrays declared in the app's own files. Name those pages with --routes.`);
       continue;
     }
@@ -216,22 +243,28 @@ function walk(ctx: Context, routes: Routes, parent: string, depth: number): void
       props.set(entry.key, isObj(entry.value) ? "{" : entry.value.text);
     }
     const own = LITERAL.exec(props.get("path") ?? "")?.[2];
-    if (props.has("path") && own === undefined) continue;
+    if (props.has("path") && own === undefined) {
+      if (!ctx.constantPaths.has(routes.file)) {
+        ctx.constantPaths.add(routes.file);
+        ctx.notes.add(`Routes in ${shown(ctx, routes.file)} whose path isn't a quoted string (path: ${props.get("path")}) weren't read. Name those pages with --routes.`);
+      }
+      continue;
+    }
     const path = joinRoutePath(parent, own ?? "");
     const base = path === "/" ? "" : path;
     const children = props.get("children");
     if (children?.startsWith("[")) {
       const kids = inside(children, 0);
-      walk(ctx, { file: routes.file, body: kids }, base, depth);
+      walk(ctx, { file: routes.file, body: kids, hash }, base, depth);
       // A route with children matches only through them: its own path is a page when a child's path is ''.
       if (splitTop(kids).length > 0) continue;
     }
     if (props.has("loadChildren")) {
-      for (const lazy of lazyChildren(ctx, routes.file, props.get("loadChildren")!, path, depth)) walk(ctx, lazy, base, depth + 1);
+      for (const lazy of lazyChildren(ctx, routes.file, props.get("loadChildren")!, path, depth)) walk(ctx, { ...lazy, hash }, base, depth + 1);
       continue;
     }
     if (props.has("redirectTo") || !(props.has("component") || props.has("loadComponent"))) continue;
-    add(ctx, path);
+    add(ctx, path, hash);
   }
 }
 
@@ -239,10 +272,10 @@ function walk(ctx: Context, routes: Routes, parent: string, depth: number): void
  * The pages of an Angular app, from the routes given to provideRouter (standalone) or RouterModule.forRoot (NgModule):
  * found from main.ts through the files it imports, and else in any file of the app. loadChildren is followed into the
  * file it imports (no further than 5 deep); children are joined to their parent's path; redirects and routes with no
- * component aren't pages; :id and ** are skipped. / always, first.
+ * component aren't pages; :id is skipped; ** isn't a page. Under a hash router (withHashLocation, useHash) pages are /#/tools. / always, first.
  */
 export function discoverAngularRoutes(appDir: string): RouteDiscovery {
-  const ctx: Context = { appDir, out: { routes: [], skipped: [] }, notes: new Set(), texts: new Map() };
+  const ctx: Context = { appDir, out: { routes: [], skipped: [] }, notes: new Set(), texts: new Map(), constantPaths: new Set(), reading: [] };
   const src = angularSrcDir(appDir);
   const main = join(appDir, angularProject(appDir)?.main ?? `${src}/main.ts`);
   let arrays = routerArrays(ctx, main, ROOT_CALL);
