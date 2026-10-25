@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { RULE_IDS } from "../src/check/types";
 import { expandHtml } from "../src/check/html";
@@ -688,6 +688,114 @@ describe("the Svelte guide's hook for the page's language and variant", () => {
   test("a hostile cookie is refused, and a $& in it is never read as a pattern", async () => {
     expect(await render({ lang: 'en" onload="x', variant: 'a" onload="x' })).toBe('<html lang="en" dir="ltr" data-variant="">');
     expect(await render({ lang: "$&", variant: "$&" })).toBe('<html lang="en" dir="ltr" data-variant="">');
+  });
+});
+
+describe("the Angular guide", () => {
+  const has = (file: string, strings: string[]) => {
+    const text = read(`angular/${file}`);
+    for (const s of strings) expect(text).toContain(s);
+  };
+
+  test("has exactly the template's files", () => {
+    expect(readdirSync(join(ADAPTERS, "angular")).sort()).toEqual(GUIDE_FILES);
+  });
+
+  test("README: the starter, the commands, the theme folder, the floors, Angular 14, mockups and the first-screenshot times", () => {
+    has("README.md", [
+      "ng new", "--style=tailwind", "--style=css", "--style=scss", "ng build", "npm start", "ng serve", "design/motif.json", "themeDir", "srcDir",
+      "Angular 15 or later, with standalone components", "Angular 22 needs Node 22.22.3", "Angular 14 and older aren't supported", "motif shot --url",
+      "browser frame", "dev server included, typical:", "Angular 21 about 4 seconds", "Angular 22 about 4 seconds", "about 7.5 seconds",
+      "app.ts", "--file-name-style-guide 2016", "app.component.ts",
+    ]);
+  });
+
+  test("tokens.md: the files, wiring them in from styles.css, Angular Material, and switching variants", () => {
+    has("tokens.md", [
+      "motif.css", "motif.tailwind.css", "src/styles.css", "angular.json", '@import "./styles/motif.css";', '@import "./styles/motif.tailwind.css";',
+      '@use "./styles/motif.css";', "src/app/design/motion.ts", "var(--motif-color-", "bg-action-primary",
+      "data-variant", "## Switching variants", "document.documentElement.dataset.variant", "signal", "DOCUMENT", "from '@angular/core'", "REQUEST",
+      "--mat-sys-primary: var(--motif-color-action-primary)", "## Angular Material",
+    ]);
+    expect(read("angular/tokens.md")).not.toContain("motionSpring");
+  });
+
+  test("components.md: standalone components in folders, signal inputs and outputs, control flow, projection, every state, names and the starter set", () => {
+    has("components.md", [
+      "src/app/", "button.ts", "button.html", "button.css", "kebab-case", "input()", "output()", "input.required", "@if", "@for", "<ng-content",
+      "<button", ":hover", ":focus-visible", ":disabled", ":active", "aria-busy", "aria-label", "var(--motif-", "styles:",
+    ]);
+    for (const c of STARTER_SET) expect(read("angular/components.md")).toContain(`\`${c}\``);
+  });
+
+  test("motion.md: animate.enter and animate.leave with the CSS roles, Motion with motion.ts, the deprecated package, loaders and reduced motion", () => {
+    has("motion.md", [
+      "animate.enter", "animate.leave", "(animate.leave)", "var(--motif-duration-", "spring.", "easing.", "duration.", "animate(", "animationComplete()",
+      "prefers-reduced-motion", "matchMedia", "@angular/animations", "deprecated", "## Skeletons and spinners",
+    ]);
+    expect(read("angular/motion.md")).not.toContain("motionSpring");
+  });
+
+  test("platform.md: right to left, logical properties, the page's lang and dir, the CDK's direction and server rendering", () => {
+    has("platform.md", [
+      'dir="rtl"', "margin-inline-start", "padding-inline-end", "src/index.html", "<html lang", "@angular/localize", "one app per locale",
+      "Directionality", "@angular/cdk/bidi", "afterNextRender", "DOCUMENT", "LOCALE_ID", "server rendering", "needs no `motif-ok`",
+    ]);
+  });
+
+  test("checks.md: every rule, the audit, state scripts as JavaScript, and --rtl", () => {
+    const checks = read("angular/checks.md");
+    for (const id of RULE_IDS) expect(checks).toContain(`## \`${id}\``);
+    has("checks.md", [
+      "## Contrast", "## Target size", "## Reduced motion", "motif-ok", "<!-- motif-ok", "--state design/states/", "are JavaScript", "--rtl",
+      "## Screens behind a form or a click", "data-ready", "afterNextRender", "[style.padding.px]", "[ngStyle]", "[ngClass]", "template:", "styles:",
+    ]);
+  });
+
+  test("checks.md: each rule with a fix has it both in a template file and in an inline template", () => {
+    const checks = read("angular/checks.md");
+    for (const id of ["raw-color", "tailwind-arbitrary", "off-scale", "raw-font", "raw-motion", "reduced-motion"]) {
+      const start = checks.indexOf(`## \`${id}\``);
+      const section = checks.slice(start, checks.indexOf("\n## ", start + 1));
+      expect([id, section.includes("```html\n")]).toEqual([id, true]);
+      expect([id, /```ts\n[\s\S]*?template: `/.test(section)]).toEqual([id, true]);
+    }
+  });
+
+  test("the code examples pass motif check as they are, in an Angular 21 app", async () => {
+    // A copy of the angular-min fixture (ng new --style=tailwind), without its planted /audit and /calm pages.
+    const root = tempDir("motif-ng-guide-");
+    cpSync(join(FIXTURES, "angular-min"), root, { recursive: true, filter: (src) => !["node_modules", ".angular", "dist"].includes(basename(src)) });
+    for (const page of ["audit", "calm"]) rmSync(join(root, "src/app", page), { recursive: true });
+    const write = (rel: string, content: string) => {
+      mkdirSync(join(root, rel, ".."), { recursive: true });
+      writeFileSync(join(root, rel), content);
+    };
+    write("design/tokens.json", readFileSync(join(FIXTURES, "contract/design/tokens.json"), "utf8"));
+    // Each example is a component of its own: a template (html) or styles (css, scss) with a .ts that names it; a .ts as it is.
+    const examples: string[] = [];
+    for (const file of GUIDE_FILES) {
+      const text = read(`angular/${file}`);
+      for (const [i, m] of [...text.matchAll(/```(html|ts|css|scss)\n([\s\S]*?)```/g)].entries()) {
+        const name = `${file.replace(".md", "")}-${i + 1}`;
+        const dir = `src/app/examples/${name}`;
+        const lang = m[1]!;
+        write(`${dir}/${name}.${lang}`, m[2]!);
+        examples.push(`${dir}/${name}.${lang}`);
+        const cls = `Example${examples.length}`;
+        if (lang === "html") write(`${dir}/${name}.ts`, `import { Component } from '@angular/core';\n\n@Component({ selector: 'app-${name}', templateUrl: './${name}.html' })\nexport class ${cls} {}\n`);
+        if (lang === "css" || lang === "scss") write(`${dir}/${name}.ts`, `import { Component } from '@angular/core';\n\n@Component({ selector: 'app-${name}', template: '', styleUrl: './${name}.${lang}' })\nexport class ${cls} {}\n`);
+      }
+    }
+    expect(examples.filter((p) => p.endsWith(".html")).length).toBeGreaterThan(8);
+    expect(examples.filter((p) => p.endsWith(".ts") && /@(?:Component|Directive)\(/.test(readFileSync(join(root, p), "utf8"))).length).toBeGreaterThan(10);
+    expect((await runTokens(root, { positionals: [] })).exitCode).toBe(0);
+    const result = await runCheck(root, { positionals: [] });
+    const violations = (result.data as any).violations as any[];
+    const hits = violations.filter((h) => h.file.startsWith("src/app/examples/")).map((h) => `${h.file}:${h.line} ${h.rule} ${h.text}`);
+    expect(hits).toEqual([]);
+    // The app-wide rule too: the examples' Motion checks reduced motion, and the theme covers the CSS.
+    expect(violations.filter((h) => h.rule === "reduced-motion")).toEqual([]);
   });
 });
 
