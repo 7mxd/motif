@@ -60,7 +60,7 @@ Dark mode follows the system automatically. To offer a switch, set `data-theme="
 
 When the design guide has variants, choose one by setting `data-variant="<id>"` on `<html>`, the same element as `data-theme`. The default variant needs no attribute. Tailwind classes and `var(--motif-…)` follow on their own; write no per-variant classes.
 
-From the app's state, set `document.documentElement.dataset.variant`. Keep the choice in a signal in a service, and set the attribute through Angular's `DOCUMENT` (from `@angular/core`; before Angular 20, from `@angular/common`) rather than the global `document`. With server rendering (`--ssr`), the server renders the page into its own `DOCUMENT`, so the service sets the attribute there too and the page starts in the right variant instead of flashing the default. Remember the choice in a cookie, which the server can read (`REQUEST`, Angular 19 and later), rather than `localStorage`, which only the browser can:
+From the app's state, set `document.documentElement.dataset.variant`. Keep the choice in a signal in a service, and set the attribute through Angular's `DOCUMENT` (from `@angular/core`; before Angular 20, from `@angular/common`) rather than the global `document`. With server rendering (`--ssr`), the server renders the page into its own `DOCUMENT`, so the service sets the attribute there too and the page starts in the right variant (for server-rendered routes) instead of flashing the default. Remember the choice in a cookie, which the server can read (`REQUEST`, Angular 19 and later), rather than `localStorage`, which only the browser can:
 
 ```ts
 import { DOCUMENT, Injectable, REQUEST, inject, signal } from '@angular/core';
@@ -100,17 +100,16 @@ export class VariantService {
 }
 ```
 
-Create the service when the app starts, in `src/app/app.config.ts`, so it sets the attribute before the first render on the server and in the browser (`provideAppInitializer` is Angular 19 and later; before that, an `APP_INITIALIZER` provider); a settings screen calls `choose()`:
+Create the service when the app starts: add a provider to the `providers` of `src/app/app.config.ts`, keeping the ones already there (`provideBrowserGlobalErrorListeners()`, the router, and with `--ssr` `provideClientHydration(withEventReplay())`), so it sets the attribute before the first render on the server and in the browser (`provideAppInitializer` is Angular 19 and later; before that, an `APP_INITIALIZER` provider); a settings screen calls `choose()`:
 
 ```ts
-import { ApplicationConfig, inject, provideAppInitializer } from '@angular/core';
-import { provideRouter } from '@angular/router';
-import { routes } from './app.routes';
+// src/app/app.config.ts: add to the imports and to providers; keep everything else.
+import { inject, provideAppInitializer } from '@angular/core';
 import { VariantService } from './variant.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideRouter(routes),
+    // …your other providers
     provideAppInitializer(() => {
       inject(VariantService);
     }),

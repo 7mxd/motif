@@ -331,6 +331,16 @@ describe("the Angular guide matches the tool", () => {
     }
   });
 
+  test("the variant's app.config.ts is shown as a provider to add, keeping the app's own; the server's first paint is for server-rendered routes", () => {
+    const tokens = read("adapters/angular/tokens.md");
+    const snippet = /```ts\n\/\/ src\/app\/app\.config\.ts[\s\S]*?```/.exec(tokens)?.[0] ?? "";
+    expect(snippet).toContain("// …your other providers");
+    expect(snippet).not.toContain("provideRouter(routes)");
+    expect(tokens).toContain("keeping the ones already there (`provideBrowserGlobalErrorListeners()`");
+    expect(tokens).toContain("starts in the right variant (for server-rendered routes)");
+    expect(read("adapters/angular/platform.md")).toContain("so the server draws the right one (for server-rendered routes;");
+  });
+
   test("every Angular guide file stays under the line limit and links only to files that exist", () => {
     for (const f of files.filter((f) => f.startsWith("adapters/angular/"))) {
       expect(lintSkillMarkdown(f, readFileSync(join(SKILL, f), "utf8"), opts)).toEqual([]);
