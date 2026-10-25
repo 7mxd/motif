@@ -3,6 +3,7 @@ import { cpSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { runExtract } from "../src/commands/extract";
 import { validateTokens } from "../src/contract/tokens";
+import { isDarkClassSelector } from "../src/stacks/angular/dark";
 import { docFrom, FIXTURES } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -191,9 +192,14 @@ describe("motif extract on an Angular Material app", () => {
     expect(r.exitCode).toBe(0);
     const report = reportOf(root);
     const notes = report.notes.join("\n");
-    expect(notes).toContain("mat.$azure-palette");
-    expect(notes).toContain("mat.$blue-palette");
-    expect(notes).toContain("Set action-primary in the guide by hand");
+    // The overrides set primary, so the note says where action-primary came from rather than to set it by hand.
+    expect(notes).toContain(
+      "Angular Material's mat.$azure-palette is a named palette; Motif can't read its colours from the code. action-primary came from your overrides (--mat-sys-primary) instead.",
+    );
+    expect(notes).not.toContain("Set action-primary in the guide by hand");
+    expect(notes).toContain(
+      "Angular Material's mat.$blue-palette (tertiary) is a named palette; Motif can't read its colours from the code. If your app shows its tertiary colours, set the matching role in design/tokens.json by hand; otherwise there's nothing to do.",
+    );
     const tokens = draftOf(root);
     expect(pairOf(tokens, "action-primary")).toEqual(["#6750A4", "#D0BCFF"]);
     expect(pairOf(tokens, "surface")).toEqual(["#FFFBFE", "#141218"]);
@@ -255,6 +261,95 @@ describe("motif extract on an Angular Material app", () => {
     const radii = reportOf(root).radius.map((s: any) => s.value);
     expect(radii).toEqual(expect.arrayContaining(["4px", "16px", "9999px"]));
     expect(validateTokens(docFrom(tokens))).toEqual([]);
+  });
+
+  test("a .dark-theme block's other colours are dark values, not light ones: the same draft as with the web's .dark", async () => {
+    const styles = (dark: string) => `@use '@angular/material' as mat;
+
+html {
+  @include mat.theme((color: mat.$azure-palette, typography: Roboto, density: 0));
+  @include mat.theme-overrides((primary: #6750a4, surface: #fffbfe, on-surface: #1c1b1f, error: #b3261e));
+}
+${dark} {
+  @include mat.theme-overrides((primary: #d0bcff, surface: #141218, on-surface: #e6e1e5));
+}
+.card { background: #fffbfe; border: 1px solid #cac4d0; color: #49454f; }
+${dark} .card { background: #2b2930; border: 1px solid #49454f; color: #cac4d0; }
+.ok { color: #1e8e3e; }
+${dark} .ok { color: #81c995; }
+`;
+    const html = `<main>${'<div class="card"><p class="ok">Saved</p></div>'.repeat(4)}</main>\n`;
+    const material = ngApp("scss", { "src/styles.scss": styles(".dark-theme"), "src/app/app.html": html }, { "@angular/material": "~21.2.0" });
+    const web = ngApp("scss", { "src/styles.scss": styles(".dark"), "src/app/app.html": html }, { "@angular/material": "~21.2.0" });
+    await runExtract(material, ctx);
+    await runExtract(web, ctx);
+    const tokens = draftOf(material);
+    expect(lightOf(tokens, "border")).toBe("#CAC4D0");
+    // success isn't the dark block's green (#81C995); the light one is too dark a text colour to be taken, so it's the default.
+    expect(lightOf(tokens, "success")).not.toBe("#81C995");
+    // text-secondary is a light text colour (the light green, darkened to read, as the web drafts it), never a dark block's.
+    expect(["#CAC4D0", "#81C995", "#E6E1E5"]).not.toContain(lightOf(tokens, "text-secondary"));
+    expect(pairOf(tokens, "action-primary")).toEqual(["#6750A4", "#D0BCFF"]);
+    // No colour of the dark block is read as a light one.
+    const lightHexes = reportOf(material).colors.map((c: any) => c.hex.toUpperCase());
+    for (const hex of ["#2B2930", "#81C995", "#141218", "#E6E1E5", "#D0BCFF"]) expect(lightHexes).not.toContain(hex);
+    expect(reportOf(material).notes.join("\n").toLowerCase()).not.toContain("#81c995");
+    // .dark-theme reads as the web reads .dark.
+    for (const role of ["border", "success", "text-secondary", "surface", "background", "text-primary"]) {
+      expect(pairOf(tokens, role)).toEqual(pairOf(draftOf(web), role));
+    }
+    expect(validateTokens(docFrom(tokens))).toEqual([]);
+  });
+
+  test("dark classes are whole words: .dark-theme, .theme-dark, .dark-mode are dark; .not-dark and .darkened-card are not", () => {
+    for (const s of [".dark", ".dark-theme", ".theme-dark", ".dark-mode", "body.dark-theme", '[data-theme="dark"]', "html.app-dark, .dark-theme"]) {
+      expect([s, isDarkClassSelector(s)]).toEqual([s, true]);
+    }
+    for (const s of [".not-dark", ".darkened-card", ".card", ".no-dark-mode", ".dark-theme, .card"]) {
+      expect([s, isDarkClassSelector(s)]).toEqual([s, false]);
+    }
+  });
+
+  test(".not-dark and .darkened-card blocks give light values, and don't take a role's dark one", async () => {
+    const root = ngApp("css", {
+      "src/styles.css": ":root { --mat-sys-primary: #6750a4; }\n.not-dark { --mat-sys-primary: #111111; }\n.darkened-card { --mat-sys-primary: #222222; }\n.dark-theme { --mat-sys-primary: #d0bcff; }\n",
+    }, { "@angular/material": "~21.2.0" });
+    await runExtract(root, ctx);
+    expect(pairOf(draftOf(root), "action-primary")).toEqual(["#6750A4", "#D0BCFF"]);
+  });
+
+  test("values Motif can't read (color-mix(), calc(), a Sass variable) are named in one note", async () => {
+    const root = ngApp("scss", {
+      "src/styles.scss": `@use '@angular/material' as mat;
+$brand: #6750a4;
+html {
+  @include mat.theme((color: mat.$azure-palette));
+  @include mat.theme-overrides((primary: $brand, corner-medium: calc(4px * 3), on-surface: #1c1b1f));
+}
+:root { --mat-sys-surface: color-mix(in srgb, #ffffff 90%, #6750a4); }
+`,
+    }, { "@angular/material": "~21.2.0" });
+    await runExtract(root, ctx);
+    const notes = reportOf(root).notes.join("\n");
+    expect(notes).toContain(
+      "Angular Material: Motif can't read the value of --mat-sys-corner-medium, --mat-sys-primary, --mat-sys-surface (a color-mix(), calc() or Sass expression), so the draft leaves them out. Set their roles in the guide by hand.",
+    );
+    // Primary wasn't read, so the palette note still says to set action-primary by hand.
+    expect(notes).toContain("mat.$azure-palette is a named palette; Motif can't read its colours from the code. Set action-primary in the guide by hand.");
+  });
+
+  test("a colour written where mat.theme() takes a palette isn't read, and the note says where it goes", async () => {
+    const root = ngApp("scss", {
+      "src/styles.scss": "@use '@angular/material' as mat;\nhtml {\n  @include mat.theme((color: (primary: #6750a4, tertiary: #7d5260), typography: Roboto));\n}\n",
+    }, { "@angular/material": "~21.2.0" });
+    await runExtract(root, ctx);
+    const report = reportOf(root);
+    const notes = report.notes.join("\n");
+    expect(notes).toContain(
+      "Angular Material's mat.theme() takes a palette for primary, not a colour, so Motif doesn't read #6750a4 there. Set action-primary in the guide by hand, or set the colour with mat.theme-overrides((primary: …)).",
+    );
+    expect(notes).toContain("Angular Material's mat.theme() takes a palette for tertiary, not a colour, so Motif doesn't read #7d5260 there. If your app shows its tertiary colours");
+    expect(report.variables.map((v: any) => v.name)).not.toContain("--mat-sys-primary");
   });
 });
 

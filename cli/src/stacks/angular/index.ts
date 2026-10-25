@@ -6,6 +6,7 @@ import { expandHtml } from "../../check/html";
 import { maskComments } from "../../check/mask";
 import type { WebStack } from "../web";
 import { angularDoctor, angularUnsupported } from "./doctor";
+import { withDarkClasses } from "./dark";
 import { collectAngular } from "./extract";
 import { angularWiring, generateAngular } from "./generate";
 import { angularSrcDir } from "./project";
@@ -52,8 +53,13 @@ function componentFilesOf(files: SourceFile[]): { templates: Set<string>; styles
  * A component's template (.html) as its CSS, script and markup, read through Angular's grammar; a component's .ts with
  * the strings its @Component holds (template:, styles:) read in place; a component's stylesheet as it is; each marked a
  * component's. Any other HTML (src/index.html) as the web reads it; other files (other stylesheets and code) as they are.
+ * Every CSS view has its dark-theme class blocks (.dark-theme) marked dark.
  */
 function angularViews(file: SourceFile, files?: SourceFile[]): SourceFile[] {
+  return viewsOf(file, files).map(withDarkClasses);
+}
+
+function viewsOf(file: SourceFile, files?: SourceFile[]): SourceFile[] {
   const own = files ? componentFilesOf(files) : null;
   if (HTML_FILE.test(file.path) && own?.templates.has(file.path)) return componentFiles(file, READ).map((v) => ({ ...v, component: true as const }));
   if (STYLESHEET.test(file.path) && own?.styles.has(file.path)) return [{ ...file, component: true }];
