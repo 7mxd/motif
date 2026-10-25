@@ -1,7 +1,7 @@
 // The dark-theme classes Angular Material's guides use (.dark-theme, .theme-dark, .dark-mode, body.dark): blocks for dark
 // mode that the web's reading of CSS (which knows .dark and [data-theme=dark]) doesn't take as dark. Angular's views mark
 // them, so every colour in them is a dark value, in motif extract as in motif check.
-import { isDarkSelector } from "../../check/dark";
+import { isDarkSelector, withoutNot } from "../../check/dark";
 import type { SourceFile } from "../../check/files";
 import { maskComments } from "../../check/mask";
 
@@ -14,9 +14,9 @@ function saysDark(name: string): boolean {
   return words.includes("dark") && !words.some((w) => NEGATIONS.has(w));
 }
 
-/** A selector for dark mode only: each selector in its list names a dark class or attribute value. */
+/** A selector for dark mode only: each selector in its list names a dark class or attribute value (not inside :not(…), which says what it isn't). */
 export function isDarkClassSelector(selector: string): boolean {
-  const items = selector.split(",").map((s) => s.trim()).filter(Boolean);
+  const items = withoutNot(selector).split(",").map((s) => s.trim()).filter(Boolean);
   if (items.length === 0) return false;
   return items.every((item) => {
     const names = [...item.matchAll(/\.([\w-]+)/g)].map((m) => m[1]!);

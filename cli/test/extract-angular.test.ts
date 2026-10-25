@@ -305,9 +305,17 @@ ${dark} .ok { color: #81c995; }
     for (const s of [".dark", ".dark-theme", ".theme-dark", ".dark-mode", "body.dark-theme", '[data-theme="dark"]', "html.app-dark, .dark-theme"]) {
       expect([s, isDarkClassSelector(s)]).toEqual([s, true]);
     }
-    for (const s of [".not-dark", ".darkened-card", ".card", ".no-dark-mode", ".dark-theme, .card"]) {
+    for (const s of [".not-dark", ".darkened-card", ".card", ".no-dark-mode", ".dark-theme, .card", ".card:not(.dark-theme)", ".card:not(.dark)", ".card:not(.dark, .dark-theme)", ":where(:not(.dark-theme)) .card"]) {
       expect([s, isDarkClassSelector(s)]).toEqual([s, false]);
     }
+  });
+
+  test("a rule for what isn't dark (.card:not(.dark-theme)) gives light colours", async () => {
+    const root = ngApp("css", {
+      "src/styles.css": ".card:not(.dark-theme) { color: #654321; }\n.card:not(.dark) { background: #fedcba; }\n",
+    });
+    await runExtract(root, ctx);
+    expect(reportOf(root).colors.map((c: any) => c.hex.toLowerCase())).toEqual(expect.arrayContaining(["#654321", "#fedcba"]));
   });
 
   test(".not-dark and .darkened-card blocks give light values, and don't take a role's dark one", async () => {
