@@ -1,7 +1,7 @@
 // motif extract for Angular: the app's global styles, component stylesheets and inline styles are read by the web's
 // collector; this adds what only Angular apps have, Angular Material's system variables (--mat-sys-*), set in CSS or
-// through mat.theme-overrides((…)) in Sass, as Motif's roles, its corners as radii, and a note for each palette given
-// only by name (mat.$azure-palette), whose colours aren't in the code.
+// through mat.theme-overrides((…)) in Sass, as Motif's roles, its corners as radii, mat.theme()'s typography as the
+// theme's font, and a note for each palette given only by name (mat.$azure-palette), whose colours aren't in the code.
 import { darkRanges } from "../../check/dark";
 import type { SourceFile } from "../../check/files";
 import { parseColor, type Sample } from "../../extract/cluster";
@@ -74,6 +74,16 @@ function sassMap(text: string, open: number): { key: string; value: string; at: 
   return entries;
 }
 
+/**
+ * A family as mat.theme()'s typography writes it: Roboto, 'Open Sans', or a list ("Playfair Display", serif), whose first
+ * name is the font. Null for what Motif can't read (a Sass variable or function) or a generic family alone.
+ */
+function materialFamily(value: string): string | null {
+  const first = value.replace(/^\(\s*/, "").split(",")[0]!.trim().replace(/^['"]|['"]$/g, "").trim();
+  if (!first || /[$()]/.test(first) || /\.\$?[\w-]/.test(first)) return null;
+  return /^(?:sans-serif|serif|monospace|system-ui)$/i.test(first) ? null : first;
+}
+
 const inRanges = (i: number, ranges: [number, number][]) => ranges.some(([a, b]) => a <= i && i < b);
 
 const empty = (): Occurrences => ({ colors: [], space: [], radius: [], fontSize: [], fontFamily: [], duration: [], easing: [], unresolved: [] });
@@ -87,6 +97,8 @@ export function collectAngular(files: SourceFile[]): Occurrences {
   /** Values Motif can't read (color-mix(), calc(), a Sass variable), by their name after --mat-sys-. */
   const unread = new Set<string>();
   const radius = new Map<string, Sample>();
+  /** The fonts mat.theme()'s typography names, the plain family first. */
+  const fonts = new Map<string, Sample>();
   /** Palettes given by name, and colours written where mat.theme() takes a palette. */
   const palettes: { key: string; written: string; literal: boolean }[] = [];
   const set = (name: string, value: string, dark: boolean, place: string) => {
@@ -148,6 +160,23 @@ export function collectAngular(files: SourceFile[]): Occurrences {
       for (const c of args.matchAll(/\b(color|primary|tertiary)\s*:\s*(#[0-9a-fA-F]{3,8}\b|(?:rgba?|hsla?|oklch)\([^()]*\))/g)) {
         palettes.push({ key: c[1]!, written: c[2]!, literal: true });
       }
+      // Its typography is the theme's font (ng add writes typography: Roboto, and the body takes it through
+      // --mat-sys-body-medium): one family, or a map whose plain family is the text's and brand family the headings'.
+      const inner = css.slice(open + 1).search(/\S/);
+      if (inner >= 0 && css[open + 1 + inner] === "(") {
+        const typography = sassMap(css, open + 1 + inner).find((e) => e.key === "typography");
+        const given = typography?.value.startsWith("(")
+          ? ["plain-family", "brand-family"].flatMap((k) => sassMap(css, typography.at).filter((e) => e.key === k))
+          : typography ? [typography] : [];
+        for (const e of given) {
+          const family = materialFamily(e.value);
+          if (family === null) continue;
+          const s = fonts.get(family) ?? { value: family, count: 0, contexts: {}, examples: [] };
+          s.count++;
+          if (s.examples.length < MAX_EXAMPLES) s.examples.push(place(e.at));
+          fonts.set(family, s);
+        }
+      }
     }
   }
 
@@ -173,7 +202,7 @@ export function collectAngular(files: SourceFile[]): Occurrences {
   }
 
   const variables = [...system.values()];
-  if (variables.length === 0 && radius.size === 0 && linked.size === 0 && notes.length === 0) return empty();
+  if (variables.length === 0 && radius.size === 0 && linked.size === 0 && notes.length === 0) return fonts.size === 0 ? empty() : { ...empty(), fontFamily: [...fonts.values()] };
   // Each role is another name for its system colour (--action-primary → --mat-sys-primary), so the draft takes the role from
   // it, light and dark, as from a variable named for the role. One set from another variable is followed through it.
   const aliases: Record<string, string> = {};
@@ -187,6 +216,7 @@ export function collectAngular(files: SourceFile[]): Occurrences {
   return {
     ...empty(),
     radius: [...radius.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value)),
+    fontFamily: [...fonts.values()],
     variables,
     aliases,
     roleNames: Object.keys(aliases),

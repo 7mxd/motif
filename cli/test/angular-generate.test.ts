@@ -139,6 +139,31 @@ describe("the one-step wiring note", () => {
     expect(wire(material, ["src/styles/motif.css"])).toBe('Next: add @use "./styles/motif.css"; at the top of src/styles.scss.');
   });
 
+  test("a styles file in a git submodule (RealWorld's shared theme) isn't the app's: add the theme to angular.json's styles after it (2K hands-on)", () => {
+    const vendored = ngNew({
+      ".gitmodules": '[submodule "realworld"]\n\tpath = realworld\n    url = https://github.com/realworld-apps/realworld.git\n    ignore = dirty\n',
+      "angular.json": angularJson({ styles: ["realworld/assets/theme/styles.css"] }),
+      "realworld/assets/theme/styles.css": "body { margin: 0; }\n",
+    }, false);
+    expect(wire(vendored, ["src/styles/motif.css", "src/app/design/motion.ts"])).toBe(
+      'Next: add "src/styles/motif.css" to the build\'s styles in angular.json, after "realworld/assets/theme/styles.css", which is in the git submodule realworld/.',
+    );
+    // An own styles file beside the submodule's is the one to import from; one that already imports the theme needs nothing.
+    const both = ngNew({
+      ".gitmodules": '[submodule "vendor/theme"]\n\tpath = vendor/theme\n\turl = ../theme.git\n',
+      "angular.json": angularJson({ styles: ["vendor/theme/styles.css", "src/styles.css"] }),
+      "vendor/theme/styles.css": "",
+    }, false);
+    expect(wire(both, ["src/styles/motif.css"])).toBe('Next: add @import "./styles/motif.css"; at the top of src/styles.css.');
+    // Once the theme is in angular.json's styles, there is nothing to do.
+    const listed = ngNew({
+      ".gitmodules": '[submodule "realworld"]\n\tpath = realworld\n',
+      "angular.json": angularJson({ styles: ["realworld/assets/theme/styles.css", "src/styles/motif.css"] }),
+      "realworld/assets/theme/styles.css": "",
+    }, false);
+    expect(wire(listed, ["src/styles/motif.css"])).toBeNull();
+  });
+
   test("no global styles: add the file to angular.json's styles", () => {
     const none = ngNew({ "angular.json": angularJson({ styles: [] }) }, false);
     expect(wire(none, ["src/styles/motif.css"])).toBe('Next: add "src/styles/motif.css" to the build\'s styles in angular.json ("styles": ["src/styles/motif.css"]).');

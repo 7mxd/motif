@@ -214,6 +214,26 @@ describe("motif extract on an Angular Material app", () => {
     expect(validateTokens(docFrom(tokens))).toEqual([]);
   });
 
+  test("mat.theme's typography is the theme's font: one family, or the plain and brand families of a map (2K hands-on)", async () => {
+    // ng add @angular/material's own styles.scss: the font is only in mat.theme(), and the body takes it through --mat-sys-body-medium.
+    const NG_ADD = "@use '@angular/material' as mat;\n\nhtml {\n  height: 100%;\n  @include mat.theme(\n    (\n      color: (\n        primary: mat.$azure-palette,\n        tertiary: mat.$blue-palette,\n      ),\n      typography: Roboto,\n      density: 0,\n    )\n  );\n}\n\nbody {\n  background-color: var(--mat-sys-surface);\n  color: var(--mat-sys-on-surface);\n  font: var(--mat-sys-body-medium);\n  margin: 0;\n}\n";
+    const one = ngApp("scss", { "src/styles.scss": NG_ADD }, { "@angular/material": "~22.2.0" });
+    expect((await runExtract(one, ctx)).exitCode).toBe(0);
+    expect(reportOf(one).fontFamilies.map((f: any) => f.value)).toEqual(["Roboto"]);
+    expect(draftOf(one).primitive.font.sans.$value[0]).toBe("Roboto");
+    // A map: the plain family is the text's, the brand family the headings'; quoted names and a fallback list are read.
+    const map = ngApp("scss", {
+      "src/styles.scss": "@use '@angular/material' as m;\n\nhtml {\n  @include m.theme((\n    color: m.$violet-palette,\n    typography: (plain-family: 'Open Sans', brand-family: (\"Playfair Display\", serif), bold-weight: 700),\n  ));\n}\n",
+    }, { "@angular/material": "~22.2.0" });
+    expect((await runExtract(map, ctx)).exitCode).toBe(0);
+    expect(reportOf(map).fontFamilies.map((f: any) => f.value).sort()).toEqual(["Open Sans", "Playfair Display"]);
+    expect(draftOf(map).primitive.font.sans.$value[0]).toBe("Open Sans");
+    // A family Motif can't read (a Sass variable) is left out.
+    const variable = ngApp("scss", { "src/styles.scss": "@use '@angular/material' as mat;\n$font: Inter;\nhtml { @include mat.theme((color: mat.$azure-palette, typography: $font)); }\n" }, { "@angular/material": "~22.2.0" });
+    expect((await runExtract(variable, ctx)).exitCode).toBe(0);
+    expect(reportOf(variable).fontFamilies).toEqual([]);
+  });
+
   test("a palette only by name: no colour from it, and the note says to set action-primary by hand", async () => {
     const root = ngApp("scss", {
       "src/styles.scss": "@use '@angular/material' as mat;\n\nhtml {\n  color-scheme: light dark;\n  @include mat.theme((color: mat.$violet-palette, typography: Roboto, density: 0));\n}\n",
