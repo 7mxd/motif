@@ -1,5 +1,5 @@
 // Measures what a finished case left behind: the motif tool's checks, the build and the type check (on a plain site, the page in a browser; on Flutter,
-// flutter analyze and the page as Flutter draws it; on React Native, tsc and the page as Expo's web target draws it; on Vue and Svelte, vue-tsc or svelte-check, the build and the page at a phone's and a laptop's width; on SwiftUI, xcodebuild build and
+// flutter analyze and the page as Flutter draws it; on React Native, tsc and the page as Expo's web target draws it; on Vue and Svelte, vue-tsc or svelte-check, the build and the page at a phone's and a laptop's width; on Angular, ng build (its type check too) and the page at the same widths; on SwiftUI, xcodebuild build and
 // the page's #Preview as the simulator draws it), what the session changed, and for test C the review report, graded against the seeded list (match.ts)
 // and by the model grader (judge.ts).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -10,17 +10,19 @@ import { discoverRoutes } from "../../cli/src/stacks/react-web/routes";
 import { detectApps, siteDir } from "../../cli/src/detect/stacks";
 import { discoverPlainRoutes } from "../../cli/src/stacks/plain-web/routes";
 import { maskComments, maskStrings } from "../../cli/src/check/mask";
+import { maskCode } from "../../cli/src/extract/object-literal";
 import { discoverFlutterRoutes } from "../../cli/src/stacks/flutter/routes";
 import { defaultDoctorDeps } from "../../cli/src/commands/doctor";
 import { findAndroidSdk, gradleJava } from "../../cli/src/stacks/compose/doctor";
 import { gradleProjectPath, gradleTaskCommand } from "../../cli/src/stacks/compose/harness";
 import { discoverComposeScreens, previewSlug, type Preview } from "../../cli/src/stacks/compose/screens";
+import { discoverAngularRoutes } from "../../cli/src/stacks/angular/routes";
 import { discoverExpoRoutes } from "../../cli/src/stacks/react-native/routes";
 import { discoverSvelteRoutes } from "../../cli/src/stacks/svelte/routes";
 import { discoverVueRoutes } from "../../cli/src/stacks/vue/routes";
 import { swiftUIApp } from "../../cli/src/stacks/swiftui/project";
 import { discoverSwiftUIScreens, previewSlug as swiftUIPreviewSlug, type SwiftUIPreview } from "../../cli/src/stacks/swiftui/screens";
-import { isCompose, isFlutter, isPlain, isReactNative, isSvelte, isSwiftUI, isViteWebApp, isVue, type EvalCase } from "./cases";
+import { isAngular, isCompose, isFlutter, isPlain, isReactNative, isSvelte, isSwiftUI, isViteWebApp, isVue, type EvalCase } from "./cases";
 import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
 import { Paused, type JudgeFn, type JudgeInput, type JudgeVerdict } from "./judge";
 import { gradeExact, parseReport, type SeededIssue } from "./match";
@@ -83,10 +85,58 @@ const VUE_TYPECHECK = ["npx", "vue-tsc", "--noEmit"];
  */
 const SVELTE_TYPECHECK = ["npx", "svelte-check", "--fail-on-warnings"];
 
-/** motif shot's sizes for a Vue or Svelte app: a phone and a laptop, since it is a web app used on both. */
+/** motif shot's sizes for a Vue, Svelte or Angular app: a phone and a laptop, since it is a web app used on both. */
 const WEB_APP_SIZES = ["--sizes", "390,1440"];
 
 const webTypecheck = (c: EvalCase): string[] | undefined => (isVue(c) ? VUE_TYPECHECK : isSvelte(c) ? SVELTE_TYPECHECK : undefined);
+
+/** A web app drawn at a phone's and a laptop's width: Vue, Svelte and Angular. */
+const drawnAtTwoWidths = (c: EvalCase): boolean => isViteWebApp(c) || isAngular(c);
+
+/** What an Angular app's type check is called in the details and the grade: ng build, which type-checks as it compiles. */
+const ANGULAR_TYPECHECK = "ng build";
+
+/**
+ * The errors an Angular build's output reports, each as its first line: TypeScript's (TS2322) and the template type
+ * checker's (NG8002, NG9) are the type check's; any other (a module it couldn't resolve, a stylesheet that didn't compile)
+ * is the build's own. Read from the application builder's "[ERROR] …" lines and the older builder's "error TS…" ones.
+ */
+export function angularBuildErrors(output: string): { typeErrors: string[]; otherErrors: string[] } {
+  const typeErrors: string[] = [];
+  const otherErrors: string[] = [];
+  for (const raw of output.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    const message = /\[ERROR\]\s+(.+)$/.exec(line)?.[1] ?? /\berror\s+((?:TS|NG)-?\d+:.*)$/.exec(line)?.[1];
+    if (!message) continue;
+    const text = message.replace(/\s*\[plugin [^\]]+\]\s*$/, "").trim();
+    (/^(?:TS|NG)-?\d+\b/.test(text) ? typeErrors : otherErrors).push(text);
+  }
+  return { typeErrors, otherErrors };
+}
+
+/**
+ * An Angular app's build (npm run build, which is ng build) and its type check, read from the same run: ng build
+ * type-checks the TypeScript and, in strict mode, the templates, so no second command is run. The type errors it reports
+ * are the type check's; when they are all that stopped the build, the build's failure is marked as only that and isn't
+ * counted again (as on Vue). A failed build that printed no errors at all didn't get as far as its type check.
+ */
+async function angularBuild(dir: string, k: Collectors, out: string): Promise<{ build: CmdFacts; typecheck: CmdFacts }> {
+  const build = await k.run([packageManager(dir), "run", "build"], dir, 900_000);
+  const output = `${build.stdout}\n${build.stderr}`;
+  save(out, "build.log", output);
+  const { typeErrors, otherErrors } = angularBuildErrors(output);
+  save(out, "typecheck.log", typeErrors.length ? `${typeErrors.join("\n")}\n` : "No type errors in the build's output.\n");
+  const failed = build.code !== 0 || build.timedOut;
+  const typeErrorsOnly = failed && !build.timedOut && typeErrors.length > 0 && otherErrors.length === 0;
+  const plural = typeErrors.length === 1 ? "type error" : "type errors";
+  const typecheck: CmdFacts =
+    typeErrors.length > 0
+      ? { code: 1, command: ANGULAR_TYPECHECK, detail: `${typeErrors.length} ${plural} in the build's output (ng build type-checks the templates in strict mode). The first: ${typeErrors[0]}` }
+      : failed && otherErrors.length === 0
+        ? { code: build.code || 1, timedOut: build.timedOut, command: ANGULAR_TYPECHECK, detail: `The build ${build.timedOut ? "ran out of time" : "failed"} and didn't get as far as its type check (see build.log).` }
+        : { code: 0, command: ANGULAR_TYPECHECK };
+  return { build: { code: build.code, timedOut: build.timedOut, ...(typeErrorsOnly ? { typeErrorsOnly } : {}) }, typecheck };
+}
 
 /**
  * A Flutter app's type check: its packages got again (the session may have added some, and flutter pub get also writes
@@ -541,6 +591,64 @@ export function vueComponents(diff: string): VueComponents {
   return found;
 }
 
+/** An Angular app's new components: the same lists as Vue's. */
+export type AngularComponents = VueComponents;
+
+/** The @Component classes in code (comments and strings blanked), and whether each is its file's default export. */
+function componentClasses(code: string): { name: string; isDefault: boolean }[] {
+  const s = maskCode(code);
+  const found: { name: string; isDefault: boolean }[] = [];
+  for (const m of s.matchAll(/@Component\s*\(/g)) {
+    const end = closeOf(s, m.index! + m[0].length - 1);
+    const cls = /^\s*(?:@\w+\s*(?:\([^)]*\))?\s*)*(?:export\s+)?(default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/.exec(s.slice(end + 1));
+    if (cls) found.push({ name: cls[2]!, isDefault: Boolean(cls[1]) });
+  }
+  return found;
+}
+
+/**
+ * The pages the routes a diff adds show: the classes named by component: and by loadComponent's .then(m => m.X) or
+ * .then(({ X }) => X), and the files a loadComponent imports without .then (their default export), by name.
+ */
+function routedPages(files: DiffFile[]): { classes: Set<string>; defaultFiles: Set<string> } {
+  const code = maskComments(files.flatMap(reallyAdded).join("\n"), "script");
+  const classes = new Set<string>();
+  const defaultFiles = new Set<string>();
+  for (const m of code.matchAll(/\bcomponent\s*:\s*([A-Za-z_$][\w$]*)/g)) classes.add(m[1]!);
+  for (const m of code.matchAll(/\bloadComponent\s*:\s*(?:async\s*)?\(\s*\)\s*=>\s*import\s*\(\s*(["'`])([^"'`]+)\1\s*\)((?:(?!\bloadComponent\b)[^\n])*)/g)) {
+    const rest = m[3]!;
+    const named =
+      /\.then\s*\(\s*\(?\s*([\w$]+)\s*\)?\s*=>\s*\1\s*\.\s*([\w$]+)/.exec(rest)?.[2] ??
+      /\.then\s*\(\s*\(\s*\{\s*([\w$]+)\s*\}\s*\)\s*=>\s*\1\b/.exec(rest)?.[1];
+    if (named) classes.add(named);
+    else defaultFiles.add(posix.basename(m[2]!).replace(/\.ts$/, ""));
+  }
+  return { classes, defaultFiles };
+}
+
+/**
+ * An Angular app's new components, from the session's diff: the @Component classes in .ts files the session adds under
+ * src/app/, minus those it moved. A component the routes the session adds show (by component: or loadComponent) is the
+ * page itself. Services, directives and pipes aren't components, the generated theme has none, and tests never count.
+ */
+export function angularComponents(diff: string): AngularComponents {
+  const all = diffFiles(diff).filter((f) => /\.ts$/.test(f.path) && !/\.(test|spec|stories|d)\.ts$/.test(f.path));
+  const pages = routedPages(all);
+  const moved = new Set(all.filter((f) => f.deleted).flatMap((f) => componentClasses(f.removed.join("\n")).map((c) => c.name)));
+  const found: AngularComponents = { newComponents: [], screens: [], screenParts: [], notUi: [] };
+  const seen = new Set<string>();
+  for (const f of all.filter((x) => x.isNew && !x.deleted && /(?:^|\/)src\/app\//.test(x.path))) {
+    const stem = basename(f.path, ".ts");
+    for (const c of componentClasses(reallyAdded(f).join("\n"))) {
+      if (moved.has(c.name) || seen.has(c.name)) continue;
+      seen.add(c.name);
+      const page = pages.classes.has(c.name) || (c.isDefault && pages.defaultFiles.has(stem));
+      (page ? found.screens : found.newComponents).push(c.name);
+    }
+  }
+  return found;
+}
+
 /** A Svelte or SvelteKit app's new components: the same lists as Vue's. */
 export type SvelteComponents = VueComponents;
 
@@ -769,6 +877,8 @@ export function componentFacts(c: EvalCase, diff: string): Pick<BFacts, "newComp
           ? vueComponents(diff)
           : isSvelte(c)
           ? svelteComponents(diff)
+          : isAngular(c)
+          ? angularComponents(diff)
           : isSwiftUI(c)
           ? swiftUIComponents(diff, c.test === "B" ? c.routes[0] : undefined)
           : isPlain(c) ? { newComponents: plainComponents(diff, fixtureComponents(c.fixture!)) } : reactComponents(diff);
@@ -921,6 +1031,15 @@ export async function collectB(c: EvalCase, ws: Workspace, k: Collectors, out: s
       build, typecheck, render: await renderFacts(k, ws.app, route, out, WEB_APP_SIZES), ...components,
     };
   }
+  if (isAngular(c)) {
+    // Under a hash router a page is listed as /#/history: the route is compared, and drawn, as listed.
+    const listed = discoverAngularRoutes(ws.app).routes.find((r) => r === route || r === `/#${route}`);
+    const { build, typecheck } = await angularBuild(ws.app, k, out);
+    return {
+      route, pageExists: listed !== undefined, check: checkFacts(check), validate: validateFacts(validate),
+      build, typecheck, render: await renderFacts(k, ws.app, listed ?? route, out, WEB_APP_SIZES), ...components,
+    };
+  }
   const { build, typecheck } = await buildAndTypecheck(ws.app, k, out);
   return {
     route, pageExists: discoverRoutes(ws.app).routes.includes(route), check: checkFacts(check), validate: validateFacts(validate),
@@ -1055,7 +1174,9 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
       ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) }
       : isReactNative(c)
         ? { build: undefined, typecheck: await rnTypecheck(app, k, out) }
-        : swift ? { build: undefined, typecheck: await swiftUIBuild(app, join(ws.dir, "DerivedData"), k, out) } : await buildAndTypecheck(app, k, out, webTypecheck(c));
+        : swift
+          ? { build: undefined, typecheck: await swiftUIBuild(app, join(ws.dir, "DerivedData"), k, out) }
+          : isAngular(c) ? await angularBuild(app, k, out) : await buildAndTypecheck(app, k, out, webTypecheck(c));
   // SwiftUI: the root, and the #Previews the prompt names that the app has (by File.swift:line, which nothing else
   // shares), each reported under the case's own name; one the app lacks isn't asked for, so it shows as not captured.
   const named = new Map<string, string>();
@@ -1066,7 +1187,7 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
     }
   }
   const targets = swift ? ["--routes", "/", ...(named.size > 0 ? ["--screen", [...named.keys()].join(",")] : [])] : ["--routes", c.routes.join(",")];
-  const shot = await motifJson(k, ["shot", "--audit", ...targets, ...(flutter || compose || swift || isReactNative(c) ? PHONE_SIZES : isViteWebApp(c) ? WEB_APP_SIZES : [])], app, out, "shot.json", compose || swift ? 1_800_000 : 900_000);
+  const shot = await motifJson(k, ["shot", "--audit", ...targets, ...(flutter || compose || swift || isReactNative(c) ? PHONE_SIZES : drawnAtTwoWidths(c) ? WEB_APP_SIZES : [])], app, out, "shot.json", compose || swift ? 1_800_000 : 900_000);
   copyShots(app, shot.json, join(out, "shots"));
   const screens = Array.isArray(shot.json?.routes)
     ? shot.json.routes.map((r: any) => ({ route: named.get(String(r.route)) ?? String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))

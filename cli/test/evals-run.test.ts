@@ -88,7 +88,7 @@ describe("the eval runner", () => {
 
   test("Node.js is required only when a chosen case installs or builds with npm", async () => {
     const cases: [string, boolean][] = [
-      ["b-search", true], ["c-review", true], ["c-rn", true], ["d-stride", true], ["d-rihla", true], ["b-vue-history", true], ["c-vue", true], ["d-darb", true], ["b-svelte-history", true], ["c-svelte", true], ["d-nuzha", true],
+      ["b-search", true], ["c-review", true], ["c-rn", true], ["d-stride", true], ["d-rihla", true], ["b-vue-history", true], ["c-vue", true], ["d-darb", true], ["b-svelte-history", true], ["c-svelte", true], ["d-nuzha", true], ["b-angular-history", true], ["c-angular", true], ["d-sanad", true],
       ["b-plain", false], ["c-plain", false], ["b-flutter-search", false], ["c-compose", false], ["d-sahm", false], ["d-nabta", false],
       ["b-search,b-flutter-search", true],
     ];
@@ -114,11 +114,12 @@ describe("the eval runner", () => {
     await runEvals(["--cases", "c-swiftui,b-swiftui-orders"], h.deps, h.where);
   });
 
-  test("preflight is told which Node.js floors the chosen cases need: Vite 8 (Vue, Svelte) and SvelteKit 3 (d-nuzha)", async () => {
-    const wanted: [string, { vite8: boolean; svelteKit3: boolean }][] = [
-      ["b-vue-history", { vite8: true, svelteKit3: false }], ["b-search,c-vue", { vite8: true, svelteKit3: false }],
-      ["c-svelte", { vite8: true, svelteKit3: false }], ["d-nuzha", { vite8: false, svelteKit3: true }],
-      ["b-svelte-history,d-nuzha", { vite8: true, svelteKit3: true }], ["b-search,b-rn-orders", { vite8: false, svelteKit3: false }],
+  test("preflight is told which Node.js floors the chosen cases need: Vite 8 (Vue, Svelte), SvelteKit 3 (d-nuzha) and Angular 22 (d-sanad)", async () => {
+    const wanted: [string, { vite8: boolean; svelteKit3: boolean; angular22: boolean }][] = [
+      ["b-vue-history", { vite8: true, svelteKit3: false, angular22: false }], ["b-search,c-vue", { vite8: true, svelteKit3: false, angular22: false }],
+      ["c-svelte", { vite8: true, svelteKit3: false, angular22: false }], ["d-nuzha", { vite8: false, svelteKit3: true, angular22: false }],
+      ["b-svelte-history,d-nuzha", { vite8: true, svelteKit3: true, angular22: false }], ["b-search,b-rn-orders", { vite8: false, svelteKit3: false, angular22: false }],
+      ["b-angular-history,c-angular", { vite8: false, svelteKit3: false, angular22: false }], ["d-sanad", { vite8: false, svelteKit3: false, angular22: true }],
     ];
     for (const [ids, needs] of wanted) {
       const seen: unknown[] = [];
@@ -615,18 +616,18 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
       for (const id of ["b-swiftui-orders", "c-swiftui"]) expect(cases[id]).toEqual({ status: "skipped", attempts: 0, note: SKIP_NOTE });
       const md = readFileSync(join(h.where.results, RUN, "report.md"), "utf8");
       expect(md).toContain(`## c-swiftui: Review of the seeded SwiftUI app\n\nSkipped: ${SKIP_NOTE}`);
-      expect(md).toContain("1 of 17 cases graded; b-swiftui-orders was skipped (it needs a Mac).");
+      expect(md).toContain("1 of 19 cases graded; b-swiftui-orders was skipped (it needs a Mac).");
     }
   });
 
   test("off a Mac, a whole run passes when every case it can run passes: verdicts and exit code agree", async () => {
     const h = harness({ platform: "win32" });
     expect(await runEvals(["--work", h.work], h.deps, h.where)).toBe(0);
-    expect(h.calls.prepare).toHaveLength(31);
+    expect(h.calls.prepare).toHaveLength(35);
     const { verdicts } = JSON.parse(readFileSync(join(h.where.results, RUN, "report.json"), "utf8"));
     expect(verdicts).toEqual([
-      { test: "B", status: "pass", detail: "All 16 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
-      { test: "C", status: "pass", detail: "All 7 cases run passed; c-swiftui was skipped (it needs a Mac)." },
+      { test: "B", status: "pass", detail: "All 18 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
+      { test: "C", status: "pass", detail: "All 8 cases run passed; c-swiftui was skipped (it needs a Mac)." },
       { test: "D", status: "pass", detail: "The new apps passed, and B and C passed with no design sources connected; d-masar was skipped (it needs a Mac)." },
     ]);
     // A failing case that ran still fails it.
