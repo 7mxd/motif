@@ -170,8 +170,11 @@ function installAudit(): boolean {
     if (["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName)) return "field";
     return "element";
   };
+  /** The text of the elements aria-labelledby names, as a screen reader says it (an Angular Material slide toggle's switch). */
+  const labelledBy = (el: Element) =>
+    (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => (id ? (document.getElementById(id) as HTMLElement | null)?.innerText ?? "" : "")).join(" ").trim();
   const label = (el: Element) =>
-    (el.getAttribute("aria-label") || (reactNative ? readable(el) : (el as HTMLElement).innerText) || el.getAttribute("title") || el.getAttribute("alt") || "")
+    (el.getAttribute("aria-label") || labelledBy(el) || (reactNative ? readable(el) : (el as HTMLElement).innerText) || el.getAttribute("title") || el.getAttribute("alt") || readable(el) || "")
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 40);
@@ -265,6 +268,19 @@ function installAudit(): boolean {
           width = Math.max(width, r.width);
           height = Math.max(height, r.height);
         }
+        // A hit area a component library places inside the control is part of what's tapped: Angular Material puts an empty,
+        // absolutely placed 48 px touch target in its 40 px buttons and its slide toggle. A child that takes no taps, or one the
+        // control clips (overflow other than visible), isn't.
+        let [left, top, right, bottom] = [rect.left, rect.top, rect.right, rect.bottom];
+        for (const child of style.overflowX === "visible" && style.overflowY === "visible" ? el.querySelectorAll("*") : []) {
+          const cs = getComputedStyle(child);
+          if (cs.position !== "absolute" || cs.pointerEvents === "none" || cs.display === "none" || cs.visibility === "hidden") continue;
+          const r = child.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          [left, top, right, bottom] = [Math.min(left, r.left), Math.min(top, r.top), Math.max(right, r.right), Math.max(bottom, r.bottom)];
+        }
+        width = Math.max(width, right - left);
+        height = Math.max(height, bottom - top);
         // Compared as reported, in whole pixels: padding around a line of text 1.4 times 14 px is 43.6 px tall, which
         // reads as 44 and would be reported as "44×44 px; 44×44 px is easier to tap".
         if (Math.round(width) < min || Math.round(height) < min) {
