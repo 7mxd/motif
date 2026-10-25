@@ -87,11 +87,15 @@ describe("runDoctor", () => {
   });
 
   test("a stack that isn't supported yet is still detected and marked as coming soon", async () => {
-    const dir = tempDir("motif-angular-");
-    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { "@angular/core": "^20.0.0" } }));
-    const app = item((await runDoctor(dir, deps())).data.items as DoctorItem[], "app:.")!;
+    // Compose Multiplatform is the one detected stack without an adapter now that Angular has one (2K Task 13).
+    const dir = makeProject({
+      "settings.gradle.kts": 'rootProject.name = "Kmp"\ninclude(":composeApp")\n',
+      "composeApp/build.gradle.kts": "plugins {\n    alias(libs.plugins.kotlinMultiplatform)\n    alias(libs.plugins.androidApplication)\n    alias(libs.plugins.composeMultiplatform)\n}\n",
+      "composeApp/src/commonMain/kotlin/App.kt": "@Composable fun App() {}\n",
+    });
+    const app = item((await runDoctor(dir, deps())).data.items as DoctorItem[], "app:composeApp")!;
     expect(app.status).toBe("optional");
-    expect(app.detail).toContain("Angular detected. Full support is coming soon");
+    expect(app.detail).toContain("Compose Multiplatform detected. Full support is coming soon");
   });
 
   test("a Vue 3 app has full support, with its version line beside it (2I Task 13)", async () => {
@@ -196,6 +200,30 @@ describe("runDoctor", () => {
     expect(item(items, "angular:.")).toMatchObject({ status: "ok", label: "Angular (this folder)", detail: "Angular 21.2 with standalone components." });
   });
 
+  test("an Angular app has full support, with its version line beside it (2K Task 13)", async () => {
+    const dir = makeProject({
+      "package.json": JSON.stringify({ dependencies: { "@angular/core": "^22.2.0" } }),
+      "angular.json": JSON.stringify({ projects: { web: { projectType: "application", sourceRoot: "src", architect: { build: { options: { browser: "src/main.ts" } } } } } }),
+      "src/main.ts": "bootstrapApplication(App, appConfig);\n",
+    });
+    const r = await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v24.22.1\n" }) }));
+    const items = r.data.items as DoctorItem[];
+    expect(item(items, "app:.")).toMatchObject({ status: "ok", detail: "Full support for Angular." });
+    expect(item(items, "angular:.")).toMatchObject({ status: "ok", detail: "Angular 22.2 with standalone components." });
+    expect(r.text).not.toContain("coming soon");
+  });
+
+  test("an NgModule app has full support too, its line saying NgModules (2K Task 13)", async () => {
+    const dir = makeProject({
+      "package.json": JSON.stringify({ dependencies: { "@angular/core": "^17.3.0" } }),
+      "angular.json": JSON.stringify({ projects: { web: { projectType: "application", sourceRoot: "src", architect: { build: { options: { main: "src/main.ts" } } } } } }),
+      "src/main.ts": "platformBrowserDynamic().bootstrapModule(AppModule);\n",
+    });
+    const items = (await runDoctor(dir, deps())).data.items as DoctorItem[];
+    expect(item(items, "app:.")).toMatchObject({ status: "ok", detail: "Full support for Angular." });
+    expect(item(items, "angular:.")).toMatchObject({ status: "ok", detail: "Angular 17.3 (NgModules)." });
+  });
+
   test("Angular 22 on a Node.js outside its engines range is told to update", async () => {
     const dir = makeProject({ "package.json": JSON.stringify({ dependencies: { "@angular/core": "^22.2.0" } }) });
     const old = (await runDoctor(dir, deps({ run: () => ({ code: 0, stdout: "v22.14.0\n" }) }))).data.items as DoctorItem[];
@@ -217,6 +245,7 @@ describe("runDoctor", () => {
       detail: "Angular 14 isn't supported: Motif supports Angular 15 and later. Theme code (CSS only), checks and drafts still work; for screenshots, start the app and pass its address to motif shot --url.",
     });
     expect(r.text).not.toContain("coming soon");
+    expect(r.text).not.toContain("Full support");
     expect(r.text.match(/Angular 14 isn't supported/g)).toHaveLength(1);
   });
 

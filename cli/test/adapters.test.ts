@@ -815,7 +815,7 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     }
   });
 
-  test("React web, plain web, Flutter, React Native, Jetpack Compose, SwiftUI, Vue and Svelte have every area done; the stacks still to come have none", () => {
+  test("React web, plain web, Flutter, React Native, Jetpack Compose, SwiftUI, Vue and Svelte have every area done; no stack is still to come", () => {
     for (const stack of ["React web", "Plain web", "Flutter", "React Native (Expo)", "Jetpack Compose", "SwiftUI", "Vue / Nuxt", "Svelte / SvelteKit"]) expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "done")]);
     // SwiftUI's proof names the runs its four cases passed in (2H Task 15).
     const swiftEvals = table.find((r) => r[0] === "Evals" && r[1]!.includes("fixtures-swiftui.test.ts"))!;
@@ -825,12 +825,15 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
       const proof = table.find((r) => r[0] === "Evals" && r[1]!.includes(fixtureTest))!;
       expect([fixtureTest, proof[1]!.includes("Recorded in eval run")]).toEqual([fixtureTest, true]);
     }
-    for (const stack of ["Angular"]) {
-      expect([stack, row(stack)!.slice(1)]).toEqual([stack, AREAS.map(() => "not yet")]);
-    }
+    // Every stack in the table has been built: none is "not yet" in any area (2K Task 13).
+    for (const r of table.filter((r) => r.length === AREAS.length + 1 && r[0] !== "Stack" && r[0] !== "---")) expect([r[0], r.slice(1).includes("not yet")]).toEqual([r[0], false]);
   });
 
-  test("Flutter's, Jetpack Compose's, React Native's, SwiftUI's, Vue's and Svelte's proofs name every area, and every file they link to exists", () => {
+  test("Angular has every area done but its evals, whose run is pending (2K Task 13)", () => {
+    expect(row("Angular")!.slice(1)).toEqual(AREAS.map((a) => (a === "Evals" ? "pending" : "done")));
+  });
+
+  test("Flutter's, Jetpack Compose's, React Native's, SwiftUI's, Vue's, Svelte's and Angular's proofs name every area, and every file they link to exists", () => {
     const section = (heading: string) => {
       const start = parity.indexOf(heading);
       expect(start).toBeGreaterThan(-1);
@@ -840,6 +843,7 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     for (const proof of [
       section("## Flutter: the tests that show it"), section("## Jetpack Compose: the tests that show it"), section("## React Native (Expo): the tests that show it"),
       section("## SwiftUI: the tests that show it"), section("## Vue / Nuxt: the tests that show it"), section("## Svelte / SvelteKit: the tests that show it"),
+      section("## Angular: the tests that show it"),
     ]) {
       for (const area of AREAS) expect(proof).toContain(`| ${area} |`);
     }
@@ -855,6 +859,12 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     expect(svelte).toContain("CI run 40109256191");
     expect(svelte).toContain("(decisions/0011-");
     expect(svelte).toContain("(notes/2026-10-24-svelte-hands-on.md)");
+    const angular = section("## Angular: the tests that show it");
+    expect(angular).toContain("`angular`");
+    expect(angular).toContain("CI run 40218305092");
+    expect(angular).toContain("(decisions/0012-angular-motion.md)");
+    expect(angular).toContain("(notes/2026-10-25-angular-hands-on.md)");
+    expect(angular).toContain("Their run is pending.");
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");
