@@ -330,6 +330,21 @@ ${dark} .ok { color: #81c995; }
     }
   });
 
+  test("a dark class names a theme or mode; Bootstrap's light-mode utilities (.bg-dark, .text-dark, …) are not dark mode (2K final review)", () => {
+    for (const s of [".is-dark", ".theme-dark-blue", ".dark-theme-contrast", ".unicorn-dark-theme", ".app-dark", ".my-app-dark", '[data-bs-theme="dark"]', '[data-theme="dark-dim"]']) {
+      expect([s, isDarkClassSelector(s)]).toEqual([s, true]);
+    }
+    for (const s of [".bg-dark", ".text-dark", ".btn-dark", ".navbar-dark", ".table-dark", ".border-dark", ".btn-outline-dark", ".link-dark", ".text-bg-dark", ".bg-dark-subtle", ".navbar.navbar-dark .nav-link", '[data-color="text-dark"]']) {
+      expect([s, isDarkClassSelector(s)]).toEqual([s, false]);
+    }
+  });
+
+  test(".text-dark and .bg-dark colours are light values in a draft", async () => {
+    const root = ngApp("css", { "src/styles.css": ".text-dark { color: #212529; }\n.bg-dark { background: #343a40; }\n" });
+    await runExtract(root, ctx);
+    expect(reportOf(root).colors.map((c: any) => c.hex.toLowerCase())).toEqual(expect.arrayContaining(["#212529", "#343a40"]));
+  });
+
   test("a rule for what isn't dark (.card:not(.dark-theme)) gives light colours", async () => {
     const root = ngApp("css", {
       "src/styles.css": ".card:not(.dark-theme) { color: #654321; }\n.card:not(.dark) { background: #fedcba; }\n",

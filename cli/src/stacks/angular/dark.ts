@@ -8,11 +8,22 @@ import { maskComments } from "../../check/mask";
 const SASS_FILE = /\.(?:scss|sass|less)$/i;
 const NEGATIONS = new Set(["not", "no", "non"]);
 
-/** A class name or attribute value that says dark as a word of its own (dark, dark-theme, theme-dark), not not-dark or darkened. */
-function saysDark(name: string): boolean {
+/**
+ * A class that names a dark theme or mode: dark, is-dark, dark-theme, theme-dark, dark-mode (with more words around them:
+ * unicorn-dark-theme, theme-dark-blue), or PrimeNG's app-dark. Not a utility for a dark colour in light mode, as
+ * Bootstrap's bg-dark, text-dark, btn-dark, navbar-dark and table-dark are; not not-dark or darkened.
+ */
+function classSaysDark(name: string): boolean {
   const words = name.toLowerCase().split(/[-_]/);
-  return words.includes("dark") && !words.some((w) => NEGATIONS.has(w));
+  if (words.some((w) => NEGATIONS.has(w))) return false;
+  if (words.length === 1) return words[0] === "dark";
+  if (words.length === 2 && words[0] === "is" && words[1] === "dark") return true;
+  if (words.at(-1) === "dark" && words.at(-2) === "app") return true;
+  return words.some((w, i) => w === "dark" && ["theme", "mode"].some((t) => words[i - 1] === t || words[i + 1] === t));
 }
+
+/** An attribute value that says dark mode: dark, or dark-something ([data-theme="dark-dim"]). */
+const valueSaysDark = (value: string) => /^dark(?:[-_]|$)/i.test(value);
 
 /** A selector for dark mode only: each selector in its list names a dark class or attribute value (not inside :not(…), which says what it isn't). */
 export function isDarkClassSelector(selector: string): boolean {
@@ -21,7 +32,7 @@ export function isDarkClassSelector(selector: string): boolean {
   return items.every((item) => {
     const names = [...item.matchAll(/\.([\w-]+)/g)].map((m) => m[1]!);
     const values = [...item.matchAll(/\[[\w-]+\s*[~|^$*]?=\s*["']?([\w-]+)["']?\s*\]/g)].map((m) => m[1]!);
-    return [...names, ...values].some(saysDark);
+    return names.some(classSaysDark) || values.some(valueSaysDark);
   });
 }
 
