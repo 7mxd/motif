@@ -8,9 +8,11 @@ import { expandHtml, htmlViews } from "../src/check/html";
 import { scanFile } from "../src/check/run";
 import { buildScale } from "../src/check/scale";
 import { buildTheme } from "../src/generate/theme";
-import { SVELTE, SVELTE_BINDINGS } from "../src/stacks/svelte";
+import { ANGULAR_BINDINGS, ANGULAR_GRAMMAR } from "../src/stacks/angular/views";
+import { SVELTE, SVELTE_BINDINGS, SVELTE_GRAMMAR } from "../src/stacks/svelte";
 import { VUE, VUE_BINDINGS, VUE_BLOCKS } from "../src/stacks/vue";
 import { docFrom, validTokens } from "./helpers";
+import { expectExact, NG_TEMPLATE } from "./ng-template";
 
 const scale = buildScale(buildTheme(docFrom(validTokens())), ".");
 const vueViews = (text: string) => componentViews(text, { bindings: VUE_BINDINGS, blocks: VUE_BLOCKS });
@@ -507,7 +509,72 @@ describe("componentViews: Vue's views are unchanged", () => {
   });
 });
 
-const svelteViews = (text: string) => componentViews(text, { bindings: SVELTE_BINDINGS, braces: true });
+// Review Focus 3 (plan 2K): plan 2J's Svelte fixtures give the same views as before the expression grammar replaced
+// `braces`, with LF and with CRLF line endings: a digest of each, taken before the change.
+const SVELTE_VIEW_DIGESTS: Record<string, [string, string]> = {
+  "cli/test/fixtures/kit3-min/src/routes/+layout.svelte": ["55c5490087f05e74", "4491ef8a9970fd7d"],
+  "cli/test/fixtures/kit3-min/src/routes/+page.svelte": ["f67e69deae908e6d", "15de25194b24c894"],
+  "cli/test/fixtures/kit3-min/src/routes/settings/+page.svelte": ["b499726585217208", "4cdeb4a5f83e5036"],
+  "cli/test/fixtures/svelte-kit-demo/src/routes/+layout.svelte": ["99accecb9348312f", "13b9fb4ec58d34e3"],
+  "cli/test/fixtures/svelte-min/src/routes/+layout.svelte": ["74fbc57d8fca14a9", "85d3533781487b1c"],
+  "cli/test/fixtures/svelte-min/src/routes/+page.svelte": ["e734db4be5391714", "b0411e5ade7d08d1"],
+  "cli/test/fixtures/svelte-min/src/routes/audit/+page.svelte": ["4c688108d5e4f804", "8e2a490243027473"],
+  "cli/test/fixtures/svelte-min/src/routes/calm/+page.svelte": ["3d22fc5b0eea9963", "b90255ac3edeee45"],
+  "cli/test/fixtures/svelte-min/src/routes/settings/+page.svelte": ["b2e37d2f7ef063a1", "72140b1764260550"],
+  "cli/test/fixtures/svelte-vite-min/src/App.svelte": ["f0ee4bfb62f46ddf", "289f05dbe075501b"],
+  "tests/fixtures/svelte-contract-app/src/lib/components/Button.svelte": ["6ea7434537c1fa8a", "e71b9b4f3740513e"],
+  "tests/fixtures/svelte-contract-app/src/lib/components/EmptyState.svelte": ["b29bea60489c581b", "162ebd754aa071bf"],
+  "tests/fixtures/svelte-contract-app/src/lib/components/Icon.svelte": ["153ecca2feacd502", "cd27c22ffd742bcf"],
+  "tests/fixtures/svelte-contract-app/src/lib/components/IconButton.svelte": ["44f1686f3fa9be0b", "59be1fe89dac3c05"],
+  "tests/fixtures/svelte-contract-app/src/lib/components/LoanNote.svelte": ["98b3bd129da083ae", "832676f12738bd3a"],
+  "tests/fixtures/svelte-contract-app/src/lib/components/StatusBadge.svelte": ["5b3229484ab53ad9", "a1c5eb1490307754"],
+  "tests/fixtures/svelte-contract-app/src/lib/components/TextField.svelte": ["6d7460bfeb591d9a", "557eac0b1be88e06"],
+  "tests/fixtures/svelte-contract-app/src/lib/components/ToolCard.svelte": ["ac968fa82705372d", "d3039f438b119539"],
+  "tests/fixtures/svelte-contract-app/src/lib/components/TopBar.svelte": ["ccc014da4f2b4661", "fa089097527b3580"],
+  "tests/fixtures/svelte-contract-app/src/routes/+error.svelte": ["4e0e2dcf7f54d3da", "0c81d2165dcfc6ef"],
+  "tests/fixtures/svelte-contract-app/src/routes/+layout.svelte": ["2c8ea404b74bf98a", "25f49a46d549c70f"],
+  "tests/fixtures/svelte-contract-app/src/routes/+page.svelte": ["e529ff17ad6ea71f", "26581f7aa8a021d9"],
+  "tests/fixtures/svelte-contract-app/src/routes/loans/+page.svelte": ["3581b09a171e8c23", "faa64dd374e7ee0c"],
+  "tests/fixtures/svelte-contract-app/src/routes/sign-in/+page.svelte": ["06e6d73d6a0c8f06", "c87c1bffac05858d"],
+  "tests/fixtures/svelte-contract-app/src/routes/tools/[id]/+page.svelte": ["57427fe6008f3579", "c39d75197ec4ef8a"],
+  "tests/fixtures/svelte-seeded-app/overlay/src/lib/components/LoanNote.svelte": ["f3173ff0c8efd1a2", "03d9c8e75af02467"],
+  "tests/fixtures/svelte-seeded-app/overlay/src/lib/components/StatusBadge.svelte": ["21a33400303b1424", "cb9bc4e968f660c2"],
+  "tests/fixtures/svelte-seeded-app/overlay/src/lib/components/ToolCard.svelte": ["4a3a4e62284ca77d", "164c8716d7dcda51"],
+  "tests/fixtures/svelte-seeded-app/overlay/src/lib/components/TopBar.svelte": ["fd24ac0c711e28cf", "e8ce24a3d9ebef76"],
+  "tests/fixtures/svelte-seeded-app/overlay/src/routes/+page.svelte": ["8462fc71df9b2f89", "5e31102b2099d5a5"],
+  "tests/fixtures/svelte-seeded-app/overlay/src/routes/loans/+page.svelte": ["2c481e4b046c04ba", "4beb8670777bbfa0"],
+  "tests/fixtures/svelte-seeded-app/overlay/src/routes/sign-in/+page.svelte": ["e0ecf1c880e18c3d", "03e5cc67b849c431"],
+  "tests/fixtures/svelte-seeded-app/overlay/src/routes/tools/[id]/+page.svelte": ["7c8ab533d82d38d7", "3e2c27386f1cee0a"],
+};
+/** The same for this file's Svelte example (SVELTE_FILE, below). */
+const SVELTE_FILE_DIGEST = "01b4603ff7d9384b";
+
+describe("componentViews: Svelte's views are unchanged", () => {
+  const repo = join(import.meta.dir, "..", "..");
+  const svelteFiles = (dir: string): string[] =>
+    readdirSync(dir).flatMap((e) => {
+      const p = join(dir, e);
+      if (e === "node_modules" || e === ".svelte-kit") return [];
+      return statSync(p).isDirectory() ? svelteFiles(p) : /\.svelte$/.test(e) ? [relative(repo, p).split("\\").join("/")] : [];
+    });
+  const digest = (text: string) => createHash("sha256").update(JSON.stringify(svelteViews(text))).digest("hex").slice(0, 16);
+
+  test("every .svelte file of plan 2J's fixtures gives the views it gave before, with LF and with CRLF", () => {
+    const dirs = ["tests/fixtures/svelte-contract-app", "tests/fixtures/svelte-seeded-app/overlay", "cli/test/fixtures/svelte-min", "cli/test/fixtures/kit3-min", "cli/test/fixtures/svelte-kit-demo", "cli/test/fixtures/svelte-vite-min"];
+    const files = dirs.flatMap((d) => svelteFiles(join(repo, d)));
+    expect(files.sort()).toEqual(Object.keys(SVELTE_VIEW_DIGESTS).sort());
+    for (const file of files) {
+      const lf = readFileSync(join(repo, file), "utf8").replace(/\r\n/g, "\n");
+      expect({ file, digests: [digest(lf), digest(lf.replace(/\n/g, "\r\n"))] }).toEqual({ file, digests: SVELTE_VIEW_DIGESTS[file]! });
+    }
+  });
+
+  test("this file's Svelte example gives the views it gave before", () => {
+    expect(digest(SVELTE_FILE)).toBe(SVELTE_FILE_DIGEST);
+  });
+});
+
+const svelteViews = (text: string) => componentViews(text, { bindings: SVELTE_BINDINGS, grammar: SVELTE_GRAMMAR });
 
 // Review Focus 2: what only looks like a value, and what is one, in a .svelte file.
 const SVELTE_FILE = [
@@ -735,6 +802,15 @@ describe("componentViews: Svelte's {…}", () => {
     expect(v.script).not.toContain("p-");
   });
 
+  test("a regular expression literal holding a brace is part of the expression", () => {
+    const text = "<p title={/[{}]/.test(a) ? x / 2 : /}/g}>{a.replace(/\\}/g, '')}</p>{b}";
+    const v = svelteViews(text);
+    expect(holds(v.script, text, "/[{}]/.test(a) ? x / 2 : /}/g")).toBe(true);
+    expect(holds(v.script, text, "a.replace(/\\}/g, '')")).toBe(true);
+    expect(holds(v.markup, text, "}</p>{")).toBe(true);
+    expect(holds(v.script, text, "b", text.indexOf("{b}"))).toBe(true);
+  });
+
   test("without braces (Vue) a {…} is text and a {…} attribute isn't one", () => {
     const text = '<template><p title={a} {b}>{{ c }} {d}</p></template>';
     const v = vueViews(text);
@@ -765,5 +841,199 @@ describe("SVELTE.views", () => {
     const html = file("src/app.html", '<p style="color: red">%sveltekit.body%</p>', "markup");
     expect(SVELTE.views!(ts)).toEqual([ts]);
     expect(SVELTE.views!(html)).toEqual(expandHtml([html]));
+  });
+});
+
+const ngViews = (text: string) => componentViews(text, { bindings: ANGULAR_BINDINGS, grammar: ANGULAR_GRAMMAR });
+
+/** The hits of the three views, as [rule, text, line, column]. */
+const hitsOf = (path: string, views: { css: string; script: string; markup: string }) => {
+  const file = (t: string, lang: SourceFile["lang"]): SourceFile => ({ path, abs: `/x/${path}`, text: t, lang });
+  return [file(views.css, "css"), file(views.script, "script"), file(views.markup, "markup")].flatMap((f) => scanFile(f, scale)).map((h) => [h.rule, h.text, h.line, h.column] as [string, string, number, number]);
+};
+
+describe("componentViews: an Angular template as three views", () => {
+  const text = NG_TEMPLATE;
+  const views = ngViews(text);
+  const after = (needle: string) => text.indexOf(needle);
+
+  test("every view is the template's length, each kept character the original's at its place, none read twice", () => {
+    expectExact(text, views);
+  });
+
+  test("CSS: the style attribute and a [style.prop] binding to a literal, as prop: value; at its place", () => {
+    expect(holds(views.css, text, "padding: 13px")).toBe(true);
+    const color = after("[style.color]");
+    expect(views.css.slice(color, color + 22)).toBe("      ;color :  #333 ;");
+    for (const absent of ["#fff", "300", "555", "#123", "gap", "{", "}"]) expect(views.css).not.toContain(absent);
+  });
+
+  test("script: interpolations, block parameters, @let and every bound value, at its place", () => {
+    const exprs: [string, number][] = [
+      ["13", after('[style.padding.px]="')],
+      ["{ 'gap.px': 13 }", 0],
+      ["on", after('[class.p-[13px]]="')],
+      [" count > 13 ", after("{{ count")],
+      [" '{' ", 0],
+      ["count > 13", after("@if")],
+      ["300", 0],
+      ["go(13)", 0],
+      ["count > 7", 0],
+      ["t of tools; track t.id", 0],
+      [" t.name ", 0],
+      ["mode", 0],
+      ["'a'", 0],
+      ["on viewport; prefetch on idle", 0],
+      ["minimum 500ms", 0],
+      ["after 100ms; minimum 1s", 0],
+      [" total = a + b", 0],
+      ["count", after("{count,") + 1],
+    ];
+    for (const [expr, from] of exprs) {
+      expect({ expr, script: holds(views.script, text, expr, from) }).toEqual({ expr, script: true });
+      expect({ expr, markup: holds(views.markup, text, expr, from) }).toEqual({ expr, markup: false });
+    }
+    expect(views.script).not.toMatch(/@|plural|other|none|tools}|#333|class|<|\{\{|\}\}/);
+  });
+
+  test("blank in every view: block keywords and braces, @let, the ICU's keywords and braces, and a comment", () => {
+    const blankAt = (needle: string, from = 0) => {
+      const i = text.indexOf(needle, from);
+      for (const view of [views.css, views.script, views.markup]) expect({ needle, from, view: view.slice(i, i + needle.length).trim() }).toEqual({ needle, from, view: "" });
+    };
+    for (const k of ["@if (", "} @else if (", "} @else {", "@for (", "} @empty {", "@switch (", "@case (", "@default {", "@defer (", "} @placeholder (", "} @loading (", "} @error {", "@let", ", plural, =0 {", "} =1 {", "} other {"]) blankAt(k);
+    for (const from of [after("@if"), after("@for")]) blankAt(") {", from);
+    blankAt("}}", after("# tools"));
+    blankAt('<!-- <p style="color: #fff">color: #fff</p> -->');
+  });
+
+  test("markup: tags, text, interpolation braces, class names, a [class.name]'s name, the ICU's case texts", () => {
+    for (const kept of ['<div class="p-[13px] card" style="', "[style.padding.px]=", "[class.p-[13px]]=", "Call 555-0134, ticket #123", "<p>{{", "}} {{", "}}</p>", "<span>some</span>", "<heavy-chart />", "<b>A</b>", "none", "one tool", "# tools", "</div>"]) {
+      expect({ kept, markup: holds(views.markup, text, kept) }).toEqual({ kept, markup: true });
+    }
+  });
+
+  test("findings: the real values at their line and column, nothing that only looks like one", () => {
+    const hits = hitsOf("src/app/tools.html", views);
+    expect(hits).toContainEqual(["off-scale", "13px", at(text, "13px\"").line, at(text, "13px\"").column]);
+    expect(hits).toContainEqual(["raw-color", "#333", at(text, "#333").line, at(text, "#333").column]);
+    expect(hits).toContainEqual(["tailwind-arbitrary", "p-[13px]", at(text, "p-[13px]").line, at(text, "p-[13px]").column]);
+    expect(hits).toContainEqual(["tailwind-arbitrary", "p-[13px]", at(text, "p-[13px]]").line, at(text, "p-[13px]]").column]);
+    for (const [, t] of hits) expect(["13px", "#333", "p-[13px]"]).toContain(t);
+    expect(new Set(hits.map((h) => h.join("|"))).size).toBe(hits.length);
+  });
+
+  test("spans: each bound value with its attribute and element", () => {
+    expect(views.spans.map((s) => [s.attr, s.tag, text.slice(s.start, s.end)])).toEqual([
+      ["[style.padding.px]", "div", "13"],
+      ["[ngStyle]", "div", "{ 'gap.px': 13 }"],
+      ["[class.p-[13px]]", "div", "on"],
+      ["[width]", "img", "300"],
+      ["(click)", "img", "go(13)"],
+    ]);
+  });
+
+  test("CRLF gives the same views as LF", () => {
+    const crlf = ngViews(text.replace(/\n/g, "\r\n"));
+    for (const key of ["css", "script", "markup"] as const) expect(crlf[key].replace(/\r/g, "")).toBe(views[key]);
+  });
+});
+
+describe("componentViews: Angular's attribute forms", () => {
+  test("bindings, events, two-way, structural directives, bind-/on-/bindon-, animate.*: their values script", () => {
+    const text = [
+      "<input",
+      '  [(ngModel)]="name"',
+      `  *ngIf="ready; else other"`,
+      '  *ngFor="let t of tools; trackBy: id"',
+      '  bind-title="t.name"',
+      '  on-click="go()"',
+      '  bindon-value="v"',
+      '  [attr.aria-label]="label"',
+      '  [style]="styles"',
+      '  [class]="classes"',
+      `  [ngClass]="{ 'p-[7px]': active }"`,
+      '  [style.width.%]="50"',
+      '  [style.margin]="m"',
+      '  [animate.enter]="anim"',
+      '  (animate.leave)="done($event)"',
+      '  animate.enter="fade-in"',
+      "  #ref",
+      ">",
+      '<ng-template let-item let-i="index"><b>{{ item }}</b></ng-template>',
+    ].join("\n");
+    const v = ngViews(text);
+    expectExact(text, v);
+    for (const s of ['"name"', '"ready; else other"', '"let t of tools; trackBy: id"', '"t.name"', '"go()"', '"v"', '"label"', '"styles"', '"classes"', `"{ 'p-[7px]': active }"`, '"50"', '"m"', '"anim"', '"done($event)"']) {
+      expect({ s, script: holds(v.script, text, s.slice(1, -1), text.indexOf(s) + 1) }).toEqual({ s, script: true });
+    }
+    for (const m of ["[(ngModel)]=", "*ngIf=", "bind-title=", "[style.width.%]=", 'animate.enter="fade-in"', "#ref", "let-item", 'let-i="index"', "<b>{{"]) expect({ m, markup: holds(v.markup, text, m) }).toEqual({ m, markup: true });
+    expect(isBlank(v.css)).toBe(true);
+    expect(holds(v.script, text, " item ")).toBe(true);
+  });
+
+  test("[style.prop] is CSS only for a string or number literal; anything else is script", () => {
+    const text = `<p [style.color]="'#333'" [style.opacity]="0.5" [style.gap]="gap" [style.padding]="'13px'"></p>`;
+    const v = ngViews(text);
+    expectExact(text, v);
+    expect(v.css.replace(/\s+/g, " ").trim()).toBe(";color : #333 ; ;opacity : 0.5; ;padding : 13px ;");
+    expect(holds(v.script, text, "gap", text.indexOf('="gap') + 2)).toBe(true);
+    const hits = hitsOf("a.html", v);
+    expect(hits).toContainEqual(["raw-color", "#333", 1, at(text, "#333").column]);
+    expect(hits).toContainEqual(["off-scale", "13px", 1, at(text, "13px").column]);
+  });
+
+  test("interpolation in attribute values: its parts script, the rest as the attribute reads (a style's text CSS)", () => {
+    const text = '<p title="Hi {{ name }}" style="padding: {{ p }}px; gap: 13px" class="p-2 {{ extra }}">x</p>';
+    const v = ngViews(text);
+    expectExact(text, v);
+    for (const s of [" name ", " p ", " extra "]) expect(holds(v.script, text, s)).toBe(true);
+    expect(v.css.replace(/\s+/g, " ").trim()).toBe(";padding: px; gap: 13px;");
+    expect(holds(v.markup, text, 'title="Hi {{')).toBe(true);
+    expect(holds(v.markup, text, 'class="p-2 {{')).toBe(true);
+    expect(v.spans.map((s) => [s.attr, text.slice(s.start, s.end)])).toEqual([["title", " name "], ["style", " p "], ["class", " extra "]]);
+  });
+
+  test("interpolation: a } or }} in a string, nested object literals, and a {{ that never closes", () => {
+    const text = "<p>{{ '}}' + \"}\" }} {{ {a: {b: 1}}.a }} {{ open</p>\n<p style=\"gap: 13px\">{{ n }}</p>";
+    const v = ngViews(text);
+    expect(holds(v.script, text, " '}}' + \"}\" ")).toBe(true);
+    expect(holds(v.script, text, " {a: {b: 1}}.a ")).toBe(true);
+    expect(holds(v.markup, text, "{{ open</p>")).toBe(true);
+    expect(holds(v.css, text, "gap: 13px")).toBe(true);
+    expect(holds(v.script, text, " n ")).toBe(true);
+  });
+
+  test("a regular expression literal (Angular 21) holding a brace stays in its interpolation", () => {
+    const text = "<p>{{ /\\}}/.test(s) }}</p><b>{{ n }}</b>";
+    const v = ngViews(text);
+    expect(holds(v.script, text, " /\\}}/.test(s) ")).toBe(true);
+    expect(holds(v.markup, text, "}}</p><b>{{")).toBe(true);
+  });
+
+  test("ICU: select, nested ICU and interpolation in a case, an offset; a bare { or } that is neither is text", () => {
+    const text = "<p>{gender, select, male {He has {n, plural, offset:1 =0 {no tools} other {{{ n }} tools}}} other {They}}</p><p>{ a } b }</p>";
+    const v = ngViews(text);
+    expectExact(text, v);
+    expect(v.script.replace(/\s+/g, " ").trim()).toBe("gender n n");
+    for (const m of ["He has", "no tools", "}} tools", "They", "<p>{ a } b }</p>"]) expect({ m, markup: holds(v.markup, text, m) }).toEqual({ m, markup: true });
+    for (const k of ["select", "male", "plural", "offset:1", "=0", "other"]) expect(v.markup).not.toContain(k);
+  });
+
+  test("@-blocks: an unknown @ is text; unclosed blocks and parentheses read to the end without failing", () => {
+    for (const text of ["<p>a @ b @foo</p>", "@if (a", "@if (a) {", "@for (t of ts; track t) { <p>x</p>", "@let x = 1", "{n, plural, =0 {none", "}}} @else {"]) {
+      const v = ngViews(text);
+      expect([v.css.length, v.script.length, v.markup.length]).toEqual([text.length, text.length, text.length]);
+    }
+    const text = "<p>a @ b @foo &#64;if</p>";
+    expect(holds(ngViews(text).markup, text, text)).toBe(true);
+  });
+});
+
+describe('componentViews: <style lang="">', () => {
+  test("an empty lang is CSS, as no lang is", () => {
+    const text = '<style lang="">.a { gap: 13px }</style>';
+    expect(holds(vueViews(text).css, text, ".a { gap: 13px }")).toBe(true);
+    expect(holds(ngViews(text).css, text, ".a { gap: 13px }")).toBe(true);
   });
 });
