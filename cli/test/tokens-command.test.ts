@@ -21,8 +21,12 @@ const app = (extra: Record<string, string> = {}, tailwind = true) => makeProject
   ...extra,
 });
 const ctx = (app?: string) => ({ positionals: [], app });
-/** An app whose stack has no adapter yet (Flutter has had one since 2E, Compose since 2F, SwiftUI since 2H, Vue since 2I, Svelte since 2J). */
-const ANGULAR = { "package.json": JSON.stringify({ dependencies: { "@angular/core": "^20" } }) };
+/** An app whose stack has no adapter yet (Flutter has had one since 2E, Compose since 2F, SwiftUI since 2H, Vue since 2I, Svelte since 2J, Angular since 2K). */
+const KMP = {
+  "settings.gradle.kts": 'rootProject.name = "Kmp"\ninclude(":composeApp")\n',
+  "composeApp/build.gradle.kts": "plugins {\n    alias(libs.plugins.kotlinMultiplatform)\n    alias(libs.plugins.androidApplication)\n    alias(libs.plugins.composeMultiplatform)\n}\n",
+  "composeApp/src/commonMain/kotlin/App.kt": "@Composable fun App() {}\n",
+};
 const statuses = (r: any) => Object.fromEntries((r.data.files as any[]).map((f) => [f.path, f.status]));
 
 describe("runTokens", () => {
@@ -80,12 +84,12 @@ describe("runTokens", () => {
   });
 
   test("a stack without an adapter gets plain CSS variables and flat JSON", async () => {
-    const root = makeProject({ ...ANGULAR, "design/tokens.json": TOKENS });
+    const root = makeProject({ ...KMP, "design/tokens.json": TOKENS });
     const r = await runTokens(root, ctx());
     expect(r.exitCode).toBe(0);
     expect(existsSync(join(root, "design/generated/motif.css"))).toBe(true);
     expect(existsSync(join(root, "design/generated/tokens.flat.json"))).toBe(true);
-    expect((r.data.notes as string[]).join("\n")).toContain("Angular support is coming soon");
+    expect((r.data.notes as string[]).join("\n")).toContain("Compose Multiplatform support is coming soon");
   });
 
   test("broken theme values → exit 1 and nothing written", async () => {
@@ -214,7 +218,7 @@ describe("motif tokens on a plain web site at the project's root (backlog)", () 
       "package.json": reactPkg(), "src/main.tsx": "", "src/index.css": '@import "tailwindcss";\n',
       "design/tokens.json": JSON.stringify(twoVariantTokens()),
     });
-    const native = makeProject({ ...ANGULAR, "design/tokens.json": JSON.stringify(twoVariantTokens()) });
+    const native = makeProject({ ...KMP, "design/tokens.json": JSON.stringify(twoVariantTokens()) });
     const r = await runTokens(root, ctx());
     expect(r.exitCode).toBe(0);
     expect(readFileSync(join(root, "src/styles/motif.css"), "utf8")).toContain(':root[data-variant="men"]');
