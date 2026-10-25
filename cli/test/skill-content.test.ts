@@ -303,3 +303,48 @@ describe("the SwiftUI guide matches the tool", () => {
     expect(files.filter((f) => f.startsWith("adapters/swiftui/")).length).toBe(6);
   });
 });
+
+describe("the Angular guide matches the tool", () => {
+  const read = (p: string) => readFileSync(join(SKILL, p), "utf8").replace(/\r\n/g, "\n");
+
+  test("the wiring it shows is the line motif tokens prints, with Tailwind and without", async () => {
+    const { cpSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const { basename } = await import("node:path");
+    const { runTokens } = await import("../src/commands/tokens");
+    const { FIXTURES } = await import("./helpers");
+    const { tempDir } = await import("./tmp");
+    const tokens = read("adapters/angular/tokens.md");
+    const fixturePkg = JSON.parse(readFileSync(join(FIXTURES, "angular-min/package.json"), "utf8"));
+    const plain = { ...fixturePkg, devDependencies: { ...fixturePkg.devDependencies } };
+    for (const d of ["@tailwindcss/postcss", "postcss", "tailwindcss"]) delete plain.devDependencies[d];
+    for (const [pkg, styles] of [[fixturePkg, "@import 'tailwindcss';\n"], [plain, ""]] as const) {
+      const root = tempDir("motif-ng-wiring-");
+      cpSync(join(FIXTURES, "angular-min"), root, { recursive: true, filter: (src) => !["node_modules", ".angular", "dist"].includes(basename(src)) });
+      mkdirSync(join(root, "design"), { recursive: true });
+      writeFileSync(join(root, "package.json"), JSON.stringify(pkg));
+      writeFileSync(join(root, "src/styles.css"), styles);
+      const r = await runTokens(root, { positionals: [] });
+      const note = ((r.data as any).notes as string[]).find((n) => n.startsWith("Next:"))!;
+      const statement = /@import "[^"]+";/.exec(note)![0];
+      expect(tokens).toContain(statement);
+      expect(note).toContain("src/styles.css");
+    }
+  });
+
+  test("the variant's app.config.ts is shown as a provider to add, keeping the app's own; the server's first paint is for server-rendered routes", () => {
+    const tokens = read("adapters/angular/tokens.md");
+    const snippet = /```ts\n\/\/ src\/app\/app\.config\.ts[\s\S]*?```/.exec(tokens)?.[0] ?? "";
+    expect(snippet).toContain("// …your other providers");
+    expect(snippet).not.toContain("provideRouter(routes)");
+    expect(tokens).toContain("keeping the ones already there (`provideBrowserGlobalErrorListeners()`");
+    expect(tokens).toContain("starts in the right variant (for server-rendered routes)");
+    expect(read("adapters/angular/platform.md")).toContain("so the server draws the right one (for server-rendered routes;");
+  });
+
+  test("every Angular guide file stays under the line limit and links only to files that exist", () => {
+    for (const f of files.filter((f) => f.startsWith("adapters/angular/"))) {
+      expect(lintSkillMarkdown(f, readFileSync(join(SKILL, f), "utf8"), opts)).toEqual([]);
+    }
+    expect(files.filter((f) => f.startsWith("adapters/angular/")).length).toBe(6);
+  });
+});

@@ -1,0 +1,20 @@
+<header class="border-b border-border bg-surface">
+  <div class="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-8 px-4 md:flex-nowrap md:px-8">
+    <a routerLink="/" class="brand" [attr.aria-label]="locale.t().home">
+      <svg appIcon name="basket"></svg>
+      <span class="brand-name">{{ locale.t().appName }}</span>
+    </a>
+    <nav [attr.aria-label]="locale.t().mainNav" class="order-last w-full md:order-none md:w-auto md:flex-1">
+      <ul class="flex gap-6">
+        @for (tab of tabs(); track tab.id) {
+          <li>
+            <a [routerLink]="tab.path" class="tab" [class.tab-current]="current() === tab.id" [attr.aria-current]="current() === tab.id ? 'page' : null">
+              {{ tab.label }}
+            </a>
+          </li>
+        }
+      </ul>
+    </nav>
+    <app-icon-button icon="user" [label]="locale.t().signIn" link="/sign-in" class="ms-auto md:ms-0" />
+  </div>
+</header>

@@ -20,14 +20,15 @@ const UNQUOTED_END = /[\s"'=<>`]/;
 
 /** An attribute in a start tag. */
 export interface Attr {
-  /** As written; a Svelte shorthand or spread ({name}, {...props}) is named by what its braces hold. */
+  /** As written; a Svelte shorthand or spread ({name}, {...props}) is named by what its delimiters hold. */
   name: string;
-  /** Where the name starts (a shorthand's or spread's "{"). */
+  /** Where the name starts (a shorthand's or spread's opening delimiter). */
   at: number;
   /**
-   * The value, without its quotes or braces: `quote` is '"', "'", "" (unquoted) or "{" (a {…} value, shorthand or
-   * spread, read with `braces`). `eq` is where its "=" is (-1 for a shorthand or spread). `exprs` are the {…} parts of
-   * a quoted or unquoted value read with `braces`, from "{" to after "}".
+   * The value, without its quotes or delimiters: `quote` is '"', "'", "" (unquoted) or "{" (a whole delimited value,
+   * shorthand or spread, read with `delimiters`: Svelte's {…}). `eq` is where its "=" is (-1 for a shorthand or
+   * spread). `exprs` are the delimited parts of a quoted or unquoted value read with `delimiters` (Svelte's {…},
+   * Angular's {{…}}), from the opening delimiter to after the closing one.
    */
   value?: { start: number; end: number; quote: string; eq: number; exprs: [number, number][] };
 }
@@ -47,6 +48,42 @@ export interface Expression {
   strings: [number, number][];
 }
 
+/**
+ * What opens and closes an expression in a template's text and attribute values: Svelte's "{" and "}", Angular's "{{"
+ * and "}}" (braces only). With `regex` (Angular's), an expression may hold a regular expression literal; Svelte's
+ * reading leaves it out, so its {/if} is never one.
+ */
+export interface Delimiters {
+  open: string;
+  close: string;
+  regex?: boolean;
+}
+
+/** What may stand before a "/" that starts a regular expression literal rather than divides (not a postfix ++ or --). */
+const BEFORE_REGEX = /(?:^|(?<![+-])[+-]|[(,=:[!&|?{};*%<>~^]|(?<![\w$])(?:return|typeof|case|void|delete|in|of|new|instanceof))$/;
+
+/**
+ * Where the regular expression literal the "/" at `at` opens ends (after its flags), looking back no further than
+ * `from`: -1 when that "/" divides, or the literal doesn't close on its line.
+ */
+export function regexEnd(text: string, at: number, from: number): number {
+  if (!BEFORE_REGEX.test(text.slice(Math.max(from, at - 32), at).trimEnd())) return -1;
+  let inClass = false;
+  for (let i = at + 1; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === "\\") i++;
+    else if (c === "\n" || c === "\r") return -1;
+    else if (c === "[") inClass = true;
+    else if (c === "]") inClass = false;
+    else if (c === "/" && !inClass) {
+      let end = i + 1;
+      while (end < text.length && /[a-z]/i.test(text[end]!)) end++;
+      return end;
+    }
+  }
+  return -1;
+}
+
 /** Where the string literal opening at `at` ends (after its quote; at its line's end when it doesn't close). */
 function stringEnd(text: string, at: number): number {
   const quote = text[at];
@@ -60,10 +97,11 @@ function stringEnd(text: string, at: number): number {
 
 /**
  * The {…} expression opening at `open`, as Svelte reads one: braces nest, and a brace in a string ('…', "…"), a template
- * literal (with its own ${…}) or a comment counts for nothing. A regular expression literal holding a brace isn't read.
- * `strings` are its string literals, quotes included, and a template literal's text parts.
+ * literal (with its own ${…}) or a comment counts for nothing; with `regex`, in a regular expression literal too (a "/"
+ * where no value ends: after "(", "=", "{", an operator or `return`, never after a name, a number, a closing bracket or
+ * a postfix ++). `strings` are its string literals, quotes included, and a template literal's text parts.
  */
-export function readExpression(text: string, open: number): Expression {
+export function readExpression(text: string, open: number, regex = false): Expression {
   const strings: [number, number][] = [];
   // What each open "{", "${" or "`" is; a template literal keeps where its current text part started.
   const stack: { kind: "{" | "${" | "`"; part: number }[] = [];
@@ -97,6 +135,8 @@ export function readExpression(text: string, open: number): Expression {
     } else if (c === "/" && text[i + 1] === "*") {
       const close = text.indexOf("*/", i + 2);
       i = close === -1 ? text.length : close + 2;
+    } else if (c === "/" && regex && regexEnd(text, i, open) !== -1) {
+      i = regexEnd(text, i, open);
     } else if (c === "{") {
       stack.push({ kind: "{", part: 0 });
       i++;
@@ -112,11 +152,46 @@ export function readExpression(text: string, open: number): Expression {
 }
 
 /**
- * The start tag at `at`, if one starts there, as the browser reads it: quoted values may hold ">", and a tag that
- * doesn't close (an open quote) isn't one. With `braces` (Svelte), a value may be {…}, a quoted or unquoted value may
- * hold {…} parts, an attribute may be {name} or {...props}, and attributes after a quote or brace need no space.
+ * The expression opening with `d.open` at `at`, read as readExpression reads a {…} one (Angular's {{…}} is a {…} holding
+ * a {…}); it never closes when it doesn't end with `d.close`.
  */
-export function readTag(text: string, at: number, opts: { braces?: boolean } = {}): Tag | null {
+export function readDelimited(text: string, at: number, d: Delimiters): Expression {
+  const e = readExpression(text, at, d.regex === true);
+  const closes = e.end !== -1 && e.end - at >= d.open.length + d.close.length && text.startsWith(d.close, e.end - d.close.length);
+  return closes ? e : { end: -1, strings: e.strings };
+}
+
+/**
+ * Where `stop` first stands from `from`, outside strings and brackets ((…), […] and {…} nest), or -1 when it doesn't
+ * before a bracket closes that didn't open here: the end of Angular's block parameters, "(…)", and of its @let statement.
+ */
+export function readUntil(text: string, from: number, stop: string): number {
+  let depth = 0;
+  for (let i = from; i < text.length; ) {
+    const c = text[i]!;
+    if (c === '"' || c === "'" || c === "`") {
+      i = stringEnd(text, i);
+      continue;
+    }
+    if (depth === 0 && c === stop) return i;
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") {
+      if (depth === 0) return -1;
+      depth--;
+    }
+    i++;
+  }
+  return -1;
+}
+
+/**
+ * The start tag at `at`, if one starts there, as the browser reads it: quoted values may hold ">", and a tag that
+ * doesn't close (an open quote) isn't one. With `delimiters` (Svelte's {…}, Angular's {{…}}), a value may be one
+ * delimited expression, a quoted or unquoted value may hold delimited parts, an attribute may be {name} or {...props},
+ * and attributes after a quote or delimiter need no space.
+ */
+export function readTag(text: string, at: number, opts: { delimiters?: Delimiters } = {}): Tag | null {
+  const d = opts.delimiters;
   if (text[at] !== "<" || !TAG_START.test(text[at + 1] ?? "")) return null;
   let i = at + 2;
   while (i < text.length && !TAG_NAME_END.test(text[i]!)) i++;
@@ -128,10 +203,11 @@ export function readTag(text: string, at: number, opts: { braces?: boolean } = {
     if (text[i] === ">") return { ...tag, end: i + 1, closed: text[i - 1] === "/" };
     if (text[i] === "/" && text[i + 1] === ">") return { ...tag, end: i + 2, closed: true };
     if (i === spaced && !delimited) return null;
-    if (opts.braces && text[i] === "{") {
-      const e = readExpression(text, i);
+    if (d && text.startsWith(d.open, i)) {
+      const e = readDelimited(text, i, d);
       if (e.end === -1) return null;
-      tag.attrs.push({ name: text.slice(i + 1, e.end - 1).trim(), at: i, value: { start: i + 1, end: e.end - 1, quote: "{", eq: -1, exprs: [] } });
+      const [start, end] = [i + d.open.length, e.end - d.close.length];
+      tag.attrs.push({ name: text.slice(start, end).trim(), at: i, value: { start, end, quote: "{", eq: -1, exprs: [] } });
       i = e.end;
       delimited = true;
       continue;
@@ -147,27 +223,27 @@ export function readTag(text: string, at: number, opts: { braces?: boolean } = {
     if (text[eq] !== "=") continue;
     let v = eq + 1;
     while (v < text.length && SPACE.test(text[v]!)) v++;
-    const value = readValue(text, v, opts.braces === true);
+    const value = readValue(text, v, d);
     if (!value) return null;
     attr.value = { ...value, eq };
-    i = value.end + (value.quote === "" ? 0 : 1);
-    delimited = opts.braces === true && value.quote !== "";
+    i = value.end + (value.quote === "" ? 0 : value.quote === "{" ? d!.close.length : 1);
+    delimited = d !== undefined && value.quote !== "";
   }
 }
 
-/** An attribute's value starting at `at`: quoted, {…} (with braces) or unquoted; null when there's none to read. */
-function readValue(text: string, at: number, braces: boolean): Omit<NonNullable<Attr["value"]>, "eq"> | null {
+/** An attribute's value starting at `at`: quoted, delimited (with delimiters) or unquoted; null when there's none to read. */
+function readValue(text: string, at: number, d: Delimiters | undefined): Omit<NonNullable<Attr["value"]>, "eq"> | null {
   const exprs: [number, number][] = [];
   const q = text[at];
-  if (braces && q === "{") {
-    const e = readExpression(text, at);
-    return e.end === -1 ? null : { start: at + 1, end: e.end - 1, quote: "{", exprs };
+  if (d && text.startsWith(d.open, at)) {
+    const e = readDelimited(text, at, d);
+    return e.end === -1 ? null : { start: at + d.open.length, end: e.end - d.close.length, quote: "{", exprs };
   }
   if (q === '"' || q === "'") {
     for (let i = at + 1; i < text.length; ) {
       if (text[i] === q) return { start: at + 1, end: i, quote: q, exprs };
       // A { that never closes (a file mid-edit) is the value's text, so the tags after it are still read.
-      const e = braces && text[i] === "{" ? readExpression(text, i) : null;
+      const e = d && text.startsWith(d.open, i) ? readDelimited(text, i, d) : null;
       if (e && e.end !== -1) {
         exprs.push([i, e.end]);
         i = e.end;
@@ -177,7 +253,7 @@ function readValue(text: string, at: number, braces: boolean): Omit<NonNullable<
   }
   let i = at;
   while (i < text.length && !UNQUOTED_END.test(text[i]!)) {
-    const e = braces && text[i] === "{" ? readExpression(text, i) : null;
+    const e = d && text.startsWith(d.open, i) ? readDelimited(text, i, d) : null;
     if (e && e.end !== -1) {
       exprs.push([i, e.end]);
       i = e.end;

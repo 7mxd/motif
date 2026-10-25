@@ -1,0 +1,19 @@
+/* You can add global styles to this file, and also import other style files */
+
+@import 'tailwindcss';
+@import './styles/motif.tailwind.css';
+
+/* The app's own fonts: the guide's Onest, and Noto Naskh Arabic, its Arabic companion. */
+@font-face {
+  font-family: 'Onest';
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/onest.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Noto Naskh Arabic';
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./assets/fonts/NotoNaskhArabic.ttf') format('truetype');
+}

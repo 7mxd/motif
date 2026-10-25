@@ -75,7 +75,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
     // A Vue app's files are read as their views (a .vue file's style blocks, script and template), not as HTML pages.
     const raw = stack ? stack.sourceFiles(cwd, a, { ignore }) : appSourceFiles(cwd, a, { ignore });
     const kept = darkLinked(raw.filter((f) => !isMotifGenerated(f.path, f.text)), roots);
-    const own = stack?.views ? kept.flatMap(stack.views) : expandHtml(kept);
+    const own = stack?.views ? kept.flatMap((f) => stack.views!(f, kept)) : expandHtml(kept);
     const extra = (stack?.extractFiles?.(cwd, a, { ignore }) ?? []).filter((f) => !isMotifGenerated(f.path, f.text));
     if (stack) frameworkFiles.set(stack, [...(frameworkFiles.get(stack) ?? []), ...own, ...extra]);
     if (a.stack === "plain-web") for (const f of own) noTailwind.add(f);

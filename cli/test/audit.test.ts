@@ -226,7 +226,9 @@ body { margin: 0; padding: 24px; font: 16px/1.5 sans-serif; background: #ffffff;
 <script>let x = 0; (function f() { x = (x + 1) % 100; document.getElementById("mover").style.transform = "translateX(" + x + "px)"; requestAnimationFrame(f); })();</script>
 </body></html>`;
 const CLEAN = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-<body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111"><h1>Clean</h1><button style="width: 48px; height: 48px">OK</button><p>All good.</p></body></html>`;
+<body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111"><h1>Clean</h1><button style="width: 48px; height: 48px">OK</button><p>All good.</p>
+<!-- 44 px tall to the eye: padding around a line of text 1.4 times 14 px, as Tailwind draws py-3 text-sm (plan 2K, Task 8). -->
+<button style="padding: 12px 16px; border: 0; font-size: 14px; line-height: 1.4">Add item</button></body></html>`;
 
 // A browser from before 2022 has no checkVisibility(): the audit still runs there.
 const OLD_BROWSER = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -263,6 +265,30 @@ const step = (t) => { shimmer.style.transform = "translateX(" + Math.round((t / 
 requestAnimationFrame(step);
 </script></body></html>`;
 
+// What Angular Material draws (plan 2K's hands-on, Material 22): a 40 px button and a 40 px icon button, each with an empty
+// span inside, absolutely placed, that makes its hit area 48 px tall; and a slide toggle, a role="switch" button named
+// through aria-labelledby, with a 48 px touch target of its own; and RealWorld's logo link, named by its image's alt. A child that takes no taps (pointer-events: none), or one the control clips, is no hit area.
+// Nor is a corner badge (it doesn't cover the control's centre), or a centred touch target a wrapper inside the control
+// clips. A 43.4 px button is 43 px as reported, and too small.
+const LIBRARY = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>button { position: relative; padding: 0 12px; border: 0; height: 40px; font: 14px sans-serif; }
+.touch { position: absolute; top: 50%; left: 0; right: 0; height: 48px; transform: translateY(-50%); }
+.icon .touch { left: 50%; width: 48px; transform: translate(-50%, -50%); }
+.switch { width: 52px; height: 32px; padding: 0; }
+#inert-touch .touch { pointer-events: none; }</style></head>
+<body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111">
+<p><button id="order">Place order<span class="touch"></span></button></p>
+<p><button id="settings" class="icon" aria-label="Settings" style="width: 40px; padding: 0"><span class="touch"></span></button></p>
+<p><button id="remind" class="switch" role="switch" aria-checked="false" aria-labelledby="remind-label"><div class="touch"></div></button>
+<span id="remind-label">Remind me</span></p>
+<p><button id="bare" role="switch" aria-checked="false" aria-labelledby="bare-label" class="switch"></button><span id="bare-label">Alerts</span></p>
+<p><button id="inert-touch">Later<span class="touch"></span></button></p>
+<p><button id="clipped" style="overflow: hidden">Skip<span class="touch"></span></button></p>
+<p><a id="brand" href="/" style="display: inline-block"><img alt="Conduit" width="88" height="24" style="display: block" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="></a></p>
+<p><button id="badge" class="icon" aria-label="Inbox" style="width: 40px; padding: 0"><span style="position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; background: #c00000; color: #ffffff; font-size: 10px">3</span></button></p>
+<p><button id="wrapped" class="icon" aria-label="Share" style="width: 40px; padding: 0"><span style="position: relative; display: block; width: 40px; height: 40px; overflow: hidden"><span class="touch"></span></span></button></p>
+<p><button id="near" aria-label="Near" style="width: 43.4px; height: 43.4px; padding: 0"></button></p></body></html>`;
+
 const browser = findBrowser();
 let server: ReturnType<typeof Bun.serve>;
 beforeAll(() => {
@@ -271,7 +297,7 @@ beforeAll(() => {
     port: 0,
     fetch: (req) => {
       const path = new URL(req.url).pathname;
-      return new Response(path === "/clean" ? CLEAN : path === "/old" ? OLD_BROWSER : path === "/rn" ? RN : BAD, { headers: { "content-type": "text/html" } });
+      return new Response(path === "/clean" ? CLEAN : path === "/old" ? OLD_BROWSER : path === "/rn" ? RN : path === "/library" ? LIBRARY : BAD, { headers: { "content-type": "text/html" } });
     },
   });
 });
@@ -341,6 +367,27 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
       "target-size #icon: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
       "target-size #plus: A button is 32×32 px on a phone; 44×44 px is easier to tap.",
       'target-size #named: The "Add item" button is 32×32 px on a phone; 44×44 px is easier to tap.',
+    ]);
+  }, 120_000);
+
+  test("a hit area a component library adds inside a control counts; a control named through aria-labelledby or an image's alt is called by its name (2K hands-on)", async () => {
+    const { routes, issues } = await captureScreens({
+      browserPath: browser!.path,
+      baseUrl: `http://127.0.0.1:${server.port}`,
+      routes: ["/library"],
+      outDir: tempDir("motif-audit-"),
+      audit: true,
+      settleMs: 100,
+    });
+    expect(routes[0]!.auditError).toBeUndefined();
+    expect(toFindings(issues).map((f) => `${f.location.selector}: ${f.summary}`)).toEqual([
+      '#bare: The "Alerts" button is 52×32 px on a phone; 44×44 px is easier to tap.',
+      '#inert-touch: The "Later" button is 56×40 px on a phone; 44×44 px is easier to tap.',
+      '#clipped: The "Skip" button is 51×40 px on a phone; 44×44 px is easier to tap.',
+      '#brand: The "Conduit" link is 88×24 px on a phone; 44×44 px is easier to tap.',
+      '#badge: The "Inbox" button is 40×40 px on a phone; 44×44 px is easier to tap.',
+      '#wrapped: The "Share" button is 40×40 px on a phone; 44×44 px is easier to tap.',
+      '#near: The "Near" button is 43×43 px on a phone; 44×44 px is easier to tap.',
     ]);
   }, 120_000);
 

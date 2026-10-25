@@ -154,6 +154,8 @@ describe("motif shot: pages that crash, redirect, or couldn't be audited", () =>
     const r = await runShot(root, ctx({ url: "http://localhost:3000", routes: "/dashboard,/settings", audit: true }), deps);
     expect((r.data.findings as { location: { screen: string } }[]).map((f) => f.location.screen)).toEqual(["/login"]);
     expect(r.text).toContain("/dashboard → /login");
+    // And what to do to capture the page itself.
+    expect(r.text).toContain("Pages that redirected were audited as the page they landed on: /dashboard → /login, /settings → /login. To capture a page behind a sign-in, add --state with a script that signs in on the page it lands on: each page is also captured after the script runs.");
   });
 
   test("an audit that couldn't finish isn't reported as clean", async () => {
@@ -265,6 +267,13 @@ describe("motif shot", () => {
     expect(r.exitCode).toBe(0);
     // Byte for byte, as it was before a Mac SwiftUI run got its own line (plan 2H's final review).
     expect(r.text).toContain("✓ Audit: no contrast, tap-target or reduced-motion problems found, and no controls without a name (design/shots/audit.json).");
+  });
+
+  test("a clean audit at a phone's size alone names the two checks that ran in a list (plan 2K, Task 8's run)", async () => {
+    const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", audit: true, sizes: "390" }), fakes().deps);
+    expect(r.exitCode).toBe(0);
+    expect(r.text).toContain("✓ Audit: no contrast or tap-target problems found, and no controls without a name (design/shots/audit.json).");
+    expect(r.text).toContain("The reduced-motion check runs at the desktop size, which --sizes left out.");
   });
 
   test("the dev server is stopped even when capturing fails", async () => {

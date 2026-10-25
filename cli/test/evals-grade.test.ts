@@ -216,6 +216,23 @@ describe("test B on Svelte", () => {
   });
 });
 
+describe("test B on Angular", () => {
+  const okAngular: BFacts = {
+    route: "/history", pageExists: true, check: { violations: 0, exceptions: 0, warnings: 0 }, validate: { errors: 0, warnings: 0, missingSections: [] },
+    build: { code: 0 }, typecheck: { code: 0, command: "ng build" }, render: { route: "/history", status: 200, pageErrors: 0 }, newComponents: [], recorded: [],
+  };
+  test("ng build is the build and the type check: its type errors count once, as the type check's", () => {
+    expect(gradeB(okAngular).criteria.map((c) => c.id)).toEqual(["feature", "check", "exceptions", "validate", "build", "typecheck", "renders", "components"]);
+    expect(gradeB(okAngular).criteria.find((c) => c.id === "typecheck")!.detail).toBe("The type check (ng build) passed.");
+    const detail = "1 type error in the build's output (ng build type-checks the templates in strict mode). The first: NG9: Property 'shfit' does not exist on type 'ShiftHistory'.";
+    const g = gradeB({ ...okAngular, build: { code: 1, typeErrorsOnly: true }, typecheck: { code: 1, command: "ng build", detail } });
+    expect(failing(g)).toEqual(["typecheck"]);
+    expect(g.criteria.find((c) => c.id === "typecheck")!.detail).toBe(`${detail} The build stopped at the same errors, so it isn't counted again.`);
+    expect(failing(gradeB({ ...okAngular, build: { code: 1 } }))).toEqual(["build"]);
+    expect(failing(gradeB({ ...okAngular, render: { route: "/history", status: 404, pageErrors: 0 } }))).toEqual(["renders"]);
+  });
+});
+
 describe("test B on React Native", () => {
   const okRn: BFacts = {
     route: "/orders", pageExists: true, check: { violations: 0, exceptions: 0, warnings: 0 }, validate: { errors: 0, warnings: 0, missingSections: [] },

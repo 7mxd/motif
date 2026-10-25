@@ -145,6 +145,49 @@ describe("before a run", () => {
     expect(await preflight(kit2.p, false, kit2.deps, false, false, false, true, { vite8: true, svelteKit3: false })).not.toHaveProperty("error");
   });
 
+  test("the new Angular app needs Angular 22's Node.js: 22.22.3 or later on Node 22, 24.15 or later on Node 24, or 26 or later", async () => {
+    for (const v of ["v20.19.0", "v22.17.0", "v22.22.2", "v23.11.0", "v24.14.9", "v25.2.0"]) {
+      const { p, deps } = setup({ node: ok(`${v}\n`) });
+      const r = (await preflight(p, false, deps, false, false, false, true, { angular22: true })) as { error: string };
+      expect([v, r.error]).toEqual([v, expect.stringContaining(`The new Angular app (d-sanad) needs Node.js 22.22.3 or later on Node 22, 24.15 or later on Node 24, or 26 or later, since ng new makes an Angular 22 app and Angular 22 needs it. This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases `)]);
+      expect(r.error).toContain("--cases b-settings,");
+      expect(r.error).not.toMatch(/--cases .*(angular|sanad|nuzha|svelte|vue)/);
+      expect(r.error).not.toMatch(/--cases .*swiftui/);
+    }
+    for (const v of ["v22.22.3", "v22.30.0", "v24.15.0", "v26.0.0", "v27.1.0"]) {
+      const { p, deps } = setup({ node: ok(`${v}\n`) });
+      expect([v, await preflight(p, false, deps, false, false, false, true, { vite8: true, angular21: true, svelteKit3: true, angular22: true })]).toEqual([v, expect.not.objectContaining({ error: expect.anything() })]);
+    }
+    // The lower floors are checked first: Node 22.16 is told about the new Svelte app, Node 22.17 about the new Angular one.
+    const kit = setup({ node: ok("v22.16.0\n") });
+    expect(await preflight(kit.p, false, kit.deps, false, false, false, true, { svelteKit3: true, angular22: true })).toEqual({ error: expect.stringContaining("The new Svelte app") });
+    const ng = setup({ node: ok("v22.17.0\n") });
+    expect(await preflight(ng.p, false, ng.deps, false, false, false, true, { svelteKit3: true, angular22: true })).toEqual({ error: expect.stringContaining("The new Angular app") });
+    // Without d-sanad chosen, Node 22.12 is enough.
+    const ng21 = setup({ node: ok("v22.12.0\n") });
+    expect(await preflight(ng21.p, false, ng21.deps, false, false, false, true, { vite8: true, angular22: false })).not.toHaveProperty("error");
+  });
+
+  test("Ataa's cases need Angular 21's Node.js: 20.19 or later on Node 20, 22.12 or later on Node 22, or 24 or later", async () => {
+    for (const v of ["v20.18.1", "v21.7.3", "v22.11.0", "v23.0.0", "v23.11.1"]) {
+      const { p, deps } = setup({ node: ok(`${v}\n`) });
+      const r = (await preflight(p, false, deps, false, false, false, true, { angular21: true })) as { error: string };
+      expect([v, r.error]).toEqual([v, expect.stringContaining(`The Angular cases on Ataa (b-angular-history, b-angular-settings, c-angular) need Node.js 20.19 or later on Node 20, 22.12 or later on Node 22, or 24 or later, since Ataa is Angular 21 and Angular 21 needs it. This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases `)]);
+      expect(r.error).toContain("--cases b-settings,");
+      expect(r.error).not.toMatch(/--cases .*(angular|sanad)/);
+    }
+    for (const v of ["v20.19.0", "v22.12.0", "v22.14.0", "v24.0.0", "v25.1.0"]) {
+      const { p, deps } = setup({ node: ok(`${v}\n`) });
+      expect([v, await preflight(p, false, deps, false, false, false, true, { angular21: true })]).toEqual([v, expect.not.objectContaining({ error: expect.anything() })]);
+    }
+    // Vite 8's floor is the same but for Node 23, which runs Vite 8 and not Angular 21: Node 23 is told about Ataa.
+    const odd = setup({ node: ok("v23.5.0\n") });
+    expect(await preflight(odd.p, false, odd.deps, false, false, false, true, { vite8: true, angular21: true })).toEqual({ error: expect.stringContaining("The Angular cases on Ataa") });
+    // Without them, Node 23 is enough for the others.
+    const others = setup({ node: ok("v23.5.0\n") });
+    expect(await preflight(others.p, false, others.deps, false, false, false, true, { vite8: true, angular21: false })).not.toHaveProperty("error");
+  });
+
   test("a browser is needed only for tests C and D, and is never downloaded for you", async () => {
     const noBrowser = ok(JSON.stringify({ items: [{ id: "browser", status: "needed" }] }));
     const a = setup({ doctor: noBrowser });
@@ -179,7 +222,7 @@ describe("before a run", () => {
 
 describe("before a run with SwiftUI cases", () => {
   const swiftUICases = "b-swiftui-orders, b-swiftui-rewards, c-swiftui, d-masar";
-  const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,c-review,c-plain,c-flutter,c-compose,c-rn,c-vue,c-svelte,d-stride,d-ledgerly,d-bloom,d-sahm,d-nabta,d-rihla,d-darb,d-nuzha";
+  const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,c-review,c-plain,c-flutter,c-compose,c-rn,c-vue,c-svelte,c-angular,d-stride,d-ledgerly,d-bloom,d-sahm,d-nabta,d-rihla,d-darb,d-nuzha,d-sanad";
   /** A Mac with (or without) Xcode and an iOS simulator, as doctor sees it. */
   function mac(opts: { xcode?: string; simulator?: boolean }): DoctorDeps {
     return {
@@ -228,7 +271,7 @@ describe("before a run with SwiftUI cases", () => {
 
   test("on a Mac, a missing Flutter or Android SDK offers the SwiftUI cases among the others", async () => {
     const withSwiftUI =
-      "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-swiftui-orders,b-swiftui-rewards,c-review,c-plain,c-rn,c-vue,c-svelte,c-swiftui,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-nuzha,d-masar";
+      "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,b-swiftui-orders,b-swiftui-rewards,c-review,c-plain,c-rn,c-vue,c-svelte,c-angular,c-swiftui,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-nuzha,d-sanad,d-masar";
     const a = setup({}, { flutter: null });
     const flutter = (await preflight(a.p, false, { ...a.deps, platform: "darwin" }, true)) as { error: string };
     expect(flutter.error).toEndWith(`Or run the web, Expo and SwiftUI cases without it: ${withSwiftUI}`);
@@ -245,7 +288,7 @@ describe("before a run with SwiftUI cases", () => {
 });
 
 describe("before a run with Flutter cases", () => {
-  const otherCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,c-review,c-plain,c-rn,c-vue,c-svelte,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-nuzha";
+  const otherCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,c-review,c-plain,c-rn,c-vue,c-svelte,c-angular,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-nuzha,d-sanad";
 
   test("ready: Flutter 3.27 or later on the PATH", async () => {
     const { p, deps, seen } = setup();
@@ -281,7 +324,7 @@ describe("before a run with Flutter cases", () => {
 });
 
 describe("before a run with Compose cases", () => {
-  const webCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,c-review,c-plain,c-rn,c-vue,c-svelte,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-nuzha";
+  const webCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,c-review,c-plain,c-rn,c-vue,c-svelte,c-angular,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-nuzha,d-sanad";
   const java = (v: string) => ({ code: 0, stdout: "", stderr: `openjdk version "${v}" 2024-07-16
 ` });
   /** A computer with (or without) a JDK and an SDK, as doctor sees it. */

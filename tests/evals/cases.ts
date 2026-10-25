@@ -1,5 +1,5 @@
 // The eval cases (spec §13.2 and the plain web spec §11): test B's features on copies of the contract apps and site, test C's reviews of the seeded apps and site,
-// and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose, React Native (Expo), Vue, Svelte and SwiftUI (on a Mac only). Each prompt switches approvals
+// and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose, React Native (Expo), Vue, Svelte, Angular and SwiftUI (on a Mac only). Each prompt switches approvals
 // off in the skill's own words.
 
 import type { StackId } from "../../cli/src/detect/stacks";
@@ -29,7 +29,7 @@ export interface EvalCase {
   minutes: number;
   /**
    * The app's stack when it isn't a web one: a Flutter case is type-checked with flutter analyze and drawn by Flutter,
-   * a Compose case with Gradle and drawn by Robolectric, a React Native one with tsc and drawn through Expo's web target, a Vue one with vue-tsc and built with Vite, a Svelte one with svelte-check and built with Vite, and
+   * a Compose case with Gradle and drawn by Robolectric, a React Native one with tsc and drawn through Expo's web target, a Vue one with vue-tsc and built with Vite, a Svelte one with svelte-check and built with Vite, an Angular one built (and type-checked) with ng build, and
    * a SwiftUI one built with xcodebuild and drawn in an iOS simulator.
    */
   stack?: StackId;
@@ -70,6 +70,21 @@ export const needsVite8 = (c: EvalCase): boolean => isViteWebApp(c) && !needsSve
 /** A case whose app is made with `npx sv create`, which installs SvelteKit 3: Node.js 22.17 or later. */
 export const needsSvelteKit3 = (c: EvalCase): boolean => c.id === "d-nuzha";
 
+/**
+ * A case on an Angular app (Ataa, or a new one from a brief): a web app, built with npm and drawn in a browser. ng build
+ * type-checks the templates in strict mode, so the build is its type check too.
+ */
+export const isAngular = (c: EvalCase): boolean => c.stack === "angular";
+
+/** A case on Ataa, which is Angular 21: Node.js 20.19 or later on Node 20, 22.12 or later on Node 22, or 24 or later. */
+export const needsAngular21 = (c: EvalCase): boolean => isAngular(c) && !needsAngular22(c);
+
+/**
+ * A case whose app is made with `ng new`, which installs the latest Angular (22): Node.js 22.22.3 or later on Node 22,
+ * 24.15 or later on Node 24, or 26 or later.
+ */
+export const needsAngular22 = (c: EvalCase): boolean => c.id === "d-sanad";
+
 /** A case on a SwiftUI app: it needs a Mac with Xcode and an iOS simulator. */
 export const isSwiftUI = (c: EvalCase): boolean => c.stack === "swiftui";
 
@@ -99,10 +114,10 @@ export function macOnly(cases: EvalCase[], platform: NodeJS.Platform): { run: Ev
 
 /**
  * Whether grading needs a browser: C and D always, and B on a plain site, whose new page is checked in one, and on an
- * Expo app, whose new screen is drawn through its web target, and on a Vue or Svelte app, whose new page is drawn at two sizes. Flutter, Compose and SwiftUI draw their own screens, so
+ * Expo app, whose new screen is drawn through its web target, and on a Vue, Svelte or Angular app, whose new page is drawn at two sizes. Flutter, Compose and SwiftUI draw their own screens, so
  * their cases never do.
  */
-export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c) && (c.test !== "B" || isPlain(c) || isReactNative(c) || isViteWebApp(c));
+export const needsBrowser = (c: EvalCase): boolean => !isFlutter(c) && !isCompose(c) && !isSwiftUI(c) && (c.test !== "B" || isPlain(c) || isReactNative(c) || isViteWebApp(c) || isAngular(c));
 
 /**
  * Whether the case installs or builds with npm: the web and React Native apps (npm ci, npm run build, npx tsc). Flutter, Compose and
@@ -139,6 +154,11 @@ const vueFeature = (id: string, title: string, route: string, what: string): Eva
 /** A feature on Adawat, a Svelte app. It is built and drawn, so these get as long as Bustan's. */
 const svelteFeature = (id: string, title: string, route: string, what: string): EvalCase => ({
   ...feature(id, title, route, what), fixture: "svelte-contract-app", stack: "svelte", minutes: 120,
+});
+
+/** A feature on Ataa, an Angular app. It is built and drawn, so these get as long as Bustan's. */
+const angularFeature = (id: string, title: string, route: string, what: string): EvalCase => ({
+  ...feature(id, title, route, what), fixture: "angular-contract-app", stack: "angular", minutes: 120,
 });
 
 /**
@@ -212,6 +232,11 @@ export const CASES: EvalCase[] = [
   svelteFeature("b-svelte-settings", "Settings with the look switch (Svelte)", "/settings",
     "Add settings at /settings: a switch for reminders before a loan is due, the email address the sign-in link goes to with a way to change it, a choice between the library's everyday look and its repair-weekend look, and a sign-out button. Link to it from the top bar. Keep the choices in memory; there's no back end."),
 
+  angularFeature("b-angular-history", "A volunteer's shift history with an empty state (Angular)", "/history",
+    "Add a shift history at /history: every shift the volunteer has done, newest first and grouped by month, each with the kind of shift, the day, the hours and where it was, and an empty state for a volunteer who hasn't done a shift yet that leads back to the open shifts. Link to it from My shifts. Mock data only."),
+  angularFeature("b-angular-settings", "Settings with the look switch (Angular)", "/settings",
+    "Add settings at /settings: a switch for reminders the day before a shift, the email address the sign-in link goes to with a way to change it, a choice between the food bank's everyday look and its harvest-night look, and a sign-out button. Link to it from the top bar. Keep the choices in memory; there's no back end."),
+
   swiftUIFeature("b-swiftui-orders", "Past orders with an empty state (SwiftUI)", "Orders",
     "Add past orders: a screen with every order newest first, each with the day it was placed, its drinks, its total and the stamps it earned, and an empty state for before the first order that leads back to the menu. Give it a #Preview titled \"Orders\", and link to it from the menu. Mock data only."),
   swiftUIFeature("b-swiftui-rewards", "Rewards history grouped by month (SwiftUI)", "Rewards history",
@@ -264,6 +289,14 @@ ${UNATTENDED}`,
     maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
   },
   {
+    id: "c-angular", test: "C", title: "Review of the seeded Angular app", fixture: "angular-seeded-app", stack: "angular",
+    routes: ["/", "/shifts/pack-sunday", "/my-shifts", "/sign-in"],
+    prompt: `/motif:review Review the whole app: its screens are /, /shifts/pack-sunday (a shift), /my-shifts and /sign-in. Write the report only: stop after the report step and don't change the app's code.
+
+${UNATTENDED}`,
+    maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
+  },
+  {
     id: "c-swiftui", test: "C", title: "Review of the seeded SwiftUI app", fixture: "swiftui-seeded-app", stack: "swiftui", mac: true,
     routes: ["/", "Menu", "Drink", "Loyalty card", "Sign in"],
     prompt: `/motif:review Review the whole app: its screens are / (the root view: the menu, once signed in) and the previews Menu, Drink (a drink's page), Loyalty card and Sign in. Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
@@ -277,6 +310,7 @@ ${UNATTENDED}`,
   newApp("rihla", "New Expo app: Rihla (a trip planner)", "react-native", "trips", "screen"),
   newApp("darb", "New Vue app: Darb (a running club's meetups)", "vue", "meetups"),
   newApp("nuzha", "New Svelte app: Nuzha (a city's parks and trails)", "svelte", "trails"),
+  newApp("sanad", "New Angular app: Sanad (a neighbourhood repair-request desk)", "angular", "requests"),
   swiftUINewApp("masar", "New SwiftUI app: Masar (a running tracker)", "swiftui-starter-masar"),
 ];
 

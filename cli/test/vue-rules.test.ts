@@ -172,7 +172,7 @@ describe("the web's rules on the views", () => {
 describe("VUE.fix", () => {
   const hit = (over: Partial<Hit>): Hit => ({ rule: "raw-motion", file: "a.vue", line: 1, column: 1, text: "", message: "", fix: "", violation: true, ...over });
   test("React web's motion fix is Vue's words; others pass through", () => {
-    expect(VUE.fix!(hit({ kind: "spring", fix: "Use the generated design/motion.ts: import { duration, easing, spring } from it (path relative to this file), e.g. transition={spring.smooth}." }))).toBe(
+    expect(VUE.fix!(hit({ kind: "spring", fixKind: "motion", fix: "Use the generated design/motion.ts: import { duration, easing, spring } from it (path relative to this file), e.g. transition={spring.smooth}." }))).toBe(
       "Import { duration, easing, spring } from the generated motion.ts and pass spring.<role> to :transition.",
     );
     expect(VUE.fix!(hit({ rule: "off-scale", fix: "Use var(--motif-space-<step>)." }))).toBe("Use var(--motif-space-<step>).");

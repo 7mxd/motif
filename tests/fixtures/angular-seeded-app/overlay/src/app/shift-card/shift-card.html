@@ -1,0 +1,13 @@
+<a [routerLink]="['/shifts', shift().id]" class="card flex h-full flex-col gap-1 rounded-lg border border-border bg-surface p-1">
+  <div class="flex items-start justify-between gap-1">
+    <div class="flex min-w-0 flex-col">
+      <p class="font-caption text-caption text-text-secondary">{{ locale.t().kinds[shift().kind] }}</p>
+      <h2 class="truncate font-heading text-heading">{{ locale.f().words(shift().name) }}</h2>
+    </div>
+    <app-status-badge [status]="status()" />
+  </div>
+  <p class="flex items-center gap-1 truncate text-text-secondary"><svg appIcon name="calendar"></svg>{{ locale.f().day(shift().starts) }}</p>
+  <p class="mt-auto flex items-center gap-1 font-label text-label" [style.color]="'#625D51'">
+    <svg appIcon name="people"></svg>{{ left() > 0 ? locale.t().placesLeft(left(), locale.f().number(left())) : locale.t().statusFull }}
+  </p>
+</a>

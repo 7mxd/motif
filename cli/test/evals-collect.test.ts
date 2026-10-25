@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
-import { addedComponents, collectB, collectC, collectD, componentFacts, designSections, composeComponents, flutterComponents, reactComponents, recordedIn, rnComponents, stoppedByTypeErrors, svelteComponents, swiftUIComponents, vueComponents } from "../../tests/evals/collect";
+import { addedComponents, angularBuildErrors, angularComponents, collectB, collectC, collectD, componentFacts, designSections, composeComponents, flutterComponents, reactComponents, recordedIn, rnComponents, stoppedByTypeErrors, svelteComponents, swiftUIComponents, vueComponents } from "../../tests/evals/collect";
 import { gradeB, gradeD } from "../../tests/evals/grade";
 import { Paused, type JudgeFn } from "../../tests/evals/judge";
 import type { SeededIssue } from "../../tests/evals/match";
@@ -1077,6 +1077,263 @@ describe("test D on Svelte", () => {
     expect(f.typecheck).toEqual({ code: 0, timedOut: false });
     expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm install", "npm run build", "npx svelte-check --fail-on-warnings"]);
     expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/,/sign-in,/trails", "--sizes", "390,1440"]);
+    for (const file of ["DESIGN.md", "validate.json", "check.json", "shot.json", "install.log", "build.log", "typecheck.log"]) expect(existsSync(join(out, file))).toBe(true);
+  });
+});
+
+describe("an Angular build's errors", () => {
+  // As ng build's application builder prints them (esbuild's format), and as the older webpack builder did.
+  const typeError = "✘ [ERROR] TS2322: Type 'string' is not assignable to type 'number'. [plugin angular-compiler]\n\n    src/app/history/history.ts:12:2:\n      12 │   count: number = 'a';\n         ╵   ^\n";
+  const templateError = "✘ [ERROR] NG8002: Can't bind to 'shfit' since it isn't a known property of 'app-shift-card'. [plugin angular-compiler]\n\n    src/app/history/history.html:4:18:\n";
+  const resolveError = "✘ [ERROR] Could not resolve \"./missing\"\n\n    src/app/history/history.ts:3:22:\n";
+  test("TypeScript and template type errors are the type check's; anything else is the build's own", () => {
+    expect(angularBuildErrors(`Application bundle generation failed. [2.1 seconds]\n\n${typeError}\n${templateError}`)).toEqual({
+      typeErrors: ["TS2322: Type 'string' is not assignable to type 'number'.", "NG8002: Can't bind to 'shfit' since it isn't a known property of 'app-shift-card'."],
+      otherErrors: [],
+    });
+    expect(angularBuildErrors(`${typeError}\n${resolveError}`)).toEqual({ typeErrors: ["TS2322: Type 'string' is not assignable to type 'number'."], otherErrors: ["Could not resolve \"./missing\""] });
+    expect(angularBuildErrors("Error: src/app/app.ts:3:5 - error TS2304: Cannot find name 'x'.\nError: src/app/app.html:2:3 - error NG8001: 'app-row' is not a known element.\n").typeErrors).toEqual([
+      "TS2304: Cannot find name 'x'.", "NG8001: 'app-row' is not a known element.",
+    ]);
+    expect(angularBuildErrors("Initial chunk files | Names | Raw size\nmain.js | main | 200 kB\nApplication bundle generation complete.")).toEqual({ typeErrors: [], otherErrors: [] });
+  });
+
+  // Angular CLI 21.2's own output, piped (not a terminal): it is coloured all the same.
+  const REAL = {
+    ts: "Application bundle generation failed. [10.586 seconds] - 2026-10-25T16:45:31.892Z\n\n\u001b[1m\u001b[31m\u001b[31mX \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mTS2322: Type 'string' is not assignable to type 'number'.\u001b[0m \u001b[1m\u001b[35m[plugin angular-compiler]\u001b[0m\n\n    src/app/app.ts:14:13:\n\u001b[37m      14 │ export const \u001b[32mbroken\u001b[37m: number = \"not a number\";\n         ╵              \u001b[32m~~~~~~\u001b[0m\n\n\u001b[39m\u001b[22m\n",
+    template: "Application bundle generation failed. [2.424 seconds] - 2026-10-25T16:45:47.881Z\n\n\u001b[1m\u001b[31m\u001b[31mX \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mTS2339: Property 'missingThing' does not exist on type 'App'.\u001b[0m \u001b[1m\u001b[35m[plugin angular-compiler]\u001b[0m\n\n    src/app/app.html:7:6:\n\u001b[37m      7 │ <p>{{ \u001b[32mmissingThing\u001b[37m.value }}</p>\n        ╵       \u001b[32m~~~~~~~~~~~~\u001b[0m\n\n  Error occurs in the template of component App.\n\n    src/app/app.ts:7:15:\n\u001b[37m      7 │   templateUrl: \u001b[32m'./app.html'\u001b[37m,\n        ╵                \u001b[32m~~~~~~~~~~~~\u001b[0m\n\n\u001b[39m\u001b[22m\n",
+    bundle: "Application bundle generation failed. [2.169 seconds] - 2026-10-25T16:45:51.721Z\n\n\u001b[1m\u001b[31m\u001b[31mX \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mCould not resolve \"./does-not-exist\"\u001b[0m\n\n    src/app/app.ts:3:7:\n\u001b[37m      3 │ import \u001b[32m'./does-not-exist'\u001b[37m;\n        ╵        \u001b[32m~~~~~~~~~~~~~~~~~~\u001b[0m\n\n\u001b[39m\u001b[22m\n",
+  };
+  test("ng build's real output, colour codes and all: a TypeScript error, a template's (TS2339 in a template), and a missing import", () => {
+    expect(angularBuildErrors(REAL.ts)).toEqual({ typeErrors: ["TS2322: Type 'string' is not assignable to type 'number'."], otherErrors: [] });
+    expect(angularBuildErrors(REAL.template)).toEqual({ typeErrors: ["TS2339: Property 'missingThing' does not exist on type 'App'."], otherErrors: [] });
+    expect(angularBuildErrors(REAL.bundle)).toEqual({ typeErrors: [], otherErrors: ["Could not resolve \"./does-not-exist\""] });
+  });
+
+  test("graded from those logs: a type error counts once, as the type check's; a missing import is the build's alone", async () => {
+    const failing = (output: string): Run => async (cmd, cwd, t, env) => {
+      if (cmd[0] === "git") return runCmd(cmd, cwd, t, env);
+      return cmd.join(" ") === "npm run build" ? { code: 1, stdout: output, stderr: "", timedOut: false } : { code: 0, stdout: "ok", stderr: "", timedOut: false };
+    };
+    const ws = await prepareWorkspace(byId("b-angular-history"), join(tempDir("motif-col-"), "bngreal"), run);
+    const failed = async (output: string, name: string) => {
+      const f = await collectB(byId("b-angular-history"), ws, { run: failing(output), motif, judge: noJudge }, join(ws.dir, name));
+      return gradeB(f).criteria.filter((c) => !c.pass && c.id !== "feature" && c.id !== "renders").map((c) => c.id);
+    };
+    expect(await failed(REAL.ts, "ts")).toEqual(["typecheck"]);
+    expect(await failed(REAL.template, "template")).toEqual(["typecheck"]);
+    expect(await failed(REAL.bundle, "bundle")).toEqual(["build"]);
+  });
+});
+
+describe("new components on Angular, from the session's diff", () => {
+  const component = (cls: string, extra = "") =>
+    `import { Component } from '@angular/core';\n\n@Component({\n  selector: 'app-x',\n  template: \`<p (click)="go()">Open (3</p>\`,\n})\nexport ${extra}class ${cls} {\n  go() {}\n}\n`;
+  const routes = (added: string[]) => edit("src/app/app.routes.ts", [], added);
+
+  test("a new @Component class under src/app/ counts; one the routes show is the page itself", () => {
+    const diff = [
+      newFile("src/app/history/history.ts", component("ShiftHistory")),
+      newFile("src/app/history/history.html", "<main></main>"),
+      newFile("src/app/history-row/history-row.ts", component("HistoryRow")),
+      newFile("src/app/season-tag.ts", `${component("SeasonTag")}\n@Component({ selector: 'app-y', template: '<b>y</b>' })\nexport class SeasonDot {}\n`),
+      routes(["  { path: 'history', loadComponent: () => import('./history/history').then((m) => m.ShiftHistory) },"]),
+    ].join("\n");
+    expect(angularComponents(diff)).toEqual({ newComponents: ["HistoryRow", "SeasonTag", "SeasonDot"], screens: ["ShiftHistory"], screenParts: [], notUi: [] });
+  });
+
+  test("a page by component:, by a destructured import, or by a default export; a service, a test, a moved class and a commented-out one never count", () => {
+    const diff = [
+      newFile("src/app/settings/settings.ts", component("Settings")),
+      newFile("src/app/about/about.ts", component("About")),
+      newFile("src/app/help/help.ts", component("Help", "default ")),
+      newFile("src/app/state/settings.service.ts", "import { Injectable } from '@angular/core';\n@Injectable({ providedIn: 'root' })\nexport class SettingsService {}\n"),
+      newFile("src/app/row/row.spec.ts", component("RowSpec")),
+      newFile("src/app/moved/chip.ts", component("Chip")),
+      "diff --git a/src/app/old/chip.ts b/src/app/old/chip.ts\ndeleted file mode 100644\nindex 1111111..0000000\n--- a/src/app/old/chip.ts\n+++ /dev/null\n@@ -1,3 +0,0 @@\n-@Component({ selector: 'app-chip', template: '' })\n-export class Chip {}\n-",
+      newFile("src/app/note.ts", "// @Component({ template: '' })\n// export class Note {}\nexport const note = 1;\n"),
+      newFile("src/app/design/motion.ts", "export const x = 1;"),
+      newFile("e2e/page.ts", component("E2ePage")),
+      edit("src/app/button/button.ts", ["export class Button {"], ["export class Button {", "  wide = false;"]),
+      routes([
+        "  { path: 'settings', component: Settings },",
+        "  { path: 'about', loadComponent: () => import('./about/about').then(({ About }) => About) },",
+        "  { path: 'help', loadComponent: () => import('./help/help') },",
+      ]),
+    ].join("\n");
+    expect(angularComponents(diff)).toEqual({ newComponents: [], screens: ["Settings", "About", "Help"], screenParts: [], notUi: [] });
+  });
+
+  test("a route written over several lines (as prettier wraps it), and a default export by .then(m => m.default) or no .then at all", () => {
+    const diff = [
+      newFile("src/app/history/history.ts", component("History")),
+      newFile("src/app/reports/reports.ts", component("Reports", "default ")),
+      newFile("src/app/help/help.ts", component("Help", "default ")),
+      // Not the page: the same name in another folder.
+      newFile("src/app/widgets/help.ts", component("HelpWidget", "default ")),
+      routes([
+        "  {",
+        "    path: 'history',",
+        "    loadComponent: () =>",
+        "      import('./history/history').then(",
+        "        (m) => m.History,",
+        "      ),",
+        "  },",
+        "  { path: 'reports', loadComponent: () => import('./reports/reports').then((m) => m.default) },",
+        "  {",
+        "    path: 'help',",
+        "    loadComponent: () => import('./help/help'),",
+        "  },",
+      ]),
+    ].join("\n");
+    expect(angularComponents(diff)).toEqual({ newComponents: ["HelpWidget"], screens: ["History", "Reports", "Help"], screenParts: [], notUi: [] });
+  });
+
+  test("componentFacts routes an Angular case here and records the names DESIGN.md mentions", () => {
+    const diff = [
+      newFile("src/app/history/history.ts", component("ShiftHistory")),
+      newFile("src/app/history-row/history-row.ts", component("HistoryRow")),
+      newFile("src/app/season-tag/season-tag.ts", component("SeasonTag")),
+      routes(["  { path: 'history', loadComponent: () => import('./history/history').then((m) => m.ShiftHistory) },"]),
+      newFile("DESIGN.md", "| SeasonTag | A season label |"),
+    ].join("\n");
+    expect(componentFacts(byId("b-angular-history"), diff)).toMatchObject({ newComponents: ["HistoryRow", "SeasonTag"], screens: ["ShiftHistory"], screenParts: [], notUi: [], recorded: ["SeasonTag"] });
+  });
+});
+
+describe("test B on Angular", () => {
+  const addHistory = (app: string) => {
+    const file = join(app, "src/app/app.routes.ts");
+    writeFileSync(file, readFileSync(file, "utf8").replace("  { path: '**'", "  { path: 'history', loadComponent: () => import('./history/history').then((m) => m.ShiftHistory) },\n  { path: '**'"));
+    mkdirSync(join(app, "src/app/history"), { recursive: true });
+    writeFileSync(join(app, "src/app/history/history.ts"), "import { Component } from '@angular/core';\n@Component({ selector: 'app-history', template: '<main></main>' })\nexport class ShiftHistory {}\n");
+    mkdirSync(join(app, "src/app/history-row"), { recursive: true });
+    writeFileSync(join(app, "src/app/history-row/history-row.ts"), "import { Component } from '@angular/core';\n@Component({ selector: 'app-history-row', template: '<li></li>' })\nexport class HistoryRow {}\n");
+  };
+
+  test("the page (from Angular's routes), ng build as the build and the type check, and the page drawn at 390 and 1440", async () => {
+    const ws = await prepareWorkspace(byId("b-angular-history"), join(tempDir("motif-col-"), "bng"), run);
+    addHistory(ws.app);
+    const saved = outputs.shot;
+    outputs.shot = { command: "shot", ok: true, exitCode: 0, shots: [], routes: [{ route: "/history", status: 200, shots: [] }] };
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    try {
+      const before = commands.length;
+      const out = join(ws.dir, "results");
+      const f = await collectB(byId("b-angular-history"), ws, { run, motif: recording, judge: noJudge }, out);
+      expect(f).toMatchObject({
+        route: "/history", pageExists: true, build: { code: 0 }, typecheck: { code: 0, command: "ng build" }, render: { route: "/history", status: 200, pageErrors: 0 },
+        newComponents: ["HistoryRow"], screens: ["ShiftHistory"],
+      });
+      // ng build type-checks the templates in strict mode: no second type check is run.
+      expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm run build"]);
+      expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--routes", "/history", "--sizes", "390,1440"]);
+      for (const file of ["check.json", "validate.json", "diff.patch", "build.log", "typecheck.log", "shot.json"]) expect(existsSync(join(out, file))).toBe(true);
+    } finally {
+      outputs.shot = saved;
+    }
+  });
+
+  test("a build that stopped at type errors fails the type check alone; one that failed for its own reasons fails both", async () => {
+    const failing = (output: string): Run => async (cmd, cwd, t, env) => {
+      if (cmd[0] === "git") return runCmd(cmd, cwd, t, env);
+      return cmd.join(" ") === "npm run build" ? { code: 1, stdout: "", stderr: output, timedOut: false } : { code: 0, stdout: "ok", stderr: "", timedOut: false };
+    };
+    const typeError = "✘ [ERROR] NG9: Property 'shfit' does not exist on type 'ShiftHistory'. [plugin angular-compiler]\n\n    src/app/history/history.html:3:10:\n";
+    const ws = await prepareWorkspace(byId("b-angular-history"), join(tempDir("motif-col-"), "bng2"), run);
+    addHistory(ws.app);
+    const out = join(ws.dir, "results");
+    const f = await collectB(byId("b-angular-history"), ws, { run: failing(`Application bundle generation failed.\n${typeError}`), motif, judge: noJudge }, out);
+    expect(f.build).toMatchObject({ code: 1, typeErrorsOnly: true });
+    expect(f.typecheck).toMatchObject({ code: 1, command: "ng build" });
+    expect(f.typecheck!.detail).toContain("NG9: Property 'shfit' does not exist on type 'ShiftHistory'.");
+    expect(readFileSync(join(out, "typecheck.log"), "utf8")).toContain("NG9: Property 'shfit'");
+    expect(gradeB(f).criteria.filter((c) => !c.pass).map((c) => c.id)).toEqual(["typecheck", "renders"]);
+
+    const results = (n: number) => {
+      const dir = join(ws.dir, `results${n}`);
+      mkdirSync(dir, { recursive: true });
+      return dir;
+    };
+    const g = await collectB(byId("b-angular-history"), ws, { run: failing(`${typeError}\n✘ [ERROR] Could not resolve "./missing"\n`), motif, judge: noJudge }, results(2));
+    expect(g.build).toEqual({ code: 1, timedOut: false });
+    expect(g.typecheck).toMatchObject({ code: 1 });
+    // No type errors among the build's: the type check passed, whatever else stopped the build.
+    const h = await collectB(byId("b-angular-history"), ws, { run: failing("✘ [ERROR] Could not resolve \"./missing\"\n"), motif, judge: noJudge }, results(3));
+    expect([h.build!.code, h.typecheck!.code]).toEqual([1, 0]);
+    // Nothing the builder printed: it didn't get as far as its type check.
+    const i = await collectB(byId("b-angular-history"), ws, { run: failing("'ng' is not recognized as an internal or external command"), motif, judge: noJudge }, results(4));
+    expect(i.typecheck).toMatchObject({ code: 1, detail: expect.stringContaining("didn't get as far as its type check") });
+  });
+
+  test("no page at the feature's route: Ataa has no /settings", async () => {
+    const ws = await prepareWorkspace(byId("b-angular-settings"), join(tempDir("motif-col-"), "bng3"), run);
+    expect((await collectB(byId("b-angular-settings"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"))).pageExists).toBe(false);
+  });
+
+  test("under a hash router the page is listed as /#/settings, and is drawn there", async () => {
+    const ws = await prepareWorkspace(byId("b-angular-settings"), join(tempDir("motif-col-"), "bng4"), run);
+    const config = join(ws.app, "src/app/app.config.ts");
+    writeFileSync(config, readFileSync(config, "utf8").replace("withComponentInputBinding }", "withComponentInputBinding, withHashLocation }").replace("withComponentInputBinding())", "withComponentInputBinding(), withHashLocation())"));
+    const file = join(ws.app, "src/app/app.routes.ts");
+    writeFileSync(file, readFileSync(file, "utf8").replace("  { path: '**'", "  { path: 'settings', loadComponent: () => import('./sign-in/sign-in').then((m) => m.SignIn) },\n  { path: '**'"));
+    const saved = outputs.shot;
+    outputs.shot = { command: "shot", ok: true, exitCode: 0, shots: [], routes: [{ route: "/#/settings", status: 200, shots: [] }] };
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    try {
+      const f = await collectB(byId("b-angular-settings"), ws, { run, motif: recording, judge: noJudge }, join(ws.dir, "results"));
+      expect(f).toMatchObject({ route: "/settings", pageExists: true, render: { route: "/#/settings", status: 200, pageErrors: 0 } });
+      expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--routes", "/#/settings", "--sizes", "390,1440"]);
+    } finally {
+      outputs.shot = saved;
+    }
+  });
+});
+
+describe("test C on the Angular seeded app", () => {
+  test("is graded against its own list", async () => {
+    const seededApp: SeededIssue[] = JSON.parse(readFileSync(join(REPO, "tests/fixtures/angular-seeded-app/seeded-issues.json"), "utf8")).issues;
+    const ws = await prepareWorkspace(byId("c-angular"), join(tempDir("motif-col-"), "cng"), run);
+    const s01 = seededApp.find((i) => i.id === "S-01")!;
+    mkdirSync(join(ws.app, "design/reviews"), { recursive: true });
+    writeFileSync(join(ws.app, "design/reviews/2026-10-25-whole-app.json"), JSON.stringify({ motifReview: 1, scope: "whole app", date: "2026-10-25", findings: [
+      { id: "F-001", severity: "major", category: s01.categories[0], source: "exact", location: s01.location, summary: s01.summary, fix: "Use the secondary text role." },
+    ] }));
+    const f = await collectC(byId("c-angular"), ws, { run, motif, judge: noJudge }, join(ws.dir, "results"));
+    expect(f.exact.found).toEqual(["S-01"]);
+    expect(f.exact.missed).toHaveLength(seededApp.filter((i) => i.kind === "exact").length - 1);
+    expect(f.changedCode).toEqual([]);
+  });
+});
+
+describe("test D on Angular", () => {
+  test("installs the packages when the session didn't, builds with ng build (its type check too) and draws the starter pages at 390 and 1440", async () => {
+    const ws = await prepareWorkspace(byId("d-sanad"), join(tempDir("motif-col-"), "dng"), run);
+    const app = join(ws.app, "sanad");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "DESIGN.md"), readFileSync(join(REPO, "tests/fixtures/angular-contract-app/DESIGN.md"), "utf8"));
+    writeFileSync(join(app, "package.json"), "{}");
+    const seen: string[][] = [];
+    const recording = async (args: string[]) => {
+      seen.push(args);
+      return motif(args);
+    };
+    const before = commands.length;
+    const out = join(ws.dir, "results");
+    const f = await collectD(byId("d-sanad"), ws, { run, motif: recording, judge: noJudge }, out);
+    expect(f.app).toBe(app);
+    expect(f.build).toEqual({ code: 0, timedOut: false });
+    expect(f.typecheck).toMatchObject({ code: 0, command: "ng build" });
+    expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm install", "npm run build"]);
+    expect(seen.find((a) => a[0] === "shot")).toEqual(["shot", "--audit", "--routes", "/,/sign-in,/requests", "--sizes", "390,1440"]);
     for (const file of ["DESIGN.md", "validate.json", "check.json", "shot.json", "install.log", "build.log", "typecheck.log"]) expect(existsSync(join(out, file))).toBe(true);
   });
 });

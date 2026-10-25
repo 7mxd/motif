@@ -13,8 +13,8 @@ export const SPACE_PROP = /^(?:(?:margin|padding)(?:-(?:top|right|bottom|left|in
 export const RADIUS_PROP = /^border(?:-(?:top|bottom|start|end)-(?:left|right|start|end))?-radius$/i;
 const MOTION_PROP = /^(?:transition|animation)(?:-(?:duration|delay|timing-function))?$/i;
 export const LENGTH = /(?<![\w.-])(-?\d*\.?\d+)(px|rem)\b/g;
-const TIME = /(?<![\w.-])(\d*\.?\d+)(ms|s)\b/g;
-const EASING = /\b(?:ease(?:-in-out|-in|-out)?(?![\w-])|cubic-bezier\([^)]*\))/g;
+export const TIME = /(?<![\w.-])(\d*\.?\d+)(ms|s)\b/g;
+export const EASING = /\b(?:ease(?:-in-out|-in|-out)?(?![\w-])|cubic-bezier\([^)]*\))/g;
 const PRIMITIVE = /--motif-primitive-[\w-]+|\bprimitive\.(?:color|font|space|radius|shadow)\b/g;
 
 /** The style keys (camelCase) whose lengths are judged: spacing, corner sizes and text size. */
@@ -55,8 +55,8 @@ export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
   const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
   const hits: Hit[] = [];
-  const push = (index: number, text: string, rule: RuleId, kind: ValueKind | undefined, value: string | undefined, violation: boolean, message: string, fix: string) =>
-    hits.push(makeHit(file, at, index, { rule, ...(kind ? { kind } : {}), ...(value !== undefined ? { value } : {}), text, violation, message, fix }));
+  const push = (index: number, text: string, rule: RuleId, kind: ValueKind | undefined, value: string | undefined, violation: boolean, message: string, fix: string, fixKind?: Hit["fixKind"]) =>
+    hits.push(makeHit(file, at, index, { rule, ...(kind ? { kind } : {}), ...(value !== undefined ? { value } : {}), text, violation, message, fix, ...(fixKind ? { fixKind } : {}) }));
 
   const size = (index: number, text: string, kind: "space" | "radius" | "font-size", rawNumber: string, unit: string) =>
     hits.push(offScaleHit(file, at, index, text, kind, rawNumber, unit, scale));
@@ -118,13 +118,13 @@ export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
         const block = file.text.slice(start, end);
         for (const m of block.matchAll(MOTION_TIME)) {
           const n = Number.parseFloat(m[2]!);
-          push(start + m.index!, m[0], "raw-motion", "duration", `${n > 10 ? n : n * 1000}ms`, true, `Hard-coded Motion timing ${m[0]}.`, motionFix);
+          push(start + m.index!, m[0], "raw-motion", "duration", `${n > 10 ? n : n * 1000}ms`, true, `Hard-coded Motion timing ${m[0]}.`, motionFix, "motion");
         }
         for (const m of block.matchAll(MOTION_EASE)) {
-          push(start + m.index!, m[0], "raw-motion", "easing", m[1]!, true, `Hard-coded Motion easing ${m[0]}.`, motionFix);
+          push(start + m.index!, m[0], "raw-motion", "easing", m[1]!, true, `Hard-coded Motion easing ${m[0]}.`, motionFix, "motion");
         }
         for (const m of block.matchAll(MOTION_SPRING)) {
-          push(start + m.index!, m[0], "raw-motion", "spring", `${m[1]} ${m[2]}`, true, `Hard-coded spring setting ${m[0]}.`, motionFix);
+          push(start + m.index!, m[0], "raw-motion", "spring", `${m[1]} ${m[2]}`, true, `Hard-coded spring setting ${m[0]}.`, motionFix, "motion");
         }
       }
     }

@@ -212,10 +212,10 @@ function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Them
   const motion = expected.find((f) => /motion\.ts$/.test(f.path))?.path;
   const scale = buildScale(theme, srcDir);
   if (motion) scale.motionImport = (motion.startsWith(`${app.path}/`) ? motion.slice(app.path.length + 1) : motion).replace(/\.ts$/, "");
-  const views = (f: SourceFile) => (web.views ? web.views(f) : expandHtml([f]));
   const fixContext: WebFixContext = { appDir, appPath: app.path, ...(motion ? { motionImport: scale.motionImport } : {}) };
 
   const all = web.sourceFiles(root, app, { ignore: opts.ignore });
+  const views = (f: SourceFile) => (web.views ? web.views(f, all) : expandHtml([f]));
   const generated = all.filter((f) => isMotifGenerated(f.path, f.text));
   const appFiles = all.filter((f) => !isMotifGenerated(f.path, f.text));
   const files = appFiles.filter((f) => matchesPaths(f.path, opts.paths ?? []));
@@ -223,7 +223,7 @@ function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Them
   // Exceptions are read from the files as written, not from their views.
   const lines = new Map(files.map((f) => [f.path, f.text.split(/\r?\n/)]));
 
-  const appWide = (web.appWide?.(appFiles.flatMap(views), generated.flatMap(views)) ?? []).filter((h) => inScope.has(h.file));
+  const appWide = (web.appWide?.(appFiles.flatMap(views), generated.flatMap(views), { appDir, srcDir }) ?? []).filter((h) => inScope.has(h.file));
   const scanned = files.flatMap(views).flatMap((v) => [...(web.scan?.(v, scale) ?? []), ...scanFile(v, scale, { v3Roles })]);
   const { violations, exceptions } = sortOut([...once(scanned), ...appWide], lines, (found) => {
     const suggestion = suggestRole(found, theme, { tailwind3: tailwindVersion === "v3", variants: opts.variants });

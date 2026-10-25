@@ -1,0 +1,17 @@
+.field {
+  min-block-size: var(--motif-space-12);
+  padding-inline: var(--motif-space-3);
+  border: 1px solid var(--motif-color-border);
+  border-radius: var(--motif-radius-md);
+  background: var(--motif-color-surface);
+  color: var(--motif-color-text-primary);
+  font: inherit;
+}
+.field:focus-visible {
+  outline: 2px solid var(--motif-color-focus);
+  outline-offset: 1px;
+  border-color: var(--motif-color-focus);
+}
+.field[aria-invalid='true'] {
+  border-color: var(--motif-color-danger);
+}

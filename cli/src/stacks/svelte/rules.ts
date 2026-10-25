@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import { locator } from "../../text";
 import type { SourceFile } from "../../check/files";
+import { CSS_ANIMATION, reducedMotionReporter, REDUCED_QUERY, TW_ANIMATION } from "../../check/reduced-motion";
 import { keepRanges, maskComments } from "../../check/mask";
 import { makeHit, type Hit, type Scale } from "../../check/types";
 import { scanColors } from "../../check/rules/colors";
@@ -15,6 +16,9 @@ const SVELTE_MOTION_IMPORT = "$lib/design/motion";
 export const STYLE_COLOR_FIX = "Use 'var(--motif-color-<role>)' in style: or style=\"…\", or a class (bg-<role>) with Tailwind.";
 export const MOTION_FIX = `Import { duration, easing, spring } from ${SVELTE_MOTION_IMPORT} and pass them: transition:fly={{ duration: duration.base, easing: easing.standard }}.`;
 const CSS_MOTION_FIX = "Use var(--motif-duration-<role>) and var(--motif-easing-<role>) from motif.css: this app is before Svelte 5, so Motif writes no motion.ts.";
+/** Motion's animate() takes seconds; the CSS variables are in milliseconds. */
+const CSS_MOTION_SECONDS_FIX =
+  "Use var(--motif-duration-<role>) and var(--motif-easing-<role>) from motif.css: this app is before Svelte 5, so Motif writes no motion.ts. The durations are in milliseconds and Motion takes seconds, so divide by 1000: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--motif-duration-base')) / 1000.";
 
 const ANIMATION_ATTR = /^(?:transition|in|out|animate):/;
 const STYLE_ATTR = /^style:([\w-]+)(?:\|important)?$/;
@@ -66,7 +70,7 @@ export function scanSvelte(source: SourceFile, scale: Scale | null): Hit[] {
   const at = locator(text);
   const hits: Hit[] = [];
   const motion = (index: number, hitText: string, kind: "duration" | "easing" | "spring", value: string, message: string) =>
-    hits.push(makeHit(file, at, index, { rule: "raw-motion", kind, value, text: hitText, violation: true, message, fix: MOTION_FIX }));
+    hits.push(makeHit(file, at, index, { rule: "raw-motion", kind, value, text: hitText, violation: true, message, fix: MOTION_FIX, fixKind: "transition" }));
 
   for (const span of source.spans ?? []) {
     const body = text.slice(span.start, span.end);
@@ -123,9 +127,6 @@ export function scanSvelte(source: SourceFile, scale: Scale | null): Hit[] {
 /** transition:fly, in:fade, out:slide, animate:flip on an element's tag (the markup view blanks every {…} value, so a > inside one can't end the tag). */
 const DIRECTIVE = /<[\w:.-]+(?=[\s/>])[^<>]*?\s(?:transition|in|out|animate):[A-Za-z_]/;
 const MOTION_CLASSES = /import\s+(?:type\s+)?[^;"']*\b(?:Spring|Tween|spring|tweened)\b[^;"']*from\s*["']svelte\/motion["']/;
-const CSS_ANIMATION = /(?<![\w-])(?:transition|animation)(?:-[a-z-]+)?\s*:/;
-const TW_ANIMATION = /(?<![\w-])(?:[\w-]+:)*(?:transition-(?:all|colors|opacity|shadow|transform)|animate-[\w-]+)(?![\w-])/;
-const REDUCED_QUERY = /prefers-reduced-motion/;
 /** prefersReducedMotion from svelte/motion (Svelte 5.7), or a matchMedia query of the setting: what lets script-driven animations follow it. */
 const SCRIPT_RESPECTS = /prefersReducedMotion|prefers-reduced-motion/;
 
@@ -138,10 +139,7 @@ const SCRIPT_RESPECTS = /prefersReducedMotion|prefers-reduced-motion/;
 export function svelteReducedMotionHits(files: SourceFile[], generated: SourceFile[]): Hit[] {
   const everything = [...files, ...generated];
   const hits: Hit[] = [];
-  const report = (file: SourceFile, patterns: RegExp[], text: string, message: string, fix: string) => {
-    const index = Math.min(...patterns.map((p) => file.text.search(p)).filter((i) => i >= 0));
-    hits.push(makeHit(file, locator(file.text), index, { rule: "reduced-motion", text, violation: true, message, fix }));
-  };
+  const report = reducedMotionReporter(hits);
 
   const scripted = files.find((f) => (f.lang === "script" && (IMPORTS_MOTION.test(maskComments(f.text, f.lang)) || MOTION_CLASSES.test(maskComments(f.text, f.lang)))) || (f.lang === "markup" && DIRECTIVE.test(maskComments(f.text, f.lang))));
   if (scripted && !everything.some((f) => f.lang === "script" && SCRIPT_RESPECTS.test(maskComments(f.text, f.lang)))) {
@@ -191,10 +189,11 @@ export function svelteFix(hit: Hit, ctx?: WebFixContext): string {
   if (hit.rule !== "raw-motion") return hit.fix;
   if (!ctx) return isJsMotion(hit) ? MOTION_FIX : hit.fix; // without the app's details: the SvelteKit wording
   const { motionImport } = ctx;
-  if (!motionImport) return isJsMotion(hit) ? CSS_MOTION_FIX : hit.fix.replace(TW_MOTION_IMPORT, "");
+  if (!motionImport) return hit.fixKind === "motion" ? CSS_MOTION_SECONDS_FIX : hit.fixKind === "transition" ? CSS_MOTION_FIX : hit.fix.replace(TW_MOTION_IMPORT, "");
   const spec = motionSpecifier(hit, { ...ctx, motionImport });
   if (isJsMotion(hit)) return MOTION_FIX.replace(SVELTE_MOTION_IMPORT, spec);
   return hit.fix.replace(`"${motionImport}"`, `"${spec}"`);
 }
 
-const isJsMotion = (hit: Hit) => hit.fix === MOTION_FIX || hit.fix.includes("transition={");
+/** Svelte's own transition settings, and Motion's (the web's rule): the fix names motion.ts. */
+const isJsMotion = (hit: Hit) => hit.fixKind === "motion" || hit.fixKind === "transition";

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { maskComments } from "../../check/mask";
 import type { RouteDiscovery } from "../react-web/routes";
-import { entries, inside, isDir, listRouteSources, needsValue, splitTop } from "../route-source";
+import { entries, inside, isDir, joinRoutePath, listRouteSources, needsValue, splitTop } from "../route-source";
 import { isNuxt, nuxtSrcDir, usesFileRoutes } from "./project";
 
 const PAGE = /\.vue$/i;
@@ -40,8 +40,7 @@ function routeRecords(arrayBody: string, parent: string, out: RouteDiscovery): v
     const literal = /^(["'`])([^"'`$]*)\1$/.exec(props.get("path") ?? "")?.[2];
     if (props.has("path") && literal === undefined) continue;
     const own = literal ?? "";
-    const full = own.startsWith("/") ? own : `${parent}/${own}`;
-    const path = full.replace(/\/{2,}/g, "/").replace(/\/+$/, "") || "/";
+    const path = joinRoutePath(parent, own);
     const children = props.get("children");
     if (children?.startsWith("[")) {
       const kids = inside(children, 0);

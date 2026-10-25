@@ -1,5 +1,6 @@
 import { locator } from "../../text";
 import type { SourceFile } from "../../check/files";
+import { CSS_ANIMATION, reducedMotionReporter, REDUCED_QUERY, TW_ANIMATION } from "../../check/reduced-motion";
 import { makeHit, type Hit, type Scale } from "../../check/types";
 import { keepRanges } from "../../check/mask";
 import { scanColors } from "../../check/rules/colors";
@@ -90,9 +91,6 @@ export function scanVue(source: SourceFile, scale: Scale | null): Hit[] {
 // An app that animates should respect "reduce motion". These are the animations Vue apps have, and the signs they do.
 const TRANSITION_USE = /<(?:Transition|TransitionGroup|transition|transition-group)(?![\w.-])/;
 const MOTION_USE = /<motion\.\w+|<Motion(?![\w-])|(?<![\w-])v-motion(?![\w-])/;
-const CSS_ANIMATION = /(?<![\w-])(?:transition|animation)(?:-[a-z-]+)?\s*:/;
-const TW_ANIMATION = /(?<![\w-])(?:[\w-]+:)*(?:transition-(?:all|colors|opacity|shadow|transform)|animate-[\w-]+)(?![\w-])/;
-const REDUCED_QUERY = /prefers-reduced-motion/;
 /** useReducedMotion(), reduced-motion="user" (or bound), reducedMotion: "user": what makes Motion's animations follow the setting. */
 const MOTION_RESPECTS = /useReducedMotion|(?<![\w-])reduced-?motion\s*=\s*["']user["']|(?<![\w-]):reduced-?motion\s*=|reducedMotion\s*:\s*["']user["']/i;
 
@@ -104,10 +102,7 @@ const MOTION_RESPECTS = /useReducedMotion|(?<![\w-])reduced-?motion\s*=\s*["']us
 export function vueReducedMotionHits(files: SourceFile[], generated: SourceFile[]): Hit[] {
   const everything = [...files, ...generated];
   const hits: Hit[] = [];
-  const report = (file: SourceFile, patterns: RegExp[], text: string, message: string, fix: string) => {
-    const index = Math.min(...patterns.map((p) => file.text.search(p)).filter((i) => i >= 0));
-    hits.push(makeHit(file, locator(file.text), index, { rule: "reduced-motion", text, violation: true, message, fix }));
-  };
+  const report = reducedMotionReporter(hits);
 
   const motionView = files.find((f) => (f.lang === "script" && (IMPORTS_MOTION.test(f.text) || MOTION_LIBRARY.test(f.text))) || (f.lang === "markup" && MOTION_USE.test(f.text)));
   if (motionView && !everything.some((f) => f.lang !== "css" && MOTION_RESPECTS.test(f.text))) {
@@ -135,6 +130,6 @@ export function vueReducedMotionHits(files: SourceFile[], generated: SourceFile[
 
 /** React web's motion fix names a JSX prop; in a .vue file it is :transition. */
 export function vueFix(hit: Hit): string {
-  if (hit.rule === "raw-motion" && hit.fix.includes("transition={")) return MOTION_FIX;
+  if (hit.rule === "raw-motion" && hit.fixKind === "motion") return MOTION_FIX;
   return hit.fix;
 }

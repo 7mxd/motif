@@ -1,4 +1,4 @@
-import { componentFiles, type Binding } from "../../check/component-views";
+import { componentFiles, type Binding, type Grammar } from "../../check/component-views";
 import { listSvelteFiles, type SourceFile } from "../../check/files";
 import { expandHtml } from "../../check/html";
 import type { Occurrences } from "../../extract/draft";
@@ -20,11 +20,17 @@ export const SVELTE_BINDINGS: Binding[] = [
   { attr: /^class$/i, as: "markup" },
 ];
 
+/**
+ * Svelte's {…}: in the text and in attribute values, an expression; a block's or tag's keyword ({#if …}, {:else if …},
+ * {/each}, {@html …}) stays in the markup, and what follows it is script.
+ */
+export const SVELTE_GRAMMAR: Grammar = { open: "{", close: "}", blocks: /^[#:/@](?:else\s+if|[a-zA-Z]+)/ };
+
 const SVELTE_FILE = /\.svelte$/i;
 
 /** A .svelte file as its CSS, script and markup, each a file with its path; HTML as the web reads it; other files as they are. */
 function svelteViews(file: SourceFile): SourceFile[] {
-  return SVELTE_FILE.test(file.path) ? componentFiles(file, { bindings: SVELTE_BINDINGS, braces: true }) : expandHtml([file]);
+  return SVELTE_FILE.test(file.path) ? componentFiles(file, { bindings: SVELTE_BINDINGS, grammar: SVELTE_GRAMMAR }) : expandHtml([file]);
 }
 
 /**

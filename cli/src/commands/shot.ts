@@ -430,7 +430,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     site = deps.serveStatic(siteFolderPath);
     baseUrl = site.url;
   } else if (!baseUrl) {
-    const how = deps.devCommand(appDir);
+    const how = deps.devCommand(appDir, web?.devScript ? { devScript: web.devScript.bind(web) } : {});
     const webStartLimit = web?.startTimeoutMs?.(appDir);
     if ("error" in how) return usage(how.error, { error: "cant-start" });
     const webEnv = web?.devEnv?.(appDir);
@@ -551,7 +551,9 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     findings = toFindings(captured.issues.filter((i) => !overlaid.includes(i.route)).map((i) => ({ ...i, ...(!i.fix && fixes?.[i.rule] ? { fix: fixes[i.rule] } : {}), route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
     const redirected = captured.routes.filter((r) => landedOn(r) !== r.route);
     if (redirected.length > 0) {
-      notes.push(`Pages that redirected were audited as the page they landed on: ${redirected.map((r) => `${r.route} → ${landedOn(r)}`).join(", ")}.`);
+      notes.push(
+        `Pages that redirected were audited as the page they landed on: ${redirected.map((r) => `${r.route} → ${landedOn(r)}`).join(", ")}. To capture a page behind a sign-in, add --state with a script that signs in on the page it lands on: each page is also captured after the script runs.`,
+      );
     }
     const file = join(outDir, "audit.json");
     // Every screen the run took: its routes, and the widgets or previews it drew by name.
@@ -566,7 +568,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       lines.push(`✗ Audit incomplete: ${andList(overlaid)} threw an error as ${one ? "it" : "they"} loaded, so ${one ? "it isn't" : "they aren't"} audited (${one ? "its" : "their"} screenshots may show Expo's error overlay).`);
     }
     if (findings.length > 0) lines.push(`✗ Audit: ${countText(findings)} (details in ${auditFile}):`);
-    else if (incomplete.length === 0 && overlaid.length === 0) lines.push(`✓ Audit: no contrast${targetsRan ? ", tap-target" : ""}${motionRan ? " or reduced-motion" : ""} problems found, and no controls without a name (${auditFile}).`);
+    else if (incomplete.length === 0 && overlaid.length === 0) {
+      // "contrast", "contrast or tap-target", "contrast, tap-target or reduced-motion": the checks that ran.
+      const checks = ["contrast", ...(targetsRan ? ["tap-target"] : []), ...(motionRan ? ["reduced-motion"] : [])];
+      const list = checks.length === 1 ? checks[0] : `${checks.slice(0, -1).join(", ")} or ${checks[checks.length - 1]}`;
+      lines.push(`✓ Audit: no ${list} problems found, and no controls without a name (${auditFile}).`);
+    }
     for (const f of findings.slice(0, 15)) {
       const l = f.location;
       const where = `${l.screen}${l.state ? ` in "${l.state}"` : ""} (${l.viewport}${l.scheme ? `, ${l.scheme}` : ""}${l.variant ? `, ${l.variant} variant` : ""}${l.rtl ? ", right to left" : ""})`;

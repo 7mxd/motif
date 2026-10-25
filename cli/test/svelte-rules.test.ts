@@ -176,7 +176,7 @@ describe("raw motion", () => {
 });
 
 describe("the motion fix names where motion.ts is", () => {
-  const hit = (file: string, fix = MOTION_FIX): Hit => ({ rule: "raw-motion", kind: "duration", file, line: 1, column: 1, text: "", violation: true, message: "", fix });
+  const hit = (file: string, fix = MOTION_FIX, fixKind: Hit["fixKind"] = fix === MOTION_FIX ? "transition" : undefined): Hit => ({ rule: "raw-motion", kind: "duration", file, line: 1, column: 1, text: "", violation: true, message: "", fix, ...(fixKind ? { fixKind } : {}) });
   const web = (appDir: string) => ({ appDir, appPath: ".", motionImport: "src/lib/design/motion" });
 
   test("$lib/design/motion in a SvelteKit app, a path relative to the file in a Vite app, CSS variables before Svelte 5", () => {
@@ -188,13 +188,17 @@ describe("the motion fix names where motion.ts is", () => {
     expect(svelteFix(hit("src/App.svelte"), { appDir: vite, appPath: ".", motionImport: undefined })).toBe(
       "Use var(--motif-duration-<role>) and var(--motif-easing-<role>) from motif.css: this app is before Svelte 5, so Motif writes no motion.ts.",
     );
+    // Motion's animate() takes seconds: its fix says how to turn the milliseconds of the CSS variables into them.
+    expect(svelteFix(hit("src/App.svelte", "e.g. transition={spring.smooth}.", "motion"), { appDir: vite, appPath: "." })).toBe(
+      "Use var(--motif-duration-<role>) and var(--motif-easing-<role>) from motif.css: this app is before Svelte 5, so Motif writes no motion.ts. The durations are in milliseconds and Motion takes seconds, so divide by 1000: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--motif-duration-base')) / 1000.",
+    );
     // Before Svelte 5, Tailwind's text keeps its CSS variable and drops the motion.ts it can't import.
     expect(svelteFix(hit("src/App.svelte", 'Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "src/design/motion".'), { appDir: vite, appPath: "." })).toBe(
       "Use duration-(--motif-duration-base) (or fast/slow).",
     );
     // Tailwind's and the web's own texts name the path too.
     expect(svelteFix(hit("src/App.svelte", 'Use duration-(--motif-duration-base) (or fast/slow), or import { duration } from "src/lib/design/motion".'), web(vite))).toContain('from "./lib/design/motion"');
-    expect(svelteFix(hit("src/routes/a/+page.svelte", "Use the generated src/lib/design/motion.ts: import { duration, easing, spring } from it (path relative to this file), e.g. transition={spring.smooth}."), web(kit))).toBe(MOTION_FIX);
+    expect(svelteFix(hit("src/routes/a/+page.svelte", "Use the generated src/lib/design/motion.ts: import { duration, easing, spring } from it (path relative to this file), e.g. transition={spring.smooth}.", "motion"), web(kit))).toBe(MOTION_FIX);
   });
 
   test("SvelteKit 3, which removed $lib: #lib/design/motion where package.json maps #lib/*, else a path relative to the file", () => {

@@ -408,6 +408,33 @@ describe("Svelte in the skill and the modes", () => {
   });
 });
 
+describe("Angular in the skill and the modes", () => {
+  test("SKILL.md sends Angular apps to their guide", () => {
+    const skill = read("SKILL.md");
+    expect(skill).toContain("(adapters/angular/README.md)");
+    expect(skill).toContain("Angular 15 or later with standalone components");
+  });
+
+  test("init names the starter", () => {
+    const init = read("modes/init.md");
+    for (const s of ["a web app in Angular", "npx @angular/cli@latest new <app> --defaults --style=tailwind", "ng new", "(../adapters/angular/README.md)"]) expect(init).toContain(s);
+  });
+
+  test("feature lists an Angular app's components from its guide", () => {
+    expect(read("modes/feature.md")).toContain("(../adapters/angular/components.md)");
+  });
+
+  test("review links Angular's checks and state scripts", () => {
+    const review = read("modes/review.md");
+    for (const s of ["(../adapters/angular/checks.md)", "(../adapters/angular/checks.md#screens-behind-a-form-or-a-click)", "SvelteKit or Angular app's are JavaScript"]) expect(review).toContain(s);
+  });
+
+  test("variants: switching an Angular app's variant", () => {
+    const variants = read("knowledge/variants.md");
+    for (const s of ["data-variant", "a signal in a service", "DOCUMENT", "(../adapters/angular/tokens.md#switching-variants)"]) expect(variants).toContain(s);
+  });
+});
+
 describe("Flutter in the skill and the modes", () => {
   test("SKILL.md sends Flutter apps to their guide, and the toolchain row names the Flutter SDK", () => {
     const skill = read("SKILL.md");

@@ -1,5 +1,5 @@
 // Checks before a run: Claude Code signed in with a Claude account (never an API key), this checkout's motif tool and plugin built,
-// Node.js for the apps, a browser for the cases that need one (the React Native cases among them: Expo's web target; and the Vue and Svelte ones: their pages), Flutter for the Flutter cases,
+// Node.js for the apps, a browser for the cases that need one (the React Native cases among them: Expo's web target; and the Vue, Svelte and Angular ones: their pages), Flutter for the Flutter cases,
 // a JDK and the Android SDK for the Compose ones, and a Mac with Xcode and an iOS simulator for the SwiftUI ones. Nothing is downloaded or installed for
 // the developer.
 import { existsSync } from "node:fs";
@@ -8,9 +8,10 @@ import { defaultDoctorDeps, type DoctorDeps } from "../../cli/src/commands/docto
 import { composeDoctor } from "../../cli/src/stacks/compose/doctor";
 import { FLUTTER_INSTALL, FLUTTER_MIN, olderThanFlutterMin } from "../../cli/src/stacks/flutter/doctor";
 import { swiftUIDoctor, XCODE_MIN } from "../../cli/src/stacks/swiftui/doctor";
-import { CASES, isCompose, isFlutter, isSwiftUI, needsBrowser as caseNeedsBrowser, needsSvelteKit3, needsVite8 } from "./cases";
+import { CASES, isCompose, isFlutter, isSwiftUI, needsAngular21, needsAngular22, needsBrowser as caseNeedsBrowser, needsSvelteKit3, needsVite8 } from "./cases";
 import { supportsPurge } from "./purge";
 import { resolveClaude, sessionEnv } from "./claude";
+import { nodeFloor } from "../../cli/src/project/node-floor";
 import { tail, type Run } from "./tools";
 
 export interface Paths { repo: string; cli: string; motifBin: string; pluginDir: string }
@@ -109,13 +110,22 @@ function runsVite8(major: number, minor: number): boolean {
   return (major === 20 && minor >= 19) || (major === 22 && minor >= 12) || major > 22;
 }
 
-/** The cases chosen that raise Node.js's floor: Vue's and Svelte's Vite 8, and d-nuzha's SvelteKit 3 (`npx sv create` installs it). */
-export interface NodeNeeds { vite8?: boolean; svelteKit3?: boolean }
+/**
+ * The cases chosen that raise Node.js's floor: Vue's and Svelte's Vite 8, Ataa's Angular 21, d-nuzha's SvelteKit 3
+ * (`npx sv create` installs it) and d-sanad's Angular 22 (`ng new` installs it).
+ */
+export interface NodeNeeds { vite8?: boolean; angular21?: boolean; svelteKit3?: boolean; angular22?: boolean }
 
 /** SvelteKit 3's Node.js: 22.17 or later. */
 function runsSvelteKit3(major: number, minor: number): boolean {
   return (major === 22 && minor >= 17) || major > 22;
 }
+
+/** Angular 21's Node.js, from its engines: Node 21 and 23 aren't among them. */
+const ANGULAR_21_NODE = "^20.19.0 || ^22.12.0 || >=24.0.0";
+
+/** Angular 22's Node.js, from its engines: Node 23 and 25 aren't among them. */
+const ANGULAR_22_NODE = "^22.22.3 || ^24.15.0 || >=26.0.0";
 
 export async function preflight(
   p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false, needsXcode = false, needsNode = true, nodeNeeds: NodeNeeds = {},
@@ -163,7 +173,7 @@ export async function preflight(
     return { error: "The build didn't produce dist/motif and dist/claude-code; run bun run build and bun run plugin in cli to see why." };
   }
 
-  // Only the cases that install or build with npm (web, React Native, Vue, Svelte) need Node. Flutter, Compose and SwiftUI don't, and
+  // Only the cases that install or build with npm (web, React Native, Vue, Svelte, Angular) need Node. Flutter, Compose and SwiftUI don't, and
   // the tool and plugin builds above run on Bun.
   if (needsNode) {
     const node = await d.run(["node", "--version"], p.repo, 30_000);
@@ -174,15 +184,25 @@ export async function preflight(
     const mac = (d.platform ?? process.platform) === "darwin";
     const nodeVersion = node.stdout.trim().replace(/^v/, "");
     const named = (pick: (c: (typeof CASES)[number]) => boolean) => CASES.filter(pick).map((c) => c.id).join(", ");
-    const others = CASES.filter((c) => !needsVite8(c) && !needsSvelteKit3(c) && (mac || !c.mac)).map((c) => c.id).join(",");
+    const others = CASES.filter((c) => !needsVite8(c) && !needsAngular21(c) && !needsSvelteKit3(c) && !needsAngular22(c) && (mac || !c.mac)).map((c) => c.id).join(",");
     if (nodeNeeds.vite8 && !runsVite8(major, minor)) {
       return {
         error: `The Vue and Svelte cases (${named(needsVite8)}) need Node.js 20.19 or later, or 22.12 or later on Node 22 (Bustan's and Adawat's Vite 8 needs it). This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases ${others}`,
       };
     }
+    if (nodeNeeds.angular21 && !nodeFloor(ANGULAR_21_NODE, nodeVersion)) {
+      return {
+        error: `The Angular cases on Ataa (${named(needsAngular21)}) need Node.js 20.19 or later on Node 20, 22.12 or later on Node 22, or 24 or later, since Ataa is Angular 21 and Angular 21 needs it. This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases ${others}`,
+      };
+    }
     if (nodeNeeds.svelteKit3 && !runsSvelteKit3(major, minor)) {
       return {
         error: `The new Svelte app (${named(needsSvelteKit3)}) needs Node.js 22.17 or later, since npx sv create makes a SvelteKit 3 app and SvelteKit 3 needs it. This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases ${others}`,
+      };
+    }
+    if (nodeNeeds.angular22 && !nodeFloor(ANGULAR_22_NODE, nodeVersion)) {
+      return {
+        error: `The new Angular app (${named(needsAngular22)}) needs Node.js 22.22.3 or later on Node 22, 24.15 or later on Node 24, or 26 or later, since ng new makes an Angular 22 app and Angular 22 needs it. This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases ${others}`,
       };
     }
   }
@@ -202,7 +222,7 @@ export async function preflight(
     const noBrowser = (mac: boolean) => CASES.filter((c) => !caseNeedsBrowser(c) && Boolean(c.mac) === mac).map((c) => c.id).join(",");
     const onMac = (d.platform ?? process.platform) === "darwin" ? ` On this Mac, the SwiftUI cases don't need one either: --cases ${noBrowser(true)}.` : "";
     return {
-      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, the React Native cases draw their screens through Expo's web target in one, and the Vue and Svelte cases draw their pages in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${noBrowser(false)}) don't need one.${onMac}`,
+      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, the React Native cases draw their screens through Expo's web target in one, and the Vue, Svelte and Angular cases draw their pages in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${noBrowser(false)}) don't need one.${onMac}`,
     };
   }
   return { claude: found.exe, claudeVersion: version.stdout.trim(), browser, purge };

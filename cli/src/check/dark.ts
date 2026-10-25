@@ -15,7 +15,7 @@ function blockEnd(css: string, open: number): number {
 }
 
 /** :not(…) and :where(:not(…)) say what a rule doesn't apply to: what's inside them isn't asked for. */
-function withoutNot(selector: string): string {
+export function withoutNot(selector: string): string {
   let out = "";
   for (let i = 0; i < selector.length; i++) {
     if (selector.startsWith(":not(", i)) {

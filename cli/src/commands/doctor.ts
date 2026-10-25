@@ -90,8 +90,9 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
         label,
         "React Native without Expo detected. Motif fully supports Expo apps; here theme code, checks and drafts work, and for screenshots, run the app on react-native-web and pass its address to motif shot --url.",
       );
-    } else if (webStack(app.stack)?.unsupported?.(join(cwd, app.path)) != null) {
-      // An app on a version Motif doesn't support (Vue 2, Svelte 4) is told so, and what still works, by its stack's item below: no second line here.
+    } else if (webStack(app.stack)?.unsupported?.(join(cwd, app.path)) != null || webStack(app.stack)?.notOneApp?.(join(cwd, app.path)) != null) {
+      // An app on a version Motif doesn't support (Vue 2, Svelte 4), or a workspace's root that isn't one app (Nx), is
+      // told so, and what to do, by its stack's item below: no second line here.
     } else if (app.stack === "swiftui" && swiftUIApp(join(cwd, app.path))?.kind === "package") {
       // motif shot refuses a Swift package app; the line says so in its words.
       push(`app:${app.path}`, "ok", label, `Full support for SwiftUI but for screenshots: ${packageLimit(swiftUIApp(join(cwd, app.path))!.name)}`);

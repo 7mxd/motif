@@ -1,0 +1,21 @@
+<div class="flex flex-col gap-2">
+  <label [for]="id" class="font-label text-label">{{ label() }}</label>
+  <input
+    [id]="id"
+    class="field"
+    [type]="type()"
+    [name]="name()"
+    [value]="value()"
+    (input)="value.set($any($event.target).value)"
+    [attr.autocomplete]="autocomplete()"
+    [attr.inputmode]="inputmode()"
+    [attr.enterkeyhint]="enterkeyhint()"
+    [attr.aria-invalid]="error() ? 'true' : null"
+    [attr.aria-describedby]="id + '-note'"
+  />
+  @if (error(); as message) {
+    <p [id]="id + '-note'" class="font-caption text-caption text-danger">{{ message }}</p>
+  } @else {
+    <p [id]="id + '-note'" class="font-caption text-caption text-text-secondary">{{ hint() }}</p>
+  }
+</div>

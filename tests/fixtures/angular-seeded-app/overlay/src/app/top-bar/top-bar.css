@@ -1,0 +1,38 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--motif-space-16);
+  color: var(--motif-color-action-primary);
+  text-decoration: none;
+}
+.brand-name {
+  margin-left: var(--motif-space-2);
+  font-family: var(--motif-font-heading-family);
+  font-size: var(--motif-font-heading-size);
+  font-weight: var(--motif-font-heading-weight);
+  line-height: var(--motif-font-heading-line-height);
+  color: var(--motif-color-text-primary);
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: var(--motif-space-12);
+  min-inline-size: var(--motif-space-12);
+  border-block-end: 2px solid transparent;
+  font-family: var(--motif-font-label-family);
+  font-size: var(--motif-font-label-size);
+  font-weight: var(--motif-font-label-weight);
+  color: var(--motif-color-text-secondary);
+  text-decoration: none;
+  transition: color var(--motif-duration-fast) var(--motif-easing-standard);
+}
+@media (hover: hover) {
+  .tab:hover {
+    color: var(--motif-color-text-primary);
+  }
+}
+.tab-current {
+  border-block-end-color: var(--motif-color-action-primary);
+  color: var(--motif-color-text-primary);
+}

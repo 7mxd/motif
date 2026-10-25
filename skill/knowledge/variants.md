@@ -35,6 +35,8 @@ On Vue and Nuxt, a variant switches as on the web: `data-variant` on `<html>`, s
 
 On Svelte and SvelteKit, a variant switches as on the web: `data-variant` on `<html>`, set from the app's state with an `$effect`, and in SvelteKit with `transformPageChunk` in `hooks.server.ts` so a server-rendered page starts in the right variant ([how](../adapters/svelte/tokens.md#switching-variants)).
 
+On Angular, a variant switches as on the web: `data-variant` on `<html>`, set from a signal in a service through Angular's `DOCUMENT`, so a server-rendered page starts in the right variant too ([how](../adapters/angular/tokens.md#switching-variants)).
+
 ## What never varies
 
 The app must still read as one brand, and every variant must be as usable as the others:

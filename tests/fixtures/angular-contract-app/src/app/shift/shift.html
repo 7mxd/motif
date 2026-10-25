@@ -1,0 +1,57 @@
+@if (shift(); as shift) {
+  <article class="flex flex-col gap-8">
+    <header class="flex flex-col gap-4">
+      <app-icon-button icon="back" [label]="locale.t().back" link="/" class="-ms-3" />
+      <div class="flex flex-col gap-2">
+        <p class="font-label text-label text-text-secondary">{{ locale.t().kinds[shift.kind] }}</p>
+        <div class="flex flex-wrap items-center gap-3">
+          <h1 class="font-title text-title">{{ locale.f().words(shift.name) }}</h1>
+          <app-status-badge [status]="status()" />
+        </div>
+        <p class="description text-text-secondary">{{ locale.t().shiftIntro }}</p>
+      </div>
+    </header>
+
+    <div class="grid gap-8 md:grid-cols-5">
+      <section class="details flex flex-col gap-4 rounded-lg border border-border bg-surface md:col-span-3" aria-labelledby="about">
+        <h2 id="about" class="font-heading text-heading">{{ locale.t().aboutShift }}</h2>
+        <dl class="flex flex-col">
+          <div class="row">
+            <dt class="flex items-center gap-2 text-text-secondary"><svg appIcon name="calendar"></svg>{{ locale.t().whenLabel }}</dt>
+            <dd>{{ locale.t().dayAndHours(locale.f().day(shift.starts), locale.t().hours(locale.f().time(shift.starts), locale.f().time(shift.ends))) }}</dd>
+          </div>
+          <div class="row">
+            <dt class="flex items-center gap-2 text-text-secondary"><svg appIcon name="pin"></svg>{{ locale.t().whereLabel }}</dt>
+            <dd>{{ locale.f().words(shift.place) }}</dd>
+          </div>
+          <div class="row">
+            <dt class="flex items-center gap-2 text-text-secondary"><svg appIcon name="basket"></svg>{{ locale.t().bringLabel }}</dt>
+            <dd>{{ locale.f().words(shift.bring) }}</dd>
+          </div>
+          <div class="row">
+            <dt class="flex items-center gap-2 text-text-secondary"><svg appIcon name="user"></svg>{{ locale.t().leadLabel }}</dt>
+            <dd>{{ locale.f().words(shift.lead) }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <aside class="flex flex-col gap-4 md:col-span-2">
+        <p class="font-heading text-heading">{{ left() > 0 ? locale.t().placesLeft(left(), locale.f().number(left())) : locale.t().statusFull }}</p>
+        @if (status() !== 'full' || held()) {
+          <button appButton [disabled]="held()" (click)="signups.signUp(shift)">{{ locale.t().signUp }}</button>
+          <a appButton variant="secondary" [href]="coordinator">{{ locale.t().askCoordinator }}</a>
+          <app-signup-note [show]="held()" [title]="locale.t().signedUpNote(locale.f().day(shift.starts))" [body]="locale.t().signedUpHint(locale.f().words(shift.lead))" />
+        } @else {
+          <p class="text-text-secondary">{{ locale.t().fullNote }}</p>
+          <button appButton [disabled]="waiting()" (click)="signups.joinWaitlist(shift)">{{ locale.t().joinWaitlist }}</button>
+          <a appButton variant="secondary" [href]="coordinator">{{ locale.t().askCoordinator }}</a>
+          <app-signup-note [show]="waiting()" [title]="locale.t().waitlistNote" />
+        }
+      </aside>
+    </div>
+  </article>
+} @else {
+  <app-empty-state level="h1" [title]="locale.t().shiftMissing" [body]="locale.t().shiftMissingHint">
+    <a appButton routerLink="/">{{ locale.t().seeShifts }}</a>
+  </app-empty-state>
+}

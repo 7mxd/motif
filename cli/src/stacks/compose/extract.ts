@@ -10,8 +10,8 @@ import { colorContext as nameContext } from "../../check/rules/colors";
 import type { Sample } from "../../extract/cluster";
 import type { Occurrences, Variable } from "../../extract/draft";
 import { axisWeightRanges, rootOf } from "../../extract/own-fonts";
-import { locator } from "../../text";
-import { kebab as dartKebab, pairInstances, SLOT_NAMES, title, TEXT_SLOTS, type Paired } from "../flutter/extract";
+import { kebab as dartKebab, locator, title } from "../../text";
+import { pairInstances, SLOT_NAMES, TEXT_SLOTS, type Paired } from "../flutter/extract";
 import { scanKotlin } from "./rules";
 
 const MAX_EXAMPLES = 5;

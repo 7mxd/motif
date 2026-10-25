@@ -1,0 +1,27 @@
+<div class="flex flex-col gap-8">
+  <header class="flex max-w-2xl flex-col gap-3">
+    <h1 class="font-title text-title">{{ locale.t().mineTitle }}</h1>
+    <p class="text-text-secondary">{{ locale.t().mineIntro }}</p>
+  </header>
+
+  <section class="flex max-w-2xl flex-col gap-4" aria-labelledby="coming">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h2 id="coming" class="font-heading text-heading">{{ locale.t().coming }}</h2>
+      <p class="font-label text-label">{{ locale.t().mineCount(locale.f().number(signups.mine().length), locale.f().number(limit)) }}</p>
+    </div>
+    <ul class="flex flex-col rounded-lg border border-border bg-surface">
+      @for (shift of signups.mine(); track shift.id) {
+        <li class="flex flex-wrap items-center justify-between gap-4 border-b border-border px-5 py-4 last:border-b-0" (animate.leave)="leave($event)">
+          <div class="flex flex-col gap-1">
+            <a [routerLink]="['/shifts', shift.id]" class="font-label text-label text-text-primary underline-offset-4 hover:underline">{{ locale.f().words(shift.name) }}</a>
+            <span class="flex items-center gap-2 font-caption text-caption text-text-secondary">
+              <svg appIcon name="calendar"></svg>{{ locale.t().dayAndHours(locale.f().day(shift.starts), locale.t().hours(locale.f().time(shift.starts), locale.f().time(shift.ends))) }}
+            </span>
+            <span class="flex items-center gap-2 font-caption text-caption text-text-secondary"><svg appIcon name="pin"></svg>{{ locale.f().words(shift.place) }}</span>
+          </div>
+          <button appButton variant="secondary" [attr.aria-label]="locale.t().withdrawFrom(locale.f().words(shift.name))" (click)="signups.withdraw(shift.id)">{{ locale.t().withdraw }}</button>
+        </li>
+      }
+    </ul>
+  </section>
+</div>

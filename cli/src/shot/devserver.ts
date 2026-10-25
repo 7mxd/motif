@@ -1,10 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { onExit } from "../cleanup";
 import { windowsExe } from "../system";
-import { installRoot, packageManager, type PackageManager } from "../project/package";
+import { installRoot, packageManager, readJson, type PackageManager } from "../project/package";
 import { isExpoApp } from "../stacks/react-native/project";
+import type { WebStack } from "../stacks/web";
 
 export { addPackages, packageManager, type PackageManager } from "../project/package";
 
@@ -25,14 +26,6 @@ export interface DevServer {
 
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 
-function readJson(path: string): any {
-  try {
-    return JSON.parse(readFileSync(path, "utf8").replace(/^﻿/, ""));
-  } catch {
-    return null;
-  }
-}
-
 /** A port nothing is listening on, for a server that must be told one. */
 function freePort(): number {
   const probe = Bun.serve({ port: 0, fetch: () => new Response("") });
@@ -43,22 +36,37 @@ function freePort(): number {
 
 /** Expo doesn't prompt, and sends nothing to its telemetry, when Motif starts it. */
 const EXPO_ENV = { CI: "1", EXPO_NO_TELEMETRY: "1" };
+/** The refusal when a web stack's devScript finds no script in the app that starts it. */
+const NO_DEV_SCRIPT = "This app has no script in package.json that starts its dev server. Start it yourself and pass its address with --url.";
+const noScript = (script: string) => `This app has no "${script}" script in package.json. Start it yourself and pass its address with --url.`;
+
 /** How each package manager runs a program from the app's dependencies. */
 const EXEC: Record<PackageManager, string[]> = { npm: ["npx"], pnpm: ["pnpm", "exec"], yarn: ["yarn"], bun: ["bunx"] };
 
-/** How to start this app's dev server, or a plain explanation of why Motif can't. */
+/**
+ * How to start this app's dev server, or a plain explanation of why Motif can't. A web stack's devScript names the
+ * script to run and its arguments, given the port (or refuses in its own words); without one, the app's "dev" script runs.
+ */
 export function devCommand(
   appDir: string,
-  env: { platform?: NodeJS.Platform; which?: (cmd: string) => string | null; vars?: Record<string, string | undefined>; port?: number } = {},
+  env: {
+    platform?: NodeJS.Platform;
+    which?: (cmd: string) => string | null;
+    vars?: Record<string, string | undefined>;
+    port?: number;
+    devScript?: WebStack["devScript"];
+  } = {},
 ): DevCommand | { error: string } {
   const platform = env.platform ?? process.platform;
   const which = env.which ?? ((cmd: string) => Bun.which(cmd));
-  const pkg = readJson(join(appDir, "package.json"));
+  const pkg = readJson<{ scripts?: Record<string, unknown> }>(join(appDir, "package.json"));
   if (!pkg) return { error: "This app has no readable package.json, so Motif can't start it. Start it yourself and pass its address with --url." };
   const expo = isExpoApp(appDir);
-  if (!expo && typeof pkg.scripts?.dev !== "string") {
-    return { error: 'This app has no "dev" script in package.json. Start it yourself and pass its address with --url.' };
-  }
+  const own = !expo && env.devScript ? env.devScript(appDir, env.port ?? freePort()) : undefined;
+  if (own === null) return { error: NO_DEV_SCRIPT };
+  if (own && "error" in own) return { error: own.error };
+  const wanted = own?.script ?? "dev";
+  if (!expo && typeof pkg.scripts?.[wanted] !== "string") return { error: noScript(wanted) };
   const root = installRoot(appDir);
   const pm = packageManager(appDir);
   const exe = which(pm);
@@ -74,9 +82,10 @@ export function devCommand(
     return { error: `This app's dependencies aren't installed yet. Run "${pm} install" in its folder, then try again.` };
   }
   // An Expo app starts its web target: its "web" script, else expo itself on a port Motif chose.
-  const script = expo && typeof pkg.scripts?.web === "string" ? "web" : expo ? null : "dev";
+  const script = expo && typeof pkg.scripts?.web === "string" ? "web" : expo ? null : wanted;
   const [bin, ...pre] = script === null ? EXEC[pm] : [pm, "run", script];
-  const args = script === null ? ["expo", "start", "--web", "--port", String(env.port ?? freePort())] : [];
+  // npm needs -- before a script's arguments; pnpm and Yarn 4 would hand the -- on to the script, Yarn 1 and bun drop it.
+  const args = script === null ? ["expo", "start", "--web", "--port", String(env.port ?? freePort())] : own?.args.length ? [...(pm === "npm" ? ["--"] : []), ...own.args] : [];
   const display = [bin, ...pre, ...args].join(" ");
   // npm, pnpm and yarn are .cmd scripts on Windows, and only cmd.exe can run those.
   const runner = which(bin!);

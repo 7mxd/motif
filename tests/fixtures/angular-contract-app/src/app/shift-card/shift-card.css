@@ -1,0 +1,14 @@
+.card {
+  color: var(--motif-color-text-primary);
+  text-decoration: none;
+  transition: border-color var(--motif-duration-fast) var(--motif-easing-standard);
+}
+@media (hover: hover) {
+  .card:hover {
+    border-color: var(--motif-color-action-primary);
+  }
+}
+.card:focus-visible {
+  outline: 2px solid var(--motif-color-focus);
+  outline-offset: 2px;
+}

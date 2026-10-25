@@ -1,17 +1,8 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseJsonc } from "jsonc-parser";
-import { declared } from "../../project/package";
+import { declared, readJson } from "../../project/package";
 import { stripBom } from "../../text";
-
-function readJson(path: string): Record<string, unknown> | null {
-  try {
-    const v = JSON.parse(stripBom(readFileSync(path, "utf8")));
-    return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
 
 /** Where the app's @/ alias points, relative to the app ("src" for "./src/*"), or null when tsconfig.json doesn't set one. */
 export function aliasBase(appDir: string): string | null {

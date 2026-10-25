@@ -28,12 +28,13 @@ export const STACK_LABELS: Record<StackId, string> = {
  * adapter is built; a release lists it only once its parity row (docs/parity.md) is done in every area, which the
  * release workflow checks (test/release-gate.test.ts, with MOTIF_RELEASE=1).
  */
-export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web", "vue", "svelte", "flutter", "compose", "react-native", "swiftui"];
+export const ADAPTERS_AVAILABLE: readonly StackId[] = ["react-web", "plain-web", "vue", "svelte", "angular", "flutter", "compose", "react-native", "swiftui"];
 /**
- * The supported web stacks: motif extract reads their CSS and markup (Vue's .vue and Svelte's .svelte files through their registered stacks);
+ * The supported web stacks: motif extract reads their CSS and markup (Vue's .vue, Svelte's .svelte and Angular's component files through
+ * their registered stacks);
  * Flutter, Compose, React Native and SwiftUI go through their own stacks.
  */
-export const WEB_STACKS: readonly StackId[] = ["react-web", "plain-web", "vue", "svelte"];
+export const WEB_STACKS: readonly StackId[] = ["react-web", "plain-web", "vue", "svelte", "angular"];
 export const NODE_STACKS: readonly StackId[] = ["react-web", "vue", "svelte", "angular", "react-native"];
 
 /** Where a plain web app's pages live: the first of these folders (inside the app) with an index.html. */
