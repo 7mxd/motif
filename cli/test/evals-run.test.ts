@@ -828,6 +828,24 @@ describe("the eval runner and Test A (Part 4 §4)", () => {
     expect(d!.env.MOTIF_BIN).toBeDefined();
   });
 
+  test("a run with Test A whose work folder's path names Motif is warned about in one line, and goes on", async () => {
+    const warning = (work: string) => `The work folder ${work} has "motif" in its path, and Test A's sessions (a-*) work in it, so they can see Motif's name. Choose a --work folder whose path doesn't for the run that counts.`;
+    const h = paired();
+    const named = join(tempDir("evals-a-"), "Motif-work");
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", named], h.deps, h.where)).toBe(0);
+    expect(h.lines.filter((l) => l.includes("has \"motif\" in its path"))).toEqual([warning(join(named, RUN))]);
+    expect(h.calls.session).toHaveLength(2);
+    // A neutral folder, or a run without Test A, isn't warned about.
+    const neutral = join(tempDir("evals-a-"), "work");
+    expect(/motif/i.test(neutral)).toBe(false);
+    const k = paired();
+    await runEvals(["--cases", "d-stride,a-stride", "--work", neutral], k.deps, k.where);
+    expect(k.lines.filter((l) => l.includes("has \"motif\" in its path"))).toEqual([]);
+    const d = paired();
+    await runEvals(["--cases", "d-stride", "--work", named], d.deps, d.where);
+    expect(d.lines.filter((l) => l.includes("has \"motif\" in its path"))).toEqual([]);
+  });
+
   test("an a-* session has its d-* session's caps, tools and auto mode", async () => {
     const h = harness();
     await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where);

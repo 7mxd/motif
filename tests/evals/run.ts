@@ -216,7 +216,16 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   const caseArgs = (c: EvalCase) =>
     agentArgs({ ...(isBaseline(c) ? {} : { pluginDir: p.pluginDir }), mcpConfigFile: caseMcpConfig(c), maxTurns: state.options.maxTurns ?? c.maxTurns, maxBudgetUsd: c.maxBudgetUsd, model: state.options.model });
 
+  // A Test A session works in its case folder under --work: a path that names Motif is a tell it could read (the default,
+  // ~/.motif-evals, does). Said, not refused: a quick check of the runner can use any folder.
+  const warnWork = () => {
+    if (todo.some(isBaseline) && /motif/i.test(state.options.work)) {
+      deps.log(`The work folder ${state.options.work} has "motif" in its path, and Test A's sessions (a-*) work in it, so they can see Motif's name. Choose a --work folder whose path doesn't for the run that counts.`);
+    }
+  };
+
   if (o["dry-run"]) {
+    warnWork();
     for (const c of todo) {
       deps.log([
         `\n${c.id}: ${c.title}`,
@@ -283,6 +292,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 3;
   };
 
+  warnWork();
   deps.log(`Run ${state.id}: ${todo.length} cases. Each starts a fresh Claude Code session on your plan. Stop any time with Ctrl+C, then continue with --resume ${state.id}.`);
   if (!ready.purge) deps.log(NO_PURGE_NOTE);
   for (const { d, a } of unpaired) {
