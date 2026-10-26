@@ -191,9 +191,11 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   }
   let dir = runDir(where.results, state.id);
   let mcpConfigFile = join(dir, "no-mcp.json");
-  // Test A's sessions load no plugin at all: not Motif's, and (as in every session) not the developer's.
+  // Test A's sessions load no plugin at all: not Motif's, and (as in every session) not the developer's. Their empty MCP
+  // list is in their own case folder, not in this checkout's results, so no path in their arguments is Motif's.
+  const caseMcpConfig = (c: EvalCase) => (isBaseline(c) ? join(state.options.work, c.id, "no-mcp.json") : mcpConfigFile);
   const caseArgs = (c: EvalCase) =>
-    agentArgs({ ...(isBaseline(c) ? {} : { pluginDir: p.pluginDir }), mcpConfigFile, maxTurns: state.options.maxTurns ?? c.maxTurns, maxBudgetUsd: c.maxBudgetUsd, model: state.options.model });
+    agentArgs({ ...(isBaseline(c) ? {} : { pluginDir: p.pluginDir }), mcpConfigFile: caseMcpConfig(c), maxTurns: state.options.maxTurns ?? c.maxTurns, maxBudgetUsd: c.maxBudgetUsd, model: state.options.model });
 
   if (o["dry-run"]) {
     for (const c of todo) {
@@ -280,6 +282,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       delete cs.note;
       save();
       deps.log(`${c.id}: Claude Code is working (up to ${c.minutes} minutes). Everything it does goes to ${join(out, "session.jsonl")}.`);
+      if (isBaseline(c)) writeFileSync(caseMcpConfig(c), JSON.stringify({ mcpServers: {} }));
       const before = deps.agentSettings();
       const outcome = await deps.session({
         command: [ready.claude], args: caseArgs(c), cwd: cs.workspace.app, env: withTempFolder(isBaseline(c) ? baselineEnv : env, join(cs.workspace.dir, "tmp")), prompt: c.prompt,
@@ -407,7 +410,9 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     const ps = partner ? state.cases[partner.id] : undefined;
     if (!partner || !ps) return removeCase(c.id, ws);
     if (ps.status !== "graded" || !ps.workspace) {
-      deps.log(`${c.id}: keeping its folder until ${partner.id} is graded, for Test A.`);
+      deps.log(
+        `${c.id}: keeping its folder (${ws.dir}) for Test A until ${partner.id} is graded too; then both are compared${state.options.keep ? "" : " and removed"}. If ${partner.id} never is, --resume this run to finish it, or delete the folder yourself.`,
+      );
       return;
     }
     const [d, a] = isBaseline(c) ? [partner.id, c.id] : [c.id, partner.id];

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  AGENT_TOOLS, agentArgs, DENIED_COMMANDS, initInfo, isolationProblems, JUDGE_EXPECTED_TOOLS, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, resolveClaude, resultInfo, sessionEnv, usageLimit,
+  AGENT_TOOLS, agentArgs, DENIED_COMMANDS, initInfo, MOTIF_DENIED_COMMANDS, isolationProblems, JUDGE_EXPECTED_TOOLS, JUDGE_TOOLS, judgeArgs, memoryFiles, personalNames, resolveClaude, resultInfo, sessionEnv, usageLimit,
 } from "../../tests/evals/claude";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -237,14 +237,20 @@ describe("Test A's sessions: no plugins at all (Part 4 §4)", () => {
   const BASE = { auto: true, tools: AGENT_TOOLS };
   const builtin = { name: "cc-plugin-telemetry", path: "builtin", source: "cc-plugin-telemetry@builtin" };
 
-  test("an a-* session's arguments load no plugin and give it no plugin folder to read; everything else is a d-* session's", () => {
+  test("an a-* session's arguments are a d-* session's without the plugin's two flags and the two rules about motif connect", () => {
     const withMotif = agentArgs({ pluginDir: "/p", mcpConfigFile: "/m", maxTurns: 400, maxBudgetUsd: 80 });
     const without = agentArgs({ mcpConfigFile: "/m", maxTurns: 400, maxBudgetUsd: 80 });
     expect(without).not.toContain("--plugin-dir");
     expect(without).not.toContain("--add-dir");
-    expect(without.join(" ").toLowerCase()).not.toContain("/p ");
-    // The same flags but the plugin's two.
-    expect(without).toEqual(withMotif.filter((a, i) => !["--plugin-dir", "--add-dir"].includes(a) && !["--plugin-dir", "--add-dir"].includes(withMotif[i - 1]!)));
+    expect(MOTIF_DENIED_COMMANDS).toEqual(["Bash(motif connect *)", "PowerShell(motif connect *)"]);
+    const expected = withMotif
+      .filter((a, i) => !["--plugin-dir", "--add-dir"].includes(a) && !["--plugin-dir", "--add-dir"].includes(withMotif[i - 1]!))
+      .map((a) => (a === DENIED_COMMANDS.join(",") ? DENIED_COMMANDS.filter((r) => !MOTIF_DENIED_COMMANDS.includes(r)).join(",") : a));
+    expect(without).toEqual(expected);
+    expect(pair(without, "--disallowedTools")).toBe("Bash(claude mcp *),PowerShell(claude mcp *)");
+    // Nothing in them names Motif; a d-* session still denies motif connect.
+    expect(without.join(" ").toLowerCase()).not.toContain("motif");
+    expect(pair(withMotif, "--disallowedTools")).toBe(DENIED_COMMANDS.join(","));
   });
 
   test("the isolation check passes with no plugins (Claude Code's own built-in ones aside)", () => {

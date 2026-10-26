@@ -794,12 +794,40 @@ describe("the eval runner and Test A (Part 4 §4)", () => {
     }
   });
 
+  test("nothing an a-* session is given names Motif: not its arguments, its environment or its MCP list (on a --work folder that doesn't)", async () => {
+    const root = tempDir("evals-a-");
+    const mcp: string[] = [];
+    const h = harness({
+      env: { PATH: "/bin", MOTIF_BIN: "/x/motif", MOTIF_NO_CONNECT: "1", Motif_Other: "y", HOME: "/home/me" },
+      session: async (s) => {
+        h.calls.session.push(s);
+        mcp.push(readFileSync(s.args[s.args.indexOf("--mcp-config") + 1]!, "utf8"));
+        return finished();
+      },
+    });
+    const where = { repo: join(root, "repo"), results: join(root, "results"), work: join(root, "work") };
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", join(root, "cases")], h.deps, where)).toBe(0);
+    const [d, a] = h.calls.session;
+    expect(a!.args.join(" ").toLowerCase()).not.toContain("motif");
+    // The MOTIF_ variables (the runner's own and the developer's) are left out; the rest of the environment is kept.
+    expect(JSON.stringify(a!.env).toLowerCase()).not.toContain("motif");
+    expect(a!.env.HOME).toBe("/home/me");
+    // Its empty MCP list is in its own case folder; d-* keeps the run's.
+    expect(a!.args[a!.args.indexOf("--mcp-config") + 1]).toBe(join(root, "cases", RUN, "a-stride", "no-mcp.json"));
+    expect(d!.args[d!.args.indexOf("--mcp-config") + 1]).toBe(join(where.results, RUN, "no-mcp.json"));
+    expect(mcp).toEqual(['{"mcpServers":{}}', '{"mcpServers":{}}']);
+    // The d-* session keeps Motif's: its plugin, motif connect denied, and its environment.
+    expect(d!.args.join(" ")).toContain("Bash(motif connect *)");
+    expect(d!.env).toMatchObject({ MOTIF_NO_CONNECT: "1", Motif_Other: "y" });
+    expect(d!.env.MOTIF_BIN).toBeDefined();
+  });
+
   test("an a-* session has its d-* session's caps, tools and auto mode", async () => {
     const h = harness();
     await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where);
     const [d, a] = h.calls.session;
     const flag = (s: SessionSpec, f: string) => s.args[s.args.indexOf(f) + 1];
-    for (const f of ["--max-turns", "--max-budget-usd", "--tools", "--permission-mode", "--setting-sources", "--mcp-config", "--disallowedTools"]) expect(flag(a!, f)).toBe(flag(d!, f)!);
+    for (const f of ["--max-turns", "--max-budget-usd", "--tools", "--permission-mode", "--permission-prompts", "--setting-sources"]) expect(flag(a!, f)).toBe(flag(d!, f)!);
     expect(a!.timeoutMs).toBe(d!.timeoutMs);
     expect(d!.args).toContain("--plugin-dir");
     expect(d!.expect.pluginDir).toBe(join(h.root, "dist", "claude-code"));
@@ -821,7 +849,9 @@ describe("the eval runner and Test A (Part 4 §4)", () => {
       { brief: "bloom", d: dir("d-bloom"), a: dir("a-bloom"), removedBefore: [dir("d-stride"), dir("a-stride")] },
     ]);
     expect(h.calls.removed).toEqual([dir("d-stride"), dir("a-stride"), dir("d-bloom"), dir("a-bloom")]);
-    expect(h.lines.join("\n")).toContain("d-stride: keeping its folder until a-stride is graded");
+    expect(h.lines).toContain(
+      `d-stride: keeping its folder (${dir("d-stride")}) for Test A until a-stride is graded too; then both are compared and removed. If a-stride never is, --resume this run to finish it, or delete the folder yourself.`,
+    );
   });
 
   test("--keep keeps them after the pair step too", async () => {

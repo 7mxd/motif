@@ -89,7 +89,13 @@ const isolation = (mcpConfigFile: string, sources = "project,local") => [
  */
 export const DENIED_COMMANDS = ["Bash(claude mcp *)", "PowerShell(claude mcp *)", "Bash(motif connect *)", "PowerShell(motif connect *)"];
 
-/** A session building or changing an app; with no pluginDir (Test A's a-* cases) it loads no plugin at all. */
+/** The rules about Motif's own command: a session with no plugin (Test A's) has no Motif, so its arguments leave them out. */
+export const MOTIF_DENIED_COMMANDS = DENIED_COMMANDS.filter((r) => r.includes("motif "));
+
+/**
+ * A session building or changing an app. With no pluginDir (Test A's a-* cases) it loads no plugin at all, and nothing in
+ * its arguments names Motif: no plugin folder, and no rule about motif connect, which it doesn't have.
+ */
 export function agentArgs(o: { pluginDir?: string; mcpConfigFile: string; maxTurns: number; maxBudgetUsd: number; model?: string }): string[] {
   return [
     ...isolation(o.mcpConfigFile),
@@ -98,7 +104,7 @@ export function agentArgs(o: { pluginDir?: string; mcpConfigFile: string; maxTur
     "--max-turns", String(o.maxTurns), "--max-budget-usd", String(o.maxBudgetUsd),
     ...(o.model ? ["--model", o.model] : []),
     "--tools", AGENT_TOOLS.join(","),
-    "--disallowedTools", DENIED_COMMANDS.join(","),
+    "--disallowedTools", (o.pluginDir ? DENIED_COMMANDS : DENIED_COMMANDS.filter((r) => !MOTIF_DENIED_COMMANDS.includes(r))).join(","),
   ];
 }
 
