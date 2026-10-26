@@ -42,13 +42,13 @@ describe("a run's record", () => {
 });
 
 describe("the verdicts", () => {
-  test("every case passing passes all three tests", () => {
-    expect(testVerdicts(state(allGraded(pass)), CASES).map((v) => v.status)).toEqual(["pass", "pass", "pass"]);
+  test("every case passing passes B, C and D, and leaves Test A waiting for its pairs and votes", () => {
+    expect(testVerdicts(state(allGraded(pass)), CASES).map((v) => v.status)).toEqual(["pass", "pass", "pass", "incomplete"]);
   });
 
   test("a failing B case fails B, and D with it (D needs B and C with no MCP servers)", () => {
     const s = state({ ...allGraded(pass), "b-search": { status: "graded", attempts: 1, grade: fail } });
-    expect(testVerdicts(s, CASES).map((v) => v.status)).toEqual(["fail", "pass", "fail"]);
+    expect(testVerdicts(s, CASES).map((v) => v.status)).toEqual(["fail", "pass", "fail", "incomplete"]);
   });
 
   test("cases not run leave their tests incomplete", () => {
@@ -59,7 +59,7 @@ describe("the verdicts", () => {
     const skip = (id: string): Record<string, CaseState> => ({ [id]: { status: "skipped", attempts: 0, note: "It needs a Mac with Xcode." } });
     const macOnly = ["b-swiftui-orders", "b-swiftui-rewards", "c-swiftui", "d-masar"];
     const s = state({ ...allGraded(pass, CASES.map((c) => c.id).filter((id) => !macOnly.includes(id))), ...Object.assign({}, ...macOnly.map(skip)) });
-    expect(testVerdicts(s, CASES)).toEqual([
+    expect(testVerdicts(s, CASES).filter((v) => v.test !== "A")).toEqual([
       { test: "B", status: "pass", detail: "All 18 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
       { test: "C", status: "pass", detail: "All 8 cases run passed; c-swiftui was skipped (it needs a Mac)." },
       { test: "D", status: "pass", detail: "The new apps passed, and B and C passed with no design sources connected; d-masar was skipped (it needs a Mac)." },

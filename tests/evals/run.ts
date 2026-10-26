@@ -15,6 +15,7 @@ import { pairBrief } from "./pairs";
 import { paths, preflight, type NodeNeeds, type Ready } from "./preflight";
 import { NO_PURGE_NOTE, removeProjectData } from "./purge";
 import { renderReport, testVerdicts } from "./report";
+import { scoreRun } from "./score-a";
 import { runSession, type SessionOutcome, type SessionSpec } from "./session";
 import { gitState, loadRun, newRunId, remaining, reserveRunId, runDir, saveRun, type RunState, type SessionSummary } from "./state";
 import { motifRunner, runCmd } from "./tools";
@@ -547,9 +548,10 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
  * that doesn't build or render isn't a failure of the run, and Test A counts its screens as lost pairs.
  */
 function writeReport(state: RunState, dir: string, deps: RunDeps): number {
-  const verdicts = testVerdicts(state, CASES);
-  writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts));
-  writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts }, null, 2));
+  const scores = scoreRun(state, dir);
+  const verdicts = testVerdicts(state, CASES, scores);
+  writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts, scores));
+  writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts, ...(verdicts.some((v) => v.test === "A") ? { scoresA: scores } : {}) }, null, 2));
   deps.log(`\n${verdicts.map((v) => `${v.test}: ${v.status} — ${v.detail}`).join("\n")}\nReport: ${join(dir, "report.md")}`);
   const baseline = (id: string) => CASES.some((c) => c.id === id && isBaseline(c));
   return Object.entries(state.cases).filter(([, c]) => c.status !== "skipped").every(([id, c]) => c.status === "graded" && (c.grade?.pass || baseline(id))) ? 0 : 1;

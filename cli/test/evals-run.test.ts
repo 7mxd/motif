@@ -625,11 +625,13 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
     expect(await runEvals(["--work", h.work], h.deps, h.where)).toBe(0);
     expect(h.calls.prepare).toHaveLength(44);
     const { verdicts } = JSON.parse(readFileSync(join(h.where.results, RUN, "report.json"), "utf8"));
-    expect(verdicts).toEqual([
+    expect(verdicts.filter((v: { test: string }) => v.test !== "A")).toEqual([
       { test: "B", status: "pass", detail: "All 18 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
       { test: "C", status: "pass", detail: "All 8 cases run passed; c-swiftui was skipped (it needs a Mac)." },
       { test: "D", status: "pass", detail: "The new apps passed, and B and C passed with no design sources connected; d-masar was skipped (it needs a Mac)." },
     ]);
+    // Test A has no pairs here and Masar was skipped: incomplete, never pass.
+    expect(verdicts.find((v: { test: string }) => v.test === "A")).toMatchObject({ status: "incomplete", detail: expect.stringContaining("a-masar was skipped (it needs a Mac)") });
     // A failing case that ran still fails it.
     const f = harness({ platform: "win32", collect: async (c) => (c.id === "c-review" ? { pass: false, criteria: [], metrics: {} } : PASS) });
     expect(await runEvals(["--work", f.work], f.deps, f.where)).toBe(1);
