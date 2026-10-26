@@ -360,7 +360,8 @@ describe("a run's Test A", () => {
     expect(md).toContain("Test A — with and without Motif: INCOMPLETE");
     expect(md).toContain("| pulse | 11 | 7 / 1 / 2 | waiting | pending | waiting for the owner's votes |");
     expect(md).toContain("| masar | 0 |");
-    expect(md).toContain("gone");
+    expect(md).toContain("Pairs left out because neither side could win them (neither app drew the screen, or one app didn't build and the other didn't draw it): pulse (gone).");
+    expect(md).not.toContain("because neither app drew them");
     expect(md).toContain("docs/test-a.md");
   });
 

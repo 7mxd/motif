@@ -71,7 +71,7 @@ function testASection(scores: BriefScore[], expected: string[]): string[] {
   }
   const left = scores.filter((s) => s.left.length > 0);
   lines.push("");
-  if (left.length > 0) lines.push(`Pairs left out because neither app drew them: ${left.map((s) => `${s.brief} (${s.left.join(", ")})`).join("; ")}.`, "");
+  if (left.length > 0) lines.push(`Pairs left out because neither side could win them (neither app drew the screen, or one app didn't build and the other didn't draw it): ${left.map((s) => `${s.brief} (${s.left.join(", ")})`).join("; ")}.`, "");
   lines.push("Known biases of this comparison: see docs/test-a.md.", "");
   return lines;
 }
