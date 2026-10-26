@@ -23,9 +23,10 @@ export const JUDGE_A_SCHEMA = {
   additionalProperties: false,
 };
 
-export type Pick = "left" | "right" | "tie";
+/** A judge's pick (named so it doesn't shadow TypeScript's own Pick). */
+export type JudgePick = "left" | "right" | "tie";
 export type Order = "motif-left" | "motif-right";
-export interface Judgement { pairId: string; order: Order; pick: Pick; why: string }
+export interface Judgement { pairId: string; order: Order; pick: JudgePick; why: string }
 
 /** The parts of a brief the judge sees, the same for both sides. */
 export interface BriefParts { whatItIs: string; whoItsFor: string; feel: string }
@@ -61,7 +62,7 @@ export function judgeAPrompt(brief: BriefParts, rubric: string = readFileSync(RU
 }
 
 /** The judge's answer, or null when it isn't one of the three picks. */
-export function readPick(structured: unknown): { pick: Pick; why: string } | null {
+export function readPick(structured: unknown): { pick: JudgePick; why: string } | null {
   const s = (structured ?? {}) as { pick?: unknown; why?: unknown };
   return s.pick === "left" || s.pick === "right" || s.pick === "tie" ? { pick: s.pick, why: String(s.why ?? "") } : null;
 }
@@ -70,13 +71,13 @@ export function readPick(structured: unknown): { pick: Pick; why: string } | nul
  * A pair's result from its two judgements: the first had Motif's screen on the left, the second on the right. A side
  * wins only when both pick it; anything else is a tie, which cancels a judge's lean towards one position.
  */
-export function pairResult(first: Pick, second: Pick): "motif" | "baseline" | "tie" {
+export function pairResult(first: JudgePick, second: JudgePick): "motif" | "baseline" | "tie" {
   if (first === "left" && second === "right") return "motif";
   if (first === "right" && second === "left") return "baseline";
   return "tie";
 }
 
-export type JudgeAOutcome = { pick: Pick; why: string } | { paused: { resetsAt?: number } } | { error: string };
+export type JudgeAOutcome = { pick: JudgePick; why: string } | { paused: { resetsAt?: number } } | { error: string };
 /**
  * One judgement: the two images' paths (in the run's folder) as they are to be shown, and the brief's parts. `name` is
  * for the transcript's file name only; the judge never sees it.

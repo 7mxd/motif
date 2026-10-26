@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import type { EvalCase } from "../../tests/evals/cases";
 import type { Grade } from "../../tests/evals/grade";
 import {
-  briefParts, judgeAPrompt, JUDGE_A_EXPECTED_TOOLS, JUDGE_A_SCHEMA, judgementsFile, pairResult, readBriefParts, readJudgements, RUBRIC_A, type Pick,
+  briefParts, judgeAPrompt, JUDGE_A_EXPECTED_TOOLS, JUDGE_A_SCHEMA, judgementsFile, pairResult, readBriefParts, readJudgements, RUBRIC_A, type JudgePick,
 } from "../../tests/evals/judge-a";
 import { pairsFile, type Pair } from "../../tests/evals/pairs";
 import { runEvals, type RunDeps } from "../../tests/evals/run";
@@ -18,7 +18,7 @@ const briefNames = readdirSync(BRIEFS).filter((f) => f.endsWith(".md")).map((f) 
 
 describe("pairResult: a side wins only when both judgements pick it", () => {
   // The first judgement has Motif on the left, the second on the right.
-  const table: [Pick, Pick, "motif" | "baseline" | "tie"][] = [
+  const table: [JudgePick, JudgePick, "motif" | "baseline" | "tie"][] = [
     ["left", "right", "motif"],
     ["right", "left", "baseline"],
     ["left", "left", "tie"],

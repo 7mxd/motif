@@ -9,7 +9,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join, resolve } from "node:path";
 import { motifCss } from "../../cli/src/generate/motif-css";
 import { presetTheme } from "../../cli/src/preview/presets";
-import { andList } from "./cases";
+import { andList, plural } from "./cases";
+import type { Order } from "./judge-a";
 import { readPairs, type Pair } from "./pairs";
 import { builtFor, expectedBriefs, type OwnerPick } from "./score-a";
 import type { RunState } from "./state";
@@ -18,7 +19,6 @@ const REPO = resolve(import.meta.dir, "..", "..");
 const TEMPLATE = join(import.meta.dir, "page-a", "template.html");
 
 export type Side = "left" | "right";
-export type Order = "motif-left" | "motif-right";
 export interface OwnerVote { pairId: string; pick: Side | "same"; order: Order }
 
 /** The owner's votes, relative to the run folder; one per pair, written as each is made. */
@@ -142,14 +142,12 @@ function pageStyle(): string {
 const scriptJson = (data: unknown) => JSON.stringify(data).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 
 /**
- * Writes the page for a run and returns its path. Owner mode: the pairs in the session's order with their sides, by
- * their images' random names (served from img/), and nothing else about them. Public mode is Task 6's.
+ * Writes the owner's page for a run and returns its path: the pairs in the session's order with their sides, by their
+ * images' random names (served from img/), and nothing else about them.
  */
-export function writePage(run: string, mode: "owner" | "public", pairs: Pair[]): string {
-  if (mode !== "owner") throw new Error("The public page isn't written yet.");
+export function writePage(run: string, pairs: Pair[]): string {
   const shown = arrange(session(run).seed, pairs);
   const data = {
-    mode,
     pairs: shown.map((s) => ({
       id: s.pair.id, title: `${briefTitle(s.pair.brief)} — ${screenTitle(s.pair.screen)}`, size: s.pair.size, device: sizeName(s.pair.size), left: s.left, right: s.right,
     })),
@@ -162,8 +160,6 @@ export function writePage(run: string, mode: "owner" | "public", pairs: Pair[]):
   writeFileSync(file, html);
   return file;
 }
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
  * Why the answers can't be shown yet even with a vote on every pair here, from the run as it stands now: a brief of the
@@ -225,7 +221,7 @@ export async function serveOwner(
   const pairs = ownerPairs(state, run);
   // A votes file that can't be read stops the server here, before a vote could be written over it.
   readVotes(run);
-  const html = readFileSync(writePage(run, "owner", pairs));
+  const html = readFileSync(writePage(run, pairs));
   const shown = arrange(session(run).seed, pairs);
   const byId = new Map(shown.map((s) => [s.pair.id, s]));
   const images = new Set(shown.flatMap((s) => [s.left, s.right]).filter((x): x is string => x !== null));

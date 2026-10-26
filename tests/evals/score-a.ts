@@ -3,7 +3,7 @@
 // in at least 70% of a brief's judged pairs and the baseline in at most 15%; the owner must pick Motif in more than half
 // ("about the same" counts as judged and isn't a win). A pair with a screen from one side only goes to that side, for the
 // AI and the owner alike; so does every pair of a brief whose other side's app didn't build. A pair with neither is left out.
-import { CASES } from "./cases";
+import { CASES, plural } from "./cases";
 import type { Grade } from "./grade";
 import { pairResult, readJudgements } from "./judge-a";
 import { readPairs, type Pair } from "./pairs";
@@ -61,7 +61,6 @@ export function decide(p: Pair, built: Built): "motif" | "baseline" | "left" | "
 }
 
 const pct = (n: number, of: number) => `${Math.round((n / of) * 100)}%`;
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** The brief's name as people read it: "masar" is "Masar". */
 const briefName = (brief: string) => brief.charAt(0).toUpperCase() + brief.slice(1);

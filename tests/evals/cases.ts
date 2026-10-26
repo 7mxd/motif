@@ -88,6 +88,8 @@ export const needsAngular22 = (c: EvalCase): boolean => c.brief === "sanad";
 /** A case on a SwiftUI app: it needs a Mac with Xcode and an iOS simulator. */
 export const isSwiftUI = (c: EvalCase): boolean => c.stack === "swiftui";
 
+/** "1 pair", "3 pairs". */
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 export const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
 
 /**

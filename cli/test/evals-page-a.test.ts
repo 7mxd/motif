@@ -98,7 +98,7 @@ describe("the owner's page", () => {
 
   test("names neither side, no case and no brief folder, and carries only the shown pairs' images", () => {
     const f = fixture();
-    const file = writePage(f.run, "owner", ownerPairs(f.state, f.run));
+    const file = writePage(f.run, ownerPairs(f.state, f.run));
     expect(existsSync(file)).toBe(true);
     const html = readFileSync(file, "utf8");
     expect(tells(html, f.run)).toEqual([]);
@@ -132,9 +132,11 @@ describe("the owner's page", () => {
     expect(ids.map((id) => sideOrder("seed-2", id))).not.toEqual(ids.map((id) => sideOrder("seed-1", id)));
   });
 
-  test("the public page is Task 6's", () => {
+  test("there's only the owner's page: writePage takes no mode, and the page's data carries only the pairs", () => {
     const f = fixture();
-    expect(() => writePage(f.run, "public", f.shown)).toThrow();
+    expect(writePage.length).toBe(2);
+    const data = pageData(readFileSync(writePage(f.run, f.shown), "utf8"));
+    expect(Object.keys(data)).toEqual(["pairs"]);
   });
 });
 
