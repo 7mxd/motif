@@ -52,7 +52,7 @@ export function testVerdicts(state: RunState, cases: EvalCase[], scores: BriefSc
 const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 const commit = (c: string, dirty: boolean) => `${c.slice(0, 12)}${dirty ? " (with uncommitted changes)" : ""}`;
 
-const ownerCell = (s: BriefScore) => (s.owner ? `${s.owner.motif} / ${s.owner.other}` : "waiting");
+const ownerCell = (s: BriefScore) => (s.pairs > 0 && s.forced.length + s.left.length === s.pairs ? "—" : s.owner ? `${s.owner.motif} / ${s.owner.other}` : "waiting");
 const verdictCell = (s: BriefScore) => (s.pass === null ? "pending" : s.pass ? "pass" : "fail");
 
 /** Test A's section: one row per brief, the pairs left out, and the known biases. */

@@ -3,8 +3,11 @@
 // in at least 70% of a brief's judged pairs and the baseline in at most 15%; the owner must pick Motif in more than half
 // ("about the same" counts as judged and isn't a win). A pair with a screen from one side only goes to that side, for the
 // AI and the owner alike; so does every pair of a brief whose other side's app didn't build. A pair with neither is left out.
+import { CASES } from "./cases";
+import type { Grade } from "./grade";
 import { pairResult, readJudgements } from "./judge-a";
 import { readPairs, type Pair } from "./pairs";
+import type { StackId } from "../../cli/src/detect/stacks";
 import type { RunState } from "./state";
 
 export interface BriefScore {
@@ -15,8 +18,10 @@ export interface BriefScore {
   ai: { motif: number; baseline: number; tie: number };
   /** The owner's votes over the pairs they decide; "other" is the baseline and "about the same". Absent until they vote. */
   owner?: { motif: number; other: number };
-  /** Ids of the pairs left out: neither side was drawn. */
+  /** Ids of the pairs left out: no side was drawn, or one side's app didn't build and the other's didn't draw it. */
   left: string[];
+  /** Ids of the pairs decided without a judge or a vote (one side drew alone, or the other's app didn't build). */
+  forced: string[];
   /** null while the brief waits for judgements, the owner's votes or its pairs. */
   pass: boolean | null;
   why: string;
@@ -25,7 +30,21 @@ export interface BriefScore {
 export type OwnerPick = "motif" | "baseline" | "same";
 export type AiResult = "motif" | "baseline" | "tie";
 /** Whether each side's app for the brief built (and type-checked); a side whose app didn't loses its pairs. */
-export interface Built { motif: boolean; baseline: boolean }
+export interface Built { motif: boolean | null; baseline: boolean | null }
+
+/**
+ * How a pair is decided without a judge, or "open" when the judges (and the owner) decide it. A side whose app didn't
+ * build loses the pairs the other side drew; a pair where both lose (one side didn't build and the other didn't draw the
+ * screen), or neither side drew, is left out. An unknown build (null) is taken as built here.
+ */
+export function decide(p: Pair, built: Built): "motif" | "baseline" | "left" | "open" {
+  const motifOk = built.motif !== false;
+  const baselineOk = built.baseline !== false;
+  if (p.outcome === "neither" || (!motifOk && !baselineOk)) return "left";
+  if (!motifOk) return p.outcome === "motif-only" ? "left" : "baseline";
+  if (!baselineOk) return p.outcome === "baseline-only" ? "left" : "motif";
+  return p.outcome === "motif-only" ? "motif" : p.outcome === "baseline-only" ? "baseline" : "open";
+}
 
 const pct = (n: number, of: number) => `${Math.round((n / of) * 100)}%`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -41,19 +60,23 @@ export function scoreBrief(
   const left: string[] = [];
   /** Pairs decided without a judge: one side's screen alone, or the other side's app not building. */
   const forced: ("motif" | "baseline")[] = [];
+  const forcedIds: string[] = [];
   const open: Pair[] = [];
   for (const p of mine) {
-    if (p.outcome === "neither") left.push(p.id);
-    else if (!built.motif && !built.baseline) left.push(p.id);
-    else if (!built.motif) forced.push("baseline");
-    else if (!built.baseline) forced.push("motif");
-    else if (p.outcome === "motif-only") forced.push("motif");
-    else if (p.outcome === "baseline-only") forced.push("baseline");
-    else open.push(p);
+    const how = decide(p, built);
+    if (how === "left") left.push(p.id);
+    else if (how === "open") open.push(p);
+    else {
+      forced.push(how);
+      forcedIds.push(p.id);
+    }
   }
-  const base = { brief, pairs: mine.length, left };
+  const base = { brief, pairs: mine.length, left, forced: forcedIds };
   const none = { motif: 0, baseline: 0, tie: 0 };
   if (mine.length === 0) return { ...base, ai: none, pass: null, why: "no pairs yet" };
+  if (built.motif === null || built.baseline === null) {
+    return { ...base, ai: none, pass: null, why: `waiting for the build result of the app made ${built.motif === null ? "with" : "without"} Motif` };
+  }
   if (!built.motif && !built.baseline) return { ...base, ai: none, pass: false, why: "neither app built" };
   if (forced.length + open.length === 0) return { ...base, ai: none, pass: false, why: "no pair had a screen from either app" };
 
@@ -88,12 +111,16 @@ export function scoreBrief(
   });
 
   const aiLine = judged > 0 ? `AI judges picked Motif in ${ai.motif} of ${judged} (${pct(ai.motif, judged)}) and the baseline in ${ai.baseline} (${pct(ai.baseline, judged)})` : "";
-  const aiFails = judged > 0 && (ai.motif * 100 < 70 * judged || ai.baseline * 100 > 15 * judged);
-  const ownerFails = unvoted === 0 && ownerJudged > 0 && votes.motif * 2 <= ownerJudged;
+  // A brief fails early only when no outcome of the pairs still to be judged or voted could pass it.
+  const aiTotal = judged + unjudged;
+  const aiFails = aiTotal > 0 && ((ai.motif + unjudged) * 100 < 70 * aiTotal || ai.baseline * 100 > 15 * aiTotal);
+  const ownerTotal = ownerJudged + unvoted;
+  const ownerFails = ownerTotal > 0 && (votes.motif + unvoted) * 2 <= ownerTotal;
   const failures: string[] = [];
   if (aiFails && unjudged === 0) failures.push(`${aiLine}; it needs at least 70% and at most 15%`);
-  else if (aiFails) failures.push(`${aiLine} so far, already short`);
-  if (ownerFails) failures.push(`the owner picked Motif in ${votes.motif} of ${ownerJudged} (${pct(votes.motif, ownerJudged)}); it needs more than half`);
+  else if (aiFails) failures.push(`${aiLine} so far, and ${plural(unjudged, "judgement")} to come can no longer bring it to 70% with at most 15% for the baseline`);
+  if (ownerFails && unvoted === 0) failures.push(`the owner picked Motif in ${votes.motif} of ${ownerJudged} (${pct(votes.motif, ownerJudged)}); it needs more than half`);
+  else if (ownerFails) failures.push(`the owner picked Motif in ${votes.motif} of ${ownerJudged} so far, and ${plural(unvoted, "vote")} to come can no longer make it more than half`);
   if (failures.length > 0) return result(false, failures);
 
   const waiting: string[] = [];
@@ -117,13 +144,38 @@ export function verdictA(scores: BriefScore[], expected: string[]): { status: "p
   return { status: "pass", detail: `Motif won all ${expected.length} briefs.` };
 }
 
-/** Whether each side's app built, from the run's grading of its d-* and a-* cases; an app not graded counts as built. */
-export function builtFor(state: RunState, brief: string): Built {
-  const built = (id: string): boolean => {
-    const criteria = state.cases[id]?.grade?.criteria ?? [];
-    return !criteria.some((k) => ["app", "build", "typecheck"].includes(k.id) && !k.pass);
-  };
-  return { motif: built(`d-${brief}`), baseline: built(`a-${brief}`) };
+/**
+ * Whether an app built, from its case's grade: null when it wasn't graded (unknown). Only the build counts: its
+ * `build` criterion; the type check stands in for it where it is the compile step (Compose, SwiftUI) or where the build
+ * stopped at the same type errors. Flutter's analyze warnings and Expo's tsc errors don't forfeit pairs: those apps run
+ * and draw. A grade with no build or type-check criterion is an app that wasn't found (its `app` criterion failed), which didn't build.
+ */
+export function appBuilt(grade: Grade | undefined, stack?: StackId): boolean | null {
+  if (!grade) return null;
+  const build = grade.criteria.find((k) => k.id === "build");
+  const typecheck = grade.criteria.find((k) => k.id === "typecheck");
+  if (!build && !typecheck) return !grade.criteria.some((k) => k.id === "app" && !k.pass);
+  if (build && !build.pass) return false;
+  if (typecheck && !typecheck.pass && (stack === "compose" || stack === "swiftui" || (!build && /build stopped/i.test(typecheck.detail)))) return false;
+  return true;
+}
+
+/** Whether each side's app built, from the run's grading of its d-* and a-* cases; null for an app not graded (or skipped). */
+export function builtFor(state: RunState, brief: string, stack: StackId | undefined = CASES.find((c) => c.id === `d-${brief}`)?.stack): Built {
+  return { motif: appBuilt(state.cases[`d-${brief}`]?.grade, stack), baseline: appBuilt(state.cases[`a-${brief}`]?.grade, stack) };
+}
+
+/**
+ * The pairs decided without a judge or a vote, by pair id: "motif" or "baseline" for the side that wins, "left" for a
+ * pair left out. The AI judges skip them, and so does the owner's page.
+ */
+export function forcedPairs(state: RunState, out: string): Map<string, "motif" | "baseline" | "left"> {
+  const m = new Map<string, "motif" | "baseline" | "left">();
+  for (const p of readPairs(out)) {
+    const how = decide(p, builtFor(state, p.brief));
+    if (how !== "open") m.set(p.id, how);
+  }
+  return m;
 }
 
 /** The briefs Test A was asked about: those with an a-* case in the run, Mac-only ones skipped here included. */

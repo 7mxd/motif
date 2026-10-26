@@ -101,10 +101,11 @@ function saveJudgements(out: string, all: Judgement[]): void {
 const ORDERS: Order[] = ["motif-left", "motif-right"];
 
 /** The judgements a run's pairs still need: two for each pair where both apps' screens were drawn, less those made. */
-export function missingJudgements(out: string): { pair: Pair; order: Order }[] {
+/** `exclude` holds the ids of pairs not to judge: those already decided without a judge (forcedPairs). */
+export function missingJudgements(out: string, exclude: ReadonlySet<string> = new Set()): { pair: Pair; order: Order }[] {
   const done = new Set(readJudgements(out).map((j) => `${j.pairId} ${j.order}`));
   return readPairs(out)
-    .filter((p) => p.outcome === "both" && p.motif && p.baseline)
+    .filter((p) => p.outcome === "both" && p.motif && p.baseline && !exclude.has(p.id))
     .flatMap((pair) => ORDERS.filter((order) => !done.has(`${pair.id} ${order}`)).map((order) => ({ pair, order })));
 }
 
@@ -114,13 +115,13 @@ export function missingJudgements(out: string): { pair: Pair; order: Order }[] {
  * skipped (and listed in `failed`) while `skip` holds it, so a run asks again only when resumed.
  */
 export async function judgePairs(
-  out: string, judge: JudgeAFn, opts: { brief?: (name: string) => BriefParts; skip?: Set<string>; log?: (line: string) => void } = {},
+  out: string, judge: JudgeAFn, opts: { brief?: (name: string) => BriefParts; skip?: Set<string>; exclude?: ReadonlySet<string>; log?: (line: string) => void } = {},
 ): Promise<{ judged: number; failed: string[] }> {
   const brief = opts.brief ?? readBriefParts;
   const skip = opts.skip ?? new Set<string>();
   let judged = 0;
   const failed: string[] = [];
-  for (const { pair, order } of missingJudgements(out)) {
+  for (const { pair, order } of missingJudgements(out, opts.exclude)) {
     const key = `${pair.id} ${order}`;
     if (skip.has(key)) continue;
     const [m, b] = [join(out, pair.motif!), join(out, pair.baseline!)];

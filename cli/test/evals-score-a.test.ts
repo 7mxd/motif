@@ -5,7 +5,9 @@ import { CASES } from "../../tests/evals/cases";
 import type { Judgement } from "../../tests/evals/judge-a";
 import type { Pair } from "../../tests/evals/pairs";
 import { renderReport, testVerdicts } from "../../tests/evals/report";
-import { scoreBrief, scoreRun, verdictA, type AiResult, type BriefScore, type OwnerPick } from "../../tests/evals/score-a";
+import { missingJudgements } from "../../tests/evals/judge-a";
+import { appBuilt, forcedPairs, scoreBrief, scoreRun, verdictA, type AiResult, type BriefScore, type OwnerPick } from "../../tests/evals/score-a";
+import type { Grade } from "../../tests/evals/grade";
 import type { CaseState, RunState } from "../../tests/evals/state";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -103,8 +105,91 @@ describe("one brief's score", () => {
   });
 });
 
+describe("exact boundaries and early failure", () => {
+  test("20 pairs: 14 for Motif and 3 for the baseline passes (exactly 70% and exactly 15%)", () => {
+    expect(scoreBrief("pulse", pairs(20), results(20, 14, 3), votes(20, 11)).pass).toBe(true);
+  });
+  test("20 pairs: 14 and 4 for the baseline fails; 13 and 3 fails", () => {
+    expect(scoreBrief("pulse", pairs(20), results(20, 14, 4), votes(20, 20)).pass).toBe(false);
+    expect(scoreBrief("pulse", pairs(20), results(20, 13, 3), votes(20, 20)).pass).toBe(false);
+  });
+  test("35 pairs: 25 for Motif and 6 for the baseline (17%) fails on the 15%", () => {
+    expect(scoreBrief("pulse", pairs(35), results(35, 25, 6), votes(35, 35)).pass).toBe(false);
+    expect(scoreBrief("pulse", pairs(35), results(35, 25, 5), votes(35, 35)).pass).toBe(true);
+  });
+  test("the owner at exactly half fails, over half passes", () => {
+    expect(scoreBrief("pulse", pairs(20), results(20, 20, 0), votes(20, 10)).pass).toBe(false);
+    expect(scoreBrief("pulse", pairs(20), results(20, 20, 0), votes(20, 11)).pass).toBe(true);
+  });
+  test("a tie judged first with nine to come is pending, not failed", () => {
+    const r = new Map<string, AiResult>([["p0", "tie"]]);
+    expect(scoreBrief("pulse", pairs(10), r, votes(10, 10)).pass).toBeNull();
+  });
+  test("one baseline pick first with nine to come is pending", () => {
+    const r = new Map<string, AiResult>([["p0", "baseline"]]);
+    expect(scoreBrief("pulse", pairs(10), r, votes(10, 10)).pass).toBeNull();
+  });
+  test("it fails early only when no remaining outcome could pass", () => {
+    const two = new Map<string, AiResult>([["p0", "baseline"], ["p1", "baseline"]]);
+    const s = scoreBrief("pulse", pairs(10), two, votes(10, 10));
+    expect(s.pass).toBe(false);
+    expect(s.why).toContain("to come");
+    const four = new Map<string, AiResult>([["p0", "tie"], ["p1", "tie"], ["p2", "tie"], ["p3", "tie"]]);
+    expect(scoreBrief("pulse", pairs(10), four, votes(10, 10)).pass).toBe(false);
+  });
+  test("owner votes so far under half are pending while enough votes are still to come", () => {
+    const some = new Map<string, OwnerPick>([["p0", "motif"], ["p1", "baseline"], ["p2", "baseline"], ["p3", "baseline"]]);
+    expect(scoreBrief("pulse", pairs(10), results(10, 10, 0), some).pass).toBeNull();
+  });
+  test("owner votes that no remaining votes could rescue fail", () => {
+    const six = new Map<string, OwnerPick>(["p0", "p1", "p2", "p3", "p4", "p5"].map((id) => [id, "baseline" as OwnerPick]));
+    expect(scoreBrief("pulse", pairs(10), results(10, 10, 0), six).pass).toBe(false);
+  });
+});
+
+describe("what a side that didn't build loses", () => {
+  const g = (...c: [string, boolean, string?][]): Grade => ({ pass: c.every((x) => x[1]), criteria: c.map(([id, pass, detail]) => ({ id, label: id, pass, detail: detail ?? "" })), metrics: {} });
+  test("a failed build forfeits on any stack", () => {
+    for (const stack of ["react-web", "vue", "svelte", "angular", "react-native", "flutter", "compose", "swiftui"] as const) {
+      expect(appBuilt(g(["build", false], ["typecheck", true]), stack)).toBe(false);
+    }
+  });
+  test("a failed type check forfeits only on Compose and SwiftUI, where it is the compile step", () => {
+    expect(appBuilt(g(["typecheck", false]), "compose")).toBe(false);
+    expect(appBuilt(g(["typecheck", false]), "swiftui")).toBe(false);
+  });
+  test("Flutter analyze warnings and Expo tsc errors don't forfeit", () => {
+    expect(appBuilt(g(["typecheck", false]), "flutter")).toBe(true);
+    expect(appBuilt(g(["typecheck", false]), "react-native")).toBe(true);
+    expect(appBuilt(g(["build", true], ["typecheck", false]), "react-native")).toBe(true);
+  });
+  test("a build that stopped at the type errors counts as failed", () => {
+    expect(appBuilt(g(["typecheck", false, "The type check failed. The build stopped at the same errors, so it isn't counted again."]), "vue")).toBe(false);
+  });
+  test("no build facts (no app found) didn't build; no grade at all is unknown", () => {
+    expect(appBuilt(g(["app", false]), "vue")).toBe(false);
+    expect(appBuilt(undefined, "vue")).toBeNull();
+  });
+  test("a D design guide that's missing doesn't forfeit when the build facts say it built", () => {
+    expect(appBuilt(g(["app", true], ["validate", false], ["build", true], ["typecheck", true]), "vue")).toBe(true);
+  });
+  test("an unknown build keeps the brief pending", () => {
+    const s = scoreBrief("pulse", pairs(4), results(4, 4, 0), votes(4, 4), { motif: true, baseline: null });
+    expect(s.pass).toBeNull();
+    expect(s.why).toContain("build result");
+  });
+  test("a pair where one side didn't build and the other didn't draw the screen is left out", () => {
+    const ps = [pair("p0", "motif-only"), ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => pair("p" + i))];
+    const s = scoreBrief("pulse", ps, results(10, 9, 0), votes(10, 10), { motif: false, baseline: true });
+    expect(s.left).toEqual(["p0"]);
+    expect(s.ai.baseline).toBe(9);
+    const t = scoreBrief("pulse", [pair("p0", "baseline-only"), pair("p1")], results(2, 0, 0), undefined, { motif: true, baseline: false });
+    expect(t).toMatchObject({ left: ["p0"], forced: ["p1"] });
+  });
+});
+
 describe("the verdict", () => {
-  const score = (brief: string, pass: boolean | null, n = 10): BriefScore => ({ brief, pairs: n, ai: { motif: 0, baseline: 0, tie: 0 }, left: [], pass, why: pass === null ? "waiting for the owner's votes" : "ok" });
+  const score = (brief: string, pass: boolean | null, n = 10): BriefScore => ({ brief, pairs: n, ai: { motif: 0, baseline: 0, tie: 0 }, left: [], forced: [], pass, why: pass === null ? "waiting for the owner's votes" : "ok" });
   const briefs = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
 
   test("passes only when every brief passes", () => {
@@ -158,10 +243,21 @@ describe("a run's Test A", () => {
     expect(lost[0]).toMatchObject({ ai: { motif: 0, baseline: 2, tie: 0 }, pass: false });
   });
 
+  test("pairs decided without a judge are listed and skipped by the judges and the owner", () => {
+    const ps = [{ ...pair("p0"), motif: "a/img/1.png", baseline: "a/img/2.png" }, pair("p1", "motif-only"), pair("p2", "neither")];
+    const out = folder(ps, []);
+    const st = state({ "d-pulse": graded(), "a-pulse": graded() });
+    expect([...forcedPairs(st, out)]).toEqual([["p1", "motif"], ["p2", "left"]]);
+    const noBuild = state({ "d-pulse": graded(), "a-pulse": graded(false) });
+    expect([...forcedPairs(noBuild, out)]).toEqual([["p0", "motif"], ["p1", "motif"], ["p2", "left"]]);
+    expect(missingJudgements(out, new Set(forcedPairs(noBuild, out).keys()))).toEqual([]);
+    expect(missingJudgements(out, new Set(forcedPairs(st, out).keys())).map((x) => x.pair.id)).toEqual(["p0", "p0"]);
+  });
+
   test("Masar skipped off a Mac: Test A is incomplete, never pass, and names it", () => {
     const cases: Record<string, CaseState> = {};
     for (const b of aBriefs) cases[`a-${b}`] = b === "masar" ? { status: "skipped", attempts: 0, note: "It needs a Mac." } : graded();
-    const scores: BriefScore[] = aBriefs.filter((b) => b !== "masar").map((b) => ({ brief: b, pairs: 4, ai: { motif: 4, baseline: 0, tie: 0 }, owner: { motif: 4, other: 0 }, left: [], pass: true, why: "ok" }));
+    const scores: BriefScore[] = aBriefs.filter((b) => b !== "masar").map((b) => ({ brief: b, pairs: 4, ai: { motif: 4, baseline: 0, tie: 0 }, owner: { motif: 4, other: 0 }, left: [], forced: [], pass: true, why: "ok" }));
     const a = testVerdicts(state(cases), CASES, scores).find((v) => v.test === "A")!;
     expect(a.status).toBe("incomplete");
     expect(a.detail).toContain("masar");
@@ -171,8 +267,8 @@ describe("a run's Test A", () => {
   test("the report's Test A section lists each brief's numbers, why, the pairs left out and the biases note", () => {
     const cases: Record<string, CaseState> = { "a-pulse": graded(), "a-masar": { status: "skipped", attempts: 0, note: "It needs a Mac." } };
     const scores: BriefScore[] = [
-      { brief: "pulse", pairs: 11, ai: { motif: 7, baseline: 1, tie: 2 }, left: ["gone"], pass: null, why: "waiting for the owner's votes" },
-      { brief: "masar", pairs: 0, ai: { motif: 0, baseline: 0, tie: 0 }, left: [], pass: null, why: "no pairs yet" },
+      { brief: "pulse", pairs: 11, ai: { motif: 7, baseline: 1, tie: 2 }, left: ["gone"], forced: [], pass: null, why: "waiting for the owner's votes" },
+      { brief: "masar", pairs: 0, ai: { motif: 0, baseline: 0, tie: 0 }, left: [], forced: [], pass: null, why: "no pairs yet" },
     ];
     const verdicts = testVerdicts(state(cases), CASES, scores);
     const md = renderReport(state(cases), CASES, verdicts, scores);
@@ -181,5 +277,12 @@ describe("a run's Test A", () => {
     expect(md).toContain("| masar | 0 |");
     expect(md).toContain("gone");
     expect(md).toContain("docs/test-a.md");
+  });
+
+  test("the owner column shows a dash when every pair is decided without a vote", () => {
+    const cases: Record<string, CaseState> = { [`a-${aBriefs[0]}`]: graded() };
+    const scores: BriefScore[] = [{ brief: aBriefs[0]!, pairs: 2, ai: { motif: 2, baseline: 0, tie: 0 }, left: [], forced: ["p0", "p1"], pass: true, why: "ok" }];
+    const md = renderReport(state(cases), CASES, testVerdicts(state(cases), CASES, scores), scores);
+    expect(md).toContain(`| ${aBriefs[0]} | 2 | 2 / 0 / 0 | — | pass | ok |`);
   });
 });

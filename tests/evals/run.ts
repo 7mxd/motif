@@ -15,7 +15,7 @@ import { pairBrief } from "./pairs";
 import { paths, preflight, type NodeNeeds, type Ready } from "./preflight";
 import { NO_PURGE_NOTE, removeProjectData } from "./purge";
 import { renderReport, testVerdicts } from "./report";
-import { scoreRun } from "./score-a";
+import { forcedPairs, scoreRun } from "./score-a";
 import { runSession, type SessionOutcome, type SessionSpec } from "./session";
 import { gitState, loadRun, newRunId, remaining, reserveRunId, runDir, saveRun, type RunState, type SessionSummary } from "./state";
 import { motifRunner, runCmd } from "./tools";
@@ -192,7 +192,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     }
   };
   // Test A: judgements a paused run hadn't made yet (a new run has none).
-  const unjudged = typeof o.resume === "string" ? missingJudgements(runDir(where.results, state.id)).length : 0;
+  const unjudged = typeof o.resume === "string" ? missingJudgements(runDir(where.results, state.id), new Set(forcedPairs(state, runDir(where.results, state.id)).keys())).length : 0;
   if (here.skipped.length > 0) {
     deps.log(here.reason);
     if (todo.length === 0 && unpaired.length === 0 && unjudged === 0) {
@@ -436,11 +436,12 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
    * isolated stops it. A judgement that couldn't be made is said and left for --resume.
    */
   async function judgeStep(): Promise<number | undefined> {
-    const left = missingJudgements(dir).filter(({ pair, order }) => !judgeFailed.has(`${pair.id} ${order}`)).length;
+    const forced = new Set(forcedPairs(state, dir).keys());
+    const left = missingJudgements(dir, forced).filter(({ pair, order }) => !judgeFailed.has(`${pair.id} ${order}`)).length;
     if (left === 0) return undefined;
     deps.log(`\nTest A: ${left} ${left === 1 ? "judgement" : "judgements"} to make, each a read-only Claude Code session comparing two screenshots…`);
     try {
-      const r = await judgePairs(dir, judgeA, { skip: judgeFailed, log: deps.log });
+      const r = await judgePairs(dir, judgeA, { skip: judgeFailed, exclude: forced, log: deps.log });
       deps.log(`Test A: ${r.judged} of ${left} ${left === 1 ? "judgement" : "judgements"} made.`);
     } catch (e) {
       if (e instanceof Paused) return pause(e.resetsAt);
