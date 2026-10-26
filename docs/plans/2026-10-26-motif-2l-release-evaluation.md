@@ -111,8 +111,8 @@ The public voting page was dropped on 2026-10-26: the owner's LinkedIn post invi
 ### Task 7: The release checklist and the docs
 
 **Files:**
-- Create: `docs/release-checklist.md` (spec §7's eight steps, each with how and how to tell it passed), `docs/test-a.md` (a table per run: brief, pairs, AI Motif/baseline/tie, owner Motif/other, pass; and the overall verdict — empty until the run), `docs/decisions/0013-test-a-judges.md` (Test A judged by AI and the owner before release, public votes after; the owner's decision of 2026-10-26)
-- Modify: `docs/specs/2026-10-12-motif-core-design.md` (§3's Test A row: "AI judges and the owner before release; public votes after"; §13.3 points to the Part 4 spec), `tests/evals/README.md` (Test A: what it builds, judges, the page, `judge-owner.ts`, the 49 sessions), `cli/test/release.test.ts`
+- Create: `docs/release-checklist.md` (spec §7's eight steps, each with how and how to tell it passed), `docs/test-a.md` (a table per run: brief, pairs, AI Motif/baseline/tie, owner Motif/other, pass; and the overall verdict — empty until the run), `docs/decisions/0013-test-a-judges.md` (Test A judged by AI and the owner, blind, before release; the owner's decision of 2026-10-26)
+- Modify: `docs/specs/2026-10-12-motif-core-design.md` (§3's Test A row: "AI judges and the owner, blind, before release"; §13.3 points to the Part 4 spec), `tests/evals/README.md` (Test A: what it builds, judges, the page, `judge-owner.ts`, the 49 sessions), `cli/test/release.test.ts`
 - Test: `cli/test/release.test.ts` (the checklist has its eight steps in order, by their headings; `docs/test-a.md` exists; the core spec's Test A row no longer says only "Human")
 - [ ] **Step 1–4:** tests, write, run → PASS (plus `test/evals-docs.test.ts`).
 - [ ] **Step 5: Commit** `docs: the release checklist, Test A's record and decision 0013`.
