@@ -4,7 +4,7 @@
 
 **Goal:** Test A (the same briefs built with and without Motif, judged blind by AI judges and the owner), the release checklist, and v1.0.0.
 
-**Architecture:** Test A is a fourth test of the eval runner in `tests/evals/` (`TestId` gains `"A"`). Its `a-<brief>` cases build each Test D brief with no plugins; once a brief's `d-*` and `a-*` apps exist, both are shot with the same flags into anonymous pairs. Each pair is judged twice (sides swapped) by read-only Claude Code sessions, and the owner judges every pair on a blind page the runner serves locally. Scores are kept per brief; the verdict passes only when every brief passes. A public version of the page is published after v1.0.0.
+**Architecture:** Test A is a fourth test of the eval runner in `tests/evals/` (`TestId` gains `"A"`). Its `a-<brief>` cases build each Test D brief with no plugins; once a brief's `d-*` and `a-*` apps exist, both are shot with the same flags into anonymous pairs. Each pair is judged twice (sides swapped) by read-only Claude Code sessions, and the owner judges every pair on a blind page the runner serves locally. Scores are kept per brief; the verdict passes only when every brief passes.
 
 **Tech Stack:** Bun + TypeScript (`tests/evals/`, `cli/`), Claude Code headless sessions on the developer's plan (decision 0003), `motif shot`, a self-contained HTML page, `bun test`.
 
@@ -19,7 +19,6 @@
 - Pass is per brief: AI judges pick Motif in at least 70% of the brief's judged pairs and the baseline in at most 15%; the owner picks Motif in more than half of the brief's pairs ("about the same" is not a win). Test A passes only when every brief passes; a brief with no verdict (Masar off a Mac) leaves Test A incomplete.
 - A side whose app doesn't build or whose screen doesn't render loses that pair; a pair where neither side renders is left out and recorded.
 - Only a session cut off by a usage limit, a crash or Ctrl+C runs again; a finished session's result stands.
-- No voter data beyond the vote and two yes/no answers ("Have you shipped an app or website?", "Have you used an AI design skill or plugin?").
 - B, C and D are unchanged: existing eval tests pass unchanged unless a task names the test.
 - Messages in the runner's plain voice. Commits end with `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`. Work on `plan/2l-release-evaluation` in the worktree `C:/Users/PC/GitHub/motif-2l`. The owner has authorised pushes to the work branch and main; never force-push; nothing is tagged by Tasks 1–7.
 
@@ -100,24 +99,14 @@
 
 **Interfaces:**
 - Produces: `writePage(run: string, mode: "owner" | "public", pairs: Pair[]): string` (path of the HTML; images referenced by their random names, never inlined with telling names); `serveOwner(run: string, port?: number): Promise<{ url: string; stop(): void }>` — serves the page and `POST /vote { pairId, pick: "left" | "right" | "same", order }` appending to `a/owner-votes.json` (one vote per pair; a second vote replaces it); `GET /votes` for resuming.
-- The page: one pair at a time, side by side above 720 px and stacked below; sides shuffled per voter (owner: per pair, recorded as `order`); "Left", "Right", "About the same"; keyboard 1/2/3; progress "12 of 48". Owner mode shows every pair whose sides both or one rendered (not `neither`), in a random order, and reveals nothing until the last vote, then shows Motif's side per pair. Public mode is Task 6's. Motif's preview style (`skill/preview-kit/kit.css` tokens) for the page's own look.
+- The page: one pair at a time, side by side above 720 px and stacked below; sides shuffled per voter (owner: per pair, recorded as `order`); "Left", "Right", "About the same"; keyboard 1/2/3; progress "12 of 48". Owner mode shows every pair whose sides both or one rendered (not `neither`), in a random order, and reveals nothing until the last vote, then shows Motif's side per pair. Motif's preview style (`skill/preview-kit/kit.css` tokens) for the page's own look.
 - [ ] **Step 1: Failing tests:** the written HTML and every served response contain no "motif", "baseline", `d-`/`a-` case ids, brief-folder names or the mapping before the last vote (Review Focus 2; the reveal data arrives from `GET /reveal` only once votes cover every pair); a vote is saved immediately and reopening resumes at the next unjudged pair (Review Focus 4); browser test: the page loads, three votes by keyboard reach `owner-votes.json`.
 - [ ] **Step 2–4:** run, implement, run → PASS.
 - [ ] **Step 5: Commit** `feat(evals): the blind comparison page, and the owner's judging served from the run`.
 
-### Task 6: The public page
+### Task 6: (dropped)
 
-**Files:**
-- Modify: `tests/evals/page-a.ts` (`mode: "public"`), `tests/evals/page-a/template.html`
-- Create: `tests/evals/publish-a.ts` (assembles the public page's folder: the HTML and the pair images, nothing else)
-- Test: `cli/test/evals-page-a.test.ts`
-
-**Interfaces:**
-- Public mode: asks the two yes/no questions first; draws about ten pairs so every brief appears at least once (`drawPairs(pairs: Pair[], n: number, rand: () => number): Pair[]`); shuffles sides; after the last vote, reveals Motif's side for the pairs this voter judged; stores each vote through a `VoteStore` interface: `{ add(v: PublicVote): Promise<void>; tally(): Promise<Tally> }` with `PublicVote = { pairId: string; pick: "motif" | "baseline" | "same"; shipped: boolean; usedPlugin: boolean }` (the page maps left/right to motif/baseline only inside the store call, after the vote); shows the tally (overall and split by the two answers) once at least 20 voters have finished.
-- `VoteStore` has two implementations: a local one (for tests and preview) and the shared store of the host the controller publishes to. **Before this task, the controller loads the `artifact-capabilities` skill and gives the implementer the shared-store API and its limits** (the public page is published as a Claude artifact with a shared database: no server for the owner to run, no accounts).
-- [ ] **Step 1: Failing tests:** `drawPairs` covers every brief, never repeats a pair, gives `n` pairs (or all when fewer); the public HTML keeps no personal data (no name/email fields, no cookies, no fingerprinting); the mapping isn't in the page source before reveal (Review Focus 2; the reveal comes from the pair data the store returns after the voter's last vote, or from an obfuscation the test proves can't be read by searching the source — the implementer picks one and the test pins it); the tally hides until 20 voters.
-- [ ] **Step 2–4:** run, implement, run → PASS.
-- [ ] **Step 5: Commit** `feat(evals): the public comparison page, ten pairs per voter, votes kept with no personal data`.
+The public voting page was dropped on 2026-10-26: the owner's LinkedIn post invites comments, not votes (spec §2).
 
 ### Task 7: The release checklist and the docs
 
@@ -134,5 +123,5 @@ Not a subagent task; the controller does it with the owner, following `docs/rele
 - [ ] Final whole-branch review, fix wave, merge to `main`, CI green (checklist step 1).
 - [ ] The full run on the candidate: `bun tests/evals/run.ts --tests A,B,C,D` with the portable Node 24 first on PATH; the SwiftUI cases and `a-masar`/`d-masar` on the Mac mini, resuming the same run. Every B, C and D case passes; recorded in `docs/parity.md`.
 - [ ] The owner judges: `bun tests/evals/judge-owner.ts <run>`; the verdict and per-brief table go in `docs/test-a.md`. A brief that fails blocks v1.0.0: improve that stack, re-run its evals and all of Test A on the new candidate, and judge again.
-- [ ] v1.0.0 on a release branch: notes `docs/releases/v1.0.0.md` (every stack supported, Test A's result, the public page's link), `skill/VERSION` 1.0.0, the README without "Preview"; merged on the owner's go-ahead; tag, release workflow, marketplace (checklist steps 4–8).
-- [ ] Publish the public page (Task 6's folder) as a Claude artifact with its shared store, and give the owner the link for LinkedIn.
+- [ ] v1.0.0 on a release branch: notes `docs/releases/v1.0.0.md` (every stack supported, Test A's result), `skill/VERSION` 1.0.0, the README without "Preview"; merged on the owner's go-ahead; tag, release workflow, marketplace (checklist steps 4–8).
+- [ ] After the release, the owner posts about Motif on LinkedIn.
