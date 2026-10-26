@@ -166,8 +166,9 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   const here = macOnly(remaining(state).map((id) => CASES.find((c) => c.id === id)).filter((c): c is EvalCase => Boolean(c)), platform);
   const todo = here.run;
   // Test A: briefs whose two apps were both graded but whose screenshots weren't taken (the step failed, or was cut off):
-  // --resume takes them, from the folders kept for it. Not a Mac-only brief off a Mac.
-  const unpaired = CASES.filter((d) => d.test === "D" && d.brief && (platform === "darwin" || !d.mac)).flatMap((d) => {
+  // --resume takes them, from the folders kept for it: only briefs whose two cases this run chose, and not a Mac-only
+  // brief off a Mac.
+  const unpaired = CASES.filter((d) => d.test === "D" && d.brief && d.id in state.cases && (platform === "darwin" || !d.mac)).flatMap((d) => {
     const a = pairedCase(d);
     const ds = state.cases[d.id];
     const as = a ? state.cases[a.id] : undefined;
@@ -538,7 +539,7 @@ if (import.meta.main) {
       personal: () => personalNames(homedir()),
       agentSettings: () => agentSettings(),
       // Test A: both apps of a brief shot the same way into anonymous pairs (a/pairs.json, a/img/).
-      afterBriefPair: (brief, withMotif, without, out) => pairBrief(brief, withMotif, without, out, { motif }),
+      afterBriefPair: (brief, withMotif, without, out) => pairBrief(brief, withMotif, without, out, { motif, run: runCmd }),
     },
     // Case folders live in the home folder by default: macOS empties the temp folder of files untouched for 3 days,
     // which would take a paused run's folders before --resume.

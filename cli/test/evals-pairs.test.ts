@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { addPngText, readPngText } from "../src/browser/png";
 import { runShot, type ShotDeps } from "../src/commands/shot";
@@ -7,7 +7,7 @@ import { routeSlug, shotName, type RouteResult } from "../src/shot/capture";
 import { devCommand } from "../src/shot/devserver";
 import { CASES, type EvalCase } from "../../tests/evals/cases";
 import { pairBrief, pairsFile, readPairs, shootPairs, shotSizes, stripPng, type Pair } from "../../tests/evals/pairs";
-import type { Motif, MotifResult } from "../../tests/evals/tools";
+import type { Motif, MotifResult, Run } from "../../tests/evals/tools";
 import type { Workspace } from "../../tests/evals/workspace";
 import { decodePng, encodePng } from "./png-pixels";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -85,7 +85,7 @@ describe("shotSizes", () => {
  * A fake motif shot: writes each route's light and dark PNGs at each size into --out, as motif shot names them, and
  * answers as its --json does. `fail` makes the whole run fail with that error; `broken` routes throw a page error.
  */
-function fakeShot(opts: { fail?: string; broken?: string[]; missing?: string[] } = {}) {
+function fakeShot(opts: { fail?: string; broken?: string[]; missing?: string[]; garbage?: string[] } = {}) {
   const calls: { args: string[]; cwd: string; timeoutMs?: number }[] = [];
   const motif: Motif = async (args, cwd, timeoutMs) => {
     calls.push({ args, cwd, timeoutMs });
@@ -102,7 +102,7 @@ function fakeShot(opts: { fail?: string; broken?: string[]; missing?: string[] }
         for (const size of sizes) {
           for (const scheme of ["light", "dark"] as const) {
             const file = join(outDir, shotName(routeSlug(route), size === 1440 ? "desktop" : "mobile", scheme));
-            writeFileSync(file, picture(scheme === "light" ? LIGHT : DARK, size === 1440 ? 8 : 4));
+            writeFileSync(file, opts.garbage?.includes(route) && scheme === "light" && size === 390 ? "not a picture" : picture(scheme === "light" ? LIGHT : DARK, size === 1440 ? 8 : 4));
             shots.push(file);
           }
         }
@@ -131,13 +131,18 @@ function sides(brief = "stride") {
 /** A shot whose answer depends on the app: `withMotif`'s and `without`'s fakes. */
 const bySide = (withMotif: string, a: Motif, b: Motif): Motif => (args, cwd, t) => (cwd === withMotif ? a(args, cwd, t) : b(args, cwd, t));
 
+/** Nothing is installed outside an Expo brief. */
+const noRun: Run = async (cmd) => {
+  throw new Error(`nothing should run: ${cmd.join(" ")}`);
+};
+
 const TELLS = /motif|base|d-|a-|stride/i;
 
 describe("shootPairs", () => {
   test("one pair per screen and size, both apps shot with the same command, light only, as plain PNGs with random names", async () => {
     const s = sides();
     const f = fakeShot();
-    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { motif: f.motif });
+    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: f.motif });
     expect(pairs.map((p) => [p.brief, p.screen, p.size, p.outcome])).toEqual([
       ["stride", "/", 390, "both"], ["stride", "/", 1440, "both"],
       ["stride", "/sign-in", 390, "both"], ["stride", "/sign-in", 1440, "both"],
@@ -181,7 +186,7 @@ describe("shootPairs", () => {
   test("a native app's pairs are at a phone's width only", async () => {
     const s = sides("sahm");
     const f = fakeShot();
-    const pairs = await shootPairs("sahm", s.withMotif, s.without, byId("d-sahm"), s.out, { motif: f.motif });
+    const pairs = await shootPairs("sahm", s.withMotif, s.without, byId("d-sahm"), s.out, { run: noRun, motif: f.motif });
     expect(pairs.map((p) => [p.screen, p.size, p.outcome])).toEqual([["/", 390, "both"], ["/sign-in", 390, "both"], ["/home", 390, "both"]]);
     expect(f.calls[0]!.args).toContain("390");
   });
@@ -190,7 +195,7 @@ describe("shootPairs", () => {
     const s = sides();
     const ok = fakeShot();
     const failed = fakeShot({ fail: "cant-start" });
-    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { motif: bySide(s.withMotif, ok.motif, failed.motif) });
+    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: bySide(s.withMotif, ok.motif, failed.motif) });
     expect(pairs).toHaveLength(6);
     for (const p of pairs) {
       expect(p.outcome).toBe("motif-only");
@@ -198,18 +203,18 @@ describe("shootPairs", () => {
       expect(p.baseline).toBeUndefined();
       expect(p.why).toContain("cant-start");
     }
-    const other = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { motif: bySide(s.withMotif, failed.motif, ok.motif) });
+    const other = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: bySide(s.withMotif, failed.motif, ok.motif) });
     expect(other.map((p) => p.outcome)).toEqual(Array(6).fill("baseline-only"));
     expect(other.every((p) => p.baseline && !p.motif && p.why?.includes("cant-start"))).toBe(true);
   });
 
   test("neither, when both fail; a screen that throws or isn't captured loses only its own pairs", async () => {
     const s = sides();
-    const both = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { motif: fakeShot({ fail: "no-app" }).motif });
+    const both = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: fakeShot({ fail: "no-app" }).motif });
     expect(both.map((p) => p.outcome)).toEqual(Array(6).fill("neither"));
     expect(both.every((p) => !p.motif && !p.baseline && p.why)).toBe(true);
     const part = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, {
-      motif: bySide(s.withMotif, fakeShot({ missing: ["/home"] }).motif, fakeShot({ broken: ["/sign-in"] }).motif),
+      run: noRun, motif: bySide(s.withMotif, fakeShot({ missing: ["/home"] }).motif, fakeShot({ broken: ["/sign-in"] }).motif),
     });
     expect(part.map((p) => [p.screen, p.size, p.outcome])).toEqual([
       ["/", 390, "both"], ["/", 1440, "both"],
@@ -223,7 +228,7 @@ describe("shootPairs", () => {
   test("no app on a side (the session left none) loses its pairs without running a shot there", async () => {
     const s = sides();
     const f = fakeShot();
-    const pairs = await shootPairs("stride", s.withMotif, null, byId("d-stride"), s.out, { motif: f.motif });
+    const pairs = await shootPairs("stride", s.withMotif, null, byId("d-stride"), s.out, { run: noRun, motif: f.motif });
     expect(pairs.map((p) => p.outcome)).toEqual(Array(6).fill("motif-only"));
     expect(f.calls.map((c) => c.cwd)).toEqual([s.withMotif]);
     expect(pairs[0]!.why).toBeTruthy();
@@ -253,7 +258,7 @@ describe("shootPairs", () => {
       });
       return { code: 0, json: { routes }, output: "" };
     };
-    const pairs = await shootPairs("masar", s.withMotif, s.without, byId("d-masar"), s.out, { motif });
+    const pairs = await shootPairs("masar", s.withMotif, s.without, byId("d-masar"), s.out, { run: noRun, motif });
     expect(calls[0]!.slice(0, 7)).toEqual(["shot", "--routes", "/", "--screen", "SignInScreen.swift:7,HomeView.swift:7", "--sizes", "390"]);
     expect(pairs.map((p) => [p.screen, p.size, p.outcome])).toEqual([["/", 390, "both"], ["Sign in", 390, "both"], ["Home", 390, "both"]]);
   });
@@ -299,11 +304,98 @@ describe("shootPairs", () => {
       const json = { command: r.command, ok: r.exitCode === 0, exitCode: r.exitCode, ...r.data };
       return { code: r.exitCode, json, output: r.text };
     };
-    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { motif });
+    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif });
     expect(pairs.map((p) => p.outcome)).toEqual(Array(6).fill("motif-only"));
     expect(pairs.every((p) => p.motif && !p.baseline)).toBe(true);
     expect(pairs[0]!.why).toContain("cant-start");
     expect(readFileSync(join(s.out, "a-stride", "pair-shots.json"), "utf8")).toContain("cant-start");
+  });
+});
+
+describe("shootPairs: equal setup, and nothing in the files' order or times", () => {
+  /** Two Expo apps without Expo's web packages (or with some), and a run that records the installs. */
+  function expo(declare: { withMotif?: Record<string, string>; without?: Record<string, string> } = {}) {
+    const s = sides("rihla");
+    const dep = (extra: Record<string, string> = {}) => JSON.stringify({ name: "rihla", dependencies: { expo: "~54.0.0", "expo-router": "~6.0.0", react: "19.1.0", "react-native": "0.81.0", ...extra } });
+    writeFileSync(join(s.withMotif, "package.json"), dep(declare.withMotif));
+    writeFileSync(join(s.without, "package.json"), dep(declare.without));
+    const order: string[] = [];
+    const installs: { cmd: string[]; cwd: string }[] = [];
+    const run: Run = async (cmd, cwd) => {
+      installs.push({ cmd, cwd });
+      order.push(`install ${cwd === s.withMotif ? "d" : "a"}`);
+      return { code: 0, stdout: "added 3 packages", stderr: "", timedOut: false };
+    };
+    const f = fakeShot();
+    const motif: Motif = async (args, cwd, t) => (order.push(`shot ${cwd === s.withMotif ? "d" : "a"}`), f.motif(args, cwd, t));
+    return { s, run, motif, installs, order, calls: f.calls };
+  }
+  const WEB = ["react-dom", "react-native-web", "@expo/metro-runtime"];
+
+  test("an Expo brief: both apps get Expo's web packages the same way before they're shot, and the pairs say so", async () => {
+    const e = expo();
+    const pairs = await shootPairs("rihla", e.s.withMotif, e.s.without, byId("d-rihla"), e.s.out, { run: e.run, motif: e.motif });
+    expect(e.installs).toEqual([
+      { cmd: ["npx", "expo", "install", ...WEB], cwd: e.s.withMotif },
+      { cmd: ["npx", "expo", "install", ...WEB], cwd: e.s.without },
+    ]);
+    expect(e.order).toEqual(["install d", "shot d", "install a", "shot a"]);
+    expect(pairs.map((p) => [p.screen, p.size, p.outcome])).toEqual([["/", 390, "both"], ["/sign-in", 390, "both"], ["/trips", 390, "both"]]);
+    for (const p of pairs) expect(p.webSetup).toEqual({ motif: WEB, baseline: WEB });
+    expect(readFileSync(join(e.s.out, "a-rihla", "pair-install.log"), "utf8")).toContain("added 3 packages");
+  });
+
+  test("what an app already declares isn't installed again; an app with them all gets no install", async () => {
+    const e = expo({ withMotif: { "react-dom": "19.1.0", "react-native-web": "^0.21.0", "@expo/metro-runtime": "~6.0.0" }, without: { "react-dom": "19.1.0" } });
+    const pairs = await shootPairs("rihla", e.s.withMotif, e.s.without, byId("d-rihla"), e.s.out, { run: e.run, motif: e.motif });
+    expect(e.installs).toEqual([{ cmd: ["npx", "expo", "install", "react-native-web", "@expo/metro-runtime"], cwd: e.s.without }]);
+    expect(pairs[0]!.webSetup).toEqual({ motif: [], baseline: ["react-native-web", "@expo/metro-runtime"] });
+  });
+
+  test("an install that fails on one side makes that side lose its pairs, with why; it isn't shot", async () => {
+    const f = expo();
+    // The app built without Motif fails its install.
+    const run: Run = async (cmd, cwd, t) => (cwd === f.s.without ? { code: 1, stdout: "", stderr: "npm error ERESOLVE could not resolve", timedOut: false } : f.run(cmd, cwd, t));
+    const pairs = await shootPairs("rihla", f.s.withMotif, f.s.without, byId("d-rihla"), f.s.out, { run, motif: f.motif });
+    expect(pairs.map((p) => p.outcome)).toEqual(["motif-only", "motif-only", "motif-only"]);
+    for (const p of pairs) {
+      expect(p.why).toContain("Expo's web packages (react-dom, react-native-web, @expo/metro-runtime) couldn't be installed");
+      expect(p.why).toContain("ERESOLVE");
+    }
+    expect(f.calls.map((c) => c.cwd)).toEqual([f.s.withMotif]);
+    expect(pairs[0]!.webSetup).toEqual({ motif: WEB, baseline: [] });
+  });
+
+  test("a screenshot that isn't a whole PNG loses only its side of that pair, with why; nothing it would have written is left", async () => {
+    const s = sides();
+    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, {
+      run: noRun, motif: bySide(s.withMotif, fakeShot().motif, fakeShot({ garbage: ["/sign-in"] }).motif),
+    });
+    expect(pairs.map((p) => [p.screen, p.size, p.outcome])).toEqual([
+      ["/", 390, "both"], ["/", 1440, "both"], ["/sign-in", 390, "motif-only"], ["/sign-in", 1440, "both"], ["/home", 390, "both"], ["/home", 1440, "both"],
+    ]);
+    expect(pairs[2]!.why).toContain("/sign-in's screenshot 390 px wide can't be used: Not a PNG image.");
+    const listed = pairs.flatMap((p) => [p.motif, p.baseline]).filter((x): x is string => Boolean(x)).map((x) => basename(x));
+    expect(readdirSync(join(s.out, "a", "img")).sort()).toEqual(listed.sort());
+  });
+
+  test("every image has the same time, so the order they were written in doesn't show", async () => {
+    const s = sides();
+    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: fakeShot().motif });
+    const times = new Set(pairs.flatMap((p) => [p.motif!, p.baseline!]).map((img) => statSync(join(s.out, img)).mtimeMs));
+    expect(times.size).toBe(1);
+  });
+});
+
+describe("pairBrief", () => {
+  test("if the pairs can't be saved, the images this try wrote are removed and the step throws", async () => {
+    const s = sides();
+    writeFileSync(join(s.withMotif, "DESIGN.md"), "# Stride\n");
+    // a/pairs.json can't be read: a folder stands in its place.
+    mkdirSync(join(s.out, pairsFile), { recursive: true });
+    const ws = (app: string): Workspace => ({ dir: join(app, ".."), app, gitDir: "" });
+    await expect(pairBrief("stride", ws(s.withMotif), ws(s.without), s.out, { run: noRun, motif: fakeShot().motif })).rejects.toThrow();
+    expect(readdirSync(join(s.out, "a", "img"))).toEqual([]);
   });
 });
 
@@ -315,7 +407,7 @@ describe("pairBrief", () => {
     // Test D's app has its design guide; Test A's is found by its project file.
     writeFileSync(join(s.withMotif, "DESIGN.md"), "# Stride\n");
     const f = fakeShot();
-    const said = await pairBrief("stride", ws(s.withMotif), ws(s.without), s.out, { motif: f.motif });
+    const said = await pairBrief("stride", ws(s.withMotif), ws(s.without), s.out, { run: noRun, motif: f.motif });
     expect(pairsFile).toBe("a/pairs.json");
     expect(f.calls.map((c) => c.cwd)).toEqual([s.withMotif, s.without]);
     const first = readPairs(s.out);
@@ -327,7 +419,7 @@ describe("pairBrief", () => {
     const other: Pair = { id: "0123456789ab", brief: "bloom", screen: "/", size: 390, motif: "a/img/aaaaaaaaaaaa.png", outcome: "motif-only", why: "x" };
     writeFileSync(join(s.out, pairsFile), JSON.stringify([...first, other]));
     writeFileSync(join(s.out, "a", "img", "aaaaaaaaaaaa.png"), "");
-    const again = await pairBrief("stride", ws(s.withMotif), ws(s.without), s.out, { motif: bySide(s.withMotif, fakeShot().motif, fakeShot({ fail: "cant-start" }).motif) });
+    const again = await pairBrief("stride", ws(s.withMotif), ws(s.without), s.out, { run: noRun, motif: bySide(s.withMotif, fakeShot().motif, fakeShot({ fail: "cant-start" }).motif) });
     expect(again).toBe("stride: 6 pairs for Test A: 0 with both apps' screens, 6 with only the one made with Motif, 0 with only the other, 0 with neither (left out).");
     const now = readPairs(s.out);
     expect(now.filter((p) => p.brief === "bloom")).toEqual([other]);
@@ -341,7 +433,7 @@ describe("pairBrief", () => {
     const s = sides();
     // No DESIGN.md: Test D's app isn't found.
     const f = fakeShot();
-    await pairBrief("stride", ws(s.withMotif), ws(s.without), s.out, { motif: f.motif });
+    await pairBrief("stride", ws(s.withMotif), ws(s.without), s.out, { run: noRun, motif: f.motif });
     expect(f.calls.map((c) => c.cwd)).toEqual([s.without]);
     expect(readPairs(s.out).map((p) => p.outcome)).toEqual(Array(6).fill("baseline-only"));
   });

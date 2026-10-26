@@ -4,12 +4,14 @@
 // one size; a side whose app or screen didn't render loses it, with why. Nothing an image is called or holds says which
 // app it came from: only a/pairs.json does, for the reveal.
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { WEB_STACKS, type StackId } from "../../cli/src/detect/stacks";
-import { CASES, type EvalCase } from "./cases";
+import { hasWebSupport } from "../../cli/src/stacks/react-native/project";
+import { CASES, isReactNative, type EvalCase } from "./cases";
 import { shotTargets, shotTimeout, type Collectors } from "./collect";
+import { packageManager, tail } from "./tools";
 import { findApp, findBuiltApp, type Workspace } from "./workspace";
 
 export interface Pair {
@@ -26,6 +28,12 @@ export interface Pair {
   outcome: "both" | "motif-only" | "baseline-only" | "neither";
   /** Why a side lost the pair. */
   why?: string;
+  /**
+   * An Expo brief: the web packages (react-dom, react-native-web, @expo/metro-runtime) installed in each app before it
+   * was shot, the same way on both sides, so that motif shot can draw it through Expo's web target; empty when the app
+   * had them all. Setup, not design: an app built without them would otherwise lose every pair to the harness.
+   */
+  webSetup?: { motif: string[]; baseline: string[] };
 }
 
 /** Every brief's pairs, relative to the run folder. */
@@ -91,15 +99,46 @@ const SHOT_ERRORS: Record<string, string> = {
   "capture-failed": "the screenshots couldn't be taken",
 };
 
+/** How each package manager runs a package's program: Expo's own install, which picks versions for the app's SDK. */
+const EXEC: Record<string, string[]> = { npm: ["npx"], pnpm: ["pnpm", "exec"], yarn: ["yarn"], bun: ["bunx"] };
+
 /**
- * One side's screens: motif shot on its app with the brief's targets and sizes, into a folder of its own; then, for each
- * screen and size, its light screenshot, or why there's none. The answer is kept in `log`.
+ * An Expo app's web packages that it neither declares nor has installed, installed with its own package manager
+ * (npx expo install react-dom react-native-web @expo/metro-runtime, less what it has): motif shot draws an Expo app
+ * through its web target and refuses one without them. Done the same way to both sides; the install's output is kept in
+ * `log`.
  */
-async function shootSide(app: string | null, c: EvalCase, sizes: number[], k: Pick<Collectors, "motif">, dir: string, log: string): Promise<(screen: string, size: number) => Side> {
-  mkdirSync(join(log, ".."), { recursive: true });
+async function expoWebSetup(app: string, k: Pick<Collectors, "run">, log: string): Promise<{ installed: string[] } | { why: string }> {
+  const missing = hasWebSupport(app);
+  if (missing.length === 0) return { installed: [] };
+  const r = await k.run([...EXEC[packageManager(app)]!, "expo", "install", ...missing], app, 900_000);
+  writeFileSync(log, `${r.stdout}\n${r.stderr}`);
+  if (r.code === 0 && !r.timedOut) return { installed: missing };
+  return { why: `Expo's web packages (${missing.join(", ")}) couldn't be installed${r.timedOut ? " in time" : ""}: ${tail(r, 3) || `exit code ${r.code}`}` };
+}
+
+/**
+ * One side's screens: on an Expo brief, its web packages installed first (expoWebSetup); then motif shot on its app with
+ * the brief's targets and sizes, into a folder of its own; then, for each screen and size, its light screenshot, or why
+ * there's none. What it answered is kept in the case's results folder (`logs`).
+ */
+async function shootSide(
+  app: string | null, c: EvalCase, sizes: number[], k: Pick<Collectors, "motif" | "run">, dir: string, logs: string,
+): Promise<{ at: (screen: string, size: number) => Side; installed?: string[] }> {
+  mkdirSync(logs, { recursive: true });
+  const log = join(logs, "pair-shots.json");
   if (!app || !existsSync(app)) {
     writeFileSync(log, JSON.stringify({ error: "no app" }, null, 2));
-    return () => ({ why: "The session left no app to shoot." });
+    return { at: () => ({ why: "The session left no app to shoot." }) };
+  }
+  let installed: string[] | undefined;
+  if (isReactNative(c)) {
+    const setup = await expoWebSetup(app, k, join(logs, "pair-install.log"));
+    if ("why" in setup) {
+      writeFileSync(log, JSON.stringify({ error: "web-setup", message: setup.why }, null, 2));
+      return { at: () => ({ why: `${setup.why}.` }) };
+    }
+    installed = setup.installed;
   }
   const { args, named } = shotTargets(c, app);
   const r = await k.motif(["shot", ...args, "--sizes", sizes.join(","), "--out", dir], app, shotTimeout(c));
@@ -108,9 +147,9 @@ async function shootSide(app: string | null, c: EvalCase, sizes: number[], k: Pi
   if (!routes) {
     const code = r.json?.error ? String(r.json.error) : "";
     const what = code ? `${SHOT_ERRORS[code] ?? "it couldn't be shot"} (${code}${r.json?.message ? `: ${r.json.message}` : ""})` : r.output.trim() || `motif shot ended with exit code ${r.code}`;
-    return () => ({ why: `The app couldn't be shot: ${what}.` });
+    return { at: () => ({ why: `The app couldn't be shot: ${what}.` }), ...(installed ? { installed } : {}) };
   }
-  return (screen, size) => {
+  const at = (screen: string, size: number): Side => {
     const x = routes.find((y) => (named.get(String(y.route)) ?? String(y.route)) === screen);
     if (!x) return { why: `${screen} wasn't captured.` };
     if (x.error) return { why: `${screen}: ${x.error}` };
@@ -122,45 +161,71 @@ async function shootSide(app: string | null, c: EvalCase, sizes: number[], k: Pi
     const file = shot ? resolve(app, shot) : undefined;
     return file && existsSync(file) ? { png: file } : { why: `${screen} has no light screenshot ${size} px wide.` };
   };
+  return { at, ...(installed ? { installed } : {}) };
 }
+
+type Saved = { img: string } | { why: string };
 
 /**
  * A brief's pairs: both apps shot by the same motif shot command (the app built with Motif first), one pair per starter
  * screen and size, each side's light screenshot stripped of its metadata and saved under a/img with a random name. A side
- * whose app is missing, couldn't be started, or whose screen didn't render loses that pair, with why; nothing is thrown
- * for an app that can't be shot. What each shot answered is kept in its case's folder (d-<brief>/, a-<brief>/).
+ * whose app is missing, couldn't be set up or started, whose screen didn't render or whose screenshot can't be read loses
+ * that pair, with why; nothing is thrown for an app that can't be shot. A pair's two images are written in a random
+ * order, and every image is given the same time at the end, so neither tells the sides apart; if anything throws
+ * part-way, the images this call wrote are removed. What each shot answered is kept in its case's results (d-<brief>/,
+ * a-<brief>/).
  */
-export async function shootPairs(brief: string, motifApp: string | null, baselineApp: string | null, c: EvalCase, out: string, k: Pick<Collectors, "motif">): Promise<Pair[]> {
+export async function shootPairs(brief: string, motifApp: string | null, baselineApp: string | null, c: EvalCase, out: string, k: Pick<Collectors, "motif" | "run">): Promise<Pair[]> {
   const sizes = shotSizes(c.stack);
   const images = join(out, IMAGES);
   mkdirSync(images, { recursive: true });
   // Outside both apps (nothing is written into them) and outside the run folder; gone once the images are copied.
   const tmp = mkdtempSync(join(tmpdir(), "shots-"));
+  const written: string[] = [];
   try {
-    const withMotif = await shootSide(motifApp, c, sizes, k, join(tmp, "1"), join(out, `d-${brief}`, "pair-shots.json"));
-    const without = await shootSide(baselineApp, c, sizes, k, join(tmp, "2"), join(out, `a-${brief}`, "pair-shots.json"));
+    const withMotif = await shootSide(motifApp, c, sizes, k, join(tmp, "1"), join(out, `d-${brief}`));
+    const without = await shootSide(baselineApp, c, sizes, k, join(tmp, "2"), join(out, `a-${brief}`));
+    const webSetup = isReactNative(c) ? { webSetup: { motif: withMotif.installed ?? [], baseline: without.installed ?? [] } } : {};
     const ids = new Set<string>();
-    const save = (side: Side): string | undefined => {
-      if (!("png" in side)) return undefined;
+    const save = (side: Side, screen: string, size: number): Saved => {
+      if (!("png" in side)) return side;
+      let bytes: Uint8Array;
+      try {
+        bytes = stripPng(readFileSync(side.png));
+      } catch (e) {
+        return { why: `${screen}'s screenshot ${size} px wide can't be used: ${(e as Error).message}` };
+      }
       const id = randomId(brief, (x) => existsSync(join(images, `${x}.png`)));
-      writeFileSync(join(images, `${id}.png`), stripPng(readFileSync(side.png)));
-      return `${IMAGES}/${id}.png`;
+      const file = join(images, `${id}.png`);
+      written.push(file);
+      writeFileSync(file, bytes);
+      return { img: `${IMAGES}/${id}.png` };
     };
     const pairs: Pair[] = [];
     for (const screen of c.routes) {
       for (const size of sizes) {
-        const m = withMotif(screen, size);
-        const b = without(screen, size);
-        const motif = save(m);
-        const baseline = save(b);
+        const sides = [withMotif.at(screen, size), without.at(screen, size)];
+        // Written in a random order: which file came first says nothing.
+        const order = randomBytes(1)[0]! & 1 ? [1, 0] : [0, 1];
+        const saved: Saved[] = [];
+        for (const i of order) saved[i] = save(sides[i]!, screen, size);
+        const [m, b] = saved as [Saved, Saved];
+        const motif = "img" in m ? m.img : undefined;
+        const baseline = "img" in b ? b.img : undefined;
         const outcome = motif && baseline ? "both" : motif ? "motif-only" : baseline ? "baseline-only" : "neither";
-        const why = outcome === "neither" ? `With Motif: ${(m as { why: string }).why} Without: ${(b as { why: string }).why}` : "why" in m ? m.why : "why" in b ? b.why : undefined;
+        const why = "why" in m && "why" in b ? `With Motif: ${m.why} Without: ${b.why}` : "why" in m ? m.why : "why" in b ? b.why : undefined;
         const id = randomId(brief, (x) => ids.has(x));
         ids.add(id);
-        pairs.push({ id, brief, screen, size, ...(motif ? { motif } : {}), ...(baseline ? { baseline } : {}), outcome, ...(why ? { why } : {}) });
+        pairs.push({ id, brief, screen, size, ...(motif ? { motif } : {}), ...(baseline ? { baseline } : {}), outcome, ...(why ? { why } : {}), ...webSetup });
       }
     }
+    // One time for every image, so the order they were written in doesn't show in their times either.
+    const now = new Date();
+    for (const file of written) utimesSync(file, now, now);
     return pairs;
+  } catch (e) {
+    for (const file of written) rmSync(file, { force: true });
+    throw e;
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -196,11 +261,17 @@ export function describePairs(brief: string, pairs: Pair[]): string {
  * grading found it (Test D's by its design guide, Test A's by its project file), both shot into pairs, and the pairs saved
  * in a/pairs.json. Returns the line to log.
  */
-export async function pairBrief(brief: string, withMotif: Workspace, without: Workspace, out: string, k: Pick<Collectors, "motif">): Promise<string> {
+export async function pairBrief(brief: string, withMotif: Workspace, without: Workspace, out: string, k: Pick<Collectors, "motif" | "run">): Promise<string> {
   const c = CASES.find((x) => x.test === "D" && x.brief === brief);
   if (!c) throw new Error(`There's no Test D case for the brief "${brief}".`);
   const app = (dir: string, find: (d: string) => string | null) => (existsSync(dir) ? find(dir) : null);
   const pairs = await shootPairs(brief, app(withMotif.app, findApp), app(without.app, findBuiltApp), c, out, k);
-  savePairs(out, brief, pairs);
+  try {
+    savePairs(out, brief, pairs);
+  } catch (e) {
+    // Images that no a/pairs.json lists would be left behind: the next try takes them again.
+    for (const p of pairs) for (const img of [p.motif, p.baseline]) if (img) rmSync(join(out, img), { force: true });
+    throw e;
+  }
   return describePairs(brief, pairs);
 }

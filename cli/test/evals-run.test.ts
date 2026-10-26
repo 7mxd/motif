@@ -926,6 +926,25 @@ describe("the eval runner and Test A (Part 4 §4)", () => {
     expect(steps).toEqual(["stride", "stride"]);
   });
 
+  test("--resume takes the pair steps of only the briefs whose two cases the run chose", async () => {
+    const steps: string[] = [];
+    let fail = true;
+    const h = paired({
+      afterBriefPair: async (brief) => {
+        steps.push(brief);
+        if (fail) throw new Error("no browser");
+      },
+    });
+    // bloom's a-* isn't in this run; and a d-bloom/a-bloom pair graded in the record by hand, but not chosen, is left alone.
+    await runEvals(["--cases", "d-stride,a-stride,d-bloom", "--work", h.work], h.deps, h.where);
+    const s = loadRun(h.where.results, RUN) as RunState;
+    s.pairs = { ...s.pairs, ledgerly: { done: false, note: "x" } };
+    writeFileSync(join(h.where.results, RUN, "run.json"), JSON.stringify(s));
+    fail = false;
+    await runEvals(["--resume", RUN], h.deps, h.where);
+    expect(steps).toEqual(["stride", "stride"]);
+  });
+
   test("--resume doesn't run the pair step again for a brief whose pairs are done, even with its folders kept", async () => {
     const steps: string[] = [];
     const h = paired({ afterBriefPair: async (brief) => void steps.push(brief) });
