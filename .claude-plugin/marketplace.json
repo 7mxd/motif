@@ -11,8 +11,8 @@
       "description": "Design and build polished, consistent app UI from a design guide your agent follows: mockups before code, screenshots after, and reviews in plain words.",
       "source": {
         "source": "archive",
-        "url": "https://github.com/7mxd/motif/releases/download/v0.6.0/motif-claude-code.zip",
-        "sha256": "398613f348d4eb266d36dcc3ff89f8853134a89bf06b280de9acbb7ddf631801"
+        "url": "https://github.com/7mxd/motif/releases/download/v0.6.1/motif-claude-code.zip",
+        "sha256": "b2e3ecac2a388fc1283a48a218636860c4aa88544ef4ab7f1c9536b8b0f8dbb2"
       }
     }
   ]
