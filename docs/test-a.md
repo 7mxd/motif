@@ -18,11 +18,13 @@ A brief that falls short blocks the release until that stack is improved and Tes
 Test A is fair, not perfect. These are the known ways it leans:
 
 - PNG colour chunks (gAMA, sRGB, iCCP) are dropped on both sides, so both show as sRGB. Colours can differ a little from what a device shows.
-- Flutter and Compose baselines that load Google Fonts at runtime fall back to Roboto in offline screenshots (Robolectric, `flutter test`). They may look plainer than they would on a device.
+- Compose baselines that load Google Fonts at runtime (the downloadable-fonts provider) fall back to Roboto under Robolectric: Compose's shot wires fonts only through Motif's own theme. They may look plainer than they would on a device. Flutter baselines get the google_fonts families their code names (`GoogleFonts.onest(…)`, `GoogleFonts.getFont('Onest')`): Motif's shot downloads them into its cache and loads them before drawing, as it does for an app made with Motif. Only a family named at runtime (a variable passed to `getFont`), or one that can't be downloaded, falls back, and the shot's notes say so.
 - Expo apps on both sides get Expo's web packages installed before shooting. The setup is equal.
 - SwiftUI shots name each app's own previews.
 
 ## Runs
 
-| Brief | Pairs | AI: Motif / baseline / tie | Owner: Motif / other | Verdict |
-|---|---|---|---|---|
+One row per brief of each run, with the run's id (its folder in `tests/evals/results/`), the candidate's commit and the model both sides were built by (`--model`). Keep failed runs too: a new candidate re-runs both sides, so each run is its own record.
+
+| Run | Commit | Model | Brief | Pairs | AI: Motif / baseline / tie | Owner: Motif / other | Verdict |
+|---|---|---|---|---|---|---|---|

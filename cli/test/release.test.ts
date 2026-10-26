@@ -450,6 +450,26 @@ describe("the release checklist and Test A's record (Part 4)", () => {
     expect(text).toContain("## Runs");
   });
 
+  test("docs/test-a.md's Runs table names each run: its id, commit and model", () => {
+    const runs = read("docs/test-a.md").split(/^## Runs$/m)[1]!;
+    expect(runs).toContain("| Run | Commit | Model | Brief | Pairs | AI: Motif / baseline / tie | Owner: Motif / other | Verdict |");
+    expect(runs).toContain("failed runs too");
+  });
+
+  test("docs/test-a.md's font bias is only what's true: Compose falls back to Roboto; Flutter loads the google_fonts families its code names", () => {
+    const biases = read("docs/test-a.md").split(/^## Known biases$/m)[1]!.split(/^## /m)[0]!;
+    expect(biases).not.toContain("Flutter and Compose baselines that load Google Fonts at runtime fall back to Roboto");
+    expect(biases).toContain("Compose baselines that load Google Fonts at runtime");
+    expect(biases).toContain("Flutter baselines get the google_fonts families their code names");
+  });
+
+  test("decision 0013 says a finished session stands within a run, and a new candidate re-runs both sides", () => {
+    const d = read("docs/decisions/0013-test-a-judges.md");
+    expect(d).not.toContain("never re-rolled until Motif wins.");
+    expect(d).toContain("Within a run it is never re-rolled: a session that finished stands");
+    expect(d).toContain("a new release candidate re-runs both sides");
+  });
+
   test("the core spec's Test A row isn't only Human, and decision 0013 exists", () => {
     const row = read("docs/specs/2026-10-12-motif-core-design.md").split(/\r?\n/).find((l) => l.startsWith("| A |")) ?? "";
     expect(row).toContain("AI judges and the owner");

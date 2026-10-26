@@ -9,7 +9,7 @@
 1. **Two kinds of judge, before release.** AI judges (read-only Claude Code sessions with `tests/evals/rubric-a.md`) judge every pair twice, with the sides swapped. A side wins only when both judgements pick it. The owner judges every pair too, blind, in a random order, on a page served from their own computer (`bun tests/evals/judge-owner.ts <run>`).
 2. **Motif must win on every brief.** The AI judges pick Motif in at least 70% of a brief's pairs and the baseline in at most 15%. The owner picks Motif in more than half. One brief that falls short blocks v1.0.0.
 3. **No public voting.** Nothing is published for votes. After v1.0.0 the owner posts about Motif on LinkedIn, and the post invites comments only. Comments are feedback, not results.
-4. **The baseline is the same agent without Motif**: same model, time limit and tools, no plugins, a prompt with every mention of Motif removed. It is never re-rolled until Motif wins.
+4. **The baseline is the same agent without Motif**: same model, time limit and tools, no plugins, a prompt with every mention of Motif removed. Within a run it is never re-rolled: a session that finished stands, whatever it built (only one cut off by a usage limit, a crash or Ctrl+C runs again). After a failure, a new release candidate re-runs both sides, so the baseline is built afresh beside the improved Motif, never picked again on its own.
 
 ## Why
 
