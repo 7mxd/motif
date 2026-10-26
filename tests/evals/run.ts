@@ -1,18 +1,22 @@
-// Runs Motif's agent evals (tests B, C and D, spec §13.2) through your signed-in Claude Code, one case at a time, and grades them.
-// Never an API key; never in CI. See tests/evals/README.md.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+// Runs Motif's agent evals (tests B, C and D, spec §13.2, and Test A's builds without Motif, Part 4 §4) through your signed-in
+// Claude Code, one case at a time, and grades them. Never an API key; never in CI. See tests/evals/README.md.
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
-import { CASES, isAngular, isCompose, isFlutter, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, macOnlyNote, needsAngular21, needsAngular22, needsBrowser, needsNode, needsSvelteKit3, needsVite8, selectCases, type EvalCase } from "./cases";
+import { addedNote, CASES, isAngular, isBaseline, isCompose, isFlutter, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, macOnlyNote, needsAngular21, needsAngular22, needsBrowser, needsNode, needsSvelteKit3, needsVite8, pairedCase, selectCases, withMotifSides, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
+import { JUDGE_A_EXPECTED_TOOLS, JUDGE_A_SCHEMA, JUDGE_A_TOOLS, judgeAPrompt, judgePairs, missingJudgements, readPick, type BriefParts, type JudgeAOutcome } from "./judge-a";
+import { ownerPicks } from "./page-a";
+import { pairBrief } from "./pairs";
 import { paths, preflight, type NodeNeeds, type Ready } from "./preflight";
 import { NO_PURGE_NOTE, removeProjectData } from "./purge";
 import { renderReport, testVerdicts } from "./report";
+import { forcedPairs, scoreRun } from "./score-a";
 import { runSession, type SessionOutcome, type SessionSpec } from "./session";
 import { gitState, loadRun, newRunId, remaining, reserveRunId, runDir, saveRun, type RunState, type SessionSummary } from "./state";
 import { motifRunner, runCmd } from "./tools";
@@ -23,7 +27,7 @@ export const USAGE = `Usage: bun tests/evals/run.ts [options]
 Runs Motif's agent evals through your signed-in Claude Code (never an API key), one case at a time.
 
   --list                 List the cases
-  --tests B,C,D          Run only these tests
+  --tests A,B,C,D        Run only these tests (A: each D brief built without Motif)
   --cases <id,...>       Run only these cases
   --dry-run              Show each case's prompt and the Claude Code command, without running anything
   --resume <run>         Continue a run that stopped (a usage limit, Ctrl+C)
@@ -31,7 +35,7 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
                          diffs; nothing else is run or changed (use it once the run has finished)
   --keep                 Keep each case's folder after grading
   --model <name>         The model for the eval sessions (default: your account's)
-  --judge-model <name>   The model for test C's grader (default: your account's)
+  --judge-model <name>   The model for test C's grader and Test A's judges (default: your account's)
   --max-turns <n>        Cap every case at n turns (for a quick check of the runner)
   --work <folder>        Where case folders go (default: ~/.motif-evals)
   --claude <path>        The Claude Code program to use`;
@@ -58,7 +62,18 @@ export interface RunDeps {
   agentSettings(): Record<string, string | null>;
   /** The platform the evals run on (this one when not given): off macOS, the Mac-only cases are skipped. */
   platform?: NodeJS.Platform;
+  /**
+   * Test A: runs once a brief's d-* and a-* cases are both graded, with both apps' folders still there; they're removed
+   * after it (unless --keep). Test A's screenshots of both apps are taken here, into the run's folder (`out`). A line it
+   * returns is logged.
+   */
+  afterBriefPair?(brief: string, withMotif: Workspace, without: Workspace, out: string): Promise<string | void>;
+  /** The system's temp folder, where each of Test A's judges gets a new folder (os.tmpdir() when not given). */
+  tempFolder?(): string;
 }
+
+/** Words that would name a side to a judge, anywhere in its folder's path. */
+const SIDE_WORDS = /motif|base/i;
 
 /** An argument as a shell reads it: quoted when it holds spaces, brackets, commas or wildcards. */
 const shellWord = (a: string) => (/[\s()*,"']/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
@@ -113,11 +128,14 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       deps.log(`--resume uses the options the run started with, so it leaves out ${ignored.length === 1 ? ignored[0] : `${ignored.slice(0, -1).join(", ")} and ${ignored.at(-1)}`}.`);
     }
   } else {
-    const picked = selectCases(CASES, { tests: list(o.tests), ids: list(o.cases) });
-    if ("error" in picked) {
-      deps.log(picked.error);
+    const chosen = selectCases(CASES, { tests: list(o.tests), ids: list(o.cases) });
+    if ("error" in chosen) {
+      deps.log(chosen.error);
       return 2;
     }
+    // An a-* is scored only against its d-*: one chosen without it gets it added (a Test A re-run runs D too).
+    const { cases: picked, added } = withMotifSides(CASES, chosen);
+    if (added.length > 0) deps.log(addedNote(added));
     const maxTurns = o["max-turns"] === undefined ? undefined : Number(o["max-turns"]);
     if (maxTurns !== undefined && !(Number.isInteger(maxTurns) && maxTurns > 0)) {
       deps.log("--max-turns needs a whole number above 0.");
@@ -158,6 +176,15 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   }
   const here = macOnly(remaining(state).map((id) => CASES.find((c) => c.id === id)).filter((c): c is EvalCase => Boolean(c)), platform);
   const todo = here.run;
+  // Test A: briefs whose two apps were both graded but whose screenshots weren't taken (the step failed, or was cut off):
+  // --resume takes them, from the folders kept for it: only briefs whose two cases this run chose, and not a Mac-only
+  // brief off a Mac.
+  const unpaired = CASES.filter((d) => d.test === "D" && d.brief && d.id in state.cases && (platform === "darwin" || !d.mac)).flatMap((d) => {
+    const a = pairedCase(d);
+    const ds = state.cases[d.id];
+    const as = a ? state.cases[a.id] : undefined;
+    return a && ds?.status === "graded" && as?.status === "graded" && !state.pairs?.[d.brief!]?.done ? [{ d, a }] : [];
+  });
   /**
    * Records the skipped cases with why, under the run's settled id (the note says how to resume it on a Mac), keeping
    * everything they had: a finished session's folder and summary, and the status and note to give back on a Mac.
@@ -173,9 +200,11 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       };
     }
   };
+  // Test A: judgements a paused run hadn't made yet (a new run has none).
+  const unjudged = typeof o.resume === "string" ? missingJudgements(runDir(where.results, state.id), new Set(forcedPairs(state, runDir(where.results, state.id)).keys())).length : 0;
   if (here.skipped.length > 0) {
     deps.log(here.reason);
-    if (todo.length === 0) {
+    if (todo.length === 0 && unpaired.length === 0 && unjudged === 0) {
       deps.log("Nothing is left to run here.");
       // A new run doesn't start; a resumed one is done here, and its report says what's left for a Mac.
       if (idBase !== null || o["dry-run"]) return 2;
@@ -186,10 +215,22 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   }
   let dir = runDir(where.results, state.id);
   let mcpConfigFile = join(dir, "no-mcp.json");
+  // Test A's sessions load no plugin at all: not Motif's, and (as in every session) not the developer's. Their empty MCP
+  // list is in their own case folder, not in this checkout's results, so no path in their arguments is Motif's.
+  const caseMcpConfig = (c: EvalCase) => (isBaseline(c) ? join(state.options.work, c.id, "no-mcp.json") : mcpConfigFile);
   const caseArgs = (c: EvalCase) =>
-    agentArgs({ pluginDir: p.pluginDir, mcpConfigFile, maxTurns: state.options.maxTurns ?? c.maxTurns, maxBudgetUsd: c.maxBudgetUsd, model: state.options.model });
+    agentArgs({ ...(isBaseline(c) ? {} : { pluginDir: p.pluginDir }), mcpConfigFile: caseMcpConfig(c), maxTurns: state.options.maxTurns ?? c.maxTurns, maxBudgetUsd: c.maxBudgetUsd, model: state.options.model });
+
+  // A Test A session works in its case folder under --work: a path that names Motif is a tell it could read (the default,
+  // ~/.motif-evals, does). Said, not refused: a quick check of the runner can use any folder.
+  const warnWork = () => {
+    if (todo.some(isBaseline) && /motif/i.test(state.options.work)) {
+      deps.log(`The work folder ${state.options.work} has "motif" in its path, and Test A's sessions (a-*) work in it, so they can see Motif's name. Choose a --work folder whose path doesn't for the run that counts.`);
+    }
+  };
 
   if (o["dry-run"]) {
+    warnWork();
     for (const c of todo) {
       deps.log([
         `\n${c.id}: ${c.title}`,
@@ -203,11 +244,15 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 0;
   }
 
-  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose), todo.some(isSwiftUI), todo.some(needsNode), { vite8: todo.some(needsVite8), svelteKit3: todo.some(needsSvelteKit3), angular21: todo.some(needsAngular21), angular22: todo.some(needsAngular22) });
+  // What the pair steps left to take need too: they draw both apps.
+  const needs = [...todo, ...unpaired.flatMap((u) => [u.d, u.a])];
+  const ready = await deps.preflight(needs.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, needs.some(isFlutter), needs.some(isCompose), needs.some(isSwiftUI), needs.some(needsNode), { vite8: needs.some(needsVite8), svelteKit3: needs.some(needsSvelteKit3), angular21: needs.some(needsAngular21), angular22: needs.some(needsAngular22) });
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;
   }
+  // For Test A's judges, declared below.
+  const claude = ready.claude;
   const instructions = deps.instructionFiles(state.options.work);
   if (instructions.length > 0) {
     deps.log(
@@ -218,6 +263,8 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   const personal = deps.personal();
   const { env, dropped } = sessionEnv(deps.env, p.motifBin);
   if (dropped.length) deps.log(`Leaving these out of the eval sessions' environment: ${dropped.join(", ")}.`);
+  // A Test A session has no Motif to point at, nor to keep from connecting anything: nothing in its environment names Motif.
+  const baselineEnv = Object.fromEntries(Object.entries(env).filter(([k]) => !/^MOTIF_/i.test(k)));
   if (typeof o.resume === "string") {
     const git = deps.git();
     if (git.commit !== state.commit || git.dirty !== state.dirty) state.resumes.push({ at: deps.now().toISOString(), commit: git.commit, dirty: git.dirty });
@@ -250,8 +297,26 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 3;
   };
 
+  warnWork();
   deps.log(`Run ${state.id}: ${todo.length} cases. Each starts a fresh Claude Code session on your plan. Stop any time with Ctrl+C, then continue with --resume ${state.id}.`);
   if (!ready.purge) deps.log(NO_PURGE_NOTE);
+  for (const { d, a } of unpaired) {
+    const dWs = state.cases[d.id]!.workspace;
+    const aWs = state.cases[a.id]!.workspace;
+    if (!dWs || !aWs || !existsSync(dWs.dir) || !existsSync(aWs.dir)) {
+      deps.log(`${d.brief}: Test A's screenshots weren't taken, and the folders of ${d.id} and ${a.id} are gone, so they can't be now.`);
+      continue;
+    }
+    deps.log(`\n${d.brief}: taking Test A's screenshots of ${d.id} and ${a.id}, which weren't taken before…`);
+    if (await pairStep(d, a, dWs, aWs)) {
+      removeCase(d.id, dWs);
+      removeCase(a.id, aWs);
+    }
+  }
+  // Test A's pairs left unjudged (a usage limit paused the run part-way), and those of the briefs just paired.
+  const judgeFailed = new Set<string>();
+  const stoppedJudging = await judgeStep();
+  if (stoppedJudging !== undefined) return stoppedJudging;
   for (const c of todo) {
     const cs = state.cases[c.id]!;
     const out = join(dir, c.id);
@@ -272,10 +337,12 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       delete cs.note;
       save();
       deps.log(`${c.id}: Claude Code is working (up to ${c.minutes} minutes). Everything it does goes to ${join(out, "session.jsonl")}.`);
+      if (isBaseline(c)) writeFileSync(caseMcpConfig(c), JSON.stringify({ mcpServers: {} }));
       const before = deps.agentSettings();
       const outcome = await deps.session({
-        command: [ready.claude], args: caseArgs(c), cwd: cs.workspace.app, env: withTempFolder(env, join(cs.workspace.dir, "tmp")), prompt: c.prompt,
-        transcript: join(out, "session.jsonl"), timeoutMs: c.minutes * 60_000, expect: { pluginDir: p.pluginDir, auto: true, tools: AGENT_TOOLS, personal },
+        command: [ready.claude], args: caseArgs(c), cwd: cs.workspace.app, env: withTempFolder(isBaseline(c) ? baselineEnv : env, join(cs.workspace.dir, "tmp")), prompt: c.prompt,
+        transcript: join(out, "session.jsonl"), timeoutMs: c.minutes * 60_000,
+        expect: { ...(isBaseline(c) ? {} : { pluginDir: p.pluginDir }), auto: true, tools: AGENT_TOOLS, personal },
       });
       cs.session = summary(outcome);
       await purge(cs.workspace.app);
@@ -373,29 +440,161 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     cs.status = "graded";
     delete cs.note;
     save();
-    if (!state.options.keep) {
-      try {
-        deps.removeDir(ws.dir);
-      } catch (e) {
-        deps.log(`${c.id}: Couldn't delete ${ws.dir} (${(e as Error).message}); delete it yourself when nothing is using it.`);
-      }
-    }
+    await settleFolder(c, ws);
     const failed = cs.grade.criteria.filter((k) => !k.pass).map((k) => k.label);
     deps.log(`${c.id}: ${cs.grade.pass ? "PASS" : `FAIL (${failed.join("; ")})`}`);
+    // Once a brief is paired, its pairs are judged.
+    const stopped = await judgeStep();
+    if (stopped !== undefined) return stopped;
   }
   return finish();
+
+  /**
+   * Test A's AI judges: every pair still missing a judgement is judged, each saved as it's made. Returns the exit code
+   * when the run must stop here: a usage limit pauses it (--resume judges only what's left), and a judge that wasn't
+   * isolated stops it. A judgement that couldn't be made is said and left for --resume.
+   */
+  async function judgeStep(): Promise<number | undefined> {
+    const forced = new Set(forcedPairs(state, dir).keys());
+    const left = missingJudgements(dir, forced).filter(({ pair, order }) => !judgeFailed.has(`${pair.id} ${order}`)).length;
+    if (left === 0) return undefined;
+    deps.log(`\nTest A: ${left} ${left === 1 ? "judgement" : "judgements"} to make, each a read-only Claude Code session comparing two screenshots…`);
+    try {
+      const r = await judgePairs(dir, judgeA, { skip: judgeFailed, exclude: forced, log: deps.log });
+      deps.log(`Test A: ${r.judged} of ${left} ${left === 1 ? "judgement" : "judgements"} made.`);
+    } catch (e) {
+      if (e instanceof Paused) return pause(e.resetsAt);
+      if (e instanceof Stopped) {
+        deps.log(`\nStopped: ${e.message}`);
+        finish();
+        return 2;
+      }
+      throw e;
+    }
+    return undefined;
+  }
+
+  /**
+   * One of Test A's judgements, in a folder of its own outside the run's and the cases' folders, holding nothing but the
+   * two images as left.png and right.png: no name, path or file the judge can reach says which app either came from. Its
+   * empty MCP list and its temp folder sit beside it, out of its reach; it goes once the judge is done.
+   */
+  async function judgeA(images: { left: string; right: string }, brief: BriefParts, name: string): Promise<JudgeAOutcome> {
+    // Nothing in the folder's whole path may spell a side: not the temp folder it's in, which can't be helped here…
+    const temp = deps.tempFolder?.() ?? tmpdir();
+    if (SIDE_WORDS.test(temp)) {
+      throw new Stopped(
+        `Test A's judges work in a new folder in the system's temp folder, and its path (${temp}) has "motif" or "base" in it, which a judge could read as a side. Point TEMP (TMPDIR on macOS and Linux) at a folder whose path doesn't, then --resume.`,
+      );
+    }
+    // …nor its random part, which is drawn again.
+    let root = mkdtempSync(join(temp, "judge-"));
+    while (SIDE_WORDS.test(basename(root))) {
+      rmSync(root, { recursive: true, force: true });
+      root = mkdtempSync(join(temp, "judge-"));
+    }
+    try {
+      const own = join(root, "screens");
+      mkdirSync(own);
+      writeFileSync(join(own, "left.png"), readFileSync(images.left));
+      writeFileSync(join(own, "right.png"), readFileSync(images.right));
+      const mcp = join(root, "no-mcp.json");
+      writeFileSync(mcp, JSON.stringify({ mcpServers: {} }));
+      const instructions = deps.instructionFiles(own);
+      if (instructions.length > 0) throw new Stopped(`A judge would read these instruction files: ${instructions.join(", ")}. Move them aside, then --resume.`);
+      let r: SessionOutcome;
+      try {
+        r = await deps.session({
+          command: [claude], args: judgeArgs({ mcpConfigFile: mcp, schema: JUDGE_A_SCHEMA, maxTurns: 10, model: state.options.judgeModel, tools: JUDGE_A_TOOLS }),
+          cwd: own, env: withTempFolder(baselineEnv, join(root, "tmp")), prompt: judgeAPrompt(brief), transcript: join(dir, "a", "judges", `${name}.jsonl`),
+          timeoutMs: 10 * 60_000, expect: { auto: false, tools: JUDGE_A_EXPECTED_TOOLS, personal },
+        });
+      } finally {
+        // Claude Code's state for the folder goes whatever became of the session.
+        await purge(own);
+      }
+      if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "A judge's session didn't start.");
+      if (r.end === "usage-limit") return { paused: r.resetsAt ? { resetsAt: r.resetsAt } : {} };
+      const answer = r.end === "finished" ? readPick(r.result?.structured) : null;
+      if (answer) return answer;
+      return { error: r.end === "finished" ? "it didn't answer left, right or tie." : `${r.problems.join(" ") || `its session ended with "${r.end}"`}.` };
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  /** A graded case's folder, removed unless --keep. */
+  function removeCase(id: string, ws: Workspace): void {
+    if (state.options.keep) return;
+    try {
+      deps.removeDir(ws.dir);
+    } catch (e) {
+      deps.log(`${id}: Couldn't delete ${ws.dir} (${(e as Error).message}); delete it yourself when nothing is using it.`);
+    }
+  }
+
+  /**
+   * After a case is graded: its folder goes, unless this run has its brief's other side (Test A compares a brief's two
+   * apps). Then it stays until the other is graded too; once both are, Test A's step runs with both, and both go.
+   */
+  async function settleFolder(c: EvalCase, ws: Workspace): Promise<void> {
+    const partner = pairedCase(c);
+    const ps = partner ? state.cases[partner.id] : undefined;
+    if (!partner || !ps) return removeCase(c.id, ws);
+    if (ps.status !== "graded" || !ps.workspace) {
+      deps.log(
+        `${c.id}: keeping its folder (${ws.dir}) for Test A until ${partner.id} is graded too; then both are compared${state.options.keep ? "" : " and removed"}. If ${partner.id} never is, --resume this run to finish it, or delete the folder yourself.`,
+      );
+      return;
+    }
+    const [d, a] = isBaseline(c) ? [partner, c] : [c, partner];
+    const [dWs, aWs] = isBaseline(c) ? [ps.workspace, ws] : [ws, ps.workspace];
+    if (!(await pairStep(d, a, dWs, aWs))) return;
+    removeCase(d.id, dWs);
+    removeCase(a.id, aWs);
+  }
+
+  /** Test A's step for a brief's two graded apps, recorded in the run: whether it went through (else both folders stay). */
+  async function pairStep(d: EvalCase, a: EvalCase, dWs: Workspace, aWs: Workspace): Promise<boolean> {
+    const brief = d.brief!;
+    state.pairs ??= {};
+    try {
+      const said = await deps.afterBriefPair?.(brief, dWs, aWs, dir);
+      if (said) deps.log(said);
+    } catch (e) {
+      const why = (e as Error).message;
+      state.pairs[brief] = { done: false, note: why };
+      save();
+      deps.log(`${d.id} and ${a.id}: Test A's step after both were graded failed (${why}); both folders are kept. --resume runs it again.`);
+      return false;
+    }
+    state.pairs[brief] = { done: true };
+    save();
+    return true;
+  }
 }
 
 /**
  * report.md and report.json for the run as it stands; the exit code is 0 only when every case passed, leaving out the
- * Mac-only ones skipped here, as the verdicts do.
+ * Mac-only ones skipped here, as the verdicts do. A Test A case only needs to be graded: an app built without Motif
+ * that doesn't build or render isn't a failure of the run, and Test A counts its screens as lost pairs.
  */
-function writeReport(state: RunState, dir: string, deps: RunDeps): number {
-  const verdicts = testVerdicts(state, CASES);
-  writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts));
-  writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts }, null, 2));
+export function writeReport(state: RunState, dir: string, deps: Pick<RunDeps, "log">): number {
+  // The owner's votes, from the page judge-owner.ts serves, once there are any. A votes file that can't be read is said,
+  // not taken as no votes; the report waits for them until it's mended.
+  let owner: ReturnType<typeof ownerPicks> | undefined;
+  try {
+    owner = ownerPicks(dir);
+  } catch (e) {
+    deps.log((e as Error).message);
+  }
+  const scores = scoreRun(state, dir, owner);
+  const verdicts = testVerdicts(state, CASES, scores);
+  writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts, scores));
+  writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts, ...(verdicts.some((v) => v.test === "A") ? { scoresA: scores } : {}) }, null, 2));
   deps.log(`\n${verdicts.map((v) => `${v.test}: ${v.status} — ${v.detail}`).join("\n")}\nReport: ${join(dir, "report.md")}`);
-  return Object.values(state.cases).filter((c) => c.status !== "skipped").every((c) => c.status === "graded" && c.grade?.pass) ? 0 : 1;
+  const baseline = (id: string) => CASES.some((c) => c.id === id && isBaseline(c));
+  return Object.entries(state.cases).filter(([, c]) => c.status !== "skipped").every(([id, c]) => c.status === "graded" && (c.grade?.pass || baseline(id))) ? 0 : 1;
 }
 
 /** --regrade: each graded B case's new-component criterion again, from its saved diff; every other criterion stands. */
@@ -454,6 +653,8 @@ if (import.meta.main) {
       instructionFiles: (dir) => memoryFiles(dir, homedir()),
       personal: () => personalNames(homedir()),
       agentSettings: () => agentSettings(),
+      // Test A: both apps of a brief shot the same way into anonymous pairs (a/pairs.json, a/img/).
+      afterBriefPair: (brief, withMotif, without, out) => pairBrief(brief, withMotif, without, out, { motif, run: runCmd }),
     },
     // Case folders live in the home folder by default: macOS empties the temp folder of files untouched for 3 days,
     // which would take a paused run's folders before --resume.

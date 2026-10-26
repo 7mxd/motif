@@ -1,11 +1,11 @@
 // The eval cases (spec §13.2 and the plain web spec §11): test B's features on copies of the contract apps and site, test C's reviews of the seeded apps and site,
 // and test D's new apps from briefs; on React web, plain web, Flutter, Jetpack Compose, React Native (Expo), Vue, Svelte, Angular and SwiftUI (on a Mac only). Each prompt switches approvals
-// off in the skill's own words.
+// off in the skill's own words. Test A (Part 4 §4) builds each D brief again without Motif: no plugin, and a prompt that never names it.
 
 import type { StackId } from "../../cli/src/detect/stacks";
 import type { FixtureName } from "../fixtures/assemble";
 
-export type TestId = "B" | "C" | "D";
+export type TestId = "A" | "B" | "C" | "D";
 
 export interface EvalCase {
   id: string;
@@ -13,10 +13,10 @@ export interface EvalCase {
   title: string;
   /** B and C: the fixture copied for the session. */
   fixture?: FixtureName;
-  /** D: tests/fixtures/briefs/<brief>.md, copied into the empty folder as brief.md. */
+  /** D and A: tests/fixtures/briefs/<brief>.md, copied into the empty folder as brief.md. */
   brief?: string;
   /**
-   * D: a project the brief starts from, copied in beside it. Only for a stack with no command-line starter (an Xcode
+   * D and A: a project the brief starts from, copied in beside it. Only for a stack with no command-line starter (an Xcode
    * App project, which the SwiftUI guide says never to write by hand); the others start from an empty folder.
    */
   starter?: FixtureName;
@@ -67,8 +67,8 @@ export const isViteWebApp = (c: EvalCase): boolean => isVue(c) || isSvelte(c);
  */
 export const needsVite8 = (c: EvalCase): boolean => isViteWebApp(c) && !needsSvelteKit3(c);
 
-/** A case whose app is made with `npx sv create`, which installs SvelteKit 3: Node.js 22.17 or later. */
-export const needsSvelteKit3 = (c: EvalCase): boolean => c.id === "d-nuzha";
+/** A case whose app is made with `npx sv create`, which installs SvelteKit 3 (Nuzha, with Motif or without): Node.js 22.17 or later. */
+export const needsSvelteKit3 = (c: EvalCase): boolean => c.brief === "nuzha";
 
 /**
  * A case on an Angular app (Ataa, or a new one from a brief): a web app, built with npm and drawn in a browser. ng build
@@ -80,14 +80,16 @@ export const isAngular = (c: EvalCase): boolean => c.stack === "angular";
 export const needsAngular21 = (c: EvalCase): boolean => isAngular(c) && !needsAngular22(c);
 
 /**
- * A case whose app is made with `ng new`, which installs the latest Angular (22): Node.js 22.22.3 or later on Node 22,
- * 24.15 or later on Node 24, or 26 or later.
+ * A case whose app is made with `ng new`, which installs the latest Angular (22) (Sanad, with Motif or without): Node.js
+ * 22.22.3 or later on Node 22, 24.15 or later on Node 24, or 26 or later.
  */
-export const needsAngular22 = (c: EvalCase): boolean => c.id === "d-sanad";
+export const needsAngular22 = (c: EvalCase): boolean => c.brief === "sanad";
 
 /** A case on a SwiftUI app: it needs a Mac with Xcode and an iOS simulator. */
 export const isSwiftUI = (c: EvalCase): boolean => c.stack === "swiftui";
 
+/** "1 pair", "3 pairs". */
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 export const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
 
 /**
@@ -113,7 +115,7 @@ export function macOnly(cases: EvalCase[], platform: NodeJS.Platform): { run: Ev
 }
 
 /**
- * Whether grading needs a browser: C and D always, and B on a plain site, whose new page is checked in one, and on an
+ * Whether grading needs a browser: C, D and A always, and B on a plain site, whose new page is checked in one, and on an
  * Expo app, whose new screen is drawn through its web target, and on a Vue, Svelte or Angular app, whose new page is drawn at two sizes. Flutter, Compose and SwiftUI draw their own screens, so
  * their cases never do.
  */
@@ -190,6 +192,37 @@ const swiftUINewApp = (brief: string, title: string, starter: FixtureName): Eval
   prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Make the welcome screen the app's root view, and give the sign-in and home screens #Preview blocks titled "Sign in" and "Home".\n\n${UNATTENDED}`,
   maxTurns: 400, maxBudgetUsd: 80, minutes: 180, stack: "swiftui", mac: true,
 });
+
+/**
+ * Test A's case for a D brief: the same brief, starter, routes, stack, caps and time, and the same prompt with every
+ * mention of Motif taken out (no /motif:init, and none of "my answers to your questions", which answers the skill's
+ * questions), asking for an app that looks and works well. UNATTENDED names nothing of Motif's, so it is shared.
+ */
+export function baselineCase(d: EvalCase): EvalCase {
+  const asks = "it has my answers to your questions";
+  const end = `\n\n${UNATTENDED}`;
+  if (d.test !== "D" || !d.brief || !d.prompt.startsWith("/motif:init ") || !d.prompt.includes(asks) || !d.prompt.endsWith(end)) {
+    throw new Error(`${d.id} isn't a D case whose prompt Test A knows how to take Motif out of.`);
+  }
+  const ask = d.prompt.slice("/motif:init ".length, -end.length).replace(asks, "it has the answers to any questions you'd ask");
+  return { ...d, id: `a-${d.brief}`, test: "A", prompt: `${ask} Make it look and work well.${end}` };
+}
+
+/** A Test A case: a brief built without Motif. */
+export const isBaseline = (c: EvalCase): boolean => c.test === "A";
+
+const NEW_APPS: EvalCase[] = [
+  newApp("stride", "New app: Stride (a running club)"),
+  newApp("ledgerly", "New app: Ledgerly (invoicing)"),
+  newApp("bloom", "New app: Bloom (plant care)"),
+  newApp("sahm", "New Flutter app: Sahm (university carpools)", "flutter", "home", "screen"),
+  newApp("nabta", "New Compose app: Nabta (plant care)", "compose", "home", "screen"),
+  newApp("rihla", "New Expo app: Rihla (a trip planner)", "react-native", "trips", "screen"),
+  newApp("darb", "New Vue app: Darb (a running club's meetups)", "vue", "meetups"),
+  newApp("nuzha", "New Svelte app: Nuzha (a city's parks and trails)", "svelte", "trails"),
+  newApp("sanad", "New Angular app: Sanad (a neighbourhood repair-request desk)", "angular", "requests"),
+  swiftUINewApp("masar", "New SwiftUI app: Masar (a running tracker)", "swiftui-starter-masar"),
+];
 
 export const CASES: EvalCase[] = [
   feature("b-settings", "Settings screen", "/settings",
@@ -302,22 +335,37 @@ ${UNATTENDED}`,
     prompt: `/motif:review Review the whole app: its screens are / (the root view: the menu, once signed in) and the previews Menu, Drink (a drink's page), Loyalty card and Sign in. Write the report only: stop after the report step and don't change the app's code.\n\n${UNATTENDED}`,
     maxTurns: 150, maxBudgetUsd: 40, minutes: 120,
   },
-  newApp("stride", "New app: Stride (a running club)"),
-  newApp("ledgerly", "New app: Ledgerly (invoicing)"),
-  newApp("bloom", "New app: Bloom (plant care)"),
-  newApp("sahm", "New Flutter app: Sahm (university carpools)", "flutter", "home", "screen"),
-  newApp("nabta", "New Compose app: Nabta (plant care)", "compose", "home", "screen"),
-  newApp("rihla", "New Expo app: Rihla (a trip planner)", "react-native", "trips", "screen"),
-  newApp("darb", "New Vue app: Darb (a running club's meetups)", "vue", "meetups"),
-  newApp("nuzha", "New Svelte app: Nuzha (a city's parks and trails)", "svelte", "trails"),
-  newApp("sanad", "New Angular app: Sanad (a neighbourhood repair-request desk)", "angular", "requests"),
-  swiftUINewApp("masar", "New SwiftUI app: Masar (a running tracker)", "swiftui-starter-masar"),
+  // Each brief with Motif, then without: a-<brief> runs right after d-<brief>, so a run has both apps of a brief at once.
+  ...NEW_APPS.flatMap((d) => [d, baselineCase(d)]),
 ];
+
+/** The other side of a brief's pair: d-x for a-x, and a-x for d-x; nothing for B and C. */
+export function pairedCase(c: EvalCase): EvalCase | undefined {
+  if (!c.brief || (c.test !== "A" && c.test !== "D")) return undefined;
+  const other: TestId = c.test === "A" ? "D" : "A";
+  return CASES.find((x) => x.brief === c.brief && x.test === other);
+}
+
+/**
+ * The chosen cases with the d-* of every a-* chosen without it, in the cases' order (each d-* before its a-*): Test A
+ * compares each app built without Motif with the one Motif builds, so an a-* without its d-* could never be scored.
+ * `added` are the d-* cases added.
+ */
+export function withMotifSides(all: EvalCase[], chosen: EvalCase[]): { cases: EvalCase[]; added: EvalCase[] } {
+  const ids = new Set(chosen.map((c) => c.id));
+  const added = chosen.filter(isBaseline).map(pairedCase).filter((d): d is EvalCase => Boolean(d) && !ids.has(d!.id));
+  for (const d of added) ids.add(d.id);
+  return { cases: all.filter((c) => ids.has(c.id)), added: all.filter((c) => added.includes(c)) };
+}
+
+/** The line that says which d-* cases were added for Test A. */
+export const addedNote = (added: EvalCase[]): string =>
+  `Test A compares each app with the one Motif builds, so ${andList(added.map((c) => c.id))} ${added.length === 1 ? "runs" : "run"} too.`;
 
 export function selectCases(all: EvalCase[], pick: { tests?: string[]; ids?: string[] }): EvalCase[] | { error: string } {
   const tests = (pick.tests ?? []).map((t) => t.toUpperCase());
-  const badTest = tests.find((t) => !["B", "C", "D"].includes(t));
-  if (badTest) return { error: `There's no test "${badTest}". Tests: B, C, D.` };
+  const badTest = tests.find((t) => !["A", "B", "C", "D"].includes(t));
+  if (badTest) return { error: `There's no test "${badTest}". Tests: A, B, C, D.` };
   const badId = (pick.ids ?? []).find((id) => !all.some((c) => c.id === id));
   if (badId) return { error: `There's no case "${badId}". Cases: ${all.map((c) => c.id).join(", ")}.` };
   const chosen = all.filter((c) => (tests.length === 0 || tests.includes(c.test)) && (!pick.ids?.length || pick.ids.includes(c.id)));

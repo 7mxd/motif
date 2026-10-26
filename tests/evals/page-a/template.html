@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Which looks better?</title>
+<style>/*{{style}}*/</style>
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body { min-height: 100dvh; }
+  [hidden] { display: none !important; }
+  kbd {
+    display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px;
+    border: 1px solid var(--k-color-border); border-bottom-width: 2px; border-radius: var(--k-radius-sm);
+    background: var(--k-color-surface); color: var(--k-color-text-secondary);
+    font: 600 12px/1 var(--k-font-label-family); font-variant-numeric: tabular-nums;
+  }
+
+  .app { display: flex; flex-direction: column; height: 100dvh; max-width: 1680px; margin: 0 auto; padding: 0 var(--k-space-6); }
+  .top { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--k-space-2) var(--k-space-4); padding: var(--k-space-3) 0; }
+  .heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--k-space-2) var(--k-space-4); min-width: 0; }
+  .question { margin: 0; font: var(--k-font-heading-weight) var(--k-font-heading-size) / var(--k-font-heading-line-height) var(--k-font-heading-family); }
+  .progress { display: flex; align-items: center; gap: var(--k-space-3); color: var(--k-color-text-secondary); }
+  #back { min-height: 36px; padding: var(--k-space-2) var(--k-space-3); }
+  #back:disabled { visibility: hidden; }
+  #count { font: var(--k-font-label-weight) var(--k-font-label-size) / 1 var(--k-font-label-family); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .track { width: 160px; height: 4px; overflow: hidden; border-radius: var(--k-radius-full); background: var(--k-color-border); }
+  .fill { width: 100%; height: 100%; border-radius: inherit; background: var(--k-color-action-primary); transform: scaleX(0); transform-origin: left center; transition: transform var(--k-duration-base) var(--k-easing-standard); }
+
+  .view { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+  .context { display: flex; align-items: center; gap: var(--k-space-2); padding-left: var(--k-space-4); border-left: 1px solid var(--k-color-border); }
+  #title { color: var(--k-color-text-secondary); font: var(--k-font-label-weight) var(--k-font-body-size) / 1.3 var(--k-font-label-family); }
+
+  .pair { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--k-space-6); min-height: 0; }
+  .side { display: flex; flex-direction: column; gap: var(--k-space-2); min-width: 0; min-height: 0; margin: 0; }
+  .side-name { display: flex; align-items: center; gap: var(--k-space-2); min-height: 32px; color: var(--k-color-text-secondary); font: var(--k-font-label-weight) var(--k-font-label-size) / 1 var(--k-font-label-family); }
+  .side-name .zoom-btn { min-height: 32px; margin-left: auto; padding: var(--k-space-1) var(--k-space-3); font-size: var(--k-font-caption-size); }
+  .frame {
+    display: flex; flex: 1; align-items: flex-start; justify-content: center; min-height: 0; padding: var(--k-space-3);
+    overflow: hidden; border: 1px solid var(--k-color-border); border-radius: var(--k-radius-lg); background: var(--k-color-surface);
+    transition: border-color var(--k-duration-fast) var(--k-easing-standard), box-shadow var(--k-duration-fast) var(--k-easing-standard);
+  }
+  .side.chosen .frame { border-color: var(--k-color-action-primary); box-shadow: 0 0 0 1px var(--k-color-action-primary); }
+  .scroller { flex: none; overflow: auto; border-radius: var(--k-radius-md); box-shadow: var(--k-shadow-md); overscroll-behavior: contain; }
+  .scroller img { display: block; max-width: none; cursor: zoom-in; background: #fff; }
+  .scroller img.loading { visibility: hidden; }
+  .missing {
+    display: grid; place-items: center; padding: var(--k-space-4); text-align: center;
+    border: 1px dashed var(--k-color-border); border-radius: var(--k-radius-md);
+    background: var(--k-color-background); color: var(--k-color-text-secondary);
+    font: var(--k-font-label-weight) var(--k-font-label-size) / 1.4 var(--k-font-label-family);
+  }
+
+  .choices { display: grid; flex: none; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--k-space-3); padding: var(--k-space-4) 0; }
+  .choice { gap: var(--k-space-3); min-height: 52px; font-size: var(--k-font-body-size); }
+  .choice kbd { border-color: color-mix(in srgb, currentColor 30%, transparent); background: transparent; color: inherit; }
+  .choice[aria-pressed="true"] { background: var(--k-color-action-primary); color: var(--k-color-on-action-primary); }
+  .choice:disabled { opacity: 0.6; cursor: progress; }
+  #note {
+    position: fixed; bottom: 96px; left: 50%; z-index: 5; max-width: min(560px, calc(100vw - 32px)); margin: 0; padding: var(--k-space-3) var(--k-space-4);
+    transform: translateX(-50%); border-radius: var(--k-radius-md); background: var(--k-color-danger); color: var(--k-color-on-danger); box-shadow: var(--k-shadow-lg);
+    font: var(--k-font-label-weight) var(--k-font-label-size) / 1.4 var(--k-font-label-family);
+  }
+  #note:empty { display: none; }
+  #final { margin: 0; padding: 0 0 var(--k-space-3); color: var(--k-color-text-secondary); text-align: center; font: var(--k-font-label-weight) var(--k-font-label-size) / 1.4 var(--k-font-label-family); }
+
+  .done { align-items: center; justify-content: center; gap: var(--k-space-4); padding: var(--k-space-12) 0; text-align: center; }
+  .done h2, .reveal h2 { margin: 0; font: var(--k-font-title-weight) var(--k-font-title-size) / var(--k-font-title-line-height) var(--k-font-title-family); }
+  .done p { max-width: 44ch; margin: 0; color: var(--k-color-text-secondary); }
+  .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--k-space-3); }
+
+  .reveal { gap: var(--k-space-6); padding: var(--k-space-4) 0 var(--k-space-12); overflow-y: auto; }
+  .briefs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--k-space-4); }
+  .brief .count { font: var(--k-font-display-weight) var(--k-font-display-size) / 1 var(--k-font-display-family); font-variant-numeric: tabular-nums; }
+  .answers { display: flex; flex-direction: column; gap: var(--k-space-4); }
+  .answer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--k-space-3) var(--k-space-4); }
+  .answer header { display: flex; flex-wrap: wrap; grid-column: 1 / -1; align-items: center; gap: var(--k-space-2) var(--k-space-3); }
+  .thumb { display: flex; flex-direction: column; gap: var(--k-space-2); height: 240px; overflow: hidden; padding: var(--k-space-2) var(--k-space-3) 0; border: 1px solid var(--k-color-border); border-radius: var(--k-radius-md); background: var(--k-color-background); }
+  .thumb img { display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: var(--k-radius-sm); box-shadow: var(--k-shadow-sm); background: #fff; }
+  .thumb .missing { flex: 1; border: 0; }
+  .thumb .tags { display: flex; flex: none; flex-wrap: wrap; gap: var(--k-space-1); }
+  .thumb .tags .mk-badge { white-space: nowrap; }
+  .thumb.theirs { border-color: var(--k-color-action-primary); box-shadow: 0 0 0 1px var(--k-color-action-primary); }
+
+  #zoom { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; background: color-mix(in srgb, var(--k-color-background) 94%, transparent); backdrop-filter: blur(6px); }
+  #zoom .zoom-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--k-space-3); padding: var(--k-space-3) var(--k-space-6); border-bottom: 1px solid var(--k-color-border); background: var(--k-color-surface); }
+  #zoom .zoom-body { flex: 1; overflow: auto; padding: var(--k-space-6); cursor: zoom-out; }
+  #zoom img, #zoom .missing { display: block; max-width: 100%; height: auto; margin: 0 auto; box-shadow: var(--k-shadow-lg); background: #fff; }
+
+  /* A phone: the sides stacked, the page scrolls, the choices stay at the bottom. */
+  @media (max-width: 719.98px) {
+    .app { height: auto; min-height: 100dvh; padding: 0 var(--k-space-4); }
+    .top { position: sticky; top: 0; z-index: 2; flex-wrap: nowrap; align-items: flex-start; background: var(--k-color-background); }
+    .heading { flex-direction: column; align-items: flex-start; gap: var(--k-space-1); }
+    .question { font-size: var(--k-font-body-size); }
+    .progress { gap: var(--k-space-2); }
+    #back:disabled { display: none; }
+    .context { padding-left: 0; border-left: 0; }
+    #title { font-size: var(--k-font-label-size); }
+    /* The progress bar runs along the bottom of the header. */
+    .track { position: absolute; right: 0; bottom: 0; left: 0; width: auto; height: 2px; border-radius: 0; }
+    .pair { flex: none; grid-template-columns: minmax(0, 1fr); gap: var(--k-space-4); }
+    /* Phone-size screens are narrow: they stay side by side, scaled to fit. */
+    .pair.narrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--k-space-2); }
+    .pair.narrow .side-name .zoom-btn { padding: var(--k-space-1) var(--k-space-2); }
+    .frame { flex: none; padding: var(--k-space-2); }
+    .choices { position: sticky; bottom: 0; z-index: 2; margin-top: auto; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--k-space-2); padding: var(--k-space-3) 0; background: var(--k-color-background); border-top: 1px solid var(--k-color-border); }
+    .choice { min-height: 48px; padding: var(--k-space-2); font-size: var(--k-font-label-size); }
+    .choice kbd, .side-name kbd { display: none; }
+    #note { bottom: 88px; }
+    .thumb { height: 200px; padding: var(--k-space-2) var(--k-space-2) 0; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="heading">
+      <h1 class="question">Which looks better?</h1>
+      <div class="context" id="context">
+        <span id="title"></span>
+        <span class="mk-badge" id="device"></span>
+      </div>
+    </div>
+    <div class="progress" aria-live="polite">
+      <button class="mk-btn mk-ghost" id="back" type="button" title="Back to the last pair (Backspace or &larr;)">&larr; Back</button>
+      <span id="count"></span>
+      <div class="track" aria-hidden="true"><div class="fill" id="fill"></div></div>
+    </div>
+  </header>
+
+  <main class="view" id="judge" hidden>
+    <div class="pair">
+      <figure class="side" id="side-left">
+        <figcaption class="side-name"><kbd>1</kbd> Left <button class="mk-btn mk-ghost zoom-btn" type="button" data-zoom="left">Zoom</button></figcaption>
+        <div class="frame"><div class="scroller"></div></div>
+      </figure>
+      <figure class="side" id="side-right">
+        <figcaption class="side-name"><kbd>2</kbd> Right <button class="mk-btn mk-ghost zoom-btn" type="button" data-zoom="right">Zoom</button></figcaption>
+        <div class="frame"><div class="scroller"></div></div>
+      </figure>
+    </div>
+    <div class="choices">
+      <button class="mk-btn mk-secondary choice" data-pick="left" aria-pressed="false"><kbd>1</kbd> Left</button>
+      <button class="mk-btn mk-secondary choice" data-pick="same" aria-pressed="false"><kbd>3</kbd> About the same</button>
+      <button class="mk-btn mk-secondary choice" data-pick="right" aria-pressed="false"><kbd>2</kbd> Right</button>
+    </div>
+    <p id="final" role="status" hidden>This vote is final: the answers have been shown.</p>
+    <p id="note" role="status"></p>
+  </main>
+
+  <section class="view done" id="done" hidden>
+    <h2>That's every pair.</h2>
+    <p id="done-text"></p>
+    <div class="actions">
+      <button class="mk-btn" id="show" type="button">Show the answers</button>
+      <button class="mk-btn mk-secondary" id="change" type="button">&larr; Change a vote</button>
+    </div>
+    <p id="done-note" class="mk-error-text"></p>
+  </section>
+
+  <section class="view reveal" id="reveal" hidden>
+    <h2 id="reveal-heading"></h2>
+    <div class="briefs" id="briefs"></div>
+    <div class="answers" id="answers"></div>
+  </section>
+</div>
+
+<div id="zoom" hidden role="dialog" aria-modal="true" aria-label="Zoomed screen">
+  <div class="zoom-bar">
+    <strong id="zoom-title"></strong>
+    <button class="mk-btn mk-secondary" id="zoom-close" type="button">Close <kbd>Esc</kbd></button>
+  </div>
+  <div class="zoom-body" id="zoom-body"></div>
+</div>
+
+<script id="pairs" type="application/json">{{pairs}}</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById("pairs").textContent);
+  const items = data.pairs;
+  const $ = (id) => document.getElementById(id);
+  const votes = new Map();
+  let at = 0;
+  let busy = false;
+  let answered = false;
+  /** The answers have been shown (in this page or an earlier one): votes made stand; pairs without one can still get one. */
+  let final = false;
+  /** Why the answers can't be shown yet whatever the votes (a brief's pairs still to come), from the server; null when they can. */
+  let waiting = null;
+  let shown = 0;
+  const sides = {
+    left: { el: $("side-left"), scroller: $("side-left").querySelector(".scroller"), img: null },
+    right: { el: $("side-right"), scroller: $("side-right").querySelector(".scroller"), img: null },
+  };
+  const MISSING = "This screen didn't load";
+
+  const firstOpen = (from) => {
+    for (let i = from; i < items.length; i++) if (!votes.has(items[i].id)) return i;
+    for (let i = 0; i < Math.min(from, items.length); i++) if (!votes.has(items[i].id)) return i;
+    return items.length;
+  };
+  const show = (id) => {
+    for (const v of ["judge", "done", "reveal"]) $(v).hidden = v !== id;
+    $("context").hidden = id !== "judge";
+    $("back").disabled = id === "reveal" || (id === "judge" && at === 0) || answered;
+  };
+  const progress = () => {
+    $("count").textContent = `${Math.min(at + 1, items.length)} of ${items.length}`;
+    $("fill").style.transform = `scaleX(${items.length ? votes.size / items.length : 0})`;
+  };
+
+  function missingPanel() {
+    const d = document.createElement("div");
+    d.className = "missing";
+    d.textContent = MISSING;
+    return d;
+  }
+
+  function render() {
+    progress();
+    $("note").textContent = "";
+    if (at >= items.length) {
+      show("done");
+      $("done-text").textContent = `You judged all ${items.length} pairs. Your votes are saved.`;
+      $("change").hidden = answered;
+      $("show").disabled = Boolean(waiting) && !final;
+      $("done-note").textContent = waiting && !final ? waiting : "";
+      return;
+    }
+    show("judge");
+    const item = items[at];
+    const token = ++shown;
+    $("title").textContent = item.title;
+    $("device").textContent = item.device;
+    const pick = votes.get(item.id);
+    for (const b of document.querySelectorAll(".choice")) b.setAttribute("aria-pressed", String(b.dataset.pick === pick));
+    lockChoices();
+    document.querySelector(".pair").classList.toggle("narrow", item.size < 600);
+    for (const name of ["left", "right"]) {
+      const s = sides[name];
+      s.el.classList.toggle("chosen", pick === name);
+      s.scroller.replaceChildren();
+      s.scroller.scrollTop = 0;
+      s.img = null;
+      const src = item[name];
+      if (src) {
+        const img = new Image();
+        img.className = "loading";
+        img.alt = `${name === "left" ? "Left" : "Right"} screen`;
+        img.decoding = "async";
+        img.src = src;
+        img.addEventListener("click", () => zoom(name));
+        s.img = img;
+        s.scroller.append(img);
+      } else {
+        s.scroller.append(missingPanel());
+      }
+    }
+    const loads = ["left", "right"].map((n) => sides[n].img).filter(Boolean).map((img) => img.decode().catch(() => undefined));
+    Promise.all(loads).then(() => {
+      if (token !== shown) return;
+      layout();
+      for (const n of ["left", "right"]) sides[n].img?.classList.remove("loading");
+    });
+    // The next pair's images, so it shows at once.
+    const next = items[firstOpen(at + 1)];
+    if (next) for (const src of [next.left, next.right]) if (src) new Image().src = src;
+  }
+
+  /** Both sides at one scale: as large as fits, never past the screenshot's own size, and never too small to read. */
+  function layout() {
+    const item = items[at];
+    if (!item) return;
+    const wide = matchMedia("(min-width: 720px)").matches;
+    const frames = ["left", "right"].map((n) => sides[n].el.querySelector(".frame"));
+    const pad = (f) => parseFloat(getComputedStyle(f).paddingLeft) * 2;
+    const boxW = Math.max(120, Math.min(...frames.map((f) => f.clientWidth - pad(f))));
+    const boxH = wide ? Math.max(160, Math.min(...frames.map((f) => f.clientHeight - pad(f)))) : Math.round(innerHeight * 0.72);
+    const heights = ["left", "right"].map((n) => sides[n].img).filter((img) => img && img.naturalWidth).map((img) => (img.naturalHeight * item.size) / img.naturalWidth);
+    const tallest = heights.length ? Math.max(...heights) : item.size * 1.6;
+    let k = Math.min(1, boxW / item.size, boxH / tallest);
+    k = Math.max(k, Math.min(1, boxW / item.size, Math.min(boxW, 260) / item.size));
+    for (const n of ["left", "right"]) {
+      const s = sides[n];
+      s.scroller.style.maxHeight = `${boxH}px`;
+      const w = Math.round(item.size * k);
+      if (s.img && s.img.naturalWidth) {
+        s.img.style.width = `${w}px`;
+        s.img.style.height = `${Math.round(((s.img.naturalHeight * item.size) / s.img.naturalWidth) * k)}px`;
+      } else {
+        const panel = s.scroller.querySelector(".missing");
+        if (panel) {
+          panel.style.width = `${w}px`;
+          panel.style.height = `${Math.min(boxH, Math.round(tallest * k))}px`;
+        }
+      }
+    }
+  }
+
+  // The two sides scroll together, so the same part of each screen is in view.
+  let syncing = false;
+  for (const [a, b] of [["left", "right"], ["right", "left"]]) {
+    sides[a].scroller.addEventListener("scroll", () => {
+      if (syncing) return;
+      syncing = true;
+      sides[b].scroller.scrollTop = sides[a].scroller.scrollTop;
+      requestAnimationFrame(() => { syncing = false; });
+    });
+  }
+
+  /** Whether the pair on screen has a vote that can no longer change. */
+  const locked = () => final && at < items.length && votes.has(items[at].id);
+  function lockChoices() {
+    const fixed = locked();
+    for (const b of document.querySelectorAll(".choice")) b.disabled = busy || fixed;
+    $("final").hidden = !fixed;
+  }
+
+  async function vote(pick) {
+    if (busy || answered || at >= items.length || locked()) return;
+    const item = items[at];
+    busy = true;
+    lockChoices();
+    try {
+      const r = await fetch("vote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId: item.id, pick }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 409) {
+        // The answers were shown since this page opened: the vote made before stands, and is shown as final.
+        final = true;
+        busy = false;
+        render();
+        return;
+      }
+      if (!r.ok) throw new Error(j.error || `the server answered ${r.status}`);
+      if ("waiting" in j) waiting = j.waiting;
+      votes.set(item.id, pick);
+      at = firstOpen(at + 1);
+      render();
+    } catch (e) {
+      $("note").textContent = `That vote wasn't saved: ${e.message} Try again.`;
+    } finally {
+      busy = false;
+      lockChoices();
+    }
+  }
+
+  function back() {
+    if (busy || answered || at === 0) return;
+    at = at >= items.length ? items.length - 1 : at - 1;
+    render();
+  }
+
+  function zoom(name) {
+    const item = items[at];
+    const src = item[name];
+    $("zoom-title").textContent = `${name === "left" ? "Left" : "Right"} · ${item.title}`;
+    const body = $("zoom-body");
+    body.replaceChildren();
+    if (src) {
+      const img = new Image();
+      img.src = src;
+      img.alt = `${name === "left" ? "Left" : "Right"} screen, full size`;
+      img.style.width = `${item.size}px`;
+      body.append(img);
+    } else {
+      body.append(missingPanel());
+    }
+    $("zoom").hidden = false;
+    $("zoom-close").focus();
+  }
+  const unzoom = () => { $("zoom").hidden = true; };
+  $("zoom-close").addEventListener("click", unzoom);
+  $("zoom-body").addEventListener("click", unzoom);
+
+  async function reveal() {
+    $("done-note").textContent = "";
+    let j;
+    try {
+      const r = await fetch("reveal");
+      j = await r.json();
+      if (!r.ok) throw new Error(j.error || `the server answered ${r.status}`);
+    } catch (e) {
+      $("done-note").textContent = `The answers can't be shown yet: ${e.message}`;
+      return;
+    }
+    answered = true;
+    $("reveal-heading").textContent = j.heading;
+    const briefs = $("briefs");
+    briefs.replaceChildren();
+    for (const b of j.briefs) {
+      const card = document.createElement("section");
+      card.className = "mk-card brief";
+      const name = document.createElement("span");
+      name.className = "mk-label";
+      name.textContent = b.title;
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = `${b.won} / ${b.pairs}`;
+      const line = document.createElement("span");
+      line.className = "mk-caption mk-muted";
+      line.textContent = b.line;
+      card.append(name, count, line);
+      briefs.append(card);
+    }
+    const answers = $("answers");
+    answers.replaceChildren();
+    for (const item of items) {
+      const a = j.pairs.find((p) => p.pairId === item.id);
+      if (!a) continue;
+      const row = document.createElement("article");
+      row.className = "mk-card answer";
+      const head = document.createElement("header");
+      const title = document.createElement("span");
+      title.className = "mk-label";
+      title.textContent = item.title;
+      const device = document.createElement("span");
+      device.className = "mk-badge";
+      device.textContent = item.device;
+      const line = document.createElement("span");
+      line.className = "mk-caption mk-muted";
+      line.textContent = a.line;
+      head.append(title, device, line);
+      row.append(head);
+      for (const n of ["left", "right"]) {
+        const t = document.createElement("div");
+        t.className = `thumb${a.answer === n ? " theirs" : ""}`;
+        if (item[n]) {
+          const img = new Image();
+          img.src = item[n];
+          // Phone screens at half their size, desktop ones as wide as the box allows.
+          img.style.width = `${Math.round(item.size / 2)}px`;
+          img.alt = `${n === "left" ? "Left" : "Right"} screen`;
+          img.loading = "lazy";
+          t.append(img);
+        } else t.append(missingPanel());
+        const tags = document.createElement("div");
+        tags.className = "tags";
+        const side = document.createElement("span");
+        side.className = "mk-badge";
+        side.textContent = n === "left" ? "Left" : "Right";
+        tags.append(side);
+        if (a.answer === n) {
+          const theirs = document.createElement("span");
+          theirs.className = "mk-badge mk-info";
+          theirs.textContent = j.name;
+          tags.append(theirs);
+        }
+        if (a.pick === n) {
+          const yours = document.createElement("span");
+          yours.className = "mk-badge mk-success";
+          yours.textContent = "Your pick";
+          tags.append(yours);
+        }
+        t.prepend(tags);
+        row.append(t);
+      }
+      answers.append(row);
+    }
+    show("reveal");
+    $("count").textContent = `${items.length} of ${items.length}`;
+  }
+
+  for (const b of document.querySelectorAll(".choice")) b.addEventListener("click", () => vote(b.dataset.pick));
+  $("back").addEventListener("click", back);
+  for (const b of document.querySelectorAll(".zoom-btn")) b.addEventListener("click", () => zoom(b.dataset.zoom));
+  $("change").addEventListener("click", back);
+  $("show").addEventListener("click", reveal);
+  addEventListener("resize", () => layout());
+
+  document.addEventListener("keydown", (e) => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (!$("zoom").hidden) {
+      if (e.key === "Escape") { e.preventDefault(); unzoom(); }
+      return;
+    }
+    if (!$("judge").hidden && (e.key === "1" || e.key === "2" || e.key === "3")) {
+      e.preventDefault();
+      vote(e.key === "1" ? "left" : e.key === "2" ? "right" : "same");
+    } else if (e.key === "Backspace" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      back();
+    }
+  });
+
+  (async () => {
+    try {
+      const r = await fetch("votes");
+      const j = await r.json();
+      for (const v of j.votes) votes.set(v.pairId, v.pick);
+      final = j.final === true;
+      waiting = typeof j.waiting === "string" ? j.waiting : null;
+    } catch {
+      $("note").textContent = "The server that saves the votes isn't answering; votes made now won't be kept.";
+    }
+    at = firstOpen(0);
+    render();
+    document.body.dataset.ready = "1";
+  })();
+})();
+</script>
+</body>
+</html>

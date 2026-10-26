@@ -1,0 +1,30 @@
+# Test A: with Motif and without
+
+Test A builds the same ten briefs with Motif and without it, shoots both apps the same way, and has AI judges and the owner pick the better screen without knowing which is which. It is part of the release gate ([Part 4 spec](specs/2026-10-26-motif-part4-release-evaluation-design.md), [decision 0013](decisions/0013-test-a-judges.md)).
+
+## The pass rule
+
+Motif must win on every brief. For each brief, on its own pairs:
+
+- The AI judges pick Motif's side in at least 70% of the pairs, and the baseline in at most 15%. Each pair is judged twice, with the sides swapped. A side wins only when both judgements pick it.
+- The owner picks Motif's side in more than half of the pairs. "About the same" is not a win.
+- A side whose app doesn't build loses every pair. A brief Motif wins that way, or with no pair that has both apps' screens, is won by forfeit: the report's row and the verdict say so and name the log to read (`a-<brief>/build.log`, the stack's own log, or `pair-shots.json`) before the win is accepted.
+- Both apps of a brief are built by the same model. A brief whose two apps different models built can't pass: it stays pending until both are built again.
+
+A brief that falls short blocks the release until that stack is improved and Test A passes again. A re-run of Test A runs D too: each app built without Motif is compared with the one Motif builds on the new candidate, so the runner adds the `d-*` cases (`--tests A` runs `--tests D,A`).
+
+## Known biases
+
+Test A is fair, not perfect. These are the known ways it leans:
+
+- PNG colour chunks (gAMA, sRGB, iCCP) are dropped on both sides, so both show as sRGB. Colours can differ a little from what a device shows.
+- Compose baselines that load Google Fonts at runtime (the downloadable-fonts provider) fall back to Roboto under Robolectric: Compose's shot wires fonts only through Motif's own theme. They may look plainer than they would on a device. Flutter baselines get the google_fonts families their code names (`GoogleFonts.onest(…)`, `GoogleFonts.getFont('Onest')`): Motif's shot downloads them into its cache and loads them before drawing, as it does for an app made with Motif. Only a family named at runtime (a variable passed to `getFont`), or one that can't be downloaded, falls back, and the shot's notes say so.
+- Expo apps on both sides get Expo's web packages installed before shooting. The setup is equal.
+- SwiftUI shots name each app's own previews.
+
+## Runs
+
+One row per brief of each run, with the run's id (its folder in `tests/evals/results/`), the candidate's commit and the model both sides were built by (`--model`). Keep failed runs too: a new candidate re-runs both sides, so each run is its own record.
+
+| Run | Commit | Model | Brief | Pairs | AI: Motif / baseline / tie | Owner: Motif / other | Verdict |
+|---|---|---|---|---|---|---|---|

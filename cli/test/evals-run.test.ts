@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EvalCase } from "../../tests/evals/cases";
 import { AGENT_TOOLS, JUDGE_EXPECTED_TOOLS } from "../../tests/evals/claude";
@@ -623,13 +623,15 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
   test("off a Mac, a whole run passes when every case it can run passes: verdicts and exit code agree", async () => {
     const h = harness({ platform: "win32" });
     expect(await runEvals(["--work", h.work], h.deps, h.where)).toBe(0);
-    expect(h.calls.prepare).toHaveLength(35);
+    expect(h.calls.prepare).toHaveLength(44);
     const { verdicts } = JSON.parse(readFileSync(join(h.where.results, RUN, "report.json"), "utf8"));
-    expect(verdicts).toEqual([
+    expect(verdicts.filter((v: { test: string }) => v.test !== "A")).toEqual([
       { test: "B", status: "pass", detail: "All 18 cases run passed; b-swiftui-orders and b-swiftui-rewards were skipped (they need a Mac)." },
       { test: "C", status: "pass", detail: "All 8 cases run passed; c-swiftui was skipped (it needs a Mac)." },
       { test: "D", status: "pass", detail: "The new apps passed, and B and C passed with no design sources connected; d-masar was skipped (it needs a Mac)." },
     ]);
+    // Test A has no pairs here and Masar was skipped: incomplete, never pass.
+    expect(verdicts.find((v: { test: string }) => v.test === "A")).toMatchObject({ status: "incomplete", detail: expect.stringContaining("a-masar was skipped (it needs a Mac)") });
     // A failing case that ran still fails it.
     const f = harness({ platform: "win32", collect: async (c) => (c.id === "c-review" ? { pass: false, criteria: [], metrics: {} } : PASS) });
     expect(await runEvals(["--work", f.work], f.deps, f.where)).toBe(1);
@@ -757,5 +759,255 @@ describe("the eval runner and the Mac-only cases (spec §9)", () => {
     });
     await runEvals(["--cases", "c-swiftui", "--work", h.work], h.deps, h.where);
     expect(h.calls.session.find((s) => s.args.includes("--json-schema"))!.prompt).toContain("design review of the SwiftUI app in");
+  });
+});
+
+describe("the eval runner and Test A (Part 4 §4)", () => {
+  /** A harness that records afterBriefPair's calls, and the folders removed so far at each. */
+  function paired(over: Partial<RunDeps> = {}) {
+    const pairs: { brief: string; d: string; a: string; removedBefore: string[] }[] = [];
+    const h = harness({
+      afterBriefPair: async (brief, d, a) => {
+        pairs.push({ brief, d: d.dir, a: a.dir, removedBefore: [...h.calls.removed] });
+      },
+      ...over,
+    });
+    return { ...h, pairs };
+  }
+
+  test("--list shows all 49 cases", async () => {
+    const h = harness();
+    expect(await runEvals(["--list"], h.deps, h.where)).toBe(0);
+    expect(h.lines).toHaveLength(49);
+    expect(h.lines.filter((l) => /^a-\S+\s+A\s/.test(l))).toHaveLength(10);
+  });
+
+  test("--tests A runs the a-* cases with no plugin, each after the d-* it's compared with, added and said: no --plugin-dir, nothing of Motif's in the prompt or the environment", async () => {
+    const h = paired({ platform: "darwin" });
+    expect(await runEvals(["--tests", "A", "--work", h.work], h.deps, h.where)).toBe(0);
+    const briefs = ["stride", "ledgerly", "bloom", "sahm", "nabta", "rihla", "darb", "nuzha", "sanad", "masar"];
+    expect(h.calls.prepare).toEqual(briefs.flatMap((b) => [`d-${b}`, `a-${b}`]));
+    expect(h.lines).toContain(`Test A compares each app with the one Motif builds, so ${briefs.slice(0, -1).map((b) => `d-${b}`).join(", ")} and d-masar run too.`);
+    // Every brief is paired, so Test A can give a verdict.
+    expect(h.pairs.map((p) => p.brief)).toEqual(briefs);
+    for (const s of h.calls.session.filter((x) => !x.prompt.startsWith("/motif:"))) {
+      expect(s.args).not.toContain("--plugin-dir");
+      expect(s.args).not.toContain("--add-dir");
+      expect(s.expect).toEqual({ auto: true, tools: AGENT_TOOLS, personal: ["apple-design"] });
+      expect("pluginDir" in s.expect).toBe(false);
+      expect(s.prompt.toLowerCase()).not.toContain("motif");
+      expect(Object.keys(s.env).filter((k) => /motif/i.test(k))).toEqual([]);
+    }
+  });
+
+  test("nothing an a-* session is given names Motif: not its arguments, its environment or its MCP list (on a --work folder that doesn't)", async () => {
+    const root = tempDir("evals-a-");
+    const mcp: string[] = [];
+    const h = harness({
+      env: { PATH: "/bin", MOTIF_BIN: "/x/motif", MOTIF_NO_CONNECT: "1", Motif_Other: "y", HOME: "/home/me" },
+      session: async (s) => {
+        h.calls.session.push(s);
+        mcp.push(readFileSync(s.args[s.args.indexOf("--mcp-config") + 1]!, "utf8"));
+        return finished();
+      },
+    });
+    const where = { repo: join(root, "repo"), results: join(root, "results"), work: join(root, "work") };
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", join(root, "cases")], h.deps, where)).toBe(0);
+    const [d, a] = h.calls.session;
+    expect(a!.args.join(" ").toLowerCase()).not.toContain("motif");
+    // The MOTIF_ variables (the runner's own and the developer's) are left out; the rest of the environment is kept.
+    expect(JSON.stringify(a!.env).toLowerCase()).not.toContain("motif");
+    expect(a!.env.HOME).toBe("/home/me");
+    // Its empty MCP list is in its own case folder; d-* keeps the run's.
+    expect(a!.args[a!.args.indexOf("--mcp-config") + 1]).toBe(join(root, "cases", RUN, "a-stride", "no-mcp.json"));
+    expect(d!.args[d!.args.indexOf("--mcp-config") + 1]).toBe(join(where.results, RUN, "no-mcp.json"));
+    expect(mcp).toEqual(['{"mcpServers":{}}', '{"mcpServers":{}}']);
+    // The d-* session keeps Motif's: its plugin, motif connect denied, and its environment.
+    expect(d!.args.join(" ")).toContain("Bash(motif connect *)");
+    expect(d!.env).toMatchObject({ MOTIF_NO_CONNECT: "1", Motif_Other: "y" });
+    expect(d!.env.MOTIF_BIN).toBeDefined();
+  });
+
+  test("a run with Test A whose work folder's path names Motif is warned about in one line, and goes on", async () => {
+    const warning = (work: string) => `The work folder ${work} has "motif" in its path, and Test A's sessions (a-*) work in it, so they can see Motif's name. Choose a --work folder whose path doesn't for the run that counts.`;
+    const h = paired();
+    const named = join(tempDir("evals-a-"), "Motif-work");
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", named], h.deps, h.where)).toBe(0);
+    expect(h.lines.filter((l) => l.includes("has \"motif\" in its path"))).toEqual([warning(join(named, RUN))]);
+    expect(h.calls.session).toHaveLength(2);
+    // A neutral folder, or a run without Test A, isn't warned about.
+    const neutral = join(tempDir("evals-a-"), "work");
+    expect(/motif/i.test(neutral)).toBe(false);
+    const k = paired();
+    await runEvals(["--cases", "d-stride,a-stride", "--work", neutral], k.deps, k.where);
+    expect(k.lines.filter((l) => l.includes("has \"motif\" in its path"))).toEqual([]);
+    const d = paired();
+    await runEvals(["--cases", "d-stride", "--work", named], d.deps, d.where);
+    expect(d.lines.filter((l) => l.includes("has \"motif\" in its path"))).toEqual([]);
+  });
+
+  test("an a-* session has its d-* session's caps, tools and auto mode", async () => {
+    const h = harness();
+    await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where);
+    const [d, a] = h.calls.session;
+    const flag = (s: SessionSpec, f: string) => s.args[s.args.indexOf(f) + 1];
+    for (const f of ["--max-turns", "--max-budget-usd", "--tools", "--permission-mode", "--permission-prompts", "--setting-sources"]) expect(flag(a!, f)).toBe(flag(d!, f)!);
+    expect(a!.timeoutMs).toBe(d!.timeoutMs);
+    expect(d!.args).toContain("--plugin-dir");
+    expect(d!.expect.pluginDir).toBe(join(h.root, "dist", "claude-code"));
+    expect(d!.env.MOTIF_BIN).toBeDefined();
+  });
+
+  test("each a-* runs right after its d-*, whatever order they're named in", async () => {
+    const h = harness();
+    await runEvals(["--cases", "a-bloom,a-stride,d-bloom,d-stride", "--work", h.work], h.deps, h.where);
+    expect(h.calls.prepare).toEqual(["d-stride", "a-stride", "d-bloom", "a-bloom"]);
+  });
+
+  test("with A chosen, a brief's d-* and a-* folders are kept after grading until both are graded, then the pair step runs, then they go", async () => {
+    const h = paired();
+    expect(await runEvals(["--cases", "d-stride,a-stride,d-bloom,a-bloom", "--work", h.work], h.deps, h.where)).toBe(0);
+    const dir = (id: string) => join(h.work, RUN, id);
+    expect(h.pairs).toEqual([
+      { brief: "stride", d: dir("d-stride"), a: dir("a-stride"), removedBefore: [] },
+      { brief: "bloom", d: dir("d-bloom"), a: dir("a-bloom"), removedBefore: [dir("d-stride"), dir("a-stride")] },
+    ]);
+    expect(h.calls.removed).toEqual([dir("d-stride"), dir("a-stride"), dir("d-bloom"), dir("a-bloom")]);
+    expect(h.lines).toContain(
+      `d-stride: keeping its folder (${dir("d-stride")}) for Test A until a-stride is graded too; then both are compared and removed. If a-stride never is, --resume this run to finish it, or delete the folder yourself.`,
+    );
+  });
+
+  test("--keep keeps them after the pair step too", async () => {
+    const h = paired();
+    await runEvals(["--cases", "d-stride,a-stride", "--keep", "--work", h.work], h.deps, h.where);
+    expect(h.pairs.map((p) => p.brief)).toEqual(["stride"]);
+    expect(h.calls.removed).toEqual([]);
+  });
+
+  test("a pair cut by a usage limit keeps the graded side's folder; --resume finishes the other, then the pair step runs", async () => {
+    let n = 0;
+    const h = paired({ session: async (s) => (h.calls.session.push(s), ++n === 2 ? { ...finished(), end: "usage-limit" } : finished()) });
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where)).toBe(3);
+    expect(h.calls.removed).toEqual([]);
+    expect(h.pairs).toEqual([]);
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(h.pairs.map((p) => [p.brief, p.d, p.a])).toEqual([["stride", join(h.work, RUN, "d-stride"), join(h.work, RUN, "a-stride")]]);
+    expect(h.calls.removed).toEqual([join(h.work, RUN, "d-stride"), join(h.work, RUN, "a-stride")]);
+  });
+
+  test("with only D chosen, nothing changes: each folder goes once it's graded, and there's no pair step", async () => {
+    const h = paired();
+    await runEvals(["--cases", "d-stride,d-bloom", "--work", h.work], h.deps, h.where);
+    expect(h.calls.removed).toEqual([join(h.work, RUN, "d-stride"), join(h.work, RUN, "d-bloom")]);
+    expect(h.pairs).toEqual([]);
+  });
+
+  test("an a-* app that doesn't build doesn't stop the run or fail its exit code: Test A scores it later", async () => {
+    const h = paired({ collect: async (c) => (h.calls.collect.push(c.id), c.id === "a-stride" ? { pass: false, criteria: [{ id: "build", label: "The app builds", pass: false, detail: "The build failed (exit code 1)." }], metrics: {} } : PASS) });
+    expect(await runEvals(["--cases", "d-stride,a-stride,d-bloom,a-bloom", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(h.calls.collect).toEqual(["d-stride", "a-stride", "d-bloom", "a-bloom"]);
+    expect(h.pairs.map((p) => p.brief)).toEqual(["stride", "bloom"]);
+    const s = loadRun(h.where.results, RUN) as RunState;
+    expect(s.cases["a-stride"]).toMatchObject({ status: "graded", grade: { pass: false } });
+    // A d-* that fails still fails the run.
+    const f = paired({ collect: async (c) => (c.id === "d-stride" ? { pass: false, criteria: [], metrics: {} } : PASS) });
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", f.work], f.deps, f.where)).toBe(1);
+  });
+
+  test("the pair step gets the run's folder, its line is logged, and the run records the brief's pairs as done", async () => {
+    const seen: string[] = [];
+    const h = paired({ afterBriefPair: async (brief, _d, _a, out) => (seen.push(out), `${brief}: 6 pairs for Test A, all with both apps' screens.`) });
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(seen).toEqual([join(h.where.results, RUN)]);
+    expect(h.lines).toContain("stride: 6 pairs for Test A, all with both apps' screens.");
+    expect((loadRun(h.where.results, RUN) as RunState).pairs).toEqual({ stride: { done: true } });
+  });
+
+  test("a pair step that fails keeps both folders and says so; --resume runs only the step again, then removes them; a later --resume doesn't", async () => {
+    let fail = true;
+    const steps: string[] = [];
+    const h = paired({
+      afterBriefPair: async (brief) => {
+        steps.push(brief);
+        if (fail) throw new Error("the browser crashed");
+      },
+    });
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(h.calls.removed).toEqual([]);
+    expect(h.lines).toContain("d-stride and a-stride: Test A's step after both were graded failed (the browser crashed); both folders are kept. --resume runs it again.");
+    expect((loadRun(h.where.results, RUN) as RunState).pairs).toEqual({ stride: { done: false, note: "the browser crashed" } });
+    // The folders are still there to shoot.
+    for (const id of ["d-stride", "a-stride"]) mkdirSync(join(h.work, RUN, id, "app"), { recursive: true });
+    fail = false;
+    const sessions = h.calls.session.length;
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(steps).toEqual(["stride", "stride"]);
+    expect(h.calls.session.length).toBe(sessions);
+    expect(h.calls.removed).toEqual([join(h.work, RUN, "d-stride"), join(h.work, RUN, "a-stride")]);
+    expect((loadRun(h.where.results, RUN) as RunState).pairs).toEqual({ stride: { done: true } });
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(steps).toEqual(["stride", "stride"]);
+  });
+
+  test("--resume takes the pair steps of only the briefs whose two cases the run chose", async () => {
+    const steps: string[] = [];
+    let fail = true;
+    const h = paired({
+      afterBriefPair: async (brief) => {
+        steps.push(brief);
+        if (fail) throw new Error("no browser");
+      },
+    });
+    // bloom's a-* isn't in this run; and a d-bloom/a-bloom pair graded in the record by hand, but not chosen, is left alone.
+    await runEvals(["--cases", "d-stride,a-stride,d-bloom", "--work", h.work], h.deps, h.where);
+    const s = loadRun(h.where.results, RUN) as RunState;
+    s.pairs = { ...s.pairs, ledgerly: { done: false, note: "x" } };
+    writeFileSync(join(h.where.results, RUN, "run.json"), JSON.stringify(s));
+    fail = false;
+    await runEvals(["--resume", RUN], h.deps, h.where);
+    expect(steps).toEqual(["stride", "stride"]);
+  });
+
+  test("--resume doesn't run the pair step again for a brief whose pairs are done, even with its folders kept", async () => {
+    const steps: string[] = [];
+    const h = paired({ afterBriefPair: async (brief) => void steps.push(brief) });
+    await runEvals(["--cases", "d-stride,a-stride", "--keep", "--work", h.work], h.deps, h.where);
+    for (const id of ["d-stride", "a-stride"]) mkdirSync(join(h.work, RUN, id, "app"), { recursive: true });
+    await runEvals(["--resume", RUN], h.deps, h.where);
+    expect(steps).toEqual(["stride"]);
+  });
+
+  test("a pair step left undone whose folders are gone is said, not run", async () => {
+    const h = paired({ afterBriefPair: async () => { throw new Error("no browser"); } });
+    await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where);
+    for (const id of ["d-stride", "a-stride"]) rmSync(join(h.work, RUN, id), { recursive: true, force: true });
+    const steps: string[] = [];
+    h.deps.afterBriefPair = async (brief) => void steps.push(brief);
+    await runEvals(["--resume", RUN], h.deps, h.where);
+    expect(steps).toEqual([]);
+    expect(h.lines).toContain(`stride: Test A's screenshots weren't taken, and the folders of d-stride and a-stride are gone, so they can't be now.`);
+  });
+
+  test("--cases a-x alone runs d-x first, and says so in one line", async () => {
+    const h = paired();
+    expect(await runEvals(["--cases", "a-bloom", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(h.calls.prepare).toEqual(["d-bloom", "a-bloom"]);
+    expect(h.lines).toContain("Test A compares each app with the one Motif builds, so d-bloom runs too.");
+    expect(h.pairs.map((p) => p.brief)).toEqual(["bloom"]);
+    // Nothing is added, or said, when the d-* is chosen already.
+    const k = paired();
+    await runEvals(["--cases", "d-bloom,a-bloom", "--work", k.work], k.deps, k.where);
+    expect(k.lines.filter((l) => l.startsWith("Test A compares"))).toEqual([]);
+  });
+
+  test("the dry run's a-* command has no plugin", async () => {
+    const h = harness();
+    await runEvals(["--dry-run", "--cases", "a-stride"], h.deps, h.where);
+    expect(h.lines.join("\n")).toContain("d-stride: ");
+    const text = h.lines.find((l) => l.startsWith("\na-stride: "))!;
+    expect(text).toContain("a-stride: ");
+    expect(text).not.toContain("--plugin-dir");
+    expect(text).not.toContain("/motif:");
   });
 });

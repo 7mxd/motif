@@ -31,6 +31,11 @@ export interface RunState {
   regrades?: { at: string; commit: string; dirty: boolean }[];
   options: RunOptions;
   cases: Record<string, CaseState>;
+  /**
+   * Test A: each brief whose d-* and a-* were both graded, and whether its screenshots were taken into pairs; when they
+   * weren't (the step failed, why in note), both folders are kept and --resume takes them again.
+   */
+  pairs?: Record<string, { done: boolean; note?: string }>;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");

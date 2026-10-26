@@ -1,6 +1,10 @@
 // Pass or fail for each case, criterion by criterion, with the spec's thresholds (§13.2).
 
-export interface Criterion { id: string; label: string; pass: boolean; detail: string }
+export interface Criterion {
+  id: string; label: string; pass: boolean; detail: string;
+  /** The type check only: the app's build stopped at these same type errors (Vue, Angular), so it stands for the build. */
+  typeErrorsOnly?: true;
+}
 export interface Grade { pass: boolean; criteria: Criterion[]; metrics: Record<string, number | string> }
 
 export type CheckFacts = { violations: number; exceptions: number; warnings: number } | { error: string };
@@ -40,7 +44,11 @@ function validateCriterion(v: ValidateFacts): Criterion {
 /** The build, when the stack has one (Flutter's checks need none), and the type check. */
 const buildCriteria = (build: CmdFacts | undefined, typecheck: CmdFacts): Criterion[] => [
   ...(build && !build.typeErrorsOnly ? [{ id: "build", label: "The app builds", pass: build.code === 0, detail: ran(build, "The build") }] : []),
-  { id: "typecheck", label: "The app type-checks", pass: typecheck.code === 0, detail: `${ran(typecheck, "The type check")}${build?.typeErrorsOnly ? " The build stopped at the same errors, so it isn't counted again." : ""}` },
+  {
+    id: "typecheck", label: "The app type-checks", pass: typecheck.code === 0,
+    detail: `${ran(typecheck, "The type check")}${build?.typeErrorsOnly ? " The build stopped at the same errors, so it isn't counted again." : ""}`,
+    ...(build?.typeErrorsOnly ? { typeErrorsOnly: true as const } : {}),
+  },
 ];
 
 export interface BFacts {
@@ -131,8 +139,8 @@ export interface DFacts {
   typecheck: CmdFacts; screens: ScreenFacts[] | { error: string }; routes: string[]; auditFindings?: number;
 }
 
-export function gradeD(f: DFacts): Grade {
-  if (!f.app) return grade([{ id: "app", label: "The new app exists", pass: false, detail: "No folder with a DESIGN.md was found." }]);
+/** Whether each starter screen rendered: captured, status 200 and no page errors. */
+function screensCriterion(f: Pick<DFacts, "screens" | "routes">): Criterion {
   const shown = "error" in f.screens ? [] : f.screens;
   const bad = f.routes.flatMap((route) => {
     const s = shown.find((x) => x.route === route);
@@ -140,6 +148,14 @@ export function gradeD(f: DFacts): Grade {
     if (s.status !== 200 || s.pageErrors > 0) return [`${route} (status ${s.status}${s.pageErrors ? `, ${s.pageErrors} page errors` : ""})`];
     return [];
   });
+  return {
+    id: "screens", label: `The starter screens render (${f.routes.join(", ")})`, pass: !("error" in f.screens) && bad.length === 0,
+    detail: "error" in f.screens ? `motif shot couldn't run: ${f.screens.error}` : bad.length ? `Didn't render: ${bad.join(", ")}.` : "All rendered.",
+  };
+}
+
+export function gradeD(f: DFacts): Grade {
+  if (!f.app) return grade([{ id: "app", label: "The new app exists", pass: false, detail: "No folder with a DESIGN.md was found." }]);
   const gaps = [f.sections.missing.length ? `missing: ${f.sections.missing.join(", ")}` : "", f.sections.empty.length ? `empty: ${f.sections.empty.join(", ")}` : ""].filter(Boolean);
   return grade([
     { id: "app", label: "The new app exists", pass: true, detail: f.app },
@@ -147,9 +163,21 @@ export function gradeD(f: DFacts): Grade {
     ...checkCriteria(f.check),
     { id: "sections", label: "DESIGN.md has every section, each filled in", pass: gaps.length === 0, detail: gaps.length ? `${gaps.join("; ")}.` : "All sections are there." },
     ...buildCriteria(f.build, f.typecheck),
-    {
-      id: "screens", label: `The starter screens render (${f.routes.join(", ")})`, pass: !("error" in f.screens) && bad.length === 0,
-      detail: "error" in f.screens ? `motif shot couldn't run: ${f.screens.error}` : bad.length ? `Didn't render: ${bad.join(", ")}.` : "All rendered.",
-    },
+    screensCriterion(f),
   ], f.auditFindings !== undefined ? { auditFindings: f.auditFindings } : {});
+}
+
+/**
+ * Test A's app, built without Motif: what Test D measures of its app but the design guide (there's no DESIGN.md,
+ * motif check or validate without Motif). `app` is null when no app folder was found.
+ */
+export type AFacts = Pick<DFacts, "app" | "build" | "typecheck" | "screens" | "routes">;
+
+/**
+ * An a-* case: its app builds, type-checks and draws its starter screens, measured as Test D's are. A failure here
+ * doesn't fail the run: Test A counts the screens of an app that didn't build or render as lost pairs (Part 4 §4).
+ */
+export function gradeA(f: AFacts): Grade {
+  if (!f.app) return grade([{ id: "app", label: "The new app exists", pass: false, detail: "No app folder was found (one with a package.json, pubspec.yaml, Gradle settings or an Xcode project)." }]);
+  return grade([{ id: "app", label: "The new app exists", pass: true, detail: f.app }, ...buildCriteria(f.build, f.typecheck), screensCriterion(f)]);
 }

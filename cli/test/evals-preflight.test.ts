@@ -111,7 +111,7 @@ describe("before a run", () => {
     for (const v of ["v20.18.1", "v21.7.3", "v22.11.0"]) {
       const { p, deps } = setup({ node: ok(`${v}\n`) });
       const r = (await preflight(p, false, deps, false, false, false, true, { vite8: true })) as { error: string };
-      expect([v, r.error]).toEqual([v, expect.stringContaining(`The Vue and Svelte cases (b-vue-history, b-vue-settings, b-svelte-history, b-svelte-settings, c-vue, c-svelte, d-darb) need Node.js 20.19 or later, or 22.12 or later on Node 22 (Bustan's and Adawat's Vite 8 needs it). This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases `)]);
+      expect([v, r.error]).toEqual([v, expect.stringContaining(`The Vue and Svelte cases (b-vue-history, b-vue-settings, b-svelte-history, b-svelte-settings, c-vue, c-svelte, d-darb, a-darb) need Node.js 20.19 or later, or 22.12 or later on Node 22 (Bustan's and Adawat's Vite 8 needs it). This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without them: --cases `)]);
       expect(r.error).not.toMatch(/--cases .*(vue|svelte|nuzha)/);
       expect(r.error).not.toMatch(/--cases .*swiftui/);
     }
@@ -128,7 +128,7 @@ describe("before a run", () => {
     for (const v of ["v20.19.0", "v22.12.0", "v22.16.9"]) {
       const { p, deps } = setup({ node: ok(`${v}\n`) });
       const r = (await preflight(p, false, deps, false, false, false, true, { svelteKit3: true })) as { error: string };
-      expect([v, r.error]).toEqual([v, expect.stringContaining(`The new Svelte app (d-nuzha) needs Node.js 22.17 or later, since npx sv create makes a SvelteKit 3 app and SvelteKit 3 needs it. This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases `)]);
+      expect([v, r.error]).toEqual([v, expect.stringContaining(`The new Svelte apps (d-nuzha, a-nuzha) need Node.js 22.17 or later, since npx sv create makes a SvelteKit 3 app and SvelteKit 3 needs it. This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases `)]);
       expect(r.error).toContain("--cases b-settings,");
       expect(r.error).not.toMatch(/--cases .*(nuzha|svelte|vue)/);
       expect(r.error).not.toMatch(/--cases .*swiftui/);
@@ -149,7 +149,7 @@ describe("before a run", () => {
     for (const v of ["v20.19.0", "v22.17.0", "v22.22.2", "v23.11.0", "v24.14.9", "v25.2.0"]) {
       const { p, deps } = setup({ node: ok(`${v}\n`) });
       const r = (await preflight(p, false, deps, false, false, false, true, { angular22: true })) as { error: string };
-      expect([v, r.error]).toEqual([v, expect.stringContaining(`The new Angular app (d-sanad) needs Node.js 22.22.3 or later on Node 22, 24.15 or later on Node 24, or 26 or later, since ng new makes an Angular 22 app and Angular 22 needs it. This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases `)]);
+      expect([v, r.error]).toEqual([v, expect.stringContaining(`The new Angular apps (d-sanad, a-sanad) need Node.js 22.22.3 or later on Node 22, 24.15 or later on Node 24, or 26 or later, since ng new makes an Angular 22 app and Angular 22 needs it. This is Node.js ${v.slice(1)}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases `)]);
       expect(r.error).toContain("--cases b-settings,");
       expect(r.error).not.toMatch(/--cases .*(angular|sanad|nuzha|svelte|vue)/);
       expect(r.error).not.toMatch(/--cases .*swiftui/);
@@ -203,12 +203,12 @@ describe("before a run", () => {
     const r = await preflight(p, true, deps);
     expect(r).toEqual({ error: expect.stringContaining("React Native") });
     expect(r).toEqual({ error: expect.stringContaining(line) });
-    expect(r).toEqual({ error: expect.stringContaining("--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,c-flutter,c-compose,d-sahm,d-nabta") });
+    expect(r).toEqual({ error: expect.stringContaining("--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,c-flutter,c-compose,d-sahm,a-sahm,d-nabta,a-nabta") });
   });
 
   test("the cases that need no browser name the SwiftUI ones only on a Mac, where they can run", async () => {
     const noBrowser = ok(JSON.stringify({ items: [{ id: "browser", status: "needed" }] }));
-    const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,c-flutter,c-compose,d-sahm,d-nabta) don't need one.";
+    const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,c-flutter,c-compose,d-sahm,a-sahm,d-nabta,a-nabta) don't need one.";
     const pc = setup({ doctor: noBrowser });
     const here = (await preflight(pc.p, true, { ...pc.deps, platform: "win32" })) as { error: string };
     expect(here.error).toContain(others);
@@ -216,13 +216,13 @@ describe("before a run", () => {
     const mac = setup({ doctor: noBrowser });
     const there = (await preflight(mac.p, true, { ...mac.deps, platform: "darwin" })) as { error: string };
     expect(there.error).toContain(others);
-    expect(there.error).toContain("On this Mac, the SwiftUI cases don't need one either: --cases b-swiftui-orders,b-swiftui-rewards,c-swiftui,d-masar.");
+    expect(there.error).toContain("On this Mac, the SwiftUI cases don't need one either: --cases b-swiftui-orders,b-swiftui-rewards,c-swiftui,d-masar,a-masar.");
   });
 });
 
 describe("before a run with SwiftUI cases", () => {
-  const swiftUICases = "b-swiftui-orders, b-swiftui-rewards, c-swiftui, d-masar";
-  const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,c-review,c-plain,c-flutter,c-compose,c-rn,c-vue,c-svelte,c-angular,d-stride,d-ledgerly,d-bloom,d-sahm,d-nabta,d-rihla,d-darb,d-nuzha,d-sanad";
+  const swiftUICases = "b-swiftui-orders, b-swiftui-rewards, c-swiftui, d-masar, a-masar";
+  const others = "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-flutter-reserve,b-flutter-search,b-compose-reminder,b-compose-stats,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,c-review,c-plain,c-flutter,c-compose,c-rn,c-vue,c-svelte,c-angular,d-stride,a-stride,d-ledgerly,a-ledgerly,d-bloom,a-bloom,d-sahm,a-sahm,d-nabta,a-nabta,d-rihla,a-rihla,d-darb,a-darb,d-nuzha,a-nuzha,d-sanad,a-sanad";
   /** A Mac with (or without) Xcode and an iOS simulator, as doctor sees it. */
   function mac(opts: { xcode?: string; simulator?: boolean }): DoctorDeps {
     return {
@@ -271,7 +271,7 @@ describe("before a run with SwiftUI cases", () => {
 
   test("on a Mac, a missing Flutter or Android SDK offers the SwiftUI cases among the others", async () => {
     const withSwiftUI =
-      "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,b-swiftui-orders,b-swiftui-rewards,c-review,c-plain,c-rn,c-vue,c-svelte,c-angular,c-swiftui,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-nuzha,d-sanad,d-masar";
+      "--cases b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,b-swiftui-orders,b-swiftui-rewards,c-review,c-plain,c-rn,c-vue,c-svelte,c-angular,c-swiftui,d-stride,a-stride,d-ledgerly,a-ledgerly,d-bloom,a-bloom,d-rihla,a-rihla,d-darb,a-darb,d-nuzha,a-nuzha,d-sanad,a-sanad,d-masar,a-masar";
     const a = setup({}, { flutter: null });
     const flutter = (await preflight(a.p, false, { ...a.deps, platform: "darwin" }, true)) as { error: string };
     expect(flutter.error).toEndWith(`Or run the web, Expo and SwiftUI cases without it: ${withSwiftUI}`);
@@ -288,7 +288,7 @@ describe("before a run with SwiftUI cases", () => {
 });
 
 describe("before a run with Flutter cases", () => {
-  const otherCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,c-review,c-plain,c-rn,c-vue,c-svelte,c-angular,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-nuzha,d-sanad";
+  const otherCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,c-review,c-plain,c-rn,c-vue,c-svelte,c-angular,d-stride,a-stride,d-ledgerly,a-ledgerly,d-bloom,a-bloom,d-rihla,a-rihla,d-darb,a-darb,d-nuzha,a-nuzha,d-sanad,a-sanad";
 
   test("ready: Flutter 3.27 or later on the PATH", async () => {
     const { p, deps, seen } = setup();
@@ -324,7 +324,7 @@ describe("before a run with Flutter cases", () => {
 });
 
 describe("before a run with Compose cases", () => {
-  const webCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,c-review,c-plain,c-rn,c-vue,c-svelte,c-angular,d-stride,d-ledgerly,d-bloom,d-rihla,d-darb,d-nuzha,d-sanad";
+  const webCases = "b-settings,b-search,b-profile,b-notifications,b-checkout,b-plain,b-rn-orders,b-rn-favourites,b-vue-history,b-vue-settings,b-svelte-history,b-svelte-settings,b-angular-history,b-angular-settings,c-review,c-plain,c-rn,c-vue,c-svelte,c-angular,d-stride,a-stride,d-ledgerly,a-ledgerly,d-bloom,a-bloom,d-rihla,a-rihla,d-darb,a-darb,d-nuzha,a-nuzha,d-sanad,a-sanad";
   const java = (v: string) => ({ code: 0, stdout: "", stderr: `openjdk version "${v}" 2024-07-16
 ` });
   /** A computer with (or without) a JDK and an SDK, as doctor sees it. */
