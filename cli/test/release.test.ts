@@ -434,6 +434,11 @@ describe("the release checklist and Test A's record (Part 4)", () => {
     expect(step(2)).toContain("--model <id> --judge-model <id>");
   });
 
+  test("step 3: a brief won by forfeit is accepted only after reading the log it names", () => {
+    expect(step(3)).toContain("won by forfeit");
+    expect(step(3)).toContain("read the log it names");
+  });
+
   test("step 2: a re-run of Test A runs D too", () => {
     expect(step(2)).toContain("A re-run of Test A runs D too");
   });

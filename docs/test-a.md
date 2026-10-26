@@ -8,6 +8,7 @@ Motif must win on every brief. For each brief, on its own pairs:
 
 - The AI judges pick Motif's side in at least 70% of the pairs, and the baseline in at most 15%. Each pair is judged twice, with the sides swapped. A side wins only when both judgements pick it.
 - The owner picks Motif's side in more than half of the pairs. "About the same" is not a win.
+- A side whose app doesn't build loses every pair. A brief Motif wins that way, or with no pair that has both apps' screens, is won by forfeit: the report's row and the verdict say so and name the log to read (`a-<brief>/build.log`, the stack's own log, or `pair-shots.json`) before the win is accepted.
 - Both apps of a brief are built by the same model. A brief whose two apps different models built can't pass: it stays pending until both are built again.
 
 A brief that falls short blocks the release until that stack is improved and Test A passes again. A re-run of Test A runs D too: each app built without Motif is compared with the one Motif builds on the new candidate, so the runner adds the `d-*` cases (`--tests A` runs `--tests D,A`).

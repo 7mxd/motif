@@ -6,7 +6,7 @@ import type { Judgement } from "../../tests/evals/judge-a";
 import type { Pair } from "../../tests/evals/pairs";
 import { renderReport, testVerdicts } from "../../tests/evals/report";
 import { missingJudgements } from "../../tests/evals/judge-a";
-import { appBuilt, forcedPairs, scoreBrief, scoreRun, verdictA, type AiResult, type BriefScore, type OwnerPick } from "../../tests/evals/score-a";
+import { appBuilt, builtFor, forcedPairs, scoreBrief, scoreRun, verdictA, type AiResult, type BriefScore, type OwnerPick } from "../../tests/evals/score-a";
 import type { Grade } from "../../tests/evals/grade";
 import type { CaseState, RunState } from "../../tests/evals/state";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -187,6 +187,30 @@ describe("what a side that didn't build loses", () => {
   test("a D design guide that's missing doesn't forfeit when the build facts say it built", () => {
     expect(appBuilt(g(["app", true], ["validate", false], ["build", true], ["typecheck", true]), "vue")).toBe(true);
   });
+  test("a brief Motif wins because the app without it didn't build says it was won by forfeit, naming the log to read", () => {
+    const s = scoreBrief("stride", [pair("p0", "both", "stride"), pair("p1", "both", "stride")], new Map(), undefined, { motif: true, baseline: false, logs: { baseline: "build.log" } });
+    expect(s.pass).toBe(true);
+    expect(s.forfeit).toBe("won by forfeit: the app without Motif didn't build — read a-stride/build.log");
+    expect(s.why).toStartWith("won by forfeit: the app without Motif didn't build — read a-stride/build.log");
+    // No pair with both apps' screens: nothing was judged, and it says so.
+    const shots = scoreBrief("stride", [pair("p0", "motif-only", "stride"), pair("p1", "neither", "stride")], new Map(), undefined, { motif: true, baseline: true });
+    expect(shots.pass).toBe(true);
+    expect(shots.forfeit).toBe("won by forfeit: no pair had both apps' screens, so none was judged — read a-stride/pair-shots.json");
+    // A judged win isn't one.
+    expect(scoreBrief("pulse", pairs(10), results(10, 10, 0), votes(10, 10)).forfeit).toBeUndefined();
+  });
+
+  test("the log a forfeit names is the one that says why: the stack's build log, or the session's when no app was found", () => {
+    const st = (stack: string, grade: Grade): RunState => ({
+      motifEvalRun: 1, id: "r", commit: "abc", dirty: false, started: "", claudeVersion: "2", resumes: [], options: { keep: false, work: "/w" },
+      cases: { [`d-${stack}`]: { status: "graded", attempts: 1, grade: g(["build", true]) }, [`a-${stack}`]: { status: "graded", attempts: 1, grade } },
+    });
+    expect(builtFor(st("stride", g(["build", false])), "stride").logs).toEqual({ motif: "build.log", baseline: "build.log" });
+    expect(builtFor(st("nabta", g(["typecheck", false])), "nabta").logs?.baseline).toBe("compile.log");
+    expect(builtFor(st("masar", g(["typecheck", false])), "masar").logs?.baseline).toBe("xcodebuild.log");
+    expect(builtFor(st("sanad", g(["app", false])), "sanad").logs?.baseline).toBe("session.jsonl");
+  });
+
   test("an unknown build keeps the brief pending", () => {
     const s = scoreBrief("pulse", pairs(4), results(4, 4, 0), votes(4, 4), { motif: true, baseline: null });
     expect(s.pass).toBeNull();
@@ -214,6 +238,15 @@ describe("the verdict", () => {
     const v = verdictA(briefs.map((b) => score(b, b !== "j")), briefs);
     expect(v.status).toBe("fail");
     expect(v.detail).toContain("j");
+  });
+
+  test("the verdict names the briefs won by forfeit", () => {
+    const scores = briefs.map((b) => (b === "c" ? { ...score(b, true), forfeit: "won by forfeit: the app without Motif didn't build — read a-c/build.log" } : score(b, true)));
+    const v = verdictA(scores, briefs);
+    expect(v.status).toBe("pass");
+    expect(v.detail).toBe("Motif won all 10 briefs. Won by forfeit: c (the app without Motif didn't build — read a-c/build.log).");
+    const w = verdictA(scores.map((s) => (s.brief === "j" ? { ...s, pass: null } : s)), briefs);
+    expect(w.detail).toContain("Won by forfeit: c (");
   });
 
   test("a brief with no verdict or no pairs leaves it incomplete", () => {

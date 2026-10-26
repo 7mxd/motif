@@ -22,6 +22,11 @@ export interface BriefScore {
   left: string[];
   /** Ids of the pairs decided without a judge or a vote (one side drew alone, or the other's app didn't build). */
   forced: string[];
+  /**
+   * Only for a brief Motif's side wins (or is winning) with no judge deciding it: the app without Motif didn't build, or
+   * no pair had both apps' screens. Says so and names the log to read before the win is accepted.
+   */
+  forfeit?: string;
   /** null while the brief waits for judgements, the owner's votes or its pairs, or when different models built its two apps. */
   pass: boolean | null;
   why: string;
@@ -35,7 +40,11 @@ export interface Models { motif?: string; baseline?: string }
 export type OwnerPick = "motif" | "baseline" | "same";
 export type AiResult = "motif" | "baseline" | "tie";
 /** Whether each side's app for the brief built (and type-checked); a side whose app didn't loses its pairs. */
-export interface Built { motif: boolean | null; baseline: boolean | null }
+export interface Built {
+  motif: boolean | null; baseline: boolean | null;
+  /** The file in each side's results folder that says why its app didn't build (forfeitLog); build.log when not known. */
+  logs?: { motif?: string; baseline?: string };
+}
 
 /**
  * How a pair is decided without a judge, or "open" when the judges (and the owner) decide it. A side whose app didn't
@@ -126,10 +135,16 @@ function scoreOf(
 
   const reasons: string[] = [];
   if (!built.motif) reasons.push("the app made with Motif didn't build, so it lost every pair");
-  if (!built.baseline) reasons.push("the app made without Motif didn't build, so it lost every pair");
-  const result = (pass: boolean | null, more: string[]): BriefScore => ({
-    ...base, ai, ...(voted > 0 ? { owner: votes } : {}), pass, why: [...reasons, ...more].join("; "),
-  });
+  // Motif's side wins every pair it drew without a judge: said as a forfeit, with the log a person reads before accepting it.
+  const unbuilt = !built.baseline ? `won by forfeit: the app without Motif didn't build — read a-${brief}/${built.logs?.baseline ?? "build.log"}` : undefined;
+  if (unbuilt) reasons.push(unbuilt);
+  const result = (pass: boolean | null, more: string[]): BriefScore => {
+    const forfeit = unbuilt ?? (pass === true && open.length === 0 ? `won by forfeit: no pair had both apps' screens, so none was judged — read a-${brief}/pair-shots.json` : undefined);
+    return {
+      ...base, ai, ...(voted > 0 ? { owner: votes } : {}), pass, why: [...(forfeit && !unbuilt ? [forfeit] : []), ...reasons, ...more].join("; "),
+      ...(forfeit && pass !== false ? { forfeit } : {}),
+    };
+  };
 
   const aiLine = judged > 0 ? `AI judges picked Motif in ${ai.motif} of ${judged} (${pct(ai.motif, judged)}) and the baseline in ${ai.baseline} (${pct(ai.baseline, judged)})` : "";
   // A brief fails early only when no outcome of the pairs still to be judged or voted could pass it.
@@ -158,11 +173,14 @@ export function verdictA(scores: BriefScore[], expected: string[]): { status: "p
   if (failed.length > 0) {
     return { status: "fail", detail: `Motif didn't win ${failed.join(", ")}: ${failed.map((b) => `${b}: ${of(b)!.why}`).join(" | ")}.` };
   }
+  // Briefs passed with no judge deciding them: named, so a person reads their logs before the verdict is accepted.
+  const forfeits = expected.filter((b) => of(b)?.pass === true && of(b)!.forfeit);
+  const byForfeit = forfeits.length > 0 ? ` Won by forfeit: ${forfeits.map((b) => `${b} (${of(b)!.forfeit!.replace(/^won by forfeit: /, "")})`).join(", ")}.` : "";
   const waiting = expected.filter((b) => !of(b) || of(b)!.pass === null || of(b)!.pairs === 0);
   if (waiting.length > 0) {
-    return { status: "incomplete", detail: `${waiting.length} of ${expected.length} briefs have no verdict yet: ${waiting.map((b) => `${b} (${of(b)?.why ?? "no pairs"})`).join(", ")}.` };
+    return { status: "incomplete", detail: `${waiting.length} of ${expected.length} briefs have no verdict yet: ${waiting.map((b) => `${b} (${of(b)?.why ?? "no pairs"})`).join(", ")}.${byForfeit}` };
   }
-  return { status: "pass", detail: `Motif won all ${expected.length} briefs.` };
+  return { status: "pass", detail: `Motif won all ${expected.length} briefs.${byForfeit}` };
 }
 
 /**
@@ -183,7 +201,21 @@ export function appBuilt(grade: Grade | undefined, stack?: StackId): boolean | n
 
 /** Whether each side's app built, from the run's grading of its d-* and a-* cases; null for an app not graded (or skipped). */
 export function builtFor(state: RunState, brief: string, stack: StackId | undefined = CASES.find((c) => c.id === `d-${brief}`)?.stack): Built {
-  return { motif: appBuilt(state.cases[`d-${brief}`]?.grade, stack), baseline: appBuilt(state.cases[`a-${brief}`]?.grade, stack) };
+  const [d, a] = [state.cases[`d-${brief}`]?.grade, state.cases[`a-${brief}`]?.grade];
+  return {
+    motif: appBuilt(d, stack), baseline: appBuilt(a, stack),
+    logs: { ...(d ? { motif: forfeitLog(d, stack) } : {}), ...(a ? { baseline: forfeitLog(a, stack) } : {}) },
+  };
+}
+
+/**
+ * The file in a case's results folder that says why its app didn't build: the session's transcript when no app was
+ * found, else the stack's build log (compile.log for Compose, xcodebuild.log for SwiftUI, analyze.log for Flutter,
+ * typecheck.log for Expo, which have no build of their own; build.log for the rest).
+ */
+export function forfeitLog(grade: Grade, stack?: StackId): string {
+  if (grade.criteria.some((k) => k.id === "app" && !k.pass)) return "session.jsonl";
+  return stack === "compose" ? "compile.log" : stack === "swiftui" ? "xcodebuild.log" : stack === "flutter" ? "analyze.log" : stack === "react-native" ? "typecheck.log" : "build.log";
 }
 
 /** The model each side of a brief was built by, from its d-* and a-* sessions (absent when a session hasn't run). */
