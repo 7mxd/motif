@@ -7,7 +7,7 @@ import type { Pair } from "../../tests/evals/pairs";
 import { renderReport, testVerdicts } from "../../tests/evals/report";
 import { missingJudgements } from "../../tests/evals/judge-a";
 import { appBuilt, builtFor, forcedPairs, scoreBrief, scoreRun, verdictA, type AiResult, type BriefScore, type OwnerPick } from "../../tests/evals/score-a";
-import type { Grade } from "../../tests/evals/grade";
+import { gradeA, type Grade } from "../../tests/evals/grade";
 import type { CaseState, RunState } from "../../tests/evals/state";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -177,8 +177,24 @@ describe("what a side that didn't build loses", () => {
     expect(appBuilt(g(["typecheck", false]), "react-native")).toBe(true);
     expect(appBuilt(g(["build", true], ["typecheck", false]), "react-native")).toBe(true);
   });
-  test("a build that stopped at the type errors counts as failed", () => {
-    expect(appBuilt(g(["typecheck", false, "The type check failed. The build stopped at the same errors, so it isn't counted again."]), "vue")).toBe(false);
+  test("a build that stopped at the type errors counts as failed, from the criterion's flag, not its text", () => {
+    // Vue and Angular: the build stopped at its type check, whose text an error message replaced (packages couldn't be got).
+    for (const stack of ["vue", "angular"] as const) {
+      const grade = gradeA({
+        app: "/w/app", build: { code: 1, typeErrorsOnly: true }, typecheck: { code: 1, detail: "The packages couldn't be got: npm ci failed (exit code 1)." },
+        screens: [{ route: "/", status: 200, pageErrors: 0 }], routes: ["/"],
+      });
+      const k = grade.criteria.find((c) => c.id === "typecheck")!;
+      expect(k.typeErrorsOnly).toBe(true);
+      expect(grade.criteria.some((c) => c.id === "build")).toBe(false);
+      expect(appBuilt(grade, stack)).toBe(false);
+      expect(appBuilt({ ...grade, criteria: grade.criteria.map((c) => (c.id === "typecheck" ? { ...c, detail: "Something else entirely." } : c)) }, stack)).toBe(false);
+    }
+    // Text that says so, without the flag, isn't it: an Expo app's tsc errors don't forfeit.
+    expect(appBuilt(g(["typecheck", false, "The type check failed. The build stopped at the same errors, so it isn't counted again."]), "react-native")).toBe(true);
+    // The text stays as it was.
+    const vue = gradeA({ app: "/w/app", build: { code: 1, typeErrorsOnly: true }, typecheck: { code: 2, command: "vue-tsc" }, screens: [], routes: [] });
+    expect(vue.criteria.find((c) => c.id === "typecheck")!.detail).toBe("The type check (vue-tsc) failed (exit code 2). The build stopped at the same errors, so it isn't counted again.");
   });
   test("no build facts (no app found) didn't build; no grade at all is unknown", () => {
     expect(appBuilt(g(["app", false]), "vue")).toBe(false);

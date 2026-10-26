@@ -1,6 +1,10 @@
 // Pass or fail for each case, criterion by criterion, with the spec's thresholds (§13.2).
 
-export interface Criterion { id: string; label: string; pass: boolean; detail: string }
+export interface Criterion {
+  id: string; label: string; pass: boolean; detail: string;
+  /** The type check only: the app's build stopped at these same type errors (Vue, Angular), so it stands for the build. */
+  typeErrorsOnly?: true;
+}
 export interface Grade { pass: boolean; criteria: Criterion[]; metrics: Record<string, number | string> }
 
 export type CheckFacts = { violations: number; exceptions: number; warnings: number } | { error: string };
@@ -40,7 +44,11 @@ function validateCriterion(v: ValidateFacts): Criterion {
 /** The build, when the stack has one (Flutter's checks need none), and the type check. */
 const buildCriteria = (build: CmdFacts | undefined, typecheck: CmdFacts): Criterion[] => [
   ...(build && !build.typeErrorsOnly ? [{ id: "build", label: "The app builds", pass: build.code === 0, detail: ran(build, "The build") }] : []),
-  { id: "typecheck", label: "The app type-checks", pass: typecheck.code === 0, detail: `${ran(typecheck, "The type check")}${build?.typeErrorsOnly ? " The build stopped at the same errors, so it isn't counted again." : ""}` },
+  {
+    id: "typecheck", label: "The app type-checks", pass: typecheck.code === 0,
+    detail: `${ran(typecheck, "The type check")}${build?.typeErrorsOnly ? " The build stopped at the same errors, so it isn't counted again." : ""}`,
+    ...(build?.typeErrorsOnly ? { typeErrorsOnly: true as const } : {}),
+  },
 ];
 
 export interface BFacts {

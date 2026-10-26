@@ -186,7 +186,7 @@ export function verdictA(scores: BriefScore[], expected: string[]): { status: "p
 /**
  * Whether an app built, from its case's grade: null when it wasn't graded (unknown). Only the build counts: its
  * `build` criterion; the type check stands in for it where it is the compile step (Compose, SwiftUI) or where the build
- * stopped at the same type errors. Flutter's analyze warnings and Expo's tsc errors don't forfeit pairs: those apps run
+ * stopped at the same type errors (the criterion's typeErrorsOnly, set where grade.ts builds it). Flutter's analyze warnings and Expo's tsc errors don't forfeit pairs: those apps run
  * and draw. A grade with no build or type-check criterion is an app that wasn't found (its `app` criterion failed), which didn't build.
  */
 export function appBuilt(grade: Grade | undefined, stack?: StackId): boolean | null {
@@ -195,7 +195,7 @@ export function appBuilt(grade: Grade | undefined, stack?: StackId): boolean | n
   const typecheck = grade.criteria.find((k) => k.id === "typecheck");
   if (!build && !typecheck) return !grade.criteria.some((k) => k.id === "app" && !k.pass);
   if (build && !build.pass) return false;
-  if (typecheck && !typecheck.pass && (stack === "compose" || stack === "swiftui" || (!build && /build stopped/i.test(typecheck.detail)))) return false;
+  if (typecheck && !typecheck.pass && (stack === "compose" || stack === "swiftui" || typecheck.typeErrorsOnly)) return false;
   return true;
 }
 
