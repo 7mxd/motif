@@ -118,13 +118,15 @@ describe("claimProfile (unique profile names filled the Windows atom table, and 
       expect(readdirSync(root)).toEqual([]);
     }));
 
-  test("browsers running at once each get a slot of their own; with every slot taken, a random name", () =>
+  test("browsers running at once each get a slot of their own, the lowest free one; with every slot taken, the launch fails", () =>
     withRoot((root) => {
-      const [a, b, c] = [claimProfile(root, 2), claimProfile(root, 2), claimProfile(root, 2)];
-      expect([basename(a!.dir), basename(b!.dir)]).toEqual(["motif-browser-0", "motif-browser-1"]);
-      expect(basename(c!.dir)).toMatch(/^motif-browser-\w{6}$/);
-      a!.release();
-      expect(claimProfile(root, 2).dir).toBe(a!.dir);
+      const [a, b, c] = [claimProfile(root, 3), claimProfile(root, 3), claimProfile(root, 3)];
+      expect([a, b, c].map((p) => basename(p.dir))).toEqual(["motif-browser-0", "motif-browser-1", "motif-browser-2"]);
+      // Never a folder with a new name: each one costs an atom until the user signs out.
+      expect(() => claimProfile(root, 3)).toThrow("all 3 of Motif's are in use");
+      expect(readdirSync(root).filter((n) => !/^motif-browser-[0-2](\.lock)?$/.test(n))).toEqual([]);
+      b.release();
+      expect(claimProfile(root, 3).dir).toBe(b.dir);
     }));
 
   test("a slot left by a run that crashed is taken over; a live run's isn't", () =>
