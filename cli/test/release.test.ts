@@ -417,6 +417,19 @@ describe("the release checklist and Test A's record (Part 4)", () => {
     ]);
   });
 
+  /** A checklist step's text, from its heading to the next. */
+  const step = (n: number) => {
+    const text = read("docs/release-checklist.md");
+    const at = text.search(new RegExp(`^## ${n}\\. `, "m"));
+    const end = text.slice(at + 1).search(/^## /m);
+    return text.slice(at, end < 0 ? undefined : at + 1 + end);
+  };
+
+  test("step 3: the owner judges only after the whole run, the Mac part included, is finished and back", () => {
+    expect(step(3)).toContain("once the whole run has finished, the Mac part included and its run folder brought back from the Mac");
+    expect(step(3)).toContain("The answers stay locked until every brief's pairs are in");
+  });
+
   test("docs/test-a.md exists with its Known biases and Runs sections", () => {
     expect(existsSync(join(REPO, "docs/test-a.md"))).toBe(true);
     const text = read("docs/test-a.md");

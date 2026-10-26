@@ -2,14 +2,16 @@
 // In owner mode the runner serves it on 127.0.0.1 from the run's folder, and each vote goes straight into
 // a/owner-votes.json as it's made. Nothing the page holds or any response gives before the last vote says which side is
 // which: the images go by their random names, the page knows only "left" and "right", the side order of each pair stays
-// on the server, and the answers come from GET /reveal only once every pair shown has a vote.
+// on the server, and the answers come from GET /reveal only once every brief of the run has its pairs (read fresh from
+// run.json at each request, so a brief paired later on the Mac counts) and every pair a vote decides has one.
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { motifCss } from "../../cli/src/generate/motif-css";
 import { presetTheme } from "../../cli/src/preview/presets";
+import { andList } from "./cases";
 import { readPairs, type Pair } from "./pairs";
-import { builtFor, type OwnerPick } from "./score-a";
+import { builtFor, expectedBriefs, type OwnerPick } from "./score-a";
 import type { RunState } from "./state";
 
 const REPO = resolve(import.meta.dir, "..", "..");
@@ -164,6 +166,25 @@ export function writePage(run: string, mode: "owner" | "public", pairs: Pair[]):
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
+ * Why the answers can't be shown yet even with a vote on every pair here, from the run as it stands now: a brief of the
+ * run whose pairs aren't in (Masar's, until the Mac's part is back; a brief whose pair step failed), or pairs a vote
+ * decides that came in after this page was started (`shown`, the ids it has). null once nothing stands in the way.
+ * Showing the answers early would let the owner judge the pairs still to come knowing what each side looks like.
+ */
+export function answersWait(state: RunState, run: string, shown: ReadonlySet<string>): string | null {
+  const toCome = expectedBriefs(state).filter((b) => !state.pairs?.[b]?.done);
+  if (toCome.length > 0) return `${andList(toCome.map((b) => `${briefTitle(b)}'s`))} pairs aren't in yet; the answers open once every app has been paired and judged.`;
+  const added = ownerPairs(state, run).filter((p) => !shown.has(p.id)).length;
+  if (added > 0) {
+    return `${plural(added, "pair")} came in after this page was started; stop judge-owner.ts and start it again to judge ${added === 1 ? "it" : "them"}, and the answers open after that.`;
+  }
+  return null;
+}
+
+/** The run's record as it is now (the runner may be writing it while the owner judges). */
+const currentState = (run: string) => JSON.parse(readFileSync(join(run, "run.json"), "utf8")) as RunState;
+
+/**
  * What GET /reveal answers: which side was Motif's in each pair shown ("answer"), and how the owner's picks fell for
  * each brief ("won" is Motif's side picked).
  */
@@ -194,12 +215,13 @@ const json = (data: unknown, status = 200) =>
  * Serves the owner's page from the run folder on 127.0.0.1: GET / (the page), GET /img/<name>.png (a shown pair's
  * image), GET /votes (the picks so far, without their order), POST /vote { pairId, pick } (saved at once into
  * a/owner-votes.json with the order the pair was shown in; a second vote on a pair replaces the first, until the answers
- * have been shown) and GET /reveal (only once every pair shown has a vote). `onVote` hears of each vote saved.
+ * have been shown) and GET /reveal (only once every pair shown has a vote and answersWait, read at each request, finds
+ * nothing to wait for; /votes and /vote say what it found as `waiting`). `onVote` hears of each vote saved.
  */
 export async function serveOwner(
   run: string, port = 0, opts: { onVote?: (votes: number, of: number) => void } = {},
 ): Promise<{ url: string; stop(): void }> {
-  const state = JSON.parse(readFileSync(join(run, "run.json"), "utf8")) as RunState;
+  const state = currentState(run);
   const pairs = ownerPairs(state, run);
   // A votes file that can't be read stops the server here, before a vote could be written over it.
   readVotes(run);
@@ -208,6 +230,15 @@ export async function serveOwner(
   const byId = new Map(shown.map((s) => [s.pair.id, s]));
   const images = new Set(shown.flatMap((s) => [s.left, s.right]).filter((x): x is string => x !== null));
   const missing = (votes: OwnerVote[]) => shown.filter((s) => !votes.some((v) => v.pairId === s.pair.id)).length;
+  const shownIds = new Set(byId.keys());
+  /** Why the answers wait, from run.json read now; a record that can't be read just now (mid-write) waits too. */
+  const waiting = (): string | null => {
+    try {
+      return answersWait(currentState(run), run, shownIds);
+    } catch {
+      return "The run's record can't be read just now; try again in a moment.";
+    }
+  };
 
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -232,7 +263,10 @@ export async function serveOwner(
       }
       if (req.method === "GET" && path === "/votes") {
         // final: the answers have been shown, so the votes made stand (the page shows them as final).
-        return json({ votes: readVotes(run).filter((v) => byId.has(v.pairId)).map((v) => ({ pairId: v.pairId, pick: v.pick })), final: Boolean(session(run).revealed) });
+        // waiting: why the answers can't be shown yet whatever the votes; null once nothing but votes stands in the way.
+        return json({
+          votes: readVotes(run).filter((v) => byId.has(v.pairId)).map((v) => ({ pairId: v.pairId, pick: v.pick })), final: Boolean(session(run).revealed), waiting: waiting(),
+        });
       }
       if (req.method === "POST" && path === "/vote") {
         const origin = req.headers.get("origin");
@@ -257,13 +291,16 @@ export async function serveOwner(
         writeJson(join(run, votesFile), votes);
         const left = missing(votes);
         opts.onVote?.(shown.length - left, shown.length);
-        return json({ saved: true, votes: shown.length - left, of: shown.length });
+        return json({ saved: true, votes: shown.length - left, of: shown.length, waiting: waiting() });
       }
       if (req.method === "GET" && path === "/reveal") {
         const votes = readVotes(run);
         const left = missing(votes);
         if (left > 0) return json({ error: `${plural(left, "pair")} still ${left === 1 ? "needs" : "need"} a vote.` }, 409);
         const s = session(run);
+        // Once shown, they stay shown; until then, not while pairs are still to come.
+        const wait = s.revealed ? null : waiting();
+        if (wait) return json({ error: wait }, 409);
         if (!s.revealed) writeJson(join(run, sessionFile), { ...s, revealed: new Date().toISOString() });
         return json(revealData(shown, votes));
       }

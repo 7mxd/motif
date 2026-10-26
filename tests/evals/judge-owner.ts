@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { openUrl } from "../../cli/src/preview/open";
-import { ownerPairs, readVotes, serveOwner } from "./page-a";
+import { answersWait, ownerPairs, readVotes, serveOwner } from "./page-a";
 import { readPairs } from "./pairs";
 import { writeReport } from "./run";
 import { loadRun, runDir, type RunState } from "./state";
@@ -78,6 +78,8 @@ export async function main(argv: string[], log: (line: string) => void = console
     return 2;
   }
   log(`Judge Test A's pairs at ${server.url}  (${done()} of ${shown.length} judged so far)`);
+  const wait = answersWait(state, dir, new Set(shown.map((p) => p.id)));
+  if (wait) log(wait);
   log("Each vote is saved as you make it. Ctrl+C stops; run this again to continue.");
   if (!o.values["no-open"] && !(await openUrl(server.url))) log("Open that address in your browser.");
   await new Promise<void>((stop) => {

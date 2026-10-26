@@ -20,7 +20,7 @@ A full run of tests A, B, C and D on the release candidate. A run of only some c
 
 The owner judges every pair, blind.
 
-- How: `bun tests/evals/judge-owner.ts <run>`, then vote on every pair. [Test A](test-a.md) says how it is scored.
+- How: once the whole run has finished, the Mac part included and its run folder brought back from the Mac, run `bun tests/evals/judge-owner.ts <run>`, then vote on every pair. The answers stay locked until every brief's pairs are in and each has a vote, so no pair is judged after seeing which side is Motif's. [Test A](test-a.md) says how it is scored.
 - Passed when: Test A passes on every brief, and `docs/test-a.md` records the run and the verdict.
 
 ## 4. Release gate

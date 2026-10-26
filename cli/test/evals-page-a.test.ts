@@ -77,6 +77,7 @@ function fixture() {
     motifEvalRun: 1, id: "20261026-120000", commit: "abc", dirty: false, started: "2026-10-26T12:00:00.000Z", claudeVersion: "2", resumes: [],
     options: { keep: false, work: "/w" },
     cases: { "d-nuzha": graded(true), "a-nuzha": graded(true), "d-stride": graded(true), "a-stride": graded(false) },
+    pairs: { nuzha: { done: true }, stride: { done: true } },
   };
   writeFileSync(join(run, "run.json"), JSON.stringify(state, null, 2));
   return { run, pairs, state, shown: pairs.slice(0, 5), hidden: pairs.slice(5) };
@@ -160,7 +161,7 @@ describe("serving the owner's page", () => {
       expect(shot.status).toBe(200);
       expect(shot.body.equals(readFileSync(join(f.run, "a", img)))).toBe(true);
       const votes = await get(`${s.url}/votes`);
-      expect(JSON.parse(votes.text)).toEqual({ votes: [], final: false });
+      expect(JSON.parse(votes.text)).toEqual({ votes: [], final: false, waiting: null });
       const reveal = await get(`${s.url}/reveal`);
       expect(reveal.status).toBe(409);
       for (const r of [page, shot, votes, reveal]) expect(tells(r.text + r.headers, f.run)).toEqual([]);
@@ -207,7 +208,7 @@ describe("serving the owner's page", () => {
       expect(readVotes(f.run)).toEqual([{ pairId: first.id, pick: "same", order }]);
       // GET /votes gives the picks, never the order.
       const votes = await get(`${s.url}/votes`);
-      expect(JSON.parse(votes.text)).toEqual({ votes: [{ pairId: first.id, pick: "same" }], final: false });
+      expect(JSON.parse(votes.text)).toEqual({ votes: [{ pairId: first.id, pick: "same" }], final: false, waiting: null });
       // A pair the owner isn't shown, an unknown pick, or a body that isn't a vote changes nothing.
       expect((await vote(s.url, f.hidden[1]!.id, "left")).status).toBe(400);
       expect((await vote(s.url, first.id, "motif")).status).toBe(400);
@@ -266,6 +267,69 @@ describe("serving the owner's page", () => {
       expect((await vote(s.url, data.pairs[0]!.id, "same")).status).toBe(409);
       expect(JSON.parse((await get(`${s.url}/votes`)).text).final).toBe(true);
       expect(readVotes(f.run).find((v) => v.pairId === data.pairs[0]!.id)!.pick).toBe("left");
+    } finally {
+      s.stop();
+    }
+  });
+
+  test("the answers stay locked until every brief of the run is paired, read fresh from run.json, and every pair has a vote", async () => {
+    const f = fixture();
+    // Masar runs on the Mac: skipped here, so its pairs aren't in.
+    const state: RunState = {
+      ...f.state,
+      cases: { ...f.state.cases, "d-masar": { status: "skipped", attempts: 0 }, "a-masar": { status: "skipped", attempts: 0 } },
+    };
+    writeFileSync(join(f.run, "run.json"), JSON.stringify(state, null, 2));
+    const s = await serveOwner(f.run);
+    try {
+      const data = pageData((await get(`${s.url}/`)).body.toString("utf8"));
+      expect(JSON.parse((await get(`${s.url}/votes`)).text).waiting).toBe("Masar's pairs aren't in yet; the answers open once every app has been paired and judged.");
+      let last: any;
+      for (const x of data.pairs) last = JSON.parse((await vote(s.url, x.id, "left")).text);
+      // Every pair shown has a vote, and the page hears why the answers don't open.
+      expect(last).toMatchObject({ saved: true, votes: 5, of: 5, waiting: "Masar's pairs aren't in yet; the answers open once every app has been paired and judged." });
+      const early = await get(`${s.url}/reveal`);
+      expect(early.status).toBe(409);
+      expect(JSON.parse(early.text).error).toBe("Masar's pairs aren't in yet; the answers open once every app has been paired and judged.");
+      expect(tells(early.text, f.run)).toEqual([]);
+      expect(existsSync(join(f.run, "a", "owner-session.json")) && JSON.parse(readFileSync(join(f.run, "a", "owner-session.json"), "utf8")).revealed).toBeFalsy();
+
+      // The Mac's part comes back while the page is open: Masar is paired, with one pair a vote decides.
+      const masar: Pair = { id: hex(), brief: "masar", screen: "/", size: 390, outcome: "both", motif: f.pairs[0]!.motif, baseline: f.pairs[0]!.baseline };
+      writeFileSync(join(f.run, "a", "pairs.json"), JSON.stringify([...f.pairs, masar], null, 2));
+      writeFileSync(join(f.run, "run.json"), JSON.stringify({ ...state, cases: { ...state.cases, "d-masar": graded(true), "a-masar": graded(true) }, pairs: { ...state.pairs, masar: { done: true } } }, null, 2));
+      const added = await get(`${s.url}/reveal`);
+      expect(added.status).toBe(409);
+      expect(JSON.parse(added.text).error).toBe("1 pair came in after this page was started; stop judge-owner.ts and start it again to judge it, and the answers open after that.");
+      expect(JSON.parse((await get(`${s.url}/votes`)).text).waiting).toContain("came in after this page was started");
+    } finally {
+      s.stop();
+    }
+    // Started again, it shows Masar's pair; once it has a vote, the answers open.
+    const s2 = await serveOwner(f.run);
+    try {
+      const data = pageData((await get(`${s2.url}/`)).body.toString("utf8"));
+      expect(data.pairs).toHaveLength(6);
+      expect((await get(`${s2.url}/reveal`)).status).toBe(409);
+      const open = data.pairs.find((x) => !readVotes(f.run).some((v) => v.pairId === x.id))!;
+      expect(JSON.parse((await vote(s2.url, open.id, "right")).text).waiting).toBeNull();
+      expect(JSON.parse((await get(`${s2.url}/votes`)).text).waiting).toBeNull();
+      expect((await get(`${s2.url}/reveal`)).status).toBe(200);
+    } finally {
+      s2.stop();
+    }
+  });
+
+  test("a run with a brief whose pair step hasn't run yet keeps the answers locked", async () => {
+    const f = fixture();
+    writeFileSync(join(f.run, "run.json"), JSON.stringify({ ...f.state, pairs: { nuzha: { done: true }, stride: { done: false, note: "motif shot failed" } } }, null, 2));
+    const s = await serveOwner(f.run);
+    try {
+      const data = pageData((await get(`${s.url}/`)).body.toString("utf8"));
+      for (const x of data.pairs) await vote(s.url, x.id, "same");
+      const r = await get(`${s.url}/reveal`);
+      expect(r.status).toBe(409);
+      expect(JSON.parse(r.text).error).toBe("Stride's pairs aren't in yet; the answers open once every app has been paired and judged.");
     } finally {
       s.stop();
     }
@@ -440,6 +504,37 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       await key("3");
       await Bun.sleep(300);
       expect(readVotes(f.run).every((v) => v.pick === "left")).toBe(true);
+      expect(page.takeErrors()).toEqual([]);
+    } finally {
+      await b.close();
+      s.stop();
+    }
+  }, 60_000);
+
+  test("while a brief's pairs aren't in, the last screen says so and the answers can't be asked for", async () => {
+    const f = fixture();
+    writeFileSync(join(f.run, "run.json"), JSON.stringify({ ...f.state, cases: { ...f.state.cases, "d-masar": { status: "skipped", attempts: 0 }, "a-masar": { status: "skipped", attempts: 0 } } }, null, 2));
+    const s = await serveOwner(f.run);
+    const b = await launchBrowser(browser!.path);
+    try {
+      const page = await b.newPage({ isolated: true });
+      await page.setViewport(1280, 800);
+      await page.goto(`${s.url}/`);
+      for (let i = 0; i < 100 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+      for (let n = 0; n < 5; n++) {
+        const before = readVotes(f.run).length;
+        await page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "3", bubbles: true }))`);
+        for (let i = 0; i < 100 && readVotes(f.run).length === before; i++) await Bun.sleep(50);
+      }
+      for (let i = 0; i < 100 && (await page.evaluate<boolean>(`document.getElementById("done").hidden`)); i++) await Bun.sleep(50);
+      await Bun.sleep(200);
+      expect(await page.evaluate<string>(`document.getElementById("done-note").textContent`)).toBe("Masar's pairs aren't in yet; the answers open once every app has been paired and judged.");
+      expect(await page.evaluate<boolean>(`document.getElementById("show").disabled`)).toBe(true);
+      // Opened again, it knows from the start.
+      await page.goto(`${s.url}/`);
+      for (let i = 0; i < 100 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+      expect(await page.evaluate<string>(`document.getElementById("done-note").textContent`)).toContain("Masar's pairs aren't in yet");
+      expect(await page.evaluate<boolean>(`document.getElementById("show").disabled`)).toBe(true);
       expect(page.takeErrors()).toEqual([]);
     } finally {
       await b.close();
