@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { onExit } from "../cleanup";
@@ -115,8 +115,8 @@ export function removeProfileNow(
   return false;
 }
 
-/** How many profile folders browsers take turns with (see claimProfile). */
-export const PROFILE_SLOTS = 8;
+/** The most browsers that can run at once, each in a profile folder of its own (see claimProfile). */
+export const PROFILE_SLOTS = 64;
 
 export interface Profile {
   dir: string;
@@ -174,9 +174,11 @@ function takeLock(lock: string, token: string, alive: (pid: number) => boolean):
 /**
  * A fresh, empty profile folder for one browser. On Windows, Chrome registers a global atom named after each profile
  * folder it runs in, and Windows keeps it until the user signs out; the table holds 16,384, and once it is full, copy
- * and paste stop working everywhere. So the folders aren't named at random: there are a few slots (motif-browser-0,
- * -1, ...), and each launch reuses a name an earlier one registered. A live browser holds its slot with a lock file
- * beside the folder, so browsers running at once never share one. With every slot taken, the folder gets a random name.
+ * and paste stop working everywhere. So the folders aren't named at random: they are numbered slots (motif-browser-0,
+ * -1, ...), each launch takes the lowest free one, and so reuses a name an earlier one registered. Windows then keeps
+ * one atom per browser that ever ran at the same time as others, never one per launch. A live browser holds its slot
+ * with a lock file beside the folder, so browsers running at once never share one. With every slot taken, the launch
+ * fails rather than make a folder with a new name.
  */
 export function claimProfile(root = tmpdir(), slots = PROFILE_SLOTS, alive: (pid: number) => boolean = isAlive): Profile {
   const token = `${process.pid} ${randomUUID()}`;
@@ -201,7 +203,7 @@ export function claimProfile(root = tmpdir(), slots = PROFILE_SLOTS, alive: (pid
     }
     return { dir, release };
   }
-  return { dir: mkdtempSync(join(root, "motif-browser-")), release: () => {} };
+  throw new Error(`Couldn't make a profile folder for the browser in ${root}: all ${slots} of Motif's are in use. Close other Motif runs that use a browser, or check that this folder is writable, and try again.`);
 }
 
 /** Removes the profile, then gives its slot back (even when the folder couldn't be removed: the next claim empties it). */
