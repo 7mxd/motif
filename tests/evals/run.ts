@@ -550,8 +550,15 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
  * that doesn't build or render isn't a failure of the run, and Test A counts its screens as lost pairs.
  */
 export function writeReport(state: RunState, dir: string, deps: Pick<RunDeps, "log">): number {
-  // The owner's votes, from the page judge-owner.ts serves, once there are any.
-  const scores = scoreRun(state, dir, ownerPicks(dir));
+  // The owner's votes, from the page judge-owner.ts serves, once there are any. A votes file that can't be read is said,
+  // not taken as no votes; the report waits for them until it's mended.
+  let owner: ReturnType<typeof ownerPicks> | undefined;
+  try {
+    owner = ownerPicks(dir);
+  } catch (e) {
+    deps.log((e as Error).message);
+  }
+  const scores = scoreRun(state, dir, owner);
   const verdicts = testVerdicts(state, CASES, scores);
   writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts, scores));
   writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts, ...(verdicts.some((v) => v.test === "A") ? { scoresA: scores } : {}) }, null, 2));

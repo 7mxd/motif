@@ -8,6 +8,7 @@ import type { Grade } from "../../tests/evals/grade";
 import { ownerPairs, ownerPicks, readVotes, serveOwner, sideOrder, writePage, type OwnerVote } from "../../tests/evals/page-a";
 import type { Pair } from "../../tests/evals/pairs";
 import { scoreRun } from "../../tests/evals/score-a";
+import { reportOnVote } from "../../tests/evals/judge-owner";
 import { writeReport } from "../../tests/evals/run";
 import type { CaseState, RunState } from "../../tests/evals/state";
 import { encodePng } from "./png-pixels";
@@ -63,9 +64,11 @@ function fixture() {
     p("nuzha", "/", 390, "both"),
     p("nuzha", "/sign-in", 390, "both"),
     p("nuzha", "/trails", 1440, "both"),
-    p("nuzha", "/", 1440, "motif-only"),
-    p("nuzha", "/sign-in", 1440, "baseline-only"),
-    p("nuzha", "/trails", 390, "neither"),
+    p("nuzha", "/", 1440, "both"),
+    p("nuzha", "/sign-in", 1440, "both"),
+    p("nuzha", "/trails", 390, "motif-only"),
+    p("nuzha", "/", 390, "baseline-only"),
+    p("nuzha", "/sign-in", 390, "neither"),
     p("stride", "/", 390, "both"),
     p("stride", "/sign-in", 390, "both"),
   ];
@@ -87,7 +90,7 @@ function pageData(html: string): { pairs: { id: string; title: string; left: str
 }
 
 describe("the owner's page", () => {
-  test("shows the pairs the owner decides: not those left out or decided by a build", () => {
+  test("shows only the pairs a vote decides: both sides drawn, both apps built; not one-sided, left out or decided by a build", () => {
     const f = fixture();
     expect(ownerPairs(f.state, f.run).map((p) => p.id).sort()).toEqual(f.shown.map((p) => p.id).sort());
   });
@@ -114,9 +117,8 @@ describe("the owner's page", () => {
     expect(data.pairs.map((x) => x.title)).toContain("Nuzha — Sign in");
     expect(data.pairs.map((x) => x.title)).toContain("Nuzha — Welcome");
     expect(html).toContain("About the same");
-    // A one-sided pair has its one image on whichever side its order puts it, and nothing on the other.
-    const lone = data.pairs.filter((x) => !x.left || !x.right);
-    expect(lone).toHaveLength(2);
+    // Every pair shown has both sides' screens.
+    expect(data.pairs.every((x) => x.left && x.right)).toBe(true);
   });
 
   test("each pair's sides are shuffled on their own, from the session's seed", () => {
@@ -158,7 +160,7 @@ describe("serving the owner's page", () => {
       expect(shot.status).toBe(200);
       expect(shot.body.equals(readFileSync(join(f.run, "a", img)))).toBe(true);
       const votes = await get(`${s.url}/votes`);
-      expect(JSON.parse(votes.text)).toEqual({ votes: [] });
+      expect(JSON.parse(votes.text)).toEqual({ votes: [], final: false });
       const reveal = await get(`${s.url}/reveal`);
       expect(reveal.status).toBe(409);
       for (const r of [page, shot, votes, reveal]) expect(tells(r.text + r.headers, f.run)).toEqual([]);
@@ -195,7 +197,7 @@ describe("serving the owner's page", () => {
       const data = pageData((await get(`${s.url}/`)).body.toString("utf8"));
       const first = data.pairs[0]!;
       const pair = f.pairs.find((p) => p.id === first.id)!;
-      const order = first.left ? (`a/${first.left}` === pair.motif ? "motif-left" : "motif-right") : `a/${first.right}` === pair.motif ? "motif-right" : "motif-left";
+      const order = `a/${first.left}` === pair.motif ? "motif-left" : "motif-right";
       const r = await vote(s.url, first.id, "left");
       expect(r.status).toBe(200);
       expect(tells(r.text + r.headers, f.run)).toEqual([]);
@@ -205,7 +207,7 @@ describe("serving the owner's page", () => {
       expect(readVotes(f.run)).toEqual([{ pairId: first.id, pick: "same", order }]);
       // GET /votes gives the picks, never the order.
       const votes = await get(`${s.url}/votes`);
-      expect(JSON.parse(votes.text)).toEqual({ votes: [{ pairId: first.id, pick: "same" }] });
+      expect(JSON.parse(votes.text)).toEqual({ votes: [{ pairId: first.id, pick: "same" }], final: false });
       // A pair the owner isn't shown, an unknown pick, or a body that isn't a vote changes nothing.
       expect((await vote(s.url, f.hidden[1]!.id, "left")).status).toBe(400);
       expect((await vote(s.url, first.id, "motif")).status).toBe(400);
@@ -255,13 +257,14 @@ describe("serving the owner's page", () => {
       // Motif's side of each pair, as the page showed it.
       for (const x of data.pairs) {
         const pair = f.pairs.find((p) => p.id === x.id)!;
-        const motifLeft = x.left ? `a/${x.left}` === pair.motif : `a/${x.right}` !== pair.motif;
+        const motifLeft = `a/${x.left}` === pair.motif;
         expect(body.pairs.find((y: any) => y.pairId === x.id).answer).toBe(motifLeft ? "left" : "right");
       }
       expect(body.briefs).toHaveLength(1);
       expect(body.briefs[0].title).toBe("Nuzha");
-      // Once the sides are shown, a vote already made can't change.
+      // Once the sides are shown, a vote already made can't change, and /votes says the votes are final.
       expect((await vote(s.url, data.pairs[0]!.id, "same")).status).toBe(409);
+      expect(JSON.parse((await get(`${s.url}/votes`)).text).final).toBe(true);
       expect(readVotes(f.run).find((v) => v.pairId === data.pairs[0]!.id)!.pick).toBe("left");
     } finally {
       s.stop();
@@ -294,7 +297,7 @@ describe("the owner's votes in Test A's score", () => {
       for (const x of data.pairs) {
         const pair = f.pairs.find((p) => p.id === x.id)!;
         // The owner picks Motif's side every time.
-        const pick = x.left && `a/${x.left}` === pair.motif ? "left" : x.right && `a/${x.right}` === pair.motif ? "right" : x.left ? "right" : "left";
+        const pick = `a/${x.left}` === pair.motif ? "left" : "right";
         await fetch(`${s.url}/vote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId: x.id, pick }) });
       }
     } finally {
@@ -303,8 +306,8 @@ describe("the owner's votes in Test A's score", () => {
     writeReport(f.state, f.run, { log: () => {} });
     const report = JSON.parse(readFileSync(join(f.run, "report.json"), "utf8"));
     const nuzha = report.scoresA.find((x: any) => x.brief === "nuzha");
-    // Three open pairs voted for Motif, plus the one-sided pair Motif drew alone; the baseline's lone pair is the other's.
-    expect(nuzha.owner).toEqual({ motif: 4, other: 1 });
+    // Five open pairs voted for Motif, plus the one-sided pair Motif drew alone; the baseline's lone pair is the other's.
+    expect(nuzha.owner).toEqual({ motif: 6, other: 1 });
   });
 });
 
@@ -316,6 +319,50 @@ describe("judge-owner.ts", () => {
     const r = Bun.spawnSync([process.execPath, join(REPO, "tests", "evals", "judge-owner.ts"), run], { cwd: REPO });
     expect(r.exitCode).toBe(2);
     expect(r.stdout.toString() + r.stderr.toString()).toContain("no pairs");
+  });
+
+  test("a votes file that can't be read stops it, naming the file and how to go on, and nothing is written over it", async () => {
+    for (const bad of ["", "[{\"pairId\": \"x\"", "{}", "[{\"pairId\": \"x\", \"pick\": \"up\"}]"]) {
+      const f = fixture();
+      const file = join(f.run, "a", "owner-votes.json");
+      writeFileSync(file, bad);
+      expect(() => readVotes(f.run)).toThrow(/owner-votes\.json can't be read .*Mend the file, or move it aside/);
+      expect(() => ownerPicks(f.run)).toThrow(/can't be read/);
+      await expect(serveOwner(f.run)).rejects.toThrow(/can't be read/);
+      const r = Bun.spawnSync([process.execPath, join(REPO, "tests", "evals", "judge-owner.ts"), f.run, "--no-open"], { cwd: REPO, timeout: 20_000 });
+      expect(r.exitCode).toBe(2);
+      expect(r.stdout.toString()).toContain("can't be read");
+      expect(readFileSync(file, "utf8")).toBe(bad);
+      // The runner's report says so too, and leaves the owner's votes out rather than taking them as none.
+      const said: string[] = [];
+      writeReport(f.state, f.run, { log: (l) => said.push(l) });
+      expect(said.join("\n")).toContain("can't be read");
+    }
+  });
+
+  test("once every pair has a vote, each vote (a changed one too) rewrites the report", async () => {
+    const f = fixture();
+    const lines: string[] = [];
+    const s = await serveOwner(f.run, 0, { onVote: reportOnVote(f.state, f.run, (l) => lines.push(l)) });
+    const report = join(f.run, "report.json");
+    const owner = () => JSON.parse(readFileSync(report, "utf8")).scoresA.find((x: any) => x.brief === "nuzha").owner;
+    try {
+      const data = pageData(await (await fetch(`${s.url}/`)).text());
+      const vote = (id: string, pick: string) =>
+        fetch(`${s.url}/vote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId: id, pick }) });
+      for (const x of data.pairs.slice(0, 4)) await vote(x.id, "same");
+      expect(existsSync(report)).toBe(false);
+      await vote(data.pairs[4]!.id, "same");
+      expect(owner()).toEqual({ motif: 1, other: 6 });
+      // A changed vote, before the answers are shown.
+      const x = data.pairs[0]!;
+      const pair = f.pairs.find((p) => p.id === x.id)!;
+      await vote(x.id, `a/${x.left}` === pair.motif ? "left" : "right");
+      expect(owner()).toEqual({ motif: 2, other: 5 });
+      expect(lines.filter((l) => l.startsWith("Every pair has your vote"))).toHaveLength(1);
+    } finally {
+      s.stop();
+    }
   });
 
   test("without a run, says how to use it", () => {
@@ -351,6 +398,80 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       await page.goto(`${s.url}/`);
       for (let i = 0; i < 100 && !(await ready()); i++) await Bun.sleep(50);
       expect(await page.evaluate<string>(`document.getElementById("count").textContent`)).toBe("4 of 5");
+      expect(page.takeErrors()).toEqual([]);
+    } finally {
+      await b.close();
+      s.stop();
+    }
+  }, 60_000);
+
+  test("after the answers are shown, going back to a pair shows its vote as final, and a key press changes nothing", async () => {
+    const f = fixture();
+    const s = await serveOwner(f.run);
+    const b = await launchBrowser(browser!.path);
+    try {
+      const data = pageData(await (await fetch(`${s.url}/`)).text());
+      for (const x of data.pairs) await fetch(`${s.url}/vote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId: x.id, pick: "left" }) });
+      const page = await b.newPage({ isolated: true });
+      await page.setViewport(1280, 800);
+      const ready = async () => {
+        for (let i = 0; i < 100 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+      };
+      const key = (k: string) => page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)}, bubbles: true }))`);
+      const finalShown = () => page.evaluate<boolean>(`!document.getElementById("final").hidden`);
+      await page.goto(`${s.url}/`);
+      await ready();
+      expect(await page.evaluate<boolean>(`!document.getElementById("done").hidden`)).toBe(true);
+      // The answers are shown elsewhere (another tab) while this page is open: its next vote meets a 409.
+      expect((await fetch(`${s.url}/reveal`)).status).toBe(200);
+      await key("Backspace");
+      expect(await finalShown()).toBe(false);
+      await key("2");
+      for (let i = 0; i < 100 && !(await finalShown()); i++) await Bun.sleep(50);
+      expect(await finalShown()).toBe(true);
+      expect(await page.evaluate<string>(`document.getElementById("note").textContent`)).toBe("");
+      expect(await page.evaluate<boolean>(`[...document.querySelectorAll(".choice")].every((b) => b.disabled)`)).toBe(true);
+      expect(await page.evaluate<string>(`document.querySelector(".choice[aria-pressed=true]").dataset.pick`)).toBe("left");
+      // Opened again: the page knows from the start.
+      await page.goto(`${s.url}/`);
+      await ready();
+      await key("Backspace");
+      expect(await finalShown()).toBe(true);
+      await key("3");
+      await Bun.sleep(300);
+      expect(readVotes(f.run).every((v) => v.pick === "left")).toBe(true);
+      expect(page.takeErrors()).toEqual([]);
+    } finally {
+      await b.close();
+      s.stop();
+    }
+  }, 60_000);
+
+  test("on a phone, phone-size screens stay side by side and desktop ones stack", async () => {
+    const f = fixture();
+    const s = await serveOwner(f.run);
+    const b = await launchBrowser(browser!.path);
+    try {
+      const page = await b.newPage({ isolated: true });
+      await page.setViewport(390, 844, 2, true);
+      await page.goto(`${s.url}/`);
+      for (let i = 0; i < 100 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+      const seen = new Map<number, boolean>();
+      for (let n = 1; n <= 5; n++) {
+        for (let i = 0; i < 100 && (await page.evaluate<string>(`document.getElementById("count").textContent`)) !== `${n} of 5`; i++) await Bun.sleep(50);
+        await Bun.sleep(200);
+        const at = await page.evaluate<{ size: number; sideBySide: boolean; fits: boolean }>(`(() => {
+          const l = document.getElementById("side-left").getBoundingClientRect(), r = document.getElementById("side-right").getBoundingClientRect();
+          const imgs = [...document.querySelectorAll(".scroller img")];
+          const size = JSON.parse(document.getElementById("pairs").textContent).pairs[${n - 1}].size;
+          return { size, sideBySide: Math.abs(l.top - r.top) < 1 && r.left > l.right - 1, fits: imgs.every((i) => i.getBoundingClientRect().right <= innerWidth) };
+        })()`);
+        seen.set(at.size, at.sideBySide);
+        expect(at.fits).toBe(true);
+        await page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "3", bubbles: true }))`);
+      }
+      expect(seen.get(390)).toBe(true);
+      expect(seen.get(1440)).toBe(false);
       expect(page.takeErrors()).toEqual([]);
     } finally {
       await b.close();

@@ -33,9 +33,27 @@ function writeJson(file: string, data: unknown): void {
   renameSync(`${file}.tmp`, file);
 }
 
+const isVote = (v: any): v is OwnerVote =>
+  typeof v?.pairId === "string" && ["left", "right", "same"].includes(v.pick) && ["motif-left", "motif-right"].includes(v.order);
+
+/**
+ * The owner's votes so far; none before the first. A file that can't be read as votes (cut short, emptied, edited by
+ * hand) is never taken as none: it throws, saying which file and how to go on, so no vote in it is lost or written over.
+ */
 export function readVotes(run: string): OwnerVote[] {
   const file = join(run, votesFile);
-  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as OwnerVote[]) : [];
+  if (!existsSync(file)) return [];
+  let votes: unknown;
+  try {
+    votes = JSON.parse(readFileSync(file, "utf8"));
+  } catch (e) {
+    votes = e;
+  }
+  if (Array.isArray(votes) && votes.every(isVote)) return votes;
+  const why = votes instanceof Error ? votes.message : "it isn't a list of votes";
+  throw new Error(
+    `The owner's votes in ${file} can't be read (${why}). Mend the file, or move it aside to judge every pair again; nothing will be written to it until then.`,
+  );
 }
 
 /** The owner's pick for each pair voted on, as Motif's side, the baseline's, or about the same, read through its order. */
@@ -49,14 +67,14 @@ export function ownerPicks(run: string): Map<string, OwnerPick> {
 }
 
 /**
- * The pairs the owner is shown: every pair with a screen from one side or both, except a brief's pairs when one of its
- * apps didn't build (those are decided by the build, as forcedPairs says). A pair with one screen is shown with "This
- * screen didn't load" on the other side; Test A's score gives it to the side that drew it whatever the vote.
+ * The pairs the owner is shown: those whose result a vote decides, with a screen from both sides, in a brief whose two
+ * apps built. A pair with one side's screen, or in a brief where one app didn't build, is already scored for one side
+ * (forcedPairs), so a vote couldn't change it; a pair with neither is left out.
  */
 export function ownerPairs(state: RunState, run: string): Pair[] {
   return readPairs(run).filter((p) => {
     const built = builtFor(state, p.brief);
-    return p.outcome !== "neither" && built.motif !== false && built.baseline !== false;
+    return p.outcome === "both" && built.motif !== false && built.baseline !== false;
   });
 }
 
@@ -183,6 +201,8 @@ export async function serveOwner(
 ): Promise<{ url: string; stop(): void }> {
   const state = JSON.parse(readFileSync(join(run, "run.json"), "utf8")) as RunState;
   const pairs = ownerPairs(state, run);
+  // A votes file that can't be read stops the server here, before a vote could be written over it.
+  readVotes(run);
   const html = readFileSync(writePage(run, "owner", pairs));
   const shown = arrange(session(run).seed, pairs);
   const byId = new Map(shown.map((s) => [s.pair.id, s]));
@@ -211,7 +231,8 @@ export async function serveOwner(
         return new Response(readFileSync(join(run, "a", path.slice(1))), { headers: { "content-type": "image/png", "cache-control": "no-store" } });
       }
       if (req.method === "GET" && path === "/votes") {
-        return json({ votes: readVotes(run).filter((v) => byId.has(v.pairId)).map((v) => ({ pairId: v.pairId, pick: v.pick })) });
+        // final: the answers have been shown, so the votes made stand (the page shows them as final).
+        return json({ votes: readVotes(run).filter((v) => byId.has(v.pairId)).map((v) => ({ pairId: v.pairId, pick: v.pick })), final: Boolean(session(run).revealed) });
       }
       if (req.method === "POST" && path === "/vote") {
         const origin = req.headers.get("origin");

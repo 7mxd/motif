@@ -26,6 +26,20 @@ function findRun(arg: string, results: string): { dir: string; state: RunState }
   return "error" in state ? state : { dir: runDir(results, arg), state };
 }
 
+/**
+ * What happens after each vote: once every pair has one, each vote (a changed one included) rewrites the run's report,
+ * so it never lags the votes; the first time, it says so.
+ */
+export function reportOnVote(state: RunState, dir: string, log: (line: string) => void): (votes: number, of: number) => void {
+  let told = false;
+  return (votes, of) => {
+    if (votes < of) return;
+    writeReport(state, dir, { log: () => {} });
+    if (!told) log("Every pair has your vote. Show the answers on the page; the report now counts your votes.");
+    told = true;
+  };
+}
+
 export async function main(argv: string[], log: (line: string) => void = console.log): Promise<number> {
   let o: { values: { port?: string; "no-open"?: boolean; help?: boolean }; positionals: string[] };
   try {
@@ -52,20 +66,17 @@ export async function main(argv: string[], log: (line: string) => void = console
   }
   const shown = ownerPairs(state, dir);
   if (shown.length === 0) {
-    log(`Run ${state.id} has no pairs for you to judge: each was decided by an app that didn't build, or left out because neither side drew it.`);
+    log(`Run ${state.id} has no pairs for you to judge: each has a screen from one side only, is in a brief where one app didn't build, or has neither side's screen; the score has already decided them.`);
     return 2;
   }
   const done = () => readVotes(dir).filter((v) => shown.some((p) => p.id === v.pairId)).length;
-  let all = done() === shown.length;
-  const server = await serveOwner(dir, port, {
-    onVote: (votes, of) => {
-      if (votes === of && !all) {
-        all = true;
-        log(`Every pair has your vote. Show the answers on the page; the report now counts your votes.`);
-        writeReport(state, dir, { log: () => {} });
-      }
-    },
-  });
+  let server: Awaited<ReturnType<typeof serveOwner>>;
+  try {
+    server = await serveOwner(dir, port, { onVote: reportOnVote(state, dir, log) });
+  } catch (e) {
+    log((e as Error).message);
+    return 2;
+  }
   log(`Judge Test A's pairs at ${server.url}  (${done()} of ${shown.length} judged so far)`);
   log("Each vote is saved as you make it. Ctrl+C stops; run this again to continue.");
   if (!o.values["no-open"] && !(await openUrl(server.url))) log("Open that address in your browser.");

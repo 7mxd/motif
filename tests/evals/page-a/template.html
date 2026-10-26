@@ -63,6 +63,7 @@
     font: var(--k-font-label-weight) var(--k-font-label-size) / 1.4 var(--k-font-label-family);
   }
   #note:empty { display: none; }
+  #final { margin: 0; padding: 0 0 var(--k-space-3); color: var(--k-color-text-secondary); text-align: center; font: var(--k-font-label-weight) var(--k-font-label-size) / 1.4 var(--k-font-label-family); }
 
   .done { align-items: center; justify-content: center; gap: var(--k-space-4); padding: var(--k-space-12) 0; text-align: center; }
   .done h2, .reveal h2 { margin: 0; font: var(--k-font-title-weight) var(--k-font-title-size) / var(--k-font-title-line-height) var(--k-font-title-family); }
@@ -75,10 +76,10 @@
   .answers { display: flex; flex-direction: column; gap: var(--k-space-4); }
   .answer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--k-space-3) var(--k-space-4); }
   .answer header { display: flex; flex-wrap: wrap; grid-column: 1 / -1; align-items: center; gap: var(--k-space-2) var(--k-space-3); }
-  .thumb { position: relative; height: 220px; overflow: hidden; padding: var(--k-space-10) var(--k-space-3) 0; border: 1px solid var(--k-color-border); border-radius: var(--k-radius-md); background: var(--k-color-background); }
+  .thumb { display: flex; flex-direction: column; gap: var(--k-space-2); height: 240px; overflow: hidden; padding: var(--k-space-2) var(--k-space-3) 0; border: 1px solid var(--k-color-border); border-radius: var(--k-radius-md); background: var(--k-color-background); }
   .thumb img { display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: var(--k-radius-sm); box-shadow: var(--k-shadow-sm); background: #fff; }
-  .thumb .missing { height: 100%; border: 0; }
-  .thumb .tags { position: absolute; top: var(--k-space-2); right: var(--k-space-2); left: var(--k-space-2); display: flex; flex-wrap: wrap; gap: var(--k-space-1); }
+  .thumb .missing { flex: 1; border: 0; }
+  .thumb .tags { display: flex; flex: none; flex-wrap: wrap; gap: var(--k-space-1); }
   .thumb .tags .mk-badge { white-space: nowrap; }
   .thumb.theirs { border-color: var(--k-color-action-primary); box-shadow: 0 0 0 1px var(--k-color-action-primary); }
 
@@ -100,12 +101,15 @@
     /* The progress bar runs along the bottom of the header. */
     .track { position: absolute; right: 0; bottom: 0; left: 0; width: auto; height: 2px; border-radius: 0; }
     .pair { flex: none; grid-template-columns: minmax(0, 1fr); gap: var(--k-space-4); }
+    /* Phone-size screens are narrow: they stay side by side, scaled to fit. */
+    .pair.narrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--k-space-2); }
+    .pair.narrow .side-name .zoom-btn { padding: var(--k-space-1) var(--k-space-2); }
     .frame { flex: none; padding: var(--k-space-2); }
     .choices { position: sticky; bottom: 0; z-index: 2; margin-top: auto; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--k-space-2); padding: var(--k-space-3) 0; background: var(--k-color-background); border-top: 1px solid var(--k-color-border); }
     .choice { min-height: 48px; padding: var(--k-space-2); font-size: var(--k-font-label-size); }
     .choice kbd, .side-name kbd { display: none; }
     #note { bottom: 88px; }
-    .thumb { height: 160px; padding-top: var(--k-space-8); }
+    .thumb { height: 200px; padding: var(--k-space-2) var(--k-space-2) 0; }
   }
 </style>
 </head>
@@ -142,6 +146,7 @@
       <button class="mk-btn mk-secondary choice" data-pick="same" aria-pressed="false"><kbd>3</kbd> About the same</button>
       <button class="mk-btn mk-secondary choice" data-pick="right" aria-pressed="false"><kbd>2</kbd> Right</button>
     </div>
+    <p id="final" role="status" hidden>This vote is final: the answers have been shown.</p>
     <p id="note" role="status"></p>
   </main>
 
@@ -180,6 +185,8 @@
   let at = 0;
   let busy = false;
   let answered = false;
+  /** The answers have been shown (in this page or an earlier one): votes made stand; pairs without one can still get one. */
+  let final = false;
   let shown = 0;
   const sides = {
     left: { el: $("side-left"), scroller: $("side-left").querySelector(".scroller"), img: null },
@@ -225,6 +232,8 @@
     $("device").textContent = item.device;
     const pick = votes.get(item.id);
     for (const b of document.querySelectorAll(".choice")) b.setAttribute("aria-pressed", String(b.dataset.pick === pick));
+    lockChoices();
+    document.querySelector(".pair").classList.toggle("narrow", item.size < 600);
     for (const name of ["left", "right"]) {
       const s = sides[name];
       s.el.classList.toggle("chosen", pick === name);
@@ -297,14 +306,29 @@
     });
   }
 
+  /** Whether the pair on screen has a vote that can no longer change. */
+  const locked = () => final && at < items.length && votes.has(items[at].id);
+  function lockChoices() {
+    const fixed = locked();
+    for (const b of document.querySelectorAll(".choice")) b.disabled = busy || fixed;
+    $("final").hidden = !fixed;
+  }
+
   async function vote(pick) {
-    if (busy || answered || at >= items.length) return;
+    if (busy || answered || at >= items.length || locked()) return;
     const item = items[at];
     busy = true;
-    for (const b of document.querySelectorAll(".choice")) b.disabled = true;
+    lockChoices();
     try {
       const r = await fetch("vote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId: item.id, pick }) });
       const j = await r.json().catch(() => ({}));
+      if (r.status === 409) {
+        // The answers were shown since this page opened: the vote made before stands, and is shown as final.
+        final = true;
+        busy = false;
+        render();
+        return;
+      }
       if (!r.ok) throw new Error(j.error || `the server answered ${r.status}`);
       votes.set(item.id, pick);
       at = firstOpen(at + 1);
@@ -313,7 +337,7 @@
       $("note").textContent = `That vote wasn't saved: ${e.message} Try again.`;
     } finally {
       busy = false;
-      for (const b of document.querySelectorAll(".choice")) b.disabled = false;
+      lockChoices();
     }
   }
 
@@ -424,7 +448,7 @@
           yours.textContent = "Your pick";
           tags.append(yours);
         }
-        t.append(tags);
+        t.prepend(tags);
         row.append(t);
       }
       answers.append(row);
@@ -460,6 +484,7 @@
       const r = await fetch("votes");
       const j = await r.json();
       for (const v of j.votes) votes.set(v.pairId, v.pick);
+      final = j.final === true;
     } catch {
       $("note").textContent = "The server that saves the votes isn't answering; votes made now won't be kept.";
     }
