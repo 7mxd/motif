@@ -11,6 +11,7 @@ import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
 import { JUDGE_A_EXPECTED_TOOLS, JUDGE_A_SCHEMA, JUDGE_A_TOOLS, judgeAPrompt, judgePairs, missingJudgements, readPick, type BriefParts, type JudgeAOutcome } from "./judge-a";
+import { ownerPicks } from "./page-a";
 import { pairBrief } from "./pairs";
 import { paths, preflight, type NodeNeeds, type Ready } from "./preflight";
 import { NO_PURGE_NOTE, removeProjectData } from "./purge";
@@ -548,8 +549,9 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
  * Mac-only ones skipped here, as the verdicts do. A Test A case only needs to be graded: an app built without Motif
  * that doesn't build or render isn't a failure of the run, and Test A counts its screens as lost pairs.
  */
-function writeReport(state: RunState, dir: string, deps: RunDeps): number {
-  const scores = scoreRun(state, dir);
+export function writeReport(state: RunState, dir: string, deps: Pick<RunDeps, "log">): number {
+  // The owner's votes, from the page judge-owner.ts serves, once there are any.
+  const scores = scoreRun(state, dir, ownerPicks(dir));
   const verdicts = testVerdicts(state, CASES, scores);
   writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts, scores));
   writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts, ...(verdicts.some((v) => v.test === "A") ? { scoresA: scores } : {}) }, null, 2));
