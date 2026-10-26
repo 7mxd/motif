@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { onExit } from "../cleanup";
@@ -114,9 +115,104 @@ export function removeProfileNow(
   return false;
 }
 
-function start(executable: string, args: string[], timeoutMs: number): Promise<{ proc: ChildProcess; wsUrl: string; profile: string }> {
-  const profile = mkdtempSync(join(tmpdir(), "motif-browser-"));
-  const cleanup = () => void removeProfile(profile);
+/** How many profile folders browsers take turns with (see claimProfile). */
+export const PROFILE_SLOTS = 8;
+
+export interface Profile {
+  dir: string;
+  /** Gives the folder's slot back to the next browser, once the folder is removed. */
+  release(): void;
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    // Another user's process: alive, just not ours to signal.
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Creates the lock file, or takes it over from a run that crashed (its process is gone). It holds the owner's process
+ * id and a token of its own, so a lock is only ever given back by the browser that took it.
+ */
+function takeLock(lock: string, token: string, alive: (pid: number) => boolean): boolean {
+  try {
+    writeFileSync(lock, token, { flag: "wx" });
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EEXIST") return false;
+  }
+  let held: string;
+  try {
+    held = readFileSync(lock, "utf8");
+  } catch {
+    return false;
+  }
+  const pid = Number(held.split(" ")[0]);
+  // An empty lock is one being written right now.
+  if (!pid || alive(pid)) return false;
+  // Moved aside rather than deleted: when two runs take over the same stale lock, the second one moves the first one's
+  // new lock instead, sees it isn't the stale one and puts it back.
+  const aside = `${lock}.${randomUUID()}`;
+  try {
+    renameSync(lock, aside);
+    if (readFileSync(aside, "utf8") !== held) {
+      renameSync(aside, lock);
+      return false;
+    }
+    rmSync(aside, { force: true });
+    writeFileSync(lock, token, { flag: "wx" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A fresh, empty profile folder for one browser. On Windows, Chrome registers a global atom named after each profile
+ * folder it runs in, and Windows keeps it until the user signs out; the table holds 16,384, and once it is full, copy
+ * and paste stop working everywhere. So the folders aren't named at random: there are a few slots (motif-browser-0,
+ * -1, ...), and each launch reuses a name an earlier one registered. A live browser holds its slot with a lock file
+ * beside the folder, so browsers running at once never share one. With every slot taken, the folder gets a random name.
+ */
+export function claimProfile(root = tmpdir(), slots = PROFILE_SLOTS, alive: (pid: number) => boolean = isAlive): Profile {
+  const token = `${process.pid} ${randomUUID()}`;
+  for (let i = 0; i < slots; i++) {
+    const lock = join(root, `motif-browser-${i}.lock`);
+    if (!takeLock(lock, token, alive)) continue;
+    const release = () => {
+      try {
+        if (readFileSync(lock, "utf8") === token) rmSync(lock);
+      } catch {
+        // Already gone.
+      }
+    };
+    const dir = join(root, `motif-browser-${i}`);
+    try {
+      // What a run that crashed left in it goes first; a folder its browser still holds can't be used.
+      rmSync(dir, { recursive: true, force: true });
+      mkdirSync(dir, { mode: 0o700 });
+    } catch {
+      release();
+      continue;
+    }
+    return { dir, release };
+  }
+  return { dir: mkdtempSync(join(root, "motif-browser-")), release: () => {} };
+}
+
+/** Removes the profile, then gives its slot back (even when the folder couldn't be removed: the next claim empties it). */
+export async function freeProfile(profile: Profile, remove = removeProfile): Promise<void> {
+  await remove(profile.dir);
+  profile.release();
+}
+
+function start(executable: string, args: string[], timeoutMs: number): Promise<{ proc: ChildProcess; wsUrl: string; profile: Profile }> {
+  const profile = claimProfile();
+  const cleanup = () => void freeProfile(profile);
   return new Promise((resolve, reject) => {
     let stderr = "";
     let settled = false;
@@ -128,7 +224,7 @@ function start(executable: string, args: string[], timeoutMs: number): Promise<{
       cleanup();
       reject(err);
     };
-    const proc = spawn(executable, [...args, `--user-data-dir=${profile}`, "about:blank"], {
+    const proc = spawn(executable, [...args, `--user-data-dir=${profile.dir}`, "about:blank"], {
       stdio: ["ignore", "ignore", "pipe"],
       // Its own process group, so its helpers can be stopped with it (Windows stops them with the browser).
       detached: process.platform !== "win32",
@@ -234,7 +330,8 @@ export async function launchBrowser(
   const cancelExitHook = onExit(() => {
     // The browser and every helper it started: a helper left running can write into the profile again (macOS).
     if (proc.pid) killTree(proc.pid, true);
-    removeProfileNow(profile);
+    removeProfileNow(profile.dir);
+    profile.release();
   });
 
   const ws = new WebSocket(wsUrl);
@@ -249,7 +346,7 @@ export async function launchBrowser(
     cancelExitHook();
     ws.close();
     if (proc.exitCode === null) proc.kill();
-    await removeProfile(profile);
+    await freeProfile(profile);
     throw e;
   }
 
@@ -437,7 +534,7 @@ export async function launchBrowser(
       const exited = () => proc.exitCode !== null || proc.signalCode !== null;
       if (!exited()) proc.kill();
       await new Promise((r) => (exited() ? r(null) : proc.once("exit", r)));
-      await removeProfile(profile);
+      await freeProfile(profile);
       cancelExitHook();
     },
   };
