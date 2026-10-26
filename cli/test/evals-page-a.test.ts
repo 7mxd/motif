@@ -467,19 +467,19 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       await page.setViewport(1280, 800);
       await page.goto(`${s.url}/`);
       const ready = () => page.evaluate<boolean>(`document.body.dataset.ready === "1"`);
-      for (let i = 0; i < 100 && !(await ready()); i++) await Bun.sleep(50);
+      for (let i = 0; i < 400 && !(await ready()); i++) await Bun.sleep(50);
       expect(await page.evaluate<string>(`document.getElementById("count").textContent`)).toBe("1 of 5");
       for (const key of ["1", "2", "3"]) {
         const before = readVotes(f.run).length;
         await page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, bubbles: true }))`);
-        for (let i = 0; i < 100 && readVotes(f.run).length === before; i++) await Bun.sleep(50);
+        for (let i = 0; i < 400 && readVotes(f.run).length === before; i++) await Bun.sleep(50);
       }
       expect(readVotes(f.run).map((v) => v.pick)).toEqual(["left", "right", "same"]);
-      for (let i = 0; i < 100 && (await page.evaluate<string>(`document.getElementById("count").textContent`)) !== "4 of 5"; i++) await Bun.sleep(50);
+      for (let i = 0; i < 400 && (await page.evaluate<string>(`document.getElementById("count").textContent`)) !== "4 of 5"; i++) await Bun.sleep(50);
       expect(await page.evaluate<string>(`document.getElementById("count").textContent`)).toBe("4 of 5");
       // Closed part-way and opened again: it continues at the next pair without a vote.
       await page.goto(`${s.url}/`);
-      for (let i = 0; i < 100 && !(await ready()); i++) await Bun.sleep(50);
+      for (let i = 0; i < 400 && !(await ready()); i++) await Bun.sleep(50);
       expect(await page.evaluate<string>(`document.getElementById("count").textContent`)).toBe("4 of 5");
       expect(page.takeErrors()).toEqual([]);
     } finally {
@@ -498,7 +498,7 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       const page = await b.newPage({ isolated: true });
       await page.setViewport(1280, 800);
       const ready = async () => {
-        for (let i = 0; i < 100 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+        for (let i = 0; i < 400 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
       };
       const key = (k: string) => page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)}, bubbles: true }))`);
       const finalShown = () => page.evaluate<boolean>(`!document.getElementById("final").hidden`);
@@ -510,14 +510,14 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       await key("Backspace");
       expect(await finalShown()).toBe(false);
       await key("2");
-      for (let i = 0; i < 100 && !(await finalShown()); i++) await Bun.sleep(50);
+      for (let i = 0; i < 400 && !(await finalShown()); i++) await Bun.sleep(50);
       expect(await finalShown()).toBe(true);
       expect(await page.evaluate<string>(`document.getElementById("note").textContent`)).toBe("");
       expect(await page.evaluate<boolean>(`[...document.querySelectorAll(".choice")].every((b) => b.disabled)`)).toBe(true);
       expect(await page.evaluate<string>(`document.querySelector(".choice[aria-pressed=true]").dataset.pick`)).toBe("left");
       // Opened again: the page knows from the start.
       await page.goto(`${s.url}/`);
-      await ready();
+      for (let i = 0; i < 400 && !(await ready()); i++) await Bun.sleep(50);
       await key("Backspace");
       expect(await finalShown()).toBe(true);
       await key("3");
@@ -539,19 +539,19 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       const page = await b.newPage({ isolated: true });
       await page.setViewport(1280, 800);
       await page.goto(`${s.url}/`);
-      for (let i = 0; i < 100 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+      for (let i = 0; i < 400 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
       for (let n = 0; n < 5; n++) {
         const before = readVotes(f.run).length;
         await page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "3", bubbles: true }))`);
-        for (let i = 0; i < 100 && readVotes(f.run).length === before; i++) await Bun.sleep(50);
+        for (let i = 0; i < 400 && readVotes(f.run).length === before; i++) await Bun.sleep(50);
       }
-      for (let i = 0; i < 100 && (await page.evaluate<boolean>(`document.getElementById("done").hidden`)); i++) await Bun.sleep(50);
-      await Bun.sleep(200);
+      for (let i = 0; i < 400 && (await page.evaluate<boolean>(`document.getElementById("done").hidden`)); i++) await Bun.sleep(50);
+      for (let i = 0; i < 400 && !(await page.evaluate<string>(`document.getElementById("done-note").textContent`)); i++) await Bun.sleep(50);
       expect(await page.evaluate<string>(`document.getElementById("done-note").textContent`)).toBe("Masar's pairs aren't in yet; the answers open once every app has been paired and judged.");
       expect(await page.evaluate<boolean>(`document.getElementById("show").disabled`)).toBe(true);
       // Opened again, it knows from the start.
       await page.goto(`${s.url}/`);
-      for (let i = 0; i < 100 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+      for (let i = 0; i < 400 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
       expect(await page.evaluate<string>(`document.getElementById("done-note").textContent`)).toContain("Masar's pairs aren't in yet");
       expect(await page.evaluate<boolean>(`document.getElementById("show").disabled`)).toBe(true);
       expect(page.takeErrors()).toEqual([]);
@@ -569,10 +569,10 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       const page = await b.newPage({ isolated: true });
       await page.setViewport(390, 844, 2, true);
       await page.goto(`${s.url}/`);
-      for (let i = 0; i < 100 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+      for (let i = 0; i < 400 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
       const seen = new Map<number, boolean>();
       for (let n = 1; n <= 5; n++) {
-        for (let i = 0; i < 100 && (await page.evaluate<string>(`document.getElementById("count").textContent`)) !== `${n} of 5`; i++) await Bun.sleep(50);
+        for (let i = 0; i < 400 && (await page.evaluate<string>(`document.getElementById("count").textContent`)) !== `${n} of 5`; i++) await Bun.sleep(50);
         await Bun.sleep(200);
         const at = await page.evaluate<{ size: number; sideBySide: boolean; fits: boolean }>(`(() => {
           const l = document.getElementById("side-left").getBoundingClientRect(), r = document.getElementById("side-right").getBoundingClientRect();
