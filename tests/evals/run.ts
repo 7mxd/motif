@@ -10,6 +10,7 @@ import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, p
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
+import { pairBrief } from "./pairs";
 import { paths, preflight, type NodeNeeds, type Ready } from "./preflight";
 import { NO_PURGE_NOTE, removeProjectData } from "./purge";
 import { renderReport, testVerdicts } from "./report";
@@ -60,9 +61,10 @@ export interface RunDeps {
   platform?: NodeJS.Platform;
   /**
    * Test A: runs once a brief's d-* and a-* cases are both graded, with both apps' folders still there; they're removed
-   * after it (unless --keep). Test A's screenshots of both apps are taken here.
+   * after it (unless --keep). Test A's screenshots of both apps are taken here, into the run's folder (`out`). A line it
+   * returns is logged.
    */
-  afterBriefPair?(brief: string, withMotif: Workspace, without: Workspace): Promise<void>;
+  afterBriefPair?(brief: string, withMotif: Workspace, without: Workspace, out: string): Promise<string | void>;
 }
 
 /** An argument as a shell reads it: quoted when it holds spaces, brackets, commas or wildcards. */
@@ -163,6 +165,14 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   }
   const here = macOnly(remaining(state).map((id) => CASES.find((c) => c.id === id)).filter((c): c is EvalCase => Boolean(c)), platform);
   const todo = here.run;
+  // Test A: briefs whose two apps were both graded but whose screenshots weren't taken (the step failed, or was cut off):
+  // --resume takes them, from the folders kept for it. Not a Mac-only brief off a Mac.
+  const unpaired = CASES.filter((d) => d.test === "D" && d.brief && (platform === "darwin" || !d.mac)).flatMap((d) => {
+    const a = pairedCase(d);
+    const ds = state.cases[d.id];
+    const as = a ? state.cases[a.id] : undefined;
+    return a && ds?.status === "graded" && as?.status === "graded" && !state.pairs?.[d.brief!]?.done ? [{ d, a }] : [];
+  });
   /**
    * Records the skipped cases with why, under the run's settled id (the note says how to resume it on a Mac), keeping
    * everything they had: a finished session's folder and summary, and the status and note to give back on a Mac.
@@ -180,7 +190,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   };
   if (here.skipped.length > 0) {
     deps.log(here.reason);
-    if (todo.length === 0) {
+    if (todo.length === 0 && unpaired.length === 0) {
       deps.log("Nothing is left to run here.");
       // A new run doesn't start; a resumed one is done here, and its report says what's left for a Mac.
       if (idBase !== null || o["dry-run"]) return 2;
@@ -211,7 +221,9 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     return 0;
   }
 
-  const ready = await deps.preflight(todo.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, todo.some(isFlutter), todo.some(isCompose), todo.some(isSwiftUI), todo.some(needsNode), { vite8: todo.some(needsVite8), svelteKit3: todo.some(needsSvelteKit3), angular21: todo.some(needsAngular21), angular22: todo.some(needsAngular22) });
+  // What the pair steps left to take need too: they draw both apps.
+  const needs = [...todo, ...unpaired.flatMap((u) => [u.d, u.a])];
+  const ready = await deps.preflight(needs.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, needs.some(isFlutter), needs.some(isCompose), needs.some(isSwiftUI), needs.some(needsNode), { vite8: needs.some(needsVite8), svelteKit3: needs.some(needsSvelteKit3), angular21: needs.some(needsAngular21), angular22: needs.some(needsAngular22) });
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;
@@ -262,6 +274,19 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
 
   deps.log(`Run ${state.id}: ${todo.length} cases. Each starts a fresh Claude Code session on your plan. Stop any time with Ctrl+C, then continue with --resume ${state.id}.`);
   if (!ready.purge) deps.log(NO_PURGE_NOTE);
+  for (const { d, a } of unpaired) {
+    const dWs = state.cases[d.id]!.workspace;
+    const aWs = state.cases[a.id]!.workspace;
+    if (!dWs || !aWs || !existsSync(dWs.dir) || !existsSync(aWs.dir)) {
+      deps.log(`${d.brief}: Test A's screenshots weren't taken, and the folders of ${d.id} and ${a.id} are gone, so they can't be now.`);
+      continue;
+    }
+    deps.log(`\n${d.brief}: taking Test A's screenshots of ${d.id} and ${a.id}, which weren't taken before…`);
+    if (await pairStep(d, a, dWs, aWs)) {
+      removeCase(d.id, dWs);
+      removeCase(a.id, aWs);
+    }
+  }
   for (const c of todo) {
     const cs = state.cases[c.id]!;
     const out = join(dir, c.id);
@@ -415,16 +440,30 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       );
       return;
     }
-    const [d, a] = isBaseline(c) ? [partner.id, c.id] : [c.id, partner.id];
+    const [d, a] = isBaseline(c) ? [partner, c] : [c, partner];
     const [dWs, aWs] = isBaseline(c) ? [ps.workspace, ws] : [ws, ps.workspace];
+    if (!(await pairStep(d, a, dWs, aWs))) return;
+    removeCase(d.id, dWs);
+    removeCase(a.id, aWs);
+  }
+
+  /** Test A's step for a brief's two graded apps, recorded in the run: whether it went through (else both folders stay). */
+  async function pairStep(d: EvalCase, a: EvalCase, dWs: Workspace, aWs: Workspace): Promise<boolean> {
+    const brief = d.brief!;
+    state.pairs ??= {};
     try {
-      await deps.afterBriefPair?.(c.brief!, dWs, aWs);
+      const said = await deps.afterBriefPair?.(brief, dWs, aWs, dir);
+      if (said) deps.log(said);
     } catch (e) {
-      deps.log(`${d} and ${a}: Test A's step after both were graded failed (${(e as Error).message}); both folders are kept.`);
-      return;
+      const why = (e as Error).message;
+      state.pairs[brief] = { done: false, note: why };
+      save();
+      deps.log(`${d.id} and ${a.id}: Test A's step after both were graded failed (${why}); both folders are kept. --resume runs it again.`);
+      return false;
     }
-    removeCase(d, dWs);
-    removeCase(a, aWs);
+    state.pairs[brief] = { done: true };
+    save();
+    return true;
   }
 }
 
@@ -498,6 +537,8 @@ if (import.meta.main) {
       instructionFiles: (dir) => memoryFiles(dir, homedir()),
       personal: () => personalNames(homedir()),
       agentSettings: () => agentSettings(),
+      // Test A: both apps of a brief shot the same way into anonymous pairs (a/pairs.json, a/img/).
+      afterBriefPair: (brief, withMotif, without, out) => pairBrief(brief, withMotif, without, out, { motif }),
     },
     // Case folders live in the home folder by default: macOS empties the temp folder of files untouched for 3 days,
     // which would take a paused run's folders before --resume.

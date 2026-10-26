@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EvalCase } from "../../tests/evals/cases";
 import { AGENT_TOOLS, JUDGE_EXPECTED_TOOLS } from "../../tests/evals/claude";
@@ -889,6 +889,61 @@ describe("the eval runner and Test A (Part 4 §4)", () => {
     // A d-* that fails still fails the run.
     const f = paired({ collect: async (c) => (c.id === "d-stride" ? { pass: false, criteria: [], metrics: {} } : PASS) });
     expect(await runEvals(["--cases", "d-stride,a-stride", "--work", f.work], f.deps, f.where)).toBe(1);
+  });
+
+  test("the pair step gets the run's folder, its line is logged, and the run records the brief's pairs as done", async () => {
+    const seen: string[] = [];
+    const h = paired({ afterBriefPair: async (brief, _d, _a, out) => (seen.push(out), `${brief}: 6 pairs for Test A, all with both apps' screens.`) });
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(seen).toEqual([join(h.where.results, RUN)]);
+    expect(h.lines).toContain("stride: 6 pairs for Test A, all with both apps' screens.");
+    expect((loadRun(h.where.results, RUN) as RunState).pairs).toEqual({ stride: { done: true } });
+  });
+
+  test("a pair step that fails keeps both folders and says so; --resume runs only the step again, then removes them; a later --resume doesn't", async () => {
+    let fail = true;
+    const steps: string[] = [];
+    const h = paired({
+      afterBriefPair: async (brief) => {
+        steps.push(brief);
+        if (fail) throw new Error("the browser crashed");
+      },
+    });
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(h.calls.removed).toEqual([]);
+    expect(h.lines).toContain("d-stride and a-stride: Test A's step after both were graded failed (the browser crashed); both folders are kept. --resume runs it again.");
+    expect((loadRun(h.where.results, RUN) as RunState).pairs).toEqual({ stride: { done: false, note: "the browser crashed" } });
+    // The folders are still there to shoot.
+    for (const id of ["d-stride", "a-stride"]) mkdirSync(join(h.work, RUN, id, "app"), { recursive: true });
+    fail = false;
+    const sessions = h.calls.session.length;
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(steps).toEqual(["stride", "stride"]);
+    expect(h.calls.session.length).toBe(sessions);
+    expect(h.calls.removed).toEqual([join(h.work, RUN, "d-stride"), join(h.work, RUN, "a-stride")]);
+    expect((loadRun(h.where.results, RUN) as RunState).pairs).toEqual({ stride: { done: true } });
+    expect(await runEvals(["--resume", RUN], h.deps, h.where)).toBe(0);
+    expect(steps).toEqual(["stride", "stride"]);
+  });
+
+  test("--resume doesn't run the pair step again for a brief whose pairs are done, even with its folders kept", async () => {
+    const steps: string[] = [];
+    const h = paired({ afterBriefPair: async (brief) => void steps.push(brief) });
+    await runEvals(["--cases", "d-stride,a-stride", "--keep", "--work", h.work], h.deps, h.where);
+    for (const id of ["d-stride", "a-stride"]) mkdirSync(join(h.work, RUN, id, "app"), { recursive: true });
+    await runEvals(["--resume", RUN], h.deps, h.where);
+    expect(steps).toEqual(["stride"]);
+  });
+
+  test("a pair step left undone whose folders are gone is said, not run", async () => {
+    const h = paired({ afterBriefPair: async () => { throw new Error("no browser"); } });
+    await runEvals(["--cases", "d-stride,a-stride", "--work", h.work], h.deps, h.where);
+    for (const id of ["d-stride", "a-stride"]) rmSync(join(h.work, RUN, id), { recursive: true, force: true });
+    const steps: string[] = [];
+    h.deps.afterBriefPair = async (brief) => void steps.push(brief);
+    await runEvals(["--resume", RUN], h.deps, h.where);
+    expect(steps).toEqual([]);
+    expect(h.lines).toContain(`stride: Test A's screenshots weren't taken, and the folders of d-stride and a-stride are gone, so they can't be now.`);
   });
 
   test("the dry run's a-* command has no plugin", async () => {

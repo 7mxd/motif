@@ -1193,23 +1193,31 @@ async function buildNewApp(c: EvalCase, ws: Workspace, app: string, k: Collector
 }
 
 /**
+ * What motif shot is told to draw of a new app's starter screens: their routes; on SwiftUI the root, and the #Previews
+ * the prompt names that the app has (by File.swift:line, which nothing else shares), each mapped back to the case's own
+ * name in `named`; one the app lacks isn't asked for, so it shows as not captured.
+ */
+export function shotTargets(c: EvalCase, app: string): { args: string[]; named: Map<string, string> } {
+  const named = new Map<string, string>();
+  if (!isSwiftUI(c)) return { args: ["--routes", c.routes.join(",")], named };
+  for (const r of c.routes.filter((x) => x !== "/")) {
+    const p = swiftUIPreviewFor(app, r);
+    if (p) named.set(p.screen, r);
+  }
+  return { args: ["--routes", "/", ...(named.size > 0 ? ["--screen", [...named.keys()].join(",")] : [])], named };
+}
+
+/** How long motif shot may take on a new app: Compose and SwiftUI build a harness first. */
+export const shotTimeout = (c: EvalCase): number => (isCompose(c) || isSwiftUI(c) ? 1_800_000 : 900_000);
+
+/**
  * A new app's starter screens, drawn by motif shot (with its audit for Test D, whose app has a design guide; without it
  * for Test A, measured only for whether each screen renders).
  */
 async function drawNewApp(c: EvalCase, app: string, k: Collectors, out: string, audit: boolean): Promise<{ screens: DFacts["screens"]; auditFindings?: number }> {
-  const swift = isSwiftUI(c);
-  // SwiftUI: the root, and the #Previews the prompt names that the app has (by File.swift:line, which nothing else
-  // shares), each reported under the case's own name; one the app lacks isn't asked for, so it shows as not captured.
-  const named = new Map<string, string>();
-  if (swift) {
-    for (const r of c.routes.filter((x) => x !== "/")) {
-      const p = swiftUIPreviewFor(app, r);
-      if (p) named.set(p.screen, r);
-    }
-  }
-  const targets = swift ? ["--routes", "/", ...(named.size > 0 ? ["--screen", [...named.keys()].join(",")] : [])] : ["--routes", c.routes.join(",")];
-  const sizes = isFlutter(c) || isCompose(c) || swift || isReactNative(c) ? PHONE_SIZES : drawnAtTwoWidths(c) ? WEB_APP_SIZES : [];
-  const shot = await motifJson(k, ["shot", ...(audit ? ["--audit"] : []), ...targets, ...sizes], app, out, "shot.json", isCompose(c) || swift ? 1_800_000 : 900_000);
+  const { args: targets, named } = shotTargets(c, app);
+  const sizes = isFlutter(c) || isCompose(c) || isSwiftUI(c) || isReactNative(c) ? PHONE_SIZES : drawnAtTwoWidths(c) ? WEB_APP_SIZES : [];
+  const shot = await motifJson(k, ["shot", ...(audit ? ["--audit"] : []), ...targets, ...sizes], app, out, "shot.json", shotTimeout(c));
   copyShots(app, shot.json, join(out, "shots"));
   const screens = Array.isArray(shot.json?.routes)
     ? shot.json.routes.map((r: any) => ({ route: named.get(String(r.route)) ?? String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))
