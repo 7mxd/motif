@@ -27,7 +27,8 @@ beforeAll(() => {
   if (pubGet(true) !== 0) expect(pubGet(false)).toBe(0);
   // Fonts are fetched once into this checkout's test cache (gitignored), so later runs are offline.
   process.env.MOTIF_HOME = join(import.meta.dir, ".tmp", "flutter-home");
-});
+  // flutter pub get takes longer than a hook's 5 s by default (a plain `bun test` stopped it; CI passes --timeout).
+}, 300_000);
 
 afterAll(() => {
   for (const [key, value] of [["MOTIF_HOME", saved.home], ["MOTIF_DEBUG", saved.debug]] as const) {
