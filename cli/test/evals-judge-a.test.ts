@@ -272,6 +272,35 @@ describe("the runner's AI judges (Test A, Part 4 §6)", () => {
     expect(readJudgements(h.out)).toEqual([]);
   });
 
+  test("a judge session that throws still has its state purged, and its folder removed", async () => {
+    const h = harness({}, () => {
+      throw new Error("the session crashed");
+    });
+    await expect(runEvals(["--cases", "d-stride,a-stride", "--work", join(h.root, "cases")], h.deps, h.where)).rejects.toThrow("the session crashed");
+    expect(h.seen).toHaveLength(1);
+    expect(h.purged).toContain(h.seen[0]!.cwd);
+    expect(existsSync(h.seen[0]!.cwd)).toBe(false);
+  });
+
+  test("a system temp folder whose full path names a side stops the run before any judge starts", async () => {
+    for (const name of ["Motif-temp", "database"]) {
+      const temp = join(tempDir("evals-judge-a-"), name, "Temp");
+      mkdirSync(temp, { recursive: true });
+      const h = harness({ tempFolder: () => temp });
+      expect(await runEvals(["--cases", "d-stride,a-stride", "--work", join(h.root, "cases")], h.deps, h.where)).toBe(2);
+      expect(h.seen).toEqual([]);
+      expect(h.lines.join("\n")).toContain(`Stopped: Test A's judges work in a new folder in the system's temp folder, and its path (${temp}) has "motif" or "base" in it, which a judge could read as a side. Point TEMP (TMPDIR on macOS and Linux) at a folder whose path doesn't, then --resume.`);
+      // Nothing was left in it.
+      expect(readdirSync(temp)).toEqual([]);
+    }
+    // A clean one is used.
+    const clean = join(tempDir("evals-judge-a-"), "scratch");
+    mkdirSync(clean);
+    const h = harness({ tempFolder: () => clean });
+    expect(await runEvals(["--cases", "d-stride,a-stride", "--work", join(h.root, "cases")], h.deps, h.where)).toBe(0);
+    expect(h.seen.every((s) => resolve(s.cwd).startsWith(resolve(clean)))).toBe(true);
+  });
+
   test("a run without Test A's pairs starts no judge", async () => {
     const h = harness();
     await runEvals(["--cases", "d-stride", "--work", join(h.root, "cases")], h.deps, h.where);

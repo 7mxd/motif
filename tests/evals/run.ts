@@ -68,7 +68,12 @@ export interface RunDeps {
    * returns is logged.
    */
   afterBriefPair?(brief: string, withMotif: Workspace, without: Workspace, out: string): Promise<string | void>;
+  /** The system's temp folder, where each of Test A's judges gets a new folder (os.tmpdir() when not given). */
+  tempFolder?(): string;
 }
+
+/** Words that would name a side to a judge, anywhere in its folder's path. */
+const SIDE_WORDS = /motif|base/i;
 
 /** An argument as a shell reads it: quoted when it holds spaces, brackets, commas or wildcards. */
 const shellWord = (a: string) => (/[\s()*,"']/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
@@ -475,11 +480,18 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
    * empty MCP list and its temp folder sit beside it, out of its reach; it goes once the judge is done.
    */
   async function judgeA(images: { left: string; right: string }, brief: BriefParts, name: string): Promise<JudgeAOutcome> {
-    let root = mkdtempSync(join(tmpdir(), "judge-"));
-    // Its random part never happens to spell a side.
-    while (/motif|base/i.test(basename(root))) {
+    // Nothing in the folder's whole path may spell a side: not the temp folder it's in, which can't be helped here…
+    const temp = deps.tempFolder?.() ?? tmpdir();
+    if (SIDE_WORDS.test(temp)) {
+      throw new Stopped(
+        `Test A's judges work in a new folder in the system's temp folder, and its path (${temp}) has "motif" or "base" in it, which a judge could read as a side. Point TEMP (TMPDIR on macOS and Linux) at a folder whose path doesn't, then --resume.`,
+      );
+    }
+    // …nor its random part, which is drawn again.
+    let root = mkdtempSync(join(temp, "judge-"));
+    while (SIDE_WORDS.test(basename(root))) {
       rmSync(root, { recursive: true, force: true });
-      root = mkdtempSync(join(tmpdir(), "judge-"));
+      root = mkdtempSync(join(temp, "judge-"));
     }
     try {
       const own = join(root, "screens");
@@ -490,12 +502,17 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       writeFileSync(mcp, JSON.stringify({ mcpServers: {} }));
       const instructions = deps.instructionFiles(own);
       if (instructions.length > 0) throw new Stopped(`A judge would read these instruction files: ${instructions.join(", ")}. Move them aside, then --resume.`);
-      const r = await deps.session({
-        command: [claude], args: judgeArgs({ mcpConfigFile: mcp, schema: JUDGE_A_SCHEMA, maxTurns: 10, model: state.options.judgeModel, tools: JUDGE_A_TOOLS }),
-        cwd: own, env: withTempFolder(baselineEnv, join(root, "tmp")), prompt: judgeAPrompt(brief), transcript: join(dir, "a", "judges", `${name}.jsonl`),
-        timeoutMs: 10 * 60_000, expect: { auto: false, tools: JUDGE_A_EXPECTED_TOOLS, personal },
-      });
-      await purge(own);
+      let r: SessionOutcome;
+      try {
+        r = await deps.session({
+          command: [claude], args: judgeArgs({ mcpConfigFile: mcp, schema: JUDGE_A_SCHEMA, maxTurns: 10, model: state.options.judgeModel, tools: JUDGE_A_TOOLS }),
+          cwd: own, env: withTempFolder(baselineEnv, join(root, "tmp")), prompt: judgeAPrompt(brief), transcript: join(dir, "a", "judges", `${name}.jsonl`),
+          timeoutMs: 10 * 60_000, expect: { auto: false, tools: JUDGE_A_EXPECTED_TOOLS, personal },
+        });
+      } finally {
+        // Claude Code's state for the folder goes whatever became of the session.
+        await purge(own);
+      }
       if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "A judge's session didn't start.");
       if (r.end === "usage-limit") return { paused: r.resetsAt ? { resetsAt: r.resetsAt } : {} };
       const answer = r.end === "finished" ? readPick(r.result?.structured) : null;

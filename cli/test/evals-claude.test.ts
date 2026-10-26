@@ -95,6 +95,15 @@ describe("an eval session's arguments", () => {
     }
   });
 
+  test("without tools, judgeArgs gives exactly test C's grader arguments, as before Test A's judges", () => {
+    expect(judgeArgs({ mcpConfigFile: "/m", schema: { type: "object" }, maxTurns: 40, model: "grader-m", appDir: "/app" })).toEqual([
+      "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence", "--setting-sources", "local", "--strict-mcp-config", "--mcp-config", "/m",
+      "--add-dir", "/app", "--permission-mode", "default", "--permission-prompts", "none", "--tools", "Read,Grep,Glob", "--max-turns", "40", "--model", "grader-m",
+      "--json-schema", '{"type":"object"}',
+    ]);
+    expect(judgeArgs({ mcpConfigFile: "/m", schema: {}, maxTurns: 40 })).toEqual(judgeArgs({ mcpConfigFile: "/m", schema: {}, maxTurns: 40, tools: JUDGE_TOOLS }));
+  });
+
   test("the grader's session reads only, loads no plugin and answers in a schema", () => {
     const j = judgeArgs({ mcpConfigFile: "/m", schema: { type: "object" }, maxTurns: 40 });
     expect(pair(j, "--tools")).toBe(JUDGE_TOOLS.join(","));
