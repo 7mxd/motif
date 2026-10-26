@@ -4,7 +4,7 @@ import type { RunState } from "./state";
 
 export interface TestVerdict { test: TestId; status: "pass" | "fail" | "incomplete"; detail: string }
 
-export const TEST_NAMES: Record<TestId, string> = { B: "Test B — consistency", C: "Test C — review accuracy", D: "Test D — zero accounts" };
+export const TEST_NAMES: Record<TestId, string> = { A: "Test A — with and without Motif", B: "Test B — consistency", C: "Test C — review accuracy", D: "Test D — zero accounts" };
 
 /** "; c-swiftui was skipped (it needs a Mac)", for a test's Mac-only cases this run skipped; nothing when none were. */
 function skippedText(state: RunState, cases: EvalCase[], test: TestId): string {
@@ -50,6 +50,7 @@ export function renderReport(state: RunState, cases: EvalCase[], verdicts: TestV
     ...(state.regrades ?? []).map((r) => `- Re-graded ${r.at} on commit ${commit(r.commit, r.dirty)}: the new-component rule, from each B case's saved diff`),
     `- Claude Code ${state.claudeVersion || "(version unknown)"}; model: ${models || "your account's default"}`,
     "- Every session: your Claude account (no API key), none of your settings, plugins or MCP servers, and Motif's plugin only.",
+    ...(cases.some((c) => c.test === "A" && state.cases[c.id]) ? ["- Test A's sessions (a-*): the same, but with no plugin at all, Motif's included."] : []),
     "",
     "## Verdicts",
     "",

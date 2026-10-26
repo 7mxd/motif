@@ -16,6 +16,7 @@ export interface SessionSpec {
   prompt: string;
   transcript: string;
   timeoutMs: number;
+  /** What the first event must show; with no pluginDir (the grader, Test A's a-* sessions), no plugin may be loaded. */
   expect: { pluginDir?: string; auto: boolean; tools: string[]; personal?: string[] };
 }
 

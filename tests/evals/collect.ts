@@ -23,11 +23,11 @@ import { discoverVueRoutes } from "../../cli/src/stacks/vue/routes";
 import { swiftUIApp } from "../../cli/src/stacks/swiftui/project";
 import { discoverSwiftUIScreens, previewSlug as swiftUIPreviewSlug, type SwiftUIPreview } from "../../cli/src/stacks/swiftui/screens";
 import { isAngular, isCompose, isFlutter, isPlain, isReactNative, isSvelte, isSwiftUI, isViteWebApp, isVue, type EvalCase } from "./cases";
-import { gradeB, gradeC, gradeD, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
+import { gradeA, gradeB, gradeC, gradeD, type AFacts, type BFacts, type CFacts, type CheckFacts, type CmdFacts, type DFacts, type Grade, type ScreenFacts, type ValidateFacts } from "./grade";
 import { Paused, type JudgeFn, type JudgeInput, type JudgeVerdict } from "./judge";
 import { gradeExact, parseReport, type SeededIssue } from "./match";
 import { packageManager, withoutProviderKeys, type Motif, type MotifResult, type Run } from "./tools";
-import { changes, findApp, patch, type Workspace } from "./workspace";
+import { changes, findApp, findBuiltApp, patch, type Workspace } from "./workspace";
 
 /** The JDK and Android SDK a Gradle run uses, or why there is none. */
 export type AndroidTools = { java: string; javaHome: string; sdk?: string } | { problem: string };
@@ -1164,25 +1164,40 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
     return { app: null, validate: none, check: none, sections: { missing: [...REQUIRED_SECTIONS], empty: [] }, build: { code: 1 }, typecheck: { code: 1 }, screens: none, routes: c.routes };
   }
   for (const f of ["DESIGN.md", "design/tokens.json"]) if (existsSync(join(app, f))) copyFileSync(join(app, f), join(out, basename(f)));
-  const compose = isCompose(c);
-  const flutter = isFlutter(c);
-  const swift = isSwiftUI(c);
-  if (!flutter && !compose && !swift && !existsSync(join(app, "node_modules"))) {
-    const r = await k.run([packageManager(app), "install"], app, 900_000);
-    save(out, "install.log", `${r.stdout}\n${r.stderr}`);
-  }
+  await installNewApp(c, app, k, out);
   const validate = await motifJson(k, ["validate"], app, out, "validate.json");
   const check = await motifJson(k, ["check"], app, out, "check.json");
   const sections = designSections(existsSync(join(app, "DESIGN.md")) ? readFileSync(join(app, "DESIGN.md"), "utf8") : "");
-  const { build, typecheck } = compose
-    ? { build: undefined, typecheck: await composeCompile(app, k, out) }
-    : flutter
-      ? { build: undefined, typecheck: await flutterAnalyze(app, k, out) }
-      : isReactNative(c)
-        ? { build: undefined, typecheck: await rnTypecheck(app, k, out) }
-        : swift
-          ? { build: undefined, typecheck: await swiftUIBuild(app, join(ws.dir, "DerivedData"), k, out) }
-          : isAngular(c) ? await angularBuild(app, k, out) : await buildAndTypecheck(app, k, out, webTypecheck(c));
+  const { build, typecheck } = await buildNewApp(c, ws, app, k, out);
+  const { screens, auditFindings } = await drawNewApp(c, app, k, out, true);
+  return {
+    app, validate: validateFacts(validate), check: checkFacts(check), sections, ...(build ? { build } : {}), typecheck, screens, routes: c.routes,
+    ...(auditFindings !== undefined ? { auditFindings } : {}),
+  };
+}
+
+/** A new web or Expo app's packages, installed when the session didn't; Flutter, Compose and SwiftUI get theirs as they build. */
+async function installNewApp(c: EvalCase, app: string, k: Collectors, out: string): Promise<void> {
+  if (isFlutter(c) || isCompose(c) || isSwiftUI(c) || existsSync(join(app, "node_modules"))) return;
+  const r = await k.run([packageManager(app), "install"], app, 900_000);
+  save(out, "install.log", `${r.stdout}\n${r.stderr}`);
+}
+
+/** A new app's build, when its stack has one, and its type check (Flutter's analyze, Compose's compile, SwiftUI's xcodebuild). */
+async function buildNewApp(c: EvalCase, ws: Workspace, app: string, k: Collectors, out: string): Promise<{ build?: CmdFacts; typecheck: CmdFacts }> {
+  if (isCompose(c)) return { typecheck: await composeCompile(app, k, out) };
+  if (isFlutter(c)) return { typecheck: await flutterAnalyze(app, k, out) };
+  if (isReactNative(c)) return { typecheck: await rnTypecheck(app, k, out) };
+  if (isSwiftUI(c)) return { typecheck: await swiftUIBuild(app, join(ws.dir, "DerivedData"), k, out) };
+  return isAngular(c) ? angularBuild(app, k, out) : buildAndTypecheck(app, k, out, webTypecheck(c));
+}
+
+/**
+ * A new app's starter screens, drawn by motif shot (with its audit for Test D, whose app has a design guide; without it
+ * for Test A, measured only for whether each screen renders).
+ */
+async function drawNewApp(c: EvalCase, app: string, k: Collectors, out: string, audit: boolean): Promise<{ screens: DFacts["screens"]; auditFindings?: number }> {
+  const swift = isSwiftUI(c);
   // SwiftUI: the root, and the #Previews the prompt names that the app has (by File.swift:line, which nothing else
   // shares), each reported under the case's own name; one the app lacks isn't asked for, so it shows as not captured.
   const named = new Map<string, string>();
@@ -1193,18 +1208,31 @@ export async function collectD(c: EvalCase, ws: Workspace, k: Collectors, out: s
     }
   }
   const targets = swift ? ["--routes", "/", ...(named.size > 0 ? ["--screen", [...named.keys()].join(",")] : [])] : ["--routes", c.routes.join(",")];
-  const shot = await motifJson(k, ["shot", "--audit", ...targets, ...(flutter || compose || swift || isReactNative(c) ? PHONE_SIZES : drawnAtTwoWidths(c) ? WEB_APP_SIZES : [])], app, out, "shot.json", compose || swift ? 1_800_000 : 900_000);
+  const sizes = isFlutter(c) || isCompose(c) || swift || isReactNative(c) ? PHONE_SIZES : drawnAtTwoWidths(c) ? WEB_APP_SIZES : [];
+  const shot = await motifJson(k, ["shot", ...(audit ? ["--audit"] : []), ...targets, ...sizes], app, out, "shot.json", isCompose(c) || swift ? 1_800_000 : 900_000);
   copyShots(app, shot.json, join(out, "shots"));
   const screens = Array.isArray(shot.json?.routes)
     ? shot.json.routes.map((r: any) => ({ route: named.get(String(r.route)) ?? String(r.route), status: Number(r.status ?? 0), pageErrors: Array.isArray(r.pageErrors) ? r.pageErrors.length : 0 }))
     : { error: String(shot.json?.error ?? shot.output) };
-  return {
-    app, validate: validateFacts(validate), check: checkFacts(check), sections, ...(build ? { build } : {}), typecheck, screens, routes: c.routes,
-    ...(Array.isArray(shot.json?.findings) ? { auditFindings: shot.json.findings.length } : {}),
-  };
+  return { screens, ...(audit && Array.isArray(shot.json?.findings) ? { auditFindings: shot.json.findings.length } : {}) };
+}
+
+/**
+ * Test A: the app a session built from the brief without Motif, measured as Test D measures its app but for the design
+ * guide (none of motif check, validate or the audit): installed, built and type-checked, and its starter screens drawn.
+ */
+export async function collectA(c: EvalCase, ws: Workspace, k: Collectors, out: string): Promise<AFacts> {
+  mkdirSync(out, { recursive: true });
+  const app = findBuiltApp(ws.app);
+  if (!app) return { app: null, build: { code: 1 }, typecheck: { code: 1 }, screens: { error: "no app" }, routes: c.routes };
+  await installNewApp(c, app, k, out);
+  const { build, typecheck } = await buildNewApp(c, ws, app, k, out);
+  const { screens } = await drawNewApp(c, app, k, out, false);
+  return { app, ...(build ? { build } : {}), typecheck, screens, routes: c.routes };
 }
 
 export async function collectAndGrade(c: EvalCase, ws: Workspace, out: string, k: Collectors): Promise<Grade> {
+  if (c.test === "A") return gradeA(await collectA(c, ws, k, out));
   if (c.test === "B") return gradeB(await collectB(c, ws, k, out));
   if (c.test === "C") return gradeC(await collectC(c, ws, k, out));
   return gradeD(await collectD(c, ws, k, out));

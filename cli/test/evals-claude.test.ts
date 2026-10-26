@@ -232,3 +232,33 @@ describe("the review of batch F", () => {
     expect(j[j.indexOf("--setting-sources") + 1]).toBe("local");
   });
 });
+
+describe("Test A's sessions: no plugins at all (Part 4 §4)", () => {
+  const BASE = { auto: true, tools: AGENT_TOOLS };
+  const builtin = { name: "cc-plugin-telemetry", path: "builtin", source: "cc-plugin-telemetry@builtin" };
+
+  test("an a-* session's arguments load no plugin and give it no plugin folder to read; everything else is a d-* session's", () => {
+    const withMotif = agentArgs({ pluginDir: "/p", mcpConfigFile: "/m", maxTurns: 400, maxBudgetUsd: 80 });
+    const without = agentArgs({ mcpConfigFile: "/m", maxTurns: 400, maxBudgetUsd: 80 });
+    expect(without).not.toContain("--plugin-dir");
+    expect(without).not.toContain("--add-dir");
+    expect(without.join(" ").toLowerCase()).not.toContain("/p ");
+    // The same flags but the plugin's two.
+    expect(without).toEqual(withMotif.filter((a, i) => !["--plugin-dir", "--add-dir"].includes(a) && !["--plugin-dir", "--add-dir"].includes(withMotif[i - 1]!)));
+  });
+
+  test("the isolation check passes with no plugins (Claude Code's own built-in ones aside)", () => {
+    expect(isolationProblems(initInfo(init({ plugins: [] }))!, BASE)).toEqual([]);
+    expect(isolationProblems(initInfo(init({ plugins: [builtin] }))!, BASE)).toEqual([]);
+  });
+
+  test("and fails when any plugin loads, Motif's included; every other check still applies", () => {
+    const motif = isolationProblems(initInfo(init({ plugins: [{ name: "motif", path: PLUGIN }, builtin] }))!, BASE);
+    expect(motif).toEqual([expect.stringContaining("motif")]);
+    expect(motif[0]).toContain("runs with none");
+    const other = isolationProblems(initInfo(init({ plugins: [{ name: "superpowers", path: "/home/me/.claude/plugins/superpowers" }] }))!, BASE);
+    expect(other).toEqual([expect.stringContaining("superpowers")]);
+    const p = isolationProblems(initInfo(init({ plugins: [], apiKeySource: "ANTHROPIC_API_KEY", mcp_servers: [{ name: "refero" }], permissionMode: "default", tools: ["Bash", "Artifact"] }))!, { ...BASE, personal: ["design"] }).join("\n");
+    for (const s of ["API key", "refero", "auto mode", "Artifact", "design"]) expect(p).toContain(s);
+  });
+});

@@ -197,12 +197,12 @@ export async function preflight(
     }
     if (nodeNeeds.svelteKit3 && !runsSvelteKit3(major, minor)) {
       return {
-        error: `The new Svelte app (${named(needsSvelteKit3)}) needs Node.js 22.17 or later, since npx sv create makes a SvelteKit 3 app and SvelteKit 3 needs it. This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases ${others}`,
+        error: `The new Svelte apps (${named(needsSvelteKit3)}) need Node.js 22.17 or later, since npx sv create makes a SvelteKit 3 app and SvelteKit 3 needs it. This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases ${others}`,
       };
     }
     if (nodeNeeds.angular22 && !nodeFloor(ANGULAR_22_NODE, nodeVersion)) {
       return {
-        error: `The new Angular app (${named(needsAngular22)}) needs Node.js 22.22.3 or later on Node 22, 24.15 or later on Node 24, or 26 or later, since ng new makes an Angular 22 app and Angular 22 needs it. This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases ${others}`,
+        error: `The new Angular apps (${named(needsAngular22)}) need Node.js 22.22.3 or later on Node 22, 24.15 or later on Node 24, or 26 or later, since ng new makes an Angular 22 app and Angular 22 needs it. This is Node.js ${nodeVersion}: install a newer one from nodejs.org, then run this again. Or run the others without it: --cases ${others}`,
       };
     }
   }
@@ -222,7 +222,7 @@ export async function preflight(
     const noBrowser = (mac: boolean) => CASES.filter((c) => !caseNeedsBrowser(c) && Boolean(c.mac) === mac).map((c) => c.id).join(",");
     const onMac = (d.platform ?? process.platform) === "darwin" ? ` On this Mac, the SwiftUI cases don't need one either: --cases ${noBrowser(true)}.` : "";
     return {
-      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, test D's web apps and b-plain's page are checked in a browser, the React Native cases draw their screens through Expo's web target in one, and the Vue, Svelte and Angular cases draw their pages in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${noBrowser(false)}) don't need one.${onMac}`,
+      error: `No Chrome or Edge was found${doctorLine ? ` (motif doctor says: ${doctorLine})` : ""}. Test C's web reviews check what the browser shows, the web apps of tests D and A and b-plain's page are checked in a browser, the React Native cases draw their screens through Expo's web target in one, and the Vue, Svelte and Angular cases draw their pages in one. Install Chrome or Edge, or run motif browser install yourself (it downloads about 120 MB, about 300 MB on disk), then run this again. Test B on Larder and the Flutter and Compose cases (--cases ${noBrowser(false)}) don't need one.${onMac}`,
     };
   }
   return { claude: found.exe, claudeVersion: version.stdout.trim(), browser, purge };

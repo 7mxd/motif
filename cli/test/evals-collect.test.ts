@@ -2,8 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
-import { addedComponents, angularBuildErrors, angularComponents, collectB, collectC, collectD, componentFacts, designSections, composeComponents, flutterComponents, reactComponents, recordedIn, rnComponents, stoppedByTypeErrors, svelteComponents, swiftUIComponents, vueComponents } from "../../tests/evals/collect";
-import { gradeB, gradeD } from "../../tests/evals/grade";
+import { addedComponents, angularBuildErrors, angularComponents, collectA, collectAndGrade, collectB, collectC, collectD, componentFacts, designSections, composeComponents, flutterComponents, reactComponents, recordedIn, rnComponents, stoppedByTypeErrors, svelteComponents, swiftUIComponents, vueComponents } from "../../tests/evals/collect";
+import { gradeA, gradeB, gradeD } from "../../tests/evals/grade";
 import { Paused, type JudgeFn } from "../../tests/evals/judge";
 import type { SeededIssue } from "../../tests/evals/match";
 import { runCmd, type MotifResult, type Run } from "../../tests/evals/tools";
@@ -1770,5 +1770,81 @@ describe("test D on SwiftUI", () => {
     } finally {
       outputs.shot = saved;
     }
+  });
+});
+
+describe("Test A's measurements: the build and the type check, and the screens drawn (Part 4 §4)", () => {
+  const recordingMotif = () => {
+    const seen: string[][] = [];
+    return { seen, motif: async (args: string[]) => (seen.push(args), motif(args)) };
+  };
+
+  test("finds the app with no design guide, builds and type-checks it and draws the starter screens; no motif check, validate or audit", async () => {
+    const ws = await prepareWorkspace(byId("a-stride"), join(tempDir("motif-col-"), "a"), run);
+    const app = join(ws.app, "stride");
+    mkdirSync(join(app, "node_modules"), { recursive: true });
+    writeFileSync(join(app, "package.json"), "{}");
+    const m = recordingMotif();
+    const before = commands.length;
+    const out = join(ws.dir, "results");
+    const f = await collectA(byId("a-stride"), ws, { run, motif: m.motif, judge: noJudge }, out);
+    expect(f).toEqual({
+      app, build: { code: 0, timedOut: false }, typecheck: { code: 0, timedOut: false }, routes: ["/", "/sign-in", "/home"],
+      screens: [{ route: "/", status: 200, pageErrors: 0 }, { route: "/sign-in", status: 200, pageErrors: 0 }, { route: "/home", status: 200, pageErrors: 1 }],
+    });
+    expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm run build", "npx --no tsc --noEmit"]);
+    expect(m.seen).toEqual([["shot", "--routes", "/,/sign-in,/home"]]);
+    for (const file of ["shot.json", "build.log", "typecheck.log"]) expect(existsSync(join(out, file))).toBe(true);
+    for (const file of ["validate.json", "check.json", "DESIGN.md"]) expect(existsSync(join(out, file))).toBe(false);
+    const g = gradeA(f);
+    expect(g.criteria.map((k) => k.id)).toEqual(["app", "build", "typecheck", "screens"]);
+    expect(g.pass).toBe(false);
+    expect(g.criteria.find((k) => k.id === "screens")).toMatchObject({ pass: false, detail: "Didn't render: /home (status 200, 1 page errors)." });
+    // collectAndGrade grades an a-* case this way.
+    const all = await collectAndGrade(byId("a-stride"), ws, out, { run, motif, judge: noJudge });
+    expect(all.criteria.map((k) => k.id)).toEqual(["app", "build", "typecheck", "screens"]);
+  });
+
+  test("passes on its build, type check and screens alone", () => {
+    const ok = gradeA({ app: "/x", build: { code: 0 }, typecheck: { code: 0 }, routes: ["/"], screens: [{ route: "/", status: 200, pageErrors: 0 }] });
+    expect(ok.pass).toBe(true);
+    const broken = gradeA({ app: "/x", build: { code: 1 }, typecheck: { code: 2 }, routes: ["/"], screens: [{ route: "/", status: 200, pageErrors: 0 }] });
+    expect(broken.pass).toBe(false);
+    expect(broken.criteria.filter((k) => !k.pass).map((k) => k.id)).toEqual(["build", "typecheck"]);
+  });
+
+  test("the app in the folder itself, on a stack of its own: a Vue app installed, built, type-checked with vue-tsc and drawn at 390 and 1440", async () => {
+    const ws = await prepareWorkspace(byId("a-darb"), join(tempDir("motif-col-"), "avue"), run);
+    writeFileSync(join(ws.app, "package.json"), "{}");
+    const m = recordingMotif();
+    const before = commands.length;
+    const f = await collectA(byId("a-darb"), ws, { run, motif: m.motif, judge: noJudge }, join(ws.dir, "results"));
+    expect(f.app).toBe(ws.app);
+    expect(commands.slice(before).map((c) => c.join(" "))).toEqual(["npm install", "npm run build", "npx vue-tsc --noEmit"]);
+    expect(m.seen).toEqual([["shot", "--routes", "/,/sign-in,/meetups", "--sizes", "390,1440"]]);
+  });
+
+  test("Masar without Motif: the starter project is the app", async () => {
+    const calls: string[][] = [];
+    const recordingRun: Run = async (cmd, cwd, t, env) => {
+      if (cmd[0] === "git") return runCmd(cmd, cwd, t, env);
+      calls.push(cmd);
+      return { code: 0, stdout: "ok", stderr: "", timedOut: false };
+    };
+    const ws = await prepareWorkspace(byId("a-masar"), join(tempDir("motif-col-"), "amasar"), recordingRun);
+    const m = recordingMotif();
+    const f = await collectA(byId("a-masar"), ws, { run: recordingRun, motif: m.motif, judge: noJudge }, join(ws.dir, "results"));
+    expect(f.app).toBe(ws.app);
+    expect(calls.map((c) => c[0])).toEqual(["xcodebuild"]);
+    expect(m.seen).toEqual([["shot", "--routes", "/", "--sizes", "390"]]);
+  });
+
+  test("no app found: nothing is run, and the grade says so", async () => {
+    const ws = await prepareWorkspace(byId("a-bloom"), join(tempDir("motif-col-"), "anone"), run);
+    const m = recordingMotif();
+    const f = await collectA(byId("a-bloom"), ws, { run, motif: m.motif, judge: noJudge }, join(ws.dir, "results"));
+    expect(f.app).toBeNull();
+    expect(m.seen).toEqual([]);
+    expect(gradeA(f)).toMatchObject({ pass: false, criteria: [{ id: "app", pass: false }] });
   });
 });

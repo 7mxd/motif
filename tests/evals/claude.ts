@@ -89,11 +89,12 @@ const isolation = (mcpConfigFile: string, sources = "project,local") => [
  */
 export const DENIED_COMMANDS = ["Bash(claude mcp *)", "PowerShell(claude mcp *)", "Bash(motif connect *)", "PowerShell(motif connect *)"];
 
-export function agentArgs(o: { pluginDir: string; mcpConfigFile: string; maxTurns: number; maxBudgetUsd: number; model?: string }): string[] {
+/** A session building or changing an app; with no pluginDir (Test A's a-* cases) it loads no plugin at all. */
+export function agentArgs(o: { pluginDir?: string; mcpConfigFile: string; maxTurns: number; maxBudgetUsd: number; model?: string }): string[] {
   return [
     ...isolation(o.mcpConfigFile),
     "--permission-mode", "auto", "--permission-prompts", "none",
-    "--plugin-dir", o.pluginDir, "--add-dir", o.pluginDir,
+    ...(o.pluginDir ? ["--plugin-dir", o.pluginDir, "--add-dir", o.pluginDir] : []),
     "--max-turns", String(o.maxTurns), "--max-budget-usd", String(o.maxBudgetUsd),
     ...(o.model ? ["--model", o.model] : []),
     "--tools", AGENT_TOOLS.join(","),
@@ -178,7 +179,11 @@ const samePath = (a: string, b: string) => {
   return process.platform === "win32" ? n(a).toLowerCase() === n(b).toLowerCase() : n(a) === n(b);
 };
 
-/** What would make a session's results meaningless. Anything missing counts as a problem. */
+/**
+ * What would make a session's results meaningless. Anything missing counts as a problem. With a pluginDir, Motif's
+ * plugin from there must be loaded and no other; without one (the grader, and Test A's a-* sessions), no plugin may be,
+ * Motif's included. Claude Code's own built-in plugins (path "builtin") are part of it, not loaded, so they don't count.
+ */
 export function isolationProblems(init: InitInfo, expect: { pluginDir?: string; auto: boolean; tools: string[]; personal?: string[] }): string[] {
   const problems: string[] = [];
   if (init.tools.length === 0) problems.push("Claude Code didn't list its tools, so the runner can't check what the session may do.");
@@ -192,7 +197,10 @@ export function isolationProblems(init: InitInfo, expect: { pluginDir?: string; 
   if (init.mcpServers.length > 0) problems.push(`MCP servers were loaded (${init.mcpServers.join(", ")}); every eval session runs with none.`);
   const motif = (p: { name: string; path: string }) => Boolean(expect.pluginDir) && p.name === "motif" && samePath(p.path, expect.pluginDir!);
   const others = init.plugins.filter((p) => p.path !== "builtin" && !motif(p));
-  if (others.length > 0) problems.push(`Other plugins were loaded (${others.map((p) => p.name).join(", ")}); every eval session runs with Motif's alone.`);
+  if (others.length > 0) {
+    const names = others.map((p) => p.name).join(", ");
+    problems.push(expect.pluginDir ? `Other plugins were loaded (${names}); every eval session runs with Motif's alone.` : `Plugins were loaded (${names}); this session runs with none.`);
+  }
   if (expect.pluginDir && !init.plugins.some(motif)) problems.push(`The Motif plugin wasn't loaded from ${expect.pluginDir}.`);
   if (expect.auto && init.permissionMode !== "auto") {
     problems.push(`Claude Code started in "${init.permissionMode || "unknown"}" permission mode instead of auto mode, so it can't work unattended. Auto mode needs a model that supports it: choose one with --model.`);

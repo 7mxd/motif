@@ -1,4 +1,4 @@
-// A case's folder: a fresh copy of the fixture app with its packages installed (B, C; npm ci, or flutter pub get, or local.properties for Compose), or an empty folder holding the brief (D),
+// A case's folder: a fresh copy of the fixture app with its packages installed (B, C; npm ci, or flutter pub get, or local.properties for Compose), or an empty folder holding the brief (D and A),
 // plus git's record of how it started (a plain site installs nothing, and nor does Qahwa, a SwiftUI app with no packages). The record lives beside the app, not in it, so nothing
 // the session does can change it.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -104,5 +104,20 @@ export function findApp(dir: string): string | null {
   const isApp = (d: string) =>
     existsSync(join(d, "package.json")) || existsSync(join(d, "pubspec.yaml")) || existsSync(join(d, "Package.swift")) || readdirSync(d).some((n) => n.endsWith(".xcodeproj"));
   const apps = withGuide.filter((n) => isApp(join(dir, n)));
+  return apps.length === 1 ? join(dir, apps[0]!) : null;
+}
+
+/** A folder holding an app's project: npm's, Flutter's, Gradle's, Swift's or Xcode's. */
+const isAppFolder = (d: string) =>
+  ["package.json", "pubspec.yaml", "settings.gradle.kts", "settings.gradle", "Package.swift"].some((f) => existsSync(join(d, f))) ||
+  readdirSync(d).some((n) => n.endsWith(".xcodeproj"));
+
+/**
+ * Where Test A's app ended up, with no design guide to find it by: this folder when it holds a project, or the one
+ * folder inside it that does.
+ */
+export function findBuiltApp(dir: string): string | null {
+  if (isAppFolder(dir)) return dir;
+  const apps = readdirSync(dir).filter((n) => !n.startsWith(".") && n !== "node_modules" && statSync(join(dir, n)).isDirectory() && isAppFolder(join(dir, n)));
   return apps.length === 1 ? join(dir, apps[0]!) : null;
 }

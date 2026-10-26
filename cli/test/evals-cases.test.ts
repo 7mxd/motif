@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CASES, isAngular, isCompose, isFlutter, isPlain, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, needsAngular21, needsAngular22, needsBrowser, needsSvelteKit3, needsVite8, selectCases, UNATTENDED, type EvalCase } from "../../tests/evals/cases";
+import { CASES, isAngular, isBaseline, pairedCase, baselineCase, isCompose, isFlutter, isPlain, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, needsAngular21, needsAngular22, needsBrowser, needsSvelteKit3, needsVite8, selectCases, UNATTENDED, type EvalCase } from "../../tests/evals/cases";
 
 const REPO = join(import.meta.dir, "../..");
 const ids = (r: EvalCase[] | { error: string }) => ("error" in r ? r : r.map((c) => c.id));
@@ -38,12 +38,12 @@ describe("the eval cases (spec §13.2)", () => {
     expect(CASES.filter(isPlain).map((c) => c.id)).toEqual(["b-plain", "c-plain"]);
     expect(CASES.filter((c) => !needsBrowser(c)).map((c) => c.id)).toEqual([
       "b-settings", "b-search", "b-profile", "b-notifications", "b-checkout", "b-flutter-reserve", "b-flutter-search", "b-compose-reminder", "b-compose-stats",
-      "b-swiftui-orders", "b-swiftui-rewards", "c-flutter", "c-compose", "c-swiftui", "d-sahm", "d-nabta", "d-masar",
+      "b-swiftui-orders", "b-swiftui-rewards", "c-flutter", "c-compose", "c-swiftui", "d-sahm", "a-sahm", "d-nabta", "a-nabta", "d-masar", "a-masar",
     ]);
   });
 
   test("the Flutter cases: two features on Maktaba, the review of its seeded copy, and Sahm from a brief", () => {
-    expect(CASES.filter(isFlutter).map((c) => c.id)).toEqual(["b-flutter-reserve", "b-flutter-search", "c-flutter", "d-sahm"]);
+    expect(CASES.filter(isFlutter).map((c) => c.id)).toEqual(["b-flutter-reserve", "b-flutter-search", "c-flutter", "d-sahm", "a-sahm"]);
     for (const c of CASES) expect(c.stack === "flutter").toBe(isFlutter(c));
     // /books/reserve would be taken by go_router's /books/:id when listed after it, so the flow has a route of its own.
     const reserve = CASES.find((c) => c.id === "b-flutter-reserve")!;
@@ -61,7 +61,7 @@ describe("the eval cases (spec §13.2)", () => {
   });
 
   test("the Compose cases: two features on Rafiq, the seeded review, and Nabta from a brief", () => {
-    expect(CASES.filter(isCompose).map((c) => c.id)).toEqual(["b-compose-reminder", "b-compose-stats", "c-compose", "d-nabta"]);
+    expect(CASES.filter(isCompose).map((c) => c.id)).toEqual(["b-compose-reminder", "b-compose-stats", "c-compose", "d-nabta", "a-nabta"]);
     for (const c of CASES) expect(c.stack === "compose").toBe(isCompose(c));
     const reminder = CASES.find((c) => c.id === "b-compose-reminder")!;
     expect(reminder).toMatchObject({ test: "B", fixture: "compose-contract-app", routes: ["/reminders"], minutes: 120 });
@@ -80,7 +80,7 @@ describe("the eval cases (spec §13.2)", () => {
   });
 
   test("the React Native cases: two features on Dukkan, the seeded review, and Rihla from a brief; all need a browser", () => {
-    expect(CASES.filter(isReactNative).map((c) => c.id)).toEqual(["b-rn-orders", "b-rn-favourites", "c-rn", "d-rihla"]);
+    expect(CASES.filter(isReactNative).map((c) => c.id)).toEqual(["b-rn-orders", "b-rn-favourites", "c-rn", "d-rihla", "a-rihla"]);
     for (const c of CASES) expect(c.stack === "react-native").toBe(isReactNative(c));
     for (const c of CASES.filter(isReactNative)) expect(needsBrowser(c)).toBe(true);
     const orders = CASES.find((c) => c.id === "b-rn-orders")!;
@@ -100,7 +100,7 @@ describe("the eval cases (spec §13.2)", () => {
   });
 
   test("the Vue cases: two features on Bustan, the seeded review, and Darb from a brief; web cases, so a browser and npm", () => {
-    expect(CASES.filter(isVue).map((c) => c.id)).toEqual(["b-vue-history", "b-vue-settings", "c-vue", "d-darb"]);
+    expect(CASES.filter(isVue).map((c) => c.id)).toEqual(["b-vue-history", "b-vue-settings", "c-vue", "d-darb", "a-darb"]);
     for (const c of CASES) expect(c.stack === "vue").toBe(isVue(c));
     for (const c of CASES.filter(isVue)) {
       expect(needsBrowser(c)).toBe(true);
@@ -127,7 +127,7 @@ describe("the eval cases (spec §13.2)", () => {
   });
 
   test("the Svelte cases: two features on Adawat, the seeded review, and Nuzha from a brief; web cases, so a browser and npm", () => {
-    expect(CASES.filter(isSvelte).map((c) => c.id)).toEqual(["b-svelte-history", "b-svelte-settings", "c-svelte", "d-nuzha"]);
+    expect(CASES.filter(isSvelte).map((c) => c.id)).toEqual(["b-svelte-history", "b-svelte-settings", "c-svelte", "d-nuzha", "a-nuzha"]);
     for (const c of CASES) expect(c.stack === "svelte").toBe(isSvelte(c));
     for (const c of CASES.filter(isSvelte)) {
       expect(needsBrowser(c)).toBe(true);
@@ -154,7 +154,7 @@ describe("the eval cases (spec §13.2)", () => {
   });
 
   test("the Angular cases: two features on Ataa, the seeded review, and Sanad from a brief; web cases, so a browser and npm", () => {
-    expect(CASES.filter(isAngular).map((c) => c.id)).toEqual(["b-angular-history", "b-angular-settings", "c-angular", "d-sanad"]);
+    expect(CASES.filter(isAngular).map((c) => c.id)).toEqual(["b-angular-history", "b-angular-settings", "c-angular", "d-sanad", "a-sanad"]);
     for (const c of CASES) expect(c.stack === "angular").toBe(isAngular(c));
     for (const c of CASES.filter(isAngular)) {
       expect(needsBrowser(c)).toBe(true);
@@ -183,10 +183,10 @@ describe("the eval cases (spec §13.2)", () => {
   });
 
   test("the Node.js floors: Vite 8 for Vue and the Svelte fixtures, SvelteKit 3 for the new Svelte app, Angular 21 for Ataa and Angular 22 for the new Angular app", () => {
-    expect(CASES.filter(needsVite8).map((c) => c.id)).toEqual(["b-vue-history", "b-vue-settings", "b-svelte-history", "b-svelte-settings", "c-vue", "c-svelte", "d-darb"]);
-    expect(CASES.filter(needsSvelteKit3).map((c) => c.id)).toEqual(["d-nuzha"]);
+    expect(CASES.filter(needsVite8).map((c) => c.id)).toEqual(["b-vue-history", "b-vue-settings", "b-svelte-history", "b-svelte-settings", "c-vue", "c-svelte", "d-darb", "a-darb"]);
+    expect(CASES.filter(needsSvelteKit3).map((c) => c.id)).toEqual(["d-nuzha", "a-nuzha"]);
     expect(CASES.filter(needsAngular21).map((c) => c.id)).toEqual(["b-angular-history", "b-angular-settings", "c-angular"]);
-    expect(CASES.filter(needsAngular22).map((c) => c.id)).toEqual(["d-sanad"]);
+    expect(CASES.filter(needsAngular22).map((c) => c.id)).toEqual(["d-sanad", "a-sanad"]);
   });
 
   test("the welcome view is a page on the web and a screen on Flutter, Compose and Expo, said by one parameter", () => {
@@ -196,7 +196,7 @@ describe("the eval cases (spec §13.2)", () => {
   });
 
   test("the SwiftUI cases: two features on Qahwa, the seeded review, and Masar from a brief; Mac only, no browser", () => {
-    expect(CASES.filter(isSwiftUI).map((c) => c.id)).toEqual(["b-swiftui-orders", "b-swiftui-rewards", "c-swiftui", "d-masar"]);
+    expect(CASES.filter(isSwiftUI).map((c) => c.id)).toEqual(["b-swiftui-orders", "b-swiftui-rewards", "c-swiftui", "d-masar", "a-masar"]);
     for (const c of CASES) {
       expect(c.stack === "swiftui").toBe(isSwiftUI(c));
       // Only the SwiftUI cases need a Mac.
@@ -219,20 +219,20 @@ describe("the eval cases (spec §13.2)", () => {
     for (const r of review.routes) expect(review.prompt).toContain(r);
     const masar = CASES.find((c) => c.id === "d-masar")!;
     expect(masar).toMatchObject({ test: "D", brief: "masar", starter: "swiftui-starter-masar", routes: ["/", "Sign in", "Home"] });
-    // Only Masar starts from a project: an Xcode project has no command-line starter, and the skill says not to write one by hand.
-    expect(CASES.filter((c) => c.starter).map((c) => c.id)).toEqual(["d-masar"]);
+    // Only Masar starts from a project (with and without Motif): an Xcode project has no command-line starter, and the skill says not to write one by hand.
+    expect(CASES.filter((c) => c.starter).map((c) => c.id)).toEqual(["d-masar", "a-masar"]);
     expect(masar.prompt).toContain("root view");
     for (const r of ["Sign in", "Home"]) expect(masar.prompt).toContain(`"${r}"`);
     expect(readFileSync(join(REPO, "tests/fixtures/briefs/masar.md"), "utf8")).toContain("SwiftUI");
   });
 
-  test("every prompt starts a Motif command and switches approvals off in the skill's own words", () => {
+  test("every B, C and D prompt starts a Motif command and switches approvals off in the skill's own words", () => {
     expect(readFileSync(join(REPO, "skill/SKILL.md"), "utf8")).toContain("don't stop for approval");
     expect(UNATTENDED.toLowerCase()).toContain("don't stop for approval");
     // A session that ends its turn to wait on a job it put in the background is over: the run ends and kills the job (2H c-swiftui).
     expect(UNATTENDED).toContain("Don't end your turn while a command you started is still running");
     expect(UNATTENDED).not.toContain("skip previews"); // mockups are part of what's evaluated
-    for (const c of CASES) {
+    for (const c of CASES.filter((x) => x.test !== "A")) {
       expect(c.prompt).toMatch(/^\/motif:(feature|review|init) /);
       expect(c.prompt).toContain(UNATTENDED);
     }
@@ -256,12 +256,79 @@ describe("the eval cases (spec §13.2)", () => {
   });
 });
 
+describe("Test A: each brief built without Motif (Part 4 §4)", () => {
+  const D = CASES.filter((c) => c.test === "D");
+  const A = CASES.filter((c) => c.test === "A");
+
+  test("ten a-* cases, one per D brief, each equal to its d-* but its test, id and prompt", () => {
+    expect(A.map((c) => c.id)).toEqual(D.map((c) => `a-${c.brief}`));
+    for (const a of A) {
+      const d = CASES.find((c) => c.id === `d-${a.brief}`)!;
+      const { id, test: t, prompt, ...rest } = a;
+      const { id: _i, test: _t, prompt: _p, ...dRest } = d;
+      expect(rest).toEqual(dRest);
+      expect(t).toBe("A");
+      expect(baselineCase(d)).toEqual(a);
+    }
+    expect(CASES).toHaveLength(49);
+  });
+
+  test("each a-* runs right after its d-*", () => {
+    for (const a of A) expect(CASES[CASES.indexOf(a) - 1]!.id).toBe(`d-${a.brief}`);
+  });
+
+  test("the prompt is the d-* prompt with every mention of Motif removed, asking for nothing worse", () => {
+    const prompt = (id: string) => CASES.find((c) => c.id === id)!.prompt;
+    expect(prompt("a-stride")).toBe(
+      `Build the app described in brief.md in this folder; it has the answers to any questions you'd ask. Put the welcome page at /, sign-in at /sign-in and home at /home. Make it look and work well.\n\n${UNATTENDED}`,
+    );
+    expect(prompt("a-rihla")).toBe(
+      `Build the app described in brief.md in this folder; it has the answers to any questions you'd ask. Put the welcome screen at /, sign-in at /sign-in and trips at /trips. Make it look and work well.\n\n${UNATTENDED}`,
+    );
+    expect(prompt("a-masar")).toBe(
+      `Build the app described in brief.md in this folder; it has the answers to any questions you'd ask. Make the welcome screen the app's root view, and give the sign-in and home screens #Preview blocks titled "Sign in" and "Home". Make it look and work well.\n\n${UNATTENDED}`,
+    );
+    for (const a of A) {
+      expect(a.prompt.toLowerCase()).not.toContain("motif");
+      expect(a.prompt).not.toContain("/motif:");
+      // Every starter route and the stack's word for the welcome view, as its d-* has them.
+      const d = pairedCase(a)!;
+      expect(a.prompt).toBe(d.prompt.replace("/motif:init ", "").replace("it has my answers to your questions", "it has the answers to any questions you'd ask").replace("\n\n", " Make it look and work well.\n\n"));
+    }
+    // The unattended words are shared, and name nothing of Motif's.
+    expect(UNATTENDED.toLowerCase()).not.toContain("motif");
+  });
+
+  test("isBaseline and pairedCase pair a-x with d-x, and nothing else", () => {
+    expect(A.every(isBaseline)).toBe(true);
+    expect(CASES.filter((c) => c.test !== "A").some(isBaseline)).toBe(false);
+    for (const a of A) {
+      expect(pairedCase(a)!.id).toBe(`d-${a.brief}`);
+      expect(pairedCase(pairedCase(a)!)).toBe(a);
+    }
+    expect(pairedCase(CASES.find((c) => c.id === "b-search")!)).toBeUndefined();
+    expect(pairedCase(CASES.find((c) => c.id === "c-review")!)).toBeUndefined();
+  });
+
+  test("--tests A chooses them; A is named among the tests", () => {
+    expect(ids(selectCases(CASES, { tests: ["a"] }))).toEqual(A.map((c) => c.id));
+    expect(ids(selectCases(CASES, { tests: ["A", "D"] }))).toEqual(D.flatMap((d) => [d.id, `a-${d.brief}`]));
+    expect(selectCases(CASES, { tests: ["E"] })).toEqual({ error: `There's no test "E". Tests: A, B, C, D.` });
+  });
+
+  test("off a Mac, a-masar is skipped with d-masar", () => {
+    const r = macOnly(selectCases(CASES, { ids: ["d-masar", "a-masar", "d-stride"] }) as EvalCase[], "win32");
+    expect(r.run.map((c) => c.id)).toEqual(["d-stride"]);
+    expect(r.skipped.map((c) => c.id)).toEqual(["d-masar", "a-masar"]);
+  });
+});
+
 describe("choosing cases", () => {
   test("by test and by id; everything by default", () => {
     expect(ids(selectCases(CASES, { tests: ["c"] }))).toEqual(["c-review", "c-plain", "c-flutter", "c-compose", "c-rn", "c-vue", "c-svelte", "c-angular", "c-swiftui"]);
     expect(ids(selectCases(CASES, { ids: ["d-bloom", "b-search"] }))).toEqual(["b-search", "d-bloom"]);
     expect(ids(selectCases(CASES, { ids: ["d-sahm", "b-flutter-search"] }))).toEqual(["b-flutter-search", "d-sahm"]);
-    expect(ids(selectCases(CASES, {}))).toHaveLength(39);
+    expect(ids(selectCases(CASES, {}))).toHaveLength(49);
   });
 
   test("off a Mac, the Mac-only cases are set aside with the reason; on a Mac nothing is", () => {

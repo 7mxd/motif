@@ -1,11 +1,11 @@
-// Runs Motif's agent evals (tests B, C and D, spec §13.2) through your signed-in Claude Code, one case at a time, and grades them.
-// Never an API key; never in CI. See tests/evals/README.md.
+// Runs Motif's agent evals (tests B, C and D, spec §13.2, and Test A's builds without Motif, Part 4 §4) through your signed-in
+// Claude Code, one case at a time, and grades them. Never an API key; never in CI. See tests/evals/README.md.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
-import { CASES, isAngular, isCompose, isFlutter, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, macOnlyNote, needsAngular21, needsAngular22, needsBrowser, needsNode, needsSvelteKit3, needsVite8, selectCases, type EvalCase } from "./cases";
+import { CASES, isAngular, isBaseline, isCompose, isFlutter, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, macOnlyNote, needsAngular21, needsAngular22, needsBrowser, needsNode, needsSvelteKit3, needsVite8, pairedCase, selectCases, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
@@ -23,7 +23,7 @@ export const USAGE = `Usage: bun tests/evals/run.ts [options]
 Runs Motif's agent evals through your signed-in Claude Code (never an API key), one case at a time.
 
   --list                 List the cases
-  --tests B,C,D          Run only these tests
+  --tests A,B,C,D        Run only these tests (A: each D brief built without Motif)
   --cases <id,...>       Run only these cases
   --dry-run              Show each case's prompt and the Claude Code command, without running anything
   --resume <run>         Continue a run that stopped (a usage limit, Ctrl+C)
@@ -58,6 +58,11 @@ export interface RunDeps {
   agentSettings(): Record<string, string | null>;
   /** The platform the evals run on (this one when not given): off macOS, the Mac-only cases are skipped. */
   platform?: NodeJS.Platform;
+  /**
+   * Test A: runs once a brief's d-* and a-* cases are both graded, with both apps' folders still there; they're removed
+   * after it (unless --keep). Test A's screenshots of both apps are taken here.
+   */
+  afterBriefPair?(brief: string, withMotif: Workspace, without: Workspace): Promise<void>;
 }
 
 /** An argument as a shell reads it: quoted when it holds spaces, brackets, commas or wildcards. */
@@ -186,8 +191,9 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   }
   let dir = runDir(where.results, state.id);
   let mcpConfigFile = join(dir, "no-mcp.json");
+  // Test A's sessions load no plugin at all: not Motif's, and (as in every session) not the developer's.
   const caseArgs = (c: EvalCase) =>
-    agentArgs({ pluginDir: p.pluginDir, mcpConfigFile, maxTurns: state.options.maxTurns ?? c.maxTurns, maxBudgetUsd: c.maxBudgetUsd, model: state.options.model });
+    agentArgs({ ...(isBaseline(c) ? {} : { pluginDir: p.pluginDir }), mcpConfigFile, maxTurns: state.options.maxTurns ?? c.maxTurns, maxBudgetUsd: c.maxBudgetUsd, model: state.options.model });
 
   if (o["dry-run"]) {
     for (const c of todo) {
@@ -218,6 +224,8 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
   const personal = deps.personal();
   const { env, dropped } = sessionEnv(deps.env, p.motifBin);
   if (dropped.length) deps.log(`Leaving these out of the eval sessions' environment: ${dropped.join(", ")}.`);
+  // A Test A session has no Motif to point at, nor to keep from connecting anything: nothing in its environment names Motif.
+  const baselineEnv = Object.fromEntries(Object.entries(env).filter(([k]) => !/^MOTIF_/i.test(k)));
   if (typeof o.resume === "string") {
     const git = deps.git();
     if (git.commit !== state.commit || git.dirty !== state.dirty) state.resumes.push({ at: deps.now().toISOString(), commit: git.commit, dirty: git.dirty });
@@ -274,8 +282,9 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       deps.log(`${c.id}: Claude Code is working (up to ${c.minutes} minutes). Everything it does goes to ${join(out, "session.jsonl")}.`);
       const before = deps.agentSettings();
       const outcome = await deps.session({
-        command: [ready.claude], args: caseArgs(c), cwd: cs.workspace.app, env: withTempFolder(env, join(cs.workspace.dir, "tmp")), prompt: c.prompt,
-        transcript: join(out, "session.jsonl"), timeoutMs: c.minutes * 60_000, expect: { pluginDir: p.pluginDir, auto: true, tools: AGENT_TOOLS, personal },
+        command: [ready.claude], args: caseArgs(c), cwd: cs.workspace.app, env: withTempFolder(isBaseline(c) ? baselineEnv : env, join(cs.workspace.dir, "tmp")), prompt: c.prompt,
+        transcript: join(out, "session.jsonl"), timeoutMs: c.minutes * 60_000,
+        expect: { ...(isBaseline(c) ? {} : { pluginDir: p.pluginDir }), auto: true, tools: AGENT_TOOLS, personal },
       });
       cs.session = summary(outcome);
       await purge(cs.workspace.app);
@@ -373,29 +382,59 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     cs.status = "graded";
     delete cs.note;
     save();
-    if (!state.options.keep) {
-      try {
-        deps.removeDir(ws.dir);
-      } catch (e) {
-        deps.log(`${c.id}: Couldn't delete ${ws.dir} (${(e as Error).message}); delete it yourself when nothing is using it.`);
-      }
-    }
+    await settleFolder(c, ws);
     const failed = cs.grade.criteria.filter((k) => !k.pass).map((k) => k.label);
     deps.log(`${c.id}: ${cs.grade.pass ? "PASS" : `FAIL (${failed.join("; ")})`}`);
   }
   return finish();
+
+  /** A graded case's folder, removed unless --keep. */
+  function removeCase(id: string, ws: Workspace): void {
+    if (state.options.keep) return;
+    try {
+      deps.removeDir(ws.dir);
+    } catch (e) {
+      deps.log(`${id}: Couldn't delete ${ws.dir} (${(e as Error).message}); delete it yourself when nothing is using it.`);
+    }
+  }
+
+  /**
+   * After a case is graded: its folder goes, unless this run has its brief's other side (Test A compares a brief's two
+   * apps). Then it stays until the other is graded too; once both are, Test A's step runs with both, and both go.
+   */
+  async function settleFolder(c: EvalCase, ws: Workspace): Promise<void> {
+    const partner = pairedCase(c);
+    const ps = partner ? state.cases[partner.id] : undefined;
+    if (!partner || !ps) return removeCase(c.id, ws);
+    if (ps.status !== "graded" || !ps.workspace) {
+      deps.log(`${c.id}: keeping its folder until ${partner.id} is graded, for Test A.`);
+      return;
+    }
+    const [d, a] = isBaseline(c) ? [partner.id, c.id] : [c.id, partner.id];
+    const [dWs, aWs] = isBaseline(c) ? [ps.workspace, ws] : [ws, ps.workspace];
+    try {
+      await deps.afterBriefPair?.(c.brief!, dWs, aWs);
+    } catch (e) {
+      deps.log(`${d} and ${a}: Test A's step after both were graded failed (${(e as Error).message}); both folders are kept.`);
+      return;
+    }
+    removeCase(d, dWs);
+    removeCase(a, aWs);
+  }
 }
 
 /**
  * report.md and report.json for the run as it stands; the exit code is 0 only when every case passed, leaving out the
- * Mac-only ones skipped here, as the verdicts do.
+ * Mac-only ones skipped here, as the verdicts do. A Test A case only needs to be graded: an app built without Motif
+ * that doesn't build or render isn't a failure of the run, and Test A counts its screens as lost pairs.
  */
 function writeReport(state: RunState, dir: string, deps: RunDeps): number {
   const verdicts = testVerdicts(state, CASES);
   writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts));
   writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts }, null, 2));
   deps.log(`\n${verdicts.map((v) => `${v.test}: ${v.status} — ${v.detail}`).join("\n")}\nReport: ${join(dir, "report.md")}`);
-  return Object.values(state.cases).filter((c) => c.status !== "skipped").every((c) => c.status === "graded" && c.grade?.pass) ? 0 : 1;
+  const baseline = (id: string) => CASES.some((c) => c.id === id && isBaseline(c));
+  return Object.entries(state.cases).filter(([, c]) => c.status !== "skipped").every(([id, c]) => c.status === "graded" && (c.grade?.pass || baseline(id))) ? 0 : 1;
 }
 
 /** --regrade: each graded B case's new-component criterion again, from its saved diff; every other criterion stands. */
