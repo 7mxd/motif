@@ -108,8 +108,8 @@ export function agentArgs(o: { pluginDir?: string; mcpConfigFile: string; maxTur
   ];
 }
 
-/** Test C's grader: read-only tools, no plugin, a structured answer. */
-export function judgeArgs(o: { mcpConfigFile: string; schema: object; maxTurns: number; model?: string; appDir?: string }): string[] {
+/** Test C's grader (and Test A's judges, given only Read): read-only tools, no plugin, a structured answer. */
+export function judgeArgs(o: { mcpConfigFile: string; schema: object; maxTurns: number; model?: string; appDir?: string; tools?: string[] }): string[] {
   return [
     // Local settings only: with project settings on, Claude Code also loads skills and agents from --add-dir folders.
     ...isolation(o.mcpConfigFile, "local"),
@@ -117,7 +117,7 @@ export function judgeArgs(o: { mcpConfigFile: string; schema: object; maxTurns: 
     // CLAUDE.md, .claude/ settings) reaches the grader.
     ...(o.appDir ? ["--add-dir", o.appDir] : []),
     "--permission-mode", "default", "--permission-prompts", "none",
-    "--tools", JUDGE_TOOLS.join(","),
+    "--tools", (o.tools ?? JUDGE_TOOLS).join(","),
     "--max-turns", String(o.maxTurns),
     ...(o.model ? ["--model", o.model] : []),
     "--json-schema", JSON.stringify(o.schema),

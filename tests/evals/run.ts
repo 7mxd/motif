@@ -1,8 +1,8 @@
 // Runs Motif's agent evals (tests B, C and D, spec §13.2, and Test A's builds without Motif, Part 4 §4) through your signed-in
 // Claude Code, one case at a time, and grades them. Never an API key; never in CI. See tests/evals/README.md.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
 import { CASES, isAngular, isBaseline, isCompose, isFlutter, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, macOnlyNote, needsAngular21, needsAngular22, needsBrowser, needsNode, needsSvelteKit3, needsVite8, pairedCase, selectCases, type EvalCase } from "./cases";
@@ -10,6 +10,7 @@ import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, p
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
+import { JUDGE_A_EXPECTED_TOOLS, JUDGE_A_SCHEMA, JUDGE_A_TOOLS, judgeAPrompt, judgePairs, missingJudgements, readPick, type BriefParts, type JudgeAOutcome } from "./judge-a";
 import { pairBrief } from "./pairs";
 import { paths, preflight, type NodeNeeds, type Ready } from "./preflight";
 import { NO_PURGE_NOTE, removeProjectData } from "./purge";
@@ -32,7 +33,7 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
                          diffs; nothing else is run or changed (use it once the run has finished)
   --keep                 Keep each case's folder after grading
   --model <name>         The model for the eval sessions (default: your account's)
-  --judge-model <name>   The model for test C's grader (default: your account's)
+  --judge-model <name>   The model for test C's grader and Test A's judges (default: your account's)
   --max-turns <n>        Cap every case at n turns (for a quick check of the runner)
   --work <folder>        Where case folders go (default: ~/.motif-evals)
   --claude <path>        The Claude Code program to use`;
@@ -189,9 +190,11 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       };
     }
   };
+  // Test A: judgements a paused run hadn't made yet (a new run has none).
+  const unjudged = typeof o.resume === "string" ? missingJudgements(runDir(where.results, state.id)).length : 0;
   if (here.skipped.length > 0) {
     deps.log(here.reason);
-    if (todo.length === 0 && unpaired.length === 0) {
+    if (todo.length === 0 && unpaired.length === 0 && unjudged === 0) {
       deps.log("Nothing is left to run here.");
       // A new run doesn't start; a resumed one is done here, and its report says what's left for a Mac.
       if (idBase !== null || o["dry-run"]) return 2;
@@ -229,6 +232,8 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     deps.log(ready.error);
     return 2;
   }
+  // For Test A's judges, declared below.
+  const claude = ready.claude;
   const instructions = deps.instructionFiles(state.options.work);
   if (instructions.length > 0) {
     deps.log(
@@ -288,6 +293,10 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       removeCase(a.id, aWs);
     }
   }
+  // Test A's pairs left unjudged (a usage limit paused the run part-way), and those of the briefs just paired.
+  const judgeFailed = new Set<string>();
+  const stoppedJudging = await judgeStep();
+  if (stoppedJudging !== undefined) return stoppedJudging;
   for (const c of todo) {
     const cs = state.cases[c.id]!;
     const out = join(dir, c.id);
@@ -414,8 +423,72 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     await settleFolder(c, ws);
     const failed = cs.grade.criteria.filter((k) => !k.pass).map((k) => k.label);
     deps.log(`${c.id}: ${cs.grade.pass ? "PASS" : `FAIL (${failed.join("; ")})`}`);
+    // Once a brief is paired, its pairs are judged.
+    const stopped = await judgeStep();
+    if (stopped !== undefined) return stopped;
   }
   return finish();
+
+  /**
+   * Test A's AI judges: every pair still missing a judgement is judged, each saved as it's made. Returns the exit code
+   * when the run must stop here: a usage limit pauses it (--resume judges only what's left), and a judge that wasn't
+   * isolated stops it. A judgement that couldn't be made is said and left for --resume.
+   */
+  async function judgeStep(): Promise<number | undefined> {
+    const left = missingJudgements(dir).filter(({ pair, order }) => !judgeFailed.has(`${pair.id} ${order}`)).length;
+    if (left === 0) return undefined;
+    deps.log(`\nTest A: ${left} ${left === 1 ? "judgement" : "judgements"} to make, each a read-only Claude Code session comparing two screenshots…`);
+    try {
+      const r = await judgePairs(dir, judgeA, { skip: judgeFailed, log: deps.log });
+      deps.log(`Test A: ${r.judged} of ${left} ${left === 1 ? "judgement" : "judgements"} made.`);
+    } catch (e) {
+      if (e instanceof Paused) return pause(e.resetsAt);
+      if (e instanceof Stopped) {
+        deps.log(`\nStopped: ${e.message}`);
+        finish();
+        return 2;
+      }
+      throw e;
+    }
+    return undefined;
+  }
+
+  /**
+   * One of Test A's judgements, in a folder of its own outside the run's and the cases' folders, holding nothing but the
+   * two images as left.png and right.png: no name, path or file the judge can reach says which app either came from. Its
+   * empty MCP list and its temp folder sit beside it, out of its reach; it goes once the judge is done.
+   */
+  async function judgeA(images: { left: string; right: string }, brief: BriefParts, name: string): Promise<JudgeAOutcome> {
+    let root = mkdtempSync(join(tmpdir(), "judge-"));
+    // Its random part never happens to spell a side.
+    while (/motif|base/i.test(basename(root))) {
+      rmSync(root, { recursive: true, force: true });
+      root = mkdtempSync(join(tmpdir(), "judge-"));
+    }
+    try {
+      const own = join(root, "screens");
+      mkdirSync(own);
+      writeFileSync(join(own, "left.png"), readFileSync(images.left));
+      writeFileSync(join(own, "right.png"), readFileSync(images.right));
+      const mcp = join(root, "no-mcp.json");
+      writeFileSync(mcp, JSON.stringify({ mcpServers: {} }));
+      const instructions = deps.instructionFiles(own);
+      if (instructions.length > 0) throw new Stopped(`A judge would read these instruction files: ${instructions.join(", ")}. Move them aside, then --resume.`);
+      const r = await deps.session({
+        command: [claude], args: judgeArgs({ mcpConfigFile: mcp, schema: JUDGE_A_SCHEMA, maxTurns: 10, model: state.options.judgeModel, tools: JUDGE_A_TOOLS }),
+        cwd: own, env: withTempFolder(baselineEnv, join(root, "tmp")), prompt: judgeAPrompt(brief), transcript: join(dir, "a", "judges", `${name}.jsonl`),
+        timeoutMs: 10 * 60_000, expect: { auto: false, tools: JUDGE_A_EXPECTED_TOOLS, personal },
+      });
+      await purge(own);
+      if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "A judge's session didn't start.");
+      if (r.end === "usage-limit") return { paused: r.resetsAt ? { resetsAt: r.resetsAt } : {} };
+      const answer = r.end === "finished" ? readPick(r.result?.structured) : null;
+      if (answer) return answer;
+      return { error: r.end === "finished" ? "it didn't answer left, right or tie." : `${r.problems.join(" ") || `its session ended with "${r.end}"`}.` };
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
 
   /** A graded case's folder, removed unless --keep. */
   function removeCase(id: string, ws: Workspace): void {
