@@ -430,6 +430,10 @@ describe("the release checklist and Test A's record (Part 4)", () => {
     expect(step(3)).toContain("The answers stay locked until every brief's pairs are in");
   });
 
+  test("step 2: a re-run of Test A runs D too", () => {
+    expect(step(2)).toContain("A re-run of Test A runs D too");
+  });
+
   test("docs/test-a.md exists with its Known biases and Runs sections", () => {
     expect(existsSync(join(REPO, "docs/test-a.md"))).toBe(true);
     const text = read("docs/test-a.md");

@@ -15,6 +15,10 @@ describe("the evals' docs", () => {
     for (const c of CASES) expect(readme).toContain(c.id);
   });
 
+  test("the README says a re-run of Test A runs D too", () => {
+    expect(read("tests/evals/README.md")).toContain("A re-run of Test A runs D too");
+  });
+
   test("the tests README points at it", () => {
     expect(read("tests/README.md")).toContain("evals/README.md");
   });

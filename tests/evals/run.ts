@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { agentSettings, changedSettings } from "./agents";
-import { CASES, isAngular, isBaseline, isCompose, isFlutter, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, macOnlyNote, needsAngular21, needsAngular22, needsBrowser, needsNode, needsSvelteKit3, needsVite8, pairedCase, selectCases, type EvalCase } from "./cases";
+import { addedNote, CASES, isAngular, isBaseline, isCompose, isFlutter, isReactNative, isSvelte, isSwiftUI, isVue, macOnly, macOnlyNote, needsAngular21, needsAngular22, needsBrowser, needsNode, needsSvelteKit3, needsVite8, pairedCase, selectCases, withMotifSides, type EvalCase } from "./cases";
 import { AGENT_TOOLS, agentArgs, JUDGE_EXPECTED_TOOLS, judgeArgs, memoryFiles, personalNames, sessionEnv, withTempFolder } from "./claude";
 import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
@@ -123,11 +123,14 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       deps.log(`--resume uses the options the run started with, so it leaves out ${ignored.length === 1 ? ignored[0] : `${ignored.slice(0, -1).join(", ")} and ${ignored.at(-1)}`}.`);
     }
   } else {
-    const picked = selectCases(CASES, { tests: list(o.tests), ids: list(o.cases) });
-    if ("error" in picked) {
-      deps.log(picked.error);
+    const chosen = selectCases(CASES, { tests: list(o.tests), ids: list(o.cases) });
+    if ("error" in chosen) {
+      deps.log(chosen.error);
       return 2;
     }
+    // An a-* is scored only against its d-*: one chosen without it gets it added (a Test A re-run runs D too).
+    const { cases: picked, added } = withMotifSides(CASES, chosen);
+    if (added.length > 0) deps.log(addedNote(added));
     const maxTurns = o["max-turns"] === undefined ? undefined : Number(o["max-turns"]);
     if (maxTurns !== undefined && !(Number.isInteger(maxTurns) && maxTurns > 0)) {
       deps.log("--max-turns needs a whole number above 0.");

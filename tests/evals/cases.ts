@@ -344,6 +344,22 @@ export function pairedCase(c: EvalCase): EvalCase | undefined {
   return CASES.find((x) => x.brief === c.brief && x.test === other);
 }
 
+/**
+ * The chosen cases with the d-* of every a-* chosen without it, in the cases' order (each d-* before its a-*): Test A
+ * compares each app built without Motif with the one Motif builds, so an a-* without its d-* could never be scored.
+ * `added` are the d-* cases added.
+ */
+export function withMotifSides(all: EvalCase[], chosen: EvalCase[]): { cases: EvalCase[]; added: EvalCase[] } {
+  const ids = new Set(chosen.map((c) => c.id));
+  const added = chosen.filter(isBaseline).map(pairedCase).filter((d): d is EvalCase => Boolean(d) && !ids.has(d!.id));
+  for (const d of added) ids.add(d.id);
+  return { cases: all.filter((c) => ids.has(c.id)), added: all.filter((c) => added.includes(c)) };
+}
+
+/** The line that says which d-* cases were added for Test A. */
+export const addedNote = (added: EvalCase[]): string =>
+  `Test A compares each app with the one Motif builds, so ${andList(added.map((c) => c.id))} ${added.length === 1 ? "runs" : "run"} too.`;
+
 export function selectCases(all: EvalCase[], pick: { tests?: string[]; ids?: string[] }): EvalCase[] | { error: string } {
   const tests = (pick.tests ?? []).map((t) => t.toUpperCase());
   const badTest = tests.find((t) => !["A", "B", "C", "D"].includes(t));

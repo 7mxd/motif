@@ -782,11 +782,15 @@ describe("the eval runner and Test A (Part 4 §4)", () => {
     expect(h.lines.filter((l) => /^a-\S+\s+A\s/.test(l))).toHaveLength(10);
   });
 
-  test("--tests A runs the a-* cases with no plugin: no --plugin-dir, nothing of Motif's in the prompt or the environment", async () => {
+  test("--tests A runs the a-* cases with no plugin, each after the d-* it's compared with, added and said: no --plugin-dir, nothing of Motif's in the prompt or the environment", async () => {
     const h = paired({ platform: "darwin" });
     expect(await runEvals(["--tests", "A", "--work", h.work], h.deps, h.where)).toBe(0);
-    expect(h.calls.prepare).toEqual(["a-stride", "a-ledgerly", "a-bloom", "a-sahm", "a-nabta", "a-rihla", "a-darb", "a-nuzha", "a-sanad", "a-masar"]);
-    for (const s of h.calls.session) {
+    const briefs = ["stride", "ledgerly", "bloom", "sahm", "nabta", "rihla", "darb", "nuzha", "sanad", "masar"];
+    expect(h.calls.prepare).toEqual(briefs.flatMap((b) => [`d-${b}`, `a-${b}`]));
+    expect(h.lines).toContain(`Test A compares each app with the one Motif builds, so ${briefs.slice(0, -1).map((b) => `d-${b}`).join(", ")} and d-masar run too.`);
+    // Every brief is paired, so Test A can give a verdict.
+    expect(h.pairs.map((p) => p.brief)).toEqual(briefs);
+    for (const s of h.calls.session.filter((x) => !x.prompt.startsWith("/motif:"))) {
       expect(s.args).not.toContain("--plugin-dir");
       expect(s.args).not.toContain("--add-dir");
       expect(s.expect).toEqual({ auto: true, tools: AGENT_TOOLS, personal: ["apple-design"] });
@@ -967,10 +971,23 @@ describe("the eval runner and Test A (Part 4 §4)", () => {
     expect(h.lines).toContain(`stride: Test A's screenshots weren't taken, and the folders of d-stride and a-stride are gone, so they can't be now.`);
   });
 
+  test("--cases a-x alone runs d-x first, and says so in one line", async () => {
+    const h = paired();
+    expect(await runEvals(["--cases", "a-bloom", "--work", h.work], h.deps, h.where)).toBe(0);
+    expect(h.calls.prepare).toEqual(["d-bloom", "a-bloom"]);
+    expect(h.lines).toContain("Test A compares each app with the one Motif builds, so d-bloom runs too.");
+    expect(h.pairs.map((p) => p.brief)).toEqual(["bloom"]);
+    // Nothing is added, or said, when the d-* is chosen already.
+    const k = paired();
+    await runEvals(["--cases", "d-bloom,a-bloom", "--work", k.work], k.deps, k.where);
+    expect(k.lines.filter((l) => l.startsWith("Test A compares"))).toEqual([]);
+  });
+
   test("the dry run's a-* command has no plugin", async () => {
     const h = harness();
     await runEvals(["--dry-run", "--cases", "a-stride"], h.deps, h.where);
-    const text = h.lines.join("\n");
+    expect(h.lines.join("\n")).toContain("d-stride: ");
+    const text = h.lines.find((l) => l.startsWith("\na-stride: "))!;
     expect(text).toContain("a-stride: ");
     expect(text).not.toContain("--plugin-dir");
     expect(text).not.toContain("/motif:");

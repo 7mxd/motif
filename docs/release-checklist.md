@@ -13,7 +13,7 @@ The steps a release follows, in order. Each says how to do it and how to tell it
 
 A full run of tests A, B, C and D on the release candidate. A run of only some cases can report Test A on fewer briefs, so run all of them.
 
-- How: `bun tests/evals/run.ts --work <a folder>`. Choose a `--work` folder whose path doesn't contain "motif" (the default, `~/.motif-evals`, does), so the baseline sessions never see Motif's name. A full run is 49 sessions. Off a Mac it is 44: the four SwiftUI cases and `a-masar` need the Mac mini. Run those there, resuming the same run.
+- How: `bun tests/evals/run.ts --work <a folder>`. Choose a `--work` folder whose path doesn't contain "motif" (the default, `~/.motif-evals`, does), so the baseline sessions never see Motif's name. A full run is 49 sessions. Off a Mac it is 44: the four SwiftUI cases and `a-masar` need the Mac mini. Run those there, resuming the same run. A re-run of Test A runs D too: Test A compares each app with the one Motif builds, so the runner adds each `d-*` an `a-*` needs (`--tests A` runs `--tests D,A`) and says so.
 - Passed when: every B, C and D case passes, and `docs/parity.md` records it.
 
 ## 3. Test A
