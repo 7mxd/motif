@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { closeTab, launchBrowser, openTab, removeProfile, removeProfileNow, startFailureHint } from "../src/browser/cdp";
+import { basename, join } from "node:path";
+import { claimProfile, closeTab, freeProfile, launchBrowser, openTab, removeProfile, removeProfileNow, startFailureHint } from "../src/browser/cdp";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 import { pixel } from "./png-pixels";
@@ -92,6 +92,79 @@ describe("removeProfileNow, at exit (macOS CI left a profile behind)", () => {
     expect(calls).toBe(3);
     expect(removeProfileNow("profile", () => { throw new Error("resource busy or locked"); }, () => true, 3, 1)).toBe(false);
   });
+});
+
+describe("claimProfile (unique profile names filled the Windows atom table, and copy and paste broke)", () => {
+  const withRoot = async (body: (root: string) => void | Promise<void>) => {
+    const root = mkdtempSync(join(tmpdir(), "motif-slots-"));
+    try {
+      await body(root);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  test("one browser after another reuses the same folder name, emptied each time", () =>
+    withRoot(async (root) => {
+      const first = claimProfile(root, 3);
+      expect(first.dir).toBe(join(root, "motif-browser-0"));
+      writeFileSync(join(first.dir, "Cookies"), "x");
+      // Given back without its folder removed (still held by the browser's helpers): the next claim empties it.
+      first.release();
+      const second = claimProfile(root, 3);
+      expect(second.dir).toBe(first.dir);
+      expect(readdirSync(second.dir)).toEqual([]);
+      await freeProfile(second);
+      expect(readdirSync(root)).toEqual([]);
+    }));
+
+  test("browsers running at once each get a slot of their own; with every slot taken, a random name", () =>
+    withRoot((root) => {
+      const [a, b, c] = [claimProfile(root, 2), claimProfile(root, 2), claimProfile(root, 2)];
+      expect([basename(a!.dir), basename(b!.dir)]).toEqual(["motif-browser-0", "motif-browser-1"]);
+      expect(basename(c!.dir)).toMatch(/^motif-browser-\w{6}$/);
+      a!.release();
+      expect(claimProfile(root, 2).dir).toBe(a!.dir);
+    }));
+
+  test("a slot left by a run that crashed is taken over; a live run's isn't", () =>
+    withRoot((root) => {
+      writeFileSync(join(root, "motif-browser-0.lock"), "111 crashed");
+      writeFileSync(join(root, "motif-browser-1.lock"), "222 running");
+      mkdirSync(join(root, "motif-browser-0"));
+      writeFileSync(join(root, "motif-browser-0", "Cookies"), "x");
+      const alive = (pid: number) => pid !== 111;
+      const taken = claimProfile(root, 3, alive);
+      expect(taken.dir).toBe(join(root, "motif-browser-0"));
+      expect(readdirSync(taken.dir)).toEqual([]);
+      expect(claimProfile(root, 3, alive).dir).toBe(join(root, "motif-browser-2"));
+      expect(readdirSync(root).filter((n) => n.includes(".lock."))).toEqual([]);
+    }));
+
+  test("a lock is only given back by the browser that took it", () =>
+    withRoot((root) => {
+      const p = claimProfile(root, 1);
+      writeFileSync(join(root, "motif-browser-0.lock"), "333 another-run");
+      p.release();
+      expect(existsSync(join(root, "motif-browser-0.lock"))).toBe(true);
+    }));
+
+  test("processes claiming at the same moment never share a slot", () =>
+    withRoot(async (root) => {
+      const src = join(import.meta.dir, "../src").replace(/\\/g, "/");
+      const file = join(root, "claim.ts");
+      writeFileSync(file, `
+import { claimProfile } from "${src}/browser/cdp";
+const p = claimProfile(${JSON.stringify(root)}, 8);
+console.log(p.dir);
+await Bun.sleep(1500);
+p.release();
+`);
+      const procs = Array.from({ length: 6 }, () => Bun.spawn([process.execPath, file], { stdout: "pipe" }));
+      const dirs = await Promise.all(procs.map(async (p) => (await new Response(p.stdout).text()).trim()));
+      expect(new Set(dirs).size).toBe(6);
+      expect(dirs.every((d) => /motif-browser-[0-7]$/.test(d))).toBe(true);
+    }), 30_000);
 });
 
 describe.skipIf(!browser)("launchBrowser never hangs (needs Chrome, Edge or Chromium)", () => {

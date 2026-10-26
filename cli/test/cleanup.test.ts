@@ -123,7 +123,7 @@ const b = await launchBrowser(findBrowser()!.path);
 console.log(JSON.stringify({ pid: b.pid }));
 process.exit(0);
 `);
-    // The browser's temporary profile lands in this test's temp folder, which cleanupTempDirs removes.
+    // The browser's profile lands in this test's temp folder, which cleanupTempDirs removes.
     const r = Bun.spawnSync([process.execPath, file], { env: { ...process.env, TEMP: dir, TMP: dir, TMPDIR: dir } });
     const { pid } = JSON.parse(r.stdout.toString()) as { pid: number };
     expect(pid).toBeGreaterThan(0);
@@ -132,7 +132,32 @@ process.exit(0);
     expect(alive(pid)).toBe(false);
     // Its helpers go with it, not just the main process (they can write into the profile again: macOS CI).
     expect(processesMentioning(join(dir, "motif-browser-"))).toEqual([]);
-    // Its temporary profile goes too (backlog).
+    // Its temporary profile goes too (backlog), and its slot's lock with it.
     expect(readdirSync(dir).filter((n) => n.startsWith("motif-browser-"))).toEqual([]);
   }, 30_000);
+
+  test("launches reuse a few profile names, one per browser running at once (a full Windows atom table broke copy and paste)", () => {
+    const { file, dir } = script(() => `
+import { readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { launchBrowser } from "${SRC}/browser/cdp";
+import { findBrowser } from "${SRC}/detect/browser";
+const profiles = () => readdirSync(tmpdir()).filter((n) => n.startsWith("motif-browser-")).sort();
+const path = findBrowser()!.path;
+const [a, b] = await Promise.all([launchBrowser(path), launchBrowser(path)]);
+const together = profiles();
+await a.close();
+await b.close();
+const c = await launchBrowser(path);
+const again = profiles();
+await c.close();
+console.log(JSON.stringify({ together, again, after: profiles() }));
+`);
+    const r = Bun.spawnSync([process.execPath, file], { env: { ...process.env, TEMP: dir, TMP: dir, TMPDIR: dir } });
+    expect(JSON.parse(r.stdout.toString())).toEqual({
+      together: ["motif-browser-0", "motif-browser-0.lock", "motif-browser-1", "motif-browser-1.lock"],
+      again: ["motif-browser-0", "motif-browser-0.lock"],
+      after: [],
+    });
+  }, 60_000);
 });
