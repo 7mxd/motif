@@ -227,6 +227,17 @@ describe("what a side that didn't build loses", () => {
     expect(builtFor(st("sanad", g(["app", false])), "sanad").logs?.baseline).toBe("session.jsonl");
   });
 
+  test("an unknown build beside a failed one, or two unknown builds, keep the brief pending, the why naming both apps", () => {
+    const one = scoreBrief("pulse", pairs(4), results(4, 4, 0), votes(4, 4), { motif: true, baseline: null });
+    expect(one).toMatchObject({ pass: null, why: "waiting for the build result of the app made without Motif" });
+    const failedAndUnknown = scoreBrief("pulse", pairs(4), results(4, 0, 4), votes(4, 0), { motif: false, baseline: null });
+    expect(failedAndUnknown).toMatchObject({ pass: null, why: "the app made with Motif didn't build, and the build result of the app made without Motif isn't in yet" });
+    const unknownAndFailed = scoreBrief("pulse", pairs(4), results(4, 4, 0), votes(4, 4), { motif: null, baseline: false });
+    expect(unknownAndFailed).toMatchObject({ pass: null, why: "the app made without Motif didn't build, and the build result of the app made with Motif isn't in yet" });
+    const both = scoreBrief("pulse", pairs(4), results(4, 4, 0), votes(4, 4), { motif: null, baseline: null });
+    expect(both).toMatchObject({ pass: null, why: "waiting for the build results of both apps, the one made with Motif and the one made without" });
+  });
+
   test("an unknown build keeps the brief pending", () => {
     const s = scoreBrief("pulse", pairs(4), results(4, 4, 0), votes(4, 4), { motif: true, baseline: null });
     expect(s.pass).toBeNull();

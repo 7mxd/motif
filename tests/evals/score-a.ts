@@ -104,7 +104,13 @@ function scoreOf(
   const none = { motif: 0, baseline: 0, tie: 0 };
   if (mine.length === 0) return { ...base, ai: none, pass: null, why: "no pairs yet" };
   if (built.motif === null || built.baseline === null) {
-    return { ...base, ai: none, pass: null, why: `waiting for the build result of the app made ${built.motif === null ? "with" : "without"} Motif` };
+    const side = (motif: boolean) => `the app made ${motif ? "with" : "without"} Motif`;
+    const why = built.motif === null && built.baseline === null
+      ? "waiting for the build results of both apps, the one made with Motif and the one made without"
+      : built.motif === false || built.baseline === false
+        ? `${side(built.motif === false)} didn't build, and the build result of ${side(built.motif === null)} isn't in yet`
+        : `waiting for the build result of ${side(built.motif === null)}`;
+    return { ...base, ai: none, pass: null, why };
   }
   if (!built.motif && !built.baseline) return { ...base, ai: none, pass: false, why: "neither app built" };
   if (forced.length + open.length === 0) return { ...base, ai: none, pass: false, why: "no pair had a screen from either app" };
