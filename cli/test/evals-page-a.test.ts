@@ -471,6 +471,8 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       expect(await page.evaluate<string>(`document.getElementById("count").textContent`)).toBe("1 of 5");
       for (const key of ["1", "2", "3"]) {
         const before = readVotes(f.run).length;
+        // The page ignores a key while it's still handling the last vote (its choices are disabled then).
+        for (let i = 0; i < 400 && (await page.evaluate<boolean>(`[...document.querySelectorAll(".choice")].some((b) => b.disabled)`)); i++) await Bun.sleep(50);
         await page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, bubbles: true }))`);
         for (let i = 0; i < 400 && readVotes(f.run).length === before; i++) await Bun.sleep(50);
       }
@@ -542,6 +544,7 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       for (let i = 0; i < 400 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
       for (let n = 0; n < 5; n++) {
         const before = readVotes(f.run).length;
+        for (let i = 0; i < 400 && (await page.evaluate<boolean>(`[...document.querySelectorAll(".choice")].some((b) => b.disabled)`)); i++) await Bun.sleep(50);
         await page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "3", bubbles: true }))`);
         for (let i = 0; i < 400 && readVotes(f.run).length === before; i++) await Bun.sleep(50);
       }
