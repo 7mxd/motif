@@ -56,12 +56,20 @@ describe("the READMEs", () => {
     }
   });
 
-  test("the README's preview note lists the stacks v0.5.0 has, Flutter, Jetpack Compose, React Native and SwiftUI with them, and links the parity checklist (Ruling W)", () => {
+  test("the README's preview note lists the stacks v0.6.0 has, Vue, Svelte and Angular with them, and links the parity checklist (Ruling W)", () => {
     const readme = readFileSync(join(REPO, "README.md"), "utf8");
     const note = readme.slice(readme.indexOf("**Preview"), readme.indexOf("\n", readme.indexOf("**Preview")));
-    expect(note).toContain("for React web apps, plain web sites, and Flutter, Jetpack Compose, React Native (Expo) and SwiftUI apps ([what each stack gets](docs/parity.md)). Vue, Svelte, Angular");
-    expect(readme).toContain("Full support in v0.5.0: React web apps and plain web sites");
-    expect(readme).not.toContain("arrive in v0.5.0");
+    expect(note).toContain("for React web apps, plain web sites, Vue (and Nuxt), Svelte (and SvelteKit) and Angular apps, and Flutter, Jetpack Compose, React Native (Expo) and SwiftUI apps ([what each stack gets](docs/parity.md)). The first full release comes next.");
+    expect(note).not.toContain("Vue, Svelte, Angular and");
+    expect(readme).toContain("Full support in v0.6.0: React web apps and plain web sites");
+    expect(readme).not.toContain("arrive in v0.");
+    // The web stacks' floors and needs, as doctor and their guides say them (plans 2I to 2K).
+    for (const s of [
+      "Vue 3 apps with Vite, and Nuxt 3 or 4 apps; Vue 2 and Nuxt 2 aren't supported",
+      "Svelte 5 apps, with SvelteKit 2 or 3 or with Vite; SvelteKit 3 needs Node.js 22.17 or later",
+      "Angular 15 or later, with standalone components or NgModules", "(Angular 22: 22.22.3 or later, or 24.15 or later)",
+      "Angular 14 and older aren't supported", "the `start` script that runs `ng serve`",
+    ]) expect(readme).toContain(s);
     expect(readme).not.toMatch(/Full support today[^\n]*(Flutter|Compose|React Native|SwiftUI)/);
     expect(readme).not.toContain("SwiftUI comes after");
     // SwiftUI's needs, as doctor and the SwiftUI guide say them (2H Task 15).
