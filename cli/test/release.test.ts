@@ -406,3 +406,28 @@ describe("the release gate on docs/parity.md (plan 2H's final review)", () => {
     for (const id of ADAPTERS_AVAILABLE) expect([id, typeof PARITY_ROWS[id]]).toEqual([id, "string"]);
   });
 });
+
+describe("the release checklist and Test A's record (Part 4)", () => {
+  const read = (file: string) => readFileSync(join(REPO, file), "utf8");
+
+  test("the checklist has its eight steps, in order, by their headings", () => {
+    const headings = [...read("docs/release-checklist.md").matchAll(/^## (.+)$/gm)].map((m) => m[1]);
+    expect(headings).toEqual([
+      "1. Code", "2. Evals and Test A", "3. Test A", "4. Release gate", "5. Notes and version", "6. Tag", "7. Marketplace", "8. After",
+    ]);
+  });
+
+  test("docs/test-a.md exists with its Known biases and Runs sections", () => {
+    expect(existsSync(join(REPO, "docs/test-a.md"))).toBe(true);
+    const text = read("docs/test-a.md");
+    expect(text).toContain("## Known biases");
+    expect(text).toContain("## Runs");
+  });
+
+  test("the core spec's Test A row isn't only Human, and decision 0013 exists", () => {
+    const row = read("docs/specs/2026-10-12-motif-core-design.md").split(/\r?\n/).find((l) => l.startsWith("| A |")) ?? "";
+    expect(row).toContain("AI judges and the owner");
+    expect(row).not.toMatch(/\| Human \|/);
+    expect(existsSync(join(REPO, "docs/decisions/0013-test-a-judges.md"))).toBe(true);
+  });
+});

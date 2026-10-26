@@ -47,7 +47,7 @@ Motif optionally draws on Refero, 21st.dev, 60fps.design, Motion (motion.dev) an
 
 | ID | Test | Type | When it runs |
 |---|---|---|---|
-| A | Blind side-by-side: same briefs built with and without Motif across stacks; human judges pick the better result | Human | Before each release (Part 4) |
+| A | Blind side-by-side: same briefs built with and without Motif across stacks; judges pick the better result | AI judges and the owner, blind, before release | Before each release (Part 4) |
 | B | Consistency: fresh agent sessions each add a different feature to a contract-governed app; zero unjustified contract violations, existing components reused | Automated agent eval | On demand, required before release |
 | C | Review accuracy: `review` finds seeded issues in a deliberately flawed app | Automated agent eval | On demand, required before release |
 | D | Zero accounts: B, C and a full `init` with no MCP sources connected | Automated agent eval | On demand, required before release |
@@ -64,7 +64,7 @@ v1 is delivered as four sub-projects. Each has its own spec → plan → build c
 | **1. Core** *(this spec)* | Contract format, `/design` + three modes, knowledge base, source integrations with free fallbacks, preview kit and style gallery, the `motif` tool, React web reference adapter, tests B/C/D harness, minimal Claude Code plugin for development | — |
 | 2. Stack adapters | Plain web (HTML and CSS) first ([its spec](2026-10-15-motif-plain-web-design.md), [decision 0004](../decisions/0004-plain-web.md)), then Vue/Nuxt, Svelte/SvelteKit, Angular, React Native (Expo), Flutter, SwiftUI, Jetpack Compose — each built from the adapter template defined here | Part 1 |
 | 3. Agent packaging | Build step generating native packages for Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode ([its spec](2026-10-17-motif-part3-agents-design.md), [decision 0005](../decisions/0005-agent-packages.md)); installer; per-agent install smoke tests; Agent Skills baseline for all other agents | Part 1 (can overlap with Part 2) |
-| 4. Release evaluation | Test A (human blind comparison) across stacks; release checklist | Parts 1–3 |
+| 4. Release evaluation | Test A (blind comparison by AI judges and the owner) across stacks; release checklist | Parts 1–3 |
 
 Part 1 develops and tests in Claude Code only. Everything in `skill/` must stay agent-neutral (§5.5) so Part 3 can package it unchanged.
 
@@ -501,7 +501,7 @@ Run through Claude Code's headless mode with the Part 1 plugin loaded and gates 
 - Eval runs use the developer's signed-in Claude Code, never an API key, run only when the developer starts them, and are capped per case ([decision 0003](../decisions/0003-evals-on-your-plan.md)). CI runs only the runner's own tests.
 
 ### 13.3 Test A
-Defined and run in Part 4.
+Defined and run in Part 4: see [the Part 4 spec](2026-10-26-motif-part4-release-evaluation-design.md) and [decision 0013](../decisions/0013-test-a-judges.md).
 
 ## 14. Security and privacy
 

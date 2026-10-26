@@ -46,7 +46,7 @@ The core spec planned Test A as a human test run before each release. The owner 
 
 **Without Motif.** One new case per brief, `a-<brief>`, run by the same runner (`tests/evals/run.ts`), under decision 0003's isolation: a fresh Claude Code session on the developer's plan, the same model, the same time limit, the same tools, auto mode, no MCP servers, **and no plugins at all** (Motif's left out). The prompt is the `d-*` prompt with every mention of Motif removed: build the app the brief describes, with these starter routes, and make it look and work well. Nothing in it asks for a worse result. The SwiftUI case runs on the Mac mini, and is skipped elsewhere with the reason, as the SwiftUI evals are.
 
-**One run.** Test A is a fourth test of the same runner (`--tests A`), run in the same eval run as B, C and D on the release candidate, so a full run is 49 sessions (45 off a Mac). The run keeps the `d-*` app folders until Test A has shot them. *(Builder's call.)*
+**One run.** Test A is a fourth test of the same runner (`--tests A`), run in the same eval run as B, C and D on the release candidate, so a full run is 49 sessions (44 off a Mac). The run keeps the `d-*` app folders until Test A has shot them. *(Builder's call.)*
 
 **Retries.** Only a session cut off by a usage limit, a crash or Ctrl+C is run again, as the runner already does. A session that finished stands, whatever it built: the baseline is never re-rolled until Motif wins. *(Builder's call.)*
 
@@ -94,7 +94,7 @@ Every pair, every judgement and every "why" is kept in the run's results, and `d
 `docs/release-checklist.md`: the steps a release follows, in order, each with how to do it and how to tell it passed. For v1.0.0 and every release after it:
 
 1. **Code**: `main` is green on CI on Windows, macOS and Linux, including every stack's job.
-2. **Evals and Test A**: a full run of tests A, B, C and D on the release candidate (49 sessions; 45 off a Mac, with the SwiftUI cases and Masar's Test A pair on the Mac mini, resuming the same run). Every B, C and D case passes, recorded in `docs/parity.md`.
+2. **Evals and Test A**: a full run of tests A, B, C and D on the release candidate (49 sessions; 44 off a Mac, with the SwiftUI cases and Masar's Test A pair on the Mac mini, resuming the same run). Every B, C and D case passes, recorded in `docs/parity.md`.
 3. **Test A**: the owner judges in owner mode, and Test A passes on every brief, recorded in `docs/test-a.md`.
 4. **Release gate**: `MOTIF_RELEASE=1 bun test test/release-gate.test.ts` passes.
 5. **Notes and version**: release notes in `docs/releases/v<version>.md`, `skill/VERSION`, and the README's notes, prepared on a release branch (`release/v<version>`) and merged to `main` only on the owner's go-ahead.
