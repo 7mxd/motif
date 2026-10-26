@@ -517,7 +517,7 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       expect(await page.evaluate<string>(`document.querySelector(".choice[aria-pressed=true]").dataset.pick`)).toBe("left");
       // Opened again: the page knows from the start.
       await page.goto(`${s.url}/`);
-      for (let i = 0; i < 400 && !(await ready()); i++) await Bun.sleep(50);
+      await ready();
       await key("Backspace");
       expect(await finalShown()).toBe(true);
       await key("3");
