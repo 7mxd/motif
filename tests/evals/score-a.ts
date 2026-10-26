@@ -219,8 +219,11 @@ export function builtFor(state: RunState, brief: string, stack: StackId | undefi
  * typecheck.log for Expo, which have no build of their own; build.log for the rest).
  */
 export function forfeitLog(grade: Grade, stack?: StackId): string {
-  if (grade.criteria.some((k) => k.id === "app" && !k.pass)) return "session.jsonl";
-  return stack === "compose" ? "compile.log" : stack === "swiftui" ? "xcodebuild.log" : stack === "flutter" ? "analyze.log" : stack === "react-native" ? "typecheck.log" : "build.log";
+  const log = grade.criteria.some((k) => k.id === "app" && !k.pass) ? "session.jsonl"
+    : stack === "compose" ? "compile.log" : stack === "swiftui" ? "xcodebuild.log" : stack === "flutter" ? "analyze.log" : stack === "react-native" ? "typecheck.log" : "build.log";
+  // A build that never started (no Gradle wrapper, JDK, SDK or Xcode project) writes no log: its grade says why.
+  const failed = grade.criteria.find((k) => ["app", "build", "typecheck"].includes(k.id) && !k.pass);
+  return failed?.detail ? `${log} (its grade says: ${failed.detail})` : log;
 }
 
 /** The model each side of a brief was built by, from its d-* and a-* sessions (absent when a session hasn't run). */

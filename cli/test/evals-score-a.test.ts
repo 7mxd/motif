@@ -6,7 +6,7 @@ import type { Judgement } from "../../tests/evals/judge-a";
 import type { Pair } from "../../tests/evals/pairs";
 import { renderReport, testVerdicts } from "../../tests/evals/report";
 import { missingJudgements } from "../../tests/evals/judge-a";
-import { appBuilt, builtFor, forcedPairs, scoreBrief, scoreRun, verdictA, type AiResult, type BriefScore, type OwnerPick } from "../../tests/evals/score-a";
+import { appBuilt, builtFor, forcedPairs, forfeitLog, scoreBrief, scoreRun, verdictA, type AiResult, type BriefScore, type OwnerPick } from "../../tests/evals/score-a";
 import { gradeA, type Grade } from "../../tests/evals/grade";
 import type { CaseState, RunState } from "../../tests/evals/state";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -199,6 +199,11 @@ describe("what a side that didn't build loses", () => {
   test("no build facts (no app found) didn't build; no grade at all is unknown", () => {
     expect(appBuilt(g(["app", false]), "vue")).toBe(false);
     expect(appBuilt(undefined, "vue")).toBeNull();
+  });
+  test("a forfeit names the stack's log and the grade's own reason, so a build that never started (and wrote no log) still says why", () => {
+    expect(forfeitLog(g(["app", true], ["typecheck", false, "Compose needs a JDK 17 or later, and none was found."]), "compose")).toBe("compile.log (its grade says: Compose needs a JDK 17 or later, and none was found.)");
+    expect(forfeitLog(g(["app", true], ["build", false, ""]), "vue")).toBe("build.log");
+    expect(forfeitLog(g(["app", false, "No app was found in the case's folder."]), "vue")).toBe("session.jsonl (its grade says: No app was found in the case's folder.)");
   });
   test("a D design guide that's missing doesn't forfeit when the build facts say it built", () => {
     expect(appBuilt(g(["app", true], ["validate", false], ["build", true], ["typecheck", true]), "vue")).toBe(true);
