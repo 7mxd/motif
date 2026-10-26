@@ -430,6 +430,10 @@ describe("the release checklist and Test A's record (Part 4)", () => {
     expect(step(3)).toContain("The answers stay locked until every brief's pairs are in");
   });
 
+  test("step 2: the run names its models, so both sides of a brief use the same one", () => {
+    expect(step(2)).toContain("--model <id> --judge-model <id>");
+  });
+
   test("step 2: a re-run of Test A runs D too", () => {
     expect(step(2)).toContain("A re-run of Test A runs D too");
   });

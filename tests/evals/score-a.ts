@@ -22,10 +22,15 @@ export interface BriefScore {
   left: string[];
   /** Ids of the pairs decided without a judge or a vote (one side drew alone, or the other's app didn't build). */
   forced: string[];
-  /** null while the brief waits for judgements, the owner's votes or its pairs. */
+  /** null while the brief waits for judgements, the owner's votes or its pairs, or when different models built its two apps. */
   pass: boolean | null;
   why: string;
+  /** Only when different models built the brief's two apps: each side's. */
+  models?: { motif: string; baseline: string };
 }
+
+/** The model each side's session used, as the session's first event named it. */
+export interface Models { motif?: string; baseline?: string }
 
 export type OwnerPick = "motif" | "baseline" | "same";
 export type AiResult = "motif" | "baseline" | "tie";
@@ -49,12 +54,28 @@ export function decide(p: Pair, built: Built): "motif" | "baseline" | "left" | "
 const pct = (n: number, of: number) => `${Math.round((n / of) * 100)}%`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** The brief's name as people read it: "masar" is "Masar". */
+const briefName = (brief: string) => brief.charAt(0).toUpperCase() + brief.slice(1);
+
 /**
  * One brief's score. `results` is the AI's result per pair id (a pair with no entry is unjudged, not a tie); `owner` the
- * owner's picks per pair id, already mapped to Motif's and the baseline's side.
+ * owner's picks per pair id, already mapped to Motif's and the baseline's side. `models` are the models each side's
+ * session used: a brief whose two apps different models built is no comparison of Motif (the spec's baseline is the
+ * same agent), so it neither passes nor fails; it's pending until both are built again by one model. A model not known
+ * ("" or absent) isn't compared.
  */
 export function scoreBrief(
   brief: string, pairs: Pair[], results: Map<string, AiResult>, owner?: Map<string, OwnerPick>, built: Built = { motif: true, baseline: true },
+  models: Models = {},
+): BriefScore {
+  const s = scoreOf(brief, pairs, results, owner, built);
+  if (!models.motif || !models.baseline || models.motif === models.baseline) return s;
+  const why = `${briefName(brief)}'s two apps were built by different models: ${models.motif} (with Motif) and ${models.baseline} (without); it can't pass until both are built again by one model`;
+  return { ...s, pass: null, why: s.why ? `${why}; ${s.why}` : why, models: { motif: models.motif, baseline: models.baseline } };
+}
+
+function scoreOf(
+  brief: string, pairs: Pair[], results: Map<string, AiResult>, owner: Map<string, OwnerPick> | undefined, built: Built,
 ): BriefScore {
   const mine = pairs.filter((p) => p.brief === brief);
   const left: string[] = [];
@@ -165,6 +186,11 @@ export function builtFor(state: RunState, brief: string, stack: StackId | undefi
   return { motif: appBuilt(state.cases[`d-${brief}`]?.grade, stack), baseline: appBuilt(state.cases[`a-${brief}`]?.grade, stack) };
 }
 
+/** The model each side of a brief was built by, from its d-* and a-* sessions (absent when a session hasn't run). */
+export const modelsFor = (state: RunState, brief: string): Models => ({
+  motif: state.cases[`d-${brief}`]?.session?.model, baseline: state.cases[`a-${brief}`]?.session?.model,
+});
+
 /**
  * The pairs decided without a judge or a vote, by pair id: "motif" or "baseline" for the side that wins, "left" for a
  * pair left out. The AI judges skip them, and so does the owner's page.
@@ -191,5 +217,5 @@ export function scoreRun(state: RunState, out: string, owner?: Map<string, Owner
     const second = judgements.find((j) => j.pairId === p.id && j.order === "motif-right");
     if (first && second) results.set(p.id, pairResult(first.pick, second.pick));
   }
-  return expectedBriefs(state).map((b) => scoreBrief(b, pairs, results, owner, builtFor(state, b)));
+  return expectedBriefs(state).map((b) => scoreBrief(b, pairs, results, owner, builtFor(state, b), modelsFor(state, b)));
 }

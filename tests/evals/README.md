@@ -121,6 +121,7 @@ Test A builds each of the ten briefs without Motif (the `a-*` cases: no plugins,
 
 - Run it with everything else: a full run is 49 sessions. Off a Mac it is 44, because the four SwiftUI cases and `a-masar` need a Mac. A run of only some cases can report Test A on fewer briefs.
 - A re-run of Test A runs D too. Each `a-*` is compared with its `d-*`, so an `a-*` chosen without it (`--tests A`, `--cases a-bloom`) gets it added, and the runner says so in one line ("Test A compares each app with the one Motif builds, so d-bloom runs too").
+- Name the models: `--model <id> --judge-model <id>`. Without them every session takes your account's default, which can change between `d-x` and `a-x` (a usage-limit pause, the Mac's part). Each case's model is recorded from its session's first event, and a brief whose two apps different models built is pending in the report and the verdict ("Masar's two apps were built by different models: …") until both are built again by one model.
 - Use a `--work` folder whose path doesn't contain "motif". The default, `~/.motif-evals`, does, and baseline sessions shouldn't see Motif's name.
 - The AI judges run by themselves. You judge the owner's page, `bun tests/evals/judge-owner.ts <run>`, once the whole run has finished, the Mac part included and its folder back from the Mac.
 - Release steps that use it: [docs/release-checklist.md](../../docs/release-checklist.md).

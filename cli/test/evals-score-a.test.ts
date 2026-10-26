@@ -100,6 +100,20 @@ describe("one brief's score", () => {
     expect(s).toMatchObject({ pass: false, why: "neither app built" });
   });
 
+  test("a brief whose two apps were built by different models can't pass, or fail: it's pending until both are built again", () => {
+    const differ = { motif: "claude-opus-x", baseline: "claude-sonnet-y" };
+    const s = scoreBrief("pulse", pairs(10), results(10, 10, 0), votes(10, 10), { motif: true, baseline: true }, differ);
+    expect(s.pass).toBeNull();
+    expect(s.why).toStartWith("Pulse's two apps were built by different models: claude-opus-x (with Motif) and claude-sonnet-y (without)");
+    expect(s.models).toEqual(differ);
+    const f = scoreBrief("pulse", pairs(10), results(10, 0, 10), votes(10, 0), { motif: true, baseline: true }, differ);
+    expect(f.pass).toBeNull();
+    expect(f.why).toContain("different models");
+    // The same model, or one not known, isn't flagged.
+    expect(scoreBrief("pulse", pairs(10), results(10, 10, 0), votes(10, 10), { motif: true, baseline: true }, { motif: "m", baseline: "m" })).toMatchObject({ pass: true });
+    expect(scoreBrief("pulse", pairs(10), results(10, 10, 0), votes(10, 10), { motif: true, baseline: true }, { motif: "m", baseline: "" }).pass).toBe(true);
+  });
+
   test("no pairs: pending", () => {
     expect(scoreBrief("masar", [], new Map())).toMatchObject({ pairs: 0, pass: null });
   });
@@ -241,6 +255,28 @@ describe("a run's Test A", () => {
     expect(s[0]!.ai).toEqual({ motif: 2, baseline: 0, tie: 0 });
     const lost = scoreRun(state({ "d-pulse": graded(false), "a-pulse": graded() }), folder(ps, js));
     expect(lost[0]).toMatchObject({ ai: { motif: 0, baseline: 2, tie: 0 }, pass: false });
+  });
+
+  test("reads each side's model from its case's session: different models hold the brief and Test A back, in the verdict and the report", () => {
+    const ps = [pair("p0", "both", "stride"), pair("p1", "both", "stride")];
+    const js: Judgement[] = ["p0", "p1"].flatMap((id) => [
+      { pairId: id, order: "motif-left" as const, pick: "left" as const, why: "" },
+      { pairId: id, order: "motif-right" as const, pick: "right" as const, why: "" },
+    ]);
+    const session = (model: string) => ({ end: "finished", model, turns: 1, minutes: 1, costUsd: 0, denials: [], problems: [] });
+    const st = state({ "d-stride": { ...graded(), session: session("opus-x") }, "a-stride": { ...graded(), session: session("sonnet-y") } });
+    const owner = new Map<string, OwnerPick>([["p0", "motif"], ["p1", "motif"]]);
+    const out = folder(ps, js);
+    const s = scoreRun(st, out, owner);
+    expect(s[0]).toMatchObject({ pass: null, models: { motif: "opus-x", baseline: "sonnet-y" } });
+    const verdicts = testVerdicts(st, CASES, s);
+    const a = verdicts.find((v) => v.test === "A")!;
+    expect(a.status).toBe("incomplete");
+    expect(a.detail).toContain("Stride's two apps were built by different models: opus-x (with Motif) and sonnet-y (without)");
+    expect(renderReport(st, CASES, verdicts, s)).toContain("| stride | 2 | 2 / 0 / 0 | 2 / 0 | pending | Stride's two apps were built by different models");
+    // The same model on both sides passes.
+    const same = state({ "d-stride": { ...graded(), session: session("opus-x") }, "a-stride": { ...graded(), session: session("opus-x") } });
+    expect(scoreRun(same, out, owner)[0]!.pass).toBe(true);
   });
 
   test("pairs decided without a judge are listed and skipped by the judges and the owner", () => {
