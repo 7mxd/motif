@@ -2,7 +2,7 @@
 // time, and saves each vote into the run's a/owner-votes.json as it's made. Stop it with Ctrl+C at any point; running it
 // again continues at the next pair without a vote. The run's report counts the votes from then on.
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { openUrl } from "../../cli/src/preview/open";
 import { answersWait, ownerPairs, readVotes, serveOwner } from "./page-a";
@@ -26,17 +26,39 @@ function findRun(arg: string, results: string): { dir: string; state: RunState }
   return "error" in state ? state : { dir: runDir(results, arg), state };
 }
 
+/** The run's record as it is now, from its folder: the runner may have moved on since judging started. */
+function currentRun(dir: string): RunState | { error: string } {
+  const at = resolve(dir);
+  return loadRun(dirname(at), basename(at));
+}
+
+/**
+ * The report rewritten from the run as it is now (never from a record loaded when judging started, which would put an
+ * older picture over the runner's newer report). Says why when the record can't be read, and writes nothing then.
+ */
+function rewriteReport(dir: string, log: (line: string) => void): RunState | undefined {
+  const state = currentRun(dir);
+  if ("error" in state) {
+    log(`The report wasn't rewritten: ${state.error}`);
+    return undefined;
+  }
+  writeReport(state, dir, { log: () => {} });
+  return state;
+}
+
 /**
  * What happens after each vote: once every pair has one, each vote (a changed one included) rewrites the run's report,
- * so it never lags the votes; the first time, it says so.
+ * so it never lags the votes; the first time, it says so, and whether the answers still wait for a brief's pairs.
  */
-export function reportOnVote(state: RunState, dir: string, log: (line: string) => void): (votes: number, of: number) => void {
+export function reportOnVote(dir: string, log: (line: string) => void): (votes: number, of: number) => void {
   let told = false;
   return (votes, of) => {
     if (votes < of) return;
-    writeReport(state, dir, { log: () => {} });
-    if (!told) log("Every pair has your vote. Show the answers on the page; the report now counts your votes.");
+    const state = rewriteReport(dir, log);
+    if (!state || told) return;
     told = true;
+    const wait = answersWait(state, dir, new Set(ownerPairs(state, dir).map((p) => p.id)));
+    log(wait ? `Every pair here has your vote, and the report counts them. ${wait}` : "Every pair has your vote. Show the answers on the page; the report now counts your votes.");
   };
 }
 
@@ -72,7 +94,7 @@ export async function main(argv: string[], log: (line: string) => void = console
   const done = () => readVotes(dir).filter((v) => shown.some((p) => p.id === v.pairId)).length;
   let server: Awaited<ReturnType<typeof serveOwner>>;
   try {
-    server = await serveOwner(dir, port, { onVote: reportOnVote(state, dir, log) });
+    server = await serveOwner(dir, port, { onVote: reportOnVote(dir, log) });
   } catch (e) {
     log((e as Error).message);
     return 2;
@@ -88,7 +110,7 @@ export async function main(argv: string[], log: (line: string) => void = console
   });
   server.stop();
   const n = done();
-  if (n > 0) writeReport(state, dir, { log: () => {} });
+  if (n > 0) rewriteReport(dir, log);
   log(`\nStopped with ${n} of ${shown.length} pairs judged.${n > 0 ? ` The report in ${dir} counts them.` : ""}`);
   return 0;
 }

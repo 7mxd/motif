@@ -407,7 +407,7 @@ describe("judge-owner.ts", () => {
   test("once every pair has a vote, each vote (a changed one too) rewrites the report", async () => {
     const f = fixture();
     const lines: string[] = [];
-    const s = await serveOwner(f.run, 0, { onVote: reportOnVote(f.state, f.run, (l) => lines.push(l)) });
+    const s = await serveOwner(f.run, 0, { onVote: reportOnVote(f.run, (l) => lines.push(l)) });
     const report = join(f.run, "report.json");
     const owner = () => JSON.parse(readFileSync(report, "utf8")).scoresA.find((x: any) => x.brief === "nuzha").owner;
     try {
@@ -418,12 +418,29 @@ describe("judge-owner.ts", () => {
       expect(existsSync(report)).toBe(false);
       await vote(data.pairs[4]!.id, "same");
       expect(owner()).toEqual({ motif: 1, other: 6 });
+      // The runner moves on meanwhile (a resume on another commit): the next rewrite is from run.json as it is then.
+      writeFileSync(join(f.run, "run.json"), JSON.stringify({ ...f.state, resumes: [{ at: "2026-10-27T09:00:00.000Z", commit: "def", dirty: false }] }, null, 2));
       // A changed vote, before the answers are shown.
       const x = data.pairs[0]!;
       const pair = f.pairs.find((p) => p.id === x.id)!;
       await vote(x.id, `a/${x.left}` === pair.motif ? "left" : "right");
       expect(owner()).toEqual({ motif: 2, other: 5 });
+      expect(JSON.parse(readFileSync(report, "utf8")).run.resumes).toEqual([{ at: "2026-10-27T09:00:00.000Z", commit: "def", dirty: false }]);
       expect(lines.filter((l) => l.startsWith("Every pair has your vote"))).toHaveLength(1);
+    } finally {
+      s.stop();
+    }
+  });
+
+  test("with a brief's pairs still to come, the line after the last vote says the answers wait for them", async () => {
+    const f = fixture();
+    writeFileSync(join(f.run, "run.json"), JSON.stringify({ ...f.state, cases: { ...f.state.cases, "d-masar": { status: "skipped", attempts: 0 }, "a-masar": { status: "skipped", attempts: 0 } } }, null, 2));
+    const lines: string[] = [];
+    const s = await serveOwner(f.run, 0, { onVote: reportOnVote(f.run, (l) => lines.push(l)) });
+    try {
+      const data = pageData(await (await fetch(`${s.url}/`)).text());
+      for (const x of data.pairs) await fetch(`${s.url}/vote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId: x.id, pick: "same" }) });
+      expect(lines).toEqual(["Every pair here has your vote, and the report counts them. Masar's pairs aren't in yet; the answers open once every app has been paired and judged."]);
     } finally {
       s.stop();
     }
