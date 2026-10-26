@@ -143,6 +143,22 @@ describe("claimProfile (unique profile names filled the Windows atom table, and 
       expect(readdirSync(root).filter((n) => n.includes(".lock."))).toEqual([]);
     }));
 
+  test("a folder a stopping helper writes into again is removed again before its slot is given back (Linux CI)", async () => {
+    let folder = true;
+    let helperWrites = 1;
+    let released = 0;
+    const remove = async () => ((folder = false), true);
+    const exists = () => {
+      if (!folder && helperWrites-- > 0) folder = true;
+      return folder;
+    };
+    await freeProfile({ dir: "profile", release: () => void released++ }, remove, exists, 5, 1);
+    expect([folder, released]).toEqual([false, 1]);
+    // A folder that can't be removed still gives its slot back: the next claim empties it.
+    await freeProfile({ dir: "profile", release: () => void released++ }, async () => false, () => true, 5, 1);
+    expect(released).toBe(2);
+  });
+
   test("a lock is only given back by the browser that took it", () =>
     withRoot((root) => {
       const p = claimProfile(root, 1);

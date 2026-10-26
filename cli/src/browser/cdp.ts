@@ -206,9 +206,21 @@ export function claimProfile(root = tmpdir(), slots = PROFILE_SLOTS, alive: (pid
   throw new Error(`Couldn't make a profile folder for the browser in ${root}: all ${slots} of Motif's are in use. Close other Motif runs that use a browser, or check that this folder is writable, and try again.`);
 }
 
-/** Removes the profile, then gives its slot back (even when the folder couldn't be removed: the next claim empties it). */
-export async function freeProfile(profile: Profile, remove = removeProfile): Promise<void> {
-  await remove(profile.dir);
+/**
+ * Removes the profile, then gives its slot back (even when the folder couldn't be removed: the next claim empties it).
+ * A helper that is still stopping can write into the folder just after it goes (Linux CI), so it is checked again.
+ */
+export async function freeProfile(
+  profile: Profile,
+  remove = removeProfile,
+  exists: (dir: string) => boolean = existsSync,
+  attempts = 5,
+  delayMs = 100,
+): Promise<void> {
+  for (let i = 0; i < attempts && (await remove(profile.dir)); i++) {
+    await new Promise((r) => setTimeout(r, delayMs));
+    if (!exists(profile.dir)) break;
+  }
   profile.release();
 }
 
@@ -536,6 +548,8 @@ export async function launchBrowser(
       const exited = () => proc.exitCode !== null || proc.signalCode !== null;
       if (!exited()) proc.kill();
       await new Promise((r) => (exited() ? r(null) : proc.once("exit", r)));
+      // Helpers the browser left stopping go too, so none writes into the profile again (Windows stops them with it).
+      if (proc.pid && process.platform !== "win32") killTree(proc.pid, true);
       await freeProfile(profile);
       cancelExitHook();
     },
