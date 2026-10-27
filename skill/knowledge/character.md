@@ -21,7 +21,7 @@ How loud the brand gets follows the personality words, not a house style:
 | friendly, gentle, warm, reassuring | Soft `brand-soft` tints, a friendly illustration on the welcome screen and empty states, rounded icon tiles, warm copy. |
 | energetic, bold, playful, fun, adventurous | A full `brand` band on the welcome screen, a big `display` headline in the heaviest weight the font has, an illustration or mascot, colour-coded content, proof in numbers and faces, lively motion. |
 
-A quiet brief still gets its one moment, and a loud brief still keeps its working screens easy to read.
+A quiet brief still gets its one moment, and a loud brief still keeps its working screens easy to read. When the words mix rows ("playful but gentle", "fresh and reassuring"), the gentler word sets the ground: a light `brand-soft` page with the illustration and accents in `brand`, rather than a full saturated band.
 
 ## Where the brand is loud
 
