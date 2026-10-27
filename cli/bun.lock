@@ -13,6 +13,7 @@
       "devDependencies": {
         "@fontsource-variable/alexandria": "5.3.0",
         "@fontsource-variable/baloo-bhaijaan-2": "5.3.0",
+        "@fontsource-variable/brygada-1918": "5.3.0",
         "@fontsource-variable/changa": "5.3.0",
         "@fontsource-variable/el-messiri": "5.3.0",
         "@fontsource-variable/fredoka": "5.3.0",
@@ -20,7 +21,6 @@
         "@fontsource-variable/mada": "5.3.0",
         "@fontsource-variable/markazi-text": "5.3.0",
         "@fontsource-variable/merriweather-sans": "5.3.0",
-        "@fontsource-variable/noto-serif-display": "5.3.0",
         "@fontsource-variable/nunito": "5.3.0",
         "@fontsource-variable/onest": "5.3.1",
         "@fontsource-variable/public-sans": "5.3.0",
@@ -45,6 +45,8 @@
 
     "@fontsource-variable/baloo-bhaijaan-2": ["@fontsource-variable/baloo-bhaijaan-2@5.3.0", "", {}, "sha512-StJtquhPlMmOyv/wUN7lATgXSG56gJfG3YQ5fltULrgydL4DqgW5/3vJX9ArWyanjN/V6ShoGKwjjlP+fSTIOQ=="],
 
+    "@fontsource-variable/brygada-1918": ["@fontsource-variable/brygada-1918@5.3.0", "", {}, "sha512-BbsFcgXc6HkA8JJs0YMdHe9JxF2aUjOQuSSJIpuz+yv749Kv5KxPkP3L7X6sJZQsFvYZ8WW+m5d12xhqu46SiA=="],
+
     "@fontsource-variable/changa": ["@fontsource-variable/changa@5.3.0", "", {}, "sha512-kvNFbOQXjH3Z3ptD7XGK23dfmecyM/FepYG2Vl9+jzr2ZRFyHKbxQ5VvANIwSWsVtQN04gykp2vbd7X7DDAyQw=="],
 
     "@fontsource-variable/el-messiri": ["@fontsource-variable/el-messiri@5.3.0", "", {}, "sha512-N5tqDwWLQa/PguZdOkYqSRchVDzoGCi7Hu7XNYnF/5rVp5/dIsEDVQ78D/el/3pgFloKiWiWIKbVMLCbvVevLA=="],
@@ -58,8 +60,6 @@
     "@fontsource-variable/markazi-text": ["@fontsource-variable/markazi-text@5.3.0", "", {}, "sha512-Lg63OxmiMdTH/cDgXQ4cn9d5zVsvtf5+aGzHFFdTcDM6qbz0K6Liu/YBeTjFp6nE+5b3ElIaziPSaGXZXyDtJQ=="],
 
     "@fontsource-variable/merriweather-sans": ["@fontsource-variable/merriweather-sans@5.3.0", "", {}, "sha512-kM7cyNiIs48Vtln0iNkqFKiuskOo9mLOBrik7p37+pP1DSxP9Js488/UNZVkrEUHGW60T8Mah+USyzPIc6QrDg=="],
-
-    "@fontsource-variable/noto-serif-display": ["@fontsource-variable/noto-serif-display@5.3.0", "", {}, "sha512-xjCag3o0sBWYB+76irp7cHMIa3MvWqYdGSgFXDePAmezplEJeTbR8FHvf2tSNNqA09KeO9W3N+HDaehQxzg8yg=="],
 
     "@fontsource-variable/nunito": ["@fontsource-variable/nunito@5.3.0", "", {}, "sha512-tw0ch7evIDSwoeUy+0XzocYHfbRWLeCRPJy22KgbrLjDLAbNw/fErBiil10Ssrs3Sjr55zaZrr36a975j8cBkQ=="],
 

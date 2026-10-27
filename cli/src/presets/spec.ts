@@ -62,7 +62,7 @@ export const PRESETS: PresetSpec[] = [
     id: "editorial", title: "Editorial", words: ["refined", "literary", "confident", "timeless"],
     bestFor: "publishing, portfolios, long reads and premium brands", avoidFor: "busy dashboards and tap-heavy utility apps",
     motionNote: "restrained and smooth",
-    fonts: { body: ["Source Serif 4", "Markazi Text", "Georgia", "serif"], display: ["Noto Serif Display", "Markazi Text", "Georgia", "serif"] },
+    fonts: { body: ["Source Serif 4", "Markazi Text", "Georgia", "serif"], display: ["Brygada 1918", "Markazi Text", "Georgia", "serif"] },
     sizes: { display: 48, title: 32, heading: 22, body: 18, label: 15, caption: 13 },
     radius: { sm: 0, md: 2, lg: 4 }, shadow: 0.4, durations: { fast: 120, base: 220, slow: 360 }, easing: [0.2, 0, 0, 1],
     springs: { snappy: [0.25, 0], smooth: [0.4, 0], bouncy: [0.5, 0.15] },

@@ -19,6 +19,14 @@
 }
 
 @font-face {
+  font-family: "Brygada 1918";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("brygada-1918.woff2") format("woff2");
+}
+
+@font-face {
   font-family: "Changa";
   font-style: normal;
   font-display: swap;
@@ -76,14 +84,6 @@
   font-display: swap;
   font-weight: 300 800;
   src: url("merriweather-sans.woff2") format("woff2");
-}
-
-@font-face {
-  font-family: "Noto Serif Display";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 100 900;
-  src: url("noto-serif-display.woff2") format("woff2");
 }
 
 @font-face {

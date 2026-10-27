@@ -10,6 +10,7 @@ const FONT_DIR = "skill/preview-kit/fonts";
 export const FONT_NAMES: Record<string, string> = {
   "LICENSE-alexandria.txt": "Alexandria",
   "LICENSE-baloo-bhaijaan-2.txt": "Baloo Bhaijaan 2",
+  "LICENSE-brygada-1918.txt": "Brygada 1918",
   "LICENSE-changa.txt": "Changa",
   "LICENSE-el-messiri.txt": "El Messiri",
   "LICENSE-fredoka.txt": "Fredoka",
@@ -17,7 +18,6 @@ export const FONT_NAMES: Record<string, string> = {
   "LICENSE-mada.txt": "Mada",
   "LICENSE-markazi-text.txt": "Markazi Text",
   "LICENSE-merriweather-sans.txt": "Merriweather Sans",
-  "LICENSE-noto-serif-display.txt": "Noto Serif Display",
   "LICENSE-nunito.txt": "Nunito",
   "LICENSE-onest.txt": "Onest",
   "LICENSE-public-sans.txt": "Public Sans",
