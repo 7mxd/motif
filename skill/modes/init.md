@@ -73,7 +73,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
 2. Run the project's build and type check (the stack guide names them; a plain web site has none).
 3. Run `motif shot --audit` for the starter screens (it covers every variant), in light and dark at every size it takes (three phones and a tablet, plus a desktop for a web app), adding `--state` for each screen behind a form or a click (the stack guide's checks show how). Fix the critical and major findings, then run it again.
 4. For each screen with an approved mockup, run `motif shot --routes <route> --against design/previews/<screen>.html` and compare the app with the mockup. Fix differences that change the design.
-5. Run the [five-second test](../knowledge/character.md#the-five-second-test) on the welcome, sign-in and home screenshots, phone and desktop. Where your words don't match the brief's personality, add the missing brand moment and shoot again.
+5. Run the [five-second test](../knowledge/character.md#the-five-second-test) on the welcome, sign-in and home screenshots, phone and desktop. Where your words don't match the brief's personality, add the missing brand moment and shoot again. Then look at each of those screenshots once just for the [slips that undo it](../knowledge/character.md#slips-that-undo-it) (uneven label gaps, a title smaller than its description, a count that doesn't match, rows out of line) and fix any you find.
 6. Show the developer the screenshots and a short summary: what was built, what passed, anything left for later.
 
 Delete `design/.progress.json`. The app is ready for new features.

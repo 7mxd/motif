@@ -17,7 +17,7 @@ How loud the brand gets follows the personality words, not a house style:
 
 | The brief says | Brand moments |
 |---|---|
-| calm, precise, quiet, professional, premium | One refined moment per first-impression screen: a deep `brand` panel beside the sign-in form, a well-set `display` headline, a realistic preview of the product. Quiet everywhere else. |
+| calm, precise, quiet, professional, premium | A light page with one refined moment per first-impression screen: a well-set `display` headline (in the serif, when the pairing has one, with one word accented), a realistic preview of the product on a raised card, generous space, a short label above the headline. A deep `brand` area at most once: the sign-in panel or the closing band of a landing page, never a heavy block at the top. Quiet everywhere else. |
 | friendly, gentle, warm, reassuring | Soft `brand-soft` tints, a friendly illustration on the welcome screen and empty states, rounded icon tiles, warm copy. |
 | energetic, bold, playful, fun, adventurous | A full `brand` band on the welcome screen, a big `display` headline in the heaviest weight the font has, an illustration or mascot, colour-coded content, proof in numbers and faces, lively motion. |
 
@@ -41,8 +41,10 @@ On a `brand` band, the main button is drawn in `on-brand` with `brand` text (or 
 ## Building a brand moment
 
 - **Web welcome or landing page:** a `brand` band (or a `brand-soft` one for gentler briefs) holding a `display` headline of two short lines, one line on what the app does for them, the main action and a quiet second one, then proof: a row of facts ("7 runs a week · 3–16 km · free to join"), the faces of people who use it, or a preview of the app's main screen with realistic content. Below the band, the page can calm down.
+- **A landing page tells the whole story,** in this order: the hero, what the app does (three rows), how it works (three numbered steps), proof (a short quote from someone who uses it, with their name, or a few real numbers), a closing band with the main action again, and a footer. A page that stops after the features looks unfinished; one that repeats the same card grid four times looks generated.
+- **The headline can accent one word:** in the `brand` colour, in italic when the headline is set in a serif, or with a `brand-soft` marker behind it. One word, not the whole line.
 - **Phone welcome:** an illustration or the app's mark in the top third, the headline, one line, and the actions at the bottom within thumb reach.
-- **Sign-in:** on a desktop, a `brand` panel beside the form holding a member's quote, an illustration or a preview of the product; on a phone, the mark or a small illustration above the form. Public pages show no signed-in chrome: no avatar, no tab bar.
+- **Sign-in:** on a desktop, a `brand` panel beside the form holding a member's quote, an illustration or a preview of the product; on a phone, a small illustration or the mark above the form, never both stacked, aligned the same way as the heading under it (all centred or all at the start). Public pages show no signed-in chrome: no avatar, no tab bar.
 - **What the app does:** three short rows, each with an icon tile on `brand-soft`, read faster than bare icons or text alone (and aren't the identical card grid from [anti-patterns](anti-patterns.md)).
 - **Kinds of content:** when items come in kinds people choose between (a pace, a category, a status), give each kind its own tint and its name in words, the same way everywhere.
 
@@ -51,6 +53,7 @@ On a `brand` band, the main button is drawn in `on-brand` with `brand` text (or 
 A simple drawn illustration does more for character than any colour choice. Draw it, don't download it:
 
 - A few geometric shapes in role colours only (`brand`, `brand-soft`, `surface`, `text-primary` and the status colours), so it follows dark mode and `motif check` passes. A subject from the app's world: a plant in a pot, a route line under a sun, a stack of invoices, a ticket.
+- A small scene beats a lone object: a soft `brand-soft` shape behind, the subject, and two or three supporting pieces (a smaller plant, a sun, floating icon tiles). A single shape in the middle of a band reads as clip art.
 - For playful briefs, a face makes it a mascot (two dots and a smile on the pot).
 - One illustration per screen, sized to the moment: about a third of a phone's welcome screen, smaller in an empty state, none on working screens.
 - It's decoration: hidden from screen readers (`aria-hidden="true"` on the web, excluded from accessibility on native platforms).
@@ -65,9 +68,24 @@ A simple drawn illustration does more for character than any colour choice. Draw
 - **Real-looking content.** Names, initials avatars, counts, exact times and places. A list of people going reads warmer than "12 attendees".
 - **A desktop is not a stretched phone.** Use the width: a panel beside the form, a preview beside the headline, two columns for a list and its detail.
 
+## Slips that undo it
+
+People comparing two screens notice small slips before they notice style, and one slip can lose a screen that is better in every other way. Check each first-impression and home screen for these:
+
+- **Every label sits the same distance above its field.** A "Forgot password?" link goes under the password field, at the end; in the label row its tap area makes that label float higher than the others.
+- **Item titles are never smaller than their descriptions.** In a feature row or a list item the title is `heading` (or `body` in a heavier weight) and the description is `body` or `caption` in `text-secondary`, never larger than the title above it.
+- **Counts match what's shown.** "To do today (3)" lists three items, or ends with "Show all".
+- **Rows line up.** Titles start at the same place in every row: a leading badge whose width changes with its word pushes them out of line, so status badges go at the end of the row (or the leading slot gets one fixed width). On a phone, titles wrap to a second line instead of ending in "…"; shorten the copy if they're long.
+- **Each action appears once.** "Sign in" in the header and again beside the main action is one too many; the hero's second action is something else ("See how it works") or nothing.
+- **The main action clearly outweighs the second one,** by fill as well as position.
+- **Small grey text is rare.** Metadata in `caption`, but never paragraphs of it; a screen of small, low-contrast text looks unfinished.
+- **No stray scaffolding.** No "Demo: name / password" hints, "Lorem", placeholder routes or debug labels on screen; mock sign-in details go in the README.
+- **Backgrounds run to the end.** A sidebar's colour reaches the bottom of a long page (let the layout's grid stretch it, with the navigation inside it sticky), and a gradient covers the whole page instead of stopping in a band.
+
 ## Before you finish
 
 1. The five-second test passes on the welcome, sign-in and home screens, on a phone and a desktop.
 2. Each first-impression screen has its brand moment, as loud as the brief asks.
-3. Working screens still pass the [visual craft](visual-craft.md) checklist: the brand didn't spill into buttons, links or long lists.
-4. Illustrations use role colours only, look right in dark mode, and are hidden from screen readers.
+3. None of the slips above, on any of those screens: look at each screenshot once just for them.
+4. Working screens still pass the [visual craft](visual-craft.md) checklist: the brand didn't spill into buttons, links or long lists.
+5. Illustrations use role colours only, look right in dark mode, and are hidden from screen readers.

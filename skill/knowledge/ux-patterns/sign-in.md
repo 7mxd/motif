@@ -14,7 +14,7 @@ Getting into an account, creating one, and getting back in when something goes w
 - **Email field:** labelled "Email", with the email keyboard and autocomplete hints.
 - **Password field:** labelled "Password", with a Show/Hide toggle inside the field.
 - **Primary action:** "Sign in" or "Create account" (`action-primary`), full width of the form.
-- **"Forgot password?":** a quiet link next to the password field, not hidden at the bottom.
+- **"Forgot password?":** a quiet link right under the password field, at the end, not hidden at the bottom. Not in the label row: its tap area makes that label sit farther from its field than the others.
 - **Switch link:** "New here? Create an account" / "Already have an account? Sign in".
 - **Sign-up extras:** the password rules shown before typing, and the terms in one line of `caption` text with links.
 - **Magic link:** "Email me a sign-in link" as an alternative to a password.

@@ -153,6 +153,6 @@ Run this before you show a screen to the developer:
 10. Nothing is centred that should be start-aligned.
 11. Icons come from one set, at one weight, sized with their text.
 12. Any motion uses the motion roles and respects reduced motion (see [motion](motion.md)).
-13. The five-second test from [character](character.md) passes: the screen feels like the brief's personality words, not just tidy.
+13. The five-second test from [character](character.md) passes: the screen feels like the brief's personality words, not just tidy, and none of its [slips](character.md#slips-that-undo-it) are there.
 
 Before you finish, also read [anti-patterns](anti-patterns.md): the checklist above says what good looks like, and that file names the most common ways screens go wrong.
