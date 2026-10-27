@@ -280,10 +280,10 @@ describe("Test A: each brief built without Motif (Part 4 §4)", () => {
   test("the prompt is the d-* prompt with every mention of Motif removed, asking for nothing worse", () => {
     const prompt = (id: string) => CASES.find((c) => c.id === id)!.prompt;
     expect(prompt("a-stride")).toBe(
-      `Build the app described in brief.md in this folder; it has the answers to any questions you'd ask. Put the welcome page at /, sign-in at /sign-in and home at /home. Make it look and work well.\n\n${UNATTENDED}`,
+      `Build the app described in brief.md in this folder; it has the answers to any questions you'd ask. Put the welcome page at /, sign-in at /sign-in and home at /home, which shows its mock data straight away rather than sending people to sign in first. Make it look and work well.\n\n${UNATTENDED}`,
     );
     expect(prompt("a-rihla")).toBe(
-      `Build the app described in brief.md in this folder; it has the answers to any questions you'd ask. Put the welcome screen at /, sign-in at /sign-in and trips at /trips. Make it look and work well.\n\n${UNATTENDED}`,
+      `Build the app described in brief.md in this folder; it has the answers to any questions you'd ask. Put the welcome screen at /, sign-in at /sign-in and trips at /trips, which shows its mock data straight away rather than sending people to sign in first. Make it look and work well.\n\n${UNATTENDED}`,
     );
     expect(prompt("a-masar")).toBe(
       `Build the app described in brief.md in this folder; it has the answers to any questions you'd ask. Make the welcome screen the app's root view, and give the sign-in and home screens #Preview blocks titled "Sign in" and "Home". Make it look and work well.\n\n${UNATTENDED}`,

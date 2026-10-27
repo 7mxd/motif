@@ -173,12 +173,14 @@ const swiftUIFeature = (id: string, title: string, preview: string, what: string
 });
 
 /**
- * A new app from a brief; `home` is the name of its third screen, which Rihla calls /trips. `noun` is what the stack
+ * A new app from a brief; `home` is the name of its third screen, which Rihla calls /trips. It opens without signing in,
+ * so Test A compares two home screens, not one app's home with the other's sign-in page (v1 Test A: baselines guarded
+ * it, and the screenshots never sign in). `noun` is what the stack
  * calls the welcome view in the prompt: a page on the web, a screen in a native or Expo app.
  */
 const newApp = (brief: string, title: string, stack?: StackId, home = "home", noun: "page" | "screen" = "page"): EvalCase => ({
   id: `d-${brief}`, test: "D", title, brief, routes: ["/", "/sign-in", `/${home}`],
-  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${noun} at /, sign-in at /sign-in and ${home} at /${home}.\n\n${UNATTENDED}`,
+  prompt: `/motif:init Build the app described in brief.md in this folder; it has my answers to your questions. Put the welcome ${noun} at /, sign-in at /sign-in and ${home} at /${home}, which shows its mock data straight away rather than sending people to sign in first.\n\n${UNATTENDED}`,
   maxTurns: 400, maxBudgetUsd: 80, minutes: 180,
   ...(stack ? { stack } : {}),
 });
