@@ -96,6 +96,10 @@ beforeAll(() => {
       // Neither fetches anything, so the quiet wait passes during it.
       if (path.startsWith("/expo-")) return html(EXPO_PAGES[path] ?? "", EXPO_PAGES[path] ? 200 : 404);
       if (path === "/devtools") return html(DEVTOOLS_PAGE);
+      // A phone's tab bar fixed to the bottom of the screen, a top bar fixed to the top, and a button stuck to the bottom
+      // of its list, on pages longer than the screen.
+      if (path === "/tab-bar") return html('<body style="margin:0"><header style="position:fixed;top:0;left:0;right:0;height:40px;background:#00ff00"></header><div style="height:2000px"></div><nav style="position:fixed;bottom:0;left:0;right:0;height:60px;background:#ff0000"></nav></body>');
+      if (path === "/sticky") return html('<body style="margin:0"><main><div style="height:2000px"></div><div style="position:sticky;bottom:0;height:50px;background:#0000ff"></div></main></body>');
       // A single-page app's router sends a page that needs a session to its sign-in page in the browser (an Angular guard,
       // a Vue or React router redirect): the server answers 200 for both.
       if (path === "/guarded") return html('<h1>Loading</h1><script>history.replaceState(null, "", "/sign-in"); document.querySelector("h1").textContent = "Sign in";</script>');
@@ -342,6 +346,24 @@ describe("the web's generated CSS has no rule for the default variant's id", () 
     expect(files.some((f) => f.content.includes('data-variant="men"'))).toBe(true);
     for (const f of files) expect(f.content).not.toContain('data-variant="women"');
   });
+});
+
+describe.skipIf(!browser)("bars fixed or stuck to the bottom of the screen (needs Chrome, Edge or Chromium)", () => {
+  test("are drawn at the end of a long page, where someone who scrolls there sees them, not across its middle (v1 Test A)", async () => {
+    const PHONE = [{ name: "mobile" as const, width: 390, height: 844, scale: 1, mobile: true }];
+    const out = tempDir("motif-shots-");
+    await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/tab-bar", "/sticky"], outDir: out, settleMs: 50, viewports: PHONE, appScheme: "light" });
+    const bar = new Uint8Array(readFileSync(join(out, "tab-bar.mobile.png")));
+    expect(pngSize(bar)).toEqual({ width: 390, height: 2000 });
+    expect(pixel(bar, 195, 1970)).toEqual([255, 0, 0, 255]);
+    expect(pixel(bar, 195, 820)).not.toEqual([255, 0, 0, 255]);
+    // A bar fixed to the top stays at the top.
+    expect(pixel(bar, 195, 20)).toEqual([0, 255, 0, 255]);
+    const stuck = new Uint8Array(readFileSync(join(out, "sticky.mobile.png")));
+    expect(pngSize(stuck)).toEqual({ width: 390, height: 2050 });
+    expect(pixel(stuck, 195, 2030)).toEqual([0, 0, 255, 255]);
+    expect(pixel(stuck, 195, 820)).not.toEqual([0, 0, 255, 255]);
+  }, 120_000);
 });
 
 describe.skipIf(!browser)("an app's own fixed scheme (needs Chrome, Edge or Chromium)", () => {

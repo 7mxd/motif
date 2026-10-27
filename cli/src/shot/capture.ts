@@ -229,6 +229,32 @@ export function shotName(slug: string, viewport: string, scheme: Scheme, variant
 const DEV_TOOLS = ["nextjs-portal", "#nuxt-devtools-container", "#__vue-devtools-container__"];
 const HIDE_DEV_BADGES = `(() => { const s = document.createElement("style"); s.textContent = ${JSON.stringify(`${DEV_TOOLS.join(", ")} { display: none !important; }`)}; document.head.append(s); return true; })()`;
 const PAGE_HEIGHT = "document.documentElement.scrollHeight";
+// A shot longer than the screen leaves a bar fixed or stuck to the bottom of the screen where the first screen ends,
+// across the middle of the page (v1 Test A: a phone's tab bar with the list running on below it). For the shot it is
+// drawn where someone who scrolls to the end sees it; BARS_BACK puts it back before the audit.
+const BARS_TO_END = `(() => {
+  const end = document.documentElement.scrollHeight, moved = [];
+  for (const el of document.querySelectorAll("body *")) {
+    if (moved.some(([m]) => m.contains(el))) continue;
+    const cs = getComputedStyle(el);
+    const sticky = cs.position === "sticky" && cs.bottom !== "auto";
+    if (cs.position !== "fixed" && !sticky) continue;
+    const r = el.getBoundingClientRect();
+    // Top bars, sidebars and overlays the height of the screen stay where they are.
+    if (r.width === 0 || r.height === 0 || r.height > innerHeight / 2 || r.top < innerHeight / 2) continue;
+    moved.push([el, el.style.cssText]);
+    if (sticky) { el.style.position = "static"; continue; }
+    const fromEnd = innerHeight - r.top;
+    Object.assign(el.style, { position: "absolute", top: "0px", bottom: "auto", left: "0px", right: "auto", margin: "0", width: r.width + "px", height: r.height + "px" });
+    // Placed against whatever holds it, then moved by what is left to where it belongs on the page.
+    const at = el.getBoundingClientRect();
+    el.style.top = (end - fromEnd - (at.top + scrollY)) + "px";
+    el.style.left = (r.left - at.left) + "px";
+  }
+  window.__motifBars = moved;
+  return true;
+})()`;
+const BARS_BACK = `(() => { for (const [el, css] of window.__motifBars ?? []) el.style.cssText = css; delete window.__motifBars; return true; })()`;
 
 /**
  * Where an Expo screen is, from inside the page (decision 0009): "bundling" while Expo's dev "Bundling..." toast (a
@@ -444,7 +470,10 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   // Where the page was scrolled to (a state can scroll something into view): comparisons frame that screen.
                   const top = Math.round(await page.evaluate<number>("scrollY"));
                   const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.file ?? viewport.name, scheme, variant, Boolean(lang)));
-                  const png = await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(fullHeight, MAX_HEIGHT) });
+                  const long = fullHeight > viewport.height;
+                  if (long) await page.evaluate(BARS_TO_END);
+                  const png = await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(await page.evaluate<number>(PAGE_HEIGHT), MAX_HEIGHT) });
+                  if (long) await page.evaluate(BARS_BACK);
                   const screen: Screen = { width: viewport.width, top, height: viewport.height };
                   writeFileSync(file, addPngText(png, SCREEN_KEY, JSON.stringify(screen)));
                   result.shots.push(file);
