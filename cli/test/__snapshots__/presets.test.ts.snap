@@ -20,6 +20,8 @@ exports[`preset minimal React web output stays the same 1`] = `
   --motif-color-danger: #B6322D;
   --motif-color-info: #2F6094;
   --motif-color-focus: #28302C;
+  --motif-color-brand: #181D1B;
+  --motif-color-brand-soft: #EAEFED;
   --motif-color-text-inverse: #FFFFFF;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #181D1B;
@@ -27,6 +29,7 @@ exports[`preset minimal React web output stays the same 1`] = `
   --motif-color-on-warning: #FFFFFF;
   --motif-color-on-danger: #FFFFFF;
   --motif-color-on-info: #FFFFFF;
+  --motif-color-on-brand: #FFFFFF;
   --motif-space-0: 0px;
   --motif-space-1: 4px;
   --motif-space-2: 8px;
@@ -99,6 +102,8 @@ exports[`preset minimal React web output stays the same 1`] = `
     --motif-color-danger: #F28881;
     --motif-color-info: #84B9E6;
     --motif-color-focus: #DADFDD;
+    --motif-color-brand: #65706B;
+    --motif-color-brand-soft: #1F2422;
     --motif-color-text-inverse: #101412;
     --motif-color-on-action-primary: #181D1B;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -106,6 +111,7 @@ exports[`preset minimal React web output stays the same 1`] = `
     --motif-color-on-warning: #181D1B;
     --motif-color-on-danger: #181D1B;
     --motif-color-on-info: #181D1B;
+    --motif-color-on-brand: #FFFFFF;
   }
 }
 
@@ -124,6 +130,8 @@ exports[`preset minimal React web output stays the same 1`] = `
   --motif-color-danger: #F28881;
   --motif-color-info: #84B9E6;
   --motif-color-focus: #DADFDD;
+  --motif-color-brand: #65706B;
+  --motif-color-brand-soft: #1F2422;
   --motif-color-text-inverse: #101412;
   --motif-color-on-action-primary: #181D1B;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -131,6 +139,7 @@ exports[`preset minimal React web output stays the same 1`] = `
   --motif-color-on-warning: #181D1B;
   --motif-color-on-danger: #181D1B;
   --motif-color-on-info: #181D1B;
+  --motif-color-on-brand: #FFFFFF;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -170,6 +179,8 @@ exports[`preset minimal React web output stays the same 1`] = `
   --color-danger: var(--motif-color-danger);
   --color-info: var(--motif-color-info);
   --color-focus: var(--motif-color-focus);
+  --color-brand: var(--motif-color-brand);
+  --color-brand-soft: var(--motif-color-brand-soft);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -177,6 +188,7 @@ exports[`preset minimal React web output stays the same 1`] = `
   --color-on-warning: var(--motif-color-on-warning);
   --color-on-danger: var(--motif-color-on-danger);
   --color-on-info: var(--motif-color-on-info);
+  --color-on-brand: var(--motif-color-on-brand);
   --spacing: var(--motif-space-1);
   --spacing-0: var(--motif-space-0);
   --spacing-1: var(--motif-space-1);
@@ -284,6 +296,8 @@ exports[`preset soft React web output stays the same 1`] = `
   --motif-color-danger: #B73F28;
   --motif-color-info: #256E9B;
   --motif-color-focus: #2E7577;
+  --motif-color-brand: #2E7577;
+  --motif-color-brand-soft: #DDF0EE;
   --motif-color-text-inverse: #FFFFFF;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #1B292B;
@@ -291,6 +305,7 @@ exports[`preset soft React web output stays the same 1`] = `
   --motif-color-on-warning: #FFFFFF;
   --motif-color-on-danger: #FFFFFF;
   --motif-color-on-info: #FFFFFF;
+  --motif-color-on-brand: #FFFFFF;
   --motif-space-0: 0px;
   --motif-space-1: 4px;
   --motif-space-2: 8px;
@@ -363,6 +378,8 @@ exports[`preset soft React web output stays the same 1`] = `
     --motif-color-danger: #F59485;
     --motif-color-info: #88BFE6;
     --motif-color-focus: #7FCFC4;
+    --motif-color-brand: #4F7C7D;
+    --motif-color-brand-soft: #122F31;
     --motif-color-text-inverse: #0D1A1B;
     --motif-color-on-action-primary: #1B292B;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -370,6 +387,7 @@ exports[`preset soft React web output stays the same 1`] = `
     --motif-color-on-warning: #1B292B;
     --motif-color-on-danger: #1B292B;
     --motif-color-on-info: #1B292B;
+    --motif-color-on-brand: #FFFFFF;
   }
 }
 
@@ -388,6 +406,8 @@ exports[`preset soft React web output stays the same 1`] = `
   --motif-color-danger: #F59485;
   --motif-color-info: #88BFE6;
   --motif-color-focus: #7FCFC4;
+  --motif-color-brand: #4F7C7D;
+  --motif-color-brand-soft: #122F31;
   --motif-color-text-inverse: #0D1A1B;
   --motif-color-on-action-primary: #1B292B;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -395,6 +415,7 @@ exports[`preset soft React web output stays the same 1`] = `
   --motif-color-on-warning: #1B292B;
   --motif-color-on-danger: #1B292B;
   --motif-color-on-info: #1B292B;
+  --motif-color-on-brand: #FFFFFF;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -434,6 +455,8 @@ exports[`preset soft React web output stays the same 1`] = `
   --color-danger: var(--motif-color-danger);
   --color-info: var(--motif-color-info);
   --color-focus: var(--motif-color-focus);
+  --color-brand: var(--motif-color-brand);
+  --color-brand-soft: var(--motif-color-brand-soft);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -441,6 +464,7 @@ exports[`preset soft React web output stays the same 1`] = `
   --color-on-warning: var(--motif-color-on-warning);
   --color-on-danger: var(--motif-color-on-danger);
   --color-on-info: var(--motif-color-on-info);
+  --color-on-brand: var(--motif-color-on-brand);
   --spacing: var(--motif-space-1);
   --spacing-0: var(--motif-space-0);
   --spacing-1: var(--motif-space-1);
@@ -542,12 +566,14 @@ exports[`preset playful React web output stays the same 1`] = `
   --motif-color-text-primary: #291A24;
   --motif-color-text-secondary: #6A5562;
   --motif-color-action-primary: #C2126D;
-  --motif-color-action-secondary: #F7E170;
+  --motif-color-action-secondary: #FBEFC0;
   --motif-color-success: #078050;
   --motif-color-warning: #9D6C26;
   --motif-color-danger: #B93F35;
   --motif-color-info: #2F62AC;
   --motif-color-focus: #C2126D;
+  --motif-color-brand: #C2126D;
+  --motif-color-brand-soft: #FCE4EF;
   --motif-color-text-inverse: #FFFFFF;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #291A24;
@@ -555,6 +581,7 @@ exports[`preset playful React web output stays the same 1`] = `
   --motif-color-on-warning: #FFFFFF;
   --motif-color-on-danger: #FFFFFF;
   --motif-color-on-info: #FFFFFF;
+  --motif-color-on-brand: #FFFFFF;
   --motif-space-0: 0px;
   --motif-space-1: 4px;
   --motif-space-2: 8px;
@@ -621,19 +648,22 @@ exports[`preset playful React web output stays the same 1`] = `
     --motif-color-text-primary: #F9F1F4;
     --motif-color-text-secondary: #C9B2BC;
     --motif-color-action-primary: #FD87B2;
-    --motif-color-action-secondary: #EDD55E;
+    --motif-color-action-secondary: #4A3F1A;
     --motif-color-success: #7CD591;
     --motif-color-warning: #F8B65D;
     --motif-color-danger: #F98A74;
     --motif-color-info: #83BDF5;
     --motif-color-focus: #FD87B2;
+    --motif-color-brand: #BD4279;
+    --motif-color-brand-soft: #3D1A2A;
     --motif-color-text-inverse: #221118;
     --motif-color-on-action-primary: #291A24;
-    --motif-color-on-action-secondary: #291A24;
+    --motif-color-on-action-secondary: #FFFFFF;
     --motif-color-on-success: #291A24;
     --motif-color-on-warning: #291A24;
     --motif-color-on-danger: #291A24;
     --motif-color-on-info: #291A24;
+    --motif-color-on-brand: #FFFFFF;
   }
 }
 
@@ -646,19 +676,22 @@ exports[`preset playful React web output stays the same 1`] = `
   --motif-color-text-primary: #F9F1F4;
   --motif-color-text-secondary: #C9B2BC;
   --motif-color-action-primary: #FD87B2;
-  --motif-color-action-secondary: #EDD55E;
+  --motif-color-action-secondary: #4A3F1A;
   --motif-color-success: #7CD591;
   --motif-color-warning: #F8B65D;
   --motif-color-danger: #F98A74;
   --motif-color-info: #83BDF5;
   --motif-color-focus: #FD87B2;
+  --motif-color-brand: #BD4279;
+  --motif-color-brand-soft: #3D1A2A;
   --motif-color-text-inverse: #221118;
   --motif-color-on-action-primary: #291A24;
-  --motif-color-on-action-secondary: #291A24;
+  --motif-color-on-action-secondary: #FFFFFF;
   --motif-color-on-success: #291A24;
   --motif-color-on-warning: #291A24;
   --motif-color-on-danger: #291A24;
   --motif-color-on-info: #291A24;
+  --motif-color-on-brand: #FFFFFF;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -698,6 +731,8 @@ exports[`preset playful React web output stays the same 1`] = `
   --color-danger: var(--motif-color-danger);
   --color-info: var(--motif-color-info);
   --color-focus: var(--motif-color-focus);
+  --color-brand: var(--motif-color-brand);
+  --color-brand-soft: var(--motif-color-brand-soft);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -705,6 +740,7 @@ exports[`preset playful React web output stays the same 1`] = `
   --color-on-warning: var(--motif-color-on-warning);
   --color-on-danger: var(--motif-color-on-danger);
   --color-on-info: var(--motif-color-on-info);
+  --color-on-brand: var(--motif-color-on-brand);
   --spacing: var(--motif-space-1);
   --spacing-0: var(--motif-space-0);
   --spacing-1: var(--motif-space-1);
@@ -812,6 +848,8 @@ exports[`preset editorial React web output stays the same 1`] = `
   --motif-color-danger: #B54531;
   --motif-color-info: #295F8A;
   --motif-color-focus: #1F1716;
+  --motif-color-brand: #852535;
+  --motif-color-brand-soft: #F3E6E3;
   --motif-color-text-inverse: #FFFDFD;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #1F1716;
@@ -819,6 +857,7 @@ exports[`preset editorial React web output stays the same 1`] = `
   --motif-color-on-warning: #FFFFFF;
   --motif-color-on-danger: #FFFFFF;
   --motif-color-on-info: #FFFFFF;
+  --motif-color-on-brand: #FFFFFF;
   --motif-space-0: 0px;
   --motif-space-1: 4px;
   --motif-space-2: 8px;
@@ -891,6 +930,8 @@ exports[`preset editorial React web output stays the same 1`] = `
     --motif-color-danger: #F78E64;
     --motif-color-info: #89BAE4;
     --motif-color-focus: #F1EEEA;
+    --motif-color-brand: #A15B63;
+    --motif-color-brand-soft: #2D2224;
     --motif-color-text-inverse: #161312;
     --motif-color-on-action-primary: #1F1716;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -898,6 +939,7 @@ exports[`preset editorial React web output stays the same 1`] = `
     --motif-color-on-warning: #1F1716;
     --motif-color-on-danger: #1F1716;
     --motif-color-on-info: #1F1716;
+    --motif-color-on-brand: #FFFFFF;
   }
 }
 
@@ -916,6 +958,8 @@ exports[`preset editorial React web output stays the same 1`] = `
   --motif-color-danger: #F78E64;
   --motif-color-info: #89BAE4;
   --motif-color-focus: #F1EEEA;
+  --motif-color-brand: #A15B63;
+  --motif-color-brand-soft: #2D2224;
   --motif-color-text-inverse: #161312;
   --motif-color-on-action-primary: #1F1716;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -923,6 +967,7 @@ exports[`preset editorial React web output stays the same 1`] = `
   --motif-color-on-warning: #1F1716;
   --motif-color-on-danger: #1F1716;
   --motif-color-on-info: #1F1716;
+  --motif-color-on-brand: #FFFFFF;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -962,6 +1007,8 @@ exports[`preset editorial React web output stays the same 1`] = `
   --color-danger: var(--motif-color-danger);
   --color-info: var(--motif-color-info);
   --color-focus: var(--motif-color-focus);
+  --color-brand: var(--motif-color-brand);
+  --color-brand-soft: var(--motif-color-brand-soft);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -969,6 +1016,7 @@ exports[`preset editorial React web output stays the same 1`] = `
   --color-on-warning: var(--motif-color-on-warning);
   --color-on-danger: var(--motif-color-on-danger);
   --color-on-info: var(--motif-color-on-info);
+  --color-on-brand: var(--motif-color-on-brand);
   --spacing: var(--motif-space-1);
   --spacing-0: var(--motif-space-0);
   --spacing-1: var(--motif-space-1);
@@ -1076,6 +1124,8 @@ exports[`preset bold React web output stays the same 1`] = `
   --motif-color-danger: #9B2A4B;
   --motif-color-info: #205F9F;
   --motif-color-focus: #B13C11;
+  --motif-color-brand: #D83A1A;
+  --motif-color-brand-soft: #FBE3DA;
   --motif-color-text-inverse: #F8F5F3;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -1083,6 +1133,7 @@ exports[`preset bold React web output stays the same 1`] = `
   --motif-color-on-warning: #FFFFFF;
   --motif-color-on-danger: #FFFFFF;
   --motif-color-on-info: #FFFFFF;
+  --motif-color-on-brand: #FFFFFF;
   --motif-space-0: 0px;
   --motif-space-1: 4px;
   --motif-space-2: 8px;
@@ -1155,6 +1206,8 @@ exports[`preset bold React web output stays the same 1`] = `
     --motif-color-danger: #E97294;
     --motif-color-info: #7FB2EC;
     --motif-color-focus: #F8633F;
+    --motif-color-brand: #CB4325;
+    --motif-color-brand-soft: #3A221A;
     --motif-color-text-inverse: #191513;
     --motif-color-on-action-primary: #16110F;
     --motif-color-on-action-secondary: #16110F;
@@ -1162,6 +1215,7 @@ exports[`preset bold React web output stays the same 1`] = `
     --motif-color-on-warning: #16110F;
     --motif-color-on-danger: #16110F;
     --motif-color-on-info: #16110F;
+    --motif-color-on-brand: #FFFFFF;
   }
 }
 
@@ -1180,6 +1234,8 @@ exports[`preset bold React web output stays the same 1`] = `
   --motif-color-danger: #E97294;
   --motif-color-info: #7FB2EC;
   --motif-color-focus: #F8633F;
+  --motif-color-brand: #CB4325;
+  --motif-color-brand-soft: #3A221A;
   --motif-color-text-inverse: #191513;
   --motif-color-on-action-primary: #16110F;
   --motif-color-on-action-secondary: #16110F;
@@ -1187,6 +1243,7 @@ exports[`preset bold React web output stays the same 1`] = `
   --motif-color-on-warning: #16110F;
   --motif-color-on-danger: #16110F;
   --motif-color-on-info: #16110F;
+  --motif-color-on-brand: #FFFFFF;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1226,6 +1283,8 @@ exports[`preset bold React web output stays the same 1`] = `
   --color-danger: var(--motif-color-danger);
   --color-info: var(--motif-color-info);
   --color-focus: var(--motif-color-focus);
+  --color-brand: var(--motif-color-brand);
+  --color-brand-soft: var(--motif-color-brand-soft);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -1233,6 +1292,7 @@ exports[`preset bold React web output stays the same 1`] = `
   --color-on-warning: var(--motif-color-on-warning);
   --color-on-danger: var(--motif-color-on-danger);
   --color-on-info: var(--motif-color-on-info);
+  --color-on-brand: var(--motif-color-on-brand);
   --spacing: var(--motif-space-1);
   --spacing-0: var(--motif-space-0);
   --spacing-1: var(--motif-space-1);
@@ -1340,6 +1400,8 @@ exports[`preset dark-tech React web output stays the same 1`] = `
   --motif-color-danger: #B52332;
   --motif-color-info: #136B94;
   --motif-color-focus: #A45803;
+  --motif-color-brand: #1B1611;
+  --motif-color-brand-soft: #F6E7D6;
   --motif-color-text-inverse: #FEFCFB;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #1B1611;
@@ -1347,6 +1409,7 @@ exports[`preset dark-tech React web output stays the same 1`] = `
   --motif-color-on-warning: #FFFFFF;
   --motif-color-on-danger: #FFFFFF;
   --motif-color-on-info: #FFFFFF;
+  --motif-color-on-brand: #FFFFFF;
   --motif-space-0: 0px;
   --motif-space-1: 4px;
   --motif-space-2: 8px;
@@ -1419,6 +1482,8 @@ exports[`preset dark-tech React web output stays the same 1`] = `
     --motif-color-danger: #F07683;
     --motif-color-info: #76BBE2;
     --motif-color-focus: #FB9F44;
+    --motif-color-brand: #7A6E62;
+    --motif-color-brand-soft: #2E241A;
     --motif-color-text-inverse: #15110D;
     --motif-color-on-action-primary: #1B1611;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -1426,6 +1491,7 @@ exports[`preset dark-tech React web output stays the same 1`] = `
     --motif-color-on-warning: #1B1611;
     --motif-color-on-danger: #1B1611;
     --motif-color-on-info: #1B1611;
+    --motif-color-on-brand: #FFFFFF;
   }
 }
 
@@ -1444,6 +1510,8 @@ exports[`preset dark-tech React web output stays the same 1`] = `
   --motif-color-danger: #F07683;
   --motif-color-info: #76BBE2;
   --motif-color-focus: #FB9F44;
+  --motif-color-brand: #7A6E62;
+  --motif-color-brand-soft: #2E241A;
   --motif-color-text-inverse: #15110D;
   --motif-color-on-action-primary: #1B1611;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -1451,6 +1519,7 @@ exports[`preset dark-tech React web output stays the same 1`] = `
   --motif-color-on-warning: #1B1611;
   --motif-color-on-danger: #1B1611;
   --motif-color-on-info: #1B1611;
+  --motif-color-on-brand: #FFFFFF;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1490,6 +1559,8 @@ exports[`preset dark-tech React web output stays the same 1`] = `
   --color-danger: var(--motif-color-danger);
   --color-info: var(--motif-color-info);
   --color-focus: var(--motif-color-focus);
+  --color-brand: var(--motif-color-brand);
+  --color-brand-soft: var(--motif-color-brand-soft);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -1497,6 +1568,7 @@ exports[`preset dark-tech React web output stays the same 1`] = `
   --color-on-warning: var(--motif-color-on-warning);
   --color-on-danger: var(--motif-color-on-danger);
   --color-on-info: var(--motif-color-on-info);
+  --color-on-brand: var(--motif-color-on-brand);
   --spacing: var(--motif-space-1);
   --spacing-0: var(--motif-space-0);
   --spacing-1: var(--motif-space-1);
@@ -1604,6 +1676,8 @@ exports[`preset warm React web output stays the same 1`] = `
   --motif-color-danger: #B63132;
   --motif-color-info: #2B6991;
   --motif-color-focus: #596517;
+  --motif-color-brand: #596517;
+  --motif-color-brand-soft: #EEF0DC;
   --motif-color-text-inverse: #FCFDFA;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #252117;
@@ -1611,6 +1685,7 @@ exports[`preset warm React web output stays the same 1`] = `
   --motif-color-on-warning: #FFFFFF;
   --motif-color-on-danger: #FFFFFF;
   --motif-color-on-info: #FFFFFF;
+  --motif-color-on-brand: #FFFFFF;
   --motif-space-0: 0px;
   --motif-space-1: 4px;
   --motif-space-2: 8px;
@@ -1683,6 +1758,8 @@ exports[`preset warm React web output stays the same 1`] = `
     --motif-color-danger: #F68678;
     --motif-color-info: #85BCE2;
     --motif-color-focus: #B1C16D;
+    --motif-color-brand: #6F7A45;
+    --motif-color-brand-soft: #2A2C1C;
     --motif-color-text-inverse: #171610;
     --motif-color-on-action-primary: #252117;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -1690,6 +1767,7 @@ exports[`preset warm React web output stays the same 1`] = `
     --motif-color-on-warning: #252117;
     --motif-color-on-danger: #252117;
     --motif-color-on-info: #252117;
+    --motif-color-on-brand: #FFFFFF;
   }
 }
 
@@ -1708,6 +1786,8 @@ exports[`preset warm React web output stays the same 1`] = `
   --motif-color-danger: #F68678;
   --motif-color-info: #85BCE2;
   --motif-color-focus: #B1C16D;
+  --motif-color-brand: #6F7A45;
+  --motif-color-brand-soft: #2A2C1C;
   --motif-color-text-inverse: #171610;
   --motif-color-on-action-primary: #252117;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -1715,6 +1795,7 @@ exports[`preset warm React web output stays the same 1`] = `
   --motif-color-on-warning: #252117;
   --motif-color-on-danger: #252117;
   --motif-color-on-info: #252117;
+  --motif-color-on-brand: #FFFFFF;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1754,6 +1835,8 @@ exports[`preset warm React web output stays the same 1`] = `
   --color-danger: var(--motif-color-danger);
   --color-info: var(--motif-color-info);
   --color-focus: var(--motif-color-focus);
+  --color-brand: var(--motif-color-brand);
+  --color-brand-soft: var(--motif-color-brand-soft);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -1761,6 +1844,7 @@ exports[`preset warm React web output stays the same 1`] = `
   --color-on-warning: var(--motif-color-on-warning);
   --color-on-danger: var(--motif-color-on-danger);
   --color-on-info: var(--motif-color-on-info);
+  --color-on-brand: var(--motif-color-on-brand);
   --spacing: var(--motif-space-1);
   --spacing-0: var(--motif-space-0);
   --spacing-1: var(--motif-space-1);
@@ -1868,6 +1952,8 @@ exports[`preset trust React web output stays the same 1`] = `
   --motif-color-danger: #B23641;
   --motif-color-info: #147175;
   --motif-color-focus: #006C97;
+  --motif-color-brand: #0B3550;
+  --motif-color-brand-soft: #E2EDF3;
   --motif-color-text-inverse: #FFFFFF;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #10212F;
@@ -1875,6 +1961,7 @@ exports[`preset trust React web output stays the same 1`] = `
   --motif-color-on-warning: #FFFFFF;
   --motif-color-on-danger: #FFFFFF;
   --motif-color-on-info: #FFFFFF;
+  --motif-color-on-brand: #FFFFFF;
   --motif-space-0: 0px;
   --motif-space-1: 4px;
   --motif-space-2: 8px;
@@ -1947,6 +2034,8 @@ exports[`preset trust React web output stays the same 1`] = `
     --motif-color-danger: #F28881;
     --motif-color-info: #80C5C9;
     --motif-color-focus: #6ABCE6;
+    --motif-color-brand: #4C7899;
+    --motif-color-brand-soft: #1C2B37;
     --motif-color-text-inverse: #0C1721;
     --motif-color-on-action-primary: #10212F;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -1954,6 +2043,7 @@ exports[`preset trust React web output stays the same 1`] = `
     --motif-color-on-warning: #10212F;
     --motif-color-on-danger: #10212F;
     --motif-color-on-info: #10212F;
+    --motif-color-on-brand: #FFFFFF;
   }
 }
 
@@ -1972,6 +2062,8 @@ exports[`preset trust React web output stays the same 1`] = `
   --motif-color-danger: #F28881;
   --motif-color-info: #80C5C9;
   --motif-color-focus: #6ABCE6;
+  --motif-color-brand: #4C7899;
+  --motif-color-brand-soft: #1C2B37;
   --motif-color-text-inverse: #0C1721;
   --motif-color-on-action-primary: #10212F;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -1979,6 +2071,7 @@ exports[`preset trust React web output stays the same 1`] = `
   --motif-color-on-warning: #10212F;
   --motif-color-on-danger: #10212F;
   --motif-color-on-info: #10212F;
+  --motif-color-on-brand: #FFFFFF;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2018,6 +2111,8 @@ exports[`preset trust React web output stays the same 1`] = `
   --color-danger: var(--motif-color-danger);
   --color-info: var(--motif-color-info);
   --color-focus: var(--motif-color-focus);
+  --color-brand: var(--motif-color-brand);
+  --color-brand-soft: var(--motif-color-brand-soft);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -2025,6 +2120,7 @@ exports[`preset trust React web output stays the same 1`] = `
   --color-on-warning: var(--motif-color-on-warning);
   --color-on-danger: var(--motif-color-on-danger);
   --color-on-info: var(--motif-color-on-info);
+  --color-on-brand: var(--motif-color-on-brand);
   --spacing: var(--motif-space-1);
   --spacing-0: var(--motif-space-0);
   --spacing-1: var(--motif-space-1);

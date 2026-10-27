@@ -46,6 +46,7 @@ Importing it before Tailwind would let Tailwind's defaults win.
 | `radius.md` | `rounded-md` | `var(--motif-radius-md)` |
 | `shadow.md` | `shadow-md` | `var(--motif-shadow-md)` |
 | `font.body` | `font-body text-body` (the family, then the size with its line height and weight) | `var(--motif-font-body-family)` and `var(--motif-font-body-size)` |
+| `color.brand` with `color.on-brand`, `color.brand-soft` (optional, for brand moments such as a hero band or an icon tile; never buttons or links) | `bg-brand text-on-brand`, `bg-brand-soft` (only when the theme has the roles) | `var(--motif-color-brand)` |
 | `font.mono` (optional, for code) | `font-mono` (only when the theme has the role: Motif's theme replaces Tailwind's own font classes) | `var(--motif-font-mono-family)` |
 | `easing.standard` | `ease-standard` | `var(--motif-easing-standard)` |
 | `duration.base` with `easing.standard` | `transition` | — |

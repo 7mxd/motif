@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { checkRoles } from "../src/contract/roles";
-import { docFrom, validTokens } from "./helpers";
+import { docFrom, hexColor, validTokens } from "./helpers";
 
 const run = (mutate: (t: any) => void) => {
   const t = validTokens();
@@ -28,6 +28,20 @@ describe("checkRoles", () => {
     expect(run((t) => delete t.font.mono)).toEqual([]);
     const f = run((t) => (t.font.mono = { $type: "dimension", $value: { value: 14, unit: "px" } }));
     expect(f.map((x) => [x.code, x.path])).toEqual([["wrong-type", "font.mono"]]);
+  });
+
+  test("the brand colours are optional: a theme is complete without them, and with them, each must be a colour with a dark value", () => {
+    const brand = (t: any, name: string, value: unknown) =>
+      (t.color[name] = { $value: value, $extensions: { "dev.motif": { modes: { dark: hexColor("#123456") } } } });
+    expect(run((t) => {
+      brand(t, "brand", hexColor("#0B3550"));
+      brand(t, "on-brand", hexColor("#FFFFFF"));
+      brand(t, "brand-soft", hexColor("#E2EDF3"));
+    })).toEqual([]);
+    const f = run((t) => (t.color.brand = { $type: "dimension", $value: { value: 4, unit: "px" } }));
+    expect(f.map((x) => [x.code, x.path])).toContainEqual(["wrong-type", "color.brand"]);
+    const g = run((t) => (t.color["brand-soft"] = { $value: hexColor("#E2EDF3") }));
+    expect(g.map((x) => [x.code, x.path])).toEqual([["missing-dark", "color.brand-soft"]]);
   });
 
   test("requires a dark value for every colour role", () => {

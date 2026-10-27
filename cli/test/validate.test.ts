@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runValidate } from "../src/commands/validate";
+import { BRAND_PAIRS, STANDARD_PAIRS, pairsExtension } from "../src/contract/defaults";
 import { copyFixture, validDesignMd, validTokens } from "./helpers";
 import { makeProject } from "./project";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -16,6 +17,23 @@ describe("runValidate", () => {
     expect(r.exitCode).toBe(0);
     expect(r.text).toStartWith("✓ Your design guide is valid");
     expect(r.data.summary).toEqual({ errors: 0, warnings: 0, tokens: expect.any(Number), contrastChecks: 26 });
+  });
+
+  test("a guide without the optional brand colours or their pairs passes cleanly; listing their pairs without the roles is reported", async () => {
+    const dir = copyFixture();
+    const p = join(dir, "design", "tokens.json");
+    const t = validTokens();
+    t.$extensions["dev.motif"].pairs = pairsExtension();
+    writeFileSync(p, JSON.stringify(t, null, 2));
+    const clean = await runValidate(dir);
+    expect(clean.exitCode).toBe(0);
+    expect(clean.data.summary).toMatchObject({ errors: 0, warnings: 0 });
+
+    t.$extensions["dev.motif"].pairs = pairsExtension([...STANDARD_PAIRS, ...BRAND_PAIRS]);
+    writeFileSync(p, JSON.stringify(t, null, 2));
+    const r = await runValidate(dir);
+    expect(r.exitCode).toBe(1);
+    expect((r.data.findings as any[]).map((f) => f.code)).toEqual(["bad-pair", "bad-pair", "bad-pair"]);
   });
 
   test("no design guide → exit 2 with a friendly message", async () => {

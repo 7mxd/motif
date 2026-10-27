@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { checkContrast, readPairs } from "../src/contract/contrast";
-import { docFrom, validTokens } from "./helpers";
+import { BRAND_PAIRS, STANDARD_PAIRS, pairsExtension } from "../src/contract/defaults";
+import { checkRoles } from "../src/contract/roles";
+import { docFrom, hexColor, validTokens } from "./helpers";
 
 describe("checkContrast", () => {
   test("the valid fixture passes all 13 pairs in both modes", () => {
@@ -73,5 +75,37 @@ describe("readPairs: every text colour must be checked", () => {
     const t = validTokens();
     t.$extensions["dev.motif"].pairs[0].kind = "toString";
     expect(readPairs(docFrom(t)).findings.map((f) => f.code)).toEqual(["bad-pair"]);
+  });
+});
+
+describe("the optional brand colours' readability pairs", () => {
+  const withBrand = (onBrand = "#FFFFFF") => {
+    const t = validTokens();
+    const role = (name: string, light: string, dark: string) =>
+      (t.color[name] = { $value: hexColor(light), $extensions: { "dev.motif": { modes: { dark: hexColor(dark) } } } });
+    role("brand", "#0B3550", "#4C7899");
+    role("on-brand", onBrand, "#FFFFFF");
+    role("brand-soft", "#E2EDF3", "#1C2B37");
+    t.$extensions["dev.motif"].pairs = pairsExtension([...STANDARD_PAIRS, ...BRAND_PAIRS]);
+    return t;
+  };
+
+  test("are a list of their own: on-brand on brand, text-primary on brand-soft, brand on brand-soft", () => {
+    expect(BRAND_PAIRS).toEqual([["on-brand", "brand", "text"], ["text-primary", "brand-soft", "text"], ["brand", "brand-soft", "ui"]]);
+  });
+
+  test("the standard pairs don't name them, so a theme without the roles isn't given pairs it can't have", () => {
+    expect(pairsExtension().map((p) => `${p.fg} ${p.bg}`).join(" ")).not.toContain("brand");
+    const t = validTokens();
+    t.$extensions["dev.motif"].pairs = pairsExtension();
+    expect(checkRoles(docFrom(t))).toEqual([]);
+    expect(checkContrast(docFrom(t)).findings).toEqual([]);
+  });
+
+  test("a theme with the roles and their pairs passes, and a hard-to-read on-brand is reported", () => {
+    expect(checkRoles(docFrom(withBrand()))).toEqual([]);
+    expect(checkContrast(docFrom(withBrand())).findings).toEqual([]);
+    const f = checkContrast(docFrom(withBrand("#1A4560"))).findings;
+    expect(f.map((x) => [x.code, x.path])).toEqual([["low-contrast", "color.on-brand"]]);
   });
 });

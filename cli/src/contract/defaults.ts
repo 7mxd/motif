@@ -7,6 +7,11 @@ export const STANDARD_PAIRS: [string, string, "text" | "ui"][] = [
   ["on-warning", "warning", "text"], ["on-danger", "danger", "text"], ["on-info", "info", "text"], ["focus", "background", "ui"],
 ];
 
+/** Pairs for the optional brand colours, kept apart so a theme without those roles isn't given pairs it can't have. */
+export const BRAND_PAIRS: [string, string, "text" | "ui"][] = [
+  ["on-brand", "brand", "text"], ["text-primary", "brand-soft", "text"], ["brand", "brand-soft", "ui"],
+];
+
 export const SPACE_SCALE: [string, number][] = [
   ["0", 0], ["1", 4], ["2", 8], ["3", 12], ["4", 16], ["5", 20], ["6", 24], ["8", 32], ["10", 40], ["12", 48], ["16", 64],
 ];
@@ -54,6 +59,6 @@ export function springGroup(duration: number, bounce: number) {
   };
 }
 
-export function pairsExtension() {
-  return STANDARD_PAIRS.map(([fg, bg, kind]) => ({ fg: `color.${fg}`, bg: `color.${bg}`, kind }));
+export function pairsExtension(pairs = STANDARD_PAIRS) {
+  return pairs.map(([fg, bg, kind]) => ({ fg: `color.${fg}`, bg: `color.${bg}`, kind }));
 }
