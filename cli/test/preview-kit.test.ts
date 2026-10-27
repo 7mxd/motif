@@ -48,6 +48,20 @@ describe("preview kit", () => {
     }
   });
 
+  test("the brand classes fall back to the action colours when a theme has no brand roles (looks comparison)", () => {
+    const css = read("kit.css");
+    const readme = read("README.md");
+    for (const cls of ["mk-brand", "mk-tile", "mk-art", "mk-stat"]) {
+      expect(css).toContain(`.${cls} `);
+      expect(readme).toContain(`\`.${cls}\``);
+    }
+    // Every use of a brand role has a fallback.
+    expect(css.match(/var\(--motif-color-(?:on-brand|brand-soft|brand)(?![\w-])(?!,)/g)).toBeNull();
+    expect(css).toContain("var(--motif-color-brand, var(--motif-color-action-primary))");
+    expect(css).toContain("var(--motif-color-on-brand, var(--motif-color-on-action-primary))");
+    expect(css).toContain("var(--motif-color-brand-soft, var(--motif-color-action-secondary))");
+  });
+
   test("kit.js is valid JavaScript", () => {
     expect(() => new Bun.Transpiler({ loader: "js" }).transformSync(read("kit.js"))).not.toThrow();
   });

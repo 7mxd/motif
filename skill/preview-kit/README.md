@@ -30,6 +30,8 @@ Copy `kit.css`, `kit.js`, `vendor/motion.js` and the `fonts` folder next to the 
 
 `.mk-btn` (with `.mk-secondary`, `.mk-ghost`, `.mk-block`) · `.mk-field` with a `label` and `.mk-input`, `.mk-hint`, `.mk-error-text` · `.mk-card` · `.mk-list` of `.mk-row` · `.mk-avatar` · `.mk-badge` (with `.mk-success`, `.mk-warning`, `.mk-danger`, `.mk-info`) · `.mk-icon` · `.mk-divider` · `.mk-topbar` · `.mk-tabbar` of `.mk-tab` (`.mk-active`) · `.mk-sidebar` of `.mk-nav-item` (`.mk-active`) · `.mk-scrim`, `.mk-sheet`, `.mk-dialog`, `.mk-toast` · `.mk-skeleton` · `.mk-empty`
 
+Brand moments, in the theme's optional `brand`, `on-brand` and `brand-soft` roles (or the action colours when it has none): `.mk-brand`, a panel in the brand colour, or a band across the screen when it sits straight in a frame or an unpadded `.mk-screen`; a `.mk-btn` on it is drawn in on-brand, `.mk-secondary` is outlined and `.mk-muted` is softened · `.mk-tile`, a square tile in brand-soft holding an `.mk-icon` in the brand colour · `.mk-art`, a centred block holding an inline `<svg>` illustration whose `currentColor` is the brand colour · `.mk-stat`, a number over its label ("7 runs a week"). Never use them for buttons or links.
+
 ## Motion
 
 Add `data-enter="rise"` (or `fade`, `scale`) to animate an element in with the guide's `smooth` spring; buttons, rows, tabs and nav items get press feedback with the `snappy` spring. Motion is skipped when the viewer prefers reduced motion. Show every state a screen needs (loading with `.mk-skeleton`, empty with `.mk-empty`, errors with `.mk-error-text` or a `.mk-toast`) as separate frames.
