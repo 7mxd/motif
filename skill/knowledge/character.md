@@ -28,7 +28,7 @@ A quiet brief still gets its one moment, and a loud brief still keeps its workin
 ## Where the brand is loud
 
 - **First impressions:** the welcome or landing page, onboarding, sign-in, empty states and success moments. The brand lives here.
-- **Working screens:** lists, forms, settings and dashboards. Here the [visual craft](visual-craft.md) rules hold: about a tenth accent, one primary action, `action-primary` only for acting. Character shows in the details: the screen's key number in `display`, today's focus card (the next run, the amount owed) in `brand` with `on-brand` text when the brief is energetic or bold, initials avatars of the people involved, tinted category tiles, an illustrated empty state.
+- **Working screens:** lists, forms, settings and dashboards. Here the [visual craft](visual-craft.md) rules hold: about a tenth accent, one primary action, `action-primary` only for acting. Character shows in the details: the screen's key number in `display`, today's focus card (the next run, the amount owed) in `brand` with `on-brand` text when the brief is energetic or bold, initials avatars of the people involved, tinted category tiles, an illustrated empty state. For playful, friendly or energetic briefs the dial reaches these screens too, or they read as "clean but plain" beside the welcome screen: each item gets a small drawn thumbnail from the same family as the welcome drawing (the plant's pot with its face, a run's route line), kinds get colour-coded tags, a to-do gets a round check-off circle, and buttons feel tactile (below). Quiet briefs keep their working screens plain.
 
 ## The brand roles
 
@@ -61,7 +61,8 @@ A simple drawn illustration does more for character than any colour choice. Draw
 - A small floating card from the app itself ("Monty is thirsty · Water today") next to the drawing ties it to what the app does.
 - Look at the drawing on its own in the screenshot before you finish. If it looks rough next to the type, simplify it rather than ship it.
 - For playful briefs, a face makes it a mascot (two dots and a smile on the pot).
-- One illustration per screen, sized to the moment: about a third of a phone's welcome screen, smaller in an empty state, none on working screens.
+- One illustration per screen, sized to the moment: about a third of a phone's welcome screen, smaller in an empty state; on working screens only the small item thumbnails above, for playful, friendly or energetic briefs.
+- A drawing never stops at a hard edge partway across the screen: it sits inside a shape (a circle, a soft blob, a rounded card) or runs off the screen's edge.
 - It's decoration: hidden from screen readers (`aria-hidden="true"` on the web, excluded from accessibility on native platforms).
 - Each stack draws it with its own tools: inline `<svg>` with `fill="var(--motif-color-brand)"` or `currentColor` on the web; `Canvas` in Compose; `CustomPaint` in Flutter; `Shape` and `Path` in SwiftUI; `react-native-svg` in Expo (ask before adding it) or composed views. Mockups use an inline `<svg>` inside the preview kit's `.mk-art`.
 - Never emoji in its place (see [emoji as UI](anti-patterns.md#emoji-as-ui)).
@@ -72,7 +73,8 @@ A simple drawn illustration does more for character than any colour choice. Draw
 - **The second button stays quiet.** A second action on `surface` with a `border`, or a text button. Two saturated buttons side by side make people stop and compare.
 - **Bilingual apps show their language switch** on public screens (at the top end), not only in settings.
 - **Real-looking content.** Names, initials avatars, counts, exact times and places. A list of people going reads warmer than "12 attendees".
-- **A desktop is not a stretched phone.** Use the width: a panel beside the form, a preview beside the headline, two columns for a list and its detail. A sidebar earns its width with real navigation; with only two or three places to go, use a top bar instead. Columns side by side start at the same top line.
+- **A desktop is not a stretched phone.** Use the width: a panel beside the form, a preview beside the headline, two columns for a list and its detail. A sidebar earns its width with real navigation; with only two or three places to go, use a top bar instead. Columns side by side start at the same top line. A list row is never wider than about 720px: a wider list becomes a grid of cards or gains a side column, so rows don't stretch across empty space.
+- **Playful and energetic briefs feel tactile.** The main button is generous (at least 52px tall on a phone, a heavier label) with a darker edge of 3–4px underneath (on the web, a `box-shadow` of `color-mix()` between `action-primary` and `text-primary`; natively, the same mix computed from the theme's roles) that flattens when pressed. Fields carry a leading icon (mail, lock). On a phone, the sign-in form sits in a `surface` card under the drawing and heading. Quiet briefs keep flat, plain buttons and fields.
 
 ## Slips that undo it
 
@@ -94,6 +96,7 @@ People comparing two screens notice small slips before they notice style, and on
 - **Phone rows leave the title room.** If a row's time column and its action leave the title less than half the width, titles wrap word by word: move the time into the row's first line ("Today · 18:30") or the action below the text, so a title wraps at most once.
 - **The mark appears once per screen.** A desktop sign-in with a `brand` panel puts the logo on the panel or above the form, not both.
 - **One heading per thing.** A page title and a section title right under it that say the same ("This week" over "This week's runs") are one too many: drop one.
+- **Overlapping avatars keep every initial whole.** They overlap by at most a quarter of their width, each with a ring in the surface colour, and the initials stay centred and uncut.
 - **Short labels don't break.** Chips, badges and short facts ("Living room", "12 going") never wrap mid-phrase: shorten them, or let the whole chip move to the next line.
 - **Home leads with one thing.** Today's focus first (the next run, today's plants, the amount owed), then a few rows and "See all". A phone's first screen is not a dense list of everything, and a desktop's is not one narrow column beside a large empty area.
 - **No stray scaffolding.** No "Demo: name / password" hints, "Lorem", placeholder routes or debug labels on screen; mock sign-in details go in the README.
