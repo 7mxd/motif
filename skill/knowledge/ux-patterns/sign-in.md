@@ -11,11 +11,12 @@ Getting into an account, creating one, and getting back in when something goes w
 ## Anatomy
 
 - **Fastest method first:** a passkey or the platform's own sign-in when available, then social options, then email.
-- **Email field:** labelled "Email", with the email keyboard and autocomplete hints.
+- **Email field:** labelled "Email", with the email keyboard, autocomplete hints and a short example as its placeholder ("you@example.com"), never in place of the label.
 - **Password field:** labelled "Password", with a Show/Hide toggle inside the field.
 - **Primary action:** "Sign in" or "Create account" (`action-primary`), full width of the form.
-- **"Forgot password?":** a quiet link right under the password field, at the end, not hidden at the bottom. Not in the label row: its tap area makes that label sit farther from its field than the others.
-- **Switch link:** "New here? Create an account" / "Already have an account? Sign in".
+- **"Forgot password?":** a quiet link at the end of the password label's row, the label's size, not hidden at the bottom. That row stays as tall as the other label rows: give the link its tap area with padding and an equal negative margin, so the password field doesn't sit lower under its label than the email field does.
+- **The app's mark with its name** above the heading, so the screen says whose it is.
+- **Switch link:** "New here? Create an account" / "Already have an account? Sign in", the question and the link in the same size and on one baseline.
 - **Sign-up extras:** the password rules shown before typing, and the terms in one line of `caption` text with links.
 - **Magic link:** "Email me a sign-in link" as an alternative to a password.
 - **One-time code field:** accepts paste and the platform's code autofill; the digits can be typed in one go.

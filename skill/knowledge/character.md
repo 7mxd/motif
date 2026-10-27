@@ -72,20 +72,24 @@ A simple drawn illustration does more for character than any colour choice. Draw
 - **The second button stays quiet.** A second action on `surface` with a `border`, or a text button. Two saturated buttons side by side make people stop and compare.
 - **Bilingual apps show their language switch** on public screens (at the top end), not only in settings.
 - **Real-looking content.** Names, initials avatars, counts, exact times and places. A list of people going reads warmer than "12 attendees".
-- **A desktop is not a stretched phone.** Use the width: a panel beside the form, a preview beside the headline, two columns for a list and its detail.
+- **A desktop is not a stretched phone.** Use the width: a panel beside the form, a preview beside the headline, two columns for a list and its detail. A sidebar earns its width with real navigation; with only two or three places to go, use a top bar instead. Columns side by side start at the same top line.
 
 ## Slips that undo it
 
 People comparing two screens notice small slips before they notice style, and one slip can lose a screen that is better in every other way. Check each first-impression and home screen for these:
 
-- **Every label sits the same distance above its field.** A "Forgot password?" link goes under the password field, at the end; in the label row its tap area makes that label float higher than the others.
+- **Every label sits the same distance above its field.** A "Forgot password?" link in the password label's row must not make that row taller (see [sign-in](ux-patterns/sign-in.md)).
+- **One focus mark.** A focused field changes its border to `focus` or gets a ring flush against it, never a ring with a gap outside a border that still shows: that reads as a double border. Screenshots often catch the first field focused, so check how it looks.
+- **Groups, then gaps.** On a short screen like sign-in, things that belong together sit close (the mark, heading and line; each label and field), the gaps between groups are larger, and the space left over goes below the content, not spread between fields.
+- **Inline text matches.** A question and its link ("New to Ledgerly? Create an account"), or a value and its unit, share one size and one baseline.
 - **Item titles are never smaller than their descriptions.** In a feature row or a list item the title is `heading` (or `body` in a heavier weight) and the description is `body` or `caption` in `text-secondary`, never larger than the title above it.
 - **Counts match what's shown.** "To do today (3)" lists three items, or ends with "Show all".
 - **Rows line up.** Titles start at the same place in every row: a leading badge whose width changes with its word pushes them out of line, so status badges go at the end of the row (or the leading slot gets one fixed width). On a phone, titles wrap to a second line instead of ending in "…"; shorten the copy if they're long.
 - **Each action appears once.** "Sign in" in the header and again beside the main action is one too many; the hero's second action is something else ("See how it works") or nothing.
 - **The main action clearly outweighs the second one,** by fill as well as position.
 - **Small grey text is rare.** A row's second line is `label` or `body` in `text-secondary`, not `caption`; `caption` is for a timestamp or a count. A screen where most of the text is small and grey looks unfinished.
-- **Repeated actions look alike.** Every row's "Join" button has the same style; a row already joined shows its state ("Going ✓") instead of a paler button that looks disabled.
+- **Repeated actions look alike and stay put.** Every row's action sits in the same place (the end of the row) at the same width, whatever it says: "Join", "Going ✓" or "Full" share one shape, with the state in its words and colour, never a paler button that looks disabled or one that moves below the text in some rows. A row's quieter link ("Can't make it") lines up with the row's text. Buttons people should press look pressable: a fill or border that stands out, not a pale tint.
+- **Short labels don't break.** Chips, badges and short facts ("Living room", "12 going") never wrap mid-phrase: shorten them, or let the whole chip move to the next line.
 - **Home leads with one thing.** Today's focus first (the next run, today's plants, the amount owed), then a few rows and "See all". A phone's first screen is not a dense list of everything, and a desktop's is not one narrow column beside a large empty area.
 - **No stray scaffolding.** No "Demo: name / password" hints, "Lorem", placeholder routes or debug labels on screen; mock sign-in details go in the README.
 - **Backgrounds run to the end.** A sidebar's colour reaches the bottom of a long page (let the layout's grid stretch it, with the navigation inside it sticky), and a gradient covers the whole page instead of stopping in a band.
