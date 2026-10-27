@@ -54,7 +54,7 @@ These are fine when the developer asks for them or the brand already uses them. 
 
 | Text | Headings | Arabic | Why |
 |---|---|---|---|
-| Source Serif 4 | Noto Serif Display | Markazi Text | A reading serif under a refined, high-contrast display serif. The Editorial style's pair. |
+| Source Serif 4 | Brygada 1918 | Markazi Text | A reading serif under a sturdy, refined display serif whose thin strokes hold up when a screen is shrunk. The Editorial style's pair. |
 | Source Serif 4 | Eczar | Markazi Text | Livelier, more confident headings (no Cyrillic). |
 | Literata | Literata | Noto Naskh Arabic | A reading face made for e-books, with a classic Naskh. |
 

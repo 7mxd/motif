@@ -877,15 +877,15 @@ exports[`preset editorial React web output stays the same 1`] = `
   --motif-shadow-sm: 0px 1px 2px 0px rgb(31 23 22 / 0.032);
   --motif-shadow-md: 0px 4px 12px 0px rgb(31 23 22 / 0.04);
   --motif-shadow-lg: 0px 12px 32px 0px rgb(31 23 22 / 0.056);
-  --motif-font-display-family: "Noto Serif Display", "Markazi Text", Georgia, serif;
+  --motif-font-display-family: "Brygada 1918", "Markazi Text", Georgia, serif;
   --motif-font-display-size: 48px;
   --motif-font-display-weight: 700;
   --motif-font-display-line-height: 1.1;
-  --motif-font-title-family: "Noto Serif Display", "Markazi Text", Georgia, serif;
+  --motif-font-title-family: "Brygada 1918", "Markazi Text", Georgia, serif;
   --motif-font-title-size: 32px;
   --motif-font-title-weight: 700;
   --motif-font-title-line-height: 1.2;
-  --motif-font-heading-family: "Noto Serif Display", "Markazi Text", Georgia, serif;
+  --motif-font-heading-family: "Brygada 1918", "Markazi Text", Georgia, serif;
   --motif-font-heading-size: 22px;
   --motif-font-heading-weight: 600;
   --motif-font-heading-line-height: 1.3;

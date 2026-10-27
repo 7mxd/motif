@@ -1,5 +1,6 @@
 import alexandriaArabic from "../../../skill/preview-kit/fonts/alexandria-arabic.woff2" with { type: "file" };
 import balooBhaijaan2Arabic from "../../../skill/preview-kit/fonts/baloo-bhaijaan-2-arabic.woff2" with { type: "file" };
+import brygada1918 from "../../../skill/preview-kit/fonts/brygada-1918.woff2" with { type: "file" };
 import changaArabic from "../../../skill/preview-kit/fonts/changa-arabic.woff2" with { type: "file" };
 import elMessiriArabic from "../../../skill/preview-kit/fonts/el-messiri-arabic.woff2" with { type: "file" };
 import fontsCss from "../../../skill/preview-kit/fonts/fonts.css" with { type: "text" };
@@ -8,7 +9,6 @@ import geologica from "../../../skill/preview-kit/fonts/geologica.woff2" with { 
 import madaArabic from "../../../skill/preview-kit/fonts/mada-arabic.woff2" with { type: "file" };
 import markaziTextArabic from "../../../skill/preview-kit/fonts/markazi-text-arabic.woff2" with { type: "file" };
 import merriweatherSans from "../../../skill/preview-kit/fonts/merriweather-sans.woff2" with { type: "file" };
-import notoSerifDisplay from "../../../skill/preview-kit/fonts/noto-serif-display.woff2" with { type: "file" };
 import nunito from "../../../skill/preview-kit/fonts/nunito.woff2" with { type: "file" };
 import onest from "../../../skill/preview-kit/fonts/onest.woff2" with { type: "file" };
 import publicSans from "../../../skill/preview-kit/fonts/public-sans.woff2" with { type: "file" };
@@ -24,6 +24,7 @@ import zalandoSansExpanded from "../../../skill/preview-kit/fonts/zalando-sans-e
 export const EMBEDDED_FONT_FILES: Record<string, string> = {
   "alexandria-arabic.woff2": alexandriaArabic,
   "baloo-bhaijaan-2-arabic.woff2": balooBhaijaan2Arabic,
+  "brygada-1918.woff2": brygada1918,
   "changa-arabic.woff2": changaArabic,
   "el-messiri-arabic.woff2": elMessiriArabic,
   "fredoka.woff2": fredoka,
@@ -31,7 +32,6 @@ export const EMBEDDED_FONT_FILES: Record<string, string> = {
   "mada-arabic.woff2": madaArabic,
   "markazi-text-arabic.woff2": markaziTextArabic,
   "merriweather-sans.woff2": merriweatherSans,
-  "noto-serif-display.woff2": notoSerifDisplay,
   "nunito.woff2": nunito,
   "onest.woff2": onest,
   "public-sans.woff2": publicSans,

@@ -29,7 +29,7 @@ describe("firstFamily", () => {
 describe("themeFonts", () => {
   test("a starting style's fonts are all bundled, with the weights its roles use", () => {
     const fonts = themeFonts(presetTheme("editorial")!).filter((f) => f.source !== "system");
-    expect(fonts.map((f) => [f.family, f.source])).toEqual([["Noto Serif Display", "bundled"], ["Markazi Text", "bundled"], ["Source Serif 4", "bundled"]]);
+    expect(fonts.map((f) => [f.family, f.source])).toEqual([["Brygada 1918", "bundled"], ["Markazi Text", "bundled"], ["Source Serif 4", "bundled"]]);
     for (const f of fonts) expect(f.weights).toEqual([...f.weights].sort((a, b) => a - b));
   });
 

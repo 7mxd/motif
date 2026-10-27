@@ -18,6 +18,7 @@ export const ARABIC_RANGE =
 export const FONT_LIST: ListedFont[] = [
   { family: "Alexandria", slug: "alexandria", weight: [100, 900], arabic: true },
   { family: "Baloo Bhaijaan 2", slug: "baloo-bhaijaan-2", weight: [400, 800], arabic: true },
+  { family: "Brygada 1918", slug: "brygada-1918", weight: [400, 700] },
   { family: "Changa", slug: "changa", weight: [200, 800], arabic: true },
   { family: "El Messiri", slug: "el-messiri", weight: [400, 700], arabic: true },
   { family: "Fredoka", slug: "fredoka", weight: [300, 700] },
@@ -25,7 +26,6 @@ export const FONT_LIST: ListedFont[] = [
   { family: "Mada", slug: "mada", weight: [200, 900], arabic: true },
   { family: "Markazi Text", slug: "markazi-text", weight: [400, 700], arabic: true },
   { family: "Merriweather Sans", slug: "merriweather-sans", weight: [300, 800] },
-  { family: "Noto Serif Display", slug: "noto-serif-display", weight: [100, 900] },
   { family: "Nunito", slug: "nunito", weight: [200, 1000] },
   { family: "Onest", slug: "onest", weight: [100, 900] },
   { family: "Public Sans", slug: "public-sans", weight: [100, 900] },

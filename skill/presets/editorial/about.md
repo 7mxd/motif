@@ -6,4 +6,4 @@
 
 **Avoid for:** busy dashboards and tap-heavy utility apps
 
-**Fonts:** Noto Serif Display for headings, Source Serif 4 for text, Markazi Text for Arabic · **Corners:** 0 / 2 / 4 px · **Motion:** restrained and smooth
+**Fonts:** Brygada 1918 for headings, Source Serif 4 for text, Markazi Text for Arabic · **Corners:** 0 / 2 / 4 px · **Motion:** restrained and smooth
