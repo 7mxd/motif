@@ -48,5 +48,5 @@ Getting into an account, creating one, and getting back in when something goes w
 ## Mobile and web
 
 - **Mobile:** the email keyboard for email; autocomplete hints (`username`, `current-password`, `new-password`, `one-time-code`) so the platform offers saved passwords and codes from messages; biometric re-entry for returning people; the primary button stays visible above the keyboard.
-- **Web:** a narrow centred card (about 400–480 px wide) on a quiet background; Enter submits; focus starts in the first field; the browser's password manager works (real form fields with the right autocomplete values).
+- **Web:** a form about 400–480 px wide; on a wide screen, a `brand` panel beside it with a quote, an illustration or a preview of the app (see [character](../character.md)), or for a quiet brief a centred card on a calm background; Enter submits; focus starts in the first field; the browser's password manager works (real form fields with the right autocomplete values).
 - **Both:** the same layout and copy for sign-in and sign-up where possible, so switching between them doesn't feel like a new page.

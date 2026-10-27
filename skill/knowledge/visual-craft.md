@@ -74,9 +74,9 @@ A starting rhythm on the 4 px scale:
 
 ## Colour
 
-**Roughly 60/30/10.** Background and surfaces cover most of the screen. Text and borders carry the structure. The accent stays rare, around a tenth, so that when it appears it means something.
+**Roughly 60/30/10 on working screens.** Background and surfaces cover most of the screen. Text and borders carry the structure. The accent stays rare, around a tenth, so that when it appears it means something. First impressions (a welcome or landing page, sign-in, empty states) are where the brand gets to be loud: see [character](character.md).
 
-**`action-primary` means "you can act here".** Use it for the primary button, links and selected states. Never use it for decoration, illustration fills, section headings or large backgrounds: each of those teaches people to ignore the colour that is supposed to guide them.
+**`action-primary` means "you can act here".** Use it for the primary button, links and selected states. Never use it for decoration, illustration fills, section headings or large backgrounds: each of those teaches people to ignore the colour that is supposed to guide them. Bands, panels and illustrations in the brand's colour use the `brand` roles instead.
 
 **Status colours are for status only.** `success`, `warning`, `danger` and `info` mark outcomes and states. Always pair them with an icon or words, never colour alone: about one in twelve men can't tell red from green. Text on a status fill uses its `on-*` role (`on-danger` on `danger`).
 
@@ -153,5 +153,6 @@ Run this before you show a screen to the developer:
 10. Nothing is centred that should be start-aligned.
 11. Icons come from one set, at one weight, sized with their text.
 12. Any motion uses the motion roles and respects reduced motion (see [motion](motion.md)).
+13. The five-second test from [character](character.md) passes: the screen feels like the brief's personality words, not just tidy.
 
 Before you finish, also read [anti-patterns](anti-patterns.md): the checklist above says what good looks like, and that file names the most common ways screens go wrong.

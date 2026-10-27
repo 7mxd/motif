@@ -10,7 +10,7 @@ The first minutes of an app, from opening it to the first thing that's actually 
 
 ## Anatomy
 
-- **Welcome:** the app's name or mark, one line saying what it does for them, a primary "Get started" (`action-primary`) and a secondary "I already have an account".
+- **Welcome:** the app's name or mark, its brand moment (an illustration or a `brand` band, as loud as the brief asks: see [character](../character.md)), one line saying what it does for them, a primary "Get started" (`action-primary`) and a quiet secondary "I already have an account".
 - **Benefit steps (optional, at most three):** one idea per step, a short `title` and one line of `body`, progress dots, and Skip on every step.
 - **Permission primer:** shown just before any system permission prompt (notifications, location, camera). It says why the app needs it and what people get, with "Allow" and "Not now". The system prompt appears only after "Allow".
 - **Personalisation (optional):** a few choices as chips or cards (interests, goals, experience level), several selectable at once, with Skip and a clear Continue.
@@ -41,4 +41,4 @@ The first minutes of an app, from opening it to the first thing that's actually 
 
 - **Mobile:** full-screen steps; the primary action at the bottom within thumb reach; swipe between benefit steps as well as buttons; the permission primer right before the system prompt; resume after the app is closed mid-flow.
 - **Web:** usually no carousel at all: a landing page explains the value, sign-up is one short form, and the app opens on the first project. Use an in-app checklist ("3 of 5 done") on the home screen for setup tasks instead of blocking steps.
-- **Both:** the welcome and first-run screen follow the design guide like any other screen; onboarding is not the place for a different style.
+- **Both:** the welcome and first-run screen follow the design guide like any other screen; onboarding is not the place for a different style, but it is where the guide's brand roles are loudest.
