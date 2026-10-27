@@ -100,6 +100,9 @@ beforeAll(() => {
       // of its list, on pages longer than the screen.
       if (path === "/tab-bar") return html('<body style="margin:0"><header style="position:fixed;top:0;left:0;right:0;height:40px;background:#00ff00"></header><div style="height:2000px"></div><nav style="position:fixed;bottom:0;left:0;right:0;height:60px;background:#ff0000"></nav></body>');
       if (path === "/sticky") return html('<body style="margin:0"><main><div style="height:2000px"></div><div style="position:sticky;bottom:0;height:50px;background:#0000ff"></div></main></body>');
+      // A desktop sidebar a screen tall, fixed to the side or stuck to the top, beside a page longer than the screen.
+      if (path === "/sidebar") return html('<body style="margin:0"><aside style="position:fixed;top:0;left:0;width:150px;height:100vh;background:#00ff00"></aside><div style="height:2000px"></div></body>');
+      if (path === "/sticky-sidebar") return html('<body style="margin:0;display:grid;grid-template-columns:150px 1fr"><aside style="position:sticky;top:0;align-self:start;height:100vh;background:#0000ff"></aside><div style="height:2000px"></div></body>');
       // A single-page app's router sends a page that needs a session to its sign-in page in the browser (an Angular guard,
       // a Vue or React router redirect): the server answers 200 for both.
       if (path === "/guarded") return html('<h1>Loading</h1><script>history.replaceState(null, "", "/sign-in"); document.querySelector("h1").textContent = "Sign in";</script>');
@@ -363,6 +366,21 @@ describe.skipIf(!browser)("bars fixed or stuck to the bottom of the screen (need
     expect(pngSize(stuck)).toEqual({ width: 390, height: 2050 });
     expect(pixel(stuck, 195, 2030)).toEqual([0, 0, 255, 255]);
     expect(pixel(stuck, 195, 820)).not.toEqual([0, 0, 255, 255]);
+  }, 120_000);
+
+  test("a sidebar a screen tall runs to the end of a long page, as it does for someone who scrolls (v1 Test A)", async () => {
+    const PHONE = [{ name: "mobile" as const, width: 390, height: 844, scale: 1, mobile: true }];
+    const out = tempDir("motif-shots-");
+    await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/sidebar", "/sticky-sidebar"], outDir: out, settleMs: 50, viewports: PHONE, appScheme: "light" });
+    const fixed = new Uint8Array(readFileSync(join(out, "sidebar.mobile.png")));
+    expect(pngSize(fixed)).toEqual({ width: 390, height: 2000 });
+    expect(pixel(fixed, 20, 20)).toEqual([0, 255, 0, 255]);
+    expect(pixel(fixed, 20, 1980)).toEqual([0, 255, 0, 255]);
+    expect(pixel(fixed, 300, 1980)).not.toEqual([0, 255, 0, 255]);
+    const stuck = new Uint8Array(readFileSync(join(out, "sticky-sidebar.mobile.png")));
+    expect(pngSize(stuck)).toEqual({ width: 390, height: 2000 });
+    expect(pixel(stuck, 20, 1980)).toEqual([0, 0, 255, 255]);
+    expect(pixel(stuck, 300, 1980)).not.toEqual([0, 0, 255, 255]);
   }, 120_000);
 });
 

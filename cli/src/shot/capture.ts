@@ -230,25 +230,34 @@ const DEV_TOOLS = ["nextjs-portal", "#nuxt-devtools-container", "#__vue-devtools
 const HIDE_DEV_BADGES = `(() => { const s = document.createElement("style"); s.textContent = ${JSON.stringify(`${DEV_TOOLS.join(", ")} { display: none !important; }`)}; document.head.append(s); return true; })()`;
 const PAGE_HEIGHT = "document.documentElement.scrollHeight";
 // A shot longer than the screen leaves a bar fixed or stuck to the bottom of the screen where the first screen ends,
-// across the middle of the page (v1 Test A: a phone's tab bar with the list running on below it). For the shot it is
-// drawn where someone who scrolls to the end sees it; BARS_BACK puts it back before the audit.
+// across the middle of the page (v1 Test A: a phone's tab bar with the list running on below it), and a sidebar the
+// height of the screen stopping there (v1 Test A: a desktop app's navigation). For the shot, a bar is drawn where
+// someone who scrolls to the end sees it and a sidebar runs to the end of the page; BARS_BACK puts both back before
+// the audit.
 const BARS_TO_END = `(() => {
   const end = document.documentElement.scrollHeight, moved = [];
   for (const el of document.querySelectorAll("body *")) {
     if (moved.some(([m]) => m.contains(el))) continue;
     const cs = getComputedStyle(el);
-    const sticky = cs.position === "sticky" && cs.bottom !== "auto";
-    if (cs.position !== "fixed" && !sticky) continue;
+    if (cs.position !== "fixed" && cs.position !== "sticky") continue;
     const r = el.getBoundingClientRect();
-    // Top bars, sidebars and overlays the height of the screen stay where they are.
-    if (r.width === 0 || r.height === 0 || r.height > innerHeight / 2 || r.top < innerHeight / 2) continue;
+    if (r.width === 0 || r.height === 0 || r.right <= 0 || r.left >= innerWidth) continue;
+    const sidebar = r.top <= 1 && r.height >= innerHeight * 0.9 && r.width <= innerWidth / 2;
+    const bar = r.height <= innerHeight / 2 && r.top >= innerHeight / 2 && (cs.position === "fixed" || cs.bottom !== "auto");
+    // Top bars and overlays stay where they are.
+    if (!sidebar && !bar) continue;
     moved.push([el, el.style.cssText]);
-    if (sticky) { el.style.position = "static"; continue; }
-    const fromEnd = innerHeight - r.top;
-    Object.assign(el.style, { position: "absolute", top: "0px", bottom: "auto", left: "0px", right: "auto", margin: "0", width: r.width + "px", height: r.height + "px" });
+    if (cs.position === "sticky") {
+      el.style.position = "static";
+      if (sidebar) el.style.height = (end - (el.getBoundingClientRect().top + scrollY)) + "px";
+      continue;
+    }
+    const top = sidebar ? r.top + scrollY : end - (innerHeight - r.top);
+    const height = sidebar ? end - top : r.height;
+    Object.assign(el.style, { position: "absolute", top: "0px", bottom: "auto", left: "0px", right: "auto", margin: "0", width: r.width + "px", height: height + "px" });
     // Placed against whatever holds it, then moved by what is left to where it belongs on the page.
     const at = el.getBoundingClientRect();
-    el.style.top = (end - fromEnd - (at.top + scrollY)) + "px";
+    el.style.top = (top - (at.top + scrollY)) + "px";
     el.style.left = (r.left - at.left) + "px";
   }
   window.__motifBars = moved;
