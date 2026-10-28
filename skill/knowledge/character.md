@@ -34,7 +34,7 @@ A quiet brief still gets its one moment, and a loud brief still keeps its workin
 
 Every starting style has three optional colour roles for this; a theme without them can add them (with their readability pairs, described in `DESIGN.md` section 3 and logged in the change log):
 
-- `brand`: the brand's own colour for bands, panels, illustration fills and a highlighted stat. Never for buttons or links: those stay `action-primary`, so people can still tell what they can press.
+- `brand`: the brand's own colour for bands, panels, illustration fills and a highlighted stat. Never for buttons or links: those stay `action-primary`, so people can still tell what they can press. The two are one family: unless the brief names a separate button colour, `action-primary` is the brand's own hue (a deeper shade of it when the brand itself is too light for white text) or a close neighbour of it, never an unrelated one. A blue button beside an orange brand and logo reads as two colour systems at a glance, and judges call it a clash.
 - `on-brand`: text and icons on a `brand` fill. For an orange, red, green or blue, pick `brand` deep enough that `on-brand` can be white or near-white at 4.5:1 or more (a burnt orange, not a tangerine; a forest green, not a lime): near-black text on a bright orange or green band looks muddy at a glance, even when it passes. A yellow or amber is the exception: when the brief says sunny, golden or bright, keep `brand` a clear warm yellow with near-black `on-brand` text, as a rust or mustard stand-in reads muted and heavier than the brief asks for.
 - `brand-soft`: a quiet tint for icon tiles, highlighted rows and the ground behind an illustration.
 
