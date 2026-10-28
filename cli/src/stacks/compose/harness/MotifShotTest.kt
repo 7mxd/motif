@@ -578,13 +578,13 @@ class MotifShotTest(private val index: Int) {
 
     /**
      * True when a destination's route is the one asked for: a string route by its pattern, each {argument} standing for
-     * one segment (detail/{id} is /detail/5) and its query (?tab={tab}) left out on both sides; @Name by its class's
+     * one segment (detail/{id} is /detail/5), a leading / and its query (?tab={tab}) left out on both sides; @Name by its class's
      * simple name. With exact, a pattern with arguments matches nothing (its values can't be told from it).
      */
     private fun matches(destination: Any, route: String, exact: Boolean = false): Boolean {
         val own = routeOf(destination) ?: return false
         if (!route.startsWith("@")) {
-            val pattern = own.substringBefore('?')
+            val pattern = own.substringBefore('?').removePrefix("/")
             if (exact && pattern.contains('{')) return false
             val regex = Regex(pattern.split(Regex("\\{[^}/]*\\}")).joinToString("[^/]+") { Regex.escape(it) })
             return regex.matches(route.removePrefix("/").substringBefore('?'))
@@ -641,7 +641,9 @@ class MotifShotTest(private val index: Int) {
                     methods.first { it.parameterTypes[0] == String::class.java }.invoke(controller, head, null, null)
                 }
             } else {
-                methods.first { it.parameterTypes[0] == String::class.java }.invoke(controller, route.removePrefix("/"), null, null)
+                // The route as the graph spells it: with its leading / when the app's routes have one ("/home").
+                val text = route.removePrefix("/").let { if (routeOf(destination)!!.startsWith("/")) "/$it" else it }
+                methods.first { it.parameterTypes[0] == String::class.java }.invoke(controller, text, null, null)
             }
             settle()
         } catch (t: Throwable) {

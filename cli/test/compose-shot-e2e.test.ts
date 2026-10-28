@@ -380,6 +380,18 @@ class BrokenApp : Application() {
     });
   }, 1_200_000);
 
+  test.skipIf(!android)("a route the app spells with a leading / (\"/about\") opens like one without (skipped without a JDK and the Android SDK)", async () => {
+    const main = readFileSync(join(root, MAIN), "utf8").replace(
+      '        composable("settings") {',
+      '        composable("/about") { Text("About Motif") }\n        composable("settings") {',
+    );
+    await withFiles({ [MAIN]: main }, async () => {
+      const r = await shot({ routes: "/,/about", sizes: "390", variant: "default" });
+      expect(routesOf(r.data).map((x) => [x.route, x.status, x.error ?? null])).toEqual([["/", 200, null], ["/about", 200, null]]);
+      expect(same("index.mobile.png", "about.mobile.png")).toBe(false);
+    });
+  }, 1_200_000);
+
   test.skipIf(!android)("--audit finds the pale caption, the small icon buttons with no name, and the pulse that keeps moving with Remove animations on (skipped without a JDK and the Android SDK)", async () => {
     await withFiles({ [AUDIT_FILE]: AUDIT_SCREEN }, async () => {
       const r = await shot({ screen: "AuditPreview,PulsePreview", sizes: "390", variant: "default", audit: true });
