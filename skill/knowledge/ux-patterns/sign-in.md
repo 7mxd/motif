@@ -23,7 +23,7 @@ Getting into an account, creating one, and getting back in when something goes w
 
 ## Required states
 
-- **Empty:** the form with focus in the first field.
+- **Empty:** the form with nothing focused until the person taps a field (no autofocus: on a phone it opens the keyboard over the screen).
 - **Typing:** no errors while people are still typing.
 - **Invalid email:** checked when the field loses focus, with a specific message ("Enter an email like name@example.com").
 - **Wrong email or password:** one message that doesn't say which was wrong, and the password field cleared only if the platform requires it.
