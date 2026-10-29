@@ -70,12 +70,17 @@ struct AuditScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(white: 0.5))
             .environment(\\.colorScheme, .light)
-            // A short bordered label on a dark band, the band showing past the button's rounded ends: more of the band
-            // than of any one shade of the label, so the label is read from the button's middle (Qahwa's
-            // "أضف إلى الطلب", taken for 1.64:1). Dark whatever the scheme.
+            // A short, small label on a large bordered capsule on a dark band, the band showing past the capsule's ends:
+            // more of the band than of any one shade of the label, so the label is read from the button's middle
+            // (Qahwa's "أضف إلى الطلب", taken for 1.64:1). Dark whatever the scheme.
             HStack {
                 Button("Add") {}
+                    .font(.footnote)
                     .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    #if os(iOS)
+                    .buttonBorderShape(.capsule)
+                    #endif
                     .tint(.orange)
             }
             .padding(8)
