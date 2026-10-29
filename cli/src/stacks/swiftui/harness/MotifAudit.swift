@@ -312,22 +312,33 @@ enum MotifAudit {
         if !icon && text.range(of: "[\\p{L}\\p{N}]", options: .regularExpression) == nil { return nil }
         // A switch's row holds the switch too: only its label's own colour, when the element says it, is looked for.
         if e.kind == .toggle && !icon && e.color == nil { return nil }
-        guard let drawn = pixels.drawn(in: e.rect, hint: icon ? nil : e.color, strict: (e.kind == .toggle || e.segment) && !icon) else {
+        let rect = inked(e, pixels)
+        guard let drawn = pixels.drawn(in: rect, hint: icon ? nil : e.color, strict: (e.kind == .toggle || e.segment) && !icon) else {
             return pixels.covers(e.rect) ? .unjudged(short(icon ? (e.symbol ?? "") : text)) : nil
         }
         let ratio = MotifColor.ratio(drawn.fg, drawn.bg)
-        let expected = icon || large(e, pixels: pixels, drawn: drawn) ? 3.0 : 4.5
+        let expected = icon || large(e, rect: rect, pixels: pixels, drawn: drawn) ? 3.0 : 4.5
         if ratio >= expected { return nil }
         return .failed(ratio: ratio, expected: expected, fg: MotifColor.hex(drawn.fg), bg: MotifColor.hex(drawn.bg), icon: icon)
+    }
+
+    /// Where a control's text is looked for: its frame, but for a control drawn on a shape of its own (a bordered or glass
+    /// button, a selected segment) the middle of it, left of and right of its rounded ends. Past a capsule's ends the
+    /// screen's own background shows in the frame's corners, and under a short label it outnumbers any one shade of the
+    /// anti-aliased text, so it was taken for the text's colour: a light label on its pill measured as the page against
+    /// the pill (Qahwa's "أضف إلى الطلب", 1.64:1, Plan 2L final run).
+    static func inked(_ e: MotifElement, _ pixels: MotifPixels) -> CGRect {
+        guard [.button, .link].contains(e.kind) || e.segment, pixels.onShape(e.rect) else { return e.rect }
+        return e.rect.insetBy(dx: min(e.rect.height / 2, e.rect.width / 4), dy: 0)
     }
 
     /// WCAG's large text: 18 pt (24 px), or 14 pt (about 18.66 px) in bold, as axe-core judges it on the web. From the
     /// element's font when it says; else from the height of its lines in the picture (a line is about 1.2 times its size).
     /// A control's frame holds its padding (a bordered button's shape), so its size is read from its ink instead: the
     /// tallest line of its text's rows, about 0.95 times the size (ascenders to descenders).
-    static func large(_ e: MotifElement, pixels: MotifPixels, drawn: MotifPixels.Drawn) -> Bool {
+    static func large(_ e: MotifElement, rect: CGRect, pixels: MotifPixels, drawn: MotifPixels.Drawn) -> Bool {
         if let font = e.font { return font.size >= 24 || (font.size >= 18.66 && font.bold) }
-        if e.kind != .text { return pixels.tallestLine(in: e.rect, drawn: drawn) / 0.95 >= 24 }
+        if e.kind != .text { return pixels.tallestLine(in: rect, drawn: drawn) / 0.95 >= 24 }
         let lines = max(1, pixels.lines(in: e.rect, drawn: drawn))
         return e.rect.height / Double(lines) / 1.2 >= 24
     }

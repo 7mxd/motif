@@ -11,7 +11,8 @@ export const auditFile = (app: string) => `${app}/Screens/AuditScreen.swift`;
  * A screen with problems planted for the audit: a caption in a pale grey (#bfbfbf on white, 1.83:1), a 30 pt icon button
  * with no name of its own (its SF Symbol's, "Gear Shape", only), a field whose typed text is grey (#999999, 2.84:1), and
  * a 40 pt pulse that keeps going with reduce motion on. What should pass: the title; a bordered button and (built with
- * Xcode 26 or later) a glass one, both under 44 pt but sized by the system; a decorative symbol beside its text
+ * Xcode 26 or later) a glass one, both under 44 pt but sized by the system; a short orange bordered "Add" on a dark
+ * band, whose band shows past its rounded ends and isn't taken for its label's colour; a decorative symbol beside its text
  * and a row's chevron (images, not controls: no name finding); a segmented picker, whose selected segment's frame holds
  * more of the grey track than of its black label's cores, so the track isn't taken for the label's colour (seen on
  * Apple's Landmarks, hands-on of plan 2H Task 15); a 60 pt pulse that stops when the system's setting is on
@@ -69,6 +70,18 @@ struct AuditScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(white: 0.5))
             .environment(\\.colorScheme, .light)
+            // A short bordered label on a dark band, the band showing past the button's rounded ends: more of the band
+            // than of any one shade of the label, so the label is read from the button's middle (Qahwa's
+            // "أضف إلى الطلب", taken for 1.64:1). Dark whatever the scheme.
+            HStack {
+                Button("Add") {}
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(white: 0.08))
+            .environment(\\.colorScheme, .dark)
             HStack {
                 Image(systemName: "leaf")
                 Text("Fresh today")
@@ -182,6 +195,7 @@ export function expectAudit(root: string, r: { text: string; data: Record<string
     const shown = routes.find((x) => x.route === "Audit")!.pageErrors![0]!;
     expect(shown).toContain('"Edit"');
     expect(shown).toContain('"Save"');
+    expect(shown).toContain('"Add"');
     if (hasGlass()) expect(shown).toContain('"Share"');
     else console.log("[audit] Swift is older than 6.2: the planted screen has no glass button.");
   }
