@@ -9,8 +9,18 @@ const NOT_A_PAGE = /\.(test|spec|stories)\./i;
 const SOURCE = /\.(ts|js|mts|mjs)$/;
 
 
+/** A value a path may leave out at its end: vue-router's :id? and :path*, Nuxt's [[slug]]. */
+const OPTIONAL = /^(?::\w+(?:\([^)]*\))?[?*]|\[\[[^\]]+\]\])$/;
+
+/**
+ * A page, or a skipped one when it needs a value. A path whose values at its end are optional (/history/:id?) is also the
+ * page without them (/history), which needs none.
+ */
 function add(out: RouteDiscovery, segments: string[]): void {
   (segments.some(needsValue) ? out.skipped : out.routes).push("/" + segments.join("/"));
+  let bare = segments.length;
+  while (bare > 0 && OPTIONAL.test(segments[bare - 1]!)) bare--;
+  if (bare < segments.length && !segments.slice(0, bare).some(needsValue)) out.routes.push("/" + segments.slice(0, bare).join("/"));
 }
 
 /** Nuxt's, vue-router 5's and unplugin-vue-router's pages folder: index.vue is its folder, (group) folders add nothing, - and _ files are not pages. */

@@ -65,7 +65,7 @@ describe("discoverVueRoutes", () => {
       "app/pages/parent/child.vue": SFC,
     });
     expect(discoverVueRoutes(root)).toEqual({
-      routes: ["/", "/about", "/login", "/parent", "/parent/child", "/users"],
+      routes: ["/", "/about", "/blog", "/login", "/parent", "/parent/child", "/users"],
       skipped: ["/blog/[[slug]]", "/docs/[...all]", "/users/[id]"],
     });
   });
@@ -165,12 +165,26 @@ describe("discoverVueRoutes edge cases", () => {
     expect(discoverVueRoutes(nuxt).skipped).toEqual(["/p/prefix-[id]"]);
   });
 
-  test("a repeating parameter (/files/:path*) is skipped, not dropped", () => {
+  test("a repeating parameter (/files/:path*) is skipped, not dropped, and /files, which it may leave out, is a page", () => {
     const root = makeProject({
       "package.json": vuePkg,
       "src/router.ts": "import { createRouter } from 'vue-router'\nexport default createRouter({ history, routes: [{ path: '/files/:path*', component: F }, { path: '/:pathMatch(.*)*', component: N }] })\n",
     });
-    expect(discoverVueRoutes(root)).toEqual({ routes: ["/"], skipped: ["/files/:path*"] });
+    expect(discoverVueRoutes(root)).toEqual({ routes: ["/", "/files"], skipped: ["/files/:path*"] });
+  });
+
+  test("an optional parameter at the end (/history/:id?) leaves a page without it (/history), Plan 2L final run", () => {
+    const root = makeProject({
+      "package.json": vuePkg,
+      "src/router/index.ts": `import { createRouter } from 'vue-router'
+export default createRouter({ history, routes: [
+  { path: '/', component: Home },
+  { path: '/history/:id?', name: 'history', component: () => import('../views/HistoryView.vue'), props: true },
+  { path: '/plots/:id/:tab?', component: Plot },
+] })
+`,
+    });
+    expect(discoverVueRoutes(root)).toEqual({ routes: ["/", "/history"], skipped: ["/history/:id?", "/plots/:id/:tab?"] });
   });
 
   test("without a src folder the walk leaves dist and design alone", () => {
