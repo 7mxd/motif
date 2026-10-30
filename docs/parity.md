@@ -34,6 +34,16 @@ A stack is supported when the developer gets the whole of Motif on it, not part 
 
 React web and plain web were finished in Part 1 and plan 2A; right-to-left screenshots and the accessible-name audit came to them with Flutter (plan 2E). Flutter (plan 2E), React Native with Expo (plan 2G) and Jetpack Compose (plan 2F) are done, and SwiftUI (plan 2H), the last of Phase A, is done; all four ship in v0.5.0. Vue with Nuxt (plan 2I), the first of Phase B, is done, Svelte with SvelteKit (plan 2J) is done, and Angular (plan 2K), the last of Phase B, is done; all three ship in v0.6.0.
 
+## The last full run (v0.7.0)
+
+Every B, C and D case passes on the v0.7.0 candidate: 20 B, 9 C and 10 D, each built by claude-opus-5-5. The full run on Windows was 20261029-210923 (commit 162da5b), and the Mac's part 20261029-102812 (the same commit). Three cases failed there on bugs in Motif, not in the agent's work. Each was fixed with a test that fails without the fix, and passed again on the fixed code:
+
+| Case | Why it failed | Fix | Passed again in |
+|---|---|---|---|
+| b-vue-history | The page was routed as `/history/:id?`; Motif's Vue routes skipped any path with a parameter, an optional one too, so `/history` wasn't found | fad9445: a path whose end is optional is also the page without it | 20261030-093708 (0b43c96) |
+| d-sahm | `motif check` judged the corners in a `CustomPainter`'s drawing as off-scale interface corners, and the agent had to mark three of them `motif-ok` | 5ec38c9: a painter's sizes are its drawing's geometry | 20261030-093708 (0b43c96) |
+| c-swiftui | The SwiftUI audit read a capsule button's label against the page showing past its rounded ends, a false contrast finding (1.64:1 for text that reads clearly) | 79e591f: a shaped button's label is read from its middle | 20261029-133809 (fad9445) |
+
 ## Flutter: the tests that show it
 
 Flutter was built in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Every area is done. Its code is in the CLI, so `motif doctor` built from source already treats it as supported; the README and the release notes list it from v0.5.0, once its row is complete and these release gates are passed:
