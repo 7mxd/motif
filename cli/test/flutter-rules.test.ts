@@ -151,6 +151,26 @@ describe("off-scale sizes in Dart", () => {
     expect(pick(one(src))).toEqual({ rule: "off-scale", ...at(src, "fontSize"), kind: "font-size", text: "fontSize: 15", violation: true, value: "15px" });
     expect(scan("TextStyle(fontSize: 16)").map((h) => h.violation)).toEqual([false]);
   });
+
+  test("a CustomPainter's paint method is a drawing: its sizes are its geometry, its colours are still read (Sahm's welcome art, Plan 2L final run)", () => {
+    const src = `class _Art extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(8, 10, 304, 132), const Radius.circular(28)), Paint()..color = const Color(0xFF123456));
+    final label = TextPainter(text: TextSpan(text: 'Gate', style: TextStyle(fontSize: 11)));
+    if (size.width > 0) { canvas.drawRRect(RRect.fromRectAndRadius(Rect.zero, const Radius.circular(3)), Paint()); }
+  }
+
+  @override
+  bool shouldRepaint(_Art old) => false;
+}
+final card = BoxDecoration(borderRadius: BorderRadius.circular(28));
+`;
+    expect(scan(src).map((h) => [h.rule, h.kind, h.line, h.violation])).toEqual([
+      ["raw-color", "color", 4, true],
+      ["off-scale", "radius", 12, true],
+    ]);
+  });
 });
 
 describe("raw-font in Dart", () => {

@@ -156,6 +156,29 @@ function literalEnd(masked: string, quote: number): number {
   return end;
 }
 
+const PAINT_METHOD = /(?<![\w$])void\s+paint\s*\(\s*Canvas\s+\w+\s*,\s*Size\s+\w+\s*\)\s*\{/g;
+
+/**
+ * Each CustomPainter paint method's body, from its { to its }, in masked text. Its numbers are a drawing's geometry on a
+ * canvas it scales itself (a rounded hill, a gate's corners), not the interface's corners and gaps, so its sizes aren't
+ * judged; its colours still are.
+ */
+function paintBodies(text: string): [number, number][] {
+  const bodies: [number, number][] = [];
+  for (const m of text.matchAll(PAINT_METHOD)) {
+    const open = m.index! + m[0].length - 1;
+    let depth = 0;
+    for (let i = open; i < text.length; i++) {
+      if (text[i] === "{") depth++;
+      else if (text[i] === "}" && --depth === 0) {
+        bodies.push([open, i]);
+        break;
+      }
+    }
+  }
+  return bodies;
+}
+
 /** A call written over several lines, on one (it's shown in one line of the report). */
 const oneLine = (s: string) => s.replace(/\s+/g, " ").replace(/\(\s/g, "(").replace(/,?\s\)$/, ")");
 
@@ -207,7 +230,9 @@ export function scanDart(source: SourceFile, scale: Scale | null): Hit[] {
   }
 
   // ---------- sizes ----------
+  const drawings = paintBodies(text);
   const size = (index: number, literal: string, kind: "space" | "radius" | "font-size", number: string) => {
+    if (drawings.some(([open, close]) => index > open && index < close)) return;
     const px = Math.abs(num(number));
     const set = kind === "space" ? scale?.spacePx : kind === "radius" ? scale?.radiusPx : scale?.fontSizePx;
     const onScale = px === 0 || (set?.has(px) ?? false);
