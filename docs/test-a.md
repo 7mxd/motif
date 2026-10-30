@@ -21,6 +21,17 @@ Test A is fair, not perfect. These are the known ways it leans:
 - Compose baselines that load Google Fonts at runtime (the downloadable-fonts provider) fall back to Roboto under Robolectric: Compose's shot wires fonts only through Motif's own theme. They may look plainer than they would on a device. Flutter baselines get the google_fonts families their code names (`GoogleFonts.onest(…)`, `GoogleFonts.getFont('Onest')`): Motif's shot downloads them into its cache and loads them before drawing, as it does for an app made with Motif. Only a family named at runtime (a variable passed to `getFont`), or one that can't be downloaded, falls back, and the shot's notes say so.
 - Expo apps on both sides get Expo's web packages installed before shooting. The setup is equal.
 - SwiftUI shots name each app's own previews.
+- A pair's screenshot is the app's first screen, taken on its own. A page that fades its content in from `opacity: 0` can be caught before it shows: the final run's Ledgerly phone welcome without Motif was blank in its pair, though its own full screenshot shows the page. That pair counts for Motif in the table below, and it shouldn't: without it, Ledgerly is 4 / 1 for the AI judges and 1 / 4 for the owner. Waiting for the page to settle before the pair's shot is on the backlog.
+
+## Where it stands before v1.0.0
+
+The final run on the v0.7.0 candidate (run 20261029-210923, guidance at 162da5b; Masar on the Mac, run 20261029-102812) didn't pass Test A. By the pass rule, Stride and Nabta passed and every other brief fell short.
+
+- **AI judges.** Across that run's 48 pairs, Motif won 35 (73%) and the baseline 8 (17%). Across the 15 runs of plans 2L's tuning (312 pairs, guidance changing between runs), Motif won 66% and the baseline 19%. Every brief passed in at least one run, but never all in the same run: each run builds both apps afresh, so a brief swings by about two pairs from run to run, and the judges' taste for a layout swings too (a sign-in in a card or without one, compact rows or illustrated ones).
+- **The owner** judged all 48 pairs blind, on a phone (a private page that showed the same pairs, in the same order and on the same sides as `judge-owner.ts`, and saved each answer as it was given). Motif won 31 (65%), the baseline 16 (33%), about the same 1. By brief: Sanad 6 / 0, Stride 5 / 0 / 1, Nuzha 5 / 1, Darb 4 / 2, Sahm, Nabta and Rihla 2 / 1 each, Bloom 3 / 3, Ledgerly 2 / 4, Masar 0 / 3.
+- **What the owner's notes ask Motif to take from the baseline:** a map with the picture on a place's card (Sahm, Nuzha, Stride); more on each card, but in order (Sanad's requests); a real chart where the brief is about money (Ledgerly); a desktop layout, not a phone layout on a wide screen (Bloom); no text cut off (Nabta); a lighter top bar (Darb); the app's name or mark in sight (Sahm, Sanad, Bloom); and a calmer, better-ordered sign-in (Masar).
+
+So Motif usually makes the difference a person sees, and not yet on every brief. v1.0.0 waits for a round aimed at the briefs the owner and the judges marked down, and a run that passes.
 
 ## Runs
 
@@ -28,3 +39,14 @@ One row per brief of each run, with the run's id (its folder in `tests/evals/res
 
 | Run | Commit | Model | Brief | Pairs | AI: Motif / baseline / tie | Owner: Motif / other | Verdict |
 |---|---|---|---|---|---|---|---|
+| 20261029-210923 | 162da5b | claude-opus-5-5 | Stride | 6 | 6 / 0 / 0 | 5 / 0 (1 about the same) | pass |
+| 20261029-210923 | 162da5b | claude-opus-5-5 | Ledgerly | 6 | 5 / 1 / 0 | 2 / 4 | fail (one pair's baseline shot was blank, see the biases) |
+| 20261029-210923 | 162da5b | claude-opus-5-5 | Bloom | 6 | 5 / 1 / 0 | 3 / 3 | fail |
+| 20261029-210923 | 162da5b | claude-opus-5-5 | Sahm | 3 | 1 / 1 / 1 | 2 / 1 | fail (Motif's app failed a check: a false finding, fixed in 5ec38c9) |
+| 20261029-210923 | 162da5b | claude-opus-5-5 | Nabta | 3 | 3 / 0 / 0 | 2 / 1 | pass |
+| 20261029-210923 | 162da5b | claude-opus-5-5 | Rihla | 3 | 0 / 1 / 2 | 2 / 1 | fail |
+| 20261029-210923 | 162da5b | claude-opus-5-5 | Darb | 6 | 5 / 1 / 0 | 4 / 2 | fail |
+| 20261029-210923 | 162da5b | claude-opus-5-5 | Nuzha | 6 | 3 / 1 / 2 | 5 / 1 | fail |
+| 20261029-210923 | 162da5b | claude-opus-5-5 | Sanad | 6 | 4 / 2 / 0 | 6 / 0 | fail |
+| 20261029-102812 | 162da5b | claude-opus-5-5 | Masar (on the Mac) | 3 | 3 / 0 / 0 | 0 / 3 | fail |
+| 20261030-093708 | 0b43c96 | claude-opus-5-5 | Sahm (again, after the Flutter check's fix) | 3 | 1 / 1 / 1 | not judged | fail |
