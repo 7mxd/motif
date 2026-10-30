@@ -35,7 +35,7 @@ return ColoredBox(
 A spacing, corner or text size that isn't on the theme's scales. A number that is on a scale (`EdgeInsets.all(16)`) is seen but allowed, since the build stays correct; still prefer the role, so a change to the guide arrives everywhere.
 
 - Example: `EdgeInsets.all(13)`, `SizedBox(height: 18)`, `Column(spacing: 6, …)`, `BorderRadius.circular(10)`, `fontSize: 15`.
-- Fix: the nearest step, `MotifSpace.s4`, `MotifRadius.md`, or a text role's `MotifText.body`. If the design truly needs a new step, propose a change to the design guide instead. Layout sizes that aren't spacing (an avatar's width and height) aren't read.
+- Fix: the nearest step, `MotifSpace.s4`, `MotifRadius.md`, or a text role's `MotifText.body`. If the design truly needs a new step, propose a change to the design guide instead. Layout sizes that aren't spacing (an avatar's width and height) aren't read, nor are the sizes inside a `CustomPainter`'s `paint` method: they are a drawing's geometry, on a canvas it scales itself (its colours are still read, so draw with the theme's roles).
 
 ```dart
 Padding(

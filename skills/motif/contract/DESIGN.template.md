@@ -6,7 +6,7 @@ updated: 2026-01-01
 
 # App name design guide
 
-App name feels calm, clear and trustworthy. Replace this paragraph with three to five plain sentences a new teammate could read in a minute: who the app is for, how it should feel, and the one or two rules that matter most (for example "one accent colour, used only for the main action").
+App name feels calm, clear and trustworthy. Replace this paragraph with three to five plain sentences a new teammate could read in a minute: who the app is for, how it should feel, and the one or two rules that matter most (for example "the brand orange fills the welcome band; on working screens orange means you can act").
 
 ## 1. Brief
 
@@ -28,7 +28,7 @@ App name feels calm, clear and trustworthy. Replace this paragraph with three to
 
 ## 3. Foundations
 
-<!-- Intent, not values: the values live in design/tokens.json. One line per colour role saying what it is for; the type scale and when each style is used; spacing rhythm; corner radius; elevation; icons. -->
+<!-- Intent, not values: the values live in design/tokens.json. One line per colour role saying what it is for, including where the brand roles (brand, on-brand, brand-soft) appear and how loud they get; the type scale and when each style is used; spacing rhythm; corner radius; elevation; icons and illustration. -->
 
 - **Colour:**
 - **Type:**

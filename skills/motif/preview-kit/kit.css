@@ -129,6 +129,8 @@ body {
 .mk-label { font: var(--motif-font-label-weight) var(--motif-font-label-size) / var(--motif-font-label-line-height) var(--motif-font-label-family); }
 .mk-caption { font: var(--motif-font-caption-weight) var(--motif-font-caption-size) / var(--motif-font-caption-line-height) var(--motif-font-caption-family); }
 .mk-muted { color: var(--motif-color-text-secondary); }
+/* Spacing comes from the layout classes, not the browser's own margins on headings and paragraphs. */
+:is(.mk-display, .mk-title, .mk-heading, .mk-body, .mk-label, .mk-caption) { margin: 0; }
 /* Code in the theme's optional mono role, or the system's monospace fonts when it has none. */
 code, kbd, samp, pre { font-family: var(--motif-font-mono-family, ui-monospace, monospace); }
 
@@ -275,6 +277,54 @@ code, kbd, samp, pre { font-family: var(--motif-font-mono-family, ui-monospace, 
   font: var(--motif-font-label-weight) var(--motif-font-label-size) / 1 var(--motif-font-label-family);
 }
 .mk-nav-item.mk-active { background: var(--motif-color-action-secondary); color: var(--motif-color-on-action-secondary); }
+
+/* ---------- Brand moments ----------
+   The theme's optional brand roles, or the action colours when it has none. Never buttons or links: those stay action-primary. */
+.mk-brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--motif-space-4);
+  padding: var(--motif-space-8) var(--motif-space-6);
+  border-radius: var(--motif-radius-lg);
+  background: var(--motif-color-brand, var(--motif-color-action-primary));
+  color: var(--motif-color-on-brand, var(--motif-color-on-action-primary));
+}
+/* Straight in a frame or an unpadded screen, it is a band across the screen: no corners. */
+:is(.mk-frame, .mk-screen:not(.mk-pad)) > .mk-brand { border-radius: 0; }
+/* On the band the action stays the strongest thing: a button in on-brand, a secondary one outlined. */
+.mk-brand .mk-btn {
+  background: var(--motif-color-on-brand, var(--motif-color-on-action-primary));
+  color: var(--motif-color-brand, var(--motif-color-action-primary));
+}
+.mk-brand .mk-btn.mk-secondary {
+  border: 1px solid var(--motif-color-on-brand, var(--motif-color-on-action-primary));
+  background: transparent;
+  color: var(--motif-color-on-brand, var(--motif-color-on-action-primary));
+}
+.mk-brand .mk-btn.mk-ghost { background: transparent; color: var(--motif-color-on-brand, var(--motif-color-on-action-primary)); }
+.mk-brand :is(.mk-muted, .mk-stat > * + *) { color: var(--motif-color-on-brand, var(--motif-color-on-action-primary)); opacity: 0.8; }
+.mk-tile {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--motif-space-12);
+  height: var(--motif-space-12);
+  border-radius: var(--motif-radius-md);
+  background: var(--motif-color-brand-soft, var(--motif-color-action-secondary));
+  color: var(--motif-color-brand, var(--motif-color-action-primary));
+}
+.mk-tile .mk-icon { opacity: 1; }
+.mk-art {
+  display: flex;
+  justify-content: center;
+  color: var(--motif-color-brand, var(--motif-color-action-primary));
+}
+/* On a band, a drawing's currentColor lines are drawn in on-brand, or they'd vanish into the band. */
+.mk-brand .mk-art { color: var(--motif-color-on-brand, var(--motif-color-on-action-primary)); }
+.mk-art > svg { display: block; width: 100%; max-width: 320px; height: auto; }
+.mk-stat { display: flex; flex-direction: column; gap: var(--motif-space-1); }
+.mk-stat > :first-child { font: var(--motif-font-title-weight) var(--motif-font-title-size) / var(--motif-font-title-line-height) var(--motif-font-title-family); font-variant-numeric: lining-nums; }
+.mk-stat > * + * { color: var(--motif-color-text-secondary); font: var(--motif-font-caption-weight) var(--motif-font-caption-size) / var(--motif-font-caption-line-height) var(--motif-font-caption-family); }
 
 .mk-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--motif-color-text-primary) 40%, transparent); }
 .mk-sheet {

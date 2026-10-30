@@ -25,7 +25,7 @@ Save the answers in the progress file's `notes`, so a later session doesn't ask 
 Gather references for the brief's personality and the screens it needs:
 
 - With design sources connected, follow their notes: [Refero](../sources/refero.md) for styles and real screens, [60fps.design](../sources/60fps.md) for mobile motion, [Supahero](../sources/supahero.md) for a landing page's hero.
-- Always: [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [type pairings](../knowledge/type-pairings.md), the [motion guide](../knowledge/motion.md), and the UX pattern guides for the first screens: [onboarding](../knowledge/ux-patterns/onboarding.md), [sign-in](../knowledge/ux-patterns/sign-in.md) and [home](../knowledge/ux-patterns/home-dashboard.md).
+- Always: [visual craft](../knowledge/visual-craft.md), [character](../knowledge/character.md), [anti-patterns](../knowledge/anti-patterns.md), [type pairings](../knowledge/type-pairings.md), the [motion guide](../knowledge/motion.md), and the UX pattern guides for the first screens: [onboarding](../knowledge/ux-patterns/onboarding.md), [sign-in](../knowledge/ux-patterns/sign-in.md) and [home](../knowledge/ux-patterns/home-dashboard.md).
 
 Write down in a few lines what you'll take from each reference. Keep links only.
 
@@ -33,18 +33,19 @@ Write down in a few lines what you'll take from each reference. Keep links only.
 
 ## 4. Directions ⏸
 
-Make two or three clearly different directions: different colour moods, type pairings or densities, not one look with three accent colours. Each direction names its font pairing (text and headings, plus an Arabic companion second in both font lists when the app may show Arabic) from [type pairings](../knowledge/type-pairings.md), different from the other directions', with one line on why it suits the brief. Leave out the overused fonts and colour looks listed there unless the developer asks for them. Each direction is a folder in `design/directions/`, such as `design/directions/calm/`, holding:
+Make two or three clearly different directions: different colour moods, type pairings or densities, not one look with three accent colours. Each direction names its font pairing (text and headings, plus an Arabic companion second in both font lists when the app may show Arabic) from [type pairings](../knowledge/type-pairings.md), different from the other directions', with one line on why it suits the brief. Leave out the overused fonts and colour looks listed there unless the developer asks for them. At least one direction takes the brief's personality as far as it goes ([character](../knowledge/character.md) says how loud each kind of brief gets); when a starting style already matches the personality, don't tone it down. Each direction is a folder in `design/directions/`, such as `design/directions/calm/`, holding:
 
 - `tokens.json`: start from the closest starting style (`presets/<style>/tokens.json` in the skill folder) or [the template](../contract/tokens.template.json), and change the values to fit the brief. Keep every role; [the format](../contract/spec.md) explains each one. With variants, add each one's values and `--variant all` when you preview.
 - `tile.html`: a style tile with the colour roles as swatches, the type scale, and the key components (buttons, a field, a card, a list row) in their main states.
 - `<screen>.html`: the one screen that best shows the app (usually home), in the right frame (a phone for mobile apps, a browser for web apps), with realistic mock content.
+- `welcome.html`: the welcome or landing screen with its brand moment (a `brand` band or panel, an illustration, proof), on a phone and, for web apps, a desktop.
 
-Write the mockups with [the preview kit](../preview-kit/README.md): screen content and kit classes only, no colours, sizes or fonts of your own. Each mockup uses the `tokens.json` in its own folder.
+Write the mockups with [the preview kit](../preview-kit/README.md): screen content and kit classes only, no colours, sizes or fonts of your own. The kit's brand classes (`.mk-brand`, `.mk-art`, `.mk-tile`, `.mk-stat`) build the brand moments, and an illustration is an inline `<svg>` whose fills are `var(--motif-color-*)` roles or `currentColor`. Each mockup uses the `tokens.json` in its own folder.
 
 1. For each direction, run `motif validate --tokens design/directions/<name>/tokens.json` and fix every problem (readability first) before showing it.
 2. Run `motif preview design/directions/<name> --png-only` for each direction; the PNGs are saved next to the mockups. It refuses a direction whose theme values match another's, and notes one that shares another's fonts: change it until each direction is clearly its own, then run it again.
 3. For a live side-by-side view, run `motif preview --compare design/directions/<a>/<screen>.html design/directions/<b>/<screen>.html` in the background, or ask the developer to run it.
-4. Show the PNGs and describe each direction in one line ("Calm: soft neutrals, rounded corners, generous spacing; Onest, with Readex Pro for Arabic").
+4. Show the PNGs and describe each direction in one line ("Calm: soft neutrals, rounded corners, generous spacing; Onest, with Readex Pro for Arabic"). Run the [five-second test](../knowledge/character.md#the-five-second-test) on each welcome mockup, and recommend the direction whose words match the brief's personality best (every one of its words, not just the loudest), not the safest one.
 5. The developer picks one, asks for a mix ("A's colours with B's type"), or asks for changes. Update the folders and show them again until they approve one.
 
 ## 5. Design guide
@@ -72,6 +73,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
 2. Run the project's build and type check (the stack guide names them; a plain web site has none).
 3. Run `motif shot --audit` for the starter screens (it covers every variant), in light and dark at every size it takes (three phones and a tablet, plus a desktop for a web app), adding `--state` for each screen behind a form or a click (the stack guide's checks show how). Fix the critical and major findings, then run it again.
 4. For each screen with an approved mockup, run `motif shot --routes <route> --against design/previews/<screen>.html` and compare the app with the mockup. Fix differences that change the design.
-5. Show the developer the screenshots and a short summary: what was built, what passed, anything left for later.
+5. Run the [five-second test](../knowledge/character.md#the-five-second-test) on the welcome, sign-in and home screenshots, phone and desktop. Where your words don't match the brief's personality, add the missing brand moment and shoot again. Then look at each of those screenshots once just for the [slips that undo it](../knowledge/character.md#slips-that-undo-it) (uneven label gaps, a title smaller than its description, a count that doesn't match, rows out of line) and fix any you find.
+6. Show the developer the screenshots and a short summary: what was built, what passed, anything left for later.
 
 Delete `design/.progress.json`. The app is ready for new features.

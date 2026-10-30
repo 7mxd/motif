@@ -48,6 +48,7 @@ Every colour, size, corner, shadow, font and timing comes from a variable:
 | `radius.md` | `var(--motif-radius-md)` |
 | `shadow.md` | `var(--motif-shadow-md)` |
 | `font.body` | `var(--motif-font-body-family)`, `-size`, `-weight` and `-line-height` |
+| `color.brand` with `color.on-brand`, `color.brand-soft` (optional, for brand moments such as a hero band or an icon tile; never buttons or links) | `var(--motif-color-brand)`, `var(--motif-color-on-brand)`, `var(--motif-color-brand-soft)` (only when the theme has the roles) |
 | `font.mono` (optional, for code) | `code, kbd, samp, pre { font-family: var(--motif-font-mono-family, ui-monospace, monospace); }` (the fallback covers a theme without the role) |
 | `duration.base`, `easing.standard` | `var(--motif-duration-base)`, `var(--motif-easing-standard)` |
 

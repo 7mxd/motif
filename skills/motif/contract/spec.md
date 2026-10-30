@@ -74,8 +74,13 @@ Every colour role needs a dark value; `motif validate` reports any role without 
 
 A theme may leave these out. One it has must be the type shown. With `font.mono`, the generated theme has the `font-mono` class and `var(--motif-font-mono-family)`, and `motif check` points code fonts to them; without it, check proposes adding the role.
 
+The brand colours give a screen its brand moments. `brand` is the brand's own colour for a hero or welcome band, a sign-in side panel, illustration fills or a highlighted stat; never for buttons or links, which stay `action-primary`. `on-brand` is text and icons on a `brand` fill. `brand-soft` is a quiet tint of the brand for icon tiles, highlighted rows and illustration backgrounds; `text-primary` reads on it. Like every colour role, each needs a dark value. A theme with them lists their pairs: `on-brand` on `brand` (text), `text-primary` on `brand-soft` (text) and `brand` on `brand-soft` (ui, an icon in a tile). The presets have all three.
+
 | Group | Roles |
 |---|---|
+| `color` | brand — the brand's own colour for brand moments: a hero or welcome band, a sign-in side panel, illustration fills, a highlighted stat. Never for buttons or links; those stay `action-primary`. |
+| `color` | on-brand — text and icons on a `brand` fill. |
+| `color` | brand-soft — a quiet tint of the brand for icon tiles, highlighted rows and illustration backgrounds; `text-primary` reads on it. |
 | `font` | mono — code, keyboard keys and other fixed-width text; a typography value like the others. The presets start it from the system's own monospace fonts (`ui-monospace`, then Menlo, Consolas and so on), so nothing is downloaded. |
 
 Value shapes: sizes `{ "value": 16, "unit": "px" }`; durations `{ "value": 200, "unit": "ms" }`; easing `[0.2, 0, 0, 1]`; spring duration `{ "value": 0.4, "unit": "s" }` with bounce `0.1`.
