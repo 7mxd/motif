@@ -107,6 +107,9 @@ beforeAll(() => {
       // a Vue or React router redirect): the server answers 200 for both.
       if (path === "/guarded") return html('<h1>Loading</h1><script>history.replaceState(null, "", "/sign-in"); document.querySelector("h1").textContent = "Sign in";</script>');
       if (path === "/sign-in") return html("<h1>Sign in</h1>");
+      // A page that fades in over two seconds (Motion keeps opacity animations under reduced motion), beside a spinner
+      // that never stops.
+      if (path === "/fade-in") return html('<style>@keyframes in { from { opacity: 0 } to { opacity: 1 } } @keyframes spin { to { transform: rotate(1turn) } }</style><body style="margin:0"><div style="height:400px;background:#ff0000;animation:in 2s linear both"></div><div style="width:20px;height:20px;background:#000;animation:spin 1s linear infinite"></div></body>');
       // Sent to /ar by the browser's language, as an app with a language picker in its address may do.
       if (path === "/by-language") return html('<h1>Home</h1><script>if ([navigator.language, Intl.DateTimeFormat().resolvedOptions().locale].some((l) => l.startsWith("ar"))) history.replaceState(null, "", "/ar");</script>');
       return html("<h1>Not found</h1>", 404);
@@ -349,6 +352,17 @@ describe("the web's generated CSS has no rule for the default variant's id", () 
     expect(files.some((f) => f.content.includes('data-variant="men"'))).toBe(true);
     for (const f of files) expect(f.content).not.toContain('data-variant="women"');
   });
+});
+
+describe.skipIf(!browser)("a page that fades in (needs Chrome, Edge or Chromium)", () => {
+  test("is captured once its fade has finished, not blank partway through; an endless spinner doesn't hold it up (v1 harness backlog)", async () => {
+    const PHONE = [{ name: "mobile" as const, width: 390, height: 844, scale: 1, mobile: true }];
+    const out = tempDir("motif-shots-");
+    const started = Date.now();
+    await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/fade-in"], outDir: out, settleMs: 50, viewports: PHONE, appScheme: "light" });
+    expect(pixel(new Uint8Array(readFileSync(join(out, "fade-in.mobile.png"))), 195, 200)).toEqual([255, 0, 0, 255]);
+    expect(Date.now() - started).toBeLessThan(30_000);
+  }, 60_000);
 });
 
 describe.skipIf(!browser)("bars fixed or stuck to the bottom of the screen (needs Chrome, Edge or Chromium)", () => {

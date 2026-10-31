@@ -229,6 +229,11 @@ export function shotName(slug: string, viewport: string, scheme: Scheme, variant
 const DEV_TOOLS = ["nextjs-portal", "#nuxt-devtools-container", "#__vue-devtools-container__"];
 const HIDE_DEV_BADGES = `(() => { const s = document.createElement("style"); s.textContent = ${JSON.stringify(`${DEV_TOOLS.join(", ")} { display: none !important; }`)}; document.head.append(s); return true; })()`;
 const PAGE_HEIGHT = "document.documentElement.scrollHeight";
+/**
+ * Waits, at most three seconds, for the page's animations that end (a fade-in: Motion keeps opacity animations under
+ * reduced motion) to finish, so a screenshot doesn't catch a screen partway in. Endless ones (a spinner) aren't waited for.
+ */
+const ENTRANCES_DONE = `Promise.race([Promise.all(document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(a.effect?.getComputedTiming().endTime)).map((a) => a.finished.catch(() => {}))), new Promise((r) => setTimeout(r, 3000))]).then(() => true)`;
 // A shot longer than the screen leaves a bar fixed or stuck to the bottom of the screen where the first screen ends,
 // across the middle of the page (v1 Test A: a phone's tab bar with the list running on below it), and a sidebar the
 // height of the screen stopping there (v1 Test A: a desktop app's navigation). For the shot, a bar is drawn where
@@ -467,6 +472,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                     if (!stuck) await page.waitForQuiet(300, 5000);
                   }
                   await Bun.sleep(settleMs);
+                  await page.evaluate(ENTRANCES_DONE);
                   const thrown = page.takeErrors();
                   if (thrown.length > 0 || loadErrors.length > 0) {
                     addErrors(tagNew(thrown));

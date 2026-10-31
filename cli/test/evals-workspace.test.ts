@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { CASES } from "../../tests/evals/cases";
 import { runCmd, type Run } from "../../tests/evals/tools";
-import { changes, findApp, patch, prepareWorkspace } from "../../tests/evals/workspace";
+import { changes, findApp, findBuiltApp, patch, prepareWorkspace } from "../../tests/evals/workspace";
 import { swiftUIApp } from "../../cli/src/stacks/swiftui/project";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -189,5 +189,34 @@ describe("test D's new app", () => {
       make(join(dir, "masar"));
       expect(findApp(dir)).toBe(join(dir, "masar"));
     }
+  });
+});
+
+describe("Test A's built app (backlog 3)", () => {
+  test("is this folder or the one inside it with a project", () => {
+    const dir = tempDir("motif-built-");
+    expect(findBuiltApp(dir)).toBeNull();
+    mkdirSync(join(dir, "web"));
+    writeFileSync(join(dir, "web", "package.json"), JSON.stringify({ dependencies: { "@angular/core": "^20.0.0" } }));
+    expect(findBuiltApp(dir)).toBe(join(dir, "web"));
+  });
+
+  test("a helper folder with its own package.json (a screenshot script) doesn't hide the app", () => {
+    const dir = tempDir("motif-built-");
+    mkdirSync(join(dir, "web"));
+    writeFileSync(join(dir, "web", "package.json"), JSON.stringify({ dependencies: { "@angular/core": "^20.0.0" } }));
+    mkdirSync(join(dir, "tools"));
+    writeFileSync(join(dir, "tools", "package.json"), JSON.stringify({ dependencies: { playwright: "^1.50.0" } }));
+    writeFileSync(join(dir, "tools", "shots.mjs"), "");
+    expect(findBuiltApp(dir)).toBe(join(dir, "web"));
+  });
+
+  test("two real apps are still too many", () => {
+    const dir = tempDir("motif-built-");
+    for (const n of ["web", "admin"]) {
+      mkdirSync(join(dir, n));
+      writeFileSync(join(dir, n, "package.json"), JSON.stringify({ dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" } }));
+    }
+    expect(findBuiltApp(dir)).toBeNull();
   });
 });

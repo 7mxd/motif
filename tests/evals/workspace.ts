@@ -4,6 +4,7 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { defaultDoctorDeps } from "../../cli/src/commands/doctor";
+import { detectStack } from "../../cli/src/detect/stacks";
 import { findAndroidSdk } from "../../cli/src/stacks/compose/doctor";
 import { assemble } from "../fixtures/assemble";
 import type { EvalCase } from "./cases";
@@ -114,10 +115,16 @@ const isAppFolder = (d: string) =>
 
 /**
  * Where Test A's app ended up, with no design guide to find it by: this folder when it holds a project, or the one
- * folder inside it that does.
+ * folder inside it that does. Among several, the one Motif recognises as an app's stack (a session's own screenshot
+ * script in tools/ has a package.json too).
  */
 export function findBuiltApp(dir: string): string | null {
   if (isAppFolder(dir)) return dir;
   const apps = readdirSync(dir).filter((n) => !n.startsWith(".") && n !== "node_modules" && statSync(join(dir, n)).isDirectory() && isAppFolder(join(dir, n)));
-  return apps.length === 1 ? join(dir, apps[0]!) : null;
+  if (apps.length === 1) return join(dir, apps[0]!);
+  const stacks = apps.filter((n) => {
+    const s = detectStack(join(dir, n));
+    return s !== null && s !== "plain-web";
+  });
+  return stacks.length === 1 ? join(dir, stacks[0]!) : null;
 }

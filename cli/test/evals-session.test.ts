@@ -131,6 +131,20 @@ describe("a session's processes and output (backlog)", () => {
     expect(alive(pid)).toBe(false);
   });
 
+  test("a session that doesn't exit after its result is stopped soon after, not at its time limit (backlog 2)", async () => {
+    const started = Date.now();
+    const o = await runSession(spec({ afterResultMs: 60_000 }, { timeoutMs: 50_000, resultGraceMs: 1000 }));
+    expect(o.end).toBe("finished");
+    expect(Date.now() - started).toBeLessThan(15_000);
+  }, 20_000);
+
+  test("a session whose leftover child keeps its output open ends when it exits (backlog 2)", async () => {
+    const started = Date.now();
+    const o = await runSession(spec({ heldChild: true }, { timeoutMs: 50_000 }));
+    expect(o.end).toBe("finished");
+    expect(Date.now() - started).toBeLessThan(15_000);
+  }, 20_000);
+
   test("a character split across two pieces of output is saved whole", async () => {
     const s = spec({ split: "café" });
     expect((await runSession(s)).end).toBe("finished");
