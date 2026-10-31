@@ -83,3 +83,4 @@ One row per brief of each run, with the run's id (its folder in `tests/evals/res
 | 20261030-202113 | b28387b | claude-opus-5-5 | Nuzha | 6 | 2 / 1 / 3 | 4 / 2 | fail |
 | 20261030-202113 | b28387b | claude-opus-5-5 | Sanad | 6 | 5 / 1 / 0 | 5 / 1 | fail |
 | 20261030-092116 | b28387b | claude-opus-5-5 | Masar (on the Mac) | 3 | 3 / 0 / 0 | 1 / 2 | fail |
+| 20261031-070945 | aa5d7c6 | claude-opus-5-5 | Bloom (a check of the signed-out welcome fix: its sample plant now has no button, and watering is on the signed-in home only) | 6 | 4 / 2 / 0 | not judged | below the bar on its own |

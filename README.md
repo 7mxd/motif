@@ -4,7 +4,7 @@
 
 Design guide tools for AI coding agents: build web and mobile apps with polished UI, UX and motion — and keep them consistent as your app and team grow.
 
-> **Preview (v0.7.0).** Motif works in Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI and OpenCode, for React web apps, plain web sites, Vue (and Nuxt), Svelte (and SvelteKit) and Angular apps, and Flutter, Jetpack Compose, React Native (Expo) and SwiftUI apps ([what each stack gets](docs/parity.md)). The first full release comes next.
+> **v1.0.0.** Motif works in Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI and OpenCode, for React web apps, plain web sites, Vue (and Nuxt), Svelte (and SvelteKit) and Angular apps, and Flutter, Jetpack Compose, React Native (Expo) and SwiftUI apps ([what each stack gets](docs/parity.md)).
 
 ## Install
 
@@ -46,7 +46,7 @@ gemini extensions install https://github.com/7mxd/motif --ref plugins --auto-upd
 
 Then ask for design work ("make this screen look better"), or start Motif: `/motif:design` in Claude Code, `$motif` in Codex, `/motif` everywhere else.
 
-You need git, and Claude Code 2.1.224 or later if you use Claude Code. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v0.7.0) and checks it against the release's checksums. See the [release notes](docs/releases/v0.7.0.md), or build and try Motif from source: [Claude Code](plugin/claude-code/README.md), [other agents](plugin/agents/README.md).
+You need git, and Claude Code 2.1.224 or later if you use Claude Code. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v1.0.0) and checks it against the release's checksums. See the [release notes](docs/releases/v1.0.0.md), or build and try Motif from source: [Claude Code](plugin/claude-code/README.md), [other agents](plugin/agents/README.md).
 
 ## The `motif` tool
 
