@@ -31,7 +31,16 @@ The final run on the v0.7.0 candidate (run 20261029-210923, guidance at 162da5b;
 - **The owner** judged all 48 pairs blind, on a phone (a private page that showed the same pairs, in the same order and on the same sides as `judge-owner.ts`, and saved each answer as it was given). Motif won 31 (65%), the baseline 16 (33%), about the same 1. By brief: Sanad 6 / 0, Stride 5 / 0 / 1, Nuzha 5 / 1, Darb 4 / 2, Sahm, Nabta and Rihla 2 / 1 each, Bloom 3 / 3, Ledgerly 2 / 4, Masar 0 / 3.
 - **What the owner's notes ask Motif to take from the baseline:** a map with the picture on a place's card (Sahm, Nuzha, Stride); more on each card, but in order (Sanad's requests); a real chart where the brief is about money (Ledgerly); a desktop layout, not a phone layout on a wide screen (Bloom); no text cut off (Nabta); a lighter top bar (Darb); the app's name or mark in sight (Sahm, Sanad, Bloom); and a calmer, better-ordered sign-in (Masar).
 
-So Motif usually makes the difference a person sees, and not yet on every brief. v1.0.0 waits for a round aimed at the briefs the owner and the judges marked down, and a run that passes.
+So Motif usually makes the difference a person sees, and not yet on every brief.
+
+Two more rounds of guidance followed: round 25 (fd1d6e7) from the owner's notes, and round 26 (b28387b) from round 25's misses. Each was checked with a full Test A run.
+
+- **AI judges.** Round 25: Motif 38 of 48 (79%), baseline 6 (12.5%). Round 26: Motif 38 (79%), baseline 5 (10%). Two of round 26's Nabta pairs count for Motif because the app without Motif has no route to the screen (a Compose app with no `NavController` can only have its first screen drawn), so they aren't a fair comparison.
+- **The owner** judged round 26's 46 fair pairs blind, on the same kind of phone page. Motif won 30 (65%), the baseline 14 (30%), about the same 2. That is the same share as the first round, but spread differently. Bloom went from 3 / 3 to 6 / 0 and Darb from 4 / 2 to 5 / 1. Stride went from 5 / 0 to 3 / 2, Rihla from 2 / 1 to 1 / 2 and Masar from 0 / 3 to 1 / 2.
+- **By the pass rule**, round 26 passes Sahm, Nabta and Darb. Stride and Masar fall short on the owner's side only. Bloom and Sanad fall short on the AI side only, by one pair each. Ledgerly, Rihla and Nuzha fall short on both sides.
+- **What the owner's notes ask for now:** the date on a home's focus card (Masar), a "Your next run" card (Stride), a picture at the top of a phone sign-in (Stride), no truncated text on a trip's rows (Rihla), richer filters (Nuzha), and no actions that need an account shown to someone signed out (Bloom). A highlight colour must mean something: the owner asked why a past date was yellow (Darb). Several notes said Motif's screen was nicer but picked the other one for a single feature it lacked.
+
+The guidance has plateaued at about four Motif wins in five for the AI judges and two in three for the owner. Each run rebuilds both apps, so a brief's result moves by a pair or two between runs, and the briefs that miss change from one run to the next. Whether v1.0.0 ships on this record, or waits for more work, is the owner's call.
 
 ## Runs
 
@@ -50,3 +59,23 @@ One row per brief of each run, with the run's id (its folder in `tests/evals/res
 | 20261029-210923 | 162da5b | claude-opus-5-5 | Sanad | 6 | 4 / 2 / 0 | 6 / 0 | fail |
 | 20261029-102812 | 162da5b | claude-opus-5-5 | Masar (on the Mac) | 3 | 3 / 0 / 0 | 0 / 3 | fail |
 | 20261030-093708 | 0b43c96 | claude-opus-5-5 | Sahm (again, after the Flutter check's fix) | 3 | 1 / 1 / 1 | not judged | fail |
+| 20261030-132940 | fd1d6e7 | claude-opus-5-5 | Stride | 6 | 5 / 0 / 1 | not judged | AI side passes |
+| 20261030-132940 | fd1d6e7 | claude-opus-5-5 | Ledgerly | 6 | 2 / 3 / 1 | not judged | fail |
+| 20261030-132940 | fd1d6e7 | claude-opus-5-5 | Bloom | 6 | 4 / 1 / 1 | not judged | fail |
+| 20261030-132940 | fd1d6e7 | claude-opus-5-5 | Sahm | 3 | 3 / 0 / 0 | not judged | AI side passes |
+| 20261030-132940 | fd1d6e7 | claude-opus-5-5 | Nabta | 3 | 3 / 0 / 0 | not judged | AI side passes |
+| 20261030-132940 | fd1d6e7 | claude-opus-5-5 | Rihla | 3 | 2 / 1 / 0 | not judged | fail |
+| 20261030-132940 | fd1d6e7 | claude-opus-5-5 | Darb | 6 | 6 / 0 / 0 | not judged | AI side passes |
+| 20261030-132940 | fd1d6e7 | claude-opus-5-5 | Nuzha | 6 | 4 / 1 / 1 | not judged | fail |
+| 20261030-132940 | fd1d6e7 | claude-opus-5-5 | Sanad | 6 | 6 / 0 / 0 | not judged | AI side passes |
+| 20261030-022944 | fd1d6e7 | claude-opus-5-5 | Masar (on the Mac) | 3 | 3 / 0 / 0 | not judged | AI side passes |
+| 20261030-202113 | b28387b | claude-opus-5-5 | Stride | 6 | 6 / 0 / 0 | 3 / 2 (1 about the same) | fail |
+| 20261030-202113 | b28387b | claude-opus-5-5 | Ledgerly | 6 | 3 / 2 / 1 | 2 / 3 (1 about the same) | fail |
+| 20261030-202113 | b28387b | claude-opus-5-5 | Bloom | 6 | 5 / 1 / 0 | 6 / 0 | fail |
+| 20261030-202113 | b28387b | claude-opus-5-5 | Sahm | 3 | 3 / 0 / 0 | 2 / 1 | pass |
+| 20261030-202113 | b28387b | claude-opus-5-5 | Nabta | 3 | 3 / 0 / 0 | 3 / 0 | pass (two pairs had no screen without Motif, see above) |
+| 20261030-202113 | b28387b | claude-opus-5-5 | Rihla | 3 | 2 / 0 / 1 | 1 / 2 | fail |
+| 20261030-202113 | b28387b | claude-opus-5-5 | Darb | 6 | 6 / 0 / 0 | 5 / 1 | pass |
+| 20261030-202113 | b28387b | claude-opus-5-5 | Nuzha | 6 | 2 / 1 / 3 | 4 / 2 | fail |
+| 20261030-202113 | b28387b | claude-opus-5-5 | Sanad | 6 | 5 / 1 / 0 | 5 / 1 | fail |
+| 20261030-092116 | b28387b | claude-opus-5-5 | Masar (on the Mac) | 3 | 3 / 0 / 0 | 1 / 2 | fail |
