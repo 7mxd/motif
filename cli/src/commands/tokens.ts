@@ -10,6 +10,7 @@ import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stack
 import { formatFindings, type Finding } from "../findings";
 import { FALLBACK_DIR, FALLBACK_FILES, flatTokensFile, generateFallback } from "../generate/fallback";
 import { isMotifGenerated, sameContent, type GeneratedFile } from "../generate/header";
+import { usesTypeScript } from "../generate/javascript";
 import { PREVIEW_CSS_PATH, previewCss } from "../generate/preview-css";
 import { buildThemeSet, type ThemeSet } from "../generate/theme";
 import { latinExample, skippedCompanions, themeFonts, type SkippedCompanion } from "../generate/theme-fonts";
@@ -245,7 +246,7 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
       if (tailwind === "v3") {
         notes.push(tailwindV3Note(appLabel(app)));
       }
-      for (const f of generateReactWeb(theme, { srcDir, tailwind }, set.variants)) files.push({ path: prefixPath(app.path, f.path), content: f.content });
+      for (const f of generateReactWeb(theme, { srcDir, tailwind, javascript: !usesTypeScript(appDir, cwd) }, set.variants)) files.push({ path: prefixPath(app.path, f.path), content: f.content });
       const entry = tailwind === "v4" ? "motif.tailwind.css" : "motif.css";
       entries.push({
         dir: join(appDir, srcDir),
@@ -295,6 +296,12 @@ export async function runTokens(cwd: string, ctx: RunContext): Promise<CommandRe
   if (ownThemes.length > 0) {
     const note = staleFallbackNote(cwd, files, ownThemes);
     if (note) notes.push(note);
+  }
+  // An app without TypeScript now gets motion.js: the motion.ts an earlier Motif wrote beside it is no longer updated.
+  for (const f of files) {
+    const old = f.path.replace(/\.js$/, ".ts");
+    if (old === f.path || !/motion\.js$/.test(f.path) || !existsSync(join(cwd, old))) continue;
+    if (isMotifGenerated(old, readFileSync(join(cwd, old), "utf8"))) notes.push(`This app has no TypeScript, so Motif now writes ${f.path}; delete ${old}, which an earlier run wrote. Imports without the extension need no change.`);
   }
 
   const results = writeGenerated(cwd, files);
