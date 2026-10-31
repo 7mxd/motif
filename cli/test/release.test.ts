@@ -40,7 +40,7 @@ describe("the READMEs", () => {
         expect(text.includes(s) ? file : `${file} lacks ${s}`).toBe(file);
       }
     }
-    expect(readFileSync(join(REPO, "README.md"), "utf8")).toContain(`**Preview (v${VERSION}).**`);
+    expect(readFileSync(join(REPO, "README.md"), "utf8")).toContain(`**v${VERSION}.**`);
     expect(readFileSync(join(REPO, "plugin/claude-code/README.md"), "utf8")).not.toContain("Until Motif's first release is published");
   });
 
@@ -56,10 +56,13 @@ describe("the READMEs", () => {
     }
   });
 
-  test("the README's preview note lists the stacks v0.6.0 has, Vue, Svelte and Angular with them, and links the parity checklist (Ruling W)", () => {
+  test("the README's release note lists every stack, Vue, Svelte and Angular with them, and links the parity checklist (Ruling W); 1.0 is no longer a preview", () => {
     const readme = readFileSync(join(REPO, "README.md"), "utf8");
-    const note = readme.slice(readme.indexOf("**Preview"), readme.indexOf("\n", readme.indexOf("**Preview")));
-    expect(note).toContain("for React web apps, plain web sites, Vue (and Nuxt), Svelte (and SvelteKit) and Angular apps, and Flutter, Jetpack Compose, React Native (Expo) and SwiftUI apps ([what each stack gets](docs/parity.md)). The first full release comes next.");
+    const at = readme.indexOf(`**v${VERSION}.**`);
+    const note = readme.slice(at, readme.indexOf("\n", at));
+    expect(note).toContain("for React web apps, plain web sites, Vue (and Nuxt), Svelte (and SvelteKit) and Angular apps, and Flutter, Jetpack Compose, React Native (Expo) and SwiftUI apps ([what each stack gets](docs/parity.md)).");
+    expect(readme).not.toContain("**Preview");
+    expect(readme).not.toContain("The first full release comes next.");
     expect(note).not.toContain("Vue, Svelte, Angular and");
     expect(readme).toContain("Full support in v0.6.0: React web apps and plain web sites");
     expect(readme).not.toContain("arrive in v0.");
