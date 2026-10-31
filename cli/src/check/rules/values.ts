@@ -51,6 +51,46 @@ export function offScaleHit(file: SourceFile, at: (i: number) => { line: number;
   return makeHit(file, at, index, { rule: "off-scale", kind, value: `${px}px`, text, violation: scale ? !onScale : false, message, fix });
 }
 
+const OFFSET_PROP = /^(?:inset(?:-.+)?|top|right|bottom|left)$/i;
+const MATH = /\b(?:calc|min|max|clamp)\(/gi;
+
+/** The ranges of a value's calc(), min(), max() and clamp() expressions (each to its own closing parenthesis). */
+function mathRanges(value: string): [number, number][] {
+  const out: [number, number][] = [];
+  for (const m of value.matchAll(MATH)) {
+    let depth = 0;
+    for (let i = m.index! + m[0].length - 1; i < value.length; i++) {
+      if (value[i] === "(") depth++;
+      else if (value[i] === ")" && --depth === 0) {
+        out.push([m.index!, i + 1]);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a spacing length is geometry rather than spacing, so the scale doesn't apply (v1.0 field trial): 2 px or less (a
+ * hairline gap, a 1 px nudge, the visually-hidden pattern's -1px margin); an offset that places a ::before or ::after (a
+ * timeline's dot, a hit area laid over a control) or overlaps another box (a negative top); or a length inside calc(),
+ * min(), max() or clamp() worked out with a variable, env() or a percentage (room for a floating button, a column's width).
+ */
+function isGeometry(prop: string, value: string, at: number, px: number, selector: string): boolean {
+  if (Math.abs(px) <= 2) return true;
+  if (OFFSET_PROP.test(prop) && (px < 0 || /::?(?:before|after)\b/i.test(selector))) return true;
+  return mathRanges(value).some(([a, b]) => at >= a && at < b && /var\(|env\(|%/.test(value.slice(a, b)));
+}
+
+/** The selector of the rule a declaration at index is in (from the previous "{", "}" or ";" back to its "{"). */
+function selectorAt(text: string, index: number): string {
+  const open = text.lastIndexOf("{", index);
+  if (open === -1 || text.lastIndexOf("}", index) > open) return "";
+  let s = open - 1;
+  while (s >= 0 && text[s] !== "{" && text[s] !== "}" && text[s] !== ";") s--;
+  return text.slice(s + 1, open).trim();
+}
+
 export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
   const file = { ...source, text: maskComments(source.text, source.lang) };
   const at = locator(file.text);
@@ -79,7 +119,12 @@ export function scanValues(source: SourceFile, scale: Scale | null): Hit[] {
       }
       const kind = SPACE_PROP.test(prop) ? "space" : RADIUS_PROP.test(prop) ? "radius" : prop === "font-size" ? "font-size" : null;
       if (kind) {
-        for (const l of value.matchAll(LENGTH)) size(start + l.index!, l[0], kind, l[1]!, l[2]!);
+        const selector = kind === "space" ? selectorAt(file.text, m.index!) : "";
+        for (const l of value.matchAll(LENGTH)) {
+          const px = Number.parseFloat(l[1]!) * (l[2] === "rem" ? 16 : 1);
+          if (kind === "space" && isGeometry(prop, value, l.index!, px, selector)) continue;
+          size(start + l.index!, l[0], kind, l[1]!, l[2]!);
+        }
       } else if (prop === "font-family") {
         const family = value.trim();
         if (!/^(?:var\(|inherit|initial|unset)/.test(family)) {

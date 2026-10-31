@@ -197,6 +197,35 @@ function installAudit(): boolean {
     return svg?.tagName.toLowerCase() === "svg" && svg.children.length === 2 && [...svg.children].every((c) => c.tagName.toLowerCase() === "circle");
   };
 
+  /**
+   * The control's box grown by a ::before or ::after laid over it as a bigger hit area (content: ""; position: absolute;
+   * inset: -12px), placed from the control's own padding box. One that takes no taps, isn't placed from the control (it
+   * isn't positioned), doesn't cover the control's centre, or that the control clips, isn't part of it.
+   */
+  const withPseudoHitArea = (el: Element, rect: DOMRect): { width: number; height: number } => {
+    let [left, top, right, bottom] = [rect.left, rect.top, rect.right, rect.bottom];
+    const own = getComputedStyle(el);
+    if (own.position === "static" || own.overflowX !== "visible" || own.overflowY !== "visible") return { width: rect.width, height: rect.height };
+    const px = (v: string) => (v.endsWith("px") ? Number.parseFloat(v) : Number.NaN);
+    const box = {
+      left: rect.left + px(own.borderLeftWidth),
+      top: rect.top + px(own.borderTopWidth),
+      right: rect.right - px(own.borderRightWidth),
+      bottom: rect.bottom - px(own.borderBottomWidth),
+    };
+    const [cx, cy] = [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2];
+    for (const which of ["::before", "::after"]) {
+      const cs = getComputedStyle(el, which);
+      if (cs.content === "none" || cs.content === "normal" || cs.position !== "absolute" || cs.pointerEvents === "none" || cs.display === "none" || cs.visibility === "hidden") continue;
+      const [l, t, r, b] = [px(cs.left), px(cs.top), px(cs.right), px(cs.bottom)];
+      if ([l, t, r, b].some(Number.isNaN)) continue;
+      const area = { left: box.left + l, top: box.top + t, right: box.right - r, bottom: box.bottom - b };
+      if (area.left > cx || area.right < cx || area.top > cy || area.bottom < cy) continue;
+      [left, top, right, bottom] = [Math.min(left, area.left), Math.min(top, area.top), Math.max(right, area.right), Math.max(bottom, area.bottom)];
+    }
+    return { width: right - left, height: bottom - top };
+  };
+
   const api: AuditApi = {
     async axe(rules, naming) {
       const result = await axe.run(document, { runOnly: { type: "rule", values: rules }, resultTypes: ["violations"] });
@@ -208,6 +237,11 @@ function installAudit(): boolean {
           const info = violation.id === "image-alt" ? { ...found, kind: "image" as const } : found;
           const data = (node.any.find((c: any) => c.id === violation.id) ?? node.any[0] ?? {}).data ?? {};
           const rect = el?.getBoundingClientRect();
+          // axe measures the drawn box: a ::after hit area that makes it big enough is enough.
+          if (violation.id === "target-size" && el && rect) {
+            const hit = withPseudoHitArea(el, rect);
+            if (Math.round(hit.width) >= 24 && Math.round(hit.height) >= 24) continue;
+          }
           out.push({
             rule: naming.includes(violation.id) ? "name" : violation.id,
             ...info,
@@ -290,6 +324,9 @@ function installAudit(): boolean {
         }
         width = Math.max(width, right - left);
         height = Math.max(height, bottom - top);
+        const pseudo = withPseudoHitArea(el, rect);
+        width = Math.max(width, pseudo.width);
+        height = Math.max(height, pseudo.height);
         // Compared as reported, in whole pixels: padding around a line of text 1.4 times 14 px is 43.6 px tall, which
         // reads as 44 and would be reported as "44×44 px; 44×44 px is easier to tap".
         if (Math.round(width) < min || Math.round(height) < min) {

@@ -9,6 +9,8 @@ Four short commands that start the Motif skill in Claude Code. The build copies 
 /plugin install motif@motif
 ```
 
+The VS Code extension has no `/plugin` command: run `claude plugin marketplace add 7mxd/motif` and `claude plugin install motif@motif` in a terminal, then reload the window. The commands are `/motif:design`, `/motif:init`, `/motif:feature` and `/motif:review`.
+
 You need Claude Code 2.1.224 or later and git.
 
 ## Develop

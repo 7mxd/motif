@@ -15,6 +15,8 @@ Design guide tools for AI coding agents: build web and mobile apps with polished
 /plugin install motif@motif
 ```
 
+The VS Code extension has no `/plugin` command: run `claude plugin marketplace add 7mxd/motif` and `claude plugin install motif@motif` in a terminal, then reload the window.
+
 **Codex**
 
 ```
@@ -44,7 +46,7 @@ gemini extensions install https://github.com/7mxd/motif --ref plugins --auto-upd
 - macOS and Linux: `curl -fsSL https://raw.githubusercontent.com/7mxd/motif/main/install.sh | sh`
 - Windows PowerShell: `irm https://raw.githubusercontent.com/7mxd/motif/main/install.ps1 | iex`
 
-Then ask for design work ("make this screen look better"), or start Motif: `/motif:design` in Claude Code, `$motif` in Codex, `/motif` everywhere else.
+Then ask for design work ("make this screen look better"), or start Motif: `/motif:design` in Claude Code (type `/motif:` to see its four commands: design, init, feature and review), `$motif` in Codex, `/motif` everywhere else.
 
 You need git, and Claude Code 2.1.224 or later if you use Claude Code. The first time Motif runs, it downloads its tool (about 100 MB) from the [release](https://github.com/7mxd/motif/releases/tag/v1.0.0) and checks it against the release's checksums. See the [release notes](docs/releases/v1.0.0.md), or build and try Motif from source: [Claude Code](plugin/claude-code/README.md), [other agents](plugin/agents/README.md).
 

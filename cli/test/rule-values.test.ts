@@ -39,6 +39,22 @@ describe("CSS declarations", () => {
   test("spacing off the scale; 0, auto and scale values are fine", () => {
     expect(found("a.css", ".a { padding: 13px 16px; margin: 0 auto; gap: 1rem; }")).toEqual([["off-scale", "space", "13px"]]);
   });
+  test("geometry isn't spacing: hairlines, a decoration's placement, an overlap, and lengths worked out with others (v1.0 field trial)", () => {
+    // 2 px and less: a hairline gap, a 1 px nudge, the visually-hidden pattern's -1px margin.
+    expect(found("a.css", ".bar { gap: 2px; } .tag { padding: 1px 8px; } .sr { margin: -1px; }")).toEqual([]);
+    // A ::before or ::after placed on a timeline, or laid over a control as its hit area.
+    expect(found("a.css", ".step::before { left: 5px; top: 15px; } .pill::after { inset: -6px -10px; }")).toEqual([]);
+    // A button overlapping its thumbnail's corner.
+    expect(found("a.css", ".thumb .remove { position: absolute; top: -10px; right: -10px; }")).toEqual([]);
+    // Room for a floating button above the tab bar; the content column's width.
+    expect(found("a.css", ".main { padding-bottom: calc(96px + var(--tabbar-space)); padding-left: max(env(safe-area-inset-left), calc((100% - 640px) / 2)); }")).toEqual([]);
+    // Real spacing is still checked: an element's own offset, padding with a fixed sum, and a negative margin.
+    expect(found("a.css", ".fab { position: fixed; bottom: 13px; } .a { padding: calc(13px * 2); } .b { margin: -13px; }")).toEqual([
+      ["off-scale", "space", "13px"],
+      ["off-scale", "space", "13px"],
+      ["off-scale", "space", "13px"],
+    ]);
+  });
   test("radius and font size", () => {
     expect(found("a.css", ".a { border-radius: 6px; font-size: 15px; } .b { border-radius: 8px; font-size: 16px; }")).toEqual([
       ["off-scale", "radius", "6px"],

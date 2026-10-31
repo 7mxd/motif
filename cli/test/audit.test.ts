@@ -269,13 +269,16 @@ requestAnimationFrame(step);
 // span inside, absolutely placed, that makes its hit area 48 px tall; and a slide toggle, a role="switch" button named
 // through aria-labelledby, with a 48 px touch target of its own; and RealWorld's logo link, named by its image's alt. A child that takes no taps (pointer-events: none), or one the control clips, is no hit area.
 // Nor is a corner badge (it doesn't cover the control's centre), or a centred touch target a wrapper inside the control
-// clips. A 43.4 px button is 43 px as reported, and too small.
+// clips. A 43.4 px button is 43 px as reported, and too small. A ::after laid over a small button (inset: -12px, the job
+// tracker's close buttons in the v1.0 field trial) is its hit area, unless it takes no taps.
 const LIBRARY = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>button { position: relative; padding: 0 12px; border: 0; height: 40px; font: 14px sans-serif; }
 .touch { position: absolute; top: 50%; left: 0; right: 0; height: 48px; transform: translateY(-50%); }
 .icon .touch { left: 50%; width: 48px; transform: translate(-50%, -50%); }
 .switch { width: 52px; height: 32px; padding: 0; }
-#inert-touch .touch { pointer-events: none; }</style></head>
+#inert-touch .touch { pointer-events: none; }
+.hit::after { content: ""; position: absolute; inset: -12px; }
+#pseudo-inert::after { pointer-events: none; }</style></head>
 <body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111">
 <p><button id="order">Place order<span class="touch"></span></button></p>
 <p><button id="settings" class="icon" aria-label="Settings" style="width: 40px; padding: 0"><span class="touch"></span></button></p>
@@ -287,7 +290,9 @@ const LIBRARY = `<!doctype html><html><head><meta name="viewport" content="width
 <p><a id="brand" href="/" style="display: inline-block"><img alt="Conduit" width="88" height="24" style="display: block" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="></a></p>
 <p><button id="badge" class="icon" aria-label="Inbox" style="width: 40px; padding: 0"><span style="position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; background: #c00000; color: #ffffff; font-size: 10px">3</span></button></p>
 <p><button id="wrapped" class="icon" aria-label="Share" style="width: 40px; padding: 0"><span style="position: relative; display: block; width: 40px; height: 40px; overflow: hidden"><span class="touch"></span></span></button></p>
-<p><button id="near" aria-label="Near" style="width: 43.4px; height: 43.4px; padding: 0"></button></p></body></html>`;
+<p><button id="near" aria-label="Near" style="width: 43.4px; height: 43.4px; padding: 0"></button></p>
+<p><button id="pseudo" class="hit" aria-label="Close" style="width: 20px; height: 20px; padding: 0"></button></p>
+<p><button id="pseudo-inert" class="hit" aria-label="Pin" style="width: 30px; height: 30px; padding: 0"></button></p></body></html>`;
 
 const browser = findBrowser();
 let server: ReturnType<typeof Bun.serve>;
@@ -388,6 +393,7 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
       '#badge: The "Inbox" button is 40×40 px on a phone; 44×44 px is easier to tap.',
       '#wrapped: The "Share" button is 40×40 px on a phone; 44×44 px is easier to tap.',
       '#near: The "Near" button is 43×43 px on a phone; 44×44 px is easier to tap.',
+      '#pseudo-inert: The "Pin" button is 30×30 px on a phone; 44×44 px is easier to tap.',
     ]);
   }, 120_000);
 
