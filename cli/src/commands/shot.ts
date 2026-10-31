@@ -686,6 +686,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       })),
       shots,
       skipped: discovery.skipped,
+      ...(all.length > routes.length ? { leftOut: all.slice(MAX_ROUTES) } : {}),
       states: states.map((s) => s.name),
       ...(rtl ? { rtl } : {}),
       ...(audit ? { findings, audit: auditFile } : {}),

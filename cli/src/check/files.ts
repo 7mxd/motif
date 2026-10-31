@@ -25,9 +25,15 @@ export const WEB_LANGS: Record<string, Lang> = {
   ".html": "markup", ".htm": "markup", ".mdx": "markup",
 };
 
+/** Test folders, their fixtures and test tools' output: a fixture page's colours aren't the app's (a saved job page in tests/fixtures). */
+const TEST_FOLDERS = [
+  "test/", "tests/", "e2e/", "cypress/", "fixtures/", "__fixtures__/", "__mocks__/", "playwright-report/", "test-results/", "storybook-static/",
+];
+
 export const DEFAULT_IGNORES = [
   "node_modules/", ".git/", "dist/", "build/", "out/", ".next/", "coverage/", "__tests__/",
   "*.test.*", "*.spec.*", "*.stories.*", "*.config.*", "*.min.*", "*.d.ts",
+  ...TEST_FOLDERS,
   // Dot-folders (.storybook, .vscode, …) and the project's own design/ folder (previews, reports).
   ".*/", "/design/",
 ];
@@ -41,8 +47,11 @@ export const FLUTTER_IGNORES = [
   "lib/generated/", "lib/l10n/app_localizations*.dart",
 ];
 
-/** The defaults for Dart: as for the web, but a build/ folder is ignored only at the app's top (FLUTTER_IGNORES). */
-const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/");
+/**
+ * The defaults for Dart, Kotlin and Swift: as for the web, but build/ and test folders are ignored only at the app's top
+ * (FLUTTER_IGNORES and the others), so a feature folder named test under lib/ is still read.
+ */
+const DART_DEFAULT_IGNORES = DEFAULT_IGNORES.filter((p) => p !== "build/" && !TEST_FOLDERS.includes(p));
 
 /**
  * A Compose app module's build output, tests and Gradle scripts: never the team's own code. Matched from the module

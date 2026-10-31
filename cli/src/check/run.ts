@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { siteDir, type AppInfo } from "../detect/stacks";
 import { isMotifGenerated, type GeneratedFile } from "../generate/header";
+import { usesTypeScript } from "../generate/javascript";
 import type { Theme, ThemeSet, ThemeVariant } from "../generate/theme";
 import { prefixPath } from "../project/apps";
 import { motifCss } from "../generate/motif-css";
@@ -140,7 +141,7 @@ export function checkApp(
   const tailwindVersion = plain ? "none" : detectTailwind(appDir);
   const generatedHere: GeneratedFile[] = plain
     ? [{ path: srcDir === "." ? "motif.css" : `${srcDir}/motif.css`, content: motifCss(theme, opts.variants) }]
-    : generateReactWeb(theme, { srcDir, tailwind: tailwindVersion }, opts.variants);
+    : generateReactWeb(theme, { srcDir, tailwind: tailwindVersion, javascript: !usesTypeScript(appDir, root) }, opts.variants);
   // On Tailwind 3, Motif's theme classes do nothing: they're flagged.
   const v3Roles: ThemeRoles | undefined = tailwindVersion === "v3" ? tailwind3Roles(theme, appDir) : undefined;
   const expected = generatedHere.map((f) => ({ path: prefixPath(app.path, f.path), content: f.content }));
@@ -209,9 +210,9 @@ function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Them
   const set: ThemeSet = opts.set ?? { base: theme, defaultId: null, defaultLabel: null, variants: opts.variants ?? [] };
   const expected = web.generate ? web.generate(set, { root, app, srcDir, tailwind: tailwindVersion }).files : [];
   // The motion file the stack writes (a Nuxt 3 app at the project root keeps it in motion/), as a path in the app.
-  const motion = expected.find((f) => /motion\.ts$/.test(f.path))?.path;
+  const motion = expected.find((f) => /motion\.[jt]s$/.test(f.path))?.path;
   const scale = buildScale(theme, srcDir);
-  if (motion) scale.motionImport = (motion.startsWith(`${app.path}/`) ? motion.slice(app.path.length + 1) : motion).replace(/\.ts$/, "");
+  if (motion) scale.motionImport = (motion.startsWith(`${app.path}/`) ? motion.slice(app.path.length + 1) : motion).replace(/\.[jt]s$/, "");
   const fixContext: WebFixContext = { appDir, appPath: app.path, ...(motion ? { motionImport: scale.motionImport } : {}) };
 
   const all = web.sourceFiles(root, app, { ignore: opts.ignore });

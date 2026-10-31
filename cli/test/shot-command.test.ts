@@ -229,6 +229,8 @@ describe("motif shot", () => {
     // Wave B (#11): the note names the pages left out; a web app's order is left as it is.
     expect(calls.captured[0]!.routes[0]).toBe("/p0");
     expect(r.text).toContain("Captured the first 12 of 14 pages. Left out: /p12 and /p13. Choose others with --routes.");
+    // v1.0 field trial: an agent reading --json gets them as a list, to shoot next.
+    expect(r.data.leftOut).toEqual(["/p12", "/p13"]);
   });
 
   test("pages that didn't render make it exit 1, each with its reason", async () => {

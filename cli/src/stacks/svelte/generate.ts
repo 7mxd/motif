@@ -4,6 +4,7 @@ import { springPhysics, type SpringParams } from "../../contract/spring";
 import { num } from "../../generate/css-values";
 import { FALLBACK_DIR } from "../../generate/fallback";
 import { TS_HEADER, type GeneratedFile } from "../../generate/header";
+import { motionFile, usesTypeScript } from "../../generate/javascript";
 import { isReferenced } from "../../generate/referenced";
 import type { Theme, ThemeSet } from "../../generate/theme";
 import { appLabel, prefixPath } from "../../project/apps";
@@ -41,7 +42,7 @@ export function generateSvelte(set: ThemeSet, ctx: SvelteCtx): { files: Generate
   if (ctx.tailwind === "v4") files.push({ path: where.tailwind, content: tailwindCss(set.base) });
   if (ctx.tailwind === "v3") notes.push(tailwindV3Note(appLabel(ctx.app)));
   if (beforeSvelte5(join(ctx.root, ctx.app.path))) notes.push(SVELTE_4_MOTION);
-  else files.push({ path: where.motion, content: svelteMotionTs(set.base) });
+  else files.push(motionFile(where.motion, svelteMotionTs(set.base), !usesTypeScript(join(ctx.root, ctx.app.path), ctx.root)));
   return { files, notes };
 }
 

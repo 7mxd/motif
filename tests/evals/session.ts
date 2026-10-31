@@ -1,5 +1,6 @@
 // Runs one headless Claude Code session: the prompt on standard input, every event saved to a transcript, isolation checked as soon as
-// the session starts, a time limit, and the developer's usage limit noticed. The whole process tree is stopped on a time limit or Ctrl+C.
+// the session starts, a time limit, and the developer's usage limit noticed. The whole process tree is stopped on a time limit or Ctrl+C,
+// and soon after the session's result when it doesn't exit by itself (something it started, like an emulator, keeps it attached).
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -16,6 +17,8 @@ export interface SessionSpec {
   prompt: string;
   transcript: string;
   timeoutMs: number;
+  /** How long after its result the session may take to exit before it's stopped (one minute unless set). */
+  resultGraceMs?: number;
   /** What the first event must show; with no pluginDir (the grader, Test A's a-* sessions), no plugin may be loaded. */
   expect: { pluginDir?: string; auto: boolean; tools: string[]; personal?: string[] };
 }
@@ -109,6 +112,7 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
   let limit: { resetsAt?: number } | null = null;
   let notIsolated = false;
   let timedOut = false;
+  let resultTimer: ReturnType<typeof setTimeout> | undefined;
   const problems: string[] = [];
   let pending = "";
   let stderr = "";
@@ -141,9 +145,10 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
     }
     limit ??= usageLimit(e);
     const r = resultInfo(e);
-    if (r) {
+    if (r && !result) {
       result = r;
       note();
+      resultTimer = setTimeout(() => stop(), spec.resultGraceMs ?? 60_000);
     }
   };
 
@@ -161,8 +166,17 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
     stderr = (stderr + chunk).slice(-4000);
   });
   let spawnError: Error | undefined;
+  let exitTimer: ReturnType<typeof setTimeout> | undefined;
   const ended = new Promise<number | null>((resolve) => {
     proc.once("close", (code) => resolve(code));
+    // A child it left running can hold its output open after it exits, so its end doesn't wait for that output to close.
+    proc.once("exit", (code) => {
+      exitTimer = setTimeout(() => {
+        proc.stdout!.destroy();
+        proc.stderr!.destroy();
+        resolve(code);
+      }, 5000);
+    });
     proc.once("error", (e) => {
       spawnError = e;
       resolve(null);
@@ -176,6 +190,8 @@ export async function runSession(spec: SessionSpec): Promise<SessionOutcome> {
   }, spec.timeoutMs);
   const code = await ended;
   clearTimeout(timer);
+  clearTimeout(resultTimer);
+  clearTimeout(exitTimer);
   if (forced) clearTimeout(forced);
   // Whatever it left running (a dev server, a watcher) goes too: on macOS and Linux its process group outlives it.
   if (proc.pid && process.platform !== "win32") killTree(proc.pid, true);

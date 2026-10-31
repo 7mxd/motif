@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { FALLBACK_DIR } from "../../generate/fallback";
+import { motionFile, usesTypeScript } from "../../generate/javascript";
 import { isReferenced, mentions } from "../../generate/referenced";
 import type { GeneratedFile } from "../../generate/header";
 import type { ThemeSet } from "../../generate/theme";
@@ -50,9 +51,10 @@ export function generateVue(set: ThemeSet, ctx: VueCtx): { files: GeneratedFile[
   if (vueMajor(appDir) === 2) {
     notes.push("motion.ts is for Motion for Vue, which needs Vue 3, so Motif didn't write it. Animate with the CSS variables in motif.css (--motif-duration-*, --motif-easing-*).");
   } else {
-    files.push({ path: where.motion, content: motionTs(set.base) });
+    const motion = motionFile(where.motion, motionTs(set.base), !usesTypeScript(appDir, ctx.root));
+    files.push(motion);
     if (declared(appDir, "motion-v") === null) {
-      notes.push(`${where.motion} is for Motion for Vue: ${addPackages(packageManager(appDir), "motion-v")}. Vue's <Transition> can use the CSS variables in motif.css instead.`);
+      notes.push(`${motion.path} is for Motion for Vue: ${addPackages(packageManager(appDir), "motion-v")}. Vue's <Transition> can use the CSS variables in motif.css instead.`);
     }
   }
   return { files, notes };

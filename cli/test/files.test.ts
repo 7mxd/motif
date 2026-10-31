@@ -33,6 +33,29 @@ describe("listSourceFiles", () => {
     expect(paths(listSourceFiles(root, "."))).toEqual(["src/App.tsx"]);
   });
 
+  test("skips test folders and their fixtures: a test page's colours aren't the app's (v1.0 field trial)", () => {
+    const root = makeProject({
+      "src/App.tsx": "x",
+      "tests/fixtures/discovery/job.html": "x",
+      "tests/unit/a.test.js": "x",
+      "test/helpers.ts": "x",
+      "e2e/home.ts": "x",
+      "cypress/support/e2e.ts": "x",
+      "src/__fixtures__/a.ts": "x",
+      "src/__mocks__/b.ts": "x",
+      "playwright-report/index.html": "x",
+      "test-results/a.html": "x",
+      "storybook-static/iframe.html": "x",
+    });
+    expect(paths(listSourceFiles(root, "."))).toEqual(["src/App.tsx"]);
+    expect(paths(listSvelteFiles(root, "."))).toEqual(["src/App.tsx"]);
+  });
+
+  test("a Flutter feature folder named test under lib/ is still read", () => {
+    const root = makeProject({ "pubspec.yaml": "name: a", "lib/test/quiz.dart": "x", "test/widget_test.dart": "x" });
+    expect(paths(listDartFiles(root, "."))).toEqual(["lib/test/quiz.dart"]);
+  });
+
   test("respects .gitignore at the root and in the app, plus motif.json patterns", () => {
     const root = makeProject({
       ".gitignore": "generated/\n",

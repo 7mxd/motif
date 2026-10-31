@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { num } from "../../generate/css-values";
+import { motionFile } from "../../generate/javascript";
 import { cssVar, indent, motifCss } from "../../generate/motif-css";
 import { CSS_HEADER, TS_HEADER, type GeneratedFile } from "../../generate/header";
 import type { Theme, ThemeVariant } from "../../generate/theme";
@@ -105,9 +106,10 @@ export function motionTs(theme: Theme): string {
   ].join("\n");
 }
 
-export function generateReactWeb(theme: Theme, opts: { srcDir: string; tailwind: TailwindVersion }, variants: ThemeVariant[] = []): GeneratedFile[] {
+/** opts.javascript: the app has no TypeScript, so its motion module is motion.js. */
+export function generateReactWeb(theme: Theme, opts: { srcDir: string; tailwind: TailwindVersion; javascript?: boolean }, variants: ThemeVariant[] = []): GeneratedFile[] {
   const files: GeneratedFile[] = [{ path: `${opts.srcDir}/styles/motif.css`, content: motifCss(theme, variants) }];
   if (opts.tailwind === "v4") files.push({ path: `${opts.srcDir}/styles/motif.tailwind.css`, content: tailwindCss(theme) });
-  files.push({ path: `${opts.srcDir}/design/motion.ts`, content: motionTs(theme) });
+  files.push(motionFile(`${opts.srcDir}/design/motion.ts`, motionTs(theme), opts.javascript === true));
   return files;
 }

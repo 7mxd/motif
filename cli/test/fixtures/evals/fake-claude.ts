@@ -21,6 +21,10 @@ interface Scenario {
   onTerm?: string;
   /** Prints an event holding this text with its bytes split across two writes. */
   split?: string;
+  /** Waits this long after the last event before exiting (a session that doesn't exit once it's done). */
+  afterResultMs?: number;
+  /** Starts a long-running child that shares its output, so the output stays open after it exits (an emulator it started). */
+  heldChild?: boolean;
 }
 
 const file = process.env.FAKE_CLAUDE_SCENARIO;
@@ -53,6 +57,10 @@ if (scenario.child) {
   const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], { stdio: ["ignore", "ignore", "ignore"] });
   writeFileSync(scenario.child, String(child.pid));
 }
+if (scenario.heldChild) {
+  const child = Bun.spawn([process.execPath, "-e", "setTimeout(() => {}, 60000)"], { stdio: ["ignore", "inherit", "inherit"] });
+  child.unref();
+}
 if (scenario.split) {
   const bytes = Buffer.from(JSON.stringify({ type: "assistant", text: scenario.split }) + "\n");
   const cut = bytes.findIndex((b) => b >= 0x80) + 1 || bytes.length;
@@ -68,5 +76,6 @@ if (scenario.hangMs) await Bun.sleep(scenario.hangMs);
 if (scenario.result !== null) {
   out({ type: "result", subtype: "success", is_error: false, num_turns: 3, total_cost_usd: 0.5, duration_ms: 1000, permission_denials: [], result: "Done.", api_error_status: null, ...scenario.result });
 }
+if (scenario.afterResultMs) await Bun.sleep(scenario.afterResultMs);
 if (scenario.stderr) process.stderr.write(scenario.stderr);
 process.exit(scenario.exitCode ?? 0);
