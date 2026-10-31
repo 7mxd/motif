@@ -10,6 +10,7 @@ import { ownSpacingPx, readTailwindDefaults } from "../extract/tailwind-theme";
 import { isMotifGenerated } from "../generate/header";
 import { appLabel, noSuchApp, prefixPath, selectApps } from "../project/apps";
 import { readIgnorePatterns } from "../project/settings";
+import { detectTailwind } from "../stacks/react-web/generate";
 import { nativeStack, nativeStacks, type NativeStack } from "../stacks/native";
 import { webStack, webStacks, type WebStack } from "../stacks/web";
 import { andList, plural } from "../text";
@@ -38,6 +39,12 @@ export const REPORT_PATH = "design/extract-report.json";
 export const PREVIOUS_DRAFT_PATH = "design/tokens.draft.previous.json";
 
 
+/** Whether an app uses Tailwind: declared by it or its workspace root, or imported in its CSS. Otherwise its class names are its own. */
+function usesTailwind(cwd: string, app: AppInfo, files: SourceFile[]): boolean {
+  if (detectTailwind(join(cwd, app.path)) !== "none" || detectTailwind(cwd) !== "none") return true;
+  return files.some((f) => f.lang === "css" && /@import\s+(url\()?["']tailwindcss|@tailwind\s/.test(f.text));
+}
+
 export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandResult> {
   const { apps: detected, findings: settingProblems } = detectApps(cwd);
   const apps = selectApps(detected, ctx.app);
@@ -64,7 +71,10 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
   }
 
   const ignore = readIgnorePatterns(cwd);
+  /** Plain sites' files: no utility classes, and their scripts' colour lists are data. */
   const noTailwind = new Set<SourceFile>();
+  /** Files whose class names aren't Tailwind's: plain sites', and those of apps that don't use it. */
+  const ownClasses = new Set<SourceFile>();
   const web = supported.filter((a) => isWeb(a) || framework(a) !== null);
   /** A framework app's files (Vue), by stack. */
   const frameworkFiles = new Map<WebStack, SourceFile[]>();
@@ -79,6 +89,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
     const extra = (stack?.extractFiles?.(cwd, a, { ignore }) ?? []).filter((f) => !isMotifGenerated(f.path, f.text));
     if (stack) frameworkFiles.set(stack, [...(frameworkFiles.get(stack) ?? []), ...own, ...extra]);
     if (a.stack === "plain-web") for (const f of own) noTailwind.add(f);
+    if (a.stack === "plain-web" || !usesTailwind(cwd, a, own)) for (const f of own) ownClasses.add(f);
     return own;
   });
   const parts: Occurrences[] = [];
@@ -90,7 +101,7 @@ export async function runExtract(cwd: string, ctx: RunContext): Promise<CommandR
     const tw = defaults && ownSpacing !== null ? { ...defaults, spacingPx: ownSpacing } : defaults;
     // Plain web sites have no utility classes. Every app's own variables are read the way a person would; colour lists in
     // a plain site's scripts are data, but a React app's theme objects (MUI's createTheme) are its theme.
-    parts.push(collectOccurrences(webFiles, tw, (f) => !noTailwind.has(f), () => true, (f) => noTailwind.has(f)));
+    parts.push(collectOccurrences(webFiles, tw, (f) => !ownClasses.has(f), () => true, (f) => noTailwind.has(f)));
   }
   // A framework's own reading of its apps' code (Vue: Vuetify's themes), beside what the web's collector found.
   for (const [stack, own] of frameworkFiles) parts.push(stack.collect!(own));

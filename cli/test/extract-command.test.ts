@@ -57,6 +57,25 @@ describe("runExtract", () => {
     expect((r.data.notes as string[]).join("\n")).toContain("Tailwind isn't installed");
   });
 
+  test("an app that doesn't use Tailwind gets no note about its classes, whatever they're called (v1.0 field trial)", async () => {
+    const pkg = JSON.stringify({ dependencies: { react: "^19", "react-dom": "^19" }, devDependencies: { vite: "^6" } });
+    const r = await runExtract(project({ "package.json": pkg }), ctx);
+    expect((r.data.summary as any).unresolved).toBe(0);
+    expect((r.data.notes as string[]).join("\n")).not.toContain("Tailwind");
+  });
+
+  test("Tailwind imported in the CSS, or declared at the workspace root, still counts", async () => {
+    const pkg = JSON.stringify({ dependencies: { react: "^19", "react-dom": "^19" }, devDependencies: { vite: "^6" } });
+    const imported = await runExtract(project({ "package.json": pkg, "src/index.css": '@import "tailwindcss";\n' }), ctx);
+    expect((imported.data.notes as string[]).join("\n")).toContain("Tailwind isn't installed");
+    const root = makeProject({
+      "package.json": JSON.stringify({ private: true, workspaces: ["apps/*"], devDependencies: { tailwindcss: "^4.1.0" } }),
+      "apps/web/package.json": pkg,
+      "apps/web/src/App.tsx": APP,
+    });
+    expect((await runExtract(root, ctx)).data.notes as string[]).toEqual(expect.arrayContaining([expect.stringContaining("Tailwind isn't installed")]));
+  });
+
   test("an existing design guide is left alone", async () => {
     const root = project({ "design/tokens.json": "{}" });
     const r = await runExtract(root, ctx);

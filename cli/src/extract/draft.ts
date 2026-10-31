@@ -728,8 +728,9 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
   // Colours only ever listed in scripts (the card colours people pick from) aren't the theme's actions or statuses.
   const isData = (c: ColorCluster) => used(c, "data") >= c.count;
 
-  // A Flutter app's palette says more than its colour groups: a role named by a palette field takes the field's own colour,
-  // even one no group stands for alone (an off-white page beside white cards), or one that is see-through (muted text).
+  // A Flutter app's palette, or a web app's CSS variables, say more than its colour groups: a role named by a palette field
+  // or variable takes its own colour, even one no group stands for alone (an off-white page beside white cards), or (in a
+  // palette) one that is see-through (muted text).
   const dartSource = occ.source === "dart" || occ.source === "kotlin" || occ.source === "swift" || occ.source === "script";
   /** Roles drafted from a see-through palette field laid over the background: role → the field. */
   const flattened = new Map<string, string>();
@@ -755,7 +756,7 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     for (let depth = 0; depth < 8 && aliases[n] && aliases[n] !== n && !lightByName.has(n); depth++) n = aliases[n]!;
     return n;
   };
-  if (dartSource && follow) {
+  if (follow) {
     const own = new Map<string, ColorCluster>();
     for (const role of Object.keys(named)) {
       const field = finalName(namedVar[role]!);
@@ -938,11 +939,19 @@ export function buildDraft(occ: Occurrences): { tokens: Record<string, unknown>;
     const chain = name ? chainOf(name) : [];
     return chain.length > 0 ? chain : undefined;
   };
-  /** A text colour on a role's fill the app names itself (--on-action-primary, or ColorScheme's onPrimary). */
+  /**
+   * A text colour on a role's fill the app names itself: --on-action-primary, or ColorScheme's onPrimary; or named after
+   * the fill's own variable (--accent-contrast, shadcn's --primary-foreground, --on-brand).
+   */
   const onSource = (role: string): Variable[] | undefined => {
     if (!follow) return undefined;
-    const chain = chainOf(`--on-${role}`);
-    return solidHex(chainLight(chain)) ? chain : undefined;
+    const fills = [namedVar[role], ...(occ.variables ?? []).filter((x) => inCluster(chosen[role], x.light)).map((x) => x.name)].filter((n): n is string => Boolean(n));
+    const names = [`--on-${role}`, ...fills.flatMap((f) => [`--on-${f.slice(2)}`, `${f}-foreground`, `${f}-contrast`, `${f}-fg`])];
+    for (const name of names) {
+      const chain = chainOf(name);
+      if (solidHex(chainLight(chain))) return chain;
+    }
+    return undefined;
   };
 
   const inCluster = (cluster: ColorCluster | undefined, value: string | undefined) =>

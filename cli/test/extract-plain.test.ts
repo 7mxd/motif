@@ -306,6 +306,31 @@ describe("the review of batch C2", () => {
     })).toEqual(["#F2F2F7", "#0A0A0A"]);
   });
 
+  test("an off-white page beside white cards keeps both colours when the CSS names each (v1.0 field trial)", async () => {
+    const cards = Array.from({ length: 6 }, (_, i) => `.card${i} { background: var(--surface); }`).join("\n");
+    const root = makeProject({
+      "public/index.html": '<!doctype html><link rel="stylesheet" href="styles.css"><p>Hi</p>',
+      "public/styles.css": `:root { --bg: light-dark(#f6f6f4, #111213); --surface: light-dark(#ffffff, #1b1c1e); --text: light-dark(#1b1c1e, #ececea) }\nbody { background: var(--bg); color: var(--text) }\n${cards}`,
+    });
+    expect((await runExtract(root, { positionals: [] })).exitCode).toBe(0);
+    const tokens = read(root, "design/tokens.draft.json");
+    expect([hex(tokens, "background", "light"), hex(tokens, "background", "dark")]).toEqual(["#F6F6F4", "#111213"]);
+    expect([hex(tokens, "surface", "light"), hex(tokens, "surface", "dark")]).toEqual(["#FFFFFF", "#1B1C1E"]);
+  });
+
+  test("the text on the action colour is the one the CSS names after it: --accent-contrast, shadcn's --primary-foreground (v1.0 field trial)", async () => {
+    for (const [fill, on] of [["--accent", "--accent-contrast"], ["--primary", "--primary-foreground"], ["--brand", "--on-brand"]]) {
+      const buttons = Array.from({ length: 6 }, (_, i) => `button.b${i} { background: var(${fill}); color: var(${on}); }`).join("\n");
+      const root = makeProject({
+        "public/index.html": '<!doctype html><link rel="stylesheet" href="styles.css"><p>Hi</p>',
+        "public/styles.css": `:root { --bg: light-dark(#f6f6f4, #111213); --text: light-dark(#1b1c1e, #ececea); ${fill}: light-dark(#1f5f5b, #6fc2b9); ${on}: light-dark(#fefefe, #0c1f1d) }\nbody { background: var(--bg); color: var(--text) }\n${buttons}`,
+      });
+      expect((await runExtract(root, { positionals: [] })).exitCode).toBe(0);
+      const tokens = read(root, "design/tokens.draft.json");
+      expect([hex(tokens, "action-primary", "light"), hex(tokens, "on-action-primary", "light"), hex(tokens, "on-action-primary", "dark")]).toEqual(["#1F5F5B", "#FEFEFE", "#0C1F1D"]);
+    }
+  });
+
   test("light-dark(var(--a), var(--b)) is followed through both variables", async () => {
     expect(await extracted({
       "public/index.html": '<!doctype html><link rel="stylesheet" href="styles.css"><p>Hi</p>',
