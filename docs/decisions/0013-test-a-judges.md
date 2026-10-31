@@ -1,7 +1,7 @@
 # 0013 — Test A is judged by AI and the owner, before release
 
 - Date: 2026-10-26
-- Status: Accepted
+- Status: Accepted. Its second point is amended by [decision 0014](0014-test-a-average-bar.md): Test A passes on the briefs' average.
 - Context: the core spec planned Test A as a blind comparison judged by people, before each release. The owner has no panel of judges, and Motif will be shared on LinkedIn only after v1.0.0, so outside judges can't decide the release. The owner decided this on 2026-10-26 (Part 4 spec, §2).
 
 ## Decisions

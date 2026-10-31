@@ -117,7 +117,7 @@ You judge the pairs too, blind: `bun tests/evals/judge-owner.ts <run>` (the run'
 
 ## Test A
 
-Test A builds each of the ten briefs without Motif (the `a-*` cases: no plugins, a prompt with every mention of Motif removed), shoots both apps' starter screens into anonymous pairs, and has AI judges and you pick the better screen. Motif must win on every brief. How the pass rule works and what it can't see: [docs/test-a.md](../../docs/test-a.md), with the run's verdict.
+Test A builds each of the ten briefs without Motif (the `a-*` cases: no plugins, a prompt with every mention of Motif removed), shoots both apps' starter screens into anonymous pairs, and has AI judges and you pick the better screen. Motif must win on the briefs' average, and lose none outright ([decision 0014](../../docs/decisions/0014-test-a-average-bar.md)). How the pass rule works and what it can't see: [docs/test-a.md](../../docs/test-a.md), with the run's verdict.
 
 - Run it with everything else: a full run is 49 sessions. Off a Mac it is 44, because the four SwiftUI cases and `a-masar` need a Mac. A run of only some cases can report Test A on fewer briefs.
 - A re-run of Test A runs D too. Each `a-*` is compared with its `d-*`, so an `a-*` chosen without it (`--tests A`, `--cases a-bloom`) gets it added, and the runner says so in one line ("Test A compares each app with the one Motif builds, so d-bloom runs too").

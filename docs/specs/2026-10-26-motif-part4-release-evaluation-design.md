@@ -74,6 +74,8 @@ Every pair is judged **twice, with the sides swapped**. A side wins the pair onl
 
 **The owner.** The owner judges in the page's owner mode: every pair of the run, blind, in a random order, with nothing revealed until the last vote. The runner serves the page on the owner's computer for this, so the votes go straight into the run's results. *(Builder's call.)*
 
+*Amended 2026-10-31 by [decision 0014](../decisions/0014-test-a-average-bar.md): Test A now passes on the briefs' average, with no brief lost to both kinds of judge. The rule below is each brief's own bar, still reported.*
+
 **Pass: Motif must win on every stack** (the owner's decision, 2026-10-26). Each brief is scored on its own pairs, so web briefs, which have twice the pairs, count no more than the others. Test A passes when, for **every brief**:
 - the AI judges pick Motif's side in **at least 70%** of its pairs, and the baseline in **at most 15%**; and
 - the owner picks Motif's side in **more than half** of its pairs, counting "about the same" as not a win.

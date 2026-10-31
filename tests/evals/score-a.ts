@@ -1,7 +1,8 @@
-// Test A's scores and verdict (Part 4 §6): each brief is scored on its own pairs, so a web brief with twice the pairs
-// counts no more than the others, and Test A passes only when every brief passes. The AI judges must pick Motif's side
-// in at least 70% of a brief's judged pairs and the baseline in at most 15%; the owner must pick Motif in more than half
-// ("about the same" counts as judged and isn't a win). A pair with a screen from one side only goes to that side, for the
+// Test A's scores and verdict (Part 4 §6, decision 0014): each brief is scored on its own pairs, so a web brief with
+// twice the pairs counts no more than the others. A brief passes on its own when the AI judges pick Motif's side in at
+// least 70% of its judged pairs and the baseline in at most 15%, and the owner picks Motif in more than half ("about the
+// same" counts as judged and isn't a win). Test A passes when the briefs' average shares clear those same bars, and the
+// baseline wins no brief with both the AI judges and the owner; the briefs below the bar on their own are named. A pair with a screen from one side only goes to that side, for the
 // AI and the owner alike; so does every pair of a brief whose other side's app didn't build. A pair with neither is left out.
 import { CASES, plural } from "./cases";
 import type { Grade } from "./grade";
@@ -27,6 +28,11 @@ export interface BriefScore {
    * no pair had both apps' screens. Says so and names the log to read before the win is accepted.
    */
   forfeit?: string;
+  /**
+   * Once nothing waits (every pair judged and voted, or decided without them): each side's share of the brief's pairs,
+   * the forced ones included. Test A's verdict averages them over the briefs.
+   */
+  shares?: { ai: { motif: number; baseline: number }; owner: number };
   /** null while the brief waits for judgements, the owner's votes or its pairs, or when different models built its two apps. */
   pass: boolean | null;
   why: string;
@@ -112,8 +118,9 @@ function scoreOf(
         : `waiting for the build result of ${side(built.motif === null)}`;
     return { ...base, ai: none, pass: null, why };
   }
-  if (!built.motif && !built.baseline) return { ...base, ai: none, pass: false, why: "neither app built" };
-  if (forced.length + open.length === 0) return { ...base, ai: none, pass: false, why: "no pair had a screen from either app" };
+  const nothing = { ai: { motif: 0, baseline: 0 }, owner: 0 };
+  if (!built.motif && !built.baseline) return { ...base, ai: none, pass: false, why: "neither app built", shares: nothing };
+  if (forced.length + open.length === 0) return { ...base, ai: none, pass: false, why: "no pair had a screen from either app", shares: nothing };
 
   const ai = { ...none };
   for (const w of forced) ai[w]++;
@@ -143,11 +150,14 @@ function scoreOf(
   // Motif's side wins every pair it drew without a judge: said as a forfeit, with the log a person reads before accepting it.
   const unbuilt = !built.baseline ? `won by forfeit: the app without Motif didn't build — read a-${brief}/${built.logs?.baseline ?? "build.log"}` : undefined;
   if (unbuilt) reasons.push(unbuilt);
+  const shares = unjudged === 0 && unvoted === 0 && judged > 0
+    ? { ai: { motif: ai.motif / judged, baseline: ai.baseline / judged }, owner: ownerJudged > 0 ? votes.motif / ownerJudged : 0 }
+    : undefined;
   const result = (pass: boolean | null, more: string[]): BriefScore => {
     const forfeit = unbuilt ?? (pass === true && open.length === 0 ? `won by forfeit: no pair had both apps' screens, so none was judged — read a-${brief}/pair-shots.json` : undefined);
     return {
       ...base, ai, ...(voted > 0 ? { owner: votes } : {}), pass, why: [...(forfeit && !unbuilt ? [forfeit] : []), ...reasons, ...more].join("; "),
-      ...(forfeit && pass !== false ? { forfeit } : {}),
+      ...(forfeit && pass !== false ? { forfeit } : {}), ...(shares ? { shares } : {}),
     };
   };
 
@@ -171,21 +181,36 @@ function scoreOf(
   return result(true, [`${aiLine}; the owner picked Motif in ${votes.motif} of ${ownerJudged} (${pct(votes.motif, ownerJudged)})`]);
 }
 
-/** Test A's verdict: fail when any brief fails; incomplete while an expected brief has no verdict yet; else pass. */
+/**
+ * Test A's verdict (decision 0014): incomplete while an expected brief has no shares yet; else pass when the briefs'
+ * average shares clear the bars (Motif at least 70% and the baseline at most 15% with the AI judges, Motif more than half
+ * with the owner) and the baseline wins no brief with both; fail otherwise.
+ */
 export function verdictA(scores: BriefScore[], expected: string[]): { status: "pass" | "fail" | "incomplete"; detail: string } {
   const of = (b: string) => scores.find((s) => s.brief === b);
-  const failed = expected.filter((b) => of(b)?.pass === false);
-  if (failed.length > 0) {
-    return { status: "fail", detail: `Motif didn't win ${failed.join(", ")}: ${failed.map((b) => `${b}: ${of(b)!.why}`).join(" | ")}.` };
-  }
   // Briefs passed with no judge deciding them: named, so a person reads their logs before the verdict is accepted.
   const forfeits = expected.filter((b) => of(b)?.pass === true && of(b)!.forfeit);
   const byForfeit = forfeits.length > 0 ? ` Won by forfeit: ${forfeits.map((b) => `${b} (${of(b)!.forfeit!.replace(/^won by forfeit: /, "")})`).join(", ")}.` : "";
-  const waiting = expected.filter((b) => !of(b) || of(b)!.pass === null || of(b)!.pairs === 0);
+  const waiting = expected.filter((b) => !of(b) || of(b)!.pass === null || of(b)!.pairs === 0 || !of(b)!.shares);
   if (waiting.length > 0) {
     return { status: "incomplete", detail: `${waiting.length} of ${expected.length} briefs have no verdict yet: ${waiting.map((b) => `${b} (${of(b)?.why ?? "no pairs"})`).join(", ")}.${byForfeit}` };
   }
-  return { status: "pass", detail: `Motif won all ${expected.length} briefs.${byForfeit}` };
+  const briefs = expected.map((b) => of(b)!);
+  const mean = (f: (x: NonNullable<BriefScore["shares"]>) => number) => briefs.reduce((n, s) => n + f(s.shares!), 0) / briefs.length;
+  const [motif, baseline, owner] = [mean((x) => x.ai.motif), mean((x) => x.ai.baseline), mean((x) => x.owner)];
+  const per = (x: number) => `${Math.round(x * 100)}%`;
+  const line = `Across the ${briefs.length} briefs, each counted the same, the AI judges picked Motif in ${per(motif)} of a brief's pairs and the baseline in ${per(baseline)}; the owner picked Motif in ${per(owner)}`;
+  // Rounded to a tenth of a percent, so a share like 15% that floats as 0.15000000000000002 is still within the bar.
+  const tenth = (x: number) => Math.round(x * 1000);
+  const lost = briefs.filter((s) => s.shares!.ai.baseline > s.shares!.ai.motif && s.shares!.owner < 0.5).map((s) => s.brief);
+  const failures: string[] = [];
+  if (tenth(motif) < 700 || tenth(baseline) > 150) failures.push("the AI judges need at least 70% for Motif and at most 15% for the baseline");
+  if (tenth(owner) <= 500) failures.push("the owner needs more than half");
+  if (lost.length > 0) failures.push(`the baseline won ${lost.join(", ")} with both the AI judges and the owner`);
+  const below = briefs.filter((s) => s.pass === false).map((s) => s.brief);
+  const own = below.length > 0 ? ` Below the bar on their own: ${below.join(", ")}.` : " Every brief also passed on its own.";
+  if (failures.length > 0) return { status: "fail", detail: `${line}: ${failures.join("; ")}.${own}${byForfeit}` };
+  return { status: "pass", detail: `${line}.${own}${byForfeit}` };
 }
 
 /**

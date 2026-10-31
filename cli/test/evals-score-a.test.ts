@@ -44,6 +44,13 @@ describe("one brief's score", () => {
     expect(s).toMatchObject({ pass: true, owner: { motif: 6, other: 4 } });
   });
 
+  test("once nothing waits, the brief carries each side's share for the overall verdict", () => {
+    expect(scoreBrief("pulse", pairs(10), results(10, 7, 1), votes(10, 6)).shares).toEqual({ ai: { motif: 0.7, baseline: 0.1 }, owner: 0.6 });
+    expect(scoreBrief("pulse", pairs(10), results(10, 2, 7), votes(10, 3)).shares).toEqual({ ai: { motif: 0.2, baseline: 0.7 }, owner: 0.3 });
+    expect(scoreBrief("pulse", pairs(10), results(10, 7, 1)).shares).toBeUndefined();
+    expect(scoreBrief("pulse", pairs(10), results(5, 0, 5), votes(10, 6)).shares).toBeUndefined();
+  });
+
   test("no owner votes yet: pending, not a pass", () => {
     const s = scoreBrief("pulse", pairs(10), results(10, 10, 0));
     expect(s.pass).toBeNull();
@@ -259,32 +266,71 @@ describe("what a side that didn't build loses", () => {
 });
 
 describe("the verdict", () => {
-  const score = (brief: string, pass: boolean | null, n = 10): BriefScore => ({ brief, pairs: n, ai: { motif: 0, baseline: 0, tie: 0 }, left: [], forced: [], pass, why: pass === null ? "waiting for the owner's votes" : "ok" });
+  type Shares = NonNullable<BriefScore["shares"]>;
+  const good: Shares = { ai: { motif: 0.9, baseline: 0 }, owner: 0.8 };
+  const score = (brief: string, pass: boolean | null, n = 10, shares: Shares | null = pass === null ? null : good): BriefScore =>
+    ({ brief, pairs: n, ai: { motif: 0, baseline: 0, tie: 0 }, left: [], forced: [], pass, why: pass === null ? "waiting for the owner's votes" : "ok", ...(shares ? { shares } : {}) });
   const briefs = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+  const all = (shares: Shares, j: Shares = shares) => briefs.map((b) => score(b, true, 10, b === "j" ? j : shares));
 
-  test("passes only when every brief passes", () => {
-    expect(verdictA(briefs.map((b) => score(b, true)), briefs).status).toBe("pass");
+  test("passes when every brief passes", () => {
+    const v = verdictA(briefs.map((b) => score(b, true)), briefs);
+    expect(v.status).toBe("pass");
+    expect(v.detail).toContain("Every brief also passed on its own.");
   });
 
-  test("nine passing and one failing fails", () => {
-    const v = verdictA(briefs.map((b) => score(b, b !== "j")), briefs);
+  test("passes on the briefs' average, naming the ones below the bar on their own", () => {
+    const scores = briefs.map((b) => (b === "j" ? score(b, false, 6, { ai: { motif: 0.5, baseline: 0.33 }, owner: 0.33 }) : score(b, true)));
+    const v = verdictA(scores, briefs);
+    expect(v.status).toBe("pass");
+    expect(v.detail).toContain("the AI judges picked Motif in 86% of a brief's pairs and the baseline in 3%; the owner picked Motif in 75%");
+    expect(v.detail).toContain("Below the bar on their own: j.");
+  });
+
+  test("each brief counts the same, whatever its number of pairs", () => {
+    const scores = briefs.map((b) => score(b, true, b === "j" ? 3 : 6, b === "j" ? { ai: { motif: 0, baseline: 0 }, owner: 0.8 } : { ai: { motif: 0.7, baseline: 0 }, owner: 0.8 }));
+    expect(verdictA(scores, briefs).detail).toContain("picked Motif in 63% of a brief's pairs");
+  });
+
+  test("fails when the AI judges' average for Motif is under 70%", () => {
+    const v = verdictA(all({ ai: { motif: 0.69, baseline: 0 }, owner: 0.8 }), briefs);
     expect(v.status).toBe("fail");
-    expect(v.detail).toContain("j");
+    expect(v.detail).toContain("at least 70%");
+  });
+
+  test("fails when the AI judges' average for the baseline is over 15%", () => {
+    expect(verdictA(all({ ai: { motif: 0.8, baseline: 0.16 }, owner: 0.8 }), briefs).status).toBe("fail");
+    expect(verdictA(all({ ai: { motif: 0.8, baseline: 0.15 }, owner: 0.8 }), briefs).status).toBe("pass");
+  });
+
+  test("fails when the owner's average is half or less", () => {
+    const v = verdictA(all({ ai: { motif: 0.9, baseline: 0 }, owner: 0.5 }), briefs);
+    expect(v.status).toBe("fail");
+    expect(v.detail).toContain("more than half");
+  });
+
+  test("fails when the baseline beats Motif on a brief with both the AI judges and the owner", () => {
+    const v = verdictA(all(good, { ai: { motif: 0.2, baseline: 0.6 }, owner: 0.3 }), briefs);
+    expect(v.status).toBe("fail");
+    expect(v.detail).toContain("the baseline won j with both the AI judges and the owner");
+    expect(verdictA(all(good, { ai: { motif: 0.2, baseline: 0.6 }, owner: 0.5 }), briefs).status).toBe("pass");
   });
 
   test("the verdict names the briefs won by forfeit", () => {
     const scores = briefs.map((b) => (b === "c" ? { ...score(b, true), forfeit: "won by forfeit: the app without Motif didn't build — read a-c/build.log" } : score(b, true)));
     const v = verdictA(scores, briefs);
     expect(v.status).toBe("pass");
-    expect(v.detail).toBe("Motif won all 10 briefs. Won by forfeit: c (the app without Motif didn't build — read a-c/build.log).");
+    expect(v.detail).toContain("Won by forfeit: c (the app without Motif didn't build — read a-c/build.log).");
     const w = verdictA(scores.map((s) => (s.brief === "j" ? { ...s, pass: null } : s)), briefs);
     expect(w.detail).toContain("Won by forfeit: c (");
   });
 
-  test("a brief with no verdict or no pairs leaves it incomplete", () => {
+  test("a brief with no verdict, no pairs or judgements still to come leaves it incomplete", () => {
     expect(verdictA(briefs.map((b) => score(b, b === "j" ? null : true)), briefs).status).toBe("incomplete");
     expect(verdictA(briefs.filter((b) => b !== "j").map((b) => score(b, true)), briefs).status).toBe("incomplete");
     expect(verdictA(briefs.map((b) => score(b, true, b === "j" ? 0 : 10)), briefs).status).toBe("incomplete");
+    // Failed early on its own, with judgements still to come: the average can't be taken yet.
+    expect(verdictA(briefs.map((b) => score(b, b === "j" ? false : true, 10, b === "j" ? null : good)), briefs).status).toBe("incomplete");
   });
 });
 

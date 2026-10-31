@@ -4,14 +4,16 @@ Test A builds the same ten briefs with Motif and without it, shoots both apps th
 
 ## The pass rule
 
-Motif must win on every brief. For each brief, on its own pairs:
+Motif must win on the briefs' average ([decision 0014](decisions/0014-test-a-average-bar.md), which amended the earlier rule that every brief win on its own). Each brief is scored on its own pairs, and the shares are averaged with each brief counting the same:
 
-- The AI judges pick Motif's side in at least 70% of the pairs, and the baseline in at most 15%. Each pair is judged twice, with the sides swapped. A side wins only when both judgements pick it.
-- The owner picks Motif's side in more than half of the pairs. "About the same" is not a win.
+- The AI judges pick Motif's side in at least 70% of a brief's pairs, and the baseline in at most 15%. Each pair is judged twice, with the sides swapped. A side wins only when both judgements pick it.
+- The owner picks Motif's side in more than half of a brief's pairs. "About the same" is not a win.
+- No brief is lost outright: if the AI judges pick the baseline in more of a brief's pairs than Motif and the owner picks Motif in fewer than half, Test A fails.
+- Each brief's result against these bars on its own is still reported, and the verdict names the briefs below them.
 - A side whose app doesn't build loses every pair. A brief Motif wins that way, or with no pair that has both apps' screens, is won by forfeit: the report's row and the verdict say so and name the log to read (`a-<brief>/build.log`, the stack's own log, or `pair-shots.json`) before the win is accepted.
 - Both apps of a brief are built by the same model. A brief whose two apps different models built can't pass: it stays pending until both are built again.
 
-A brief that falls short blocks the release until that stack is improved and Test A passes again. A re-run of Test A runs D too: each app built without Motif is compared with the one Motif builds on the new candidate, so the runner adds the `d-*` cases (`--tests A` runs `--tests D,A`).
+A brief below the bar on its own doesn't block the release, but it is where the next round of work starts. A re-run of Test A runs D too: each app built without Motif is compared with the one Motif builds on the new candidate, so the runner adds the `d-*` cases (`--tests A` runs `--tests D,A`).
 
 ## Known biases
 
@@ -25,7 +27,7 @@ Test A is fair, not perfect. These are the known ways it leans:
 
 ## Where it stands before v1.0.0
 
-The final run on the v0.7.0 candidate (run 20261029-210923, guidance at 162da5b; Masar on the Mac, run 20261029-102812) didn't pass Test A. By the pass rule, Stride and Nabta passed and every other brief fell short.
+The final run on the v0.7.0 candidate (run 20261029-210923, guidance at 162da5b; Masar on the Mac, run 20261029-102812) didn't pass Test A under the rule of the time, that every brief win on its own: Stride and Nabta passed and every other brief fell short.
 
 - **AI judges.** Across that run's 48 pairs, Motif won 35 (73%) and the baseline 8 (17%). Across the 15 runs of plans 2L's tuning (312 pairs, guidance changing between runs), Motif won 66% and the baseline 19%. Every brief passed in at least one run, but never all in the same run: each run builds both apps afresh, so a brief swings by about two pairs from run to run, and the judges' taste for a layout swings too (a sign-in in a card or without one, compact rows or illustrated ones).
 - **The owner** judged all 48 pairs blind, on a phone (a private page that showed the same pairs, in the same order and on the same sides as `judge-owner.ts`, and saved each answer as it was given). Motif won 31 (65%), the baseline 16 (33%), about the same 1. By brief: Sanad 6 / 0, Stride 5 / 0 / 1, Nuzha 5 / 1, Darb 4 / 2, Sahm, Nabta and Rihla 2 / 1 each, Bloom 3 / 3, Ledgerly 2 / 4, Masar 0 / 3.
@@ -37,10 +39,12 @@ Two more rounds of guidance followed: round 25 (fd1d6e7) from the owner's notes,
 
 - **AI judges.** Round 25: Motif 38 of 48 (79%), baseline 6 (12.5%). Round 26: Motif 38 (79%), baseline 5 (10%). Two of round 26's Nabta pairs count for Motif because the app without Motif has no route to the screen (a Compose app with no `NavController` can only have its first screen drawn), so they aren't a fair comparison.
 - **The owner** judged round 26's 46 fair pairs blind, on the same kind of phone page. Motif won 30 (65%), the baseline 14 (30%), about the same 2. That is the same share as the first round, but spread differently. Bloom went from 3 / 3 to 6 / 0 and Darb from 4 / 2 to 5 / 1. Stride went from 5 / 0 to 3 / 2, Rihla from 2 / 1 to 1 / 2 and Masar from 0 / 3 to 1 / 2.
-- **By the pass rule**, round 26 passes Sahm, Nabta and Darb. Stride and Masar fall short on the owner's side only. Bloom and Sanad fall short on the AI side only, by one pair each. Ledgerly, Rihla and Nuzha fall short on both sides.
+- **On their own**, round 26's Sahm, Nabta and Darb clear the bar. Stride and Masar fall short on the owner's side only. Bloom and Sanad fall short on the AI side only, by one pair each. Ledgerly, Rihla and Nuzha fall short on both sides.
 - **What the owner's notes ask of Motif now:** no actions that need an account shown to someone signed out ("Mark as watered" on Bloom's welcome), richer filters (Nuzha's trails), a welcome that shows more kinds of content (Nuzha), a home with more detail beside its timeline (Sahm), and the date on a home's focus card (Masar). Other notes praised what Motif already does, such as Stride's "Your next run" card and Masar's Arabic button, or marked down the app without Motif (cut-off text on Rihla's trips, a past date in yellow on Darb's meetups). Several notes called both screens close.
 
-The guidance has plateaued at about four Motif wins in five for the AI judges and two in three for the owner. Each run rebuilds both apps, so a brief's result moves by a pair or two between runs, and the briefs that miss change from one run to the next. Whether v1.0.0 ships on this record, or waits for more work, is the owner's call.
+The guidance has plateaued at about four Motif wins in five for the AI judges and two in three for the owner. Each run rebuilds both apps, so a brief's result moves by a pair or two between runs, and the briefs that miss change from one run to the next.
+
+**The owner's decision (2026-10-31): v1.0.0 is released on round 26.** Test A is now judged on the briefs' average ([decision 0014](decisions/0014-test-a-average-bar.md)). Round 26 passes: across the ten briefs, each counted the same, the AI judges picked Motif in 82% of a brief's pairs and the baseline in 8%, and the owner picked Motif in 65%. The baseline won no brief with both. Below the bar on their own: Stride, Ledgerly, Bloom, Rihla, Nuzha, Sanad and Masar. One fix from the owner's notes followed (aa5d7c6: a signed-out welcome no longer offers "Mark as watered"), checked with a Bloom run below.
 
 ## Runs
 
