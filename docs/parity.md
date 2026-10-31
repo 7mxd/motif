@@ -48,6 +48,10 @@ Every B, C and D case passes on the v0.7.0 candidate: 20 B, 9 C and 10 D, each b
 
 Since v0.7.0, only the skill's design guidance (`skill/knowledge/character.md`) and Test A's scoring changed; the tool, its checks and its adapters didn't, so the B and C results above stand. Every D case passed again with the guidance of round 26 (b28387b): the nine in 20261030-202113 and d-masar on the Mac in 20261030-092116. Test A's verdict for v1.0.0 is in [test-a.md](test-a.md).
 
+## The v1.1.0 candidate
+
+v1.1.0 changes the tool (extract, check, the screenshot audit, motion.js for JavaScript apps) and the review mode's wording, not the design guidance, so Test A's v1.0.0 result carries over. Every B, C and D case passed again on the candidate, commit a97b9d5, each built by claude-opus-5-5: the 23 React web, plain web, Flutter, Compose and React Native cases on Windows in 20261031-170421, and the 16 Vue, Svelte, Angular and SwiftUI cases on the Mac in 20261031-060431 (the new Svelte and Angular apps need a newer Node.js than the Windows machine has).
+
 ## Flutter: the tests that show it
 
 Flutter was built in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Every area is done. Its code is in the CLI, so `motif doctor` built from source already treats it as supported; the README and the release notes list it from v0.5.0, once its row is complete and these release gates are passed:
