@@ -52,6 +52,10 @@ Since v0.7.0, only the skill's design guidance (`skill/knowledge/character.md`) 
 
 v1.1.0 changes the tool (extract, check, the screenshot audit, motion.js for JavaScript apps) and the review mode's wording, not the design guidance, so Test A's v1.0.0 result carries over. Every B, C and D case passed again on the candidate, commit a97b9d5, each built by claude-opus-5-5: the 23 React web, plain web, Flutter, Compose and React Native cases on Windows in 20261031-170421, and the 16 Vue, Svelte, Angular and SwiftUI cases on the Mac in 20261031-060431 (the new Svelte and Angular apps need a newer Node.js than the Windows machine has).
 
+## The v1.2.0 candidate
+
+v1.2.0 changes the tool (the screenshot audit's grouping and hit areas, `--states-only`, the hash-router note, `audit.json` across runs) and the review mode's wording, not the design guidance, so Test A's v1.0.0 result carries over. Every B, C and D case passed on the candidate, commit 8243a31, each built by claude-opus-5-5: the 23 React web, plain web, Flutter, Compose and React Native cases on Windows in 20261101-163007, and the 16 Vue, Svelte, Angular and SwiftUI cases on the Mac in 20261101-043017. c-vue's first session there was void (it put the screenshot audit in the background and ended its turn to wait, which ends an unattended run); it passed in 20261101-094141 (exact 10 of 10, judgement 4 of 4, no false findings).
+
 ## Flutter: the tests that show it
 
 Flutter was built in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Every area is done. Its code is in the CLI, so `motif doctor` built from source already treats it as supported; the README and the release notes list it from v0.5.0, once its row is complete and these release gates are passed:
