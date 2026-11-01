@@ -174,6 +174,8 @@ export interface CaptureOptions {
   expoReadyMs?: number;
   /** Also capture each page after each of these scripts runs in it. */
   states?: StateScript[];
+  /** Capture each page only after each state's script, not as it loads (--states-only). */
+  statesOnly?: boolean;
   /** How long a state script may run (15 s). */
   stateTimeoutMs?: number;
   /** Some of the sizes (--sizes); all five when not given. */
@@ -403,7 +405,7 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
             // Each variant left to right and, with --rtl, right to left in that language.
             const looks = [undefined, ...(opts.variants ?? [])].flatMap((variant) => [undefined, ...(opts.rtl ? [opts.rtl] : [])].map((lang) => ({ variant, lang })));
             for (const { variant, lang } of looks) {
-              for (const state of [undefined, ...(opts.states ?? [])]) {
+              for (const state of [...(opts.statesOnly && opts.states?.length ? [] : [undefined]), ...(opts.states ?? [])]) {
                 const tag = (message: string) => (state ? `State "${state.name}": ${message}` : message);
                 // An error the page threw on its own (already reported, untagged, from the plain screenshot) isn't the
                 // state's when it lands while the state's script runs: it's reported once.

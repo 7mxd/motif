@@ -90,3 +90,11 @@ export function listRouteSources(appDir: string, sourceRe: RegExp): { path: stri
   }
   return out;
 }
+
+/**
+ * Whether the app's own code picks its page from the address hash (#/settings): it reads location.hash or listens
+ * for hashchange. Its pages are in that code, which Motif can't read as routes.
+ */
+export function readsHash(appDir: string): boolean {
+  return listRouteSources(appDir, /\.(m?[jt]sx?|svelte|vue)$/).some((f) => /\blocation\.hash\b|["']hashchange["']/.test(f.text));
+}

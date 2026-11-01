@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
 import { captureScreens, routeSlug, routeUrl, shotName, stateExpression, VIEWPORTS } from "../src/shot/capture";
@@ -261,6 +261,15 @@ describe.skipIf(!browser)("captureScreens: from the review of batch B", () => {
     });
     expect(routes[0]!.pageErrors).toBeUndefined();
     expect(size(join(out, "later@clicked.desktop.png")).height).toBeGreaterThanOrEqual(3000);
+  }, 60_000);
+
+  test("statesOnly takes each page only after its states' scripts (v1.1 field trial: behind a sign-in, the page before is the sign-in screen)", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({
+      browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/later"], outDir: out, settleMs: 50, viewports: DESKTOP,
+      states: [{ name: "clicked", script: 'document.getElementById("go").click();' }], statesOnly: true,
+    });
+    expect(routes[0]!.shots.map((s) => basename(s))).toEqual(["later@clicked.desktop.png", "later@clicked.desktop.dark.png"]);
   }, 60_000);
 
   test("a request the page keeps open (a long poll) doesn't hold every screenshot up", async () => {

@@ -12,6 +12,8 @@ export interface RawIssue {
   selector: string;
   /** Its visible text or accessible name, shortened. */
   label: string;
+  /** Its classes, sorted and joined with dots ("chip.svelte-1x2y"): controls that share them are drawn by the same rule. */
+  classes?: string;
   /** "icon": an icon's glyph (Flutter's audit), judged as a mark at 3:1. */
   kind: "link" | "button" | "field" | "image" | "icon" | "element" | "tab" | "switch" | "checkbox" | "radio button" | "menu item" | "option";
   /** An icon's name or code point (Icons.star, U+F01D4), when kind is "icon". */
@@ -178,7 +180,12 @@ function installAudit(): boolean {
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 40);
-  const describe = (el: Element) => ({ selector: path(el), label: label(el), kind: kind(el) });
+  const describe = (el: Element) => {
+    // react-native-web's classes are atomic, one per style: separate Pressables with the same style props share them,
+    // yet each takes its own hitSlop in the app's code.
+    const classes = reactNative ? "" : [...el.classList].sort().join(".");
+    return { selector: path(el), label: label(el), kind: kind(el), ...(classes ? { classes } : {}) };
+  };
 
   /**
    * The turning view of React Native's ActivityIndicator as react-native-web draws it: the only child of a
@@ -199,20 +206,31 @@ function installAudit(): boolean {
 
   /**
    * The control's box grown by a ::before or ::after laid over it as a bigger hit area (content: ""; position: absolute;
-   * inset: -12px), placed from the control's own padding box. One that takes no taps, isn't placed from the control (it
-   * isn't positioned), doesn't cover the control's centre, or that the control clips, isn't part of it.
+   * inset: -12px), placed from the padding box of the control, or, when the control isn't positioned, of the nearest
+   * ancestor that is (a card the link stretches over: the v1.1 field trial's Stats tiles). One that takes no taps, has
+   * nothing to be placed from, doesn't cover the control's centre, or that the control clips, isn't part of it; what
+   * the ancestor clips is cut off.
    */
   const withPseudoHitArea = (el: Element, rect: DOMRect): { width: number; height: number } => {
     let [left, top, right, bottom] = [rect.left, rect.top, rect.right, rect.bottom];
     const own = getComputedStyle(el);
-    if (own.position === "static" || own.overflowX !== "visible" || own.overflowY !== "visible") return { width: rect.width, height: rect.height };
+    const placed = (s: CSSStyleDeclaration) => s.position !== "static" || s.transform !== "none";
+    let anchor: Element | null = el;
+    if (!placed(own)) {
+      anchor = el.parentElement;
+      while (anchor && !placed(getComputedStyle(anchor))) anchor = anchor.parentElement;
+    } else if (own.overflowX !== "visible" || own.overflowY !== "visible") anchor = null;
+    if (!anchor) return { width: rect.width, height: rect.height };
     const px = (v: string) => (v.endsWith("px") ? Number.parseFloat(v) : Number.NaN);
+    const from = anchor.getBoundingClientRect();
+    const as = anchor === el ? own : getComputedStyle(anchor);
     const box = {
-      left: rect.left + px(own.borderLeftWidth),
-      top: rect.top + px(own.borderTopWidth),
-      right: rect.right - px(own.borderRightWidth),
-      bottom: rect.bottom - px(own.borderBottomWidth),
+      left: from.left + px(as.borderLeftWidth),
+      top: from.top + px(as.borderTopWidth),
+      right: from.right - px(as.borderRightWidth),
+      bottom: from.bottom - px(as.borderBottomWidth),
     };
+    const cut = anchor !== el && (as.overflowX !== "visible" || as.overflowY !== "visible");
     const [cx, cy] = [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2];
     for (const which of ["::before", "::after"]) {
       const cs = getComputedStyle(el, which);
@@ -220,6 +238,7 @@ function installAudit(): boolean {
       const [l, t, r, b] = [px(cs.left), px(cs.top), px(cs.right), px(cs.bottom)];
       if ([l, t, r, b].some(Number.isNaN)) continue;
       const area = { left: box.left + l, top: box.top + t, right: box.right - r, bottom: box.bottom - b };
+      if (cut) [area.left, area.top, area.right, area.bottom] = [Math.max(area.left, box.left), Math.max(area.top, box.top), Math.min(area.right, box.right), Math.min(area.bottom, box.bottom)];
       if (area.left > cx || area.right < cx || area.top > cy || area.bottom < cy) continue;
       [left, top, right, bottom] = [Math.min(left, area.left), Math.min(top, area.top), Math.max(right, area.right), Math.max(bottom, area.bottom)];
     }
@@ -471,7 +490,11 @@ function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" |
  * state and on every page it's on (a shared header).
  */
 const groupKey = (i: AuditIssue) =>
-  i.rule === "color-contrast" && i.fg && i.bg
+  // Controls a phone finds small for the same reason: the same kind, the same classes (so the same rule draws them),
+  // short by the same pixels (a width of 44 or more doesn't matter: chips of different words are one cause).
+  i.rule === "target-mobile" && i.classes
+    ? `${i.rule}|${i.kind}|${i.classes}|${(i.width ?? 0) < 44 ? i.width : ""}|${(i.height ?? 0) < 44 ? i.height : ""}`
+    : i.rule === "color-contrast" && i.fg && i.bg
     ? `${i.rule}|${i.fg.toLowerCase()}|${i.bg.toLowerCase()}|${i.expected ?? 4.5}${i.kind === "icon" ? "|icon" : ""}`
     : i.rule === "color-contrast"
       ? `${i.rule}|${i.route}|${i.selector}|${i.scheme}`
@@ -492,6 +515,16 @@ const placeOf = (i: AuditIssue, withScheme: boolean, rtl: boolean): Place => ({
   ...(i.variant ? { variant: i.variant } : {}),
   ...(rtl ? { rtl: true as const } : {}),
 });
+
+const PLURAL: Partial<Record<RawIssue["kind"], string>> = { switch: "switches", checkbox: "checkboxes" };
+
+/** "12 buttons are 42 px tall on a phone; …": controls that are small for one reason, as one finding. */
+function smallTogether(lead: AuditIssue, count: number, labels: string[]): string {
+  const kinds = PLURAL[lead.kind] ?? `${lead.kind}s`;
+  const [w, h] = [lead.width ?? 0, lead.height ?? 0];
+  const size = w < 44 && h < 44 ? `${w}×${h} px` : w < 44 ? `${w} px wide` : `${h} px tall`;
+  return `${count} ${kinds} are ${size} on a ${lead.size === "tablet" ? "tablet" : "phone"}${labels.length ? `, such as ${labels.join(" and ")}` : ""}; 44×44 px is easier to tap.`;
+}
 
 /** Findings in the review format: repeats grouped (each with its places), worst first, numbered F-001, F-002… */
 export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
@@ -514,6 +547,8 @@ export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
     const place = (i: AuditIssue) => placeOf(i, withScheme, !leftToRight.has(placeKey(i)));
     const texts = new Set(places.map((i) => `${i.route}|${i.selector}`));
     const labels = [...new Set(places.map((i) => i.label).filter(Boolean))].slice(0, 2).map((l) => `"${l}"`);
+    // A control on several pages (a shared header's) is one control: the same selector with the same label.
+    const controls = new Set(places.map((i) => `${i.selector}|${i.label ?? ""}`)).size;
     // The same colours failing in both schemes (a badge with fixed colours) say so.
     const schemes = new Set(group.map((i) => i.scheme));
     // A colour problem seen only in one variant says which.
@@ -521,7 +556,9 @@ export function toFindings(issues: AuditIssue[]): ReviewFinding[] {
     const where = lead.rule === "color-contrast" && variants.size === 1 && lead.variant ? ` in the ${lead.variant} variant` : "";
     const mode = (schemes.size > 1 ? "light and dark mode" : `${lead.scheme} mode`) + where;
     const summary =
-      lead.rule === "color-contrast" && texts.size > 1 && lead.fg && lead.bg
+      lead.rule === "target-mobile" && controls > 1
+        ? smallTogether(lead, controls, labels)
+        : lead.rule === "color-contrast" && texts.size > 1 && lead.fg && lead.bg
         ? `${texts.size} ${lead.kind === "icon" ? "icons are hard to see" : "texts are hard to read"} in ${mode}: ${lead.fg} on ${lead.bg} (${lead.ratio}:1, needs ${lead.expected ?? 4.5}:1)${labels.length ? `, such as ${labels.join(" and ")}` : ""}.`
         : verdict.summary.replace(`in ${lead.scheme} mode`, `in ${mode}`);
     return {

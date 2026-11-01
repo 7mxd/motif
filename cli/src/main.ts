@@ -53,6 +53,7 @@ Shot options:
   --save <name>     Keep these screenshots as a named set, e.g. --save before
   --against <what>  Side by side with a saved set (after a rebuild) or a mockup (while building)
   --state <file.js> Also capture each page after this script runs in it (a state behind a form or a click; Flutter: a .dart file with motifState); repeat for more
+  --states-only     With --state: only the screenshots after each script, not the page before it (behind a sign-in, that's the sign-in screen again)
   --variant <id|all>  Also capture one design variant (index+men.mobile.png), or all of them; --audit alone covers every variant
   --sizes <list>    Only some sizes, for a quick run: widths (360, 390, 430, 768, 1440) or phones, tablet, desktop; a macOS app's windows: 1440, 900
   --rtl [<lang>]    Also capture each page right to left (index.mobile.rtl.png), in this language (default: ar)
@@ -138,6 +139,7 @@ export async function main(argv: string[]): Promise<number> {
         save: { type: "string" },
         against: { type: "string" },
         state: { type: "string", multiple: true },
+        "states-only": { type: "boolean", default: false },
         screen: { type: "string", multiple: true },
         sizes: { type: "string" },
         tokens: { type: "string" },
@@ -193,6 +195,7 @@ export async function main(argv: string[]): Promise<number> {
         save: values.save,
         against: values.against,
         state: values.state,
+        "states-only": values["states-only"],
         screen: values.screen,
         sizes: values.sizes,
         rtl,

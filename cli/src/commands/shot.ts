@@ -8,7 +8,7 @@ import { defaultDoctorDeps, type DoctorDeps } from "./doctor";
 import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { detectApps, siteDir, STACK_LABELS, type AppInfo } from "../detect/stacks";
 import { noSuchApp, selectApps } from "../project/apps";
-import { reviewJson, toFindings, type ReviewFinding } from "../shot/audit";
+import { reviewJson, toFindings, type AuditIssue, type ReviewFinding } from "../shot/audit";
 import {
   captureScreens, describeSizes, MAX_HEIGHT, NATIVE_DESKTOP, NATIVE_VIEWPORTS, parseSizes, SIGN_IN, signInFirst, type RouteResult, type StateScript, type Viewport,
 } from "../shot/capture";
@@ -24,6 +24,7 @@ import { fixedScheme, hasWebSupport, isExpoApp } from "../stacks/react-native/pr
 import { buildWebBundle, webErrorHints } from "../stacks/react-native/web";
 import { discoverPlainRoutes } from "../stacks/plain-web/routes";
 import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes";
+import { readsHash } from "../stacks/route-source";
 import { webStack } from "../stacks/web";
 import { andList } from "../text";
 
@@ -52,6 +53,8 @@ const MAX_ROUTES = 12;
 const LEFT_OUT_NAMED = 5;
 export { signInFirst };
 const RN_NOTE_MARKER = ".motif-web-target-noted";
+/** What every audit since the last one without --routes found, page by page, so a --routes run adds to audit.json. */
+const AUDIT_ISSUES = "audit-issues.json";
 const INSTALL_HINT = '"motif browser install" downloads a private headless copy (about 120 MB to download, about 300 MB on disk) that only Motif uses.';
 
 function today(): string {
@@ -165,6 +168,23 @@ function countText(findings: ReviewFinding[]): string {
     .join(", ");
 }
 
+/**
+ * What earlier audits found on pages this run didn't take (it took `covered`), from AUDIT_ISSUES; null when there is
+ * nothing to add to.
+ */
+function earlierAudit(outDir: string, covered: Set<string>): { screens: string[]; issues: AuditIssue[] } | null {
+  try {
+    const saved = JSON.parse(readFileSync(join(outDir, AUDIT_ISSUES), "utf8"));
+    if (!Array.isArray(saved?.screens) || !Array.isArray(saved?.issues)) return null;
+    return {
+      screens: saved.screens.filter((s: unknown) => typeof s === "string" && !covered.has(s)),
+      issues: saved.issues.filter((i: AuditIssue) => typeof i?.route === "string" && !covered.has(i.route)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** --state values: repeated, or a comma list; each a script file whose name names the state. */
 export function readStates(cwd: string, value: unknown): StateScript[] | { error: string } {
   const given = (Array.isArray(value) ? value : typeof value === "string" ? [value] : []).flatMap((v) => String(v).split(","));
@@ -237,6 +257,10 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   }
   const states = readStates(cwd, flags.state);
   if ("error" in states) return usage(states.error, { error: "usage" });
+  const statesOnly = flags["states-only"] === true;
+  if (statesOnly && states.length === 0) {
+    return usage("--states-only takes only the screenshots after each --state script: add --state with one, like --state design/states/signed-in.js.", { error: "usage" });
+  }
   const screens = [
     ...new Set(
       (Array.isArray(flags.screen) ? flags.screen : typeof flags.screen === "string" ? [flags.screen] : [])
@@ -271,6 +295,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (shoot && native && app) {
     const label = app.stack ? STACK_LABELS[app.stack] : "These";
     if (givenUrl !== undefined) return usage(`${label} apps are screenshotted from their code, not a URL; drop --url.`, { error: "usage" });
+    if (statesOnly) return usage(`--states-only is for web pages; ${label} apps' screens are drawn from their code, each state beside the screen as it opens.`, { error: "usage" });
     // A state is a script in the stack's own language (a Dart file for Flutter), not a browser script.
     const kind = native.stateFiles;
     for (const s of kind ? states : []) {
@@ -397,6 +422,11 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     );
   }
   notes.push(...(discovery.notes ?? []));
+  // A router of the app's own that reads the address hash: its pages are in its code, so all Motif found was /.
+  const hashRouted = typeof flags.routes !== "string" && !shoot && !rn && all.length === 1 && all[0] === "/" && readsHash(appDir);
+  if (hashRouted) {
+    notes.push("This app picks its pages from the address hash (#/settings) in its own code, so Motif found only /. Name the others with --routes, like --routes /,/#/settings: its router lists them.");
+  }
   if (discovery.skipped.length > 0) {
     notes.push(`Skipped pages that need values in their address: ${discovery.skipped.join(", ")}. Add real ones with --routes.`);
   }
@@ -483,7 +513,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       captured = { routes: drawn.routes, issues: drawn.issues };
     } else {
       captured = await deps.capture({
-        browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })),
+        browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })), ...(statesOnly ? { statesOnly } : {}),
         ...(rn ? { motionWidth: RN_MOTION_SIZE.width, reactNative: true } : {}),
         ...(viewports ?? (rn ? NATIVE_VIEWPORTS : undefined) ? { viewports: viewports ?? NATIVE_VIEWPORTS } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
         ...(defaultVariant ? { defaultVariant } : {}), ...(appScheme ? { appScheme: appScheme.scheme } : {}),
@@ -548,7 +578,16 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     const overlaid = rn ? captured.routes.filter((r) => r.pageErrors?.some((e) => !e.startsWith('State "'))).map((r) => r.route) : [];
     // A stack's own words for a fix (React Native's hitSlop, Vue's motion-v), where the web's don't fit.
     const fixes = rn ? RN_FIXES : web?.auditFixes;
-    findings = toFindings(captured.issues.filter((i) => !overlaid.includes(i.route)).map((i) => ({ ...i, ...(!i.fix && fixes?.[i.rule] ? { fix: fixes[i.rule] } : {}), route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) })));
+    const issues = captured.issues.filter((i) => !overlaid.includes(i.route)).map((i) => ({ ...i, ...(!i.fix && fixes?.[i.rule] ? { fix: fixes[i.rule] } : {}), route: landed.get(i.route) ?? i.route, shot: projectPath(cwd, i.shot) }));
+    findings = toFindings(issues);
+    // Every screen the run took: its routes, and the widgets or previews it drew by name.
+    const taken = [...routes, ...runScreens];
+    // A run that names its pages adds them to the audit of earlier runs (the pages past the first 12, say); one that
+    // doesn't starts it afresh.
+    const earlier = typeof flags.routes === "string" ? earlierAudit(outDir, new Set([...taken, ...landed.values()])) : null;
+    const allIssues = [...(earlier?.issues ?? []), ...issues];
+    const allScreens = [...new Set([...(earlier?.screens ?? []), ...taken])];
+    writeFileSync(join(outDir, AUDIT_ISSUES), JSON.stringify({ screens: allScreens, issues: allIssues }) + "\n");
     const redirected = captured.routes.filter((r) => landedOn(r) !== r.route);
     if (redirected.length > 0) {
       notes.push(
@@ -556,9 +595,16 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       );
     }
     const file = join(outDir, "audit.json");
-    // Every screen the run took: its routes, and the widgets or previews it drew by name.
-    writeFileSync(file, JSON.stringify(reviewJson(findings, [...routes, ...runScreens], deps.today()), null, 2) + "\n");
+    const allFindings = earlier ? toFindings(allIssues) : findings;
+    writeFileSync(file, JSON.stringify(reviewJson(allFindings, allScreens, deps.today()), null, 2) + "\n");
     auditFile = projectPath(cwd, file);
+    if (earlier?.screens.length) {
+      const n = earlier.screens.length;
+      const named = n > LEFT_OUT_NAMED + 1 ? `${earlier.screens.slice(0, LEFT_OUT_NAMED).join(", ")} and ${n - LEFT_OUT_NAMED} more` : andList(earlier.screens);
+      notes.push(
+        `${auditFile} also keeps what earlier runs found on ${n} other ${n === 1 ? "page" : "pages"} (${named}): ${allFindings.length} ${allFindings.length === 1 ? "finding" : "findings"} in all. A run without --routes starts it afresh.`,
+      );
+    }
     const incomplete = captured.routes.filter((r) => r.auditError);
     if (incomplete.length > 0) {
       lines.push(`✗ Audit incomplete: it couldn't finish on ${incomplete.map((r) => `${r.route} (${r.auditError})`).join(", ")}.`);
@@ -686,6 +732,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       })),
       shots,
       skipped: discovery.skipped,
+      ...(hashRouted ? { hashRouted: true } : {}),
       ...(all.length > routes.length ? { leftOut: all.slice(MAX_ROUTES) } : {}),
       states: states.map((s) => s.name),
       ...(rtl ? { rtl } : {}),
