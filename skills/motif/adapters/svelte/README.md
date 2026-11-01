@@ -4,7 +4,7 @@ How Motif works with SvelteKit apps and with Svelte apps built with Vite: what i
 
 ## What Motif expects
 
-- **The floors:** Svelte 5 (runes), with TypeScript, and SvelteKit 2 or 3 for an app with routes and server rendering. SvelteKit 3 needs Node 22.17 or later; `motif doctor` says so when the computer has an older one.
+- **The floors:** Svelte 5 (runes), with TypeScript or JavaScript, and SvelteKit 2 or 3 for an app with routes and server rendering. SvelteKit 3 needs Node 22.17 or later; `motif doctor` says so when the computer has an older one.
 - Tailwind CSS v4, or plain CSS. Tailwind v3 projects get CSS variables only; [theme code](tokens.md) explains how to use them.
 - Svelte's own `transition:` directives, `Spring` and `Tween` (`svelte/motion`) for animation. Motion (`npm install motion`) only for what Svelte can't do: a spring that is the same on every screen, or animation of elements Svelte doesn't draw.
 - **Svelte 4 isn't supported**, and neither is SvelteKit 1. `motif doctor` says so plainly. What still works there: the CSS theme (`motif.css`), `motif check` and `motif extract` on the `.svelte` files, and `motif shot --url` against a running app. Motif writes no `motion.ts` for them, because `Spring` and `Tween` are Svelte 5's; animate with the `--motif-duration-*` and `--motif-easing-*` variables.
@@ -37,7 +37,7 @@ Use the developer's package manager (its lockfile says which): `pnpm dlx sv crea
 - **Vite:** everything in `src/`: `src/App.svelte`, `src/main.ts`, shared components in `src/lib/`. Imports are relative.
 - **Components:** `src/lib/components/` ([components](components.md)).
 - **Mock data:** one file, `src/lib/mock-data.ts`, with obviously fictional content.
-- **Theme code:** written by `motif tokens` in `src/lib/styles/` (`motif.css`, `motif.tailwind.css`) and `src/lib/design/motion.ts`.
+- **Theme code:** written by `motif tokens` in `src/lib/styles/` (`motif.css`, `motif.tailwind.css`) and `src/lib/design/motion.ts` (`motion.js` in an app without TypeScript).
 
 `design/motif.json` can name a different theme folder with `themeDir`, a folder inside the project, written from the project's top, which wins over the defaults above; `srcDir` names the source folder when it isn't the usual one:
 
