@@ -264,6 +264,54 @@ describe("motif shot", () => {
     expect(r.data.audit).toBe("design/shots/audit.json");
   });
 
+  test("a run with --routes adds its pages to audit.json; one without starts it afresh (v1.1 field trial)", async () => {
+    // The trial's review had to copy audit.json after its first 12 pages and merge the next run's by hand.
+    const root = makeProject({});
+    const small = (route: string, selector: string): AuditIssue => ({
+      rule: "target-mobile", selector, label: selector.slice(1), kind: "button", width: 32, height: 32, route, viewport: "mobile", scheme: "light", shot: join(root, "design/shots/x.mobile.png"),
+    });
+    const URL_ = "http://localhost:3000";
+    await runShot(root, ctx({ url: URL_, routes: "/,/stats", audit: true }), fakes({ issues: [small("/", "#home"), small("/stats", "#old")] }).deps);
+    const second = await runShot(root, ctx({ url: URL_, routes: "/stats,/settings", audit: true }), fakes({ issues: [small("/settings", "#gear")] }).deps);
+    const review = () => JSON.parse(readFileSync(join(root, "design/shots/audit.json"), "utf8"));
+    // /stats was taken again: its earlier finding is gone. / is kept from the first run.
+    expect(review().scope).toBe("screens: /, /stats, /settings");
+    expect(review().findings.map((f: { location: { selector: string } }) => f.location.selector).sort()).toEqual(["#gear", "#home"]);
+    expect(second.text).toContain("design/shots/audit.json also keeps what earlier runs found on 1 other page (/): 2 findings in all. A run without --routes starts it afresh.");
+    // What this run found is what it prints and returns.
+    expect((second.data.findings as unknown[]).length).toBe(1);
+    await runShot(root, ctx({ url: URL_, audit: true }), fakes({ issues: [] }).deps);
+    expect(review()).toMatchObject({ scope: "screens: /", findings: [] });
+  });
+
+  test("an app whose own code routes by the address hash is told to name its pages (v1.1 field trial)", async () => {
+    // The trial's app reads location.hash in src/lib/router.svelte.js: Motif found only / and said nothing was left out.
+    const pkg = JSON.stringify({ scripts: { dev: "vite" }, devDependencies: { svelte: "^5.0.0", vite: "^7.0.0", "@sveltejs/vite-plugin-svelte": "^6.0.0" } });
+    const hashed = makeProject({ "package.json": pkg, "src/App.svelte": "<h1>Jobs</h1>", "src/lib/router.svelte.js": "addEventListener('hashchange', () => read(location.hash))\n" });
+    const r = await runShot(hashed, ctx({ url: "http://localhost:3000" }), fakes().deps);
+    expect(r.text).toContain("This app picks its pages from the address hash (#/settings) in its own code, so Motif found only /. Name the others with --routes");
+    expect(r.data.hashRouted).toBe(true);
+    // Named pages, or an app without it, say nothing of it.
+    const named = await runShot(hashed, ctx({ url: "http://localhost:3000", routes: "/,/#/settings" }), fakes().deps);
+    expect(named.data.hashRouted).toBeUndefined();
+    const plain = await runShot(makeProject({ "package.json": pkg, "src/App.svelte": "<h1>Jobs</h1>" }), ctx({ url: "http://localhost:3000" }), fakes().deps);
+    expect(plain.data.hashRouted).toBeUndefined();
+    expect(plain.text).not.toContain("address hash");
+  });
+
+  test("--states-only needs a --state, and passes it on to the capture", async () => {
+    const root = makeProject({ "design/states/signed-in.js": "document.querySelector('form').submit()" });
+    const none = await runShot(root, ctx({ url: "http://localhost:3000", "states-only": true }), fakes().deps);
+    expect(none.exitCode).toBe(2);
+    expect(none.text).toContain("--states-only takes only the screenshots after each --state script");
+    const f = fakes();
+    await runShot(root, ctx({ url: "http://localhost:3000", state: "design/states/signed-in.js", "states-only": true }), f.deps);
+    expect(f.calls.captured[0]!.statesOnly).toBe(true);
+    const plain = fakes();
+    await runShot(root, ctx({ url: "http://localhost:3000", state: "design/states/signed-in.js" }), plain.deps);
+    expect(plain.calls.captured[0]!.statesOnly).toBeUndefined();
+  });
+
   test("a clean audit exits 0", async () => {
     const r = await runShot(makeProject({}), ctx({ url: "http://localhost:3000", audit: true }), fakes().deps);
     expect(r.exitCode).toBe(0);

@@ -99,6 +99,32 @@ describe("toFindings", () => {
     expect(findings[0]!.locations!.map((l) => l.state)).toEqual(["sent", "error"]);
   });
 
+  test("controls a phone finds small for one reason are one finding: same kind, same classes, short by the same pixels (v1.1 field trial)", () => {
+    // The trial's review got 98 tap-size findings, one per chip, from a few rules.
+    const chip = (label: string, width: number, over: Partial<AuditIssue> = {}) =>
+      issue({ rule: "target-mobile", kind: "button", classes: "chip.svelte-1x2y", label, width, height: 42, selector: `#${label.toLowerCase()}`, ...over });
+    const findings = toFindings([
+      chip("Light", 64),
+      chip("Dark", 58),
+      chip("System", 80, { route: "/settings" }),
+      chip("Light", 64, { size: "mobile-430" }),
+      issue({ rule: "target-mobile", kind: "button", classes: "chip.svelte-1x2y", label: "Tiny", width: 30, height: 30, selector: "#tiny" }),
+      issue({ rule: "target-mobile", kind: "switch", classes: "toggle", label: "Alerts", width: 40, height: 24, selector: "#a" }),
+      issue({ rule: "target-mobile", kind: "switch", classes: "toggle", label: "Sounds", width: 40, height: 24, selector: "#s" }),
+      issue({ rule: "target-mobile", kind: "link", label: "Home", width: 30, height: 30, selector: "header a" }),
+    ]);
+    expect(findings.map((f) => f.summary)).toEqual([
+      '3 buttons are 42 px tall on a phone, such as "Light" and "Dark"; 44×44 px is easier to tap.',
+      'The "Tiny" button is 30×30 px on a phone; 44×44 px is easier to tap.',
+      '2 switches are 40×24 px on a phone, such as "Alerts" and "Sounds"; 44×44 px is easier to tap.',
+      'The "Home" link is 30×30 px on a phone; 44×44 px is easier to tap.',
+    ]);
+    expect(findings[0]!.locations!.map((l) => `${l.screen} ${l.selector}`)).toEqual(["/ #dark", "/settings #system"]);
+    // A shared header's control on several pages is still one control.
+    const header = (route: string) => issue({ rule: "target-mobile", kind: "link", classes: "logo", label: "Home", width: 30, height: 30, selector: "header a.logo", route });
+    expect(toFindings([header("/"), header("/settings")])[0]!.summary).toBe('The "Home" link is 30×30 px on a phone; 44×44 px is easier to tap.');
+  });
+
   test("the same colours failing in light and dark are one finding; one element on several pages is one finding (backlog)", () => {
     const fixed = { fg: "#ffffff", bg: "#f59e0b", ratio: 2.1, expected: 4.5 };
     const both = toFindings([issue({ ...fixed, selector: "#badge", label: "New" }), issue({ ...fixed, selector: "#badge", label: "New", scheme: "dark" })]);
@@ -270,7 +296,8 @@ requestAnimationFrame(step);
 // through aria-labelledby, with a 48 px touch target of its own; and RealWorld's logo link, named by its image's alt. A child that takes no taps (pointer-events: none), or one the control clips, is no hit area.
 // Nor is a corner badge (it doesn't cover the control's centre), or a centred touch target a wrapper inside the control
 // clips. A 43.4 px button is 43 px as reported, and too small. A ::after laid over a small button (inset: -12px, the job
-// tracker's close buttons in the v1.0 field trial) is its hit area, unless it takes no taps.
+// tracker's close buttons in the v1.0 field trial) is its hit area, unless it takes no taps. So is one a link that isn't
+// positioned stretches over the card around it (the v1.1 trial's Stats tiles), but not one that misses the link's centre.
 const LIBRARY = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>button { position: relative; padding: 0 12px; border: 0; height: 40px; font: 14px sans-serif; }
 .touch { position: absolute; top: 50%; left: 0; right: 0; height: 48px; transform: translateY(-50%); }
@@ -278,7 +305,12 @@ const LIBRARY = `<!doctype html><html><head><meta name="viewport" content="width
 .switch { width: 52px; height: 32px; padding: 0; }
 #inert-touch .touch { pointer-events: none; }
 .hit::after { content: ""; position: absolute; inset: -12px; }
-#pseudo-inert::after { pointer-events: none; }</style></head>
+#pseudo-inert::after { pointer-events: none; }
+.tile { position: relative; width: 160px; height: 80px; }
+.tile a { display: inline-block; width: 16px; height: 20px; }
+.stretch::after { content: ""; position: absolute; inset: 0; }
+.corner { margin-left: 100px; }
+.corner::after { content: ""; position: absolute; top: 0; left: 0; right: 150px; bottom: 70px; }</style></head>
 <body style="margin: 0; padding: 24px; font: 16px sans-serif; background: #ffffff; color: #111111">
 <p><button id="order">Place order<span class="touch"></span></button></p>
 <p><button id="settings" class="icon" aria-label="Settings" style="width: 40px; padding: 0"><span class="touch"></span></button></p>
@@ -292,7 +324,9 @@ const LIBRARY = `<!doctype html><html><head><meta name="viewport" content="width
 <p><button id="wrapped" class="icon" aria-label="Share" style="width: 40px; padding: 0"><span style="position: relative; display: block; width: 40px; height: 40px; overflow: hidden"><span class="touch"></span></span></button></p>
 <p><button id="near" aria-label="Near" style="width: 43.4px; height: 43.4px; padding: 0"></button></p>
 <p><button id="pseudo" class="hit" aria-label="Close" style="width: 20px; height: 20px; padding: 0"></button></p>
-<p><button id="pseudo-inert" class="hit" aria-label="Pin" style="width: 30px; height: 30px; padding: 0"></button></p></body></html>`;
+<p><button id="pseudo-inert" class="hit" aria-label="Pin" style="width: 30px; height: 30px; padding: 0"></button></p>
+<div class="tile"><a id="stretched" class="stretch" href="/stats/applied">12</a></div>
+<div class="tile"><a id="cornered" class="corner" href="/stats/rejected">7</a></div></body></html>`;
 
 const browser = findBrowser();
 let server: ReturnType<typeof Bun.serve>;
@@ -390,10 +424,11 @@ describe.skipIf(!browser)("auditing real pages (needs Chrome, Edge or Chromium)"
       '#inert-touch: The "Later" button is 56×40 px on a phone; 44×44 px is easier to tap.',
       '#clipped: The "Skip" button is 51×40 px on a phone; 44×44 px is easier to tap.',
       '#brand: The "Conduit" link is 88×24 px on a phone; 44×44 px is easier to tap.',
-      '#badge: The "Inbox" button is 40×40 px on a phone; 44×44 px is easier to tap.',
-      '#wrapped: The "Share" button is 40×40 px on a phone; 44×44 px is easier to tap.',
+      // The same class, short by the same pixels: one cause.
+      '#badge: 2 buttons are 40×40 px on a phone, such as "Inbox" and "Share"; 44×44 px is easier to tap.',
       '#near: The "Near" button is 43×43 px on a phone; 44×44 px is easier to tap.',
       '#pseudo-inert: The "Pin" button is 30×30 px on a phone; 44×44 px is easier to tap.',
+      '#cornered: The "7" link is 16×20 px on a phone; 44×44 px is easier to tap.',
     ]);
   }, 120_000);
 
