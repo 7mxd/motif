@@ -27,7 +27,7 @@ import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes"
 import { readsHash } from "../stacks/route-source";
 import { webStack } from "../stacks/web";
 import { andList } from "../text";
-import { plannedShots, readScreensLine, runsOn, SCREENS_LINE } from "../shot/state-screens";
+import { plannedShots, readScreensLine, runsOn, SCREENS_LINE, stateNotes, stateOutcomes } from "../shot/state-screens";
 
 export interface ShotDeps {
   findBrowser: () => BrowserInfo | null;
@@ -420,7 +420,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const reordered = Boolean(shoot || rn) && typeof flags.routes !== "string" && discovery.routes.length > MAX_ROUTES;
   // --states-only visits only the pages some state runs on: a page no state's line names is never opened.
   const found = statesOnly ? discovery.routes.filter((r) => states.some((s) => runsOn(s, r))) : discovery.routes;
-  if (found.length === 0) {
+  if (statesOnly && found.length === 0) {
     const lines = states.map((s) => `${s.name}: ${s.screens!.join(", ")}`).join("; ");
     return usage(
       `--states-only: no state's // ${SCREENS_LINE} line names a page this run takes (${andList(discovery.routes)}). The lines name ${lines}. Name those pages with --routes, or fix the lines.`,
@@ -556,6 +556,11 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       : "✗ No screenshots were taken.",
     ...captured.routes.map((r) => routeLine(r, width)),
   ];
+  // Where each state was captured: one whose line names none of this run's screens is said, one that went missing fails.
+  const outcomes = states.length > 0 ? stateOutcomes(states, [...routes, ...runScreens], captured.routes) : [];
+  const said = stateNotes(outcomes, [...routes, ...runScreens]);
+  lines.push(...said.lost);
+  notes.push(...said.notes);
   for (const r of captured.routes.filter((r) => r.rtlForced)) {
     notes.push(`${r.route} doesn't switch to right to left by itself for ${rtl}; Motif set dir="rtl" to show it.`);
   }
@@ -735,7 +740,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
 
   return {
     command: "shot",
-    exitCode: failed.length > 0 || findings.length > 0 || keptWhole || (audit && captured.routes.some((r) => r.auditError)) ? 1 : 0,
+    exitCode: failed.length > 0 || said.lost.length > 0 || findings.length > 0 || keptWhole || (audit && captured.routes.some((r) => r.auditError)) ? 1 : 0,
     text: lines.join("\n"),
     data: {
       url: baseUrl,
@@ -750,12 +755,14 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         ...(r.pageErrors?.length ? { pageErrors: r.pageErrors } : {}),
         ...(r.auditError ? { auditError: r.auditError } : {}),
         shots: r.shots.map((s) => projectPath(cwd, s)),
+        ...(r.notHere?.length ? { notHere: r.notHere.map((n) => ({ state: n.state, shot: projectPath(cwd, n.shot) })) } : {}),
       })),
       shots,
       skipped: discovery.skipped,
       ...(hashRouted ? { hashRouted: true } : {}),
       ...(all.length > routes.length ? { leftOut: all.slice(MAX_ROUTES) } : {}),
       states: states.map((s) => s.name),
+      ...(outcomes.length > 0 ? { stateResults: outcomes.map((o) => ({ ...o, notHere: o.notHere.map((n) => ({ screen: n.screen, shot: projectPath(cwd, n.shot) })) })) } : {}),
       ...(rtl ? { rtl } : {}),
       ...(audit ? { findings, audit: auditFile } : {}),
       ...(against

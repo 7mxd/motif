@@ -1,4 +1,4 @@
-import type { StateScript } from "./capture";
+import type { RouteResult, StateScript } from "./capture";
 
 /** The comment a state script names its screens in: `// motif-screens: /#/applications/*, /#/matches/*`. */
 export const SCREENS_LINE = "motif-screens:";
@@ -55,4 +55,78 @@ export function runsOn(state: Pick<StateScript, "screens">, screen: string): boo
  */
 export function plannedShots(routes: string[], states: StateScript[], perLook: number, statesOnly: boolean): number {
   return routes.reduce((sum, r) => sum + perLook * ((statesOnly ? 0 : 1) + states.filter((s) => runsOn(s, r)).length), 0);
+}
+
+/** Where a state was captured in a run, which shots it skipped, and whether it went missing. */
+export interface StateOutcome {
+  state: string;
+  /** Its line's screens; absent when it has none. */
+  screens?: string[];
+  /** The screens it was captured on, in at least one shot. */
+  capturedOn: string[];
+  /** The shots its script skipped by returning false. */
+  notHere: { screen: string; shot: string }[];
+  /** Its line names no screen this run took. */
+  notInRun: boolean;
+  /** Screens it was tried on and returned false in every shot of (for a lined state, only screens its line names). */
+  lost: string[];
+}
+
+const baseName = (file: string) => file.split(/[\/]/).pop()!;
+
+/** Each state's outcome from the screens this run took and what each screen's shots were. */
+export function stateOutcomes(states: StateScript[], screensInRun: string[], routes: RouteResult[]): StateOutcome[] {
+  return states.map((s) => {
+    // A state's shot is named page@state.size…png, or page@state+variant.size…png.
+    const ofState = (file: string) => new RegExp(`@${s.name}[.+]`).test(baseName(file));
+    const tried = routes.filter((r) => runsOn(s, r.route));
+    const capturedOn = tried.filter((r) => r.shots.some(ofState)).map((r) => r.route);
+    const notHere = tried.flatMap((r) => (r.notHere ?? []).filter((n) => n.state === s.name).map((n) => ({ screen: r.route, shot: n.shot })));
+    const skippedOn = [...new Set(notHere.map((n) => n.screen))];
+    // With no line, it is lost only when it was nowhere: "not here" on some pages is its script doing its job.
+    const lost = s.screens ? skippedOn.filter((r) => !capturedOn.includes(r)) : capturedOn.length === 0 ? skippedOn : [];
+    return {
+      state: s.name,
+      ...(s.screens ? { screens: s.screens } : {}),
+      capturedOn,
+      notHere,
+      notInRun: Boolean(s.screens) && !screensInRun.some((r) => runsOn(s, r)),
+      lost,
+    };
+  });
+}
+
+// A list of screens short enough for one line.
+function screenList(screens: string[]): string {
+  return screens.length > 7 ? `${screens.slice(0, 6).join(", ")} and ${screens.length - 6} more` : screens.join(", ");
+}
+
+/**
+ * What a run says about its states: notes (a state whose line names no screen of this run; states with no line), and
+ * a line for each lost state, which fails the run.
+ */
+export function stateNotes(outcomes: StateOutcome[], screensInRun: string[]): { notes: string[]; lost: string[] } {
+  const notes: string[] = [];
+  const lost: string[] = [];
+  for (const o of outcomes) {
+    if (o.notInRun) {
+      notes.push(
+        `State "${o.state}" didn't run: its // ${SCREENS_LINE} line names ${o.screens!.join(", ")}, and this run took ${screenList(screensInRun)}. Name its screens with --routes to capture it, or fix the line if the app's routes look different.`,
+      );
+    }
+    if (o.lost.length > 0) {
+      lost.push(
+        o.screens
+          ? `✗ State "${o.state}" found nothing to do on ${o.lost.join(", ")}: its script returned false in every shot there. Its // ${SCREENS_LINE} line or its script is out of date with the app; fix whichever is wrong.`
+          : `✗ State "${o.state}" found nothing to do on any page (${screenList(o.lost)}): its script returned false in every shot. Its script is out of date with the app; fix it, and add a // ${SCREENS_LINE} line naming the pages it belongs on.`,
+      );
+    }
+  }
+  const unlined = outcomes.filter((o) => !o.screens).map((o) => o.state);
+  if (unlined.length > 0) {
+    notes.push(
+      `${unlined.length === 1 ? `State "${unlined[0]}" has` : `States ${unlined.map((n) => `"${n}"`).join(", ")} have`} no // ${SCREENS_LINE} line, so ${unlined.length === 1 ? "it ran" : "they ran"} on every screen. A line at the top of each script naming its screens makes the run faster.`,
+    );
+  }
+  return { notes, lost };
 }
