@@ -243,8 +243,10 @@ describe("motif shot on a Compose app", () => {
     const empty = await runShot(root, ctx({ state: "design/states/empty.kt" }), deps);
     expect(empty.exitCode).toBe(2);
     expect(empty.text).toBe(
-      "--state: empty.kt must be in the package dev.motif.states.empty and define fun motifState(rule: ComposeContentTestRule), which Motif runs on each screen once it has settled. Add them, then run motif shot again.",
+      "--state: empty.kt must be in the package dev.motif.states.empty and define fun motifState(rule: ComposeContentTestRule) (or one returning Boolean: false where it has nothing to do), which Motif runs on each screen once it has settled. Add them, then run motif shot again.",
     );
+    // A state may return Boolean: false says it has nothing to do on that screen (1.3).
+    expect(empty.text).toContain("Boolean");
     // filled.kt's package is dev.motif.states.filled, which wrong.kt's name doesn't match.
     const wrong = await runShot(root, ctx({ state: "design/states/wrong.kt" }), deps);
     expect(wrong.text).toContain("wrong.kt must be in the package dev.motif.states.wrong");
@@ -400,6 +402,31 @@ describe("shootCompose", () => {
     expect(sources[".motif/shot/src/dev/motif/states/filled/MotifState.kt"]).toBe(FILLED);
     expect(sources[".motif/shot/src/dev/motif/shot/MotifHooks.kt"]).toContain('"filled" -> dev.motif.states.filled.motifState(rule)');
     expect(sources[".motif/shot/src/dev/motif/shot/MotifHooks.kt"]).not.toContain("motifSetup");
+  });
+
+  test("a state runs only on the routes and previews its line names; a Boolean one may say not here (1.3)", async () => {
+    const sheet = "package dev.motif.states.sheet\n\nimport androidx.compose.ui.test.junit4.ComposeContentTestRule\n// motif-screens: SettingsPreview\nfun motifState(rule: ComposeContentTestRule): Boolean = false\n";
+    const root = makeProject({ ...COMPOSE_APP, "design/states/sheet.kt": sheet });
+    const { runs, run } = fakeRun(() => ({
+      result: {
+        screens: [
+          { route: "/", shots: ["index.tablet.png", "index.tablet.dark.png"], errors: [] },
+          { route: "SettingsPreview", shots: ["settings-2.tablet.png", "settings-2.tablet.dark.png"], notHere: ["settings-2@sheet.tablet.png", "settings-2@sheet.tablet.dark.png"], errors: [] },
+        ],
+        notes: [],
+        issues: [],
+      },
+    }));
+    const states = [{ name: "sheet", script: sheet, file: join(root, "design/states/sheet.kt"), screens: ["SettingsPreview"] }];
+    const got = await shootCompose(options(root, { routes: ["/", "/settings"], screens: ["SettingsPreview"], states, viewports: [NATIVE_VIEWPORTS[3]!] }), base(root, run));
+    expect(runs[0]!.config.shots.map((s) => s.file).filter((f) => f.includes("@"))).toEqual(["settings-2@sheet.tablet.png", "settings-2@sheet.tablet.dark.png"]);
+    const sources = Object.fromEntries((runs[0]!.sources ?? []).map((s) => [s.path, s.content]));
+    expect(sources[".motif/shot/src/dev/motif/shot/MotifHooks.kt"]).toContain("fun state(name: String, rule: ComposeContentTestRule): Any? =");
+    const shots = join(root, "design", "shots");
+    expect(got.routes.find((r) => r.route === "SettingsPreview")!.notHere).toEqual([
+      { state: "sheet", shot: join(shots, "settings-2@sheet.tablet.png") }, { state: "sheet", shot: join(shots, "settings-2@sheet.tablet.dark.png") },
+    ]);
+    expect(got.routes.find((r) => r.route === "/")!.notHere).toBeUndefined();
   });
 
   test("turns what the harness drew into results: drawn, failed per screen, and the run's notes", async () => {

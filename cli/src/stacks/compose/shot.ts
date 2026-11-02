@@ -13,6 +13,7 @@ import type { AppInfo } from "../../detect/stacks";
 import { motifHome } from "../../home";
 import type { AuditIssue, RawIssue } from "../../shot/audit";
 import { routeSlug, shotName, type RouteResult, type Scheme, type StateScript } from "../../shot/capture";
+import { runsOn, stateOfShot } from "../../shot/state-screens";
 import type { FetchLike } from "../flutter/harness";
 import { statesFile, type StatesFile } from "../flutter/inputs";
 import { auditChecks, MOTION_WIDTH, screenNotes } from "../flutter/shot";
@@ -158,7 +159,7 @@ export function readComposeInputs(root: string, appDir: string, given: { screens
     const pkg = statePackage(state.name);
     if (packageOf(state.script) !== `dev.motif.states.${pkg}` || !/\bfun\s+motifState\s*\(/.test(maskComments(state.script, "kotlin"))) {
       return {
-        error: `--state: ${file} must be in the package dev.motif.states.${pkg} and define ${STATE_SIGNATURE}, which Motif runs on each screen once it has settled. Add them, then run motif shot again.`,
+        error: `--state: ${file} must be in the package dev.motif.states.${pkg} and define ${STATE_SIGNATURE} (or one returning Boolean: false where it has nothing to do), which Motif runs on each screen once it has settled. Add them, then run motif shot again.`,
       };
     }
     states.push({ name: state.name, pkg, content: state.script });
@@ -189,12 +190,12 @@ export function hooksSource(inputs: ComposeInputs): string {
     ...(inputs.setup ? ["        dev.motif.states.motifSetup(variant, locale, dark)"] : []),
     "    }",
     "",
-    "    fun state(name: String, rule: ComposeContentTestRule) {",
+    // What motifState returned: Unit, or a Boolean whose false means "not here".
+    "    fun state(name: String, rule: ComposeContentTestRule): Any? =",
     "        when (name) {",
     ...inputs.states.map((s) => `            ${JSON.stringify(s.name)} -> dev.motif.states.${s.pkg}.motifState(rule)`),
     '            else -> error("No state named $name.")',
     "        }",
-    "    }",
     "}",
     "",
   ].join("\n");
@@ -253,7 +254,8 @@ export function planComposeShots(opts: NativeShotOptions, targets: Target[], the
       for (const scheme of ["light", "dark"] as Scheme[]) {
         for (const variant of [undefined, ...opts.variants]) {
           for (const lang of [undefined, ...(opts.rtl ? [opts.rtl] : [])]) {
-            for (const state of [undefined, ...opts.states.map((s) => s.name)]) {
+            // A state runs only on the routes and previews its line names.
+            for (const state of [undefined, ...opts.states.filter((s) => runsOn(s, t.key)).map((s) => s.name)]) {
               const size = v.file ?? v.name;
               const id = variant ?? defaultId;
               const checks = opts.audit ? auditChecks(v, scheme) : undefined;
@@ -290,6 +292,8 @@ export function planComposeShots(opts: NativeShotOptions, targets: Target[], the
 interface RawScreen {
   route: string;
   shots?: string[];
+  /** Shots a state skipped by returning false: the files they would have been. */
+  notHere?: string[];
   errors?: string[];
   unreachable?: string;
   landedOn?: string;
@@ -324,7 +328,8 @@ export function mapComposeResult(
     const s = screens.find((x) => x.route === t.key);
     const shots = (s?.shots ?? []).map((f) => (isAbsolute(f) ? f : join(outDir, f)));
     const errors = s?.errors ?? [];
-    const base = { route: t.key, url: t.key, shots, ...(s?.landedOn ? { landedOn: s.landedOn } : {}), ...(s?.auditError ? { auditError: s.auditError } : {}) };
+    const notHere = (s?.notHere ?? []).map((f) => ({ state: stateOfShot(f) ?? "", shot: isAbsolute(f) ? f : join(outDir, f) }));
+    const base = { route: t.key, url: t.key, shots, ...(notHere.length > 0 ? { notHere } : {}), ...(s?.landedOn ? { landedOn: s.landedOn } : {}), ...(s?.auditError ? { auditError: s.auditError } : {}) };
     if (shots.length > 0) return { ...base, status: 200, ...(errors.length > 0 ? { pageErrors: errors } : {}) };
     const error =
       s?.unreachable ?? errors[0] ?? (timedOut ? `The run reached its time limit (${timedOut.seconds} s) before drawing it.` : "Gradle stopped before drawing it.");
