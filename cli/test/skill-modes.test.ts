@@ -252,6 +252,12 @@ describe("plain web, screens behind forms, and every size", () => {
     expect(readFileSync(join(import.meta.dir, "../../docs/specs/2026-10-12-motif-core-design.md"), "utf8")).toContain("`locations`");
   });
 
+  test("review adds the file and line of each audit finding's cause to its location (1.3 evals)", () => {
+    // In the 1.3 Mac runs, c-vue and c-svelte copied the audit's findings with only a screen and a selector: the report
+    // didn't say where in the code to fix them.
+    expect(outOfOrder(read("modes/review.md"), ["**Merging the exact checks.**", "name its cause", "add its `\"file\"` and `\"line\"` to the finding's `location`", '"locations"'])).toBeNull();
+  });
+
   test("review puts a screen's state in its own field, as audit.json does (second eval run)", () => {
     expect(outOfOrder(read("modes/review.md"), ["**Judgement findings**", '`{ "screen": "/", "state": "sent" }`'])).toBeNull();
   });
