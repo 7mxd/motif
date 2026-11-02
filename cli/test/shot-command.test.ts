@@ -810,3 +810,16 @@ describe("motif shot --rtl", () => {
     expect((r.data.findings as { category: string; location: { rtl?: boolean } }[])[0]).toMatchObject({ category: "accessibility", location: { rtl: true } });
   });
 });
+
+describe("motif shot --help (1.3)", () => {
+  test("says a state script names its screens and returns false where it has nothing to do", () => {
+    const run = Bun.spawnSync(["bun", join(import.meta.dir, "../src/main.ts"), "shot", "--help"], { stdout: "pipe", stderr: "pipe" });
+    const help = run.stdout.toString();
+    // --state's lines, up to the next option.
+    const state = help.slice(help.indexOf("  --state "), help.indexOf("  --states-only"));
+    expect(state).toContain("// motif-screens:");
+    expect(state).toContain("return false");
+    expect(state).toContain(".kt");
+    expect(state).toContain(".swift");
+  });
+});
