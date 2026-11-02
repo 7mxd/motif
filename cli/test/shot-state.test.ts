@@ -29,6 +29,24 @@ describe("state scripts", () => {
     expect(readStates(root, ["a/editor.js", "b/editor.js"])).toEqual({ error: expect.stringContaining('"editor"') });
   });
 
+  test("a motif-screens line names the state's screens; on the web they must be pages", () => {
+    const root = makeProject({
+      "design/states/edit.js": "// motif-screens: /#/applications/*\ndocument.querySelector('#edit').click();",
+      "design/states/plain.js": "open();",
+      "design/states/widget.js": "// motif-screens: EditSheet\nopen();",
+      "design/states/empty.js": "// motif-screens:\nopen();",
+    });
+    const read = readStates(root, ["design/states/edit.js", "design/states/plain.js"], { web: true });
+    expect(read).toEqual([
+      { name: "edit", script: "// motif-screens: /#/applications/*\ndocument.querySelector('#edit').click();", file: join(root, "design/states/edit.js"), screens: ["/#/applications/*"] },
+      { name: "plain", script: "open();", file: join(root, "design/states/plain.js") },
+    ]);
+    expect(readStates(root, ["design/states/widget.js"], { web: true })).toEqual({ error: expect.stringContaining("EditSheet") });
+    // A native app's screens are routes or widget names: both are fine there.
+    expect(readStates(root, ["design/states/widget.js"])).toEqual([expect.objectContaining({ screens: ["EditSheet"] })]);
+    expect(readStates(root, ["design/states/empty.js"])).toEqual({ error: expect.stringContaining("motif-screens") });
+  });
+
   test("run in the page as an async function, stopped after 15 seconds by default", () => {
     const e = stateExpression("document.querySelector('#open').click();");
     expect(e).toContain("document.querySelector('#open').click();");

@@ -27,6 +27,7 @@ import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes"
 import { readsHash } from "../stacks/route-source";
 import { webStack } from "../stacks/web";
 import { andList } from "../text";
+import { readScreensLine, SCREENS_LINE } from "../shot/state-screens";
 
 export interface ShotDeps {
   findBrowser: () => BrowserInfo | null;
@@ -185,8 +186,11 @@ function earlierAudit(outDir: string, covered: Set<string>): { screens: string[]
   }
 }
 
-/** --state values: repeated, or a comma list; each a script file whose name names the state. */
-export function readStates(cwd: string, value: unknown): StateScript[] | { error: string } {
+/**
+ * --state values: repeated, or a comma list; each a script file whose name names the state, and whose
+ * `// motif-screens:` line, if any, names its screens (pages, on the web).
+ */
+export function readStates(cwd: string, value: unknown, opts: { web?: boolean } = {}): StateScript[] | { error: string } {
   const given = (Array.isArray(value) ? value : typeof value === "string" ? [value] : []).flatMap((v) => String(v).split(","));
   const states: StateScript[] = [];
   for (const file of given.map((f) => f.trim()).filter(Boolean)) {
@@ -199,7 +203,14 @@ export function readStates(cwd: string, value: unknown): StateScript[] | { error
       return { error: `--state: "${basename(abs)}" names the screenshots, so use letters, digits and dashes (like editor.js).` };
     }
     if (states.some((s) => s.name === name)) return { error: `--state: two scripts are named "${name}"; rename one.` };
-    states.push({ name, script: readFileSync(abs, "utf8"), file: abs });
+    const script = readFileSync(abs, "utf8");
+    const screens = readScreensLine(script);
+    if (screens && "error" in screens) return { error: `--state: in ${basename(abs)}, ${screens.error}` };
+    const notPage = opts.web ? screens?.find((s) => !s.startsWith("/")) : undefined;
+    if (notPage) {
+      return { error: `--state: ${basename(abs)} names "${notPage}" in its // ${SCREENS_LINE} line, and a web app's screens are its pages, like /settings or /#/applications/*.` };
+    }
+    states.push({ name, script, file: abs, ...(screens ? { screens } : {}) });
   }
   return states;
 }
@@ -255,12 +266,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (givenUrl !== undefined && !/^https?:\/\/\S+$/.test(givenUrl)) {
     return usage("--url needs the address of a running app, like http://localhost:3000.", { error: "usage" });
   }
-  const states = readStates(cwd, flags.state);
-  if ("error" in states) return usage(states.error, { error: "usage" });
   const statesOnly = flags["states-only"] === true;
-  if (statesOnly && states.length === 0) {
-    return usage("--states-only takes only the screenshots after each --state script: add --state with one, like --state design/states/signed-in.js.", { error: "usage" });
-  }
   const screens = [
     ...new Set(
       (Array.isArray(flags.screen) ? flags.screen : typeof flags.screen === "string" ? [flags.screen] : [])
@@ -285,6 +291,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const app: AppInfo | undefined = selected.length === 1 ? selected[0] : undefined;
   // A native app is drawn from its code by its own stack (Flutter: flutter test), without a browser or a dev server.
   const native = app ? nativeStack(app.stack) : null;
+  // A state's line names pages on the web (Expo's too), and routes or widgets in an app drawn from its code.
+  const states = readStates(cwd, flags.state, { web: !native?.shoot });
+  if ("error" in states) return usage(states.error, { error: "usage" });
+  if (statesOnly && states.length === 0) {
+    return usage("--states-only takes only the screenshots after each --state script: add --state with one, like --state design/states/signed-in.js.", { error: "usage" });
+  }
   // Expo's apps are drawn in the browser, through the web target: the web path, with native sizes and notes.
   const rn = app?.stack === "react-native";
   // A web framework with its own file format (Vue): started through its own dev server, with the web's sizes and its own routes.

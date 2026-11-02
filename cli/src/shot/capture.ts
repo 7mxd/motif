@@ -122,6 +122,8 @@ export interface StateScript {
   script: string;
   /** The script's absolute path (a native app's state is a file its tests import). */
   file?: string;
+  /** The screens its `// motif-screens:` line names; absent when it has none, and then it runs on every screen. */
+  screens?: string[];
 }
 
 /** The script as an async function in the page; one still running after timeoutMs is stopped and reported. */
