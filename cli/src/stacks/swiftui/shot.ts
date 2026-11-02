@@ -14,6 +14,7 @@ import { readVariants } from "../../contract/variants";
 import type { AppInfo } from "../../detect/stacks";
 import { motifHome } from "../../home";
 import { MAC_WINDOWS, NATIVE_VIEWPORTS, parseSizes, routeSlug, shotName, type RouteResult, type Scheme, type StateScript, type Viewport } from "../../shot/capture";
+import { runsOn } from "../../shot/state-screens";
 import { andList } from "../../text";
 import type { AuditIssue, RawIssue } from "../../shot/audit";
 import { statesFile, type StatesFile } from "../flutter/inputs";
@@ -143,7 +144,7 @@ export function readSwiftUIInputs(root: string, appDir: string, given: { screens
     const file = basename(state.file ?? state.name);
     if (!/\.swift$/i.test(file)) return { error: `--state: ${file} isn't a Swift file; a SwiftUI app's states are Swift files, like design/states/${state.name}.swift.` };
     if (!declares(state.script, "motifState")) {
-      return { error: `--state: ${file} must define ${STATE_SIGNATURE}, which Motif runs on each screen once it has settled. Add it, then run motif shot again.` };
+      return { error: `--state: ${file} must define ${STATE_SIGNATURE} (or one returning Bool: false where it has nothing to do), which Motif runs on each screen once it has settled. Add it, then run motif shot again.` };
     }
     const twin = states.find((s) => stateFunction(s.name!) === stateFunction(state.name));
     if (twin) {
@@ -412,7 +413,8 @@ export function planSwiftUIShots(
       for (const scheme of ["light", "dark"] as Scheme[]) {
         for (const variant of [undefined, ...opts.variants]) {
           for (const lang of [undefined, ...(opts.rtl ? [opts.rtl] : [])]) {
-            for (const state of [undefined, ...opts.states.map((s) => s.name)]) {
+            // A state runs only on the screens its line names ("/", or the preview as the run names it).
+            for (const state of [undefined, ...opts.states.filter((s) => runsOn(s, t.key)).map((s) => s.name)]) {
               const size = v.file ?? v.name;
               const phone = platform === "ios" && v.mobile && v.width < 600;
               // The default's shots set the default too, so an app that passes its own variant is drawn in the guide's
@@ -493,6 +495,7 @@ export function mapSwiftUIResult(
     if (t.error) return { ...base, status: 0, error: t.error, shots: [] };
     const mine = shots.filter((s) => s.target === t.key);
     const drawn: string[] = [];
+    const notHere: { state: string; shot: string }[] = [];
     const errors: string[] = [];
     const soft: string[] = [];
     let missing = false;
@@ -511,6 +514,11 @@ export function mapSwiftUIResult(
         continue;
       }
       if (r.stateError && !soft.includes(r.stateError)) soft.push(r.stateError);
+      // The state returned false: nothing was kept, and nothing is missing.
+      if (r.notHere) {
+        notHere.push({ state: s.state ?? "", shot: join(outDir, s.file) });
+        continue;
+      }
       if (!existsSync(join(outDir, s.file))) continue;
       drawn.push(join(outDir, s.file));
       // The audit's findings on this screenshot, named by where they were seen, as on the other stacks.
@@ -554,9 +562,9 @@ export function mapSwiftUIResult(
       const pageErrors = [...errors, ...soft];
       also(pageErrors.slice(1));
       // Shots that weren't drawn (a setup that failed): the line says how many, not that the screenshots show it.
-      const undrawn = mine.length - drawn.length;
+      const undrawn = mine.length - drawn.length - notHere.length;
       return {
-        ...base, status: 200, shots: drawn, ...(undrawn > 0 && errors.length > 0 ? { missing: undrawn } : {}), ...(pageErrors.length > 0 ? { pageErrors } : {}),
+        ...base, status: 200, shots: drawn, ...(notHere.length > 0 ? { notHere } : {}), ...(undrawn > 0 && errors.length > 0 ? { missing: undrawn } : {}), ...(pageErrors.length > 0 ? { pageErrors } : {}),
         ...(auditError ? { auditError } : {}),
       };
     }

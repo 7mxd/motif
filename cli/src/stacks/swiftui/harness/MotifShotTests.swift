@@ -61,6 +61,8 @@ private struct ShotResult: Encodable {
     var view: String?
     /// What went wrong in the shot's state: the screen is drawn as the state left it.
     var stateError: String?
+    /// The state returned false: it had nothing to do on the screen, so no PNG was kept.
+    var notHere: Bool?
     /// What the audit found on the drawn screen, the texts whose contrast it couldn't judge, and why it couldn't finish.
     var issues: [MotifIssue]?
     var unjudged: [String]?
@@ -150,23 +152,34 @@ final class MotifShotTests: XCTestCase {
                 entry.view = MotifMirror.typeName(view)
                 let checks = Set(shot.checks ?? [])
                 var audit: MotifAuditOutcome?
+                // The state returned false: it has nothing to do on this screen, so the shot isn't kept or audited.
+                var notHere = false
                 let drawn = try MotifShotDrawing.draw(MotifShotApp.themed(view), shot: shot, settle: settle, after: { window, png in
                     // The audit reads the window the screen was drawn in, and the picture just taken: after a state,
                     // once its editing has ended.
-                    guard !checks.isEmpty else { return }
+                    guard !checks.isEmpty, !notHere else { return }
                     audit = MotifAudit.run(checks, window: window, png: png, scale: shot.scale, systemReduceMotion: systemReduced)
                 }) { window in
                     // The state runs on the settled screen, with its own time limit; the screen is drawn as it leaves it.
                     guard let state = shot.state else { return nil }
                     let app = MotifHarness(window: window, variant: shot.variantId ?? "", locale: locale, dark: shot.dark, settle: settle)
-                    switch MotifAsync.run(seconds: limit, { try await MotifHooks.state(state, app) }) {
+                    switch MotifAsync.run(seconds: limit, { if try await MotifHooks.state(state, app) == false { app.notHere = true } }) {
                     case nil:
                         // Cancelled, and kept from acting on the screens after this one.
                         app.abandoned = true
                         return "State \"\(state)\": it was still running after \(Int(limit)) seconds."
                     case .failure(let error)?: return "State \"\(state)\": \(error)"
-                    case .success?: return nil
+                    case .success?:
+                        notHere = app.notHere
+                        return nil
                     }
+                }
+                if notHere {
+                    entry.notHere = true
+                    entry.ms = Int(Date().timeIntervalSince(started) * 1000)
+                    result.shots.append(entry)
+                    try write(result, to: resultURL)
+                    continue
                 }
                 entry.stateError = drawn.stateError
                 if let audit {

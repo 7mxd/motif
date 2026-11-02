@@ -326,6 +326,24 @@ describe("motif shot on a macOS SwiftUI app, drawn on the Mac", () => {
     expect(hosts()).toBe("");
   }, 1_800_000);
 
+  test.skipIf(!heavy.run)("a state runs only on the screens its line names, and one returning false keeps no PNG (1.3; skipped without Xcode)", async () => {
+    writeFileSync(join(root, "design", "states", "tinyonly.swift"), "// motif-screens: Tiny\n@MainActor func motifState(_ app: MotifHarness) async throws {}\n");
+    writeFileSync(join(root, "design", "states", "absent.swift"), "@MainActor func motifState(_ app: MotifHarness) async throws -> Bool {\n    false\n}\n");
+    const r = await shot(root, { routes: "/", screen: "Tiny", sizes: "1440", state: ["design/states/tinyonly.swift", "design/states/absent.swift"] });
+    console.log(r.text);
+    expect(r.data.shots).toEqual([
+      "design/shots/index.desktop.png", "design/shots/index.desktop.dark.png",
+      "design/shots/tiny.desktop.png", "design/shots/tiny@tinyonly.desktop.png", "design/shots/tiny.desktop.dark.png", "design/shots/tiny@tinyonly.desktop.dark.png",
+    ]);
+    for (const file of ["index@absent.desktop.png", "tiny@absent.desktop.png", "index@tinyonly.desktop.png"]) expect(existsSync(join(root, "design", "shots", file))).toBe(false);
+    const results = r.data.stateResults as { state: string; notHere: unknown[]; lost: string[] }[];
+    expect(results.find((s) => s.state === "absent")!.notHere).toHaveLength(4);
+    expect(results.find((s) => s.state === "absent")!.lost).toEqual(["/", "Tiny"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.text).not.toContain("weren't drawn");
+    expect(hosts()).toBe("");
+  }, 1_800_000);
+
   test.skipIf(!heavy.run)("--audit on the Mac: the planted problems, right to left too; no tap-target check (skipped without Xcode)", async () => {
     const started = Date.now();
     // The states' part (typing, throwing) is the simulator e2e's: the same harness code runs them on the Mac. Each shot

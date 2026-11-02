@@ -133,7 +133,7 @@ describe("what motif shot is given for a SwiftUI app", () => {
     });
     // A motifState in a comment or a string doesn't count.
     expect(readSwiftUIInputs(root, root, { screens: [], states: [state("design/states/opened.swift", '// func motifState(\nlet s = "func motifState("\n')] })).toEqual({
-      error: "--state: opened.swift must define @MainActor func motifState(_ app: MotifHarness) async throws, which Motif runs on each screen once it has settled. Add it, then run motif shot again.",
+      error: "--state: opened.swift must define @MainActor func motifState(_ app: MotifHarness) async throws (or one returning Bool: false where it has nothing to do), which Motif runs on each screen once it has settled. Add it, then run motif shot again.",
     });
     // Two states whose Swift names would be one are refused, naming both.
     expect(
@@ -163,7 +163,7 @@ describe("what motif shot is given for a SwiftUI app", () => {
     const hooks = hooksSource({ setup: { file: "/p/Setup.swift", text: SETUP }, states: [{ name: "signed-in", file: "/p/s.swift", text: STATE }] });
     expect(hooks).toContain("static let hasSetup = true");
     expect(hooks).toContain("        try await motifSetup(variant: variant, locale: locale, dark: dark)");
-    expect(hooks).toContain('        case "signed-in": try await motifState_signed_in(app)');
+    expect(hooks).toContain('        case "signed-in": return (try await motifState_signed_in(app) as Any) as? Bool != false');
     expect(hooks).toContain('default: throw MotifShotError("Motif didn\'t compile the state \\(name) into the run.")');
     expect(hooksSource()).toContain("static let hasSetup = false");
   });
@@ -423,6 +423,28 @@ describe("the screenshots of a SwiftUI run", () => {
     expect(mapped.notes).toEqual(["Screens were drawn from their layers.", run.problem!, "No iOS 27.0 simulator is installed."]);
   });
 
+  test("a state runs only on the screens its line names; a shot whose state returned false is not here, not missing (1.3)", () => {
+    const outDir = tempDir("motif-swiftui-nothere-");
+    const opts = phoneOpts({ outDir, viewports: [NATIVE_VIEWPORTS[1]!], screens: ["Settings"], states: [{ name: "sheet", script: STATE, screens: ["Settings"] }] });
+    const targets = swiftUITargets(opts, previews);
+    const shots = planSwiftUIShots(opts, targets, null, "");
+    expect(shots.map((s) => s.file)).toEqual(["index.mobile.png", "index.mobile.dark.png", "settings.mobile.png", "settings@sheet.mobile.png", "settings.mobile.dark.png", "settings@sheet.mobile.dark.png"]);
+    for (const f of ["index.mobile.png", "index.mobile.dark.png", "settings.mobile.png", "settings@sheet.mobile.png", "settings.mobile.dark.png"]) writeFileSync(join(outDir, f), "png");
+    const found: SwiftUIShotResult[] = [
+      { file: "index.mobile.png" }, { file: "index.mobile.dark.png" }, { file: "settings.mobile.png" }, { file: "settings@sheet.mobile.png" },
+      { file: "settings.mobile.dark.png" }, { file: "settings@sheet.mobile.dark.png", notHere: true },
+    ];
+    const mapped = mapSwiftUIResult(targets, shots, outDir, { timedOut: false, notes: [], result: { previews: [], notes: [], shots: found } }, 60_000);
+    const settings = mapped.routes[1]!;
+    expect(settings.missing).toBeUndefined();
+    expect(settings.status).toBe(200);
+    expect(settings.notHere).toEqual([{ state: "sheet", shot: join(outDir, "settings@sheet.mobile.dark.png") }]);
+    expect(mapped.routes[0]!.notHere).toBeUndefined();
+    const hooks = hooksSource({ states: [{ name: "sheet", file: "/p/s.swift", text: STATE }] });
+    expect(hooks).toContain("static func state(_ name: String, _ app: MotifHarness) async throws -> Bool {");
+    expect(hooks).toContain('        case "sheet": return (try await motifState_sheet(app) as Any) as? Bool != false');
+  });
+
   test("a screen some of whose shots weren't drawn says how many; its other errors (a stuck state) are in the notes", () => {
     const outDir = tempDir("motif-swiftui-map-");
     const opts = phoneOpts({ outDir, viewports: [NATIVE_VIEWPORTS[1]!], routes: [], screens: ["Settings"], states: [{ name: "stuck", script: STATE }] });
@@ -627,7 +649,7 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     // The setup and the state go into the harness, with the app's module.
     expect(fake.sources["MotifSetup.swift"]).toContain(`@testable import SwiftUIMin\n#sourceLocation(file: ${JSON.stringify(join(root, "design/states/Setup.swift"))}`);
     expect(fake.sources["MotifState_opened.swift"]).toContain("func motifState_opened(_ app: MotifHarness)");
-    expect(fake.sources["MotifHooks.swift"]).toContain('case "opened": try await motifState_opened(app)');
+    expect(fake.sources["MotifHooks.swift"]).toContain('case "opened": return (try await motifState_opened(app) as Any) as? Bool != false');
     expect(fake.options).toMatchObject({ setupFile: "design/states/Setup.swift", stateLimit: 15, settle: 5 });
     expect(fake.options!.shots.map((s) => [s.file, s.variant, s.state])).toEqual([
       ["index.mobile.png", "default", undefined],
