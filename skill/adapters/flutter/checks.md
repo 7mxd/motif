@@ -164,19 +164,21 @@ From `motif shot --audit`: with the "reduce motion" setting on, something on the
 
 `motif shot` draws each route as it first appears. A screen that only appears after someone fills in a form, taps a tab or waits for the network needs a **state script** (a few lines of Dart that get the screen there), and may need the setup file and fake network answers below. Keep the scripts in `design/states/`, named after the state (letters, digits and dashes), and add `--state design/states/<state>.dart` for each.
 
-A state script defines `motifState`. Motif calls it on each screen once it has opened, with the test's `WidgetTester`:
+A state script defines `motifState`. Motif calls it on each screen its line names once the screen has opened, with the test's `WidgetTester`. It returns `Future<bool>` (`false`: nothing to do here); `Future<void> motifState(WidgetTester tester) async` works too, and always keeps its screenshot:
 
 ```dart
 // design/states/sent.dart: the contact page after the form is sent.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> motifState(WidgetTester tester) async {
+// motif-screens: /contact
+Future<bool> motifState(WidgetTester tester) async {
   final field = find.byType(TextField);
-  if (field.evaluate().isEmpty) return; // Only the contact page has the field.
+  if (field.evaluate().isEmpty) return false; // Only the contact page has the field.
   await tester.enterText(field.first, 'maya@example.com');
   await tester.tap(find.text('Send'));
   await tester.pump(const Duration(milliseconds: 500));
+  return true;
 }
 ```
 
@@ -184,7 +186,9 @@ Future<void> motifState(WidgetTester tester) async {
 motif shot --routes /contact --state design/states/sent.dart
 ```
 
-- It runs on every screen `motif shot` draws: start with a guard that returns on the others, or capture only its screen with `--routes`.
+- Open the file with a `// motif-screens:` line naming the screens it belongs on, as above: `motif shot` runs it only there. Pick them from the app's routes (go_router's paths, `MaterialApp.routes`) or the widgets drawn with `--screen`, as the run names them (`/contact`, `/orders/*`, `SettingsScreen`; in a route, `*` stands for one part, like an id). A file with no line runs on every screen.
+- Keep the guard, returning `false` (`if (field.evaluate().isEmpty) return false;`): where the state has nothing to do, Motif keeps no screenshot of it. A state that returns nothing keeps the screenshot.
+- When the line names no screen the run takes, the run says the state didn't run: name its screens with `--routes` or `--screen`. When the state returns `false` in every shot of a screen its line names, it is lost: the run fails and names it, because the line or the state is out of date with the app. Fix whichever is wrong.
 - Screenshots are named after the screen and the state (`contact@sent.mobile.png`), each starting from a fresh visit. Use the same `--state` options for `--save` and `--against`.
 - Use `tester.pump(Duration)`, not `pumpAndSettle`, on a screen with a spinner or a loop: it never settles. A script that is still running after 15 seconds is left behind and reported. An error it throws is the screen's error, and the screenshot is still taken.
 - Mock data only.

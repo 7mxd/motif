@@ -286,15 +286,17 @@ From `motif shot --audit`: with Reduce Motion on, something on the screen keeps 
 
 `motif shot` draws each screen as it first appears. A screen that only appears after someone fills in a form or taps a button needs a **state** (a few lines of Swift that get the screen there), and may need the setup file below. Keep states in `design/states/`, named after the state (letters, digits and dashes), and add `--state design/states/<state>.swift` for each.
 
-A state defines `@MainActor func motifState(_ app: MotifHarness) async throws`. Motif runs it on each screen once the screen has settled, then lets the screen settle again and draws it as the state left it:
+A state defines `@MainActor func motifState(_ app: MotifHarness) async throws -> Bool` (`false`: nothing to do here; one without `-> Bool` works too). Motif runs it on each screen its line names once the screen has settled, then lets the screen settle again and draws it as the state left it:
 
 ```swift
+// motif-screens: Contact
 // design/states/sent.swift: the contact screen after the form is sent.
-@MainActor func motifState(_ app: MotifHarness) async throws {
-    guard app.exists("Email") else { return } // Only the contact screen has the field.
+@MainActor func motifState(_ app: MotifHarness) async throws -> Bool {
+    guard app.exists("Email") else { return false } // Only the contact screen has the field.
     try await app.type("maya@example.com", into: "Email")
     try await app.tap("Send")
     try await app.waitFor("Thanks, we'll be in touch")
+    return true
 }
 ```
 
@@ -309,7 +311,9 @@ motif shot --screen Contact --state design/states/sent.swift
 - `app.waitFor("…")` waits for something to appear; `app.exists("…")` says whether it's there now; `app.wait(1)` lets the screen run for a second; `app.settle()` waits for it to stop changing.
 - `app.labels` lists what the screen's elements are called, in VoiceOver's order: when a tap can't find its target, the error lists them too. `app.variant`, `app.locale`, `app.dark` and `app.window` describe the screenshot.
 
-- It runs on every screen `motif shot` draws: start with a guard that returns on the others, or capture only its screen with `--screen`.
+- Open the file with a `// motif-screens:` line naming the screens it belongs on, as above: `motif shot` runs it only there. Pick them from the app's screens: `/` for the root view, and its `#Preview`s as `--screen` names them, as the run names them (`/`, `Contact`, `Settings`; in a route, `*` stands for one part, like an id). A file with no line runs on every screen.
+- Keep the guard, returning `false` (`guard app.exists("Email") else { return false }`): where the state has nothing to do, Motif keeps no screenshot of it. A state that returns nothing keeps the screenshot.
+- When the line names no screen the run takes, the run says the state didn't run: name its screens with `--screen`. When the state returns `false` in every shot of a screen its line names, it is lost: the run fails and names it, because the line or the state is out of date with the app. Fix whichever is wrong.
 - Screenshots are named after the screen and the state (`contact@sent.mobile.png`), each starting from a freshly drawn screen. Use the same `--state` options for `--save` and `--against`.
 - A state has 15 seconds. An error it throws is the screen's error ("State "sent": …"), and the screenshot is still taken. A state that runs out of time is stopped, and everything it asks for after that fails.
 - States and the setup are compiled into Motif's test of the app, each with `import Foundation` and `@testable import` of the app's module in front, so the app's own types can be used; add `import SwiftUI` when the file needs it. They are compiled together: a top-level helper in one state file is seen by the others, and two with the same name don't compile, so make helpers `private`. A file that doesn't compile is named with the compiler's errors.

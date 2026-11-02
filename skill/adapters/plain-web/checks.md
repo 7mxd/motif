@@ -80,9 +80,10 @@ From `motif shot --audit`: something still moves when reduced motion is on.
 `motif shot` captures each page as it loads. A screen that only appears after someone fills in a form, opens a panel or sends something needs a **state script**: a few lines of JavaScript that get the page there. Keep one per state in `design/states/`, named after the state (letters, digits and dashes):
 
 ```js
+// motif-screens: /
 // design/states/sent.js: the page after a postcard is sent. Only the main page has the form.
 const form = document.getElementById("form");
-if (!form) return;
+if (!form) return false;
 form.elements.to.value = "Amara Okafor";
 form.elements.message.value = "Wish you were here.";
 form.requestSubmit();
@@ -96,7 +97,9 @@ motif shot --audit --state design/states/sent.js --state design/states/errors.js
 
 - The screenshots are named after the page and the state: `index@sent.mobile.png`, `index@sent.desktop.dark.png`.
 - A state script runs in the page, after it loads. It can click (`element.click()`), fill fields, send a form (`form.requestSubmit()`), call the page's own functions, or wait for something (`await new Promise((r) => setTimeout(r, 500))`).
-- It runs in every page `motif shot` captures, not only the one it was written for. Start it with a guard that returns on other pages, as above (`if (!form) return;`), or capture only its page with `--routes`.
+- Open the script with a `// motif-screens:` line naming the pages it belongs on, as above: `motif shot` runs it only there. Pick them from the app's pages, written as the run names them (`/`, `/about.html`; `*` stands for one part of the address, like an id). A script with no line runs on every page.
+- Keep the guard, returning `false` (`if (!form) return false;`): where the script has nothing to do, Motif keeps no screenshot of it. Returning nothing, or simply ending, keeps the screenshot.
+- When the line names no page the run takes, the run says the state didn't run: name its pages with `--routes`. When the script returns `false` in every shot of a page its line names, the state is lost: the run fails and names it, because the line or the script is out of date with the app. Fix whichever is wrong.
 - Setting a field's `value` doesn't tell the page. When the page reacts to typing (a live preview, a character count), send the event a person's typing would: `field.dispatchEvent(new Event("input", { bubbles: true }))`.
 - To check that things people use together fit on one screen (a live preview and its controls), end the script by scrolling them into view: `document.getElementById("preview").scrollIntoView({ behavior: "instant" })` (instant, so a page with smooth scrolling is already there when the screenshot is taken). Each screenshot records what was on screen, and side-by-side images (`--against`) frame it.
 - Each screenshot starts as a first visit: what a page or a state script stores (a theme choice, a cookie) doesn't carry over to the next screenshot.

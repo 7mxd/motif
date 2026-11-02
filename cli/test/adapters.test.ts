@@ -141,7 +141,7 @@ describe("the plain web guide", () => {
   test("checks.md: every rule on plain web, the audit's findings, and state scripts", () => {
     const checks = read("plain-web/checks.md");
     for (const id of RULE_IDS) expect(checks).toContain(id.startsWith("tailwind") ? `\`${id}\`` : `## \`${id}\``);
-    for (const s of ["## Contrast", "## Target size", "## Reduced motion", "<!-- motif-ok", "## Screens behind a form or a click", "design/states/", "--state", "index@sent.mobile.png", "15 seconds", "runs in every page", 'dispatchEvent(new Event("input"']) {
+    for (const s of ["## Contrast", "## Target size", "## Reduced motion", "<!-- motif-ok", "## Screens behind a form or a click", "design/states/", "--state", "index@sent.mobile.png", "15 seconds", "runs on every page", 'dispatchEvent(new Event("input"']) {
       expect(checks).toContain(s);
     }
   });
@@ -864,5 +864,31 @@ describe("the parity checklist (docs/parity.md, Task 15)", () => {
     const links = [...parity.matchAll(/\]\(([^)#]+)(#[^)]*)?\)/g)].map((m) => m[1]!).filter((l) => !l.startsWith("http"));
     expect(links.length).toBeGreaterThan(AREAS.length);
     for (const link of links) expect(existsSync(join(REPO, "docs", link)) ? "ok" : link).toBe("ok");
+  });
+});
+
+describe("every stack's state scripts name their screens and say not here (1.3)", () => {
+  // The language each stack's states are written in, as its guide's code blocks name it.
+  const STACKS: Record<string, string> = {
+    "plain-web": "js", "react-web": "js", vue: "js", svelte: "js", angular: "js", "react-native": "js", flutter: "dart", compose: "kotlin", swiftui: "swift",
+  };
+  for (const [stack, lang] of Object.entries(STACKS)) {
+    test(`${stack}: the example opens with its motif-screens line and returns false where it has nothing to do`, () => {
+      const text = read(`${stack}/checks.md`);
+      const section = text.slice(text.search(/## Screens behind a form or a (click|tap)/));
+      const blocks = [...section.matchAll(/```(\w+)\n([\s\S]*?)```/g)].filter((m) => m[1] === lang).map((m) => m[2]!);
+      expect(blocks.some((b) => b.includes("// motif-screens: ") && b.includes("return false"))).toBe(true);
+      // The agent picks the screens from the app, and knows what the run says when a line doesn't fit it.
+      expect(section).toContain("from the app's");
+      expect(section).toContain("didn't run");
+      expect(section).toContain("out of date");
+      expect(section).not.toMatch(/runs (in|on) every (page|screen|route) `motif shot` (captures|draws)/);
+    });
+  }
+
+  test("the template for a new stack asks for both", () => {
+    const template = read("_template/README.md");
+    expect(template).toContain("motif-screens:");
+    expect(template).toContain("return false");
   });
 });

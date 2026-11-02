@@ -121,6 +121,13 @@ describe("modes/feature.md", () => {
 describe("modes/review.md", () => {
   const review = read("modes/review.md");
 
+  test("state scripts name their screens: a review adds a missing line, and a lost state means the line or script is out of date (1.3)", () => {
+    expect(review).toContain("// motif-screens:");
+    expect(review).toContain("return false");
+    expect(review).toMatch(/without a `\/\/ motif-screens:` line, add one/);
+    expect(review).toContain("out of date with the app");
+  });
+
   test("has the six steps of spec §7.5, with gates on the extracted guide and the report", () => {
     expect(outOfOrder(review, ["## 1. Scope", "## 2. Extract (only when there is no design guide)", "⏸", "## 3. Audit", "## 4. Report ⏸", "## 5. Rebuild", "## 6. A new look instead"])).toBeNull();
   });
