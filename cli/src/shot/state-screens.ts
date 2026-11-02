@@ -130,3 +130,8 @@ export function stateNotes(outcomes: StateOutcome[], screensInRun: string[]): { 
   }
   return { notes, lost };
 }
+
+/** The state a shot's file is of (page@state.size….png, page@state+variant.size….png), or undefined for a plain shot. */
+export function stateOfShot(file: string): string | undefined {
+  return /@([a-z0-9][a-z0-9-]*)[.+]/.exec(baseName(file))?.[1];
+}
