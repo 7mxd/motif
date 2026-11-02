@@ -48,3 +48,11 @@ export function screenMatches(pattern: string, screen: string): boolean {
 export function runsOn(state: Pick<StateScript, "screens">, screen: string): boolean {
   return !state.screens || state.screens.some((p) => screenMatches(p, screen));
 }
+
+/**
+ * How many screenshots a run takes: perLook on each screen as it opens (none with --states-only), and perLook more for
+ * each state on the screens its line lets it run on.
+ */
+export function plannedShots(routes: string[], states: StateScript[], perLook: number, statesOnly: boolean): number {
+  return routes.reduce((sum, r) => sum + perLook * ((statesOnly ? 0 : 1) + states.filter((s) => runsOn(s, r)).length), 0);
+}

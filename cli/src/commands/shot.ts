@@ -27,7 +27,7 @@ import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes"
 import { readsHash } from "../stacks/route-source";
 import { webStack } from "../stacks/web";
 import { andList } from "../text";
-import { readScreensLine, SCREENS_LINE } from "../shot/state-screens";
+import { plannedShots, readScreensLine, runsOn, SCREENS_LINE } from "../shot/state-screens";
 
 export interface ShotDeps {
   findBrowser: () => BrowserInfo | null;
@@ -418,7 +418,16 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   }
   // A native app's own pages, past the cap: sign-in and the home page first, so the run shows the screens people meet first.
   const reordered = Boolean(shoot || rn) && typeof flags.routes !== "string" && discovery.routes.length > MAX_ROUTES;
-  const all = reordered ? signInFirst(discovery.routes) : discovery.routes;
+  // --states-only visits only the pages some state runs on: a page no state's line names is never opened.
+  const found = statesOnly ? discovery.routes.filter((r) => states.some((s) => runsOn(s, r))) : discovery.routes;
+  if (found.length === 0) {
+    const lines = states.map((s) => `${s.name}: ${s.screens!.join(", ")}`).join("; ");
+    return usage(
+      `--states-only: no state's // ${SCREENS_LINE} line names a page this run takes (${andList(discovery.routes)}). The lines name ${lines}. Name those pages with --routes, or fix the lines.`,
+      { error: "usage" },
+    );
+  }
+  const all = reordered ? signInFirst(found) : found;
   const routes = all.slice(0, MAX_ROUTES);
   const notes: string[] = settingProblems.map((f) => f.message);
   if (chosen.note) notes.push(chosen.note);
@@ -513,8 +522,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     if (shoot && app) {
       const sizes = stackSizes ?? viewports ?? NATIVE_VIEWPORTS;
-      // Each state is one more screenshot of every shot, after the screen has settled.
-      const count = (routes.length + runScreens.length) * sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1) * (1 + states.length);
+      // Each state is one more screenshot of every shot on the screens its line names, after the screen has settled.
+      const count = plannedShots([...routes, ...runScreens], states, sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1), false);
       const timeoutMs = native?.shotTimeLimit?.(count) ?? 240_000 + 3_000 * count;
       const drawn = await shoot({
         root: cwd, app, routes, screens: runScreens, outDir, viewports: sizes, variants, ...(rtl ? { rtl } : {}), states, audit, timeoutMs,
@@ -525,7 +534,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       captured = { routes: drawn.routes, issues: drawn.issues };
     } else {
       captured = await deps.capture({
-        browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })), ...(statesOnly ? { statesOnly } : {}),
+        browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script, screens }) => ({ name, script, ...(screens ? { screens } : {}) })), ...(statesOnly ? { statesOnly } : {}),
         ...(rn ? { motionWidth: RN_MOTION_SIZE.width, reactNative: true } : {}),
         ...(viewports ?? (rn ? NATIVE_VIEWPORTS : undefined) ? { viewports: viewports ?? NATIVE_VIEWPORTS } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
         ...(defaultVariant ? { defaultVariant } : {}), ...(appScheme ? { appScheme: appScheme.scheme } : {}),

@@ -1,10 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { readStates, runShot, type ShotDeps } from "../src/commands/shot";
 import { toFindings, type AuditIssue } from "../src/shot/audit";
 import { findBrowser } from "../src/detect/browser";
 import { captureScreens, stateExpression, VIEWPORTS, type CaptureOptions } from "../src/shot/capture";
+import { plannedShots } from "../src/shot/state-screens";
 import { startStaticServer } from "../src/shot/static-server";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
@@ -53,6 +54,38 @@ describe("state scripts", () => {
     expect(e).toContain("15000");
     expect(e).toContain("async");
     expect(stateExpression("x", 50)).toContain("50");
+    // Only a script that returns false says "not here"; returning nothing, or finishing, is captured as in 1.2.
+    expect(stateExpression("return false;")).toContain("!== false");
+  });
+
+  test("the planned count holds only the shots each state's line lets it take", () => {
+    const sheet = { name: "sheet", script: "", screens: ["/b.html"] };
+    expect(plannedShots(["/", "/b.html"], [sheet], 30, false)).toBe(30 * 2 + 30);
+    expect(plannedShots(["/", "/b.html"], [sheet], 30, true)).toBe(30);
+    const any = { name: "any", script: "" };
+    expect(plannedShots(["/", "/b.html"], [sheet, any], 30, false)).toBe(30 * 2 + 30 + 30 * 2);
+  });
+
+  test("--states-only opens only the pages some state's line names", async () => {
+    const root = makeProject({ "public/index.html": "", "design/states/sheet.js": "// motif-screens: /b.html\nopen();" });
+    const captured: CaptureOptions[] = [];
+    const deps: ShotDeps = {
+      findBrowser: () => ({ name: "Chrome", path: "/fake/chrome" }),
+      devCommand: () => ({ error: "unused" }),
+      startDevServer: async () => {
+        throw new Error("unused");
+      },
+      serveStatic: () => ({ url: "http://127.0.0.1:5555", stop: () => {} }),
+      capture: async (o) => {
+        captured.push(o);
+        return { routes: o.routes.map((route) => ({ route, url: o.baseUrl, status: 200, shots: [] })), issues: [] };
+      },
+      compare: async () => [],
+      today: () => "2026-11-02",
+    };
+    await runShot(root, { positionals: [], flags: { state: ["design/states/sheet.js"], "states-only": true, routes: "/,/b.html" } }, deps);
+    expect(captured[0]!.routes).toEqual(["/b.html"]);
+    expect(captured[0]!.states).toEqual([{ name: "sheet", script: "// motif-screens: /b.html\nopen();", screens: ["/b.html"] }]);
   });
 
   test("motif shot passes them to the capture, and refuses a bad one before starting anything", async () => {
@@ -126,6 +159,45 @@ describe("state scripts in a real browser (final review)", () => {
       site.stop();
     }
   }, 120_000);
+});
+
+describe("states that know their screens (1.3)", () => {
+  const browser = findBrowser();
+  test.skipIf(!browser)("a lined state runs only on its pages, in every look, and a state that returns false keeps no shot", async () => {
+    const root = makeProject({
+      "index.html": "<!doctype html><p>Home</p>",
+      "b.html": '<!doctype html><button id="sheet" onclick="document.body.dataset.open = 1">Open</button>',
+    });
+    const site = startStaticServer(root);
+    try {
+      const outDir = join(root, "shots");
+      const r = await captureScreens({
+        browserPath: browser!.path, baseUrl: site.url, routes: ["/", "/b.html"], outDir, settleMs: 50, viewports: [VIEWPORTS[0]!], rtl: "ar", audit: true,
+        states: [
+          // On /, this script would throw (no #sheet): it must never run there.
+          { name: "sheet", script: 'document.querySelector("#sheet").click();', screens: ["/b.html"] },
+          { name: "guard", script: 'if (!document.querySelector("#sheet")) return false;\ndocument.querySelector("#sheet").click();' },
+        ],
+      });
+      const [home, b] = r.routes;
+      const names = (shots: string[]) => shots.map((s) => basename(s));
+      expect(names(home!.shots).filter((s) => s.includes("@"))).toEqual([]);
+      expect((home!.pageErrors ?? []).join("\n")).not.toContain("sheet");
+      expect(home!.notHere!.map((n) => n.state)).toEqual(["guard", "guard", "guard", "guard"]);
+      for (const n of home!.notHere!) {
+        expect(basename(n.shot)).toStartWith("index@guard.");
+        expect(existsSync(n.shot)).toBe(false);
+      }
+      expect(r.issues.filter((i) => i.state === "guard" && i.route === "/")).toEqual([]);
+      // Both states on /b.html, in the left-to-right and right-to-left looks.
+      expect(names(b!.shots).filter((s) => s.includes("@sheet"))).toHaveLength(4);
+      expect(names(b!.shots).filter((s) => s.includes("@sheet") && s.includes(".rtl"))).toHaveLength(2);
+      expect(names(b!.shots).filter((s) => s.includes("@guard"))).toHaveLength(4);
+      expect(b!.notHere).toBeUndefined();
+    } finally {
+      site.stop();
+    }
+  }, 180_000);
 });
 
 describe("errors in a state, reported once", () => {
