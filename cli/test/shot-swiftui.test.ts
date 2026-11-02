@@ -429,7 +429,8 @@ describe("the screenshots of a SwiftUI run", () => {
     const targets = swiftUITargets(opts, previews);
     const shots = planSwiftUIShots(opts, targets, null, "");
     expect(shots.map((s) => s.file)).toEqual(["index.mobile.png", "index.mobile.dark.png", "settings.mobile.png", "settings@sheet.mobile.png", "settings.mobile.dark.png", "settings@sheet.mobile.dark.png"]);
-    for (const f of ["index.mobile.png", "index.mobile.dark.png", "settings.mobile.png", "settings@sheet.mobile.png", "settings.mobile.dark.png"]) writeFileSync(join(outDir, f), "png");
+    // The last file is an earlier run's: the state now says it has nothing to do there.
+    for (const f of ["index.mobile.png", "index.mobile.dark.png", "settings.mobile.png", "settings@sheet.mobile.png", "settings.mobile.dark.png", "settings@sheet.mobile.dark.png"]) writeFileSync(join(outDir, f), "png");
     const found: SwiftUIShotResult[] = [
       { file: "index.mobile.png" }, { file: "index.mobile.dark.png" }, { file: "settings.mobile.png" }, { file: "settings@sheet.mobile.png" },
       { file: "settings.mobile.dark.png" }, { file: "settings@sheet.mobile.dark.png", notHere: true },
@@ -440,6 +441,7 @@ describe("the screenshots of a SwiftUI run", () => {
     expect(settings.status).toBe(200);
     expect(settings.notHere).toEqual([{ state: "sheet", shot: join(outDir, "settings@sheet.mobile.dark.png") }]);
     expect(mapped.routes[0]!.notHere).toBeUndefined();
+    expect(existsSync(join(outDir, "settings@sheet.mobile.dark.png"))).toBe(false);
     const hooks = hooksSource({ states: [{ name: "sheet", file: "/p/s.swift", text: STATE }] });
     expect(hooks).toContain("static func state(_ name: String, _ app: MotifHarness) async throws -> Bool {");
     expect(hooks).toContain('        case "sheet": return (try await motifState_sheet(app) as Any) as? Bool != false');
@@ -675,6 +677,16 @@ describe("SWIFTUI.shoot (with stand-ins for xcodebuild and simctl)", () => {
     const again = await fakeShoot(root, {}, home);
     expect((await again.promise).notes).not.toContain(SWIFTUI_FIRST_RUN);
     expect(readdirSync(cache).sort()).toEqual(["DerivedData", "last-used"]);
+  });
+
+  test("an earlier run's screenshots of a state its line now keeps off a screen are removed (1.3)", async () => {
+    const root = xcodeProject({ "design/states/opened.swift": STATE, "design/shots/index@opened.mobile.png": "old", "design/shots/index@opened+partner.mobile.dark.png": "old" });
+    const home = tempDir("motif-swiftui-home-");
+    const states = [{ name: "opened", script: STATE, file: join(root, "design/states/opened.swift"), screens: ["Settings"] }];
+    const { promise, fake } = await fakeShoot(root, { states }, home);
+    await promise;
+    expect(fake.options!.shots.map((s) => s.file)).toEqual(["index.mobile.png", "index.mobile.dark.png"]);
+    expect(readdirSync(join(root, "design/shots")).sort()).toEqual(["index.mobile.dark.png", "index.mobile.png"]);
   });
 
   test("a build that fails says so, and the copy, the work folder and the simulator are still removed", async () => {

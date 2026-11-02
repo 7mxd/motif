@@ -660,7 +660,8 @@ Future<bool> motifState(WidgetTester tester) async {
   return find.text('Settings').evaluate().isNotEmpty;
 }
 `;
-    const root = makeProject({ ...FLUTTER_APP, "design/states/sheet.dart": sheet });
+    // A 1.2 run took the sheet on / too: that screenshot goes.
+    const root = makeProject({ ...FLUTTER_APP, "design/states/sheet.dart": sheet, "design/shots/index@sheet.tablet.png": "old", "design/shots/index.tablet.png": "old" });
     const seen: { run?: HarnessRun } = {};
     const out = await shootFlutter(
       options(root, {
@@ -689,6 +690,8 @@ Future<bool> motifState(WidgetTester tester) async {
     const shots = join(root, "design", "shots");
     expect(out.routes[1]!.notHere).toEqual([{ state: "sheet", shot: join(shots, "settings@sheet.tablet.dark.png") }]);
     expect(out.routes[0]!.notHere).toBeUndefined();
+    expect(existsSync(join(shots, "index@sheet.tablet.png"))).toBe(false);
+    expect(existsSync(join(shots, "index.tablet.png"))).toBe(true);
   });
 
   test("a state may return Future<bool>; the error for one without motifState names both forms (1.3)", async () => {

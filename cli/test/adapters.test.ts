@@ -883,6 +883,9 @@ describe("every stack's state scripts name their screens and say not here (1.3)"
       expect(section).toContain("didn't run");
       expect(section).toContain("out of date");
       expect(section).not.toMatch(/runs (in|on) every (page|screen|route) `motif shot` (captures|draws)/);
+      // A state that belongs everywhere (signing in) keeps no line: a line on it would drop pages from the run.
+      expect(section).toContain("like signing in");
+      expect(section).not.toContain("app's its");
     });
   }
 

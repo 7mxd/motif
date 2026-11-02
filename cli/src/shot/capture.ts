@@ -1,11 +1,11 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, X509Certificate } from "node:crypto";
 import { connect } from "node:tls";
 import { launchBrowser, LoadTimeout } from "../browser/cdp";
 import { addPngText, readPngText } from "../browser/png";
 import { auditPage, type AuditIssue } from "./audit";
-import { runsOn } from "./state-screens";
+import { clearExcludedStates, runsOn } from "./state-screens";
 
 export interface Viewport {
   /** How the audit treats it: "mobile" for touch screens (phones and tablets), "desktop" otherwise. */
@@ -386,6 +386,8 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
       let slug = routeSlug(route);
       for (let n = 2; usedSlugs.has(slug); n++) slug = `${routeSlug(route)}-${n}`;
       usedSlugs.add(slug);
+      // A state its line keeps off this page leaves no screenshot of it from an earlier run.
+      clearExcludedStates(opts.outDir, [{ key: route, slug }], opts.states ?? []);
 
       const answer = await probe(url, timeoutMs);
       const result: RouteResult = { route, url, status: answer.status, shots: [] };
@@ -484,6 +486,8 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                       // The script found nothing to do here: no screenshot, no audit, only the record of the skip.
                       const shot = join(opts.outDir, shotName(`${slug}@${state.name}`, viewport.file ?? viewport.name, scheme, variant, Boolean(lang)));
                       (result.notHere ??= []).push({ state: state.name, shot });
+                      // Nor does an earlier run's screenshot of it stay behind.
+                      rmSync(shot, { force: true });
                       continue;
                     }
                     // What the script set off (a form sent, a list fetched) is waited for too.

@@ -225,7 +225,7 @@ document.querySelector('[aria-label="Add item"]')?.click();
 motif shot --routes /form --state design/states/filled.js
 ```
 
-- Open the script with a `// motif-screens:` line naming the routes it belongs on, as above: `motif shot` runs it only there. Pick them from the app's routes (the files under `app/`), written as the run names them (`/form`, `/orders/*`; `*` stands for one part of the address, like an id). A script with no line runs on every route.
+- Open the script with a `// motif-screens:` line naming the routes it belongs on, as above: `motif shot` runs it only there. Pick them from the app's routes (the files under `app/`), written as the run names them (`/form`, `/orders/*`; `*` stands for one part of the address, like an id). A script with no line runs on every route: leave the line off only a state that belongs on every route, like signing in.
 - Keep the guard, returning `false` (`if (!field) return false;`): where the script has nothing to do, Motif keeps no screenshot of it. Returning nothing, or simply ending, keeps the screenshot.
 - When the line names no route the run takes, the run says the state didn't run: name its routes with `--routes`. When the script returns `false` in every shot of a route its line names, the state is lost: the run fails and names it, because the line or the script is out of date with the app. Fix whichever is wrong.
 - Screenshots are named after the route and the state (`form@filled.mobile.png`), each starting from a fresh visit. Use the same `--state` options for `--save` and `--against`.

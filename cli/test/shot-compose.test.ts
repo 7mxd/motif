@@ -406,7 +406,8 @@ describe("shootCompose", () => {
 
   test("a state runs only on the routes and previews its line names; a Boolean one may say not here (1.3)", async () => {
     const sheet = "package dev.motif.states.sheet\n\nimport androidx.compose.ui.test.junit4.ComposeContentTestRule\n// motif-screens: SettingsPreview\nfun motifState(rule: ComposeContentTestRule): Boolean = false\n";
-    const root = makeProject({ ...COMPOSE_APP, "design/states/sheet.kt": sheet });
+    // A 1.2 run took the sheet on / and /settings too: those screenshots go.
+    const root = makeProject({ ...COMPOSE_APP, "design/states/sheet.kt": sheet, "design/shots/index@sheet.tablet.png": "old", "design/shots/settings@sheet+partner.tablet.png": "old", "design/shots/index.tablet.png": "old" });
     const { runs, run } = fakeRun(() => ({
       result: {
         screens: [
@@ -427,6 +428,9 @@ describe("shootCompose", () => {
       { state: "sheet", shot: join(shots, "settings-2@sheet.tablet.png") }, { state: "sheet", shot: join(shots, "settings-2@sheet.tablet.dark.png") },
     ]);
     expect(got.routes.find((r) => r.route === "/")!.notHere).toBeUndefined();
+    expect(existsSync(join(shots, "index@sheet.tablet.png"))).toBe(false);
+    expect(existsSync(join(shots, "settings@sheet+partner.tablet.png"))).toBe(false);
+    expect(existsSync(join(shots, "index.tablet.png"))).toBe(true);
   });
 
   test("turns what the harness drew into results: drawn, failed per screen, and the run's notes", async () => {

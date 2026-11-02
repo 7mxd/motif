@@ -102,7 +102,7 @@ field.dispatchEvent(new Event("input", { bubbles: true }));
 field.form?.requestSubmit();
 ```
 
-- Open the script with a `// motif-screens:` line naming the pages it belongs on, as above: `motif shot` runs it only there. Pick them from the app's its router or its pages folder, written as the run names them (`/settings`, `/#/applications/*`; `*` stands for one part of the address, like an id). A script with no line runs on every page.
+- Open the script with a `// motif-screens:` line naming the pages it belongs on, as above: `motif shot` runs it only there. Pick them from the app's router or its pages folder, written as the run names them (`/settings`, `/#/applications/*`; `*` stands for one part of the address, like an id). A script with no line runs on every page: leave the line off only a state that belongs on every page, like signing in.
 - Keep the guard, returning `false` (`if (!field) return false;`): where the script has nothing to do, Motif keeps no screenshot of it. Returning nothing, or simply ending, keeps the screenshot.
 - When the line names no page the run takes, the run says the state didn't run: name its pages with `--routes`. When the script returns `false` in every shot of a page its line names, the state is lost: the run fails and names it, because the line or the script is out of date with the app. Fix whichever is wrong.
 - Screenshots are named after the page and the state (`search@searched.mobile.png`); each starts as a first visit, and a script still running after 15 seconds is stopped and reported.

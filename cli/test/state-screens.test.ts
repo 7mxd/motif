@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readScreensLine, runsOn, screenMatches } from "../src/shot/state-screens";
+import { readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { clearStateShots, readScreensLine, runsOn, screenMatches, stateOfShot } from "../src/shot/state-screens";
+import { tempDir } from "./tmp";
 
 describe("a state's motif-screens line", () => {
   test("is a comma list at the top of the script", () => {
@@ -44,5 +47,23 @@ describe("a screen in the line", () => {
     expect(runsOn({}, "/x")).toBe(true);
     expect(runsOn({ screens: ["/a"] }, "/b")).toBe(false);
     expect(runsOn({ screens: ["/a", "/b/*"] }, "/b/7")).toBe(true);
+  });
+});
+
+describe("final review fixes (1.3)", () => {
+  test("a shot's state is read from its file name only, whatever the folders above it are called (Windows paths too)", () => {
+    expect(stateOfShot("C:\\Users\\me\\repo@v2.1\\design\\shots\\index.mobile.png")).toBeUndefined();
+    expect(stateOfShot("C:\\Users\\me\\repo@v2.1\\design\\shots\\index@edit.mobile.png")).toBe("edit");
+    expect(stateOfShot("/home/me/a@b.c/design/shots/b@sheet+partner.mobile.png")).toBe("sheet");
+  });
+
+  test("a state's old screenshots of a screen are removed: only that state's, only that screen's", () => {
+    const dir = tempDir("motif-state-clear-");
+    const files = ["b@sheet.mobile.png", "b@sheet+v.mobile.dark.png", "b@sheets.mobile.png", "b-2@sheet.mobile.png", "b.mobile.png", "index@sheet.mobile.png"];
+    for (const f of files) writeFileSync(join(dir, f), "png");
+    clearStateShots(dir, "b", ["sheet"]);
+    expect(readdirSync(dir).sort()).toEqual(["b-2@sheet.mobile.png", "b.mobile.png", "b@sheets.mobile.png", "index@sheet.mobile.png"]);
+    // A folder that isn't there yet has nothing to remove.
+    clearStateShots(join(dir, "nope"), "b", ["sheet"]);
   });
 });

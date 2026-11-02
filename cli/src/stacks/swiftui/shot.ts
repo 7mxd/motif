@@ -14,7 +14,7 @@ import { readVariants } from "../../contract/variants";
 import type { AppInfo } from "../../detect/stacks";
 import { motifHome } from "../../home";
 import { MAC_WINDOWS, NATIVE_VIEWPORTS, parseSizes, routeSlug, shotName, type RouteResult, type Scheme, type StateScript, type Viewport } from "../../shot/capture";
-import { runsOn } from "../../shot/state-screens";
+import { clearExcludedStates, runsOn } from "../../shot/state-screens";
 import { andList } from "../../text";
 import type { AuditIssue, RawIssue } from "../../shot/audit";
 import { statesFile, type StatesFile } from "../flutter/inputs";
@@ -517,6 +517,8 @@ export function mapSwiftUIResult(
       // The state returned false: nothing was kept, and nothing is missing.
       if (r.notHere) {
         notHere.push({ state: s.state ?? "", shot: join(outDir, s.file) });
+        // Nor does an earlier run's screenshot of it stay behind.
+        rmSync(join(outDir, s.file), { force: true });
         continue;
       }
       if (!existsSync(join(outDir, s.file))) continue;
@@ -994,6 +996,8 @@ export async function shootSwiftUI(
   const defaultId = defaultVariant(root);
   const { previews } = discoverSwiftUIScreens(appDir);
   const targets = swiftUITargets(opts, previews);
+  // A state its line keeps off a screen leaves no screenshot of it there from an earlier run.
+  clearExcludedStates(opts.outDir, targets, opts.states);
   const platform = swiftUIPlatform(swift, opts.viewports);
   const shots = planSwiftUIShots(opts, targets, theme, defaultId, platform);
   // On the Mac, the reduced-motion check runs in the desktop's window, which a run with --sizes 900 leaves out.

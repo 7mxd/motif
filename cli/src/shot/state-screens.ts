@@ -1,3 +1,5 @@
+import { readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type { RouteResult, StateScript } from "./capture";
 
 /** The comment a state script names its screens in: `// motif-screens: /#/applications/*, /#/matches/*`. */
@@ -70,9 +72,11 @@ export interface StateOutcome {
   notInRun: boolean;
   /** Screens it was tried on and returned false in every shot of (for a lined state, only screens its line names). */
   lost: string[];
+  /** The run's screens its line kept it off. */
+  excluded: string[];
 }
 
-const baseName = (file: string) => file.split(/[\/]/).pop()!;
+const baseName = (file: string) => file.split(/[\\/]/).pop()!;
 
 /** Each state's outcome from the screens this run took and what each screen's shots were. */
 export function stateOutcomes(states: StateScript[], screensInRun: string[], routes: RouteResult[]): StateOutcome[] {
@@ -92,6 +96,7 @@ export function stateOutcomes(states: StateScript[], screensInRun: string[], rou
       notHere,
       notInRun: Boolean(s.screens) && !screensInRun.some((r) => runsOn(s, r)),
       lost,
+      excluded: screensInRun.filter((r) => !runsOn(s, r)),
     };
   });
 }
@@ -125,7 +130,7 @@ export function stateNotes(outcomes: StateOutcome[], screensInRun: string[]): { 
   const unlined = outcomes.filter((o) => !o.screens).map((o) => o.state);
   if (unlined.length > 0) {
     notes.push(
-      `${unlined.length === 1 ? `State "${unlined[0]}" has` : `States ${unlined.map((n) => `"${n}"`).join(", ")} have`} no // ${SCREENS_LINE} line, so ${unlined.length === 1 ? "it ran" : "they ran"} on every screen. A line at the top of each script naming its screens makes the run faster.`,
+      `${unlined.length === 1 ? `State "${unlined[0]}" has` : `States ${unlined.map((n) => `"${n}"`).join(", ")} have`} no // ${SCREENS_LINE} line, so ${unlined.length === 1 ? "it ran" : "they ran"} on every screen. That's right for a state that belongs everywhere, like signing in; for one that belongs on only some screens, a line at the top of its script naming them makes the run faster.`,
     );
   }
   return { notes, lost };
@@ -134,4 +139,28 @@ export function stateNotes(outcomes: StateOutcome[], screensInRun: string[]): { 
 /** The state a shot's file is of (page@state.size….png, page@state+variant.size….png), or undefined for a plain shot. */
 export function stateOfShot(file: string): string | undefined {
   return /@([a-z0-9][a-z0-9-]*)[.+]/.exec(baseName(file))?.[1];
+}
+
+/**
+ * Removes the screenshots these states left of one screen in an earlier
+ * run (`<slug>@<state>.…` and `<slug>@<state>+<look>.…`), so a state that
+ * no longer runs there, or found nothing to do there, leaves nothing stale
+ * behind for the next look at the folder.
+ */
+/** clearStateShots for each screen of a run, for the states whose line keeps them off it. */
+export function clearExcludedStates(outDir: string, screens: { key: string; slug: string }[], states: Pick<StateScript, "name" | "screens">[]): void {
+  for (const t of screens) clearStateShots(outDir, t.slug, states.filter((s) => !runsOn(s, t.key)).map((s) => s.name));
+}
+
+export function clearStateShots(outDir: string, slug: string, states: string[]): void {
+  if (states.length === 0) return;
+  let files: string[];
+  try {
+    files = readdirSync(outDir);
+  } catch {
+    return;
+  }
+  for (const f of files) {
+    if (states.some((s) => f.startsWith(`${slug}@${s}.`) || f.startsWith(`${slug}@${s}+`))) rmSync(join(outDir, f), { force: true });
+  }
 }

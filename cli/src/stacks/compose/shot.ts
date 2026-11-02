@@ -13,7 +13,7 @@ import type { AppInfo } from "../../detect/stacks";
 import { motifHome } from "../../home";
 import type { AuditIssue, RawIssue } from "../../shot/audit";
 import { routeSlug, shotName, type RouteResult, type Scheme, type StateScript } from "../../shot/capture";
-import { runsOn, stateOfShot } from "../../shot/state-screens";
+import { clearExcludedStates, runsOn, stateOfShot } from "../../shot/state-screens";
 import type { FetchLike } from "../flutter/harness";
 import { statesFile, type StatesFile } from "../flutter/inputs";
 import { auditChecks, MOTION_WIDTH, screenNotes } from "../flutter/shot";
@@ -490,6 +490,8 @@ export async function shootCompose(opts: NativeShotOptions, deps: ComposeShotDep
   if (unread) notes.push(unread);
 
   const targets = targetsOf(opts, moduleDir);
+  // A state its line keeps off a screen leaves no screenshot of it there from an earlier run.
+  clearExcludedStates(opts.outDir, targets, opts.states);
   const defaultId = defaultVariant(root);
   const shots = planComposeShots(opts, targets, theme, defaultId);
   if (opts.rtl && !offersLanguage(moduleDir, opts.rtl)) {

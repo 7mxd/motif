@@ -126,6 +126,9 @@ describe("modes/review.md", () => {
     expect(review).toContain("return false");
     expect(review).toMatch(/without a `\/\/ motif-screens:` line, add one/);
     expect(review).toContain("out of date with the app");
+    // Except the sign-in state, which belongs on every page and keeps no line (final review, 1.3).
+    expect(review).toMatch(/unless it belongs on every screen \(signing in\)/);
+    expect(review).toMatch(/sign in with a state script that has no `\/\/ motif-screens:` line/);
   });
 
   test("has the six steps of spec §7.5, with gates on the extracted guide and the report", () => {

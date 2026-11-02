@@ -431,6 +431,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const routes = all.slice(0, MAX_ROUTES);
   const notes: string[] = settingProblems.map((f) => f.message);
   if (chosen.note) notes.push(chosen.note);
+  if (statesOnly && found.length < discovery.routes.length) {
+    const dropped = discovery.routes.filter((r) => !found.includes(r));
+    notes.push(
+      `--states-only took the pages the states' // ${SCREENS_LINE} lines name, and left out ${dropped.length > LEFT_OUT_NAMED + 1 ? `${dropped.slice(0, LEFT_OUT_NAMED).join(", ")} and ${dropped.length - LEFT_OUT_NAMED} more` : andList(dropped)}. A state that belongs on every page, like signing in, has no line, so it runs on all of them.`,
+    );
+  }
   if (all.length > routes.length) {
     const left = all.slice(MAX_ROUTES);
     const named = left.length > LEFT_OUT_NAMED + 1 ? `${left.slice(0, LEFT_OUT_NAMED).join(", ")} and ${left.length - LEFT_OUT_NAMED} more` : andList(left);

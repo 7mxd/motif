@@ -10,7 +10,7 @@ import type { AuditIssue, RawIssue } from "../../shot/audit";
 import { routeSlug, shotName, type RouteResult, type Scheme, type StateScript, type Viewport } from "../../shot/capture";
 import { prefixPath } from "../../project/apps";
 import { andList, stripBom } from "../../text";
-import { runsOn, stateOfShot } from "../../shot/state-screens";
+import { clearExcludedStates, runsOn, stateOfShot } from "../../shot/state-screens";
 import type { NativeShotOptions } from "../native";
 import { dartIdentifier } from "../naming";
 import { googleFamilies, resolvedPackages, type ResolvedPackage } from "./google";
@@ -356,6 +356,8 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
     used.add(slug);
     targets.push({ key: name, screen: name, slug });
   }
+  // A state its line keeps off a screen leaves no screenshot of it there from an earlier run.
+  clearExcludedStates(opts.outDir, targets, opts.states);
 
   // The generated theme switches variants through MotifTheme.debugVariantOverride, when it has variants.
   const themeFile = join(root, deps.themeDir, "motif_theme.dart");

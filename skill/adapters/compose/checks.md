@@ -202,7 +202,7 @@ fun motifState(rule: ComposeContentTestRule): Boolean {
 motif shot --routes /contact --state design/states/sent.kt
 ```
 
-- Open the file with a `// motif-screens:` line naming the screens it belongs on, as above: `motif shot` runs it only there. Pick them from the app's Navigation Compose routes or the previews drawn with `--screen`, as the run names them (`/contact`, `orders/*`, `HomePreview`; in a route, `*` stands for one part, like an id). A file with no line runs on every screen.
+- Open the file with a `// motif-screens:` line naming the screens it belongs on, as above: `motif shot` runs it only there. Pick them from the app's Navigation Compose routes or the previews drawn with `--screen`, as the run names them (`/contact`, `orders/*`, `HomePreview`; in a route, `*` stands for one part, like an id). A file with no line runs on every screen: leave the line off only a state that belongs on every screen, like signing in.
 - Keep the guard, returning `false` (`return false` when its field isn't there): where the state has nothing to do, Motif keeps no screenshot of it. A state that returns nothing keeps the screenshot.
 - When the line names no screen the run takes, the run says the state didn't run: name its screens with `--routes` or `--screen`. When the state returns `false` in every shot of a screen its line names, it is lost: the run fails and names it, because the line or the state is out of date with the app. Fix whichever is wrong.
 - Screenshots are named after the screen and the state (`contact@sent.mobile.png`), each starting from a fresh launch. Use the same `--state` options for `--save` and `--against`.
