@@ -289,7 +289,7 @@ Progress after each step is written to `design/.progress.json`. Running `/init` 
 3. **Audit.**
    - Exact: `motif validate`, `motif check`, `motif shot --audit` (contrast as rendered, target sizes, reduced motion).
    - Judgement: hierarchy, layout and spacing rhythm, UX flow, missing states, copy clarity, motion quality, platform conventions, anti-patterns — guided by `knowledge/` and the adapter.
-4. **Report** ⏸. Written to `design/reviews/<YYYY-MM-DD>-<scope>.md` and `.json`. Findings ranked **critical / major / minor**; each has: id, severity, category, location (file:line and/or screen), one-line plain explanation of why it matters, proposed fix, screenshot where relevant. The developer selects which to fix (default suggestion: all critical + major).
+4. **Report** ⏸. Written to `design/reviews/<YYYY-MM-DD>-<scope>.md` and `.json`. Findings ranked **critical / major / minor**; each has: id, severity, category, location (file:line and/or screen), one-line plain explanation of why it matters, proposed fix, screenshot where relevant. After the findings, the Markdown version has a **What was checked** section: the judgement pass's notes, one line per screen, including screens where nothing was found (the JSON has no such field). The developer selects which to fix (default suggestion: all critical + major).
 5. **Rebuild.** Fix selected findings; re-run the exact checks; show before/after screenshots; mark findings fixed in the report.
 6. **Redesign option.** If the developer wants a new look instead of fixes, run `init` steps 3–5 (directions → new contract), then migrate the app screen by screen, using the extract report's old→new value map, verifying each screen with check + shots.
 

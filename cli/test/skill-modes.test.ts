@@ -211,6 +211,18 @@ describe("modes/review.md", () => {
     ])).toBeNull();
   });
 
+  test("review's Markdown report ends with the written pass's notes, one line per screen (1.3 evals)", () => {
+    // In the 1.3 Mac run, c-vue skipped the written pass and went from the screenshots straight to the report.
+    expect(outOfOrder(review, [
+      "Make it a written pass", "**What was checked**", "A screen where you found nothing",
+      "## 4. Report ⏸", "**The Markdown version**", "lists the findings by severity", "**What was checked**", "one line per screen", "found nothing",
+      "The JSON report has no such field",
+    ])).toBeNull();
+    expect(readFileSync(join(import.meta.dir, "../../docs/specs/2026-10-12-motif-core-design.md"), "utf8")).toContain("What was checked");
+  });
+});
+
+describe("plain web, screens behind forms, and every size", () => {
   test("SKILL.md sends plain web sites to their guide; they need no Node.js", () => {
     const skill = read("SKILL.md");
     expect(skill).toContain("(adapters/plain-web/README.md)");
