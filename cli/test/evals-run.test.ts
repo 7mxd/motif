@@ -314,6 +314,30 @@ describe("the eval runner", () => {
     expect(h.lines.join("\n")).toContain("superpowers");
   });
 
+  test("a session that ended its turn while a motif shot was still running says so in the case's result", async () => {
+    const FAIL: Grade = { pass: false, criteria: [{ id: "report", label: "A review report was written", pass: false, detail: "No review report was written (design/reviews/*.json)." }], metrics: {} };
+    const h = harness({
+      session: async (s) => {
+        h.calls.session.push(s);
+        mkdirSync(join(s.transcript, ".."), { recursive: true });
+        writeFileSync(s.transcript, [
+          { type: "assistant", message: { content: [{ type: "tool_use", id: "u1", name: "Bash", input: { command: "motif shot --audit --json", description: "Run the screenshot audit", run_in_background: true } }] } },
+          { type: "system", subtype: "task_started", tool_use_id: "u1" },
+          { type: "result", subtype: "success" },
+          { type: "system", subtype: "task_notification", tool_use_id: "u1", status: "stopped" },
+        ].map((e) => JSON.stringify(e)).join("\n"));
+        return finished();
+      },
+      collect: async () => FAIL,
+    });
+    await runEvals(["--cases", "c-review", "--work", h.work], h.deps, h.where);
+    const cs = (loadRun(h.where.results, RUN) as RunState).cases["c-review"]!;
+    expect(cs.status).toBe("graded");
+    expect(cs.note).toContain("ended its turn while motif shot was still running in the background (Run the screenshot audit)");
+    expect(h.lines.join("\n")).toContain("c-review: FAIL (A review report was written) — the session ended its turn while motif shot was still running");
+    expect(readFileSync(join(h.where.results, RUN, "report.md"), "utf8")).toContain("Note: The session ended its turn while motif shot");
+  });
+
   test("the grader is told what kind of app was reviewed", async () => {
     for (const [id, kind] of [["c-review", "web app"], ["c-flutter", "Flutter app"]] as const) {
       const h = harness({

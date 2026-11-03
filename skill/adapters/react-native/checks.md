@@ -209,9 +209,10 @@ From `motif shot --audit`: with the "reduce motion" setting on, something on the
 `motif shot` draws each route as it first appears. A screen that only appears after someone fills in a form or taps something needs a **state script**: a few lines of JavaScript, run in the web page after it loads, that get the screen there. Keep one per state in `design/states/`, named after the state (letters, digits and dashes), and add `--state design/states/<state>.js` for each. Because the script runs on Expo's web target, you find things in the page's markup, not in React: a `TextInput` is an `<input>` with an `aria-label` (from `accessibilityLabel`) or a `placeholder`, and a `Pressable` with `accessibilityRole="button"` is a `<button>`. Set the value the way typing would (the input's own setter), then send the `input` event React listens for:
 
 ```js
+// motif-screens: /form
 // design/states/filled.js: the item form with a name typed in. Only the form route has the field.
 const field = document.querySelector('input[aria-label="Item name"], input[placeholder="Item name"]');
-if (!field) return;
+if (!field) return false;
 const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
 set.call(field, "Oat milk");
 field.dispatchEvent(new Event("input", { bubbles: true }));
@@ -224,7 +225,9 @@ document.querySelector('[aria-label="Add item"]')?.click();
 motif shot --routes /form --state design/states/filled.js
 ```
 
-- It runs on every route `motif shot` draws: start with a guard that returns on the others, or capture only its route with `--routes`.
+- Open the script with a `// motif-screens:` line naming the routes it belongs on, as above: `motif shot` runs it only there. Pick them from the app's routes (the files under `app/`), written as the run names them (`/form`, `/orders/*`; `*` stands for one part of the address, like an id). A script with no line runs on every route: leave the line off only a state that belongs on every route, like signing in.
+- Keep the guard, returning `false` (`if (!field) return false;`): where the script has nothing to do, Motif keeps no screenshot of it. Returning nothing, or simply ending, keeps the screenshot.
+- When the line names no route the run takes, the run says the state didn't run: name its routes with `--routes`. When the script returns `false` in every shot of a route its line names, the state is lost: the run fails and names it, because the line or the script is out of date with the app. Fix whichever is wrong.
 - Screenshots are named after the route and the state (`form@filled.mobile.png`), each starting from a fresh visit. Use the same `--state` options for `--save` and `--against`.
 - A script can `await`. One still running after 15 seconds is left behind and reported. An error it throws is the screen's error, and the screenshot is still taken.
 - An app that reads its state from storage or the network shows mock data on the web as it does on a phone; the script runs after load, so set up state by using the screen. Mock data only.

@@ -52,6 +52,36 @@ export function descendantGroups(root: number, ps: string): number[] {
   return [...groups];
 }
 
+/**
+ * The motif shot commands a session started in the background and hadn't heard back from when it ended its turn, by
+ * their descriptions, from its transcript: a headless session's turn is its whole run, so such a shot is stopped with it.
+ */
+export function shotsLeftRunning(transcript: string): string[] {
+  const shots = new Map<string, string>();
+  const running = new Set<string>();
+  let left: string[] = [];
+  for (const line of transcript.split("\n")) {
+    let e: any;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (e?.type === "assistant") {
+      for (const c of e.message?.content ?? []) {
+        const command = c?.type === "tool_use" ? c.input?.command : undefined;
+        if (typeof command === "string" && /\bmotif["']?\s+shot\b/.test(command)) shots.set(c.id, String(c.input.description || command));
+      }
+    } else if (e?.type === "system" && shots.has(e.tool_use_id)) {
+      if (e.subtype === "task_started") running.add(e.tool_use_id);
+      if (e.subtype === "task_notification") running.delete(e.tool_use_id);
+    } else if (e?.type === "result") {
+      left = [...running].map((id) => shots.get(id)!);
+    }
+  }
+  return left;
+}
+
 /** The groups a process's descendants run in now (macOS, Linux); none on Windows, where taskkill /T follows the tree. */
 function groupsNow(pid: number): number[] {
   if (process.platform === "win32") return [];

@@ -32,7 +32,7 @@ Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show 
 ## 6. Verify
 
 1. Run `motif check` (no findings apart from justified `motif-ok` exceptions) and the project's build and type check.
-2. Run `motif shot --audit --routes <the new routes>` (`--screen <preview>` for each new screen of a SwiftUI app; it covers every variant), adding `--state` for each new screen behind a form or a click. Fix the critical and major findings and run it again.
+2. Run `motif shot --audit --routes <the new routes>` (`--screen <preview>` for each new screen of a SwiftUI app; it covers every variant), adding `--state` for each new screen behind a form or a click (each state script opens with a `// motif-screens:` line naming the screens it belongs on, from the routes you just added, and does `return false` where it has nothing to do, as the stack guide's checks show). Fix the critical and major findings and run it again.
 3. For each screen, run `motif shot --routes <route> --state design/states/<state>.js --against design/previews/<feature>-<screen>.html`, with a `--state` for each state the mockup shows (`.dart` for a Flutter app, `.kt` for a Compose app, `.swift` for a SwiftUI app, whose new screens are its previews, named with `--screen <preview>` instead of `--routes`): each frame is put next to the same state of the app, and the output names any state you left out. Fix differences that change the design.
 4. Confirm every state from the mockup exists in the app: loading, empty, error, disabled. With variants, look at the screen in each: `motif shot --routes <route> --variant all` (`--screen <preview>` for a SwiftUI app).
 5. Show the developer the side-by-side images and a short summary of what was built and checked.

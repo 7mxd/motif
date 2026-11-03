@@ -1,10 +1,11 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, X509Certificate } from "node:crypto";
 import { connect } from "node:tls";
 import { launchBrowser, LoadTimeout } from "../browser/cdp";
 import { addPngText, readPngText } from "../browser/png";
 import { auditPage, type AuditIssue } from "./audit";
+import { clearExcludedStates, runsOn } from "./state-screens";
 
 export interface Viewport {
   /** How the audit treats it: "mobile" for touch screens (phones and tablets), "desktop" otherwise. */
@@ -122,12 +123,17 @@ export interface StateScript {
   script: string;
   /** The script's absolute path (a native app's state is a file its tests import). */
   file?: string;
+  /** The screens its `// motif-screens:` line names; absent when it has none, and then it runs on every screen. */
+  screens?: string[];
 }
 
-/** The script as an async function in the page; one still running after timeoutMs is stopped and reported. */
+/**
+ * The script as an async function in the page, resolving to whether to keep the shot: false only when the script
+ * returned false ("not here"). One still running after timeoutMs is stopped and reported.
+ */
 export function stateExpression(script: string, timeoutMs = 15_000): string {
   // The script starts on the expression's first line, so an error's line number is the script's own.
-  return `Promise.race([(async () => {${script}\n})(), new Promise((_, reject) => setTimeout(() => reject(new Error("it was still running after ${timeoutMs / 1000} seconds")), ${timeoutMs}))]).then(() => true)`;
+  return `Promise.race([(async () => {${script}\n})(), new Promise((_, reject) => setTimeout(() => reject(new Error("it was still running after ${timeoutMs / 1000} seconds")), ${timeoutMs}))]).then((kept) => kept !== false)`;
 }
 
 export interface RouteResult {
@@ -152,6 +158,8 @@ export interface RouteResult {
   rtlForced?: boolean;
   /** A native app's screen that redirected (to a sign-in screen, say): the route it was drawn at. */
   landedOn?: string;
+  /** Shots a state's script skipped by returning false ("not here"): the state, and the file the shot would have been. */
+  notHere?: { state: string; shot: string }[];
 }
 
 export interface CaptureOptions {
@@ -378,6 +386,8 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
       let slug = routeSlug(route);
       for (let n = 2; usedSlugs.has(slug); n++) slug = `${routeSlug(route)}-${n}`;
       usedSlugs.add(slug);
+      // A state its line keeps off this page leaves no screenshot of it from an earlier run.
+      clearExcludedStates(opts.outDir, [{ key: route, slug }], opts.states ?? []);
 
       const answer = await probe(url, timeoutMs);
       const result: RouteResult = { route, url, status: answer.status, shots: [] };
@@ -405,7 +415,8 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
             // Each variant left to right and, with --rtl, right to left in that language.
             const looks = [undefined, ...(opts.variants ?? [])].flatMap((variant) => [undefined, ...(opts.rtl ? [opts.rtl] : [])].map((lang) => ({ variant, lang })));
             for (const { variant, lang } of looks) {
-              for (const state of [...(opts.statesOnly && opts.states?.length ? [] : [undefined]), ...(opts.states ?? [])]) {
+              // A state runs only on the pages its line names (the route as asked for, in every look).
+              for (const state of [...(opts.statesOnly && opts.states?.length ? [] : [undefined]), ...(opts.states ?? []).filter((s) => runsOn(s, route))]) {
                 const tag = (message: string) => (state ? `State "${state.name}": ${message}` : message);
                 // An error the page threw on its own (already reported, untagged, from the plain screenshot) isn't the
                 // state's when it lands while the state's script runs: it's reported once.
@@ -465,10 +476,19 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                     await page.evaluate(`document.documentElement.dataset.variant = ${JSON.stringify(chosen)}; Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, ${stuck ? 500 : 2000}))]).then(() => true)`);
                   }
                   if (state) {
+                    let kept = true;
                     try {
-                      await page.evaluate(stateExpression(state.script, stateTimeoutMs), { timeoutMs: stateTimeoutMs });
+                      kept = await page.evaluate<boolean>(stateExpression(state.script, stateTimeoutMs), { timeoutMs: stateTimeoutMs });
                     } catch (e) {
                       addErrors([tag(e instanceof Error ? e.message : String(e))]);
+                    }
+                    if (!kept) {
+                      // The script found nothing to do here: no screenshot, no audit, only the record of the skip.
+                      const shot = join(opts.outDir, shotName(`${slug}@${state.name}`, viewport.file ?? viewport.name, scheme, variant, Boolean(lang)));
+                      (result.notHere ??= []).push({ state: state.name, shot });
+                      // Nor does an earlier run's screenshot of it stay behind.
+                      rmSync(shot, { force: true });
+                      continue;
                     }
                     // What the script set off (a form sent, a list fetched) is waited for too.
                     if (!stuck) await page.waitForQuiet(300, 5000);

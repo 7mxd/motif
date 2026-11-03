@@ -92,16 +92,19 @@ From `motif shot --audit`: something still moves when reduced motion is on.
 React keeps a field's value itself, so set it the way typing would (the setter of the field's own kind: input, textarea or select), then send the event React listens for (`change` for a select):
 
 ```js
+// motif-screens: /search
 // design/states/searched.js: the results after a search. Only the search page has the field.
 const field = document.querySelector("input[name=q]");
-if (!field) return;
+if (!field) return false;
 Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, "linen");
 field.dispatchEvent(new Event("input", { bubbles: true }));
 // A field outside a <form>: click the page's own button instead.
 field.form?.requestSubmit();
 ```
 
-- It runs in every page `motif shot` captures: start it with a guard that returns on other pages (`if (!field) return;`), or capture only its page with `--routes`.
+- Open the script with a `// motif-screens:` line naming the pages it belongs on, as above: `motif shot` runs it only there. Pick them from the app's router or its pages folder, written as the run names them (`/settings`, `/#/applications/*`; `*` stands for one part of the address, like an id). A script with no line runs on every page: leave the line off only a state that belongs on every page, like signing in.
+- Keep the guard, returning `false` (`if (!field) return false;`): where the script has nothing to do, Motif keeps no screenshot of it. Returning nothing, or simply ending, keeps the screenshot.
+- When the line names no page the run takes, the run says the state didn't run: name its pages with `--routes`. When the script returns `false` in every shot of a page its line names, the state is lost: the run fails and names it, because the line or the script is out of date with the app. Fix whichever is wrong.
 - Screenshots are named after the page and the state (`search@searched.mobile.png`); each starts as a first visit, and a script still running after 15 seconds is stopped and reported.
 - Use the same `--state` options for `--save` and `--against`, and mock data only.
 

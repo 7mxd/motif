@@ -22,6 +22,8 @@ final class MotifHarness {
     private let settleSeconds: Double
     /// Set when the state ran out of time: it was cancelled, and nothing it still asks for touches a later screen.
     var abandoned = false
+    /// Set when the state returned false: it has nothing to do on this screen, so no screenshot is kept.
+    var notHere = false
 
     private func live() throws {
         if abandoned { throw MotifShotError("The state ran out of time and was stopped.") }
@@ -295,6 +297,8 @@ final class MotifHarness {
     private let settleSeconds: Double
     /// Set when the state ran out of time: it was cancelled, and nothing it still asks for touches a later screen.
     var abandoned = false
+    /// Set when the state returned false: it has nothing to do on this screen, so no screenshot is kept.
+    var notHere = false
 
     private func live() throws {
         if abandoned { throw MotifShotError("The state ran out of time and was stopped.") }

@@ -157,6 +157,11 @@ describe("the Flutter seeded app's list of planted problems", () => {
     expect(issues.find((i) => i.id === "F-01")!.consequences?.length ?? 0).toBeGreaterThan(0);
   });
 
+  test("Sign in's stock main action (F-10) counts as hierarchy too, not only consistency (1.3 evals)", () => {
+    // The review files a stock main-action button as hierarchy, and the grader's category filter dropped it.
+    expect(issues.find((i) => i.id === "F-10")!.categories).toContain("hierarchy");
+  });
+
   test("the tests README and the seeded README list the Flutter fixtures and every problem", () => {
     const readme = readFileSync(join(FIXTURES, "../README.md"), "utf8");
     for (const s of ["fixtures/flutter-contract-app/", "fixtures/flutter-seeded-app/", "assemble.ts flutter-seeded-app"]) expect(readme).toContain(s);

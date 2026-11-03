@@ -22,7 +22,7 @@ A stack is finished when the developer gets all of this on it, and the guide say
 - **Checks:** typed colours, sizes, fonts and animation timings found with file, line and fix, with `motif-ok` exceptions.
 - **Drafting a guide** from an existing app with `motif extract`.
 - **Components:** where they live, so the `feature` mode can list them.
-- **Screenshots:** three phone sizes, a tablet and, where the stack runs on desktops, a desktop; light and dark; every variant; right-to-left; state scripts for screens behind a form or a tap; comparing with mockups.
+- **Screenshots:** three phone sizes, a tablet and, where the stack runs on desktops, a desktop; light and dark; every variant; right-to-left; state scripts for screens behind a form or a tap, each opening with a `// motif-screens:` line naming its screens and a `return false` where it has nothing to do (in the stack's own language), with the CLI skipping both before the run where it can; comparing with mockups.
 - **The audit:** contrast, tap-target size, accessible names and reduced motion, as rendered.
 - **Skill, evals and agents:** this guide, the `init`, `feature` and `review` modes working on the stack, fixture apps and eval cases, and all agent packages.
 

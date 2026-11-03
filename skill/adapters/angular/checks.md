@@ -263,16 +263,19 @@ From `motif shot --audit`: something still moves when reduced motion is on.
 Angular's forms (`[(ngModel)]`, reactive forms, and a signal bound with `(input)`) listen to the field's own `input` event, so set the value and send that event:
 
 ```js
+// motif-screens: /search
 // design/states/searched.js: the results after a search. Only the search page has the field.
 const field = document.querySelector("input[name=q]");
-if (!field) return;
+if (!field) return false;
 field.value = "linen";
 field.dispatchEvent(new Event("input", { bubbles: true }));
 // Submit the form. A field outside a <form> has none: click the page's own button instead.
 field.form?.requestSubmit();
 ```
 
-- It runs in every page `motif shot` captures: start it with a guard that returns on other pages (`if (!field) return;`), or capture only its page with `--routes`.
+- Open the script with a `// motif-screens:` line naming the pages it belongs on, as above: `motif shot` runs it only there. Pick them from the app's router or its pages folder, written as the run names them (`/settings`, `/#/applications/*`; `*` stands for one part of the address, like an id). A script with no line runs on every page: leave the line off only a state that belongs on every page, like signing in.
+- Keep the guard, returning `false` (`if (!field) return false;`): where the script has nothing to do, Motif keeps no screenshot of it. Returning nothing, or simply ending, keeps the screenshot.
+- When the line names no page the run takes, the run says the state didn't run: name its pages with `--routes`. When the script returns `false` in every shot of a page its line names, the state is lost: the run fails and names it, because the line or the script is out of date with the app. Fix whichever is wrong.
 - Wait for Angular to draw the page before you look for the field: the script runs after load, and Angular may still be starting (with server rendering, a click before hydration does nothing). Don't wait a fixed time; wait for something only the running app shows. Have the root component set `data-ready` on `<body>` (`afterNextRender(() => { document.body.dataset.ready = 'true'; })` in its constructor, with `afterNextRender` imported from `@angular/core`), and start the script with `for (let i = 0; i < 50 && !document.body.hasAttribute("data-ready"); i++) await new Promise((r) => setTimeout(r, 100));`, which waits for the attribute and gives up after five seconds.
 - Screenshots are named after the page and the state (`search@searched.mobile.png`); each starts as a first visit, and a script still running after 15 seconds is stopped and reported.
 - Use the same `--state` options for `--save` and `--against`, and mock data only.

@@ -60,7 +60,9 @@ export function readState(appDir: string, state: StateScript): { name: string; i
   const file = state.file ?? state.name;
   if (!/\.dart$/i.test(file)) return { error: `--state: ${basename(file)} isn't a Dart file; a Flutter app's states are Dart files, like design/states/${state.name}.dart.` };
   if (!/\bmotifState\s*\(/.test(maskComments(state.script, "dart"))) {
-    return { error: `--state: ${basename(file)} must define ${STATE_SIGNATURE}, which Motif runs on each screen once it has opened. Add it, then run motif shot again.` };
+    return {
+      error: `--state: ${basename(file)} must define ${STATE_SIGNATURE}, which Motif runs on each screen once it has opened (or Future<bool>, returning false where it has nothing to do). Add it, then run motif shot again.`,
+    };
   }
   return { name: state.name, import: importFrom(appDir, file) };
 }

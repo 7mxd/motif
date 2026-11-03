@@ -23,7 +23,8 @@
 // is recorded, and the run goes on. When the app's Application can't start in a test,
 // b_plainApplication draws the screen again with a plain one. Each screen adds itself to resultPath, which has the shape
 // of Flutter's harness:
-//   { "screens": [{ "route", "shots": [file], "errors": [text], "auditError"?, "covered"? }], "shots": [{ "file", "error"? }],
+//   { "screens": [{ "route", "shots": [file], "notHere"?: [file], "errors": [text], "auditError"?, "covered"? }],
+//     "shots": [{ "file", "error"?, "notHere"? }],
 //     "issues": [{ rule, selector, label, kind, …, "route", "file", "size", "scheme", "variant"?, "state"?, "rtl"? }],
 //     "notes": [text], "timings": [{ "file", "ms" }], "plainApplication": false, "variant"?: { "name", "of": [name] } }
 package dev.motif.shot
@@ -123,6 +124,9 @@ class MotifShotTest(private val index: Int) {
     /** A shot that couldn't be taken, though the screen's other shots can be (a variant the theme doesn't have). */
     private class ShotSkipped(message: String) : Exception(message)
 
+    /** A state whose motifState returned false: it has nothing to do on this screen, so no shot. Not an error. */
+    private class NotHere : Exception()
+
     private val config by lazy { JSONObject(File(System.getProperty("motif.shot.config")!!).readText()) }
     private val target by lazy { targets()[index] }
     private val resultFile by lazy { File(config.getString("resultPath")) }
@@ -202,6 +206,7 @@ class MotifShotTest(private val index: Int) {
         val shots = JSONArray()
         val timings = JSONArray()
         val drawn = mutableListOf<String>()
+        val notHere = mutableListOf<String>()
         val errors = linkedSetOf<String>()
         settleWithin(config.optLong("settleMs", 5000))
         setFontOverride(config.optString("fontsClass", ""), loadFonts(config.optJSONArray("fonts")))
@@ -226,6 +231,9 @@ class MotifShotTest(private val index: Int) {
                 notes.addAll(shotNotes)
                 issues.addAll(shotIssues)
                 shots.put(JSONObject().put("file", file))
+            } catch (t: NotHere) {
+                notHere.add(file)
+                shots.put(JSONObject().put("file", file).put("notHere", true))
             } catch (t: ShotSkipped) {
                 errors.add(t.message!!)
                 shots.put(JSONObject().put("file", file).put("error", t.message!!))
@@ -242,6 +250,7 @@ class MotifShotTest(private val index: Int) {
 
         val result = readResult()
         val screen = JSONObject().put("route", target).put("shots", JSONArray(drawn)).put("errors", JSONArray(errors.toList()))
+        if (notHere.isNotEmpty()) screen.put("notHere", JSONArray(notHere))
         if (auditError != null) screen.put("auditError", auditError)
         if (covered.isNotEmpty()) screen.put("covered", covered.size)
         if (config.optBoolean("debug")) screen.put("texts", JSONArray(texts.toList()))
@@ -688,15 +697,19 @@ class MotifShotTest(private val index: Int) {
         }
     }
 
-    /** The shot's --state, run on the settled screen with its own time limit; what went wrong, or null. */
+    /**
+     * The shot's --state, run on the settled screen with its own time limit; what went wrong, or null. Throws NotHere
+     * when the state returned false, so the shot isn't drawn.
+     */
     private fun runState(shot: JSONObject, target: String): String? {
         val name = shot.optString("state", "")
         if (name.isEmpty()) return null
         val hooks = hooks ?: return "State \"$name\": Motif didn't compile it into the run."
         settleWithin(config.optLong("stateMs", 15000))
-        return try {
-            hooks.javaClass.methods.first { it.name == "state" }.invoke(hooks, name, compose)
-            settleOrNote(target)
+        var kept: Any? = null
+        val soft = try {
+            kept = hooks.javaClass.methods.first { it.name == "state" }.invoke(hooks, name, compose)
+            if (kept != false) settleOrNote(target)
             null
         } catch (t: Throwable) {
             t.printStackTrace()
@@ -704,6 +717,8 @@ class MotifShotTest(private val index: Int) {
         } finally {
             settleWithin(config.optLong("settleMs", 5000))
         }
+        if (kept == false) throw NotHere()
+        return soft
     }
 
     /**

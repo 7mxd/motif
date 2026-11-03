@@ -144,7 +144,8 @@ void main() {
         }
       });
       if (run.captured) screen.shots.add(file);
-      shots.add({'file': file, if (error != null) 'error': error});
+      if (run.notHere) screen.notHere.add(file);
+      shots.add({'file': file, if (error != null) 'error': error, if (run.notHere) 'notHere': true});
     });
   }
 }
@@ -154,6 +155,8 @@ class _Screen {
   _Screen(this.route);
   final String route;
   final List<String> shots = [];
+  /// Shots a state skipped by returning false: nothing drawn, nothing audited.
+  final List<String> notHere = [];
   final Set<String> errors = {};
   String? unreachable;
   String? landedOn;
@@ -170,6 +173,7 @@ class _Screen {
   Map<String, Object?> toJson(bool debug) => {
     'route': route,
     'shots': shots,
+    if (notHere.isNotEmpty) 'notHere': notHere,
     'errors': errors.toList(),
     if (unreachable != null) 'unreachable': unreachable,
     if (landedOn != null) 'landedOn': landedOn,
@@ -196,6 +200,9 @@ class _Run {
   final Set<String> loaded;
   bool captured = false;
 
+  /// The state script returned false: it had nothing to do on this screen, so no screenshot is taken.
+  bool notHere = false;
+
   /// The state script running, once it has started: what goes wrong from then on is the state's.
   String? state;
 
@@ -212,6 +219,13 @@ class _Run {
     screen.errors.add(state == null || screen.errors.contains(text) ? text : 'State "$state": $text');
   }
 }
+
+/// What _runState returns when the script returned false: not an error, a shot not to take.
+class _NotHere {
+  const _NotHere();
+}
+
+const _notHere = _NotHere();
 
 /// A problem Motif says in plain words, without Dart's "Bad state:" in front.
 class _Stop implements Exception {
@@ -364,6 +378,10 @@ Future<List<Issue>> _capture(
   if (state != null) {
     run.state = state;
     final failed = await _runState(tester, state, run);
+    if (identical(failed, _notHere)) {
+      run.notHere = true;
+      return const [];
+    }
     if (failed != null) {
       run.error(failed);
       if (_describe(failed).contains('pumpAndSettle timed out')) {
@@ -410,7 +428,7 @@ Future<List<Issue>> _capture(
 }
 
 /// Runs a state script on the screen as it is; returns what it threw, or that it was still running after
-/// [_scriptLimit] of real time, or null. A script runs in the test's fake time, which moves only when it pumps: one
+/// [_scriptLimit] of real time, or [_notHere] when it returned false, or null. A script runs in the test's fake time, which moves only when it pumps: one
 /// waiting on that clock (Future.delayed without a pump), or on something that never comes, is left behind
 /// ([_Run.abandoned]).
 ///
@@ -422,9 +440,9 @@ Future<List<Issue>> _capture(
 /// "Cannot elapse until previous elapse is complete").
 Future<Object?> _runState(WidgetTester tester, String name, _Run run) {
   final finished = Completer<Object?>();
-  Future<void>.sync(() => hooks.runState(name, tester)).then(
-    (_) {
-      if (!finished.isCompleted) finished.complete(null);
+  Future<bool>.sync(() => hooks.runState(name, tester)).then(
+    (kept) {
+      if (!finished.isCompleted) finished.complete(kept ? null : _notHere);
     },
     onError: (Object e) {
       if (!finished.isCompleted) finished.complete(e);

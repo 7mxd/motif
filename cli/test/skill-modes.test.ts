@@ -121,6 +121,23 @@ describe("modes/feature.md", () => {
 describe("modes/review.md", () => {
   const review = read("modes/review.md");
 
+  test("state scripts name their screens: a review adds a missing line, and a lost state means the line or script is out of date (1.3)", () => {
+    expect(review).toContain("// motif-screens:");
+    expect(review).toContain("return false");
+    expect(review).toMatch(/without a `\/\/ motif-screens:` line, add one/);
+    expect(review).toContain("out of date with the app");
+    // Except the sign-in state, which belongs on every page and keeps no line (final review, 1.3).
+    expect(review).toMatch(/unless it belongs on every screen \(signing in\)/);
+    expect(review).toMatch(/sign in with a state script that has no `\/\/ motif-screens:` line/);
+  });
+
+  test("the audit shot is a foreground step: wait for it, never background it (1.3 Mac evals)", () => {
+    // In the 1.3 Mac C runs, sessions ran `motif shot --audit` in the background and ended their turn while it ran: no report.
+    const audit = review.slice(review.indexOf("## 3. Audit"), review.indexOf("**Judgement**"));
+    expect(outOfOrder(audit, ["`motif shot --audit`", "a foreground step", "wait for it to finish", "never run it in the background"])).toBeNull();
+    expect(audit).toMatch(/longer than your shell allows, split the screens across runs with `--routes`/);
+  });
+
   test("has the six steps of spec §7.5, with gates on the extracted guide and the report", () => {
     expect(outOfOrder(review, ["## 1. Scope", "## 2. Extract (only when there is no design guide)", "⏸", "## 3. Audit", "## 4. Report ⏸", "## 5. Rebuild", "## 6. A new look instead"])).toBeNull();
   });
@@ -174,6 +191,34 @@ describe("modes/review.md", () => {
 
   test("proves a rebuild with screenshots from before and after", () => {
     expect(outOfOrder(review, ["--save before", "--against before", '"status": "fixed"'])).toBeNull();
+  });
+
+  test("review's written pass counts an item packed too tight inside as spacing, and hierarchy when it drops what people choose by (1.3 evals)", () => {
+    // In the 1.3 Mac run, c-vue called a list of cramped items clean: the spacing point covered only the gaps between them.
+    expect(outOfOrder(review, [
+      "Make it a written pass", "**Spacing between things", "packed too tight inside", "below the guide's scale", "cut to fit",
+      "dropped to make room", "`hierarchy`", "**Words.**",
+    ])).toBeNull();
+  });
+
+  test("review's written pass checks the code for a physical side where the start or end side is meant (1.3 evals)", () => {
+    // In the 1.3 Mac run, c-vue called its right-to-left screenshots clean: a gap on the wrong side looks only slightly off.
+    expect(outOfOrder(review, [
+      "**Direction.**", "don't mirror", "check the code too", "a physical side where the start or end side is meant",
+      "`platform-convention` finding at that line", "`margin-left`", "`margin-inline-start`", "`gap`", "`marginLeft`", "`marginStart`",
+      "`EdgeInsets.only(left: …)`", "`EdgeInsetsDirectional.only(start: …)`", "`Modifier.absolutePadding(left = …)`", "`Modifier.padding(start = …)`",
+      "`.leading` and `.trailing` already mirror", "(../adapters/flutter/platform.md#right-to-left)", "A screen where you found nothing",
+    ])).toBeNull();
+  });
+
+  test("review's Markdown report ends with the written pass's notes, one line per screen (1.3 evals)", () => {
+    // In the 1.3 Mac run, c-vue skipped the written pass and went from the screenshots straight to the report.
+    expect(outOfOrder(review, [
+      "Make it a written pass", "**What was checked**", "A screen where you found nothing",
+      "## 4. Report ⏸", "**The Markdown version**", "lists the findings by severity", "**What was checked**", "one line per screen", "found nothing",
+      "The JSON report has no such field",
+    ])).toBeNull();
+    expect(readFileSync(join(import.meta.dir, "../../docs/specs/2026-10-12-motif-core-design.md"), "utf8")).toContain("What was checked");
   });
 });
 
@@ -240,6 +285,12 @@ describe("plain web, screens behind forms, and every size", () => {
   test("review lists a finding's other places, and names the cause of each group of audit findings (third eval run)", () => {
     expect(outOfOrder(read("modes/review.md"), ["**Merging the exact checks.**", "already groups", "name its cause", '"locations"'])).toBeNull();
     expect(readFileSync(join(import.meta.dir, "../../docs/specs/2026-10-12-motif-core-design.md"), "utf8")).toContain("`locations`");
+  });
+
+  test("review adds the file and line of each audit finding's cause to its location (1.3 evals)", () => {
+    // In the 1.3 Mac runs, c-vue and c-svelte copied the audit's findings with only a screen and a selector: the report
+    // didn't say where in the code to fix them.
+    expect(outOfOrder(read("modes/review.md"), ["**Merging the exact checks.**", "name its cause", "add its `\"file\"` and `\"line\"` to the finding's `location`", '"locations"'])).toBeNull();
   });
 
   test("review puts a screen's state in its own field, as audit.json does (second eval run)", () => {

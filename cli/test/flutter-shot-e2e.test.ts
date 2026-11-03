@@ -221,6 +221,29 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     }
   }, 600_000);
 
+  test.skipIf(!flutter)("a state runs only on the routes its line names, and one returning false draws nothing (1.3, skipped without Flutter)", async () => {
+    mkdirSync(join(app, "design", "states"), { recursive: true });
+    writeFileSync(join(app, "design", "states", "filled.dart"), FILLED.replace("/// The sign-in form", "// motif-screens: /home\n/// The sign-in form"));
+    writeFileSync(join(app, "design", "states", "absent.dart"), ABSENT);
+    for (const old of ["index@absent.mobile.png", "home@absent.mobile.png", "index@filled.mobile.png"]) rmSync(join(app, "design", "shots", old), { force: true });
+    try {
+      const r = await shot({ routes: "/,/home", sizes: "390", state: ["design/states/filled.dart", "design/states/absent.dart"] });
+      expect(r.data.shots).toEqual([
+        "design/shots/index.mobile.png", "design/shots/index.mobile.dark.png",
+        "design/shots/home.mobile.png", "design/shots/home@filled.mobile.png", "design/shots/home.mobile.dark.png", "design/shots/home@filled.mobile.dark.png",
+      ]);
+      for (const old of ["index@absent.mobile.png", "home@absent.mobile.png", "index@filled.mobile.png"]) expect(existsSync(join(app, "design", "shots", old))).toBe(false);
+      const results = r.data.stateResults as { state: string; notHere: unknown[]; lost: string[] }[];
+      expect(results.find((s) => s.state === "absent")!.notHere).toHaveLength(4);
+      // With no line and nothing to do anywhere, "absent" is lost: the run fails and says so.
+      expect(results.find((s) => s.state === "absent")!.lost).toEqual(["/", "/home"]);
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain('✗ State "absent"');
+    } finally {
+      rmSync(join(app, "design", "states"), { recursive: true, force: true });
+    }
+  }, 600_000);
+
   test.skipIf(!flutter)("a state still waiting after 15 s is left behind: its screenshot and audit are taken, and so are the run's others; a pumpAndSettle that times out gets a note (skipped without Flutter)", async () => {
     mkdirSync(join(app, "design", "states"), { recursive: true });
     writeFileSync(join(app, "design", "states", "stuck.dart"), STUCK);
@@ -500,6 +523,13 @@ import 'package:flutter_test/flutter_test.dart';
 Future<void> motifState(WidgetTester tester) async {
   await tester.enterText(find.byType(TextField), 'sara@example.com');
   await tester.pump();
+}
+`;
+const ABSENT = `import 'package:flutter_test/flutter_test.dart';
+
+/// A sheet this app doesn't have: nothing to do on any screen.
+Future<bool> motifState(WidgetTester tester) async {
+  return find.text('A sheet this app has not got').evaluate().isNotEmpty;
 }
 `;
 const BROKEN = `import 'package:flutter_test/flutter_test.dart';

@@ -94,7 +94,7 @@ export interface HarnessResult {
   code: number | null;
   timedOut: boolean;
   output: string;
-  shots: { file: string; error?: string }[];
+  shots: { file: string; error?: string; notHere?: true }[];
   /** result.json as the harness wrote it; null when it wrote none, or one that can't be read. */
   result: Record<string, unknown> | null;
   /** Why result.json couldn't be read, when it exists but is cut short. */

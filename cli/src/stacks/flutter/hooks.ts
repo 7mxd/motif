@@ -159,9 +159,10 @@ export function hooksSource(spec: HooksSpec): string {
     "  return null;",
     "}",
     "",
-    "/// Runs a --state script's motifState on the screen as it is.",
-    "Future<void> runState(String name, WidgetTester tester) async {",
-    ...states.map((s, i) => `  if (name == ${dartString(s.name)}) return state${i}.motifState(tester);`),
+    "/// Runs a --state script's motifState on the screen as it is: false when it returned false (nothing to do here).",
+    "Future<bool> runState(String name, WidgetTester tester) async {",
+    // Future<void> and Future<bool> alike: only a returned false is "not here".
+    ...states.map((s, i) => `  if (name == ${dartString(s.name)}) return await (state${i}.motifState(tester) as Future<Object?>) != false;`),
     "  throw ArgumentError.value(name, 'state');",
     "}",
     "",

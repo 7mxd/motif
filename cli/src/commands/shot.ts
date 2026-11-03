@@ -27,6 +27,7 @@ import { discoverRoutes, type RouteDiscovery } from "../stacks/react-web/routes"
 import { readsHash } from "../stacks/route-source";
 import { webStack } from "../stacks/web";
 import { andList } from "../text";
+import { plannedShots, readScreensLine, runsOn, SCREENS_LINE, stateNotes, stateOutcomes } from "../shot/state-screens";
 
 export interface ShotDeps {
   findBrowser: () => BrowserInfo | null;
@@ -185,8 +186,11 @@ function earlierAudit(outDir: string, covered: Set<string>): { screens: string[]
   }
 }
 
-/** --state values: repeated, or a comma list; each a script file whose name names the state. */
-export function readStates(cwd: string, value: unknown): StateScript[] | { error: string } {
+/**
+ * --state values: repeated, or a comma list; each a script file whose name names the state, and whose
+ * `// motif-screens:` line, if any, names its screens (pages, on the web).
+ */
+export function readStates(cwd: string, value: unknown, opts: { web?: boolean } = {}): StateScript[] | { error: string } {
   const given = (Array.isArray(value) ? value : typeof value === "string" ? [value] : []).flatMap((v) => String(v).split(","));
   const states: StateScript[] = [];
   for (const file of given.map((f) => f.trim()).filter(Boolean)) {
@@ -199,7 +203,14 @@ export function readStates(cwd: string, value: unknown): StateScript[] | { error
       return { error: `--state: "${basename(abs)}" names the screenshots, so use letters, digits and dashes (like editor.js).` };
     }
     if (states.some((s) => s.name === name)) return { error: `--state: two scripts are named "${name}"; rename one.` };
-    states.push({ name, script: readFileSync(abs, "utf8"), file: abs });
+    const script = readFileSync(abs, "utf8");
+    const screens = readScreensLine(script);
+    if (screens && "error" in screens) return { error: `--state: in ${basename(abs)}, ${screens.error}` };
+    const notPage = opts.web ? screens?.find((s) => !s.startsWith("/")) : undefined;
+    if (notPage) {
+      return { error: `--state: ${basename(abs)} names "${notPage}" in its // ${SCREENS_LINE} line, and a web app's screens are its pages, like /settings or /#/applications/*.` };
+    }
+    states.push({ name, script, file: abs, ...(screens ? { screens } : {}) });
   }
   return states;
 }
@@ -255,12 +266,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   if (givenUrl !== undefined && !/^https?:\/\/\S+$/.test(givenUrl)) {
     return usage("--url needs the address of a running app, like http://localhost:3000.", { error: "usage" });
   }
-  const states = readStates(cwd, flags.state);
-  if ("error" in states) return usage(states.error, { error: "usage" });
   const statesOnly = flags["states-only"] === true;
-  if (statesOnly && states.length === 0) {
-    return usage("--states-only takes only the screenshots after each --state script: add --state with one, like --state design/states/signed-in.js.", { error: "usage" });
-  }
   const screens = [
     ...new Set(
       (Array.isArray(flags.screen) ? flags.screen : typeof flags.screen === "string" ? [flags.screen] : [])
@@ -285,6 +291,12 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   const app: AppInfo | undefined = selected.length === 1 ? selected[0] : undefined;
   // A native app is drawn from its code by its own stack (Flutter: flutter test), without a browser or a dev server.
   const native = app ? nativeStack(app.stack) : null;
+  // A state's line names pages on the web (Expo's too), and routes or widgets in an app drawn from its code.
+  const states = readStates(cwd, flags.state, { web: !native?.shoot });
+  if ("error" in states) return usage(states.error, { error: "usage" });
+  if (statesOnly && states.length === 0) {
+    return usage("--states-only takes only the screenshots after each --state script: add --state with one, like --state design/states/signed-in.js.", { error: "usage" });
+  }
   // Expo's apps are drawn in the browser, through the web target: the web path, with native sizes and notes.
   const rn = app?.stack === "react-native";
   // A web framework with its own file format (Vue): started through its own dev server, with the web's sizes and its own routes.
@@ -406,10 +418,25 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
   }
   // A native app's own pages, past the cap: sign-in and the home page first, so the run shows the screens people meet first.
   const reordered = Boolean(shoot || rn) && typeof flags.routes !== "string" && discovery.routes.length > MAX_ROUTES;
-  const all = reordered ? signInFirst(discovery.routes) : discovery.routes;
+  // --states-only visits only the pages some state runs on: a page no state's line names is never opened.
+  const found = statesOnly ? discovery.routes.filter((r) => states.some((s) => runsOn(s, r))) : discovery.routes;
+  if (statesOnly && found.length === 0) {
+    const lines = states.map((s) => `${s.name}: ${s.screens!.join(", ")}`).join("; ");
+    return usage(
+      `--states-only: no state's // ${SCREENS_LINE} line names a page this run takes (${andList(discovery.routes)}). The lines name ${lines}. Name those pages with --routes, or fix the lines.`,
+      { error: "usage" },
+    );
+  }
+  const all = reordered ? signInFirst(found) : found;
   const routes = all.slice(0, MAX_ROUTES);
   const notes: string[] = settingProblems.map((f) => f.message);
   if (chosen.note) notes.push(chosen.note);
+  if (statesOnly && found.length < discovery.routes.length) {
+    const dropped = discovery.routes.filter((r) => !found.includes(r));
+    notes.push(
+      `--states-only took the pages the states' // ${SCREENS_LINE} lines name, and left out ${dropped.length > LEFT_OUT_NAMED + 1 ? `${dropped.slice(0, LEFT_OUT_NAMED).join(", ")} and ${dropped.length - LEFT_OUT_NAMED} more` : andList(dropped)}. A state that belongs on every page, like signing in, has no line, so it runs on all of them.`,
+    );
+  }
   if (all.length > routes.length) {
     const left = all.slice(MAX_ROUTES);
     const named = left.length > LEFT_OUT_NAMED + 1 ? `${left.slice(0, LEFT_OUT_NAMED).join(", ")} and ${left.length - LEFT_OUT_NAMED} more` : andList(left);
@@ -501,8 +528,8 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
     }
     if (shoot && app) {
       const sizes = stackSizes ?? viewports ?? NATIVE_VIEWPORTS;
-      // Each state is one more screenshot of every shot, after the screen has settled.
-      const count = (routes.length + runScreens.length) * sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1) * (1 + states.length);
+      // Each state is one more screenshot of every shot on the screens its line names, after the screen has settled.
+      const count = plannedShots([...routes, ...runScreens], states, sizes.length * 2 * (variants.length + 1) * (rtl ? 2 : 1), false);
       const timeoutMs = native?.shotTimeLimit?.(count) ?? 240_000 + 3_000 * count;
       const drawn = await shoot({
         root: cwd, app, routes, screens: runScreens, outDir, viewports: sizes, variants, ...(rtl ? { rtl } : {}), states, audit, timeoutMs,
@@ -513,7 +540,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       captured = { routes: drawn.routes, issues: drawn.issues };
     } else {
       captured = await deps.capture({
-        browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script }) => ({ name, script })), ...(statesOnly ? { statesOnly } : {}),
+        browserPath: browser!.path, baseUrl: baseUrl!, routes, outDir, audit, states: states.map(({ name, script, screens }) => ({ name, script, ...(screens ? { screens } : {}) })), ...(statesOnly ? { statesOnly } : {}),
         ...(rn ? { motionWidth: RN_MOTION_SIZE.width, reactNative: true } : {}),
         ...(viewports ?? (rn ? NATIVE_VIEWPORTS : undefined) ? { viewports: viewports ?? NATIVE_VIEWPORTS } : {}), ...(variants.length > 0 ? { variants } : {}), ...(rtl ? { rtl } : {}),
         ...(defaultVariant ? { defaultVariant } : {}), ...(appScheme ? { appScheme: appScheme.scheme } : {}),
@@ -535,6 +562,11 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
       : "✗ No screenshots were taken.",
     ...captured.routes.map((r) => routeLine(r, width)),
   ];
+  // Where each state was captured: one whose line names none of this run's screens is said, one that went missing fails.
+  const outcomes = states.length > 0 ? stateOutcomes(states, [...routes, ...runScreens], captured.routes) : [];
+  const said = stateNotes(outcomes, [...routes, ...runScreens]);
+  lines.push(...said.lost);
+  notes.push(...said.notes);
   for (const r of captured.routes.filter((r) => r.rtlForced)) {
     notes.push(`${r.route} doesn't switch to right to left by itself for ${rtl}; Motif set dir="rtl" to show it.`);
   }
@@ -714,7 +746,7 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
 
   return {
     command: "shot",
-    exitCode: failed.length > 0 || findings.length > 0 || keptWhole || (audit && captured.routes.some((r) => r.auditError)) ? 1 : 0,
+    exitCode: failed.length > 0 || said.lost.length > 0 || findings.length > 0 || keptWhole || (audit && captured.routes.some((r) => r.auditError)) ? 1 : 0,
     text: lines.join("\n"),
     data: {
       url: baseUrl,
@@ -729,12 +761,14 @@ export async function runShot(cwd: string, ctx: RunContext, deps: ShotDeps = def
         ...(r.pageErrors?.length ? { pageErrors: r.pageErrors } : {}),
         ...(r.auditError ? { auditError: r.auditError } : {}),
         shots: r.shots.map((s) => projectPath(cwd, s)),
+        ...(r.notHere?.length ? { notHere: r.notHere.map((n) => ({ state: n.state, shot: projectPath(cwd, n.shot) })) } : {}),
       })),
       shots,
       skipped: discovery.skipped,
       ...(hashRouted ? { hashRouted: true } : {}),
       ...(all.length > routes.length ? { leftOut: all.slice(MAX_ROUTES) } : {}),
       states: states.map((s) => s.name),
+      ...(outcomes.length > 0 ? { stateResults: outcomes.map((o) => ({ ...o, notHere: o.notHere.map((n) => ({ screen: n.screen, shot: projectPath(cwd, n.shot) })) })) } : {}),
       ...(rtl ? { rtl } : {}),
       ...(audit ? { findings, audit: auditFile } : {}),
       ...(against

@@ -238,7 +238,7 @@ describe("motif shot on a Flutter app: what it refuses", () => {
     expect(r.exitCode).toBe(2);
     expect(r.data.error).toBe("usage");
     expect(r.text).toBe(
-      "--state: filled.dart must define Future<void> motifState(WidgetTester tester) async, which Motif runs on each screen once it has opened. Add it, then run motif shot again.",
+      "--state: filled.dart must define Future<void> motifState(WidgetTester tester) async, which Motif runs on each screen once it has opened (or Future<bool>, returning false where it has nothing to do). Add it, then run motif shot again.",
     );
     expect(calls).toHaveLength(0);
     expect(existsSync(join(root, "design", "shots"))).toBe(false);
@@ -620,7 +620,7 @@ describe("the audit and states on a Flutter app", () => {
       ["index@filled.tablet.dark.png", "filled", ["contrast", "names"]],
     ]);
     expect(seen.run!.hooks).toContain("import '../../design/states/filled.dart' as state0;");
-    expect(seen.run!.hooks).toContain("  if (name == 'filled') return state0.motifState(tester);");
+    expect(seen.run!.hooks).toContain("  if (name == 'filled') return await (state0.motifState(tester) as Future<Object?>) != false;");
     expect(seen.run!.hooks).toContain("main is Function() ? main() : Function.apply(main, [<String>[]])");
     expect(seen.run!.hooks).not.toContain("NoSuchMethodError");
     const shots = join(root, "design", "shots");
@@ -650,6 +650,58 @@ describe("the audit and states on a Flutter app", () => {
       },
     ]);
     expect(out.notes).toEqual([]);
+  });
+
+  test("a state runs only on the routes and --screen widgets its line names, and a Future<bool> one that returns false keeps no shot (1.3)", async () => {
+    const sheet = `import 'package:flutter_test/flutter_test.dart';
+
+// motif-screens: /settings, Settings
+Future<bool> motifState(WidgetTester tester) async {
+  return find.text('Settings').evaluate().isNotEmpty;
+}
+`;
+    // A 1.2 run took the sheet on / too: that screenshot goes.
+    const root = makeProject({ ...FLUTTER_APP, "design/states/sheet.dart": sheet, "design/shots/index@sheet.tablet.png": "old", "design/shots/index.tablet.png": "old" });
+    const seen: { run?: HarnessRun } = {};
+    const out = await shootFlutter(
+      options(root, {
+        routes: ["/", "/settings"], screens: ["Settings"], viewports: [NATIVE_VIEWPORTS[3]!],
+        states: [{ name: "sheet", script: sheet, file: join(root, "design/states/sheet.dart"), screens: ["/settings", "Settings"] }],
+      }),
+      {
+        themeDir: "lib/design",
+        run: harness(
+          {
+            screens: [
+              { route: "/", shots: ["index.tablet.png", "index.tablet.dark.png"], errors: [] },
+              { route: "/settings", shots: ["settings.tablet.png", "settings@sheet.tablet.png", "settings.tablet.dark.png"], notHere: ["settings@sheet.tablet.dark.png"], errors: [] },
+            ],
+            issues: [],
+            notes: [],
+          },
+          seen,
+        ),
+      },
+    );
+    const planned = seen.run!.shots.map((s) => s.file);
+    expect(planned.filter((f) => f.startsWith("index@"))).toEqual([]);
+    expect(planned.filter((f) => f.includes("@sheet"))).toEqual(["settings@sheet.tablet.png", "settings@sheet.tablet.dark.png", "settings-2@sheet.tablet.png", "settings-2@sheet.tablet.dark.png"]);
+    expect(seen.run!.hooks).toContain("Future<bool> runState(String name, WidgetTester tester) async {");
+    const shots = join(root, "design", "shots");
+    expect(out.routes[1]!.notHere).toEqual([{ state: "sheet", shot: join(shots, "settings@sheet.tablet.dark.png") }]);
+    expect(out.routes[0]!.notHere).toBeUndefined();
+    expect(existsSync(join(shots, "index@sheet.tablet.png"))).toBe(false);
+    expect(existsSync(join(shots, "index.tablet.png"))).toBe(true);
+  });
+
+  test("a state may return Future<bool>; the error for one without motifState names both forms (1.3)", async () => {
+    const root = makeProject({ ...FLUTTER_APP, "design/states/b.dart": "Future<bool> motifState(WidgetTester tester) async => false;\n", "design/states/none.dart": "void main() {}\n" });
+    const ok = await runShot(root, ctx({ state: "design/states/b.dart" }), fakes().deps);
+    expect(ok.exitCode).not.toBe(2);
+    const bad = await runShot(root, ctx({ state: "design/states/none.dart" }), fakes().deps);
+    expect(bad.exitCode).toBe(2);
+    expect(bad.text).toContain("Future<void> motifState(WidgetTester tester) async");
+    expect(bad.text).toContain("Future<bool>");
   });
 
   test("--sizes without the 390 phone says the reduced-motion check didn't run", async () => {

@@ -10,6 +10,7 @@ import type { AuditIssue, RawIssue } from "../../shot/audit";
 import { routeSlug, shotName, type RouteResult, type Scheme, type StateScript, type Viewport } from "../../shot/capture";
 import { prefixPath } from "../../project/apps";
 import { andList, stripBom } from "../../text";
+import { clearExcludedStates, runsOn, stateOfShot } from "../../shot/state-screens";
 import type { NativeShotOptions } from "../native";
 import { dartIdentifier } from "../naming";
 import { googleFamilies, resolvedPackages, type ResolvedPackage } from "./google";
@@ -86,6 +87,8 @@ const uses = (appDir: string, packages: Map<string, ResolvedPackage> | null, pkg
 interface RawScreen {
   route: string;
   shots?: string[];
+  /** Shots a state skipped by returning false: the files they would have been. */
+  notHere?: string[];
   errors?: string[];
   unreachable?: string;
   landedOn?: string;
@@ -153,7 +156,8 @@ export function planShots(opts: NativeShotOptions, targets: Target[]): FlutterSh
       for (const scheme of ["light", "dark"] as Scheme[]) {
         for (const variant of [undefined, ...opts.variants]) {
           for (const lang of [undefined, ...(opts.rtl ? [opts.rtl] : [])]) {
-            for (const state of [undefined, ...opts.states.map((s) => s.name)]) {
+            // A state runs only on the routes and widgets its line names.
+            for (const state of [undefined, ...opts.states.filter((s) => runsOn(s, t.key)).map((s) => s.name)]) {
               const phone = v.mobile && v.width < 600;
               const size = v.file ?? v.name;
               shots.push({
@@ -256,7 +260,8 @@ export function mapResult(
     const s = screens.find((x) => x.route === t.key);
     const shots = (s?.shots ?? []).map((f) => (isAbsolute(f) ? f : join(outDir, f)));
     const errors = s?.errors ?? [];
-    const base = { route: t.key, url: t.key, shots, ...(s?.landedOn ? { landedOn: s.landedOn } : {}), ...(s?.auditError ? { auditError: s.auditError } : {}) };
+    const notHere = (s?.notHere ?? []).map((f) => ({ state: stateOfShot(f) ?? "", shot: isAbsolute(f) ? f : join(outDir, f) }));
+    const base = { route: t.key, url: t.key, shots, ...(notHere.length > 0 ? { notHere } : {}), ...(s?.landedOn ? { landedOn: s.landedOn } : {}), ...(s?.auditError ? { auditError: s.auditError } : {}) };
     if (shots.length > 0) return { ...base, status: 200, ...(errors.length > 0 ? { pageErrors: errors } : {}) };
     const error =
       s?.unreachable ??
@@ -351,6 +356,8 @@ export async function shootFlutter(opts: NativeShotOptions, deps: FlutterShotDep
     used.add(slug);
     targets.push({ key: name, screen: name, slug });
   }
+  // A state its line keeps off a screen leaves no screenshot of it there from an earlier run.
+  clearExcludedStates(opts.outDir, targets, opts.states);
 
   // The generated theme switches variants through MotifTheme.debugVariantOverride, when it has variants.
   const themeFile = join(root, deps.themeDir, "motif_theme.dart");

@@ -389,9 +389,10 @@ export function hooksSource(scripts: { setup?: SwiftUIScript; states?: SwiftUISc
     ...(scripts.setup ? ["        try await motifSetup(variant: variant, locale: locale, dark: dark)"] : []),
     "    }",
     "",
-    "    static func state(_ name: String, _ app: MotifHarness) async throws {",
+    // A state's motifState returns nothing, or a Bool whose false means "not here".
+    "    static func state(_ name: String, _ app: MotifHarness) async throws -> Bool {",
     "        switch name {",
-    ...states.map((s) => `        case ${swiftString(s.name!)}: try await ${stateFunction(s.name!)}(app)`),
+    ...states.map((s) => `        case ${swiftString(s.name!)}: return (try await ${stateFunction(s.name!)}(app) as Any) as? Bool != false`),
     '        default: throw MotifShotError("Motif didn\'t compile the state \\(name) into the run.")',
     "        }",
     "    }",
@@ -732,6 +733,8 @@ export interface SwiftUIShotResult {
   view?: string;
   /** What went wrong in the shot's state; the screen was drawn as the state left it. */
   stateError?: string;
+  /** The state returned false: it had nothing to do on the screen, so no PNG was kept. */
+  notHere?: true;
   /** What the audit found on the drawn screen (with checks). */
   issues?: SwiftUIRawIssue[];
   /** The texts whose contrast the audit couldn't judge: no one colour is behind them (a picture, a gradient). */

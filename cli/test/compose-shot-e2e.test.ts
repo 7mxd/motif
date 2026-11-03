@@ -192,6 +192,14 @@ fun motifState(rule: ComposeContentTestRule) {
 }
 `;
 
+const ABSENT_STATE = `package dev.motif.states.absent
+
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
+
+/** A sheet this app doesn't have: nothing to do on any screen. */
+fun motifState(rule: ComposeContentTestRule): Boolean = false
+`;
+
 const BROKEN_STATE = `package dev.motif.states.broken
 
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -536,6 +544,24 @@ fun BelowTheFoldPreview() {
       expect(same("form.mobile.png", "form@filled.mobile.png")).toBe(false);
       expect(same("form.mobile.png", "form@broken.mobile.png")).toBe(true);
       expect(routesOf(r.data)[0]!.pageErrors).toEqual(['State "broken": IllegalStateException: The sign-in service is down']);
+    });
+  }, 1_200_000);
+
+  test.skipIf(!android)("a state runs only on the screens its line names, and one returning false draws nothing (1.3; skipped without a JDK and the Android SDK)", async () => {
+    const lined = FILLED_STATE.replace("import androidx.compose.ui.test.hasSetTextAction", "// motif-screens: FormPreview\nimport androidx.compose.ui.test.hasSetTextAction");
+    const away = "package dev.motif.states.away\n\n// motif-screens: /elsewhere\nimport androidx.compose.ui.test.junit4.ComposeContentTestRule\n\nfun motifState(rule: ComposeContentTestRule) {}\n";
+    for (const old of ["form@absent.mobile.png", "form@absent.mobile.dark.png", "form@away.mobile.png"]) rmSync(join(root, "design", "shots", old), { force: true });
+    await withFiles({ [AUDIT_FILE]: AUDIT_SCREEN, "design/states/filled.kt": lined, "design/states/absent.kt": ABSENT_STATE, "design/states/away.kt": away }, async () => {
+      const r = await shot({ screen: "FormPreview", sizes: "390", variant: "default", state: ["design/states/filled.kt", "design/states/absent.kt", "design/states/away.kt"] });
+      expect(r.data.shots).toEqual(["design/shots/form.mobile.png", "design/shots/form@filled.mobile.png", "design/shots/form.mobile.dark.png", "design/shots/form@filled.mobile.dark.png"]);
+      for (const old of ["form@absent.mobile.png", "form@absent.mobile.dark.png", "form@away.mobile.png"]) expect(existsSync(join(root, "design", "shots", old))).toBe(false);
+      const results = r.data.stateResults as { state: string; notHere: unknown[]; lost: string[]; notInRun: boolean }[];
+      expect(results.find((s) => s.state === "absent")!.notHere).toHaveLength(2);
+      expect(results.find((s) => s.state === "absent")!.lost).toEqual(["FormPreview"]);
+      expect(results.find((s) => s.state === "away")!.notInRun).toBe(true);
+      expect(r.exitCode).toBe(1);
+      expect(r.text).toContain('✗ State "absent"');
+      expect(routesOf(r.data)[0]!.pageErrors ?? []).toEqual([]);
     });
   }, 1_200_000);
 

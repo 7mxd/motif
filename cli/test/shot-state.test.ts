@@ -1,10 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { readStates, runShot, type ShotDeps } from "../src/commands/shot";
 import { toFindings, type AuditIssue } from "../src/shot/audit";
 import { findBrowser } from "../src/detect/browser";
 import { captureScreens, stateExpression, VIEWPORTS, type CaptureOptions } from "../src/shot/capture";
+import { plannedShots } from "../src/shot/state-screens";
 import { startStaticServer } from "../src/shot/static-server";
 import { makeProject } from "./project";
 import { cleanupTempDirs } from "./tmp";
@@ -29,12 +30,66 @@ describe("state scripts", () => {
     expect(readStates(root, ["a/editor.js", "b/editor.js"])).toEqual({ error: expect.stringContaining('"editor"') });
   });
 
+  test("a motif-screens line names the state's screens; on the web they must be pages", () => {
+    const root = makeProject({
+      "design/states/edit.js": "// motif-screens: /#/applications/*\ndocument.querySelector('#edit').click();",
+      "design/states/plain.js": "open();",
+      "design/states/widget.js": "// motif-screens: EditSheet\nopen();",
+      "design/states/empty.js": "// motif-screens:\nopen();",
+    });
+    const read = readStates(root, ["design/states/edit.js", "design/states/plain.js"], { web: true });
+    expect(read).toEqual([
+      { name: "edit", script: "// motif-screens: /#/applications/*\ndocument.querySelector('#edit').click();", file: join(root, "design/states/edit.js"), screens: ["/#/applications/*"] },
+      { name: "plain", script: "open();", file: join(root, "design/states/plain.js") },
+    ]);
+    expect(readStates(root, ["design/states/widget.js"], { web: true })).toEqual({ error: expect.stringContaining("EditSheet") });
+    // A native app's screens are routes or widget names: both are fine there.
+    expect(readStates(root, ["design/states/widget.js"])).toEqual([expect.objectContaining({ screens: ["EditSheet"] })]);
+    expect(readStates(root, ["design/states/empty.js"])).toEqual({ error: expect.stringContaining("motif-screens") });
+  });
+
   test("run in the page as an async function, stopped after 15 seconds by default", () => {
     const e = stateExpression("document.querySelector('#open').click();");
     expect(e).toContain("document.querySelector('#open').click();");
     expect(e).toContain("15000");
     expect(e).toContain("async");
     expect(stateExpression("x", 50)).toContain("50");
+    // Only a script that returns false says "not here"; returning nothing, or finishing, is captured as in 1.2.
+    expect(stateExpression("return false;")).toContain("!== false");
+  });
+
+  test("the planned count holds only the shots each state's line lets it take", () => {
+    const sheet = { name: "sheet", script: "", screens: ["/b.html"] };
+    expect(plannedShots(["/", "/b.html"], [sheet], 30, false)).toBe(30 * 2 + 30);
+    expect(plannedShots(["/", "/b.html"], [sheet], 30, true)).toBe(30);
+    const any = { name: "any", script: "" };
+    expect(plannedShots(["/", "/b.html"], [sheet, any], 30, false)).toBe(30 * 2 + 30 + 30 * 2);
+  });
+
+  test("--states-only opens only the pages some state's line names", async () => {
+    const root = makeProject({ "public/index.html": "", "design/states/sheet.js": "// motif-screens: /b.html\nopen();" });
+    const captured: CaptureOptions[] = [];
+    const deps: ShotDeps = {
+      findBrowser: () => ({ name: "Chrome", path: "/fake/chrome" }),
+      devCommand: () => ({ error: "unused" }),
+      startDevServer: async () => {
+        throw new Error("unused");
+      },
+      serveStatic: () => ({ url: "http://127.0.0.1:5555", stop: () => {} }),
+      capture: async (o) => {
+        captured.push(o);
+        return { routes: o.routes.map((route) => ({ route, url: o.baseUrl, status: 200, shots: [] })), issues: [] };
+      },
+      compare: async () => [],
+      today: () => "2026-11-02",
+    };
+    const r = await runShot(root, { positionals: [], flags: { state: ["design/states/sheet.js"], "states-only": true, routes: "/,/b.html" } }, deps);
+    expect(captured[0]!.routes).toEqual(["/b.html"]);
+    // The pages it left out are named, so a line written by mistake on a state that belongs everywhere is seen.
+    const said = (r.data.notes as string[]).find((n) => n.startsWith("--states-only"));
+    expect(said).toContain("left out /");
+    expect(said).toContain("signing in");
+    expect(captured[0]!.states).toEqual([{ name: "sheet", script: "// motif-screens: /b.html\nopen();", screens: ["/b.html"] }]);
   });
 
   test("motif shot passes them to the capture, and refuses a bad one before starting anything", async () => {
@@ -110,6 +165,71 @@ describe("state scripts in a real browser (final review)", () => {
   }, 120_000);
 });
 
+describe("states that know their screens (1.3)", () => {
+  const browser = findBrowser();
+  test.skipIf(!browser)("a lined state runs only on its pages, in every look, and a state that returns false keeps no shot", async () => {
+    const root = makeProject({
+      "index.html": "<!doctype html><p>Home</p>",
+      "b.html": '<!doctype html><button id="sheet" onclick="document.body.dataset.open = 1">Open</button>',
+    });
+    const site = startStaticServer(root);
+    try {
+      const outDir = join(root, "shots");
+      const r = await captureScreens({
+        browserPath: browser!.path, baseUrl: site.url, routes: ["/", "/b.html"], outDir, settleMs: 50, viewports: [VIEWPORTS[0]!], rtl: "ar", audit: true,
+        states: [
+          // On /, this script would throw (no #sheet): it must never run there.
+          { name: "sheet", script: 'document.querySelector("#sheet").click();', screens: ["/b.html"] },
+          { name: "guard", script: 'if (!document.querySelector("#sheet")) return false;\ndocument.querySelector("#sheet").click();' },
+        ],
+      });
+      const [home, b] = r.routes;
+      const names = (shots: string[]) => shots.map((s) => basename(s));
+      expect(names(home!.shots).filter((s) => s.includes("@"))).toEqual([]);
+      expect((home!.pageErrors ?? []).join("\n")).not.toContain("sheet");
+      expect(home!.notHere!.map((n) => n.state)).toEqual(["guard", "guard", "guard", "guard"]);
+      for (const n of home!.notHere!) {
+        expect(basename(n.shot)).toStartWith("index@guard.");
+        expect(existsSync(n.shot)).toBe(false);
+      }
+      expect(r.issues.filter((i) => i.state === "guard" && i.route === "/")).toEqual([]);
+      // Both states on /b.html, in the left-to-right and right-to-left looks.
+      expect(names(b!.shots).filter((s) => s.includes("@sheet"))).toHaveLength(4);
+      expect(names(b!.shots).filter((s) => s.includes("@sheet") && s.includes(".rtl"))).toHaveLength(2);
+      expect(names(b!.shots).filter((s) => s.includes("@guard"))).toHaveLength(4);
+      expect(b!.notHere).toBeUndefined();
+    } finally {
+      site.stop();
+    }
+  }, 180_000);
+
+  test.skipIf(!browser)("an earlier run's screenshots of a state that no longer runs on a page, or returns false there, are removed", async () => {
+    const root = makeProject({
+      "index.html": "<!doctype html><p>Home</p>",
+      "b.html": '<!doctype html><button id="sheet" onclick="document.body.dataset.open = 1">Open</button>',
+    });
+    const site = startStaticServer(root);
+    try {
+      const outDir = join(root, "shots");
+      mkdirSync(outDir, { recursive: true });
+      // A 1.2 run took every state on every page.
+      for (const f of ["index@sheet.mobile.png", "index@sheet.mobile.dark.png", "index@guard.mobile-360.png", "index@guard.mobile-360.dark.png"]) writeFileSync(join(outDir, f), "old");
+      await captureScreens({
+        browserPath: browser!.path, baseUrl: site.url, routes: ["/", "/b.html"], outDir, settleMs: 50, viewports: [VIEWPORTS[0]!],
+        states: [
+          { name: "sheet", script: 'document.querySelector("#sheet").click();', screens: ["/b.html"] },
+          { name: "guard", script: 'if (!document.querySelector("#sheet")) return false;\ndocument.querySelector("#sheet").click();' },
+        ],
+      });
+      const left = readdirSync(outDir);
+      expect(left.filter((f) => f.startsWith("index@"))).toEqual([]);
+      expect(left.filter((f) => f.startsWith("b-html@sheet")).length).toBeGreaterThan(0);
+    } finally {
+      site.stop();
+    }
+  }, 180_000);
+});
+
 describe("errors in a state, reported once", () => {
   const browser = findBrowser();
   test.skipIf(!browser)("the page's own late error, thrown while a state's script runs, isn't the state's too", async () => {
@@ -163,4 +283,110 @@ describe("each screenshot starts as a first visit (xBloom re-check)", () => {
       site.stop();
     }
   }, 120_000);
+});
+
+describe("where each state was captured, and a state that went missing (1.3)", () => {
+  /** A run whose capture is a stand-in: `shots` gives each page's state shots, captured or not here. */
+  function run(files: Record<string, string>, flags: Record<string, unknown>, shots: (route: string, slug: string) => { captured: string[]; notHere?: { state: string; file: string }[] }) {
+    const root = makeProject({ "public/index.html": "", ...files });
+    const deps: ShotDeps = {
+      findBrowser: () => ({ name: "Chrome", path: "/fake/chrome" }),
+      devCommand: () => ({ error: "unused" }),
+      startDevServer: async () => {
+        throw new Error("unused");
+      },
+      serveStatic: () => ({ url: "http://127.0.0.1:5555", stop: () => {} }),
+      capture: async (o) => {
+        const routes = o.routes.map((route) => {
+          const slug = route === "/" ? "index" : route.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "");
+          const s = shots(route, slug);
+          const all = [`${slug}.mobile.png`, ...s.captured].map((f) => join(o.outDir, f));
+          for (const f of all) {
+            mkdirSync(dirname(f), { recursive: true });
+            writeFileSync(f, "png");
+          }
+          return { route, url: o.baseUrl, status: 200, shots: all, ...(s.notHere ? { notHere: s.notHere.map((n) => ({ state: n.state, shot: join(o.outDir, n.file) })) } : {}) };
+        });
+        return { routes, issues: [] };
+      },
+      compare: async (o) => o.pairs.map((p) => ({ ...p, changed: 0 })),
+      today: () => "2026-11-02",
+    };
+    return { root, go: () => runShot(root, { positionals: [], flags: flags as Record<string, string> }, deps) };
+  }
+
+  test("a line naming no page of this run is a note that shows the line and the run's pages; the run still passes", async () => {
+    const { go } = run({ "design/states/edit.js": "// motif-screens: /applications/*\nopen();" }, { state: "design/states/edit.js", routes: "/,/#/applications/42" }, () => ({ captured: [] }));
+    const r = await go();
+    expect(r.exitCode).toBe(0);
+    const notes = (r.data.notes as string[]).filter((n) => n.includes("/applications/*"));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain('"edit"');
+    expect(notes[0]).toContain("/#/applications/42");
+    expect(r.data.stateResults).toEqual([{ state: "edit", screens: ["/applications/*"], capturedOn: [], notHere: [], notInRun: true, lost: [], excluded: ["/", "/#/applications/42"] }]);
+  });
+
+  test("a state that says not here in every shot of a page its line names is lost: named, and the run fails", async () => {
+    const { go } = run({ "design/states/edit.js": "// motif-screens: /b\nopen();" }, { state: "design/states/edit.js", routes: "/,/b" }, (route, slug) =>
+      route === "/b" ? { captured: [], notHere: [{ state: "edit", file: `${slug}@edit.mobile.png` }, { state: "edit", file: `${slug}@edit.mobile.dark.png` }] } : { captured: [] });
+    const r = await go();
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toMatch(/✗ State "edit" .*\/b.*out of date/);
+    expect(r.data.stateResults).toEqual([
+      { state: "edit", screens: ["/b"], capturedOn: [], notHere: [{ screen: "/b", shot: "design/shots/b@edit.mobile.png" }, { screen: "/b", shot: "design/shots/b@edit.mobile.dark.png" }], notInRun: false, lost: ["/b"], excluded: ["/"] },
+    ]);
+    expect((r.data.routes as { route: string; notHere?: unknown }[])[1]!.notHere).toEqual([
+      { state: "edit", shot: "design/shots/b@edit.mobile.png" }, { state: "edit", shot: "design/shots/b@edit.mobile.dark.png" },
+    ]);
+  });
+
+  test("a sheet only on phones is not lost: the desktop shots are listed as not here", async () => {
+    const { go } = run({ "design/states/sheet.js": "// motif-screens: /b\nopen();" }, { state: "design/states/sheet.js", routes: "/b" }, (_, slug) =>
+      ({ captured: [`${slug}@sheet.mobile.png`], notHere: [{ state: "sheet", file: `${slug}@sheet.desktop.png` }] }));
+    const r = await go();
+    expect(r.exitCode).toBe(0);
+    expect(r.text).not.toContain("✗");
+    expect(r.data.stateResults).toEqual([
+      { state: "sheet", screens: ["/b"], capturedOn: ["/b"], notHere: [{ screen: "/b", shot: "design/shots/b@sheet.desktop.png" }], notInRun: false, lost: [], excluded: [] },
+    ]);
+  });
+
+  test("a state with no line that says not here everywhere is lost", async () => {
+    const { go } = run({ "design/states/ghost.js": "if (!document.querySelector('#x')) return false;" }, { state: "design/states/ghost.js", routes: "/,/b" }, (_, slug) =>
+      ({ captured: [], notHere: [{ state: "ghost", file: `${slug}@ghost.mobile.png` }] }));
+    const r = await go();
+    expect(r.exitCode).toBe(1);
+    expect(r.text).toMatch(/✗ State "ghost" /);
+    expect((r.data.stateResults as { lost: string[] }[])[0]!.lost).toEqual(["/", "/b"]);
+  });
+
+  test("a state with no line that is captured somewhere is not lost, and states with no line are listed in one note", async () => {
+    const names = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "sign-in"];
+    const files = Object.fromEntries(names.map((n) => [`design/states/${n}.js`, "open();"]));
+    const { go } = run(files, { state: names.map((n) => `design/states/${n}.js`).join(","), routes: "/,/b" }, (route, slug) =>
+      route === "/" ? { captured: names.map((n) => `${slug}@${n}.mobile.png`) } : { captured: [], notHere: names.map((n) => ({ state: n, file: `${slug}@${n}.mobile.png` })) });
+    const r = await go();
+    expect(r.exitCode).toBe(0);
+    const notes = (r.data.notes as string[]).filter((n) => n.includes("motif-screens"));
+    expect(notes).toHaveLength(1);
+    // Running everywhere is right for a state like signing in: the note doesn't tell it to add a line.
+    expect(notes[0]).toContain("signing in");
+    expect(notes[0]).toContain("only some screens");
+    expect(notes[0]).not.toContain("\n");
+    for (const n of names) expect(notes[0]).toContain(n);
+  });
+
+  test("--against a 1.2 set that holds copies compares only the shots taken, and reports nothing missing", async () => {
+    const { root, go } = run({ "design/states/sheet.js": "// motif-screens: /b\nopen();" }, { state: "design/states/sheet.js", routes: "/,/b", against: "before" }, (route, slug) =>
+      route === "/b" ? { captured: [`${slug}@sheet.mobile.png`] } : { captured: [] });
+    for (const f of ["index.mobile.png", "index@sheet.mobile.png", "b.mobile.png", "b@sheet.mobile.png", ".motif-set"]) {
+      mkdirSync(join(root, "design/shots/before"), { recursive: true });
+      writeFileSync(join(root, "design/shots/before", f), "old");
+    }
+    const r = await go();
+    expect(r.exitCode).toBe(0);
+    expect(r.text).not.toContain("missing");
+    expect((r.data.notes as string[] | undefined ?? []).filter((n) => n.includes("missing"))).toEqual([]);
+    expect((r.data.comparisons as unknown[]).length).toBe((r.data.shots as string[]).length);
+  });
 });
