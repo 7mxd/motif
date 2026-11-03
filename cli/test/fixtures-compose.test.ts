@@ -195,6 +195,11 @@ describe("the Compose seeded app's list of planted problems", () => {
     expect(issues.find((i) => i.id === "J-01")!.consequences?.length ?? 0).toBeGreaterThan(0);
   });
 
+  test("Add a habit's stock main action (J-12) counts as hierarchy too, not only consistency (1.3 evals)", () => {
+    // The review files a stock main-action button as hierarchy, and the grader's category filter dropped it.
+    expect(issues.find((i) => i.id === "J-12")!.categories).toContain("hierarchy");
+  });
+
   test("the tests README and the seeded README list the Compose fixtures and every problem", () => {
     const readme = readFileSync(join(FIXTURES, "../README.md"), "utf8");
     for (const s of ["fixtures/compose-contract-app/", "fixtures/compose-seeded-app/", "assemble.ts compose-seeded-app"]) expect(readme).toContain(s);
