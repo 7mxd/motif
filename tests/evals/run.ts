@@ -17,7 +17,7 @@ import { paths, preflight, type NodeNeeds, type Ready } from "./preflight";
 import { NO_PURGE_NOTE, removeProjectData } from "./purge";
 import { renderReport, testVerdicts } from "./report";
 import { forcedPairs, scoreRun } from "./score-a";
-import { runSession, type SessionOutcome, type SessionSpec } from "./session";
+import { runSession, shotsLeftRunning, type SessionOutcome, type SessionSpec } from "./session";
 import { gitState, loadRun, newRunId, remaining, reserveRunId, runDir, saveRun, type RunState, type SessionSummary } from "./state";
 import { motifRunner, runCmd } from "./tools";
 import { prepareWorkspace, removeDir, type Workspace } from "./workspace";
@@ -439,10 +439,14 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
     }
     cs.status = "graded";
     delete cs.note;
+    // A shot stopped with the session leaves nothing behind to grade, and the grade alone wouldn't say why.
+    const transcript = join(out, "session.jsonl");
+    const left = existsSync(transcript) ? shotsLeftRunning(readFileSync(transcript, "utf8")) : [];
+    if (left.length) cs.note = `The session ended its turn while motif shot was still running in the background (${left.join("; ")}), so the shot was stopped with it and nothing it would have found was graded.`;
     save();
     await settleFolder(c, ws);
     const failed = cs.grade.criteria.filter((k) => !k.pass).map((k) => k.label);
-    deps.log(`${c.id}: ${cs.grade.pass ? "PASS" : `FAIL (${failed.join("; ")})`}`);
+    deps.log(`${c.id}: ${cs.grade.pass ? "PASS" : `FAIL (${failed.join("; ")})`}${left.length ? " — the session ended its turn while motif shot was still running" : ""}`);
     // Once a brief is paired, its pairs are judged.
     const stopped = await judgeStep();
     if (stopped !== undefined) return stopped;

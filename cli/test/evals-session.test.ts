@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_TOOLS, agentArgs } from "../../tests/evals/claude";
-import { descendantGroups, runSession, type SessionSpec } from "../../tests/evals/session";
+import { descendantGroups, runSession, shotsLeftRunning, type SessionSpec } from "../../tests/evals/session";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
@@ -157,5 +157,32 @@ describe("the process groups a session leaves (review of batch F)", () => {
     const ps = ["  100     1   100", "  200   100   100", "  300   200   300", "  400   300   300", "  500     1   500", "  600   500   600"].join("\n");
     expect(descendantGroups(100, ps).sort()).toEqual([100, 300]);
     expect(descendantGroups(999, ps)).toEqual([]);
+  });
+});
+
+describe("a motif shot still running when the session ended its turn", () => {
+  const ev = {
+    shot: (id: string, command: string, description = "Run the screenshot audit") =>
+      ({ type: "assistant", message: { content: [{ type: "tool_use", id, name: "Bash", input: { command, description, run_in_background: true } }] } }),
+    started: (id: string) => ({ type: "system", subtype: "task_started", task_id: `t-${id}`, tool_use_id: id }),
+    done: (id: string, status: string) => ({ type: "system", subtype: "task_notification", task_id: `t-${id}`, tool_use_id: id, status }),
+    result: { type: "result", subtype: "success", stop_reason: "end_turn" },
+  };
+  const jsonl = (...events: object[]) => events.map((e) => JSON.stringify(e)).join("\n");
+  const SHOT = 'sh "/x/bin/motif" shot --audit --routes /,/harvest --json > /tmp/a.json 2>&1';
+
+  test("is named by its description: started in the background, and stopped only after the session's result", () => {
+    const t = jsonl(ev.shot("u1", SHOT), ev.started("u1"), ev.result, ev.done("u1", "stopped"));
+    expect(shotsLeftRunning(t)).toEqual(["Run the screenshot audit"]);
+  });
+
+  test("a shot that finished before the result, or a background command that isn't a shot, isn't named", () => {
+    const t = jsonl(ev.shot("u1", SHOT), ev.started("u1"), ev.done("u1", "completed"), ev.shot("u2", "sleep 600", "Wait"), ev.started("u2"), ev.result, ev.done("u2", "stopped"));
+    expect(shotsLeftRunning(t)).toEqual([]);
+  });
+
+  test("a transcript without a result (a time limit), or no transcript, names nothing", () => {
+    expect(shotsLeftRunning(jsonl(ev.shot("u1", SHOT), ev.started("u1")))).toEqual([]);
+    expect(shotsLeftRunning("")).toEqual([]);
   });
 });
