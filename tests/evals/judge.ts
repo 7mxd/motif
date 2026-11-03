@@ -75,19 +75,22 @@ export function judgePrompt(input: JudgeInput, rubric: string = readFileSync(RUB
   ].join("\n\n");
 }
 
+/** A judge sometimes writes "V-10: crammed cards" where the schema asks for "V-10": its id is the leading X-NN. */
+const idOf = (label: unknown): string | undefined => (typeof label === "string" ? /^\s*([A-Z]+-\d+)(?!\d)/.exec(label)?.[1] : undefined);
+
 /** Keeps only answers about findings each question offered; whatever wasn't answered is noted (a problem as not found, a finding as false). */
 export function readVerdict(structured: unknown, input: JudgeInput): JudgeVerdict {
   const s = (structured ?? {}) as { issues?: any[]; unmatched?: any[] };
   const out: JudgeVerdict = { issues: {}, unmatched: {}, notes: [] };
   for (const { issue, candidates } of input.issues) {
-    const answer = (s.issues ?? []).find((a) => a?.issue === issue.id);
+    const answer = (s.issues ?? []).find((a) => idOf(a?.issue) === issue.id);
     const offered = new Set(candidates.map((f) => f.id));
     if (!answer) out.notes.push(`No answer for ${issue.id}; counted as not found.`);
-    const ids = (Array.isArray(answer?.findings) ? answer.findings : []).filter((id: unknown): id is string => typeof id === "string" && offered.has(id));
+    const ids = (Array.isArray(answer?.findings) ? answer.findings : []).map(idOf).filter((id: string | undefined): id is string => !!id && offered.has(id));
     out.issues[issue.id] = { findings: ids, why: String(answer?.why ?? "") };
   }
   for (const f of input.unmatched) {
-    const answer = (s.unmatched ?? []).find((a) => a?.finding === f.id);
+    const answer = (s.unmatched ?? []).find((a) => idOf(a?.finding) === f.id);
     if (answer?.verdict === "real" || answer?.verdict === "false") {
       out.unmatched[f.id] = { verdict: answer.verdict, why: String(answer.why ?? "") };
     } else {

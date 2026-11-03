@@ -39,6 +39,24 @@ describe("test C's model grader", () => {
     expect(v.notes.join(" ")).toContain("F-009");
   });
 
+  test("an id labelled with its summary is read by its X-NN prefix", () => {
+    const v = readVerdict(
+      {
+        issues: [{ issue: "S-14: Three primary buttons", findings: ["F-001: Three equal primary buttons compete."], why: "F-001 names it." }],
+        unmatched: [{ finding: "F-009 — settings page", verdict: "real", why: "True." }],
+      },
+      input,
+    );
+    expect(v.issues["S-14"]!.findings).toEqual(["F-001"]);
+    expect(v.unmatched["F-009"]!.verdict).toBe("real");
+    expect(v.notes).toEqual([]);
+  });
+
+  test("a prefix is the whole id: S-1 isn't read as S-14", () => {
+    const v = readVerdict({ issues: [{ issue: "S-1", findings: ["F-001"], why: "" }], unmatched: [] }, input);
+    expect(v.issues["S-14"]!.findings).toEqual([]);
+  });
+
   test("a problem it didn't answer counts as not found", () => {
     const v = readVerdict({ issues: [], unmatched: [{ finding: "F-009", verdict: "real", why: "True." }] }, input);
     expect(v.issues["S-14"]!.findings).toEqual([]);
