@@ -131,6 +131,13 @@ describe("modes/review.md", () => {
     expect(review).toMatch(/sign in with a state script that has no `\/\/ motif-screens:` line/);
   });
 
+  test("the audit shot is a foreground step: wait for it, never background it (1.3 Mac evals)", () => {
+    // In the 1.3 Mac C runs, sessions ran `motif shot --audit` in the background and ended their turn while it ran: no report.
+    const audit = review.slice(review.indexOf("## 3. Audit"), review.indexOf("**Judgement**"));
+    expect(outOfOrder(audit, ["`motif shot --audit`", "a foreground step", "wait for it to finish", "never run it in the background"])).toBeNull();
+    expect(audit).toMatch(/longer than your shell allows, split the screens across runs with `--routes`/);
+  });
+
   test("has the six steps of spec §7.5, with gates on the extracted guide and the report", () => {
     expect(outOfOrder(review, ["## 1. Scope", "## 2. Extract (only when there is no design guide)", "⏸", "## 3. Audit", "## 4. Report ⏸", "## 5. Rebuild", "## 6. A new look instead"])).toBeNull();
   });
