@@ -192,9 +192,25 @@ describe("modes/review.md", () => {
   test("proves a rebuild with screenshots from before and after", () => {
     expect(outOfOrder(review, ["--save before", "--against before", '"status": "fixed"'])).toBeNull();
   });
-});
 
-describe("plain web, screens behind forms, and every size", () => {
+  test("review's written pass counts an item packed too tight inside as spacing, and hierarchy when it drops what people choose by (1.3 evals)", () => {
+    // In the 1.3 Mac run, c-vue called a list of cramped items clean: the spacing point covered only the gaps between them.
+    expect(outOfOrder(review, [
+      "Make it a written pass", "**Spacing between things", "packed too tight inside", "below the guide's scale", "cut to fit",
+      "dropped to make room", "`hierarchy`", "**Words.**",
+    ])).toBeNull();
+  });
+
+  test("review's written pass checks the code for a physical side where the start or end side is meant (1.3 evals)", () => {
+    // In the 1.3 Mac run, c-vue called its right-to-left screenshots clean: a gap on the wrong side looks only slightly off.
+    expect(outOfOrder(review, [
+      "**Direction.**", "don't mirror", "check the code too", "a physical side where the start or end side is meant",
+      "`platform-convention` finding at that line", "`margin-left`", "`margin-inline-start`", "`gap`", "`marginLeft`", "`marginStart`",
+      "`EdgeInsets.only(left: …)`", "`EdgeInsetsDirectional.only(start: …)`", "`Modifier.absolutePadding(left = …)`", "`Modifier.padding(start = …)`",
+      "`.leading` and `.trailing` already mirror", "(../adapters/flutter/platform.md#right-to-left)", "A screen where you found nothing",
+    ])).toBeNull();
+  });
+
   test("SKILL.md sends plain web sites to their guide; they need no Node.js", () => {
     const skill = read("SKILL.md");
     expect(skill).toContain("(adapters/plain-web/README.md)");
