@@ -216,7 +216,8 @@ describe("modes/review.md", () => {
     expect(outOfOrder(review, [
       "**Spacing between things.**", "not only its scale", "`motif check` passes them", "write the actual numbers in your notes",
       "the gap between a heading and what it heads", "what the guide says belongs in that place", "name the rule",
-      "\"On the scale\" and \"even\" aren't results", "compare the item with its data", "its own detail screen", "**Words.**",
+      "\"On the scale\" and \"even\" aren't results", "compare the item with its data", "its own detail screen", "which fields it shows and which it leaves out", "`truncate`",
+      "A finding about a cramped item names all of it", "**Words.**",
     ])).toBeNull();
     expect(review).not.toContain("spacing on the scale between and inside items");
   });
