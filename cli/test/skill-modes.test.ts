@@ -211,6 +211,25 @@ describe("modes/review.md", () => {
     ])).toBeNull();
   });
 
+  test("review's written pass sets the actual spacing numbers against the guide's rule for that place, not only its scale (1.3.0 evals)", () => {
+    // Runs on claude-sonnet-5 noted "cards sit on the scale" and passed planted 4 px padding and 0 gaps: both are real steps, so motif check is silent too.
+    expect(outOfOrder(review, [
+      "**Spacing between things.**", "not only its scale", "`motif check` passes them", "write the actual numbers in your notes",
+      "the gap between a heading and what it heads", "what the guide says belongs in that place", "name the rule",
+      "\"On the scale\" and \"even\" aren't results", "compare the item with its data", "its own detail screen", "**Words.**",
+    ])).toBeNull();
+    expect(review).not.toContain("spacing on the scale between and inside items");
+  });
+
+  test("review's written pass searches every source file for physical sides, stylesheets included (1.3.0 evals)", () => {
+    // Angular S-12 flipped: the run that searched found margin-left, the run that only read the templates never opened top-bar.css.
+    expect(outOfOrder(review, [
+      "**Direction.**", "check the code too", "by searching and not by what you happen to open", "stylesheets included",
+      "an Angular component's styles sit in their own file", "note how many hits there were", "`platform-convention` finding at that line",
+      "the search for physical sides found none",
+    ])).toBeNull();
+  });
+
   test("review's Markdown report ends with the written pass's notes, one line per screen (1.3 evals)", () => {
     // In the 1.3 Mac run, c-vue skipped the written pass and went from the screenshots straight to the report.
     expect(outOfOrder(review, [
