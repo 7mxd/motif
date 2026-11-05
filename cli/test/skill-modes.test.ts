@@ -116,6 +116,15 @@ describe("modes/feature.md", () => {
     expect(outOfOrder(feature, ["--png-only", "--against design/previews/", "motif check", "motif shot --audit", "--against design/previews/"])).toBeNull();
     expect(feature).toContain("(review.md#2-extract-only-when-there-is-no-design-guide)");
   });
+
+  test("builds the feature at the route the developer names and keeps that route working, never redirecting it away (1.3.0 evals)", () => {
+    // b-vue-history asked for "a booking history at /history" about one plot: the session built /history/:id and redirected /history to /.
+    expect(outOfOrder(feature, [
+      "## 2. Understand the feature", "names a route or a screen", "that route is the feature's page",
+      "## 5. Build", "Build the feature at the route the developer named", "belongs to one item", "the named route still opens a page of its own",
+      "never redirect it away", "## 6. Verify", "the route the developer named",
+    ])).toBeNull();
+  });
 });
 
 describe("modes/review.md", () => {
