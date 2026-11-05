@@ -10,7 +10,7 @@ A new feature that looks as if it was always part of the app: built from the des
 
 ## 2. Understand the feature
 
-Ask, with choices where you can: what the feature does, who uses it, and their path through it (where they start, each step, where they end up). Name every screen and state the path needs.
+Ask, with choices where you can: what the feature does, who uses it, and their path through it (where they start, each step, where they end up). Name every screen and state the path needs. When the developer names a route or a screen ("an activity log at /activity"), that route is the feature's page: keep it as given, and don't trade it for one you'd have chosen.
 
 ## 3. Research the pattern
 
@@ -24,6 +24,7 @@ Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show 
 
 ## 5. Build
 
+- Build the feature at the route the developer named. When it belongs to one item (one project's activity, one order's tracking), the item's own pages can sit under it (`/activity/<project>`), but the named route still opens a page of its own: every item's entries, or a choice of item that leads on. It is never empty, and you never redirect it away.
 - Reuse existing components first; extend one with a new variant before creating a new component.
 - Use theme values only ([the four rules](../contract/spec.md#the-four-rules)).
 - If the feature truly needs something the design guide doesn't have (a new component, a new value), stop and propose the change ⏸: what changes, from what to what, and why, in plain words. Once approved, update `design/tokens.json` and `DESIGN.md` (the component in section 5, a change-log line), run `motif validate` and `motif tokens`, and continue.
@@ -32,7 +33,7 @@ Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show 
 ## 6. Verify
 
 1. Run `motif check` (no findings apart from justified `motif-ok` exceptions) and the project's build and type check.
-2. Run `motif shot --audit --routes <the new routes>` (`--screen <preview>` for each new screen of a SwiftUI app; it covers every variant), adding `--state` for each new screen behind a form or a click (each state script opens with a `// motif-screens:` line naming the screens it belongs on, from the routes you just added, and does `return false` where it has nothing to do, as the stack guide's checks show). Fix the critical and major findings and run it again.
+2. Run `motif shot --audit --routes <the new routes>`, the route the developer named first (`--screen <preview>` for each new screen of a SwiftUI app; it covers every variant), adding `--state` for each new screen behind a form or a click (each state script opens with a `// motif-screens:` line naming the screens it belongs on, from the routes you just added, and does `return false` where it has nothing to do, as the stack guide's checks show). Fix the critical and major findings and run it again.
 3. For each screen, run `motif shot --routes <route> --state design/states/<state>.js --against design/previews/<feature>-<screen>.html`, with a `--state` for each state the mockup shows (`.dart` for a Flutter app, `.kt` for a Compose app, `.swift` for a SwiftUI app, whose new screens are its previews, named with `--screen <preview>` instead of `--routes`): each frame is put next to the same state of the app, and the output names any state you left out. Fix differences that change the design.
 4. Confirm every state from the mockup exists in the app: loading, empty, error, disabled. With variants, look at the screen in each: `motif shot --routes <route> --variant all` (`--screen <preview>` for a SwiftUI app).
 5. Show the developer the side-by-side images and a short summary of what was built and checked.
