@@ -83,9 +83,10 @@ describe("shotSizes", () => {
 
 /**
  * A fake motif shot: writes each route's light and dark PNGs at each size into --out, as motif shot names them, and
- * answers as its --json does. `fail` makes the whole run fail with that error; `broken` routes throw a page error.
+ * answers as its --json does. `fail` makes the whole run fail with that error; `broken` routes throw a page error;
+ * `notes` are what the run says after its screens.
  */
-function fakeShot(opts: { fail?: string; broken?: string[]; missing?: string[]; garbage?: string[] } = {}) {
+function fakeShot(opts: { fail?: string; broken?: string[]; missing?: string[]; garbage?: string[]; notes?: string[] } = {}) {
   const calls: { args: string[]; cwd: string; timeoutMs?: number }[] = [];
   const motif: Motif = async (args, cwd, timeoutMs) => {
     calls.push({ args, cwd, timeoutMs });
@@ -108,6 +109,7 @@ function fakeShot(opts: { fail?: string; broken?: string[]; missing?: string[]; 
         }
         return { route, status: 200, ...(opts.broken?.includes(route) ? { pageErrors: ["TypeError: x is undefined"] } : {}), shots };
       }),
+      ...(opts.notes ? { notes: opts.notes } : {}),
     };
     return { code: 0, json, output: JSON.stringify(json) } satisfies MotifResult;
   };
@@ -135,6 +137,18 @@ const bySide = (withMotif: string, a: Motif, b: Motif): Motif => (args, cwd, t) 
 const noRun: Run = async (cmd) => {
   throw new Error(`nothing should run: ${cmd.join(" ")}`);
 };
+
+/** A Flutter brief's flutter pub get, answered: every command it ran and where, in order with the shots. */
+function pubGet(fails?: string) {
+  const ran: { cmd: string[]; cwd: string }[] = [];
+  const run: Run = async (cmd, cwd) => {
+    ran.push({ cmd, cwd });
+    return cwd === fails
+      ? { code: 1, stdout: "", stderr: "Because sahm depends on google_fonts ^9.0.0 which doesn't match any versions, version solving failed.", timedOut: false }
+      : { code: 0, stdout: "Got dependencies!", stderr: "", timedOut: false };
+  };
+  return { run, ran };
+}
 
 const TELLS = /motif|base|d-|a-|stride/i;
 
@@ -186,7 +200,7 @@ describe("shootPairs", () => {
   test("a native app's pairs are at a phone's width only", async () => {
     const s = sides("sahm");
     const f = fakeShot();
-    const pairs = await shootPairs("sahm", s.withMotif, s.without, byId("d-sahm"), s.out, { run: noRun, motif: f.motif });
+    const pairs = await shootPairs("sahm", s.withMotif, s.without, byId("d-sahm"), s.out, { run: pubGet().run, motif: f.motif });
     expect(pairs.map((p) => [p.screen, p.size, p.outcome])).toEqual([["/", 390, "both"], ["/sign-in", 390, "both"], ["/home", 390, "both"]]);
     expect(f.calls[0]!.args).toContain("390");
   });
@@ -206,6 +220,56 @@ describe("shootPairs", () => {
     const other = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: bySide(s.withMotif, failed.motif, ok.motif) });
     expect(other.map((p) => p.outcome)).toEqual(Array(6).fill("baseline-only"));
     expect(other.every((p) => p.baseline && !p.motif && p.why?.includes("cant-start"))).toBe(true);
+  });
+
+  test("a side whose shot says text is drawn as boxes loses every pair, with why: those pictures don't show the app (1.3.0 Test A, sahm)", async () => {
+    // The Mac's disk cleanup wiped the pub cache under the kept app, so its Google fonts weren't loaded: every letter a box.
+    const s = sides();
+    const boxes = "Text in Lexend on /, /sign-in and /home is drawn as boxes: Motif couldn't load that font (bundle it in pubspec.yaml, or see the font notes).";
+    const ok = fakeShot();
+    const boxed = fakeShot({ notes: [boxes] });
+    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: bySide(s.withMotif, boxed.motif, ok.motif) });
+    expect(pairs.map((p) => p.outcome)).toEqual(Array(6).fill("baseline-only"));
+    for (const p of pairs) {
+      expect(p.motif).toBeUndefined();
+      expect(p.why).toContain("drawn as boxes");
+      expect(p.why).toContain("Lexend");
+    }
+    // Only its own images were written: none of the boxed side's.
+    expect(readdirSync(join(s.out, "a", "img"))).toHaveLength(6);
+    // Any of motif shot's notes about boxes counts: a fallback font, or a script with no font loaded.
+    for (const note of [
+      "Text on / needs the fallback font ReadexPro for letters its main font lacks (Arabic, say), but Motif couldn't load it, so those letters are drawn as boxes (bundle it in pubspec.yaml, or see the font notes).",
+      "/: Arabic text in Lexend has no Arabic font loaded, so it draws as boxes here (a phone would use a system font). Add an Arabic companion to the type role (fontFamilyFallback).",
+    ]) {
+      const other = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: bySide(s.withMotif, ok.motif, fakeShot({ notes: [note] }).motif) });
+      expect(other.map((p) => p.outcome)).toEqual(Array(6).fill("motif-only"));
+    }
+    // Other notes leave the pictures as they are.
+    const fine = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: fakeShot({ notes: ["design/shots/audit.json also keeps what earlier runs found on 2 other pages."] }).motif });
+    expect(fine.map((p) => p.outcome)).toEqual(Array(6).fill("both"));
+  });
+
+  test("a Flutter brief: each app gets its packages again (flutter pub get) right before its shot; one that can't loses its pairs, with why", async () => {
+    // The kept app's packages can be gone by the time Test A shoots it (a cache cleaned in between).
+    const s = sides("sahm");
+    const order: string[] = [];
+    const p = pubGet();
+    const f = fakeShot();
+    const run: Run = async (cmd, cwd, t) => (order.push(`pub ${cwd === s.withMotif ? "d" : "a"}`), p.run(cmd, cwd, t));
+    const motif: Motif = async (args, cwd, t) => (order.push(`shot ${cwd === s.withMotif ? "d" : "a"}`), f.motif(args, cwd, t));
+    const pairs = await shootPairs("sahm", s.withMotif, s.without, byId("d-sahm"), s.out, { run, motif });
+    expect(p.ran).toEqual([{ cmd: ["flutter", "pub", "get"], cwd: s.withMotif }, { cmd: ["flutter", "pub", "get"], cwd: s.without }]);
+    expect(order).toEqual(["pub d", "shot d", "pub a", "shot a"]);
+    expect(pairs.map((x) => x.outcome)).toEqual(["both", "both", "both"]);
+    expect(readFileSync(join(s.out, "d-sahm", "pair-pub-get.log"), "utf8")).toContain("Got dependencies!");
+
+    const failing = pubGet(s.without);
+    const g = fakeShot();
+    const lost = await shootPairs("sahm", s.withMotif, s.without, byId("d-sahm"), s.out, { run: failing.run, motif: g.motif });
+    expect(lost.map((x) => x.outcome)).toEqual(["motif-only", "motif-only", "motif-only"]);
+    for (const x of lost) expect(x.why).toContain("version solving failed");
+    expect(g.calls.map((c) => c.cwd)).toEqual([s.withMotif]);
   });
 
   test("neither, when both fail; a screen that throws or isn't captured loses only its own pairs", async () => {

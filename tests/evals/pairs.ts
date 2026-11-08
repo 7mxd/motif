@@ -118,7 +118,24 @@ async function expoWebSetup(app: string, k: Pick<Collectors, "run">, log: string
 }
 
 /**
- * One side's screens: on an Expo brief, its web packages installed first (expoWebSetup); then motif shot on its app with
+ * A Flutter app's packages, fetched again (flutter pub get) right before Test A shoots it, hours after its session: a
+ * pub cache cleaned in between leaves the app's package_config pointing at folders that are gone, and motif shot then
+ * can't tell its Google fonts, so every letter is a box (1.3.0, sahm). Done the same way to both sides; the output is
+ * kept in `log`. Null when it worked, or why it didn't.
+ */
+async function flutterPubGet(app: string, k: Pick<Collectors, "run">, log: string): Promise<string | null> {
+  const r = await k.run(["flutter", "pub", "get"], app, 600_000);
+  writeFileSync(log, `${r.stdout}\n${r.stderr}`);
+  if (r.code === 0 && !r.timedOut) return null;
+  return `Its packages couldn't be fetched (flutter pub get${r.timedOut ? " took too long" : ""}): ${tail(r, 3) || `exit code ${r.code}`}`;
+}
+
+/** motif shot's notes that its screenshots draw text as boxes (a font, a fallback font or a script it didn't load). */
+const BOXES = /\b(?:drawn|draws) as boxes\b/;
+
+/**
+ * One side's screens: on an Expo brief, its web packages installed first (expoWebSetup); on a Flutter brief, its packages
+ * fetched again (flutterPubGet); then motif shot on its app with
  * the brief's targets and sizes, into a folder of its own; then, for each screen and size, its light screenshot, or why
  * there's none. What it answered is kept in the case's results folder (`logs`).
  */
@@ -140,6 +157,13 @@ async function shootSide(
     }
     installed = setup.installed;
   }
+  if (c.stack === "flutter") {
+    const failed = await flutterPubGet(app, k, join(logs, "pair-pub-get.log"));
+    if (failed) {
+      writeFileSync(log, JSON.stringify({ error: "pub-get", message: failed }, null, 2));
+      return { at: () => ({ why: `${failed}.` }) };
+    }
+  }
   const { args, named } = shotTargets(c, app);
   const r = await k.motif(["shot", ...args, "--sizes", sizes.join(","), "--out", dir], app, shotTimeout(c));
   writeFileSync(log, JSON.stringify(r.json ?? { output: r.output }, null, 2));
@@ -149,6 +173,10 @@ async function shootSide(
     const what = code ? `${SHOT_ERRORS[code] ?? "it couldn't be shot"} (${code}${r.json?.message ? `: ${r.json.message}` : ""})` : r.output.trim() || `motif shot ended with exit code ${r.code}`;
     return { at: () => ({ why: `The app couldn't be shot: ${what}.` }), ...(installed ? { installed } : {}) };
   }
+  // Text drawn as boxes is the screenshot's, never the app's (a phone loads the font, or uses a system one), so these
+  // pictures don't show the app and nobody judges them.
+  const boxed = (Array.isArray(r.json?.notes) ? r.json.notes : []).map(String).find((n: string) => BOXES.test(n));
+  if (boxed) return { at: () => ({ why: `Its screenshots draw text as boxes, so they don't show the app: ${boxed}` }), ...(installed ? { installed } : {}) };
   const at = (screen: string, size: number): Side => {
     const x = routes.find((y) => (named.get(String(y.route)) ?? String(y.route)) === screen);
     if (!x) return { why: `${screen} wasn't captured.` };
