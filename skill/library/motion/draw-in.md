@@ -44,17 +44,19 @@ Start when the chart is on screen (on load for a chart above the fold; when it s
 
 ### react-web
 
-Motion for React draws an SVG path with `pathLength` (the generated `@/design/motion` gives durations in seconds, Motion's unit); wrap the app once in `<MotionConfig reducedMotion="user">` so reduced motion makes it instant.
+Motion for React draws an SVG path with `pathLength` (the generated `@/design/motion` gives durations in seconds, Motion's unit); wrap the app once in `<MotionConfig reducedMotion="user">`. `<MotionConfig reducedMotion="user">` stops only transforms, so also read `useReducedMotion()` and pass `initial={false}` when it is true; opacity and `pathLength` would still animate otherwise.
 
 ```tsx
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { duration, easing } from "@/design/motion";
+
+const reduced = useReducedMotion();
 
 <motion.path
   d={d}
-  stroke="var(--color-brand)"
+  stroke="var(--motif-color-brand)"
   fill="none"
-  initial={{ pathLength: 0 }}
+  initial={reduced ? false : { pathLength: 0 }}
   whileInView={{ pathLength: 1 }}
   viewport={{ once: true }}
   transition={{ duration: duration.slow, ease: easing.enter }}
@@ -156,7 +158,7 @@ Canvas(Modifier.fillMaxWidth().height(48.dp)) {
 
 ### react-native
 
-Reanimated drives `strokeDashoffset` on a `react-native-svg` path; when `useReducedMotion()` is true, set the value without `withTiming`.
+Reanimated drives `strokeDashoffset` on a `react-native-svg` path (ask before adding it); when `useReducedMotion()` is true, set the value without `withTiming`.
 
 ```tsx
 const reduced = useReducedMotion();

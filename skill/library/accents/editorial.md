@@ -59,23 +59,24 @@ The hairlines' drawing is [draw-in](../motion/draw-in.md), played once; nothing 
 
 ### react-web
 
-Inline SVG. With Motion for React in the project, draw the hairlines with `pathLength` and wrap the app once in `<MotionConfig reducedMotion="user">`; otherwise use the plain-web CSS.
+Inline SVG. With Motion for React in the project, draw the hairlines with `pathLength` and wrap the app once in `<MotionConfig reducedMotion="user">` (`<MotionConfig reducedMotion="user">` stops only transforms, so also read `useReducedMotion()` and pass `initial={false}` when it is true; opacity and `pathLength` would still animate otherwise); otherwise use the plain-web CSS.
 
 ```tsx
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { duration, easing } from "@/design/motion";
 
-const draw = {
-  initial: { pathLength: 0 }, whileInView: { pathLength: 1 }, viewport: { once: true },
+const draw = (reduced: boolean | null) => ({
+  initial: reduced ? false : { pathLength: 0 }, whileInView: { pathLength: 1 }, viewport: { once: true },
   transition: { duration: duration.slow, ease: easing.enter },
-};
+});
 
 export function SectionRule() {
+  const reduced = useReducedMotion();
   return (
     <svg className="section-rule" viewBox="0 0 240 12" width="240" height="12" aria-hidden="true">
-      <motion.path d="M108 6 H0" stroke="var(--motif-color-border)" {...draw} />
+      <motion.path d="M108 6 H0" stroke="var(--motif-color-border)" {...draw(reduced)} />
       <path d="M120 1 L125 6 L120 11 L115 6 Z" fill="var(--motif-color-brand)" />
-      <motion.path d="M132 6 H240" stroke="var(--motif-color-border)" {...draw} />
+      <motion.path d="M132 6 H240" stroke="var(--motif-color-border)" {...draw(reduced)} />
     </svg>
   );
 }

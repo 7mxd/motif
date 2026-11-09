@@ -80,7 +80,7 @@ import { duration, easing, spring } from "@/design/motion";
   transition={{ duration: duration.fast, ease: easing.enter }}>
   <p className="font-label text-label">Outstanding · this month</p>
   <p className="font-display text-display tabular-nums" aria-hidden><CountUp value={total} format={money} /></p>
-  <TrendLine points={points} stroke="var(--motif-color-on-brand)" aria-hidden />
+  <TrendLine points={points} stroke="var(--motif-color-on-brand)" />
   <motion.a href="/invoices?status=overdue" whileTap={{ scale: 0.97 }} transition={spring.snappy}
     className="inline-flex min-h-11 items-center rounded-md bg-on-brand text-brand px-4">Send reminders</motion.a>
 </motion.section>
@@ -119,7 +119,7 @@ A component with the same classes as react-web (or the plain-web CSS in a scoped
   :transition="{ duration: duration.fast, ease: easing.enter }">
   <p class="font-label text-label">Outstanding · this month</p>
   <CountUp :value="total" :format="money" class="font-display text-display tabular-nums" aria-hidden="true" />
-  <TrendLine :points="points" stroke="var(--motif-color-on-brand)" aria-hidden="true" />
+  <TrendLine :points="points" stroke="var(--motif-color-on-brand)" />
   <motion.a href="/invoices?status=overdue" :while-press="{ scale: 0.97 }" :transition="spring.snappy"
     class="inline-flex min-h-11 items-center rounded-md bg-on-brand text-brand px-4">Send reminders</motion.a>
 </motion.section>
@@ -141,7 +141,7 @@ Svelte's own `fly` for the entrance and a `Tween` for the count-up, both skipped
   in:fly={{ y: 8, duration: prefersReducedMotion.current ? 0 : duration.fast }}>
   <p class="label">Outstanding · this month</p>
   <CountUp value={total} class="figure" aria-hidden="true" />
-  <TrendLine {points} stroke="var(--motif-color-on-brand)" aria-hidden="true" />
+  <TrendLine {points} stroke="var(--motif-color-on-brand)" />
   <a class="action" href="/invoices?status=overdue">Send reminders</a>
 </section>
 ```
@@ -227,7 +227,7 @@ Surface(
 
 ### react-native
 
-A `View` in `colors.brand` with `type.display` text in `colors.onBrand`, the trend line from `react-native-svg` as [trend-line](../charts/trend-line.md) draws it, and the summary as the card's `accessibilityLabel`. On iOS, the `surface` version.
+A `View` in `colors.brand` with `type.display` text in `colors.onBrand`, the trend line from `react-native-svg` (ask before adding it) as [trend-line](../charts/trend-line.md) draws it, and the summary as the card's `accessibilityLabel`. On iOS, the `surface` version.
 
 ```tsx
 const { colors } = useMotifTheme();

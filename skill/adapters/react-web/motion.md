@@ -99,7 +99,7 @@ Motif plays five small animations by default. Read the level from [motion](../..
 | `press` | `whileTap={{ scale: 0.97 }}` with `spring.snappy` |
 | `success` | a check that scales in with `spring.bouncy` (`spring.smooth` at `calm`) |
 
-Under `<MotionConfig reducedMotion="user">` these become instant; a hand-written count-up checks `useReducedMotion()` and shows the final number.
+`<MotionConfig reducedMotion="user">` makes the transforms instant (the press, the check's scale) but leaves opacity and `pathLength` running, so the draw-in, stagger and success also read `useReducedMotion()` and pass `initial={false}` when it is true; a hand-written count-up checks it too and shows the final number.
 
 Each one has a full recipe with this stack's code in the library: [draw-in](../../library/motion/draw-in.md), [count-up](../../library/motion/count-up.md), [stagger](../../library/motion/stagger.md), [press](../../library/motion/press.md) and [success](../../library/motion/success.md).
 

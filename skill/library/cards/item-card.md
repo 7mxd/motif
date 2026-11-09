@@ -237,7 +237,7 @@ Surface(onClick = { open(item) }, shape = RoundedCornerShape(MotifRadius.lg), co
 
 ### react-native
 
-A `Pressable` card whose banner is a `react-native-svg` scene shaped by the item, the first items with `entering={FadeInDown.delay(…)}`, left out when `useReducedMotion()` is true.
+A `Pressable` card whose banner is a `react-native-svg` scene (ask before adding it) shaped by the item, the first items with `entering={FadeInDown.delay(…)}`, left out when `useReducedMotion()` is true.
 
 ```tsx
 const { colors } = useMotifTheme();

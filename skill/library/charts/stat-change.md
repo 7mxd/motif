@@ -246,7 +246,7 @@ At `calm`, snap `shown` to 1 as under reduced motion.
 
 ### react-native
 
-A row of the arrow (a small `react-native-svg` path, or the app's `@expo/vector-icons` set), the change and the period, faded in by Reanimated after the count (`duration.slow` and `duration.fast` are milliseconds, as `withDelay` and `withTiming` take them). `react-native-svg` isn't among what Motif's React Native guide assumes: add it with `npx expo install react-native-svg`, or use the icon set the app has.
+A row of the arrow (a small `react-native-svg` path, or the app's `@expo/vector-icons` set), the change and the period, faded in by Reanimated after the count (`duration.slow` and `duration.fast` are milliseconds, as `withDelay` and `withTiming` take them). `react-native-svg` isn't among what Motif's React Native guide assumes: ask before adding it with `npx expo install react-native-svg`, or use the icon set the app has.
 
 ```tsx
 export function StatChange({ change, since }: { change: NonNullable<ReturnType<typeof statChange>>; since: string }) {

@@ -87,7 +87,7 @@ export function CountUp({ value, format }: { value: number; format: Intl.NumberF
   <span class="visually-hidden">$18,420</span>
 </p>
 <script type="module">
-  const format = new Intl.NumberFormat(document.documentElement.lang, { style: "currency", currency: appCurrency, maximumFractionDigits: 0 });
+  const format = new Intl.NumberFormat(document.documentElement.lang || undefined, { style: "currency", currency: appCurrency, maximumFractionDigits: 0 });
   for (const el of document.querySelectorAll(".count-up")) {
     const to = Number(el.dataset.value);
     const ms = Number.parseFloat(getComputedStyle(el).getPropertyValue("--motif-duration-slow"));

@@ -219,16 +219,27 @@ const style = useAnimatedStyle(() => ({ opacity: t.value, transform: [{ scale: 0
 
 ### swiftui
 
-A `Cloud` `Shape` (four `addCurve`s) under the subject's shapes in a `ZStack`, faded and grown on appear; under `accessibilityReduceMotion`, set the value without animation. Warm fills use `colors.warning.mix(with: colors.surface, by: 0.45)` (iOS 18; on earlier versions, mix the roles' components yourself).
+A `Cloud` `Shape` (four `addCurve`s) under the subject's shapes in a `ZStack`, faded and grown on appear; under `accessibilityReduceMotion`, set the value without animation. Warm fills use `colors.warning.motifMix(colors.surface, by: 0.45, in: env)`, the helper below, which uses iOS 18's `Color.mix` and mixes the resolved components on iOS 17.
 
 ```swift
+extension Color {
+    /// Mixes toward `other` by `amount`: `Color.mix` on iOS 18, the resolved components on iOS 17.
+    func motifMix(_ other: Color, by amount: Double, in env: EnvironmentValues) -> Color {
+        if #available(iOS 18, *) { return mix(with: other, by: amount) }
+        let a = resolve(in: env), b = other.resolve(in: env), t = Float(amount)
+        return Color(Color.Resolved(red: a.red + (b.red - a.red) * t, green: a.green + (b.green - a.green) * t,
+                                    blue: a.blue + (b.blue - a.blue) * t, opacity: a.opacity + (b.opacity - a.opacity) * t))
+    }
+}
+
+@Environment(\.self) private var env
 @Environment(\.motifColors) private var colors
 @Environment(\.accessibilityReduceMotion) private var reduceMotion
 @State private var shown = false
 
 ZStack {
     Cloud().fill(colors.brandSoft)
-    Circle().fill(colors.warning.mix(with: colors.surface, by: 0.45)).frame(width: 28).offset(x: 48, y: -36)
+    Circle().fill(colors.warning.motifMix(colors.surface, by: 0.45, in: env)).frame(width: 28).offset(x: 48, y: -36)
     MugShape().fill(colors.brand).frame(width: 44, height: 48).offset(y: 24)
 }
 .frame(width: 200, height: 160)

@@ -72,16 +72,17 @@ Each story section plays its stagger once as it scrolls into view, never again o
 
 ### react-web
 
-A CSS grid in Tailwind: one column on a phone, two from `lg`, inside the header's max width. Motion for React staggers the hero's children; `<MotionConfig reducedMotion="user">` at the root makes it instant.
+A CSS grid in Tailwind: one column on a phone, two from `lg`, inside the header's max width. Motion for React staggers the hero's children; `<MotionConfig reducedMotion="user">` at the root stops the move. `<MotionConfig reducedMotion="user">` stops only transforms, so also read `useReducedMotion()` and pass `initial={false}` when it is true; opacity and `pathLength` would still animate otherwise.
 
 ```tsx
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { duration, easing } from "@/design/motion";
 
+const reduced = useReducedMotion();
 const group = { show: { transition: { staggerChildren: duration.fast / 4 } } };
 const part = { hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0, transition: { duration: duration.base, ease: easing.enter } } };
 
-<motion.section variants={group} initial="hidden" animate="show"
+<motion.section variants={group} initial={reduced ? false : "hidden"} animate="show"
   className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-16 lg:grid-cols-2">
   <div>
     <motion.p variants={part} className="text-label text-text-secondary">Invoicing for studios</motion.p>

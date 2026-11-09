@@ -223,12 +223,23 @@ The stitch is a `Line` with `strokeDasharray="8 8"` and `strokeLinecap="round"`.
 `Hill` `Shape`s (each two `addCurve`s, closed along the bottom) stacked in a `ZStack` over a sun `Circle`, raised and faded on appear; under `accessibilityReduceMotion`, set the value without animation.
 
 ```swift
+extension Color {
+    /// Mixes toward `other` by `amount`: `Color.mix` on iOS 18, the resolved components on iOS 17.
+    func motifMix(_ other: Color, by amount: Double, in env: EnvironmentValues) -> Color {
+        if #available(iOS 18, *) { return mix(with: other, by: amount) }
+        let a = resolve(in: env), b = other.resolve(in: env), t = Float(amount)
+        return Color(Color.Resolved(red: a.red + (b.red - a.red) * t, green: a.green + (b.green - a.green) * t,
+                                    blue: a.blue + (b.blue - a.blue) * t, opacity: a.opacity + (b.opacity - a.opacity) * t))
+    }
+}
+
+@Environment(\.self) private var env
 @Environment(\.motifColors) private var colors
 @Environment(\.accessibilityReduceMotion) private var reduceMotion
 @State private var shown = false
 
 ZStack(alignment: .bottom) {
-    Circle().fill(colors.warning.mix(with: colors.surface, by: 0.45)).frame(width: 44).offset(x: 80, y: -36)
+    Circle().fill(colors.warning.motifMix(colors.surface, by: 0.45, in: env)).frame(width: 44).offset(x: 80, y: -36)
     BackHill().fill(colors.brandSoft)
     FrontHill().fill(colors.brand)
 }
@@ -241,4 +252,4 @@ ZStack(alignment: .bottom) {
 }
 ```
 
-`Color.mix(with:by:)` is iOS 18; on earlier versions, mix the two roles' components yourself. The stitch is a `Path` stroked with `StrokeStyle(lineWidth: 2, lineCap: .round, dash: [8, 8])`.
+`motifMix` uses iOS 18's `Color.mix(with:by:)` and mixes the resolved components on iOS 17, the adapter's floor. The stitch is a `Path` stroked with `StrokeStyle(lineWidth: 2, lineCap: .round, dash: [8, 8])`.

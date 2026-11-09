@@ -124,3 +124,41 @@ describe("the adapters point at the motion recipes", () => {
     });
   }
 });
+
+/** Findings from the final review: snippets an agent pastes must build, run, and honour reduced motion. */
+describe("pasted snippets build and honour reduced motion (2.0 final review)", () => {
+  const sections = (stacks: string[]) =>
+    Object.entries(PIECES).flatMap(([group, files]) =>
+      files.flatMap((f) => stacks.map((stack) => ({ at: `${group}/${f} ${stack}`, text: stackSection(read(`${group}/${f}`), stack) }))),
+    );
+  const offending = (stacks: string[], bad: (text: string) => boolean) => sections(stacks).filter((s) => bad(s.text)).map((s) => s.at);
+
+  test("react-web and vue read useReducedMotion wherever Motion draws or staggers (MotionConfig only stops transforms)", () => {
+    expect(offending(["react-web", "vue"], (t) => /pathLength: 0|staggerChildren|(?<![-\w])delay: /.test(t) && !t.includes("useReducedMotion"))).toEqual([]);
+  });
+  test("the react-web adapter doesn't promise MotionConfig makes every default motion instant", () => {
+    const text = section(readFileSync(join(SKILL, "adapters/react-web/motion.md"), "utf8").replace(/\r\n/g, "\n"), "Default motion");
+    expect([text.includes("these become instant"), text.includes("useReducedMotion")]).toEqual([false, true]);
+  });
+  test("SwiftUI never chains a modifier onto MotifMotion.animation's optional result", () => {
+    expect(offending(["swiftui"], (t) => /reduceMotion: \w+\)\.[a-z]/.test(t))).toEqual([]);
+  });
+  test("SwiftUI guards iOS 18's Color.mix for the iOS 17 floor", () => {
+    expect(offending(["swiftui"], (t) => t.includes(".mix(with:") && !t.includes("#available(iOS 18"))).toEqual([]);
+  });
+  test("React Native charts measure their dash instead of relying on pathLength", () => {
+    expect(offending(["react-native"], (t) => t.includes("pathLength"))).toEqual([]);
+  });
+  test("web callers don't pass aria-hidden to TrendLine, which hides itself when it has no label", () => {
+    expect(offending(["react-web", "vue", "svelte", "angular"], (t) => /<(TrendLine|motif-trend-line)[^>]*aria-hidden/.test(t))).toEqual([]);
+  });
+  test("Intl formatters fall back when the page has no lang", () => {
+    expect(offending([...LIBRARY_STACKS], (t) => /documentElement\.lang[,)]/.test(t))).toEqual([]);
+  });
+  test("React Native pieces ask before adding react-native-svg, which the adapter doesn't already allow", () => {
+    expect(offending(["react-native"], (t) => t.includes("react-native-svg") && !t.includes("no `react-native-svg` needed") && !/ask (the developer )?(first|before)/.test(t))).toEqual([]);
+  });
+  test("web snippets use Motif's own CSS variables, which exist without Tailwind 4", () => {
+    expect(offending([...LIBRARY_STACKS], (t) => t.includes("var(--color-"))).toEqual([]);
+  });
+});

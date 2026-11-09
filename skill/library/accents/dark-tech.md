@@ -62,16 +62,17 @@ The trace is [draw-in](../motion/draw-in.md); its nodes at `lively` follow [stag
 
 ### react-web
 
-Inline SVG: the grid as a `<pattern>`, the brackets as four `path`s over the figure. With Motion for React, fade the grid and draw the trace with `pathLength`; wrap the app once in `<MotionConfig reducedMotion="user">`. Durations from the `motion` file are already in seconds.
+Inline SVG: the grid as a `<pattern>`, the brackets as four `path`s over the figure. With Motion for React, fade the grid and draw the trace with `pathLength`; wrap the app once in `<MotionConfig reducedMotion="user">`. `<MotionConfig reducedMotion="user">` stops only transforms, so also read `useReducedMotion()` and pass `initial={false}` when it is true; opacity and `pathLength` would still animate otherwise. Durations from the `motion` file are already in seconds.
 
 ```tsx
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { duration, easing } from "@/design/motion";
 
 export function PlotGrid({ children }: { children: React.ReactNode }) {
+  const reduced = useReducedMotion();
   return (
     <div className="plot-panel">
-      <motion.svg className="plot-grid" aria-hidden="true" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+      <motion.svg className="plot-grid" aria-hidden="true" initial={reduced ? false : { opacity: 0 }} animate={{ opacity: 1 }}
         transition={{ duration: duration.base, ease: easing.enter }}>
         <defs>
           <pattern id="plot" width="16" height="16" patternUnits="userSpaceOnUse">
@@ -90,7 +91,7 @@ export function PlotGrid({ children }: { children: React.ReactNode }) {
 }
 ```
 
-Give each pattern a unique `id` (`useId()`) when the grid appears twice on a page. The trace is a `motion.path` with `initial={{ pathLength: 0 }}` and `whileInView={{ pathLength: 1 }}`.
+Give each pattern a unique `id` (`useId()`) when the grid appears twice on a page. The trace is a `motion.path` with `initial={reduced ? false : { pathLength: 0 }}` and `whileInView={{ pathLength: 1 }}`.
 
 ### plain-web
 

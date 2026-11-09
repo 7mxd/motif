@@ -45,12 +45,13 @@ Uses the default motion `stagger`. Charts inside a staggered card still [draw in
 
 ### react-web
 
-Motion for React variants with a capped `delay` per item, on mount only; wrap the app once in `<MotionConfig reducedMotion="user">`, so reduced motion shows the items in place.
+Motion for React variants with a capped `delay` per item, on mount only; wrap the app once in `<MotionConfig reducedMotion="user">`. That drops the `y` move but not the fades, so also read `useReducedMotion()` and show the items in place when it is true.
 
 ```tsx
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { duration, easing } from "@/design/motion";
 
+const reduced = useReducedMotion();
 const step = duration.fast / 4;
 const item = {
   hidden: { opacity: 0, y: 8 },
@@ -61,7 +62,7 @@ const item = {
 };
 
 {cards.map((card, i) => (
-  <motion.li key={card.id} custom={i} variants={item} initial={firstShow ? "hidden" : false} animate="shown">
+  <motion.li key={card.id} custom={i} variants={item} initial={firstShow && !reduced ? "hidden" : false} animate="shown">
     <Card {...card} />
   </motion.li>
 ))}

@@ -260,7 +260,7 @@ The caller sets the size and the semantics: `Modifier.fillMaxWidth().height(48.d
 
 ### react-native
 
-`react-native-svg` draws the path; Reanimated drives its `strokeDashoffset` (`duration.slow` is in milliseconds, as `withTiming` takes it). Motif's React Native guide assumes Expo and Reanimated 3.16, not `react-native-svg`: when `package.json` doesn't list it, add it with `npx expo install react-native-svg`.
+`react-native-svg` draws the path; Reanimated drives its `strokeDashoffset` (`duration.slow` is in milliseconds, as `withTiming` takes it). Motif's React Native guide assumes Expo and Reanimated 3.16, not `react-native-svg`: when `package.json` doesn't list it, ask before adding it with `npx expo install react-native-svg`.
 
 ```tsx
 import Svg, { Path } from "react-native-svg";
@@ -276,14 +276,25 @@ export function TrendLine({ points, stroke, label }: { points: number[]; stroke?
   useEffect(() => {
     if (!reduced) progress.value = withTiming(1, { duration: duration.slow, easing: easing.enter });
   }, []);
-  const props = useAnimatedProps(() => ({ strokeDashoffset: 1 - progress.value }));
+  const len = lineLength(points, 240, 48);
+  const props = useAnimatedProps(() => ({ strokeDashoffset: len * (1 - progress.value) }));
   return (
     <Svg viewBox="0 0 240 48" width="100%" height={48} accessible={!!label} accessibilityLabel={label}
       style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}>
-      <AnimatedPath d={linePath(points, 240, 48)} pathLength={1} strokeDasharray={1} animatedProps={props}
+      <AnimatedPath d={linePath(points, 240, 48)} strokeDasharray={len} animatedProps={props}
         stroke={stroke ?? colors.brand} strokeWidth={2} strokeLinecap="round" fill="none" />
     </Svg>
   );
+}
+
+// The line's length from the same points as linePath: the dash is measured, not normalised.
+function lineLength(points: number[], w: number, h: number, pad = 2): number {
+  const min = Math.min(...points), max = Math.max(...points), span = max - min || 1;
+  const at = (v: number, i: number) => [(i / (points.length - 1)) * w, max === min ? h / 2 : pad + (1 - (v - min) / span) * (h - pad * 2)];
+  return points.slice(1).reduce((sum, v, i) => {
+    const [x0, y0] = at(points[i], i), [x1, y1] = at(v, i + 1);
+    return sum + Math.hypot(x1 - x0, y1 - y0);
+  }, 0);
 }
 ```
 

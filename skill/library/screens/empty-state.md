@@ -220,12 +220,23 @@ const { colors, type } = useMotifTheme();
 `ContentUnavailableView` with a custom label holding the drawing (a `Shape` or `Canvas`), the description and the action; `ContentUnavailableView.search(text:)` covers no results. Under `accessibilityReduceMotion` it appears without animation.
 
 ```swift
+extension Color {
+    /// Mixes toward `other` by `amount`: `Color.mix` on iOS 18, the resolved components on iOS 17.
+    func motifMix(_ other: Color, by amount: Double, in env: EnvironmentValues) -> Color {
+        if #available(iOS 18, *) { return mix(with: other, by: amount) }
+        let a = resolve(in: env), b = other.resolve(in: env), t = Float(amount)
+        return Color(Color.Resolved(red: a.red + (b.red - a.red) * t, green: a.green + (b.green - a.green) * t,
+                                    blue: a.blue + (b.blue - a.blue) * t, opacity: a.opacity + (b.opacity - a.opacity) * t))
+    }
+}
+
+@Environment(\.self) private var env
 @Environment(\.motifColors) private var colors
 @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 ContentUnavailableView {
     VStack(spacing: MotifSpace.s3) {
-        PotDrawing(pot: colors.warning.mix(with: colors.surface, by: 0.45), leaf: colors.brand, halo: colors.brandSoft)
+        PotDrawing(pot: colors.warning.motifMix(colors.surface, by: 0.45, in: env), leaf: colors.brand, halo: colors.brandSoft)
             .frame(width: 140, height: 140)
             .accessibilityHidden(true)
         Text("No plants yet").motifFont(.heading)
@@ -239,4 +250,4 @@ ContentUnavailableView {
 .animation(MotifMotion.animation(MotifCurves.enter, reduceMotion: reduceMotion), value: plants.isEmpty)
 ```
 
-`Color.mix(with:by:)` needs iOS 18; on earlier systems, compute the mix from the roles' components.
+`motifMix` uses iOS 18's `Color.mix(with:by:)` and mixes the resolved components on iOS 17, the adapter's floor.

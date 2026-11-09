@@ -49,19 +49,21 @@ Uses the default motion `success`, after `press` on the same button. A light suc
 
 ### react-web
 
-Motion for React's `AnimatePresence` swapping the icon, the check scaling in with `spring.bouncy` (`spring.smooth` at `calm`); wrap the app once in `<MotionConfig reducedMotion="user">`.
+Motion for React's `AnimatePresence` swapping the icon, the check scaling in with `spring.bouncy` (`spring.smooth` at `calm`); wrap the app once in `<MotionConfig reducedMotion="user">`. `<MotionConfig reducedMotion="user">` stops only transforms, so also read `useReducedMotion()` and pass `initial={false}` when it is true; opacity and `pathLength` would still animate otherwise.
 
 ```tsx
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { duration, easing, spring } from "@/design/motion";
+
+const reduced = useReducedMotion();
 
 <button className="feed" data-done={fed || undefined} onClick={feed} disabled={busy}>
   <AnimatePresence mode="popLayout" initial={false}>
     {fed ? (
       <motion.svg key="check" viewBox="0 0 24 24" aria-hidden="true"
-        initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={calm ? spring.smooth : spring.bouncy}>
+        initial={reduced ? false : { scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={calm ? spring.smooth : spring.bouncy}>
         <motion.path d="M5 12l5 5 9-10" fill="none" stroke="currentColor" strokeWidth={2}
-          initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: duration.base, ease: easing.enter }} />
+          initial={reduced ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: duration.base, ease: easing.enter }} />
       </motion.svg>
     ) : <DropIcon key="drop" aria-hidden="true" />}
   </AnimatePresence>
@@ -91,16 +93,16 @@ Give the check's path `pathLength="1"`. Add `data-done` from the data and `just-
 
 ### vue
 
-Motion for Vue's `AnimatePresence` and `motion.svg`, `spring.bouncy` (`spring.smooth` at `calm`); `<MotionConfig reduced-motion="user">` follows `prefers-reduced-motion`.
+Motion for Vue's `AnimatePresence` and `motion.svg`, `spring.bouncy` (`spring.smooth` at `calm`); `<MotionConfig reduced-motion="user">` follows `prefers-reduced-motion` for transforms only, so `reduced` is `useReducedMotion()` from `motion-v` and turns the `initial` off.
 
 ```vue
 <template>
   <button class="feed" :data-done="fed || undefined" :disabled="busy" @click="feed">
     <AnimatePresence mode="popLayout" :initial="false">
       <motion.svg v-if="fed" key="check" viewBox="0 0 24 24" aria-hidden="true"
-        :initial="{ scale: 0.6, opacity: 0 }" :animate="{ scale: 1, opacity: 1 }" :transition="calm ? spring.smooth : spring.bouncy">
+        :initial="reduced ? false : { scale: 0.6, opacity: 0 }" :animate="{ scale: 1, opacity: 1 }" :transition="calm ? spring.smooth : spring.bouncy">
         <motion.path d="M5 12l5 5 9-10" fill="none" stroke="currentColor" stroke-width="2"
-          :initial="{ pathLength: 0 }" :animate="{ pathLength: 1 }" :transition="{ duration: duration.base, ease: easing.enter }" />
+          :initial="reduced ? false : { pathLength: 0 }" :animate="{ pathLength: 1 }" :transition="{ duration: duration.base, ease: easing.enter }" />
       </motion.svg>
       <DropIcon v-else key="drop" aria-hidden="true" />
     </AnimatePresence>
@@ -251,7 +253,7 @@ async function feed() {
 </Pressable>
 ```
 
-The icons are `react-native-svg` paths; with Moti already in the project, its `MotiView` can play the same spring.
+The icons are `react-native-svg` paths (ask before adding it); with Moti already in the project, its `MotiView` can play the same spring.
 
 ### swiftui
 

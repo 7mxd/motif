@@ -59,18 +59,20 @@ The trigger button gives under the finger first ([press](../motion/press.md)). I
 
 ### react-web
 
-Motion for React draws the check's path and scales its disc with `spring.bouncy`; the message sits in a polite live region. `<MotionConfig reducedMotion="user">` makes it instant.
+Motion for React draws the check's path and scales its disc with `spring.bouncy`; the message sits in a polite live region. `<MotionConfig reducedMotion="user">` stops the scale. `<MotionConfig reducedMotion="user">` stops only transforms, so also read `useReducedMotion()` and pass `initial={false}` when it is true; opacity and `pathLength` would still animate otherwise.
 
 ```tsx
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { duration, spring } from "@/design/motion";
+
+const reduced = useReducedMotion();
 
 <div role="status" className="flex flex-col items-center gap-3 text-center">
   <motion.svg viewBox="0 0 48 48" className="size-16" aria-hidden="true"
-    initial={{ scale: 0.6 }} animate={{ scale: 1 }} transition={spring.bouncy}>
+    initial={reduced ? false : { scale: 0.6 }} animate={{ scale: 1 }} transition={spring.bouncy}>
     <circle cx="24" cy="24" r="24" fill="var(--motif-color-success)" />
     <motion.path d="M14 25l7 7 13-15" fill="none" stroke="var(--motif-color-on-success)" strokeWidth="4" strokeLinecap="round"
-      initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: duration.fast }} />
+      initial={reduced ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: duration.fast }} />
   </motion.svg>
   <h1 ref={titleRef} tabIndex={-1} className="font-body text-title">You're booked</h1>
 </div>

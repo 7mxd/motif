@@ -64,16 +64,17 @@ The tiles arrive with [stagger](../motion/stagger.md) after the key-figure card,
 
 ### react-web
 
-A grid of links, each a `motion.a` child of a parent that staggers; Motion for React for the entrance and press (the plain-web CSS when the project has no Motion), inside `<MotionConfig reducedMotion="user">`.
+A grid of links, each a `motion.a` child of a parent that staggers; Motion for React for the entrance and press (the plain-web CSS when the project has no Motion), inside `<MotionConfig reducedMotion="user">`. `<MotionConfig reducedMotion="user">` stops only transforms, so also read `useReducedMotion()` and pass `initial={false}` when it is true; opacity and `pathLength` would still animate otherwise.
 
 ```tsx
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { duration, easing, spring } from "@/design/motion";
 
+const reduced = useReducedMotion();
 const row = { show: { transition: { staggerChildren: duration.fast / 4 } } };
 const tile = { hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0, transition: { duration: duration.fast, ease: easing.enter } } };
 
-<motion.ul variants={row} initial="hidden" animate="show" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+<motion.ul variants={row} initial={reduced ? false : "hidden"} animate="show" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
   {stats.map((s) => (
     <motion.li key={s.id} variants={tile}>
       <motion.a href={s.href} aria-label={s.spoken} whileTap={{ scale: 0.97 }} transition={spring.snappy}

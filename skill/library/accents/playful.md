@@ -60,22 +60,23 @@ The shapes follow [stagger](../motion/stagger.md); the mascot's hop is [success]
 
 ### react-web
 
-Inline SVG behind the hero. With Motion for React, the shapes pop in with `spring.bouncy` and a delay each; wrap the app once in `<MotionConfig reducedMotion="user">`. Without it, use the plain-web CSS.
+Inline SVG behind the hero. With Motion for React, the shapes pop in with `spring.bouncy` and a delay each; wrap the app once in `<MotionConfig reducedMotion="user">`. `<MotionConfig reducedMotion="user">` stops only transforms, so also read `useReducedMotion()` and pass `initial={false}` when it is true; opacity and `pathLength` would still animate otherwise. Without it, use the plain-web CSS.
 
 ```tsx
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { duration, spring } from "@/design/motion";
 
 const sparkle = "M0 -10 Q2 -2 10 0 Q2 2 0 10 Q-2 2 -10 0 Q-2 -2 0 -10 Z";
 
 export function WavyBand({ shapes }: { shapes: { x: number; y: number; kind: "dot" | "sparkle" }[] }) {
+  const reduced = useReducedMotion();
   return (
     <motion.svg className="wavy-band" viewBox="0 0 400 200" preserveAspectRatio="none" aria-hidden="true"
-      initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={spring.smooth}>
+      initial={reduced ? false : { opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={spring.smooth}>
       <path d="M0 0 H400 V176 Q375 196 350 176 T300 176 T250 176 T200 176 T150 176 T100 176 T50 176 T0 176 Z"
         fill="var(--motif-color-brand)" />
       {shapes.map((s, i) => (
-        <motion.g key={i} transform={`translate(${s.x} ${s.y})`} initial={{ scale: 0 }} animate={{ scale: 1 }}
+        <motion.g key={i} transform={`translate(${s.x} ${s.y})`} initial={reduced ? false : { scale: 0 }} animate={{ scale: 1 }}
           transition={{ ...spring.bouncy, delay: (i * duration.fast) / 4 }}>
           {s.kind === "dot" ? <circle r="6" fill="var(--motif-color-brand-soft)" />
             : <path d={sparkle} fill="var(--motif-color-on-brand)" fillOpacity="0.25" />}
@@ -122,7 +123,7 @@ The band as a component; the shapes are a `v-for` with `:style="{ '--i': i }"`, 
 </template>
 ```
 
-With Motion for Vue in the project, `motion.g` with `:transition="{ ...spring.bouncy, delay: i * duration.fast / 4 }"` instead.
+With Motion for Vue in the project, `motion.g` with `:transition="{ ...spring.bouncy, delay: i * duration.fast / 4 }"` instead, and `:initial="reduced ? false : { scale: 0 }"` where `reduced` is `useReducedMotion()` from `motion-v` (its `MotionConfig` stops transforms only).
 
 ### svelte
 
@@ -246,11 +247,11 @@ ZStack(alignment: .topLeading) {
     ForEach(Array(shapes.enumerated()), id: \.offset) { i, s in
         Sparkle().fill(colors.onBrand.opacity(0.25)).frame(width: 20, height: 20).position(s.point)
             .scaleEffect(shown ? 1 : 0)
-            .animation(MotifMotion.animation(MotifSprings.bouncy, reduceMotion: reduceMotion).delay(Double(i) * MotifDurations.fast / 4), value: shown)
+            .animation(MotifMotion.animation(MotifSprings.bouncy.delay(Double(i) * MotifDurations.fast / 4), reduceMotion: reduceMotion), value: shown)
     }
 }
 .accessibilityHidden(true)
 .onAppear { shown = true }
 ```
 
-`MotifMotion.animation` gives no animation under Reduce Motion, so `shown = true` lands at once there. The mascot is a `ZStack` of `Circle()`s and a smile `Path`, cheeks in `colors.danger.mix(with: colors.surface, by: 0.65)` (iOS 18).
+`MotifMotion.animation` gives no animation under Reduce Motion, so `shown = true` lands at once there. The mascot is a `ZStack` of `Circle()`s and a smile `Path`, cheeks in `colors.danger.motifMix(colors.surface, by: 0.65, in: env)`, with the `motifMix` helper from [soft](soft.md) (iOS 18's `Color.mix` where it can, the resolved components on iOS 17).

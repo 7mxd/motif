@@ -241,10 +241,11 @@ fun ProgressRing(share: Float, label: String, modifier: Modifier = Modifier) {
 
 ### react-native
 
-`react-native-svg` draws the two circles; Reanimated drives the arc's `strokeDashoffset`, and a `G` turned by −90° starts it at the top. Motif's React Native guide assumes Expo and Reanimated 3.16, not `react-native-svg`: add it with `npx expo install react-native-svg` when the app doesn't list it.
+`react-native-svg` draws the two circles; Reanimated drives the arc's `strokeDashoffset`, and a `G` turned by −90° starts it at the top. Motif's React Native guide assumes Expo and Reanimated 3.16, not `react-native-svg`: when the app doesn't list it, ask before adding it with `npx expo install react-native-svg`.
 
 ```tsx
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const RING = 2 * Math.PI * 21; // the arc's length (2πr): the dash is measured, not normalised
 
 export function ProgressRing({ share, label, children }: { share: number; label: string; children: React.ReactNode }) {
   const { colors } = useMotifTheme();
@@ -254,13 +255,13 @@ export function ProgressRing({ share, label, children }: { share: number; label:
   useEffect(() => {
     shown.value = reduced ? end : withTiming(end, { duration: duration.slow, easing: easing.enter });
   }, [end]);
-  const arc = useAnimatedProps(() => ({ strokeDashoffset: 100 * (1 - shown.value) }));
+  const arc = useAnimatedProps(() => ({ strokeDashoffset: RING * (1 - shown.value) }));
   return (
     <View accessible accessibilityLabel={label} style={{ width: 96, height: 96, alignItems: "center", justifyContent: "center" }}>
       <Svg viewBox="0 0 48 48" style={StyleSheet.absoluteFill}>
         <G rotation={-90} origin="24, 24">
           <Circle cx={24} cy={24} r={21} stroke={colors.border} strokeWidth={5} fill="none" />
-          {end > 0 && <AnimatedCircle cx={24} cy={24} r={21} pathLength={100} strokeDasharray={100} animatedProps={arc}
+          {end > 0 && <AnimatedCircle cx={24} cy={24} r={21} strokeDasharray={RING} animatedProps={arc}
             stroke={colors.brand} strokeWidth={5} strokeLinecap="round" fill="none" />}
         </G>
       </Svg>
