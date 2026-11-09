@@ -92,6 +92,20 @@ struct SpringPressStyle: ButtonStyle {
 
 A drag that lets go (a sheet, a swipe to dismiss) ends in `withAnimation(MotifMotion.animation(MotifSprings.smooth, reduceMotion: reduceMotion)) { offset = .zero }`, and a spring that interrupts another animation carries on from its speed. Use `smooth` for large surfaces, `snappy` for small ones, and `bouncy` only where the guide says playful.
 
+## Default motion
+
+Motif plays five small animations by default. Read the level from [motion](../../knowledge/motion.md#default-motion-and-level): `lively`, `default` (the usual case), `calm` (shorter, fewer moving things, no stagger) or `none`.
+
+| Motion | Here |
+|---|---|
+| `draw-in` | `.trim(from: 0, to: progress)` on the chart's `Path` or `Shape`, with `withAnimation(MotifMotion.animation(.slow))` on appear |
+| `count-up` | `.contentTransition(.numericText())` on the number's `Text`, value changed inside `withAnimation` |
+| `stagger` | `.transition` per item with `.delay(Double(i) * MotifDurations.fast / 4)`, on first show only |
+| `press` | a `ButtonStyle` scaling to 0.97 on `configuration.isPressed`, `MotifSprings.snappy` |
+| `success` | `.symbolEffect(.bounce)` on a checkmark, or a scale with `MotifSprings.bouncy` |
+
+When `@Environment(\.accessibilityReduceMotion)` is true, change the value without `withAnimation`.
+
 ## Reduced motion
 
 The setting is **Reduce Motion**: in **Settings › Accessibility › Motion** on iPhone and iPad, and **System Settings › Accessibility › Display** on the Mac. A view reads it as `@Environment(\.accessibilityReduceMotion)`; code outside views reads `UIAccessibility.isReduceMotionEnabled` (on the Mac, `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion`).

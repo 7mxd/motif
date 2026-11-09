@@ -125,3 +125,61 @@ describe("type pairings: the final review's small items", () => {
     expect(skill("adapters/plain-web/tokens.md")).toContain("readex-pro-arabic-wght-normal.woff2");
   });
 });
+
+describe("knowledge: 2.0 character (no screen is plain)", () => {
+  const lower = (rel: string) => read(rel).toLowerCase();
+  test("character.md drops the plain rule for business tools and sets option B as the floor (review focus)", () => {
+    const text = read("character.md");
+    expect(text).not.toContain("keep their working screens plain");
+    const missing = ["how loud, not whether", "one deep `brand` card", "trend line", "progress ring", "segmented"].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+  test("character.md has the fullness rule and the empty-area check", () => {
+    const text = lower("character.md");
+    const missing = ["empty band", "what's happening", "what should i do next", "never invented charts"].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+  test("visual-craft.md: a real desktop layout and a short top navigation", () => {
+    const text = lower("visual-craft.md");
+    const missing = ["real desktop layout", "never a centred phone column", "few destinations"].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+  test("anti-patterns.md names the C look as the limit", () => {
+    const text = lower("anti-patterns.md");
+    const missing = ["the c look", "glowing", "tilted", "one subtle gradient", "decoration that carries no information", "crowded top menu"].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("knowledge: 2.0 motion by default", () => {
+  test("motion.md sets the default motion and its level from the brief", () => {
+    const text = read("motion.md");
+    const missing = [
+      "## Default motion and level", "`lively`", "`default`", "`calm`", "`none`",
+      "draw-in", "count-up", "stagger", "press", "success", "Feed Lily",
+    ].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("knowledge: 2.0 reference notes in the UX pattern guides (instead of Refero)", () => {
+  const anatomy = (rel: string) => {
+    const text = read(rel);
+    const start = text.indexOf("## Anatomy");
+    return text.slice(start, text.indexOf("\n## ", start + 3));
+  };
+  for (const f of ["onboarding", "home-dashboard", "lists-feeds", "detail-pages"]) {
+    test(`ux-patterns/${f}.md has "What strong apps show" inside its Anatomy`, () => {
+      expect(anatomy(`ux-patterns/${f}.md`)).toContain("**What strong apps show:**");
+    });
+  }
+  test("the home note asks for the key figures and a breakdown", () => {
+    const note = anatomy("ux-patterns/home-dashboard.md");
+    expect([note.includes("key figure"), note.includes("breakdown")]).toEqual([true, true]);
+  });
+  test("feature mode points at the notes", () => {
+    const feature = readFileSync(join(KNOWLEDGE, "../modes/feature.md"), "utf8");
+    const step = feature.split("\n").find((l) => l.startsWith("Read the matching UX pattern guides"))!;
+    expect(step).toContain("What strong apps show");
+  });
+});

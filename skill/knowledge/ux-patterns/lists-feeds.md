@@ -20,6 +20,12 @@ Many items of the same kind, for scanning, finding and acting on: messages, orde
 - **Selection mode:** a way to select several rows for bulk actions, with a count and the actions in a bar.
 - **Add action:** a button for creating a new item, in the header or as a floating button on mobile.
 
+**What strong apps show:**
+
+- Each row carries what people decide by, as labelled facts or small figures, not a dense line of text: amount and age for an invoice, time and seats for an event, length and difficulty for a trail.
+- A summary above the list ("12 open · 4 overdue") that doubles as a filter.
+- Things with a look of their own (places, plants, trips) get a small drawn thumbnail; status gets a coloured chip.
+
 ## Required states
 
 - **First page loading:** skeleton rows with the same structure as real rows.

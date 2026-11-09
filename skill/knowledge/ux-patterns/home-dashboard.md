@@ -11,12 +11,19 @@ The screen people land on after signing in, which they see more often than any o
 ## Anatomy
 
 - **Context line:** a short greeting or the current period ("Tuesday, 14 October"), in `text-secondary`. Optional; skip it if it adds nothing.
-- **Summary:** the single most important number or status, large (`display` or `title`), with its label and period ("This month").
+- **Summary:** the key figure, large (`display` or `title`), with its label and period ("This month"), and beside it a breakdown of it (by age, by status, by person) so the screen shows the user's picture, not one number.
 - **Next action:** one clear action tied to the summary ("Review 3 invoices", "Continue lesson 4"), using `action-primary`.
 - **Recent activity:** the last few items, each a row that opens its detail, and a "See all".
 - **Shortcuts:** a handful of frequent actions, only if people really repeat them.
 - **Main navigation:** a tab bar on phones, a sidebar on wide screens.
 - **Notifications entry:** a bell or inbox with an unread count, in the header.
+
+**What strong apps show:** by kind of app:
+
+- **Money and business tools:** the key figure on one deep `brand` card with a small trend line, a breakdown of it (invoices by age, spending by category), progress towards a goal as a ring or bar, and what needs action in status colour with its count ("Overdue · 4").
+- **Clubs and communities:** the next event as a card with when, where and who is going, then this week's others, then how many joined lately.
+- **Personal trackers:** today's focus (what's due, with its drawing), a streak or progress figure, and what comes next.
+- **Catalogues:** recently viewed or saved items as cards with their facts, and one way in to browse more.
 
 ## Required states
 

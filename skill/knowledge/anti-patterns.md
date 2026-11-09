@@ -18,6 +18,18 @@ Each pattern has three parts: what it **looks like**, **why it hurts**, and what
 - **Why it hurts:** blur and glow lower text contrast unpredictably, cost performance on phones, and replace hierarchy with atmosphere.
 - **Instead:** `surface`, `surface-raised` and `border` from the guide; depth from the elevation roles (`shadow.sm`, `shadow.md`, `shadow.lg`).
 
+### The C look
+
+- **Looks like:** a deep gradient backdrop behind the whole screen, glowing area charts, tilted 3D or glass cards, rising gradient bars, colour on every surface.
+- **Why it hurts:** it is the limit of "crafted": loud for its own sake, "greedy" with colour, and the data gets harder to read, not easier.
+- **Instead:** the calm-but-crafted floor in [character](character.md): one deep `brand` card, small purposeful charts, status colour only where action is needed. Louder briefs add illustration, bands and livelier motion, never this.
+
+### Decoration that carries no information
+
+- **Looks like:** a chart of nothing in particular, a stat card nobody acts on, a blob or pattern added so the screen looks fuller.
+- **Why it hurts:** fullness that says nothing makes the real figures harder to find.
+- **Instead:** every chart or card shows the user's own data or a next action; fill an empty area with content, a figure, an illustration or a closing call to action.
+
 ### Shadows on everything
 
 - **Looks like:** every card, button, input and section with a soft drop shadow.
@@ -63,6 +75,12 @@ Each pattern has three parts: what it **looks like**, **why it hurts**, and what
 - **Looks like:** a row of four boxes with a big number, a label and a green or red arrow ("+12.5%"), with no period or comparison.
 - **Why it hurts:** the numbers look important but answer no question; an arrow without a period ("compared with what?") is noise.
 - **Instead:** show the few numbers that drive a decision, each with a label, a period ("this week") and a comparison ("vs last week"), and link each to its detail.
+
+### A crowded top menu
+
+- **Looks like:** a top bar with every section of the app as its own link.
+- **Why it hurts:** people scan it instead of acting, and on a narrower screen it wraps or hides items unpredictably.
+- **Instead:** the few destinations people use most (three to five) in the bar; the rest in a menu or under the profile ([visual craft](visual-craft.md)).
 
 ## Icons and emoji
 

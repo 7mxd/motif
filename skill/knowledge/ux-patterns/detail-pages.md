@@ -20,6 +20,12 @@ Everything about one item (a product, an order, a person, a document) and the th
 - **Back navigation:** a back button on mobile; a breadcrumb or back link on the web.
 - **Share:** where sharing makes sense, using the platform's share sheet on mobile.
 
+**What strong apps show:**
+
+- The item's key figures first, large, with a small chart where it has a history (payments over time, a route's elevation).
+- A clear status and the one next action beside it ("Overdue 12 days · Send reminder").
+- The people involved with their faces or initials, and a short timeline of what happened.
+
 ## Required states
 
 - **Loading:** show what the list already knew (title, image, price) at once, and skeletons for the rest.

@@ -58,6 +58,29 @@ A spring's duration is the perceived duration, not an exact end time, and its bo
 - Menus and popovers grow from the control that opened them.
 - Tabs switch in place; they don't slide like a forward navigation.
 
+## Default motion and level
+
+Motion is on by default: a screen that only appears reads as unfinished beside one that settles into place. Five small animations come with every app, played with the roles above:
+
+| Motion | What moves | Roles |
+|---|---|---|
+| draw-in | a chart's line draws, a ring fills, a bar's segments grow | `duration.slow`, `easing.enter` |
+| count-up | a key figure counts up to its value | `duration.slow` |
+| stagger | a list or a row of cards arrives one after another, on first show only | `duration.fast` steps |
+| press | a primary or key action gives under the finger | `spring.snappy` |
+| success | a key action confirms itself ("Feed Lily" gives a small happy bounce) | `spring.bouncy` |
+
+**The level comes from the brief's personality words** in `DESIGN.md` section 1:
+
+| Level | When | What changes |
+|---|---|---|
+| `lively` | energetic, playful, bold, fun | all five, with springier settles and a longer stagger |
+| `default` | no strong word either way | all five, as in the table above |
+| `calm` | calm, quiet, precise, premium, professional | shorter durations, fewer moving things, no stagger; `success` uses `spring.smooth` |
+| `none` | the person's reduced-motion setting is on | nothing moves; values appear at their end state |
+
+`none` always wins, whatever the level. Each stack guide's `## Default motion` says which tool plays each one.
+
 ## Feedback
 
 **Press.** Scale to about 0.97–0.98 with `spring.snappy`, starting within 100 ms of the touch. A press that responds late feels broken, however nice it looks. Hover effects belong only to devices with a fine pointer; on touch they stick after a tap.

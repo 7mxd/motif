@@ -112,6 +112,20 @@ class _SpringPressState extends State<SpringPress>
 
 A drag that lets go (a sheet, a swipe to dismiss) works the same way: start the `SpringSimulation` at the position where the finger left, with the finger's velocity, so the motion carries on from it. Use `smooth` for large surfaces, `snappy` for small ones, and `bouncy` only where the guide says playful.
 
+## Default motion
+
+Motif plays five small animations by default. Read the level from [motion](../../knowledge/motion.md#default-motion-and-level): `lively`, `default` (the usual case), `calm` (shorter, fewer moving things, no stagger) or `none`.
+
+| Motion | Here |
+|---|---|
+| `draw-in` | a `CustomPainter` whose progress comes from `TweenAnimationBuilder<double>(tween: Tween(begin: 0, end: 1))`, `MotifDurations.slow` + `MotifCurves.enter` |
+| `count-up` | `TweenAnimationBuilder<double>` building the number's `Text` |
+| `stagger` | one `AnimationController` with an `Interval` per item, on first show only |
+| `press` | `AnimatedScale` to 0.97 while pressed, `MotifDurations.fast` |
+| `success` | a check scaled in with a `SpringSimulation` from `MotifSprings.bouncy` |
+
+Every duration goes through `MotifMotion.duration(context, …)`, which is zero when the system asks for less motion.
+
 ## Reduced motion
 
 When the phone's setting is on, `MediaQuery.disableAnimationsOf(context)` is true. `MotifMotion.reduced(context)` reads it, and `MotifMotion.duration(context, …)` is zero then, so every animation built from a duration jumps to its end. What that leaves for you:

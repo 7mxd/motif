@@ -16,6 +16,13 @@ The first minutes of an app, from opening it to the first thing that's actually 
 - **Personalisation (optional):** a few choices as chips or cards (interests, goals, experience level), several selectable at once, with Skip and a clear Continue.
 - **First-run screen:** the real product, with one guided first action ("Create your first project") instead of an empty dashboard.
 
+**What strong apps show:** by kind of app:
+
+- **Money and business tools:** a welcome that shows the product working (a realistic invoice or balance on a raised card) beside one line on what it saves them, and a first run that imports or adds the first real item.
+- **Clubs and communities:** what is on this week, with faces or a count of people going, so joining feels like turning up.
+- **Personal trackers (plants, habits, health):** a drawn scene from the app's own world and a first action that starts it ("Add your first plant"), with the next reminder shown right after.
+- **Catalogues (trails, recipes, places):** three real items with their key facts before any sign-up.
+
 ## Required states
 
 - **First launch:** the full flow, from the welcome.

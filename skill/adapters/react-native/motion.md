@@ -103,6 +103,20 @@ export function SpringPress({ onPress, children }: { onPress: () => void; childr
 
 A drag that lets go (a sheet, a swipe to dismiss) works the same way: start `withSpring(` from where the finger left, with the finger's velocity, so the motion carries on from it: `withSpring(0, { ...spring.smooth, velocity })`, with `velocity` from the gesture handler's end event. Use `smooth` for large surfaces, `snappy` for small ones, and `bouncy` only where the guide says playful.
 
+## Default motion
+
+Motif plays five small animations by default. Read the level from [motion](../../knowledge/motion.md#default-motion-and-level): `lively`, `default` (the usual case), `calm` (shorter, fewer moving things, no stagger) or `none`.
+
+| Motion | Here |
+|---|---|
+| `draw-in` | Reanimated's `useSharedValue(0)` driving an `Animated` SVG path's `strokeDashoffset`, `withTiming(1, { duration: duration.slow })` |
+| `count-up` | a shared value with `withTiming`, shown through `useAnimatedProps` or `runOnJS` into the text |
+| `stagger` | `entering={FadeInDown.delay(i * duration.fast / 4)}`, on first show only |
+| `press` | `Pressable` with a scale `withSpring(0.97, spring.snappy)` |
+| `success` | a check scaled in with `withSpring(1, spring.bouncy)`; Moti only when the project already has it |
+
+When `useReducedMotion()` is true, set each shared value to its end without `withTiming` or `withSpring`.
+
 ## Reduced motion
 
 When the phone's setting is on, `useMotifTheme().reducedMotion` is true (it is Reanimated's `useReducedMotion()` underneath, which you can call yourself). What that asks of you:

@@ -87,6 +87,20 @@ A pulsing skeleton or a turning spinner loops, so it has no duration of its own 
 
 `motif.css` stops both when reduced motion is on: the skeleton shows its still frame. A stopped spinner reads as stuck, so for content prefer a skeleton, and keep a spinner to a small control, such as a button that's saving, whose label still says what's happening.
 
+## Default motion
+
+Motif plays five small animations by default. Read the level from [motion](../../knowledge/motion.md#default-motion-and-level): `lively`, `default` (the usual case), `calm` (shorter, fewer moving things, no stagger) or `none`.
+
+| Motion | Here |
+|---|---|
+| `draw-in` | a chart's line or segments with Motion's `motion.path` (`pathLength` from 0 to 1) or `scaleX` from 0, `duration.slow` + `easing.enter` |
+| `count-up` | Motion's `animate(from, to, { duration })` writing into the number's text, `duration.slow` |
+| `stagger` | a parent's `transition={{ staggerChildren }}` of `duration.fast` steps, on first show only |
+| `press` | `whileTap={{ scale: 0.97 }}` with `spring.snappy` |
+| `success` | a check that scales in with `spring.bouncy` (`spring.smooth` at `calm`) |
+
+Under `<MotionConfig reducedMotion="user">` these become instant; a hand-written count-up checks `useReducedMotion()` and shows the final number.
+
 ## Reduced motion
 
 With `MotionConfig reducedMotion="user"` at the root, Motion turns movement into fades for people who ask for less. For custom cases, such as auto-playing carousels or parallax, check `useReducedMotion()` and turn them off. `motif shot --audit` reports anything that still moves when reduced motion is on.
