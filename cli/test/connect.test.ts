@@ -260,6 +260,13 @@ describe("motif connect: every agent (Part 3)", () => {
     expect(cwds).toEqual([s.home, s.home, s.home, s.home]);
   });
 
+  test("--agent is read without spaces or capitals (v0.2.0 review minor)", async () => {
+    const s = setup(["claude", "cursor"], { interactive: false });
+    const r = await runConnect(".", { positionals: ["motion"], flags: { agent: "Claude, Cursor" } }, s.deps);
+    expect(r.exitCode).toBe(0);
+    expect((r.data.agents as { agent: string; status: string }[]).map((a) => `${a.agent}:${a.status}`)).toEqual(["claude:added", "cursor:added"]);
+  });
+
   test("--agent naming an agent that isn't on this computer writes nothing for it, file agents too (v0.2.0 review minor)", async () => {
     const s = setup(["claude"]);
     const r = await runConnect(".", { positionals: ["motion"], flags: { agent: "claude,cursor,gemini" } }, s.deps);
