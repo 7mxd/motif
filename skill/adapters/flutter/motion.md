@@ -126,6 +126,8 @@ Motif plays five small animations by default. Read the level from [motion](../..
 
 Every duration goes through `MotifMotion.duration(context, …)`, which is zero when the system asks for less motion.
 
+Each one has a full recipe with this stack's code in the library: [draw-in](../../library/motion/draw-in.md), [count-up](../../library/motion/count-up.md), [stagger](../../library/motion/stagger.md), [press](../../library/motion/press.md) and [success](../../library/motion/success.md).
+
 ## Reduced motion
 
 When the phone's setting is on, `MediaQuery.disableAnimationsOf(context)` is true. `MotifMotion.reduced(context)` reads it, and `MotifMotion.duration(context, …)` is zero then, so every animation built from a duration jumps to its end. What that leaves for you:

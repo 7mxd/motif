@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { COMMAND_NAMES } from "../src/main";
-import { lineCount, lineLimit, lintSkillMarkdown } from "./skill-lint";
+import { LIBRARY_SECTIONS, LIBRARY_STACKS, lineCount, lineLimit, lintSkillMarkdown } from "./skill-lint";
 
 const SKILL = join(import.meta.dir, "../../skill");
 
@@ -118,6 +118,22 @@ describe("the lint rules", () => {
     expect(lint("knowledge/ux-patterns/sign-in.md", good)).toEqual([]);
     expect(lint("knowledge/ux-patterns/sign-in.md", good.replace("## Anatomy\n\n", ""))).toHaveLength(1);
     expect(lint("knowledge/motion.md", "# Motion\n\n## Anything\n")).toEqual([]);
+  });
+
+  test("library pieces have the eight sections in order and a section for each of the nine stacks (2.0)", () => {
+    const NL = String.fromCharCode(10);
+    const para = (heading: string) => [heading, "", "Text.", ""].join(NL);
+    const stacks = LIBRARY_STACKS.map((s) => para(`### ${s}`)).join(NL);
+    const good = ["# Trend line", "", ...LIBRARY_SECTIONS.map((s) => para(`## ${s}`)), stacks].join(NL);
+    expect(lint("library/charts/trend-line.md", good)).toEqual([]);
+    expect(lint("library/charts/trend-line.md", good + NL + para("## Licence"))).toEqual([]);
+    expect(lint("library/charts/trend-line.md", good.replace(para("### swiftui"), ""))).toEqual([
+      "library/charts/trend-line.md needs a ### section for each stack under ## Stacks (missing: swiftui).",
+    ]);
+    expect(lint("library/charts/trend-line.md", good.replace(para("## Data"), ""))).toEqual([
+      expect.stringContaining("library/charts/trend-line.md needs exactly these sections, in order: Purpose, Fits, Loudness, Data, States, Motion, Accessibility, Stacks"),
+    ]);
+    expect(lint("library/README.md", ["# Library", "", "## How to pick", ""].join(NL))).toEqual([]);
   });
 
   test("agent tool names appear only in agents.md (Part 3)", () => {

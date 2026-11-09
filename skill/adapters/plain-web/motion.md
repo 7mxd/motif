@@ -105,6 +105,8 @@ Motif plays five small animations by default. Read the level from [motion](../..
 
 Wrap each in `@media (prefers-reduced-motion: no-preference)`; a script count-up checks `matchMedia("(prefers-reduced-motion: reduce)")` and shows the final number.
 
+Each one has a full recipe with this stack's code in the library: [draw-in](../../library/motion/draw-in.md), [count-up](../../library/motion/count-up.md), [stagger](../../library/motion/stagger.md), [press](../../library/motion/press.md) and [success](../../library/motion/success.md).
+
 ## Reduced motion
 
 `motif.css` stops CSS animations and transitions for people who ask their system for less motion, so CSS motion needs nothing more. Script-driven motion doesn't stop on its own: check `prefers-reduced-motion` as above and skip it, or swap movement for a fade. `motif shot --audit` reports anything that still moves when reduced motion is on.

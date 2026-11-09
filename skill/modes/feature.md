@@ -16,6 +16,8 @@ Ask, with choices where you can: what the feature does, who uses it, and their p
 
 Read the matching UX pattern guides in `knowledge/ux-patterns/` in the skill folder: a settings screen needs [settings](../knowledge/ux-patterns/settings.md); a list people search needs [lists and feeds](../knowledge/ux-patterns/lists-feeds.md) and [search and filters](../knowledge/ux-patterns/search-filters.md). Each guide's Anatomy ends with "What strong apps show": what apps of this kind put on the screen. Note the anatomy and required states you'll build.
 
+Pick the pieces from the [built-in library](../library/README.md) (`library/README.md`): its loudness from the brief's personality words, its group from each screen's job, and its motion at the motion level the brief sets ([motion](../knowledge/motion.md#default-motion-and-level)). Every first-impression screen and the home screen get at least one crafted piece; the developer can ask for a different piece.
+
 ## 4. Mockup ⏸
 
 Write a mockup of every new screen and state as `design/previews/<feature>-<screen>.html`, with [the preview kit](../preview-kit/README.md) and nothing but the design guide: kit classes only, no colours, sizes or fonts of your own. Show the loading, empty and error states the pattern guide lists, each in its own frame. Mark each state's frame with `data-state="<state>"`, the name its state script will have in `design/states/` (`<div class="mk-frame mk-phone mk-ios" data-state="empty">`), so it's later compared with that state of the app.

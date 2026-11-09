@@ -29,6 +29,8 @@ Gather references for the brief's personality and the screens it needs:
 
 Write down in a few lines what you'll take from each reference. Keep links only.
 
+Pick the pieces from the [built-in library](../library/README.md) (`library/README.md`): its loudness from the brief's personality words, its group from each screen's job, and its motion at the motion level the brief sets ([motion](../knowledge/motion.md#default-motion-and-level)). Every first-impression screen and the home screen get at least one crafted piece; the developer can ask for a different piece.
+
 **If the brief calls for a variant** (a look for another audience, or a brand per customer), do a short research step on it first: how comparable apps handle it, what the connected design sources show, and the pitfalls. Then propose what differs (usually colours, maybe icons or imagery) and what stays the same, and ⏸ wait for the developer to approve what varies before anything is written. [Variants](../knowledge/variants.md) covers when a variant is worth it, and for an audience variant how to avoid stereotypes and keep both equally good. Approved variants go in the design guide in step 5 and are checked in step 7.
 
 ## 4. Directions ⏸
@@ -65,7 +67,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
    - Mobile apps: onboarding, sign-in, home.
    - Plain web sites: the pages the brief names; a one-page tool is its page and each state behind a form or a click.
 
-   Follow each screen's UX pattern guide, including its loading, empty and error states.
+   Follow each screen's UX pattern guide, including its loading, empty and error states, and build the library pieces you picked in step 3 from their stack sections, with the theme's roles.
 
 ## 7. Verify
 

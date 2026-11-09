@@ -105,6 +105,8 @@ Motif plays five small animations by default. Read the level from [motion](../..
 
 Check `MotifMotion.reduced()` (the system's Remove animations setting) and show the final state at once.
 
+Each one has a full recipe with this stack's code in the library: [draw-in](../../library/motion/draw-in.md), [count-up](../../library/motion/count-up.md), [stagger](../../library/motion/stagger.md), [press](../../library/motion/press.md) and [success](../../library/motion/success.md).
+
 ## Reduced motion
 
 Android's setting is **Remove animations**, in the phone's accessibility settings (where depends on the phone). When it's on, the animator duration scale is 0. `MotifMotion.reduced()` reads it, and `MotifMotion.duration(…)` is zero then.
