@@ -895,3 +895,21 @@ describe("every stack's state scripts name their screens and say not here (1.3)"
     expect(template).toContain("return false");
   });
 });
+
+describe("every adapter plays the default motion (2.0)", () => {
+  const REDUCED: Record<string, string> = {
+    "react-web": 'reducedMotion="user"', "plain-web": "prefers-reduced-motion", vue: "prefers-reduced-motion",
+    svelte: "prefersReducedMotion", angular: "prefers-reduced-motion", flutter: "MotifMotion.duration(context",
+    compose: "MotifMotion.reduced()", "react-native": "useReducedMotion", swiftui: "accessibilityReduceMotion",
+  };
+  for (const [stack, reduced] of Object.entries(REDUCED)) {
+    test(`${stack}/motion.md has a Default motion section that names the five and the reduced-motion switch`, () => {
+      const text = readFileSync(join(import.meta.dir, "../../skill/adapters", stack, "motion.md"), "utf8").replace(/\r\n/g, "\n");
+      expect(text).toContain("## Default motion");
+      const section = text.slice(text.indexOf("## Default motion"));
+      const body = section.slice(0, section.indexOf("\n## ", 3) === -1 ? undefined : section.indexOf("\n## ", 3));
+      const missing = ["draw-in", "count-up", "stagger", "press", "success", reduced].filter((s) => !body.includes(s));
+      expect(missing).toEqual([]);
+    });
+  }
+});

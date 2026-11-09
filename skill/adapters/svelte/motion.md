@@ -137,6 +137,20 @@ A pulsing skeleton or a turning spinner loops, so it has no duration of its own 
 
 `motif.css` stops both when reduced motion is on: the skeleton shows its still frame. A stopped spinner reads as stuck, so for content prefer a skeleton, and keep a spinner to a small control, such as a button that's saving, whose label still says what's happening.
 
+## Default motion
+
+Motif plays five small animations by default. Read the level from [motion](../../knowledge/motion.md#default-motion-and-level): `lively`, `default` (the usual case), `calm` (shorter, fewer moving things, no stagger) or `none`.
+
+| Motion | Here |
+|---|---|
+| `draw-in` | `transition:draw` from `svelte/transition` on the chart's path, or `scaleX` with `Tween`, `duration.slow` |
+| `count-up` | a `Tween` from `svelte/motion` holding the number, `duration.slow` + `easing.enter` |
+| `stagger` | `in:fly` with `delay: i * duration.fast / 4`, on first show only |
+| `press` | `:active { transform: scale(0.97) }`, or a `Spring` with `spring.snappy` |
+| `success` | a check that springs in with `spring.bouncy` (`spring.smooth` at `calm`) |
+
+When `prefersReducedMotion.current` is true, skip the transition and set the tween to its final value at once.
+
 ## Reduced motion
 
 People who ask their system for less movement need it honoured, and `motif check`'s `reduced-motion` rule looks for it.

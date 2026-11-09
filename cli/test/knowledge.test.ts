@@ -150,3 +150,14 @@ describe("knowledge: 2.0 character (no screen is plain)", () => {
     expect(missing).toEqual([]);
   });
 });
+
+describe("knowledge: 2.0 motion by default", () => {
+  test("motion.md sets the default motion and its level from the brief", () => {
+    const text = read("motion.md");
+    const missing = [
+      "## Default motion and level", "`lively`", "`default`", "`calm`", "`none`",
+      "draw-in", "count-up", "stagger", "press", "success", "Feed Lily",
+    ].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+});

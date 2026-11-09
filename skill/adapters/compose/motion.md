@@ -91,6 +91,20 @@ fun SpringPress(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Co
 
 A drag that lets go (a sheet, a swipe to dismiss) works the same way: animate an `Animatable` from where the finger left, with `animateTo(target, MotifSprings.smooth(), initialVelocity = velocity)`, so the motion carries on from it. Use `smooth` for large surfaces, `snappy` for small ones, and `bouncy` only where the guide says playful.
 
+## Default motion
+
+Motif plays five small animations by default. Read the level from [motion](../../knowledge/motion.md#default-motion-and-level): `lively`, `default` (the usual case), `calm` (shorter, fewer moving things, no stagger) or `none`.
+
+| Motion | Here |
+|---|---|
+| `draw-in` | an `Animatable(0f)` driving a `Canvas` path's progress, `tween(MotifDurations.slow, easing = MotifEasing.enter)` |
+| `count-up` | `animateIntAsState` (or `animateFloatAsState`) feeding the number's `Text` |
+| `stagger` | `AnimatedVisibility` per item with a delay of `MotifDurations.fast / 4` steps, on first show only |
+| `press` | `animateFloatAsState` of the scale from `interactionSource.collectIsPressedAsState()`, `MotifSprings.snappy` |
+| `success` | a check scaled in with `MotifSprings.bouncy` |
+
+Check `MotifMotion.reduced()` (the system's Remove animations setting) and show the final state at once.
+
 ## Reduced motion
 
 Android's setting is **Remove animations**, in the phone's accessibility settings (where depends on the phone). When it's on, the animator duration scale is 0. `MotifMotion.reduced()` reads it, and `MotifMotion.duration(…)` is zero then.

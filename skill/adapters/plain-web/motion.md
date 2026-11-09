@@ -91,6 +91,20 @@ A pulsing skeleton or a turning spinner loops, so it has no duration of its own 
 
 `motif.css` stops both when reduced motion is on: the skeleton shows its still frame. A stopped spinner reads as stuck, so for content prefer a skeleton, and keep a spinner to a small control, such as a button that's saving, whose label still says what's happening.
 
+## Default motion
+
+Motif plays five small animations by default. Read the level from [motion](../../knowledge/motion.md#default-motion-and-level): `lively`, `default` (the usual case), `calm` (shorter, fewer moving things, no stagger) or `none`.
+
+| Motion | Here |
+|---|---|
+| `draw-in` | `stroke-dashoffset` from the path's length to 0, or `transform: scaleX(0)` to 1, in `@keyframes` using `var(--motif-duration-slow)` and `var(--motif-easing-enter)` |
+| `count-up` | `requestAnimationFrame` writing the number's text over the slow duration read with `getPropertyValue` |
+| `stagger` | `animation-delay: calc(var(--i) * var(--motif-duration-fast) / 4)` on first show only |
+| `press` | `:active { transform: scale(0.97) }` with `var(--motif-duration-fast)` |
+| `success` | a check drawn in with `stroke-dashoffset`, then a small `scale` settle |
+
+Wrap each in `@media (prefers-reduced-motion: no-preference)`; a script count-up checks `matchMedia("(prefers-reduced-motion: reduce)")` and shows the final number.
+
 ## Reduced motion
 
 `motif.css` stops CSS animations and transitions for people who ask their system for less motion, so CSS motion needs nothing more. Script-driven motion doesn't stop on its own: check `prefers-reduced-motion` as above and skip it, or swap movement for a fade. `motif shot --audit` reports anything that still moves when reduced motion is on.

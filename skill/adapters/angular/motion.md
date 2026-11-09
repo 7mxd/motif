@@ -149,6 +149,20 @@ A pulsing skeleton or a turning spinner loops, so it has no duration of its own 
 
 `motif.css` stops both when reduced motion is on: the skeleton shows its still frame. A stopped spinner reads as stuck, so for content prefer a skeleton, and keep a spinner to a small control, such as a button that's saving, whose label still says what's happening.
 
+## Default motion
+
+Motif plays five small animations by default. Read the level from [motion](../../knowledge/motion.md#default-motion-and-level): `lively`, `default` (the usual case), `calm` (shorter, fewer moving things, no stagger) or `none`.
+
+| Motion | Here |
+|---|---|
+| `draw-in` | Motion's `animate(element, { pathLength: [0, 1] })` or `scaleX`, `duration.slow` + `easing.enter`, run from the component's `afterNextRender` |
+| `count-up` | Motion's `animate(from, to, { duration, onUpdate })` into a signal |
+| `stagger` | `animate(items, …, { delay: stagger(duration.fast / 4) })`, on first show only |
+| `press` | `:active { transform: scale(0.97) }` in the component's CSS |
+| `success` | a check animated with `spring.bouncy` (`spring.smooth` at `calm`) |
+
+When `prefers-reduced-motion` is set, skip the `animate` calls and show the final state; the CSS sits inside `@media (prefers-reduced-motion: no-preference)`.
+
 ## Reduced motion
 
 People who ask their system for less movement need it honoured, and `motif check`'s `reduced-motion` rule looks for it.
