@@ -161,3 +161,25 @@ describe("knowledge: 2.0 motion by default", () => {
     expect(missing).toEqual([]);
   });
 });
+
+describe("knowledge: 2.0 reference notes in the UX pattern guides (instead of Refero)", () => {
+  const anatomy = (rel: string) => {
+    const text = read(rel);
+    const start = text.indexOf("## Anatomy");
+    return text.slice(start, text.indexOf("\n## ", start + 3));
+  };
+  for (const f of ["onboarding", "home-dashboard", "lists-feeds", "detail-pages"]) {
+    test(`ux-patterns/${f}.md has "What strong apps show" inside its Anatomy`, () => {
+      expect(anatomy(`ux-patterns/${f}.md`)).toContain("**What strong apps show:**");
+    });
+  }
+  test("the home note asks for the key figures and a breakdown", () => {
+    const note = anatomy("ux-patterns/home-dashboard.md");
+    expect([note.includes("key figure"), note.includes("breakdown")]).toEqual([true, true]);
+  });
+  test("feature mode points at the notes", () => {
+    const feature = readFileSync(join(KNOWLEDGE, "../modes/feature.md"), "utf8");
+    const step = feature.split("\n").find((l) => l.startsWith("Read the matching UX pattern guides"))!;
+    expect(step).toContain("What strong apps show");
+  });
+});
