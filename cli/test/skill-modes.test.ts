@@ -614,3 +614,32 @@ describe("SwiftUI in the skill and the modes", () => {
     for (const s of [".motifTheme(variant: .", "@AppStorage", "(../adapters/swiftui/tokens.md#switching-variants)"]) expect(variants).toContain(s);
   });
 });
+
+describe("the skill picks from the built-in library (2.0)", () => {
+  test("SKILL.md links the library and lists it in the folder map", () => {
+    const skill = read("SKILL.md");
+    expect([skill.includes("(library/README.md)"), skill.includes("`library/`")]).toEqual([true, true]);
+  });
+  for (const mode of ["init", "feature"]) {
+    test(`${mode} mode picks pieces by the brief's personality, the screen's job and the motion level`, () => {
+      const text = read(`modes/${mode}.md`);
+      const missing = ["library/README.md", "personality", "motion level", "the developer can ask for a different piece"].filter((s) => !text.includes(s));
+      expect(missing).toEqual([]);
+    });
+  }
+  test("review mode flags a plain first-impression or home screen and an empty band", () => {
+    const text = read("modes/review.md");
+    expect([text.includes("empty band"), text.includes("plain")]).toEqual([true, true]);
+  });
+  test("Hairline is an optional mention in the two web adapters only", () => {
+    const adapters = readdirSync(join(SKILL, "adapters")).filter((d) => d !== "_template");
+    const naming = adapters.filter((d) =>
+      readdirSync(join(SKILL, "adapters", d)).some((f) => read(`adapters/${d}/${f}`).includes("@lucasmarkes/hairline")),
+    );
+    expect(naming.sort()).toEqual(["plain-web", "react-web"]);
+    for (const d of naming) {
+      const text = readdirSync(join(SKILL, "adapters", d)).map((f) => read(`adapters/${d}/${f}`)).find((t) => t.includes("@lucasmarkes/hairline"))!;
+      expect(text.slice(text.indexOf("@lucasmarkes/hairline") - 300, text.indexOf("@lucasmarkes/hairline") + 300)).toContain("optional");
+    }
+  });
+});

@@ -82,6 +82,10 @@ Every new app gets these, each with all the states it needs:
 
 The [accessibility guide](../../knowledge/accessibility.md) covers names, focus and announcements in detail, and the [empty, loading and error guide](../../knowledge/ux-patterns/empty-loading-error.md) covers those three components.
 
+## Optional: a striking landing visual
+
+For a landing page that wants one striking drawing, Hairline (`@lucasmarkes/hairline`, MIT, React and plain web) is an optional install: isometric line figures that follow the pointer, with no account or key. Use it only when the developer agrees to the dependency, colour it with the theme's roles, and keep the library's own [accents](../../library/README.md) as the default. Native stacks can't use it, so it is never part of a piece every stack shares.
+
 ## Each component in the design guide
 
 When you add a shared component or change one, list it in `DESIGN.md` section 5: what it's for, its variants and its states.

@@ -96,5 +96,6 @@ Make sure `design/.gitignore` lists `.progress.json` and `directions/` (create i
 - Knowledge: [visual craft](knowledge/visual-craft.md), [character](knowledge/character.md), [anti-patterns](knowledge/anti-patterns.md), [type pairings](knowledge/type-pairings.md), [motion](knowledge/motion.md), [accessibility](knowledge/accessibility.md), [variants](knowledge/variants.md), and one guide per UX pattern in `knowledge/ux-patterns/`, such as [sign-in](knowledge/ux-patterns/sign-in.md) and [lists and feeds](knowledge/ux-patterns/lists-feeds.md).
 - `presets/<style>/`: the 8 starting styles (`tokens.json`, `about.md`, `sample.html`).
 - [preview-kit/README.md](preview-kit/README.md): how to write mockups.
+- [library/README.md](library/README.md): the built-in library (`library/`) of charts, cards, screens, motion and accents for every stack, and how to pick from it.
 - `sources/`: one note per optional source (Motion, Supahero). `adapters/`: one guide per stack.
 - [agents.md](agents.md): what differs between agents (where this folder is, the question prompt, the shell).
