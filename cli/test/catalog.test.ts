@@ -75,8 +75,8 @@ describe("the source notes agents read", () => {
     expect(text).not.toContain("motif connect");
   });
 
-  test("the folder holds exactly the five notes", () => {
-    expect(readdirSync(NOTES).sort()).toEqual(["21st.md", "60fps.md", "motion-dev.md", "refero.md", "supahero.md"]);
+  test("the folder holds exactly the two notes left in 2.0", () => {
+    expect(readdirSync(NOTES).sort()).toEqual(["motion-dev.md", "supahero.md"]);
   });
 
   test("the verified facts are on record", () => {

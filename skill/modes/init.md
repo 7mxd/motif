@@ -24,7 +24,7 @@ Save the answers in the progress file's `notes`, so a later session doesn't ask 
 
 Gather references for the brief's personality and the screens it needs:
 
-- With design sources connected, follow their notes: [Refero](../sources/refero.md) for styles and real screens, [60fps.design](../sources/60fps.md) for mobile motion, [Supahero](../sources/supahero.md) for a landing page's hero.
+- Follow the source notes: [Supahero](../sources/supahero.md) for a landing page's hero, and [Motion](../sources/motion-dev.md) when it's connected.
 - Always: [visual craft](../knowledge/visual-craft.md), [character](../knowledge/character.md), [anti-patterns](../knowledge/anti-patterns.md), [type pairings](../knowledge/type-pairings.md), the [motion guide](../knowledge/motion.md), and the UX pattern guides for the first screens: [onboarding](../knowledge/ux-patterns/onboarding.md), [sign-in](../knowledge/ux-patterns/sign-in.md) and [home](../knowledge/ux-patterns/home-dashboard.md).
 
 Write down in a few lines what you'll take from each reference. Keep links only.

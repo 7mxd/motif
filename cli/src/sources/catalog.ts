@@ -55,8 +55,7 @@ export type RetiredId = "refero" | "21st" | "60fps";
 export interface RetiredSource {
   id: RetiredId;
   label: string;
-  /** Matched against "<server name>
-<server settings JSON>", as for SourceInfo. */
+  /** Matched against "<server name>\n<server settings JSON>", as for SourceInfo. */
   configPattern: RegExp;
   /** What Motif has built in instead, in a few words. */
   builtIn: string;
