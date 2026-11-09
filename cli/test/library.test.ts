@@ -17,7 +17,7 @@ const PIECES: Record<string, string[]> = {
   accents: ["bold.md", "dark-tech.md", "editorial.md", "minimal.md", "playful.md", "soft.md", "trust.md", "warm.md"],
 };
 /** The groups written so far; each later task adds its own. */
-const READY = new Set(["charts", "cards", "motion"]);
+const READY = new Set(["charts", "cards", "screens", "motion", "accents"]);
 
 /** Each stack's reduced-motion switch, as its adapter's motion.md spells it. */
 const REDUCED: Record<string, string> = {
