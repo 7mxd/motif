@@ -19,7 +19,7 @@ Usage: motif <command> [options]
 
 Commands:
   doctor     Explain what works on this computer and what's optional
-  connect    Connect optional design sources (Motion, Refero, 21st.dev, 60fps.design) to your coding agents (--agent claude,cursor picks them)
+  connect    Connect the optional Motion docs source to your coding agents (--agent claude,cursor picks them)
   validate   Check your design guide (DESIGN.md + design/tokens.json)
   tokens     Turn your design guide into theme code for your app
   check      Find colours, sizes and animations that bypass your design guide

@@ -33,8 +33,6 @@ export interface AgentInfo {
   notFound(e: AgentEnv): string;
   /** User settings first, then the project's. */
   settings(e: AgentEnv, cwd: string): SettingsFile[];
-  /** How to sign in to a server that needs it (Refero, 60fps.design), as the end of a sentence. */
-  signIn(server: string): string;
 }
 
 export function defaultAgentEnv(): AgentEnv {
@@ -102,7 +100,6 @@ export const AGENTS: AgentInfo[] = [
     found: (e) => Boolean(e.which("claude") || claudeLocal(e)),
     notFound: (e) => `no "claude" command on PATH, and no ${shown(e, claudeInstalled(e))}`,
     settings: (e, cwd) => [user(e, claudeSettings(e), "json", "mcpServers"), project(cwd, ".mcp.json", "json", "mcpServers")],
-    signIn: (s) => `in Claude Code, type /mcp, choose "${s}" and sign in`,
   },
   {
     id: "codex",
@@ -111,7 +108,6 @@ export const AGENTS: AgentInfo[] = [
     found: (e) => Boolean(e.which("codex")) || existsSync(codexHome(e)),
     notFound: (e) => `no "codex" command on PATH, and no ${shown(e, codexHome(e))} folder`,
     settings: (e, cwd) => [user(e, join(codexHome(e), "config.toml"), "toml", "mcp_servers"), project(cwd, ".codex/config.toml", "toml", "mcp_servers")],
-    signIn: (s) => `run "codex mcp login ${s}" in a terminal, or in Codex's app or editor extension open MCP servers in its settings and choose Authenticate`,
   },
   {
     id: "cursor",
@@ -119,7 +115,6 @@ export const AGENTS: AgentInfo[] = [
     found: (e) => existsSync(join(e.home, ".cursor")) || Boolean(e.which("cursor") || e.which("cursor-agent")),
     notFound: (e) => `no ${shown(e, join(e.home, ".cursor"))} folder, and no "cursor" or "cursor-agent" command on PATH`,
     settings: (e, cwd) => [user(e, join(e.home, ".cursor", "mcp.json"), "json", "mcpServers"), project(cwd, ".cursor/mcp.json", "json", "mcpServers")],
-    signIn: (s) => `in Cursor's settings, under MCP, sign in to "${s}" (or run "cursor-agent mcp login ${s}")`,
   },
   {
     id: "copilot",
@@ -131,7 +126,6 @@ export const AGENTS: AgentInfo[] = [
       project(cwd, ".mcp.json", "json", "mcpServers"),
       project(cwd, ".github/mcp.json", "json", "mcpServers"),
     ],
-    signIn: (s) => `in Copilot CLI, type /mcp and sign in to "${s}"`,
   },
   {
     id: "vscode",
@@ -139,7 +133,6 @@ export const AGENTS: AgentInfo[] = [
     found: (e) => Boolean(e.which("code")) || existsSync(vscodeUserDir(e)),
     notFound: (e) => `no "code" command on PATH, and no ${shown(e, vscodeUserDir(e))} folder`,
     settings: (e, cwd) => [user(e, join(vscodeUserDir(e), "mcp.json"), "json", "servers"), project(cwd, ".vscode/mcp.json", "json", "servers")],
-    signIn: (s) => `VS Code asks you to sign in to "${s}" the first time Copilot uses it`,
   },
   {
     id: "gemini",
@@ -147,7 +140,6 @@ export const AGENTS: AgentInfo[] = [
     found: (e) => Boolean(e.which("gemini")),
     notFound: () => 'no "gemini" command on PATH',
     settings: (e, cwd) => [user(e, join(geminiDir(e), "settings.json"), "json", "mcpServers"), project(cwd, ".gemini/settings.json", "json", "mcpServers")],
-    signIn: (s) => `in Gemini CLI, type /mcp auth ${s}`,
   },
   {
     id: "opencode",
@@ -160,7 +152,6 @@ export const AGENTS: AgentInfo[] = [
       project(cwd, "opencode.json", "json", "mcp"),
       project(cwd, "opencode.jsonc", "json", "mcp"),
     ],
-    signIn: (s) => `run "opencode mcp auth ${s}" in a terminal`,
   },
 ];
 

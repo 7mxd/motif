@@ -4,8 +4,8 @@ import { join } from "node:path";
 import type { CommandResult } from "../cli/output";
 import { BROWSER_OFF, browserOff, findBrowser, type BrowserInfo } from "../detect/browser";
 import { AGENTS, shown, type AgentEnv } from "../agents/catalog";
-import { readAgentServers, sourcesIn } from "../detect/sources";
-import { SOURCES } from "../sources/catalog";
+import { readAgentServers, retiredIn, sourcesIn } from "../detect/sources";
+import { RETIRED, SOURCES } from "../sources/catalog";
 import { ADAPTERS_AVAILABLE, detectApps, NODE_STACKS, siteDir, STACK_LABELS } from "../detect/stacks";
 import { diskFiles, type DoctorFiles } from "../project/disk";
 import { ignoredByGit, ignoredNotes } from "../project/git";
@@ -152,6 +152,17 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
   } else {
     push("sources", "optional", "Design sources", 'None connected. Everything works without them; you can add them later with "motif connect".');
   }
+  // Sources retired in 2.0 that an agent still has: worth removing, never an error, and Motif doesn't touch the file.
+  const retired = retiredIn(read.servers);
+  if (retired.length > 0) {
+    const parts = RETIRED.filter((r) => retired.some((c) => c.id === r.id)).map((r) => {
+      const mine = retired.filter((c) => c.id === r.id);
+      const servers = [...new Set(mine.map((c) => c.server))].map((n) => `"${n}"`).join(" and ");
+      const agents = [...new Set(mine.map((c) => agentLabel(c.agent)))].join(", ");
+      return `${r.label}: retired, you can remove ${servers} from ${agents}'s settings`;
+    });
+    push("retired-sources", "optional", "Retired sources", `${parts.join("; ")}.`);
+  }
   if (read.unreadable.length > 0) {
     const files = read.unreadable.map((p) => shown(agentEnv, p)).join(", ");
     const why = read.unreadable.length === 1 ? "it isn't valid, or can't be opened" : "they aren't valid, or can't be opened";
@@ -159,5 +170,5 @@ export async function runDoctor(cwd: string, deps: DoctorDeps = defaultDoctorDep
   }
 
   const text = ["Motif doctor", ...items.map((i) => `  ${SYMBOL[i.status]} ${i.label} — ${i.detail}`)].join("\n");
-  return { command: "doctor", exitCode: 0, text, data: { items, apps, sources, unreadable: read.unreadable } };
+  return { command: "doctor", exitCode: 0, text, data: { items, apps, sources, retired, unreadable: read.unreadable } };
 }

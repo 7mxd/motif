@@ -1,5 +1,8 @@
-/** Optional design sources, as verified on 2026-10-13 (docs/decisions/0002-design-sources.md). */
-export type SourceId = "refero" | "21st" | "60fps" | "motion";
+/**
+ * Optional design sources, as verified on 2026-10-13 (docs/decisions/0002-design-sources.md). Since 2.0 only Motion is
+ * left: the others are retired (docs/decisions/0015-built-in-instead-of-sources.md).
+ */
+export type SourceId = "motion";
 
 export interface SourceInfo {
   id: SourceId;
@@ -20,9 +23,8 @@ export interface SourceInfo {
     /** The name used instead when an agent already has another server called name (usemotion.com's "motion"). */
     fallback: string;
     url: string;
-    /** none: open; oauth: sign in inside the agent; key: a key in a header. */
-    auth: "none" | "oauth" | "key";
-    keyHeader?: string;
+    /** Open: nothing to sign in to, no key. */
+    auth: "none";
   };
   docs: string;
 }
@@ -41,44 +43,30 @@ export const SOURCES: SourceInfo[] = [
     connect: { name: "motion", fallback: "motion-dev", url: "https://mcp.motion.dev", auth: "none" },
     docs: "https://motion.dev/docs/ai-kit",
   },
-  {
-    id: "refero",
-    label: "Refero",
-    gives: "real app and website screens, flows and style guides to research with",
-    cost: "Paid Refero plan (Pro, Team or Lifetime)",
-    configPattern: /refero/i,
-    tools: [
-      "refero_search_styles", "refero_get_style", "refero_search_screens", "refero_get_screen", "refero_get_similar_screens",
-      "refero_get_screen_image", "refero_search_flows", "refero_get_flow", "refero_search_site", "refero_search_app",
-    ],
-    note: "Up to 8,000 tool calls a month on paid plans.",
-    connect: { name: "refero", fallback: "refero-design", url: "https://api.refero.design/mcp", auth: "oauth" },
-    docs: "https://doc.refero.design/mcp/getting-started",
-  },
-  {
-    id: "21st",
-    label: "21st.dev",
-    gives: "React component ideas and code to adapt",
-    cost: "Free key; paid plans for more code copies",
-    configPattern: /21st\.dev\/api\/mcp/i,
-    tools: ["search", "get_component", "get_inspiration", "search_logo"],
-    note: "The free key allows unlimited search and 2 code copies a day.",
-    connect: { name: "21st", fallback: "21st-dev", url: "https://21st.dev/api/mcp", auth: "key", keyHeader: "x-api-key" },
-    docs: "https://21st.dev/mcp.md",
-  },
-  {
-    id: "60fps",
-    label: "60fps.design",
-    gives: "iOS motion and interaction references with SwiftUI breakdowns",
-    cost: "Paid 60fps MCP plan",
-    configPattern: /60fps/i,
-    tools: ["60fps_search_shots", "60fps_list_filters", "60fps_get_shot", "60fps_get_motion_breakdown", "60fps_get_motion_code", "60fps_get_related_shots"],
-    note: "iOS shots only; code comes as SwiftUI.",
-    connect: { name: "60fps", fallback: "60fps-design", url: "https://mcp.60fps.design/mcp", auth: "oauth" },
-    docs: "https://60fps.design/mcp",
-  },
 ];
 
 export function sourceById(id: string): SourceInfo | undefined {
   return SOURCES.find((s) => s.id === id);
+}
+
+/** The sources retired in 2.0, kept so Motif can recognise what they left in agents' settings. */
+export type RetiredId = "refero" | "21st" | "60fps";
+
+export interface RetiredSource {
+  id: RetiredId;
+  label: string;
+  /** Matched against "<server name>\n<server settings JSON>", as for SourceInfo. */
+  configPattern: RegExp;
+  /** What Motif has built in instead, in a few words. */
+  builtIn: string;
+}
+
+export const RETIRED: RetiredSource[] = [
+  { id: "refero", label: "Refero", configPattern: /refero/i, builtIn: "reference notes in the UX pattern guides" },
+  { id: "21st", label: "21st.dev", configPattern: /21st\.dev\/api\/mcp/i, builtIn: "a library of pieces for every stack" },
+  { id: "60fps", label: "60fps.design", configPattern: /60fps/i, builtIn: "motion recipes for every stack, SwiftUI included" },
+];
+
+export function retiredById(id: string): RetiredSource | undefined {
+  return RETIRED.find((r) => r.id === id);
 }

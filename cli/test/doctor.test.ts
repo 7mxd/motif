@@ -480,9 +480,47 @@ describe("runDoctor", () => {
 
   test("lists connected design sources", async () => {
     const dir = tempDir("motif-src-");
-    writeFileSync(join(dir, ".mcp.json"), JSON.stringify({ mcpServers: { refero: { url: "https://x" } } }));
+    writeFileSync(join(dir, ".mcp.json"), JSON.stringify({ mcpServers: { motion: { url: "https://mcp.motion.dev" } } }));
     const r = await runDoctor(dir, deps());
-    expect(item(r.data.items as DoctorItem[], "sources")).toMatchObject({ status: "ok", detail: "Connected: Refero (Claude Code, GitHub Copilot CLI)." });
+    expect(item(r.data.items as DoctorItem[], "sources")).toMatchObject({ status: "ok", detail: "Connected: Motion (Claude Code, GitHub Copilot CLI)." });
+    expect((r.data.items as DoctorItem[]).find((i) => i.id === "retired-sources")).toBeUndefined();
+  });
+
+  test("a source retired in 2.0 is reported as one you can remove, never as an error, and its settings are left alone (2.0)", async () => {
+    const dir = tempDir("motif-src-");
+    const settings = join(dir, ".mcp.json");
+    const before = JSON.stringify({ mcpServers: { refero: { url: "https://x" } } });
+    writeFileSync(settings, before);
+    const r = await runDoctor(dir, deps());
+    expect(r.exitCode).toBe(0);
+    expect(item(r.data.items as DoctorItem[], "sources")).toMatchObject({ status: "optional" });
+    expect(item(r.data.items as DoctorItem[], "sources")!.detail).toContain("None connected");
+    expect(item(r.data.items as DoctorItem[], "retired-sources")).toMatchObject({
+      status: "optional",
+      label: "Retired sources",
+      detail: `Refero: retired, you can remove "refero" from Claude Code, GitHub Copilot CLI's settings.`,
+    });
+    expect(r.data.retired).toEqual([
+      { id: "refero", agent: "claude", server: "refero", where: ".mcp.json" },
+      { id: "refero", agent: "copilot", server: "refero", where: ".mcp.json" },
+    ]);
+    expect(readFileSync(settings, "utf8")).toBe(before);
+  });
+
+  test("Motion connected and 60fps.design retired are each reported once, in their own item (2.0)", async () => {
+    const home = tempDir("motif-doc-home-");
+    mkdirSync(join(home, ".cursor"), { recursive: true });
+    writeFileSync(join(home, ".cursor", "mcp.json"), JSON.stringify({
+      mcpServers: { motion: { url: "https://mcp.motion.dev" }, "60fps": { url: "https://mcp.60fps.design/mcp" } },
+    }));
+    const r = await runDoctor(tempDir("motif-doc-app-"), deps({ home, platform: "linux", vars: {} }));
+    expect(r.exitCode).toBe(0);
+    expect(item(r.data.items as DoctorItem[], "sources")).toMatchObject({ status: "ok", detail: "Connected: Motion (Cursor)." });
+    expect(item(r.data.items as DoctorItem[], "retired-sources")).toMatchObject({
+      status: "optional",
+      detail: `60fps.design: retired, you can remove "60fps" from Cursor's settings.`,
+    });
+    expect(r.text).toContain("○ Retired sources — 60fps.design: retired");
   });
 
   test("names the agents that have each source, and the settings files it couldn't read (Part 3)", async () => {
@@ -496,7 +534,7 @@ describe("runDoctor", () => {
     expect(item(r.data.items as DoctorItem[], "sources")).toMatchObject({ status: "ok", detail: "Connected: Motion (Cursor)." });
     const sources = r.data.sources as { id: string; agents: { agent: string; server: string; where: string }[] }[];
     expect(sources.find((s) => s.id === "motion")!.agents).toEqual([{ agent: "cursor", server: "motion", where: "~/.cursor/mcp.json" }]);
-    expect(sources.find((s) => s.id === "refero")!.agents).toEqual([]);
+    expect(sources.map((s) => s.id)).toEqual(["motion"]);
     expect(r.data.unreadable).toEqual([join(home, ".gemini", "settings.json")]);
   });
 

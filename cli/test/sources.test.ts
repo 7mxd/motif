@@ -1,12 +1,19 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { findConfiguredSources, readAgentServers } from "../src/detect/sources";
+import { findConfiguredSources, readAgentServers, retiredIn, sourcesIn, type AgentServer } from "../src/detect/sources";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
 afterAll(cleanupTempDirs);
 
 const tmp = () => tempDir("motif-src-");
+
+/** Everything Motif recognises in the agents' settings: the sources, and since 2.0 the retired ones (which these tests use as examples). */
+function found(cwd: string, home: string, e: { platform?: NodeJS.Platform; vars?: Record<string, string> } = {}) {
+  const env = { home, platform: e.platform ?? process.platform, vars: e.vars ?? {}, which: () => null };
+  const servers = readAgentServers(cwd, env).servers;
+  return [...sourcesIn(servers), ...retiredIn(servers)];
+}
 
 describe("findConfiguredSources", () => {
   test("reads project .mcp.json and ~/.claude.json (global + this project)", () => {
@@ -17,7 +24,7 @@ describe("findConfiguredSources", () => {
       mcpServers: { "60fps": { type: "http", url: "https://example.com" } },
       projects: { [cwd.replace(/\\/g, "/")]: { mcpServers: { "21st": { type: "http", url: "https://21st.dev/api/mcp" } } } },
     }));
-    expect(findConfiguredSources(cwd, home).filter((s) => s.agent === "claude").map((s) => s.id).sort()).toEqual(["21st", "60fps", "refero"]);
+    expect(found(cwd, home).filter((s) => s.agent === "claude").map((s) => s.id).sort()).toEqual(["21st", "60fps", "refero"]);
   });
 
   test("ignores other projects' servers and unrelated servers", () => {
@@ -27,13 +34,13 @@ describe("findConfiguredSources", () => {
       mcpServers: { github: { command: "gh-mcp" } },
       projects: { "/somewhere/else": { mcpServers: { refero: { url: "x" } } } },
     }));
-    expect(findConfiguredSources(cwd, home)).toEqual([]);
+    expect(found(cwd, home)).toEqual([]);
   });
 
   test("config files with a byte-order mark are still read", () => {
     const cwd = tmp();
     writeFileSync(join(cwd, ".mcp.json"), "\uFEFF" + JSON.stringify({ mcpServers: { refero: { url: "https://x" } } }));
-    expect([...new Set(findConfiguredSources(cwd, tmp()).map((s) => s.id))]).toEqual(["refero"]);
+    expect([...new Set(found(cwd, tmp()).map((s) => s.id))]).toEqual(["refero"]);
   });
 
   test("broken config files are ignored", () => {
@@ -62,7 +69,7 @@ describe("every agent's settings (Part 3)", () => {
     put(join(home, ".gemini", "settings.json"), JSON.stringify({ mcpServers: { k: { httpUrl: "https://21st.dev/api/mcp" } } }));
     put(join(home, ".config", "opencode", "opencode.jsonc"), '{ "mcp": { "refero": { "type": "remote", "url": "https://api.refero.design/mcp" } } }');
     put(join(cwd, ".codex", "config.toml"), '[mcp_servers.motion]\nurl = "https://mcp.motion.dev"\n');
-    expect(findConfiguredSources(cwd, home, linux()).map((s) => `${s.agent}:${s.id}@${s.where}`).sort()).toEqual([
+    expect(found(cwd, home, linux()).map((s) => `${s.agent}:${s.id}@${s.where}`).sort()).toEqual([
       "codex:motion@.codex/config.toml", "codex:refero@~/.codex/config.toml", "copilot:60fps@~/.copilot/mcp-config.json",
       "cursor:motion@~/.cursor/mcp.json", "gemini:21st@~/.gemini/settings.json", "opencode:refero@~/.config/opencode/opencode.jsonc",
       "vscode:motion@~/.config/Code/User/mcp.json",
@@ -74,19 +81,19 @@ describe("every agent's settings (Part 3)", () => {
     const home = tmp();
     put(join(home, ".cursor", "mcp.json"), '{\n  // mine\n  "mcpServers": {\n    "motion": { "url": "https://mcp.motion.dev", },\n  },\n}\n');
     put(join(cwd, ".vscode", "mcp.json"), '/* team */ { "servers": { "refero": { "type": "http", "url": "https://api.refero.design/mcp" } } }');
-    expect(findConfiguredSources(cwd, home, linux()).map((s) => `${s.agent}:${s.id}`).sort()).toEqual(["cursor:motion", "vscode:refero"]);
+    expect(found(cwd, home, linux()).map((s) => `${s.agent}:${s.id}`).sort()).toEqual(["cursor:motion", "vscode:refero"]);
   });
 
   test("a project's .mcp.json counts for Claude Code and Copilot CLI, which both read it", () => {
     const cwd = tmp();
     put(join(cwd, ".mcp.json"), JSON.stringify({ mcpServers: { refero: { url: "https://api.refero.design/mcp" } } }));
-    expect(findConfiguredSources(cwd, tmp(), linux()).map((s) => s.agent).sort()).toEqual(["claude", "copilot"]);
+    expect(found(cwd, tmp(), linux()).map((s) => s.agent).sort()).toEqual(["claude", "copilot"]);
   });
 
   test("a source under another server name still counts, once per agent (review focus)", () => {
     const home = tmp();
     put(join(home, ".cursor", "mcp.json"), JSON.stringify({ mcpServers: { "refero-design": { url: "https://api.refero.design/mcp" }, refero: { url: "https://api.refero.design/mcp" } } }));
-    expect(findConfiguredSources(tmp(), home, linux())).toEqual([{ id: "refero", agent: "cursor", server: "refero-design", where: "~/.cursor/mcp.json" }]);
+    expect(found(tmp(), home, linux())).toEqual([{ id: "refero", agent: "cursor", server: "refero-design", where: "~/.cursor/mcp.json" }]);
   });
 
   test("a settings file that can't be read is named, and the others are still read (review focus)", () => {
@@ -102,5 +109,34 @@ describe("every agent's settings (Part 3)", () => {
     const home = tmp();
     put(join(home, "cx", "config.toml"), '[mcp_servers.motion]\nurl = "https://mcp.motion.dev"\n');
     expect(findConfiguredSources(tmp(), home, linux({ CODEX_HOME: join(home, "cx") })).map((s) => `${s.agent}@${s.where}`)).toEqual(["codex@~/cx/config.toml"]);
+  });
+});
+
+describe("sources retired in 2.0", () => {
+  const servers = (...defs: [string, string][]): AgentServer[] =>
+    defs.map(([name, url]) => ({ agent: "claude", name, def: { type: "http", url }, where: "~/.claude.json" }));
+
+  test("a retired source isn't a source any more; it's reported as retired (review focus)", () => {
+    const s = servers(["refero", "https://api.refero.design/mcp"], ["motion", "https://mcp.motion.dev"]);
+    expect(sourcesIn(s).map((x) => x.id)).toEqual(["motion"]);
+    expect(retiredIn(s)).toEqual([{ id: "refero", agent: "claude", server: "refero", where: "~/.claude.json" }]);
+  });
+
+  test("each retired source counts once per agent, from the first server that matches", () => {
+    const s = servers(["60fps-design", "https://mcp.60fps.design/mcp"], ["60fps", "https://mcp.60fps.design/mcp"], ["21st", "https://21st.dev/api/mcp"]);
+    expect(retiredIn(s).map((x) => `${x.id}:${x.server}`)).toEqual(["60fps:60fps-design", "21st:21st"]);
+  });
+
+  test("the settings each retired source's own installer wrote are all recognised", () => {
+    const cwd = tmp();
+    const home = tmp();
+    writeFileSync(join(cwd, ".mcp.json"), JSON.stringify({
+      mcpServers: { "21st": { type: "http", url: "https://21st.dev/api/mcp", headers: { "x-api-key": "${API_KEY_21ST}" } } },
+    }));
+    writeFileSync(join(home, ".claude.json"), JSON.stringify({
+      mcpServers: { refero: { type: "http", url: "https://api.refero.design/mcp" }, library: { type: "http", url: "https://mcp.60fps.design/mcp" } },
+    }));
+    expect([...new Set(found(cwd, home).map((s) => s.id))].sort()).toEqual(["21st", "60fps", "refero"]);
+    expect(findConfiguredSources(cwd, home)).toEqual([]);
   });
 });

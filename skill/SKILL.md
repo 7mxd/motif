@@ -32,7 +32,7 @@ Wherever Motif's files say `motif <command>`, run it this way. If your agent did
 ## At the start of a session
 
 1. Run `motif doctor --json` once. `apps` lists the apps in this folder with their stacks; `items` says whether there's a browser, the app's toolchain and a valid design guide, and which design sources are connected. Run it again only after something changes (an install, a new app).
-2. Look through your own tools for the design sources the notes describe: [Motion](sources/motion-dev.md), [Refero](sources/refero.md), [21st.dev](sources/21st.md) and [60fps.design](sources/60fps.md) ([Supahero](sources/supahero.md) needs nothing). Tell the developer once, in one line, for example: "Connected: Motion · Optional: Refero, 21st.dev, 60fps.design (`motif connect` adds them later)." Don't repeat it in the same session.
+2. Look through your own tools for Motion's docs search ([Motion](sources/motion-dev.md); [Supahero](sources/supahero.md) needs nothing). Tell the developer once, in one line: "Built in: library, motion recipes, reference notes · Optional: Motion" (add "connected" when it is, or "`motif connect motion` adds it" when it isn't). Don't repeat it in the same session.
 3. If `design/.progress.json` exists, an earlier new app or feature stopped part-way. Offer to continue it before starting anything else.
 
 ## Choosing what to do
@@ -96,5 +96,5 @@ Make sure `design/.gitignore` lists `.progress.json` and `directions/` (create i
 - Knowledge: [visual craft](knowledge/visual-craft.md), [character](knowledge/character.md), [anti-patterns](knowledge/anti-patterns.md), [type pairings](knowledge/type-pairings.md), [motion](knowledge/motion.md), [accessibility](knowledge/accessibility.md), [variants](knowledge/variants.md), and one guide per UX pattern in `knowledge/ux-patterns/`, such as [sign-in](knowledge/ux-patterns/sign-in.md) and [lists and feeds](knowledge/ux-patterns/lists-feeds.md).
 - `presets/<style>/`: the 8 starting styles (`tokens.json`, `about.md`, `sample.html`).
 - [preview-kit/README.md](preview-kit/README.md): how to write mockups.
-- `sources/`: one note per design source. `adapters/`: one guide per stack.
+- `sources/`: one note per optional source (Motion, Supahero). `adapters/`: one guide per stack.
 - [agents.md](agents.md): what differs between agents (where this folder is, the question prompt, the shell).

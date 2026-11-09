@@ -14,7 +14,7 @@ Ask, with choices where you can: what the feature does, who uses it, and their p
 
 ## 3. Research the pattern
 
-Read the matching UX pattern guides in `knowledge/ux-patterns/` in the skill folder: a settings screen needs [settings](../knowledge/ux-patterns/settings.md); a list people search needs [lists and feeds](../knowledge/ux-patterns/lists-feeds.md) and [search and filters](../knowledge/ux-patterns/search-filters.md). With Refero connected, also see how real products handle it ([Refero](../sources/refero.md)). Note the anatomy and required states you'll build.
+Read the matching UX pattern guides in `knowledge/ux-patterns/` in the skill folder: a settings screen needs [settings](../knowledge/ux-patterns/settings.md); a list people search needs [lists and feeds](../knowledge/ux-patterns/lists-feeds.md) and [search and filters](../knowledge/ux-patterns/search-filters.md). Note the anatomy and required states you'll build.
 
 ## 4. Mockup ⏸
 
