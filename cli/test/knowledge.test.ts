@@ -125,3 +125,28 @@ describe("type pairings: the final review's small items", () => {
     expect(skill("adapters/plain-web/tokens.md")).toContain("readex-pro-arabic-wght-normal.woff2");
   });
 });
+
+describe("knowledge: 2.0 character (no screen is plain)", () => {
+  const lower = (rel: string) => read(rel).toLowerCase();
+  test("character.md drops the plain rule for business tools and sets option B as the floor (review focus)", () => {
+    const text = read("character.md");
+    expect(text).not.toContain("keep their working screens plain");
+    const missing = ["how loud, not whether", "one deep `brand` card", "trend line", "progress ring", "segmented"].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+  test("character.md has the fullness rule and the empty-area check", () => {
+    const text = lower("character.md");
+    const missing = ["empty band", "what's happening", "what should i do next", "never invented charts"].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+  test("visual-craft.md: a real desktop layout and a short top navigation", () => {
+    const text = lower("visual-craft.md");
+    const missing = ["real desktop layout", "never a centred phone column", "few destinations"].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+  test("anti-patterns.md names the C look as the limit", () => {
+    const text = lower("anti-patterns.md");
+    const missing = ["the c look", "glowing", "tilted", "one subtle gradient", "decoration that carries no information", "crowded top menu"].filter((s) => !text.includes(s));
+    expect(missing).toEqual([]);
+  });
+});

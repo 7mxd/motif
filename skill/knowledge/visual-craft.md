@@ -121,7 +121,9 @@ Cards sitting on a surface often look better with a `border` and no shadow at al
 **Phone and desktop are different layouts, not one layout resized.**
 
 - Phone: one column, stacked; the primary action within thumb reach (bottom of the screen or end of the content); navigation in a tab bar or a back button.
-- Desktop: navigation beside the content; forms keep their readable width; secondary panels can sit beside the main one instead of below it.
+- Desktop: navigation beside the content; forms keep their readable width; secondary panels can sit beside the main one instead of below it. Home and landing screens get a real desktop layout (columns, cards side by side), never a centred phone column with empty space on both sides.
+
+**Top navigation keeps to the few destinations people use most** (three to five); the rest goes in a menu or under the profile. A top bar full of options reads as clutter, not as a full app.
 
 ## Imagery and icons
 
