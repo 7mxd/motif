@@ -55,16 +55,8 @@ describe("the agents Motif sets design sources up for", () => {
     expect(paths("vscode", env({ platform: "win32", vars: { APPDATA: join("/h", "AppData", "Roaming") } }))[0]![0]).toBe("~/AppData/Roaming/Code/User/mcp.json");
   });
 
-  test("say how to sign in to a server, each in its own way", () => {
-    expect(Object.fromEntries(AGENTS.map((a) => [a.id, a.signIn("refero")]))).toEqual({
-      claude: 'in Claude Code, type /mcp, choose "refero" and sign in',
-      codex: 'run "codex mcp login refero" in a terminal, or in Codex\'s app or editor extension open MCP servers in its settings and choose Authenticate',
-      cursor: 'in Cursor\'s settings, under MCP, sign in to "refero" (or run "cursor-agent mcp login refero")',
-      copilot: 'in Copilot CLI, type /mcp and sign in to "refero"',
-      vscode: 'VS Code asks you to sign in to "refero" the first time Copilot uses it',
-      gemini: "in Gemini CLI, type /mcp auth refero",
-      opencode: 'run "opencode mcp auth refero" in a terminal',
-    });
+  test("no longer carry sign-in steps: no design source needs one since 2.0", () => {
+    for (const a of AGENTS) expect([a.id, "signIn" in a]).toEqual([a.id, false]);
   });
 
   test("show a path in the home folder as ~/…, and any other as it is", () => {

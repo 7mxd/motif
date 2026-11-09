@@ -1,23 +1,21 @@
-import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join } from "node:path";
 import type { CommandResult, RunContext } from "../cli/output";
 import {
-  AGENT_IDS, AGENTS, agentById, claudeLocal, claudeSettings, codexHome, configHome, copilotHome, defaultAgentEnv, geminiDir, shown, vscodeUserDir,
+  AGENT_IDS, AGENTS, agentById, claudeLocal, codexHome, defaultAgentEnv, vscodeUserDir,
   type AgentEnv, type AgentInfo,
 } from "../agents/catalog";
-import { addJsonServer, addTomlServer, linkTarget, type Edited } from "../agents/edit";
+import { addJsonServer, addTomlServer, type Edited } from "../agents/edit";
 import { findConfiguredSources, readAgentServers, type AgentServer, type ConfiguredSource } from "../detect/sources";
 import { windowsExe } from "../system";
-import { SOURCES, sourceById, type SourceInfo } from "../sources/catalog";
+import { retiredById, SOURCES, sourceById, type SourceInfo } from "../sources/catalog";
 
 export interface ConnectDeps {
   which: (cmd: string) => string | null;
   /** Runs a program; cwd is the folder to run it in (the current one when left out), env its environment (Motif's own when left out). */
   run: (exe: string, args: string[], cwd?: string, env?: Record<string, string | undefined>) => Promise<{ code: number; output: string }>;
-  /** True when a person is at the terminal (Motif never reads keys any other way). */
+  /** True when a person is at the terminal, who can be asked which agents to set up. */
   interactive: boolean;
-  readSecret: (prompt: string) => Promise<string>;
   /** Reads a line the developer types in their own terminal (shown as typed): which agents to set up. Null when the input ends. */
   ask: (prompt: string) => Promise<string | null>;
   configured: () => ConfiguredSource[];
@@ -52,36 +50,6 @@ export async function runCommand(exe: string, args: string[], cwd?: string, env?
   return { code, output: `${out}${err}`.trim() };
 }
 
-/** Reads a line from the terminal without showing it. The prompt goes to stderr, so it never mixes into --json output. */
-export function readSecret(prompt: string, stdin: NodeJS.ReadableStream = process.stdin, stdout: NodeJS.WritableStream = process.stderr): Promise<string> {
-  stdout.write(prompt);
-  const raw = (on: boolean) => (stdin as { setRawMode?: (on: boolean) => void }).setRawMode?.(on);
-  raw(true);
-  stdin.resume();
-  let value = "";
-  return new Promise((resolve) => {
-    const finish = (cancelled: boolean) => {
-      stdin.off("data", onData);
-      stdin.off("end", onEnd);
-      raw(false);
-      stdin.pause();
-      stdout.write("\n");
-      resolve(cancelled ? "" : value.trim());
-    };
-    const onData = (chunk: Buffer | string) => {
-      for (const ch of String(chunk)) {
-        if (ch === "\r" || ch === "\n") return finish(false);
-        if (ch === "\u0003" || ch === "\u0004" || ch === "\u001a") return finish(true); // Ctrl+C, Ctrl+D, Ctrl+Z
-        if (ch === "\u007f" || ch === "\b") value = value.slice(0, -1);
-        else if (ch >= " ") value += ch;
-      }
-    };
-    const onEnd = () => finish(true);
-    stdin.on("data", onData);
-    stdin.on("end", onEnd);
-  });
-}
-
 /** Reads one line from the terminal, as typed; null when the input ends first (Ctrl+D, or Ctrl+Z on Windows). */
 export function readLine(prompt: string, stdin: NodeJS.ReadableStream = process.stdin, stdout: NodeJS.WritableStream = process.stderr): Promise<string | null> {
   stdout.write(prompt);
@@ -114,7 +82,6 @@ function defaultDeps(cwd: string): ConnectDeps {
     which: (cmd) => Bun.which(cmd),
     run: runCommand,
     interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-    readSecret,
     ask: readLine,
     configured: () => findConfiguredSources(cwd, home, defaultAgentEnv()),
     servers: () => readAgentServers(cwd, defaultAgentEnv()).servers,
@@ -125,38 +92,12 @@ function defaultDeps(cwd: string): ConnectDeps {
   };
 }
 
-/** Where people keep dotfiles in a bare repository (git --git-dir … --work-tree ~), yadm's included. */
-const DOTFILES_REPOS = [".dotfiles", ".cfg", ".dots", ".dotfiles.git", ".local/share/yadm/repo.git"];
-
-/** vcsh's repositories, one per set of dotfiles, all with the home folder as their work tree. */
-function vcshRepos(e: AgentEnv): string[] {
-  const dir = e.vars.VCSH_REPO_D || join(configHome(e), "vcsh", "repo.d");
-  try {
-    return readdirSync(dir).filter((n) => n.endsWith(".git")).sort().map((n) => join(dir, n));
-  } catch {
-    return [];
-  }
-}
-
-/**
- * The environment without what points git at a repository (GIT_DIR, GIT_WORK_TREE and the rest, as git hooks and some
- * dotfiles setups export them), so git -C finds the repository the file is really in.
- */
-function withoutRepoVars(vars: Record<string, string | undefined>): Record<string, string | undefined> {
-  const repoVars = /^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|NAMESPACE|PREFIX|IMPLICIT_WORK_TREE)$/i;
-  return Object.fromEntries(Object.entries(vars).filter(([k]) => !repoVars.test(k)));
-}
-
-/** The settings other agents take (a placeholder where a key goes). */
+/** The settings other agents take. */
 export function genericConfig(source: SourceInfo): string {
-  const server: Record<string, unknown> = { type: "http", url: source.connect.url };
-  if (source.connect.keyHeader) server.headers = { [source.connect.keyHeader]: `<your ${source.label} key>` };
-  return JSON.stringify({ mcpServers: { [source.connect.name]: server } }, null, 2);
+  return JSON.stringify({ mcpServers: { [source.connect.name]: { type: "http", url: source.connect.url } } }, null, 2);
 }
 
 const ids = SOURCES.map((s) => s.id).join(", ");
-/** Keys are tokens: at least 8 letters, digits or - _ . ~ + / =. Anything else is a paste mistake, and could be mangled on its way to claude. */
-const KEY = /^[A-Za-z0-9._~+/=-]{8,}$/;
 const fail = (text: string, data: Record<string, unknown>): CommandResult => ({ command: "connect", exitCode: 2, text, data });
 
 function list(deps: ConnectDeps): CommandResult {
@@ -194,14 +135,11 @@ export function pickAgents(answer: string, found: AgentInfo[]): AgentInfo[] | nu
 interface ServerSpec {
   name: string;
   url: string;
-  headers?: Record<string, string>;
 }
 
 interface AddResult {
   ok: boolean;
   output: string;
-  /** Files that now hold the key, to check against git. */
-  keyFiles: string[];
 }
 
 /**
@@ -209,55 +147,43 @@ interface AddResult {
  * can't — Codex's starts a sign-in and waits for a browser; VS Code's would pass JSON through cmd.exe on Windows.
  */
 async function addTo(agent: AgentInfo, server: ServerSpec, deps: ConnectDeps, env: AgentEnv): Promise<AddResult> {
-  const header = server.headers ? Object.entries(server.headers)[0] : undefined;
-  const colon = header ? ["--header", `${header[0]}: ${header[1]}`] : [];
-  const command = async (cli: string, args: string[], keyFiles: string[], installed: string | null = null): Promise<AddResult> => {
+  const command = async (cli: string, args: string[], installed: string | null = null): Promise<AddResult> => {
     const exe = deps.which(cli) ?? installed;
-    if (!exe) return { ok: false, output: `its "${cli}" command isn't on PATH`, keyFiles: [] };
+    if (!exe) return { ok: false, output: `its "${cli}" command isn't on PATH` };
     // From the home folder: an agent's command that can also write a project's settings never sees this project.
     const r = await deps.run(exe, args, env.home);
-    return { ok: r.code === 0, output: r.output, keyFiles };
+    return { ok: r.code === 0, output: r.output };
   };
-  const file = (path: string, edit: () => Edited): AddResult => {
+  const file = (edit: () => Edited): AddResult => {
     const r = edit();
-    return r.ok ? { ok: true, output: "", keyFiles: [path] } : { ok: false, output: r.reason, keyFiles: [] };
+    return r.ok ? { ok: true, output: "" } : { ok: false, output: r.reason };
   };
-  const holdsKey = Boolean(header);
-  const plain = { url: server.url, ...(server.headers ? { headers: server.headers } : {}) };
+  const plain = { url: server.url };
   switch (agent.id) {
     case "claude":
-      return command("claude", ["mcp", "add", ...colon, "--transport", "http", "--scope", "user", server.name, server.url], [claudeSettings(env)], claudeLocal(env));
+      return command("claude", ["mcp", "add", "--transport", "http", "--scope", "user", server.name, server.url], claudeLocal(env));
     case "codex": {
       const path = join(codexHome(env), "config.toml");
-      return file(path, () => addTomlServer(path, server.name, plain, holdsKey));
+      return file(() => addTomlServer(path, server.name, plain));
     }
     case "cursor": {
       const path = join(env.home, ".cursor", "mcp.json");
-      return file(path, () => addJsonServer(path, "mcpServers", server.name, plain, holdsKey));
+      return file(() => addJsonServer(path, "mcpServers", server.name, plain));
     }
     case "copilot":
-      return command("copilot", ["mcp", "add", "--transport", "http", ...colon, server.name, server.url], [join(copilotHome(env), "mcp-config.json")]);
+      return command("copilot", ["mcp", "add", "--transport", "http", server.name, server.url]);
     case "vscode": {
       const path = join(vscodeUserDir(env), "mcp.json");
-      return file(path, () => addJsonServer(path, "servers", server.name, { type: "http", ...plain }, holdsKey));
+      return file(() => addJsonServer(path, "servers", server.name, { type: "http", ...plain }));
     }
     case "gemini":
-      return command("gemini", ["mcp", "add", "--scope", "user", "--transport", "http", ...colon, server.name, server.url], [join(geminiDir(env), "settings.json")]);
-    case "opencode": {
-      const dir = join(configHome(env), "opencode");
-      const equals = header ? ["--header", `${header[0]}=${header[1]}`] : [];
-      return command("opencode", ["mcp", "add", server.name, "--url", server.url, ...equals], [join(dir, "opencode.jsonc"), join(dir, "opencode.json")]);
-    }
+      return command("gemini", ["mcp", "add", "--scope", "user", "--transport", "http", server.name, server.url]);
+    case "opencode":
+      return command("opencode", ["mcp", "add", server.name, "--url", server.url]);
   }
 }
 
-type AgentResult = { agent: AgentInfo; status: "added" | "already" | "failed"; server?: string; where?: string; output?: string; keyFiles?: string[] };
-
-function needsTerminal(source: SourceInfo, deps: ConnectDeps, agentFlag: string): CommandResult {
-  const run = `${deps.self} connect ${source.id}${agentFlag}`;
-  const powershell = run.startsWith('"') ? "\n(In PowerShell, type & and a space before it.)" : "";
-  return fail(`${source.label} needs a key. Run this in your own terminal, so the key never passes through the chat:\n  ${run}${powershell}`, { error: "needs-terminal", run });
-}
+type AgentResult = { agent: AgentInfo; status: "added" | "already" | "failed"; server?: string; where?: string; output?: string };
 
 export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps = defaultDeps(cwd)): Promise<CommandResult> {
   const id = ctx.positionals[0];
@@ -265,6 +191,11 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
   // For unattended runs (CI, Motif's own evals): nothing may change the developer's agents.
   if (deps.vars.MOTIF_NO_CONNECT && deps.vars.MOTIF_NO_CONNECT !== "0") {
     return fail("motif connect is turned off here (MOTIF_NO_CONNECT is set), so no agent's settings were changed.", { error: "connect-off" });
+  }
+  const retired = retiredById(id);
+  if (retired) {
+    const text = `${retired.label} was retired in Motif 2.0. Motif now has this built in: ${retired.builtIn}. There's nothing to connect, and nothing was changed.`;
+    return { command: "connect", exitCode: 0, text, data: { retired: retired.id } };
   }
   const source = sourceById(id);
   if (!source) return fail(`There's no design source called "${id}". Choose one of: ${ids}.`, { error: "no-such-source" });
@@ -280,10 +211,8 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
     }
   }
   const named = asked ? AGENTS.filter((a) => asked.includes(a.id)) : [];
-  // The ids as Motif read them, so a command it prints runs as it is.
-  const agentFlag = asked ? ` --agent ${named.map((a) => a.id).join(",")}` : "";
 
-  // Agents that already have the source are reported as such, and need no key.
+  // Agents that already have the source are reported as such.
   const configured = deps.configured();
   const has = (agent: AgentInfo) => configured.find((c) => c.id === source.id && c.agent === agent.id);
   // Another product's server may already have the source's name (usemotion.com's "motion"): it's kept, and the source
@@ -312,24 +241,11 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
       const picked = pickAgents(answer, found);
       if (!picked) return fail("That isn't a choice from the list. Nothing changed.", { error: "bad-choice" });
       chosen = picked;
-    } else if (source.connect.auth === "key" && found.some((a) => !has(a))) {
-      return needsTerminal(source, deps, agentFlag);
     } else {
       chosen = found;
       note = `Setting it up in every agent found (choose some with --agent): ${found.map((a) => a.label).join(", ")}.`;
     }
   }
-
-  let secret = "";
-  if (source.connect.auth === "key" && chosen.some((a) => !has(a) && !missing.includes(a) && nameFor(a))) {
-    if (!deps.interactive) return needsTerminal(source, deps, agentFlag);
-    const key = await deps.readSecret(`Paste your ${source.label} key (get one at ${source.docs}); it won't be shown: `);
-    if (!key) return fail("No key entered. Nothing changed.", { error: "no-key" });
-    if (!KEY.test(key)) return fail(`That doesn't look like a ${source.label} key (keys are at least 8 letters, digits or - _ . ~ + / =). Nothing changed.`, { error: "bad-key" });
-    secret = key;
-  }
-  const headers = secret ? { headers: { [source.connect.keyHeader!]: secret } } : {};
-  const hide = (text: string) => (secret ? text.replaceAll(secret, "<your key>") : text);
 
   const results: AgentResult[] = [];
   for (const agent of chosen) {
@@ -351,11 +267,11 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
     // One agent going wrong in a way nobody foresaw is that agent's failure; the others are still set up and reported.
     let r: AddResult;
     try {
-      r = await addTo(agent, { name, url: source.connect.url, ...headers }, deps, env);
+      r = await addTo(agent, { name, url: source.connect.url }, deps, env);
     } catch (e) {
-      r = { ok: false, output: e instanceof Error ? e.message : String(e), keyFiles: [] };
+      r = { ok: false, output: e instanceof Error ? e.message : String(e) };
     }
-    results.push(r.ok ? { agent, status: "added", server: name, keyFiles: r.keyFiles } : { agent, status: "failed", output: hide(r.output) });
+    results.push(r.ok ? { agent, status: "added", server: name } : { agent, status: "failed", output: r.output });
   }
 
   const ok = results.filter((r) => r.status !== "failed");
@@ -369,70 +285,6 @@ export async function runConnect(cwd: string, ctx: RunContext, deps: ConnectDeps
     else lines.push(`✗ ${r.agent.label}: couldn't add it: ${r.output}`);
   }
   if (failed.length > 0) lines.push(manual);
-  if (source.connect.auth === "oauth" && ok.length > 0) {
-    lines.push(`Next, sign in with your ${source.label} account:`);
-    for (const r of ok) lines.push(`  ${r.agent.label}: ${r.agent.signIn(r.server ?? source.connect.name)}.`);
-  }
-  if (secret) {
-    const git = deps.which("git");
-    // A settings file that is a link (dotfiles) put the key in the file it leads to, the one git may track; the link's
-    // own text holds no key. Each file is checked once, however many agents share it.
-    const keyFiles = new Map<string, string>();
-    for (const f of ok.flatMap((r) => r.keyFiles ?? [])) {
-      const file = linkTarget(f) ?? f;
-      let same = file;
-      try {
-        same = realpathSync.native(file);
-      } catch {}
-      if (!keyFiles.has(same)) keyFiles.set(same, file);
-    }
-    // Dotfiles kept in a bare repository (git --git-dir ~/.dotfiles --work-tree ~, yadm, vcsh's several) aren't seen by
-    // git -C; nor is one named by an exported GIT_DIR.
-    const yadm = env.vars.XDG_DATA_HOME ? [join(env.vars.XDG_DATA_HOME, "yadm", "repo.git")] : [];
-    const bareRepos: { repo: string; tree: string }[] = [...DOTFILES_REPOS.map((r) => join(env.home, r)), ...yadm, ...vcshRepos(env)]
-      .map((repo) => ({ repo, tree: env.home }));
-    if (env.vars.GIT_DIR) bareRepos.push({ repo: resolve(cwd, env.vars.GIT_DIR), tree: env.vars.GIT_WORK_TREE ? resolve(cwd, env.vars.GIT_WORK_TREE) : env.home });
-    const gitEnv = withoutRepoVars(env.vars);
-    /** Whether git tracks the file: yes, no, or what git said when it couldn't tell. */
-    const tracks = async (args: string[], at?: string): Promise<boolean | string> => {
-      let r: { code: number; output: string };
-      try {
-        // --literal-pathspecs: a folder named with [, * or ? is a name, not a pattern.
-        r = await deps.run(git!, ["--literal-pathspecs", ...args], at, gitEnv);
-      } catch (e) {
-        return e instanceof Error ? e.message : String(e);
-      }
-      if (r.code === 0) return true;
-      // 1: the file isn't in that repository. Outside any repository there's nothing to track it.
-      if (r.code === 1 || /not a git repository/i.test(r.output)) return false;
-      return r.output.split(/\r?\n/).find((l) => l.trim() !== "")?.trim() ?? `git ended with code ${r.code}`;
-    };
-    for (const file of keyFiles.values()) {
-      if (!git) break;
-      const unsure: string[] = [];
-      const here = await tracks(["-C", dirname(file), "ls-files", "--error-unmatch", basename(file)]);
-      if (here === true) {
-        lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by git. Remove it from that repository before you push.`);
-        continue;
-      }
-      if (typeof here === "string") unsure.push(here);
-      let found = false;
-      for (const { repo, tree } of bareRepos) {
-        const inTree = relative(tree, file);
-        if (inTree.startsWith("..") || isAbsolute(inTree) || !existsSync(join(repo, "HEAD"))) continue;
-        const there = await tracks(["--git-dir", repo, "--work-tree", tree, "ls-files", "--error-unmatch", inTree.split(sep).join("/")], tree);
-        if (there === true) {
-          lines.push(`Warning: ${shown(env, file)}, which now holds your key, is tracked by your dotfiles repository (${shown(env, repo)}). Remove it from that repository before you push.`);
-          found = true;
-          break;
-        }
-        if (typeof there === "string") unsure.push(there);
-      }
-      if (!found && unsure.length > 0) {
-        lines.push(`Warning: Motif couldn't check whether ${shown(env, file)}, which now holds your key, is tracked by git (git said: ${unsure[0]}). If it is, remove it from that repository before you push.`);
-      }
-    }
-  }
   if (ok.length > 0) lines.push(source.note, `Cost: ${source.cost}.`);
 
   const data: Record<string, unknown> = {

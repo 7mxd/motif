@@ -1,39 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
-import { genericConfig, readLine, readSecret, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
+import { genericConfig, readLine, runCommand, runConnect, selfCommand, spawnArgs, type ConnectDeps } from "../src/commands/connect";
 import type { ConfiguredSource } from "../src/detect/sources";
 import { sourceById } from "../src/sources/catalog";
 import { tempDir } from "./tmp";
 
-/** Whether this machine lets a test make a file link (Windows needs Developer Mode or an admin). */
-const canSymlink = (() => {
-  try {
-    const d = tempDir("motif-link-");
-    writeFileSync(join(d, "a"), "");
-    symlinkSync(join(d, "a"), join(d, "b"), "file");
-    return true;
-  } catch {
-    return false;
-  }
-})();
-
-function fakes(over: Partial<ConnectDeps> & { connected?: ConfiguredSource[]; claudeExit?: number; gitTracked?: boolean; key?: string } = {}) {
-  const calls = { runs: [] as { exe: string; args: string[] }[], prompts: 0 };
-  const { connected = [], claudeExit = 0, gitTracked = false, key = "secret-key", ...rest } = over;
+function fakes(over: Partial<ConnectDeps> & { connected?: ConfiguredSource[]; claudeExit?: number } = {}) {
+  const calls = { runs: [] as { exe: string; args: string[] }[] };
+  const { connected = [], claudeExit = 0, ...rest } = over;
   const deps: ConnectDeps = {
-    which: (cmd) => (cmd === "claude" ? "/usr/bin/claude" : cmd === "git" ? "/usr/bin/git" : null),
+    which: (cmd) => (cmd === "claude" ? "/usr/bin/claude" : null),
     run: async (exe, args) => {
       calls.runs.push({ exe, args });
-      if (exe.endsWith("git")) return { code: gitTracked ? 0 : 1, output: "" };
-      return { code: claudeExit, output: claudeExit === 0 ? "Added HTTP MCP server" : "MCP server 21st already exists in user config" };
+      return { code: claudeExit, output: claudeExit === 0 ? "Added HTTP MCP server" : "MCP server motion already exists in user config" };
     },
     interactive: true,
-    readSecret: async () => {
-      calls.prompts++;
-      return key;
-    },
     ask: async () => "",
     configured: () => connected,
     servers: () => [],
@@ -54,11 +37,9 @@ describe("motif connect (no source)", () => {
     const r = await runConnect(".", ctx(), deps);
     expect(r.exitCode).toBe(0);
     expect(r.text).toContain("✓ Motion");
-    expect(r.text).toContain("motif connect refero");
-    expect(r.text).toContain("Supahero");
-    expect((r.data.sources as { id: string; connected: boolean }[]).map((s) => [s.id, s.connected])).toEqual([
-      ["motion", true], ["refero", false], ["21st", false], ["60fps", false],
-    ]);
+    expect(r.text).toContain("Supahero needs nothing");
+    expect(r.text).not.toContain("Refero");
+    expect((r.data.sources as { id: string; connected: boolean }[]).map((s) => [s.id, s.connected])).toEqual([["motion", true]]);
     expect(r.text).toContain("In: Claude Code");
     expect((r.data.sources as { id: string; agents: string[] }[]).find((s) => s.id === "motion")!.agents).toEqual(["claude"]);
   });
@@ -68,20 +49,21 @@ describe("motif connect <source>", () => {
   test("an unknown source lists the real ones", async () => {
     const r = await runConnect(".", ctx("dribbble"), fakes().deps);
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("motion, refero, 21st, 60fps");
+    expect(r.text).toContain("Choose one of: motion.");
+    expect(r.data.error).toBe("no-such-source");
   });
 
   test("without Claude Code, it shows the settings to paste into another agent", async () => {
     const { deps, calls } = fakes({ which: () => null });
-    const r = await runConnect(".", ctx("refero"), deps);
+    const r = await runConnect(".", ctx("motion"), deps);
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("https://api.refero.design/mcp");
+    expect(r.text).toContain("https://mcp.motion.dev");
     expect(calls.runs).toEqual([]);
   });
 
   test("an already connected source is left alone", async () => {
-    const { deps, calls } = fakes({ connected: [{ id: "refero", agent: "claude", server: "refero", where: "~/.claude.json" }] });
-    const r = await runConnect(".", ctx("refero"), deps);
+    const { deps, calls } = fakes({ connected: [{ id: "motion", agent: "claude", server: "motion", where: "~/.claude.json" }] });
+    const r = await runConnect(".", ctx("motion"), deps);
     expect(r.exitCode).toBe(0);
     expect(r.text).toContain("~/.claude.json");
     expect(calls.runs).toEqual([]);
@@ -93,59 +75,13 @@ describe("motif connect <source>", () => {
     expect(r.exitCode).toBe(0);
     expect(claudeRuns(calls.runs)[0]!.args).toEqual(["mcp", "add", "--transport", "http", "--scope", "user", "motion", "https://mcp.motion.dev"]);
     expect(r.text).not.toContain("/mcp");
-    expect(calls.prompts).toBe(0);
-  });
-
-  test("Refero and 60fps sign in inside Claude Code", async () => {
-    const { deps, calls } = fakes();
-    const r = await runConnect(".", ctx("60fps"), deps);
-    expect(r.exitCode).toBe(0);
-    expect(claudeRuns(calls.runs)[0]!.args).toEqual(["mcp", "add", "--transport", "http", "--scope", "user", "60fps", "https://mcp.60fps.design/mcp"]);
-    expect(r.text).toContain("/mcp");
-    expect(calls.prompts).toBe(0);
-  });
-
-  test("a key is never read without the developer's own terminal", async () => {
-    const { deps, calls } = fakes({ interactive: false });
-    const r = await runConnect(".", ctx("21st"), deps);
-    expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("your own terminal");
-    expect(calls.prompts).toBe(0);
-    expect(calls.runs).toEqual([]);
-  });
-
-  test("a key is read hidden and stored in Claude Code's user settings", async () => {
-    const { deps, calls } = fakes();
-    const r = await runConnect(".", ctx("21st"), deps);
-    expect(r.exitCode).toBe(0);
-    expect(calls.prompts).toBe(1);
-    expect(claudeRuns(calls.runs)[0]!.args).toEqual([
-      "mcp", "add", "--header", "x-api-key: secret-key", "--transport", "http", "--scope", "user", "21st", "https://21st.dev/api/mcp",
-    ]);
-    expect(r.text).not.toContain("secret-key");
-    expect(JSON.stringify(r.data)).not.toContain("secret-key");
-    expect(r.text).not.toContain("tracked by git");
-  });
-
-  test("warns when the settings file holding the key is tracked by git", async () => {
-    const r = await runConnect(".", ctx("21st"), fakes({ gitTracked: true }).deps);
-    expect(r.exitCode).toBe(0);
-    expect(r.text).toContain("tracked by git");
-  });
-
-  test("an empty key changes nothing", async () => {
-    const { deps, calls } = fakes({ key: "" });
-    const r = await runConnect(".", ctx("21st"), deps);
-    expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("Nothing changed");
-    expect(claudeRuns(calls.runs)).toEqual([]);
   });
 
   test("when Claude Code refuses, its message and the manual settings are shown", async () => {
-    const r = await runConnect(".", ctx("refero"), fakes({ claudeExit: 1 }).deps);
+    const r = await runConnect(".", ctx("motion"), fakes({ claudeExit: 1 }).deps);
     expect(r.exitCode).toBe(2);
     expect(r.text).toContain("already exists");
-    expect(r.text).toContain("https://api.refero.design/mcp");
+    expect(r.text).toContain("https://mcp.motion.dev");
   });
 });
 
@@ -178,57 +114,18 @@ describe("running claude", () => {
     expect(r).toEqual({ code: 0, output: "given" });
   });
 
-  test("genericConfig is the JSON other agents take, with a key placeholder where one is needed", () => {
-    expect(JSON.parse(genericConfig(sourceById("21st")!))).toEqual({
-      mcpServers: { "21st": { type: "http", url: "https://21st.dev/api/mcp", headers: { "x-api-key": "<your 21st.dev key>" } } },
-    });
+  test("genericConfig is the JSON other agents take", () => {
     expect(JSON.parse(genericConfig(sourceById("motion")!))).toEqual({ mcpServers: { motion: { type: "http", url: "https://mcp.motion.dev" } } });
   });
 });
 
 describe("motif connect: from the final review", () => {
-  test("the refusal gives the developer a command they can run, also in --json", async () => {
-    const r = await runConnect(".", ctx("21st"), fakes({ interactive: false, self: "C:/Users/me/.motif/bin/0.1.0/motif.exe" }).deps);
-    expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("C:/Users/me/.motif/bin/0.1.0/motif.exe connect 21st");
-    expect(r.data.run).toBe("C:/Users/me/.motif/bin/0.1.0/motif.exe connect 21st");
-  });
-
   test("when Claude Code refuses, --json carries its message and the manual settings", async () => {
-    const r = await runConnect(".", ctx("refero"), fakes({ claudeExit: 1 }).deps);
+    const r = await runConnect(".", ctx("motion"), fakes({ claudeExit: 1 }).deps);
     expect(r.data.output).toContain("already exists");
-    expect(r.data.config).toEqual({ mcpServers: { refero: { type: "http", url: "https://api.refero.design/mcp" } } });
+    expect(r.data.config).toEqual({ mcpServers: { motion: { type: "http", url: "https://mcp.motion.dev" } } });
   });
 
-  test("a key echoed back by a failing claude never reaches the output", async () => {
-    const run = async (_exe: string, args: string[]) => ({ code: 1, output: `error: invalid header ${args[3]}` });
-    const r = await runConnect(".", ctx("21st"), fakes({ run, key: "abcd1234efgh" }).deps);
-    expect(r.exitCode).toBe(2);
-    expect(r.text).toContain("<your key>");
-    expect(r.text + JSON.stringify(r.data)).not.toContain("abcd1234efgh");
-  });
-
-  test("something that isn't a key is refused before anything runs", async () => {
-    for (const key of ["ab%PATH%cd1234", "tr\\ail\\key\\", "x-api-key: abcdef123", '"abcdefgh123"', "abc[Adefgh123", "short"]) {
-      const { deps, calls } = fakes({ key });
-      const r = await runConnect(".", ctx("21st"), deps);
-      expect(r.exitCode).toBe(2);
-      expect(r.text).toContain("doesn't look like a 21st.dev key");
-      expect(r.text).toContain("Nothing changed");
-      expect(r.text).not.toContain(key);
-      expect(claudeRuns(calls.runs)).toEqual([]);
-    }
-    const ok = fakes({ key: "an_api-KEY.123+/=" });
-    expect((await runConnect(".", ctx("21st"), ok.deps)).exitCode).toBe(0);
-  });
-
-  test("a source that is set up but not signed in says how to sign in", async () => {
-    const r = await runConnect(".", ctx("refero"), fakes({ connected: [{ id: "refero", agent: "claude", server: "refero", where: "~/.claude.json" }] }).deps);
-    expect(r.exitCode).toBe(0);
-    expect(r.text).toContain("/mcp");
-    const motion = await runConnect(".", ctx("motion"), fakes({ connected: [{ id: "motion", agent: "claude", server: "motion", where: "~/.claude.json" }] }).deps);
-    expect(motion.text).not.toContain("/mcp");
-  });
 });
 
 describe("selfCommand", () => {
@@ -246,26 +143,21 @@ describe("selfCommand", () => {
 
 describe("motif connect: every agent (Part 3)", () => {
   /** A temp home where the given agents are installed: by command, or Cursor and VS Code by their settings folder. */
-  function setup(agents: string[], over: Partial<ConnectDeps> & { answer?: string; key?: string; tracked?: (args: string[]) => boolean } = {}) {
+  function setup(agents: string[], over: Partial<ConnectDeps> & { answer?: string } = {}) {
     const home = tempDir("motif-connect-home-");
     if (agents.includes("cursor")) mkdirSync(join(home, ".cursor"));
     if (agents.includes("vscode")) mkdirSync(join(home, ".config", "Code", "User"), { recursive: true });
     const clis = agents.filter((a) => a !== "cursor" && a !== "vscode");
-    const calls = { runs: [] as { cli: string; args: string[] }[], asked: [] as string[], prompts: 0 };
-    const { answer = "", key = "secret-key-1", tracked = () => false, ...rest } = over;
+    const calls = { runs: [] as { cli: string; args: string[] }[], asked: [] as string[] };
+    const { answer = "", ...rest } = over;
     const deps: ConnectDeps = {
-      which: (c) => (clis.includes(c) || c === "git" ? `/bin/${c}` : null),
+      which: (c) => (clis.includes(c) ? `/bin/${c}` : null),
       run: async (exe, args) => {
         const cli = exe.split("/").pop()!;
         calls.runs.push({ cli, args });
-        if (cli === "git") return { code: tracked(args) ? 0 : 1, output: "" };
         return { code: 0, output: "added" };
       },
       interactive: true,
-      readSecret: async () => {
-        calls.prompts++;
-        return key;
-      },
       ask: async (q) => {
         calls.asked.push(q);
         return answer;
@@ -278,7 +170,7 @@ describe("motif connect: every agent (Part 3)", () => {
       self: "motif",
       ...rest,
     };
-    return { home, deps, calls, agentRuns: () => calls.runs.filter((r) => r.cli !== "git") };
+    return { home, deps, calls, agentRuns: () => calls.runs };
   }
   const json = (p: string) => JSON.parse(readFileSync(p, "utf8"));
 
@@ -319,44 +211,19 @@ describe("motif connect: every agent (Part 3)", () => {
     expect(bad.text).toContain("claude, codex, cursor, copilot, vscode, gemini, opencode");
   });
 
-  test("run by an agent, not in a terminal: no key goes to every agent found; a key waits for the developer (review focus)", async () => {
+  test("run by an agent, not in a terminal: the source goes to every agent found (review focus)", async () => {
     const s = setup(["claude", "gemini"], { interactive: false });
     const r = await runConnect(".", ctx("motion"), s.deps);
     expect(r.exitCode).toBe(0);
     expect(r.text).toContain("every agent found");
     expect(s.agentRuns().map((x) => x.cli)).toEqual(["claude", "gemini"]);
-    const k = setup(["claude", "gemini"], { interactive: false });
-    const kr = await runConnect(".", ctx("21st"), k.deps);
-    expect(kr.exitCode).toBe(2);
-    expect(kr.text).toContain("your own terminal");
-    expect(k.agentRuns()).toEqual([]);
-    expect(k.calls.prompts).toBe(0);
-  });
-
-  test("a key is asked once and reaches every agent its own way, and never the output", async () => {
-    const s = setup(["claude", "codex", "cursor", "copilot", "vscode", "gemini", "opencode"], { key: "abcd1234efgh" });
-    const r = await runConnect(".", ctx("21st"), s.deps);
-    expect(r.exitCode).toBe(0);
-    expect(s.calls.prompts).toBe(1);
-    const header = "x-api-key: abcd1234efgh";
-    const url = "https://21st.dev/api/mcp";
-    expect(s.agentRuns()).toEqual([
-      { cli: "claude", args: ["mcp", "add", "--header", header, "--transport", "http", "--scope", "user", "21st", url] },
-      { cli: "copilot", args: ["mcp", "add", "--transport", "http", "--header", header, "21st", url] },
-      { cli: "gemini", args: ["mcp", "add", "--scope", "user", "--transport", "http", "--header", header, "21st", url] },
-      { cli: "opencode", args: ["mcp", "add", "21st", "--url", url, "--header", "x-api-key=abcd1234efgh"] },
-    ]);
-    expect(Bun.TOML.parse(readFileSync(join(s.home, ".codex", "config.toml"), "utf8"))).toEqual({ mcp_servers: { "21st": { url, http_headers: { "x-api-key": "abcd1234efgh" } } } });
-    expect(json(join(s.home, ".cursor", "mcp.json"))).toEqual({ mcpServers: { "21st": { url, headers: { "x-api-key": "abcd1234efgh" } } } });
-    expect(json(join(s.home, ".config", "Code", "User", "mcp.json"))).toEqual({ servers: { "21st": { type: "http", url, headers: { "x-api-key": "abcd1234efgh" } } } });
-    expect(r.text + JSON.stringify(r.data)).not.toContain("abcd1234efgh");
   });
 
   test("Codex's settings go into config.toml, never through codex mcp add, which starts a sign-in and waits", async () => {
     const s = setup(["codex"]);
-    expect((await runConnect(".", ctx("refero"), s.deps)).exitCode).toBe(0);
+    expect((await runConnect(".", ctx("motion"), s.deps)).exitCode).toBe(0);
     expect(s.agentRuns()).toEqual([]);
-    expect(readFileSync(join(s.home, ".codex", "config.toml"), "utf8")).toContain('[mcp_servers.refero]\nurl = "https://api.refero.design/mcp"');
+    expect(readFileSync(join(s.home, ".codex", "config.toml"), "utf8")).toContain('[mcp_servers.motion]\nurl = "https://mcp.motion.dev"');
   });
 
   test("one agent failing doesn't stop the others; the result says which, with the settings to add by hand", async () => {
@@ -373,63 +240,24 @@ describe("motif connect: every agent (Part 3)", () => {
   });
 
   test("an agent that already has the source, even under another name, is left alone; the others get it (review focus)", async () => {
-    const s = setup(["claude", "cursor"], { configured: () => [{ id: "refero", agent: "cursor", server: "refero-design", where: "~/.cursor/mcp.json" }] });
-    const r = await runConnect(".", ctx("refero"), s.deps);
+    const s = setup(["claude", "cursor"], { configured: () => [{ id: "motion", agent: "cursor", server: "motion-docs", where: "~/.cursor/mcp.json" }] });
+    const r = await runConnect(".", ctx("motion"), s.deps);
     expect(r.exitCode).toBe(0);
-    expect(r.text).toContain('✓ Cursor: already connected (server "refero-design" in ~/.cursor/mcp.json)');
+    expect(r.text).toContain('✓ Cursor: already connected (server "motion-docs" in ~/.cursor/mcp.json)');
     expect(existsSync(join(s.home, ".cursor", "mcp.json"))).toBe(false);
     expect(s.agentRuns().map((x) => x.cli)).toEqual(["claude"]);
   });
 
-  test("Refero says how to sign in, in each agent", async () => {
-    const r = await runConnect(".", ctx("refero"), setup(["claude", "codex", "gemini", "opencode"]).deps);
-    for (const s of ['type /mcp, choose "refero"', 'run "codex mcp login refero"', "type /mcp auth refero", 'run "opencode mcp auth refero"']) {
-      expect(r.text).toContain(s);
-    }
-  });
-
-  test("a key source every chosen agent already has needs no key, in a terminal or not (final review)", async () => {
-    const has21st = () => [{ id: "21st" as const, agent: "claude" as const, server: "21st", where: "~/.claude.json" }];
-    for (const interactive of [false, true]) {
-      const s = setup(["claude"], { interactive, configured: has21st });
-      const r = await runConnect(".", ctx("21st"), s.deps);
-      expect([interactive, r.exitCode, s.calls.prompts]).toEqual([interactive, 0, 0]);
-      expect(r.text).toContain("✓ Claude Code: already connected");
-    }
-    const both = setup(["claude", "gemini"], {
-      interactive: false,
-      configured: () => [...has21st(), { id: "21st", agent: "gemini", server: "21st", where: "~/.gemini/settings.json" }],
-    });
-    const r = await runConnect(".", ctx("21st"), both.deps);
-    expect(r.exitCode).toBe(0);
-    expect(both.agentRuns()).toEqual([]);
-  });
-
-  test("runs each agent's own command from the home folder, so it can't write the key into the project (final review)", async () => {
+  test("runs each agent's own command from the home folder, so it can't write into the project (final review)", async () => {
     const cwds: (string | undefined)[] = [];
     const s = setup(["claude", "copilot", "gemini", "opencode"], {
       run: async (exe, _args, cwd) => {
-        if (!exe.endsWith("git")) cwds.push(cwd);
+        cwds.push(cwd);
         return { code: 0, output: "" };
       },
     });
-    expect((await runConnect(".", ctx("21st"), s.deps)).exitCode).toBe(0);
+    expect((await runConnect(".", ctx("motion"), s.deps)).exitCode).toBe(0);
     expect(cwds).toEqual([s.home, s.home, s.home, s.home]);
-  });
-
-  test("warns about each settings file that now holds the key and is tracked by git", async () => {
-    const s = setup(["cursor", "gemini"], { tracked: (args) => args.includes("mcp.json") });
-    const r = await runConnect(".", ctx("21st"), s.deps);
-    expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by git");
-    expect(r.text).not.toContain("settings.json, which now holds your key");
-  });
-
-  test("--agent is read without spaces or capitals, and the command it prints is the one it read (v0.2.0 review minor)", async () => {
-    const s = setup(["claude", "cursor"], { interactive: false });
-    const r = await runConnect(".", { positionals: ["21st"], flags: { agent: "Claude, Cursor" } }, s.deps);
-    expect(r.exitCode).toBe(2);
-    expect(r.data.run).toBe("motif connect 21st --agent claude,cursor");
-    expect(r.text).toContain("  motif connect 21st --agent claude,cursor");
   });
 
   test("--agent naming an agent that isn't on this computer writes nothing for it, file agents too (v0.2.0 review minor)", async () => {
@@ -441,11 +269,6 @@ describe("motif connect: every agent (Part 3)", () => {
     expect(r.text).toContain(`✗ Gemini CLI: couldn't add it: Motif didn't find it on this computer (no "gemini" command on PATH)`);
     expect(existsSync(join(s.home, ".cursor"))).toBe(false);
     expect(s.agentRuns().map((x) => x.cli)).toEqual(["claude"]);
-    const k = setup(["claude"]);
-    const kr = await runConnect(".", { positionals: ["21st"], flags: { agent: "cursor" } }, k.deps);
-    expect(kr.exitCode).toBe(2);
-    expect(k.calls.prompts).toBe(0);
-    expect(existsSync(join(k.home, ".cursor"))).toBe(false);
   });
 
   test("Codex counts as installed when its settings folder is there, as Cursor and VS Code do (v0.2.0 review minor)", async () => {
@@ -464,28 +287,11 @@ describe("motif connect: every agent (Part 3)", () => {
     expect(s.agentRuns()).toEqual([]);
   });
 
-  test.skipIf(!canSymlink)("a key written through a settings link into a git-tracked dotfiles file gets the warning, naming that file (final review)", async () => {
-    const s = setup(["cursor"], { tracked: (args) => args[args.indexOf("-C") + 1]!.replace(/\\/g, "/").endsWith("/dotfiles/cursor") });
-    const dotfiles = join(s.home, "dotfiles", "cursor");
-    mkdirSync(dotfiles, { recursive: true });
-    writeFileSync(join(dotfiles, "mcp.json"), '{\n  "mcpServers": {}\n}\n');
-    symlinkSync(join(dotfiles, "mcp.json"), join(s.home, ".cursor", "mcp.json"), "file");
-    const r = await runConnect(".", { positionals: ["21st"], flags: { agent: "cursor" } }, s.deps);
-    expect(r.exitCode).toBe(0);
-    expect(readFileSync(join(dotfiles, "mcp.json"), "utf8")).toContain("secret-key-1");
-    expect(r.text).toMatch(/dotfiles[\\/]cursor[\\/]mcp\.json, which now holds your key, is tracked by git/);
-  });
-
-  test("Claude Code installed but not on PATH is set up by its own path, and CLAUDE_CONFIG_DIR's settings are the ones git checks (backlog)", async () => {
+  test("Claude Code installed but not on PATH is set up by its own path (backlog)", async () => {
     const exes: string[] = [];
-    const gitPaths: string[] = [];
     const s = setup([], {
-      run: async (exe, args) => {
+      run: async (exe) => {
         exes.push(exe);
-        if (exe.endsWith("git")) {
-          gitPaths.push(args.join(" "));
-          return { code: 1, output: "" };
-        }
         return { code: 0, output: "added" };
       },
     });
@@ -494,130 +300,9 @@ describe("motif connect: every agent (Part 3)", () => {
     writeFileSync(local, "");
     const cfg = join(s.home, "cfg");
     mkdirSync(cfg);
-    const r = await runConnect(".", ctx("21st"), { ...s.deps, vars: { CLAUDE_CONFIG_DIR: cfg } });
+    const r = await runConnect(".", ctx("motion"), { ...s.deps, vars: { CLAUDE_CONFIG_DIR: cfg } });
     expect(r.exitCode).toBe(0);
     expect(exes).toContain(local);
-    expect(gitPaths.some((g) => g.includes(cfg) && g.includes(".claude.json"))).toBe(true);
-  });
-
-  test("git reads the settings file's name literally, and finds yadm's repository under XDG_DATA_HOME (review of batch C3)", async () => {
-    const data = tempDir("motif-connect-data-");
-    const s = setup(["cursor"], { tracked: (args) => args.includes("--git-dir") && args.some((a) => a.replace(/\\/g, "/").endsWith("/yadm/repo.git")) });
-    mkdirSync(join(data, "yadm", "repo.git"), { recursive: true });
-    writeFileSync(join(data, "yadm", "repo.git", "HEAD"), "ref: refs/heads/main\n");
-    const r = await runConnect(".", ctx("21st"), { ...s.deps, vars: { XDG_DATA_HOME: data } });
-    expect(r.text).toContain("is tracked by your dotfiles repository");
-    for (const run of s.calls.runs.filter((x) => x.cli === "git")) expect(run.args[0]).toBe("--literal-pathspecs");
-  });
-
-  test("a key file in a bare dotfiles repository (~/.dotfiles) gets the git warning (backlog)", async () => {
-    const s = setup(["cursor"], { tracked: (args) => args.includes("--git-dir") && args.some((a) => a.replace(/\\/g, "/").endsWith("/.dotfiles")) });
-    mkdirSync(join(s.home, ".dotfiles", "objects"), { recursive: true });
-    writeFileSync(join(s.home, ".dotfiles", "HEAD"), "ref: refs/heads/main\n");
-    const r = await runConnect(".", ctx("21st"), s.deps);
-    expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by your dotfiles repository (~/.dotfiles).");
-  });
-
-  test("a key file in a vcsh repository, or in the repository GIT_DIR names, gets the git warning (deferred minor)", async () => {
-    const s = setup(["cursor"], { tracked: (args) => args.includes("--git-dir") && args.some((a) => a.replace(/\\/g, "/").endsWith("/vcsh/repo.d/dots.git")) });
-    const bare = (path: string) => {
-      mkdirSync(join(path, "objects"), { recursive: true });
-      writeFileSync(join(path, "HEAD"), "ref: refs/heads/main\n");
-    };
-    bare(join(s.home, ".config", "vcsh", "repo.d", "dots.git"));
-    const r = await runConnect(".", ctx("21st"), s.deps);
-    expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by your dotfiles repository (~/.config/vcsh/repo.d/dots.git).");
-    const g = setup(["cursor"], { tracked: (args) => args.includes("--git-dir") && args.some((a) => a.replace(/\\/g, "/").endsWith("/mydots")) });
-    bare(join(g.home, "mydots"));
-    const gr = await runConnect(".", ctx("21st"), { ...g.deps, vars: { GIT_DIR: join(g.home, "mydots"), GIT_WORK_TREE: g.home } });
-    expect(gr.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by your dotfiles repository (~/mydots).");
-  });
-
-  describe("with real git, in throwaway repositories (deferred minors)", () => {
-    const git = Bun.which("git");
-    // The test's own environment, without anything that points git at a repository or moves a settings folder.
-    const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(GIT_|XDG_|VCSH_)/i.test(k)));
-    /** Runs git in a folder for the test's own setup; the folder above the home is git's ceiling, so no outer repository counts. */
-    const gitIn = (cwd: string, ...args: string[]) => {
-      const r = Bun.spawnSync([git!, ...args], { cwd, env: { ...clean, GIT_CEILING_DIRECTORIES: dirname(cwd) } });
-      if (r.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr.toString()}`);
-    };
-    /** A temp home with Cursor, whose mcp.json is tracked by a repository at the home itself. */
-    function trackedHome() {
-      const s = setup(["cursor"]);
-      writeFileSync(join(s.home, ".cursor", "mcp.json"), '{\n  "mcpServers": {}\n}\n');
-      gitIn(s.home, "init", "-q");
-      gitIn(s.home, "add", ".cursor/mcp.json");
-      // None of this computer's git settings: CI's runners trust every folder (safe.directory = *), which hides the
-      // dubious-ownership refusal these tests need.
-      const noConfig = join(dirname(s.home), "empty.gitconfig");
-      writeFileSync(noConfig, "");
-      const vars = { ...clean, GIT_CEILING_DIRECTORIES: dirname(s.home), GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: noConfig };
-      const deps: ConnectDeps = {
-        ...s.deps,
-        which: (c) => (c === "git" ? git : null),
-        vars,
-      };
-      // As Motif runs for real: deps.vars is its own environment, which a program it starts inherits unless told otherwise.
-      deps.run = async (exe, args, cwd, env) => {
-        if (exe !== git) return { code: 0, output: "" };
-        const r = Bun.spawnSync([exe, ...args], { cwd, env: env ?? deps.vars });
-        return { code: r.exitCode, output: `${r.stdout}${r.stderr}`.trim() };
-      };
-      return { home: s.home, deps, vars };
-    }
-    const cursor21st = { positionals: ["21st"], flags: { agent: "cursor" } };
-
-    test.skipIf(!git)("a GIT_DIR inherited from the environment doesn't hide the repository the file is in", async () => {
-      const t = trackedHome();
-      const other = tempDir("motif-other-repo-");
-      gitIn(other, "init", "-q");
-      t.deps.vars = { ...t.vars, GIT_DIR: join(other, ".git") };
-      const r = await runConnect(".", cursor21st, t.deps);
-      expect(r.exitCode).toBe(0);
-      expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by git");
-    });
-
-    test.skipIf(!git)("when git won't look (dubious ownership), it warns that it couldn't tell, rather than nothing", async () => {
-      const t = trackedHome();
-      // git's own switch for testing this check: it treats the repository as someone else's.
-      t.deps.vars = { ...t.vars, GIT_TEST_ASSUME_DIFFERENT_OWNER: "1" };
-      const r = await runConnect(".", cursor21st, t.deps);
-      expect(r.exitCode).toBe(0);
-      expect(r.text).toContain("Warning: Motif couldn't check whether ~/.cursor/mcp.json, which now holds your key, is tracked by git (git said: fatal: detected dubious ownership");
-      expect(r.text).toContain("If it is, remove it from that repository before you push.");
-    });
-
-    test.skipIf(!git)("a file in no repository at all gets no warning", async () => {
-      const t = trackedHome();
-      rmSync(join(t.home, ".git"), { recursive: true, force: true });
-      const r = await runConnect(".", cursor21st, t.deps);
-      expect(r.exitCode).toBe(0);
-      expect(r.text).not.toContain("Warning");
-    });
-
-    test.skipIf(!git)("a key file in a vcsh repository is found by real git", async () => {
-      const t = trackedHome();
-      rmSync(join(t.home, ".git"), { recursive: true, force: true });
-      const repo = join(t.home, ".config", "vcsh", "repo.d", "cursor.git");
-      mkdirSync(repo, { recursive: true });
-      gitIn(repo, "init", "-q", "--bare");
-      gitIn(t.home, `--git-dir=${repo}`, `--work-tree=${t.home}`, "add", ".cursor/mcp.json");
-      const r = await runConnect(".", cursor21st, t.deps);
-      expect(r.text).toContain("~/.cursor/mcp.json, which now holds your key, is tracked by your dotfiles repository (~/.config/vcsh/repo.d/cursor.git).");
-    });
-  });
-
-  test.skipIf(!canSymlink)("a key file reached through a link is checked against git once, as the file it leads to (review of the gap fixes)", async () => {
-    const s = setup(["cursor"], { tracked: () => true });
-    const dotfiles = join(s.home, "dotfiles", "cursor");
-    mkdirSync(dotfiles, { recursive: true });
-    writeFileSync(join(dotfiles, "mcp.json"), '{\n  "mcpServers": {}\n}\n');
-    symlinkSync(join(dotfiles, "mcp.json"), join(s.home, ".cursor", "mcp.json"), "file");
-    const r = await runConnect(".", { positionals: ["21st"], flags: { agent: "cursor" } }, s.deps);
-    const warnings = r.text.split("\n").filter((l) => l.includes("which now holds your key"));
-    expect(warnings.length).toBe(1);
-    expect(warnings[0]).toMatch(/dotfiles[\\/]cursor[\\/]mcp\.json, which now holds your key/);
   });
 
   test("another product's server already named motion is kept, and Motion is added under its second name (deferred minor)", async () => {
@@ -652,16 +337,14 @@ describe("motif connect: every agent (Part 3)", () => {
     const other = { url: "https://example.com/mcp" };
     const s = setup(["claude"], {
       servers: () => [
-        { agent: "claude", name: "21st", def: other, where: "~/.claude.json" },
-        { agent: "claude", name: "21st-dev", def: other, where: "~/.claude.json" },
+        { agent: "claude", name: "motion", def: other, where: "~/.claude.json" },
+        { agent: "claude", name: "motion-dev", def: other, where: "~/.claude.json" },
       ],
     });
-    const r = await runConnect(".", ctx("21st"), s.deps);
+    const r = await runConnect(".", ctx("motion"), s.deps);
     expect(r.exitCode).toBe(2);
-    expect(r.text).toContain(`✗ Claude Code: couldn't add it: it already has servers called "21st" and "21st-dev" that aren't 21st.dev's, so nothing was changed`);
+    expect(r.text).toContain(`✗ Claude Code: couldn't add it: it already has servers called "motion" and "motion-dev" that aren't Motion's, so nothing was changed`);
     expect(s.agentRuns()).toEqual([]);
-    // No agent took the key, so none was asked for.
-    expect(s.calls.prompts).toBe(0);
   });
 
   test("an agent whose command can't be started is reported, and the others are still set up (final review)", async () => {
@@ -708,11 +391,6 @@ describe("reading from the terminal (v0.2.0 review minors)", () => {
     expect(await readLine("Which? ", open("\x04"), quiet())).toBeNull();
   });
 
-  test("the hidden key prompt returns the key, and nothing on Ctrl+C, Ctrl+D, Ctrl+Z or the end of input (review of the follow-ups)", async () => {
-    expect(await readSecret("Key: ", open("abcd1234\r"), quiet())).toBe("abcd1234");
-    for (const ch of ["\x03", "\x04", "\x1a"]) expect([ch, await readSecret("Key: ", open(`abc${ch}`), quiet())]).toEqual([ch, ""]);
-    expect(await readSecret("Key: ", ended("abc"), quiet())).toBe("");
-  });
 });
 
 describe("turning motif connect off for unattended runs (review of batch F)", () => {
@@ -727,7 +405,6 @@ describe("turning motif connect off for unattended runs (review of batch F)", ()
         return { code: 0, output: "" };
       },
       interactive: false,
-      readSecret: async () => "k",
       ask: async () => "",
       configured: () => [],
       servers: () => [],
@@ -742,4 +419,43 @@ describe("turning motif connect off for unattended runs (review of batch F)", ()
     expect(runs).toEqual([]);
     expect(existsSync(join(home, ".cursor", "mcp.json"))).toBe(false);
   });
+});
+
+describe("retired sources (2.0)", () => {
+  const RETIRED_TEXT: Record<string, string> = {
+    "21st": "21st.dev was retired in Motif 2.0. Motif now has this built in: a library of pieces for every stack. There's nothing to connect, and nothing was changed.",
+    refero: "Refero was retired in Motif 2.0. Motif now has this built in: reference notes in the UX pattern guides. There's nothing to connect, and nothing was changed.",
+    "60fps": "60fps.design was retired in Motif 2.0. Motif now has this built in: motion recipes for every stack, SwiftUI included. There's nothing to connect, and nothing was changed.",
+  };
+  for (const id of Object.keys(RETIRED_TEXT)) {
+    test(`motif connect ${id} says it's built in now, exits without an error and changes nothing`, async () => {
+      const home = tempDir("motif-connect-home-");
+      mkdirSync(join(home, ".cursor"));
+      const settings = join(home, ".cursor", "mcp.json");
+      const before = '{\n  "mcpServers": { "x": { "url": "https://example.com" } }\n}\n';
+      writeFileSync(settings, before);
+      const runs: string[] = [];
+      const deps: ConnectDeps = {
+        which: (c) => `/bin/${c}`,
+        run: async (exe) => {
+          runs.push(exe);
+          return { code: 0, output: "" };
+        },
+        interactive: true,
+        ask: async () => "",
+        configured: () => [],
+        servers: () => [],
+        home,
+        platform: "linux",
+        vars: {},
+        self: "motif",
+      };
+      const r = await runConnect(".", ctx(id), deps);
+      expect(r.exitCode).toBe(0);
+      expect(r.text).toBe(RETIRED_TEXT[id]!);
+      expect(r.data).toEqual({ retired: id });
+      expect(runs).toEqual([]);
+      expect(readFileSync(settings, "utf8")).toBe(before);
+    });
+  }
 });
