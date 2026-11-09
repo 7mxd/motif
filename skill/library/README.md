@@ -9,6 +9,7 @@ Motif's own pieces for app screens: charts, cards, screens, motion and accents, 
 3. **Motion from the level.** Every piece names the default motions it uses. Play them at the level set in [motion](../knowledge/motion.md#default-motion-and-level): `lively`, `default`, `calm` or `none`.
 4. **Only the app's own data.** A chart or card shows the person's real figures or a next action, never filler. An app without numbers fills with its own content: the next meetup, the upcoming trip, saved routes, people, counts and progress.
 5. **The developer can ask for a different piece.** Offer the alternative in plain words ("a progress ring instead of the bar?"), and keep the guide's roles either way.
+6. **Into what the app already has.** Build a piece as a variant of an existing component (an `EmptyState` with a drawing, a `Badge` for a count) or inside the screen's own folder. One that has to be a new shared component is proposed like any new component and recorded by its name in `DESIGN.md` section 5.
 
 Never go into the "C look": glowing charts, tilted cards, a gradient backdrop behind everything, colour on every surface ([anti-patterns](../knowledge/anti-patterns.md)).
 
