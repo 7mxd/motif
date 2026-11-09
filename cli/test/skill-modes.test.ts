@@ -627,6 +627,18 @@ describe("the skill picks from the built-in library (2.0)", () => {
       expect(missing).toEqual([]);
     });
   }
+  // Eval run 20261109-054943, b-notifications: the empty-state drawing and an unread badge became two new
+  // shared components the design guide never named, so the feature failed "at most one new component".
+  test("feature mode builds a library piece into an existing component or the screen, and names any new one in the guide", () => {
+    const pick = read("modes/feature.md").split("\n").find((l) => l.includes("library/README.md")) ?? "";
+    const missing = ["variant of an existing component", "the screen's own folder", "new shared component", "section 5", "by its name"].filter((s) => !pick.includes(s));
+    expect(missing).toEqual([]);
+  });
+  test("the library's How to pick says the same", () => {
+    const how = read("library/README.md").split("## How to pick")[1]?.split("\n## ")[0] ?? "";
+    const missing = ["variant of an existing component", "the screen's own folder", "new shared component", "section 5"].filter((s) => !how.includes(s));
+    expect(missing).toEqual([]);
+  });
   test("review mode flags a plain first-impression or home screen and an empty band", () => {
     const text = read("modes/review.md");
     expect([text.includes("empty band"), text.includes("plain")]).toEqual([true, true]);
