@@ -101,6 +101,8 @@ Motif plays five small animations by default. Read the level from [motion](../..
 
 Under `<MotionConfig reducedMotion="user">` these become instant; a hand-written count-up checks `useReducedMotion()` and shows the final number.
 
+Each one has a full recipe with this stack's code in the library: [draw-in](../../library/motion/draw-in.md), [count-up](../../library/motion/count-up.md), [stagger](../../library/motion/stagger.md), [press](../../library/motion/press.md) and [success](../../library/motion/success.md).
+
 ## Reduced motion
 
 With `MotionConfig reducedMotion="user"` at the root, Motion turns movement into fades for people who ask for less. For custom cases, such as auto-playing carousels or parallax, check `useReducedMotion()` and turn them off. `motif shot --audit` reports anything that still moves when reduced motion is on.

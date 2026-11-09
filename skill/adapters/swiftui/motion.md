@@ -98,13 +98,15 @@ Motif plays five small animations by default. Read the level from [motion](../..
 
 | Motion | Here |
 |---|---|
-| `draw-in` | `.trim(from: 0, to: progress)` on the chart's `Path` or `Shape`, with `withAnimation(MotifMotion.animation(.slow))` on appear |
-| `count-up` | `.contentTransition(.numericText())` on the number's `Text`, value changed inside `withAnimation` |
+| `draw-in` | `.trim(from: 0, to: progress)` on the chart's `Path` or `Shape`, with `withAnimation(MotifMotion.animation(MotifCurves.enter(over: MotifDurations.slow), reduceMotion: reduceMotion))` on appear |
+| `count-up` | `.contentTransition(.numericText())` on the number's `Text`, value changed inside `withAnimation(MotifMotion.animation(…, reduceMotion: reduceMotion))` |
 | `stagger` | `.transition` per item with `.delay(Double(i) * MotifDurations.fast / 4)`, on first show only |
-| `press` | a `ButtonStyle` scaling to 0.97 on `configuration.isPressed`, `MotifSprings.snappy` |
-| `success` | `.symbolEffect(.bounce)` on a checkmark, or a scale with `MotifSprings.bouncy` |
+| `press` | a `ButtonStyle` scaling to 0.97 on `configuration.isPressed`, `MotifMotion.animation(MotifSprings.snappy, reduceMotion: reduceMotion)` |
+| `success` | `.symbolEffect(.bounce)` on a checkmark, or a scale with `MotifMotion.animation(MotifSprings.bouncy, reduceMotion: reduceMotion)` |
 
 When `@Environment(\.accessibilityReduceMotion)` is true, change the value without `withAnimation`.
+
+Each one has a full recipe with this stack's code in the library: [draw-in](../../library/motion/draw-in.md), [count-up](../../library/motion/count-up.md), [stagger](../../library/motion/stagger.md), [press](../../library/motion/press.md) and [success](../../library/motion/success.md).
 
 ## Reduced motion
 

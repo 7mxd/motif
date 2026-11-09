@@ -163,6 +163,8 @@ Motif plays five small animations by default. Read the level from [motion](../..
 
 When `prefers-reduced-motion` is set, skip the `animate` calls and show the final state; the CSS sits inside `@media (prefers-reduced-motion: no-preference)`.
 
+Each one has a full recipe with this stack's code in the library: [draw-in](../../library/motion/draw-in.md), [count-up](../../library/motion/count-up.md), [stagger](../../library/motion/stagger.md), [press](../../library/motion/press.md) and [success](../../library/motion/success.md).
+
 ## Reduced motion
 
 People who ask their system for less movement need it honoured, and `motif check`'s `reduced-motion` rule looks for it.

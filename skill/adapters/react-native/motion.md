@@ -117,6 +117,8 @@ Motif plays five small animations by default. Read the level from [motion](../..
 
 When `useReducedMotion()` is true, set each shared value to its end without `withTiming` or `withSpring`.
 
+Each one has a full recipe with this stack's code in the library: [draw-in](../../library/motion/draw-in.md), [count-up](../../library/motion/count-up.md), [stagger](../../library/motion/stagger.md), [press](../../library/motion/press.md) and [success](../../library/motion/success.md).
+
 ## Reduced motion
 
 When the phone's setting is on, `useMotifTheme().reducedMotion` is true (it is Reanimated's `useReducedMotion()` underneath, which you can call yourself). What that asks of you:

@@ -24,6 +24,10 @@ const NOT_PORTABLE: [RegExp, string, "tool" | "other"][] = [
 const AGENT_FRONTMATTER = /^(?:allowed-tools|context|hooks|argument-hint|disable-model-invocation|user-invocable|model|agent):/m;
 const SKILL_KEYS = ["name", "description", "license", "compatibility", "metadata"];
 const UX_SECTIONS = ["Goal", "Anatomy", "Required states", "Common mistakes", "Mobile and web"];
+/** A library piece's sections, in order (2.0); "Licence" may follow when a piece adapts someone else's idea. */
+export const LIBRARY_SECTIONS = ["Purpose", "Fits", "Loudness", "Data", "States", "Motion", "Accessibility", "Stacks"];
+/** The stacks every library piece covers, by their adapter folders' names (full parity). */
+export const LIBRARY_STACKS = ["react-web", "plain-web", "vue", "svelte", "angular", "flutter", "compose", "react-native", "swiftui"];
 const SHELL_BLOCKS = new Set(["", "sh", "bash", "shell", "console", "powershell", "ps1", "pwsh", "cmd", "bat"]);
 const NOT_PORTABLE_SHELL: [RegExp, string][] = [
   [/&&|\|\|/, "chains commands with && or || (Windows PowerShell 5 can't; put one command per line)"],
@@ -128,6 +132,19 @@ export function lintSkillMarkdown(file: string, raw: string, opts: { exists: (sk
     const sections = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]!.trim());
     if (JSON.stringify(sections) !== JSON.stringify(UX_SECTIONS)) {
       problems.push(`${file} needs exactly these sections, in order: ${UX_SECTIONS.join(", ")} (has: ${sections.join(", ") || "none"}).`);
+    }
+  }
+  if (/^library\/[^/]+\/[^/]+\.md$/.test(file)) {
+    const sections = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]!.trim());
+    const want = sections[sections.length - 1] === "Licence" ? [...LIBRARY_SECTIONS, "Licence"] : LIBRARY_SECTIONS;
+    if (JSON.stringify(sections) !== JSON.stringify(want)) {
+      problems.push(`${file} needs exactly these sections, in order: ${LIBRARY_SECTIONS.join(", ")} (and Licence last, if any) (has: ${sections.join(", ") || "none"}).`);
+    } else {
+      const start = text.indexOf("\n## Stacks\n");
+      const end = text.indexOf("\n## ", start + 4);
+      const stacks = [...text.slice(start, end === -1 ? undefined : end).matchAll(/^### (.+)$/gm)].map((m) => m[1]!.trim());
+      const missing = LIBRARY_STACKS.filter((s) => !stacks.includes(s));
+      if (missing.length > 0) problems.push(`${file} needs a ### section for each stack under ## Stacks (missing: ${missing.join(", ")}).`);
     }
   }
   return problems;
