@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { parse as parseJsonc, type ParseError } from "jsonc-parser";
 import { AGENTS, type AgentEnv, type AgentId } from "../agents/catalog";
-import { SOURCES, type SourceId } from "../sources/catalog";
+import { RETIRED, SOURCES, type RetiredId, type SourceId } from "../sources/catalog";
 import { stripBom } from "../text";
 
-export type { SourceId };
+export type { RetiredId, SourceId };
 
 export const SOURCE_LABELS = Object.fromEntries(SOURCES.map((s) => [s.id, s.label])) as Record<SourceId, string>;
 
@@ -81,6 +81,27 @@ export function sourcesIn(servers: AgentServer[]): ConfiguredSource[] {
     for (const source of SOURCES) {
       if (source.configPattern.test(text) && !found.some((f) => f.id === source.id && f.agent === s.agent)) {
         found.push({ id: source.id, agent: s.agent, server: s.name, where: s.where });
+      }
+    }
+  }
+  return found;
+}
+
+export interface ConfiguredRetired {
+  id: RetiredId;
+  agent: AgentId;
+  server: string;
+  where: string;
+}
+
+/** The sources retired in 2.0 still in the agents' settings: one entry per agent and source, from the first server that matches. */
+export function retiredIn(servers: AgentServer[]): ConfiguredRetired[] {
+  const found: ConfiguredRetired[] = [];
+  for (const s of servers) {
+    const text = `${s.name}\n${JSON.stringify(s.def)}`;
+    for (const r of RETIRED) {
+      if (r.configPattern.test(text) && !found.some((f) => f.id === r.id && f.agent === s.agent)) {
+        found.push({ id: r.id, agent: s.agent, server: s.name, where: s.where });
       }
     }
   }
