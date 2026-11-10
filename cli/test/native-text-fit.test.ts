@@ -26,6 +26,29 @@ describe("text-fit in the native harnesses (first impressions)", () => {
     });
   }
 
+  test("compose: cut is read from ellipsis, height overflow or a line wider than the text, never hasVisualOverflow or didOverflowWidth (Mac check: every short text was reported)", () => {
+    const src = read("compose/harness/MotifAudit.kt");
+    const body = src.slice(src.indexOf("private fun textFit"), src.indexOf("/** Whether all of a node is inside the screen"));
+    expect(body).not.toContain("hasVisualOverflow");
+    expect(body).not.toContain("didOverflowWidth");
+    expect(body).toContain("isLineEllipsized");
+    expect(body).toContain("getLineRight");
+  });
+
+  test("flutter: lines are counted from the paragraph's own text boxes (RenderParagraph has no computeLineMetrics)", () => {
+    const src = read("flutter/harness/motif_audit.dart");
+    expect(src).not.toContain("computeLineMetrics");
+    expect(src).toContain("getBoxesForSelection");
+  });
+
+  test("swiftui: only plain text is judged, and cut only on a one-line text box (Mac check: buttons and a card's combined name were false findings)", () => {
+    const src = read("swiftui/harness/MotifAudit.swift");
+    const body = src.slice(src.indexOf("static func textFit"), src.indexOf("/// True when a text button's frame is well taller"));
+    expect(body).toContain("guard e.kind == .text,");
+    expect(body).not.toContain("e.kind == .button");
+    expect(body).toMatch(/lines == 1, e\.rect\.height <= font\.size \* 1\.6/);
+  });
+
   test("the native checks include text-fit in light, at every size, and not in dark", () => {
     const phone = { width: 390, height: 844, mobile: true } as any;
     const desk = { width: 1440, height: 900, mobile: false } as any;

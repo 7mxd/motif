@@ -82,7 +82,12 @@ List<Issue> _textFit(RenderView view) {
           fit = 'cut';
         } else {
           final words = plain.split(' ');
-          if (words.length >= 2 && words.length <= 3 && o.computeLineMetrics().length == words.length) fit = 'broken';
+          if (words.length >= 2 && words.length <= 3) {
+            // The lines the text takes: its boxes' distinct tops.
+            final boxes = o.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: o.text.toPlainText().length));
+            final lines = boxes.map((b) => b.top.round()).toSet().length;
+            if (lines == words.length) fit = 'broken';
+          }
         }
         if (fit != null) {
           final element = _creator(o);

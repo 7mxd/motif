@@ -290,7 +290,11 @@ internal class MotifAudit(
             val layout = layouts.firstOrNull() ?: continue
             val words = text.split(" ")
             val fit = when {
-                layout.hasVisualOverflow || (0 until layout.lineCount).any { layout.isLineEllipsized(it) } -> "cut"
+                // Not the layout's visual-overflow flag: its width half compares the text's size with the paragraph's layout width, the
+                // whole width it was offered, so every short text in a wide row would count.
+                layout.didOverflowHeight || (0 until layout.lineCount).any {
+                    layout.isLineEllipsized(it) || layout.getLineRight(it) - layout.getLineLeft(it) > layout.size.width + 1
+                } -> "cut"
                 words.size in 2..3 && layout.lineCount == words.size -> "broken"
                 else -> continue
             }

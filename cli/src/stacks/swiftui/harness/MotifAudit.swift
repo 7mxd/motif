@@ -162,7 +162,7 @@ enum MotifAudit {
                         issue.rule = "text-fit"
                         issue.label = plain(e.name ?? "")
                         issue.fit = fit
-                        issue.prominent = e.kind == .button || (e.font?.size ?? 0) >= 20
+                        issue.prominent = (e.font?.size ?? 0) >= 20
                         out.issues.append(issue)
                     }
                     if checks.contains("targets"), smallTarget(e, pixels) {
@@ -198,13 +198,14 @@ enum MotifAudit {
         return !pixels.onShape(e.rect)
     }
 
-    /// Text that doesn't fit, as on the web: "cut" when its text, set on one line in the size it says, is wider than all
-    /// the lines it was drawn on can hold (SwiftUI truncates it with "…"); "broken" when a label of two or three words is
-    /// drawn one word per line. Only text and buttons that say their font (SwiftUI's Text does), with lines read from the
-    /// picture; a custom font's width differs from the system one's, so a tenth's leeway (and two points) is allowed.
-    /// Nil when it fits, or when Motif can't tell: a missed finding, never a false one.
+    /// Text that doesn't fit, as on the web: "cut" when a one-line text box's text, set in the size it says, is wider than
+    /// the box (SwiftUI truncates it with "…"); "broken" when a label of two or three words is drawn one word per line.
+    /// Only plain text that says its font (SwiftUI's Text does), with lines read from the picture: a button's or a
+    /// combined element's name isn't always the text drawn in its frame. A custom font's width differs from the system
+    /// one's, so a tenth's leeway (and two points) is allowed. Nil when it fits, or when Motif can't tell: a missed
+    /// finding, never a false one.
     static func textFit(_ e: MotifElement, _ pixels: MotifPixels) -> String? {
-        guard e.kind == .text || e.kind == .button, e.symbol == nil, let font = e.font else { return nil }
+        guard e.kind == .text, e.symbol == nil, let font = e.font else { return nil }
         let text = plain(e.name ?? "")
         guard !text.isEmpty, e.rect.width > 1, e.rect.height > 1 else { return nil }
         guard let drawn = pixels.drawn(in: e.rect, hint: e.color) else { return nil }
@@ -215,7 +216,7 @@ enum MotifAudit {
         let systemFont = UIFont.systemFont(ofSize: font.size, weight: font.bold ? .bold : .regular)
         #endif
         let natural = (text as NSString).size(withAttributes: [.font: systemFont]).width
-        if natural > Double(lines) * e.rect.width * 1.1 + 2 { return "cut" }
+        if lines == 1, e.rect.height <= font.size * 1.6, natural > e.rect.width * 1.1 + 2 { return "cut" }
         let words = text.split(separator: " ")
         if (2...3).contains(words.count), lines == words.count { return "broken" }
         return nil
