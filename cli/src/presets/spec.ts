@@ -14,6 +14,8 @@ export interface PresetSpec {
   motionNote: string;
   fonts: { body: string[]; display: string[] };
   sizes: { display: number; title: number; heading: number; body: number; label: number; caption: number };
+  /** The optional hero role: a first-impression headline a step above display, at most 72. */
+  hero: { size: number; weight: number };
   radius: { sm: number; md: number; lg: number };
   /** How strong the shadows are (1 = Motif's default); they take the light text colour, never plain black. */
   shadow: number;
@@ -31,6 +33,7 @@ export const PRESETS: PresetSpec[] = [
     motionNote: "quick and steady",
     fonts: { body: ["Onest", "Readex Pro", "system-ui", "sans-serif"], display: ["Onest", "Readex Pro", "system-ui", "sans-serif"] },
     sizes: { display: 40, title: 28, heading: 20, body: 16, label: 14, caption: 12 },
+    hero: { size: 56, weight: 700 },
     radius: { sm: 3, md: 6, lg: 10 }, shadow: 0.6, durations: { fast: 120, base: 200, slow: 320 }, easing: [0.2, 0, 0, 1],
     springs: { snappy: [0.25, 0], smooth: [0.4, 0.1], bouncy: [0.5, 0.3] },
     light: { background: "#F6F9F7", surface: "#FFFFFF", "surface-raised": "#FFFFFF", border: "#DCE1DE", "text-primary": "#181D1B", "text-secondary": "#575E5B", "action-primary": "#212825", "action-secondary": "#EAEFED", success: "#237742", warning: "#A45D25", danger: "#B6322D", info: "#2F6094", focus: "#28302C", brand: "#181D1B", "brand-soft": "#EAEFED", accent: "#8DDFDD", "accent-2": "#F7B9D6" },
@@ -42,6 +45,7 @@ export const PRESETS: PresetSpec[] = [
     motionNote: "slow and gentle",
     fonts: { body: ["Nunito", "Rubik", "system-ui", "sans-serif"], display: ["Nunito", "Rubik", "system-ui", "sans-serif"] },
     sizes: { display: 36, title: 26, heading: 20, body: 16, label: 14, caption: 12 },
+    hero: { size: 56, weight: 700 },
     radius: { sm: 8, md: 14, lg: 24 }, shadow: 1, durations: { fast: 160, base: 260, slow: 400 }, easing: [0.25, 0.1, 0.25, 1],
     springs: { snappy: [0.3, 0], smooth: [0.5, 0.15], bouncy: [0.6, 0.35] },
     light: { background: "#F5FAFA", surface: "#FFFFFF", "surface-raised": "#FFFFFF", border: "#D7E2E1", "text-primary": "#1B292B", "text-secondary": "#556567", "action-primary": "#2E7577", "action-secondary": "#FBE6DE", success: "#247A4B", warning: "#A45D25", danger: "#B73F28", info: "#256E9B", focus: "#2E7577", brand: "#2E7577", "brand-soft": "#DDF0EE", accent: "#7FDDFD", "accent-2": "#FFB9BA" },
@@ -53,6 +57,7 @@ export const PRESETS: PresetSpec[] = [
     motionNote: "lively and springy",
     fonts: { body: ["Nunito", "Baloo Bhaijaan 2", "system-ui", "sans-serif"], display: ["Fredoka", "Baloo Bhaijaan 2", "Nunito", "system-ui", "sans-serif"] },
     sizes: { display: 44, title: 30, heading: 22, body: 16, label: 14, caption: 12 },
+    hero: { size: 68, weight: 700 },
     radius: { sm: 10, md: 18, lg: 28 }, shadow: 1, durations: { fast: 140, base: 240, slow: 380 }, easing: [0.34, 1.2, 0.64, 1],
     springs: { snappy: [0.25, 0.1], smooth: [0.45, 0.25], bouncy: [0.55, 0.45] },
     light: { background: "#F5FBFF", surface: "#FFFFFF", "surface-raised": "#FFFFFF", border: "#D4E0E7", "text-primary": "#291A24", "text-secondary": "#6A5562", "action-primary": "#C2126D", "action-secondary": "#FBEFC0", success: "#078050", warning: "#9D6C26", danger: "#B93F35", info: "#2F62AC", focus: "#C2126D", brand: "#C2126D", "brand-soft": "#FCE4EF", accent: "#FFB9B5", "accent-2": "#74E5CD" },
@@ -64,6 +69,7 @@ export const PRESETS: PresetSpec[] = [
     motionNote: "restrained and smooth",
     fonts: { body: ["Source Serif 4", "Markazi Text", "Georgia", "serif"], display: ["Brygada 1918", "Markazi Text", "Georgia", "serif"] },
     sizes: { display: 48, title: 32, heading: 22, body: 18, label: 15, caption: 13 },
+    hero: { size: 64, weight: 600 },
     radius: { sm: 0, md: 2, lg: 4 }, shadow: 0.4, durations: { fast: 120, base: 220, slow: 360 }, easing: [0.2, 0, 0, 1],
     springs: { snappy: [0.25, 0], smooth: [0.4, 0], bouncy: [0.5, 0.15] },
     light: { background: "#FAF7F5", surface: "#FFFDFD", "surface-raised": "#F5F2F0", border: "#DDD8D6", "text-primary": "#1F1716", "text-secondary": "#615956", "action-primary": "#852535", "action-secondary": "#F0E9E7", success: "#2C6D3E", warning: "#916508", danger: "#B54531", info: "#295F8A", focus: "#1F1716", brand: "#852535", "brand-soft": "#F3E6E3", accent: "#FCBDA6", "accent-2": "#8DDFDE" },
@@ -75,6 +81,7 @@ export const PRESETS: PresetSpec[] = [
     motionNote: "fast and punchy",
     fonts: { body: ["Zalando Sans", "Alexandria", "system-ui", "sans-serif"], display: ["Zalando Sans Expanded", "Alexandria", "Zalando Sans", "system-ui", "sans-serif"] },
     sizes: { display: 52, title: 32, heading: 22, body: 16, label: 14, caption: 12 },
+    hero: { size: 72, weight: 900 },
     radius: { sm: 2, md: 6, lg: 12 }, shadow: 0.8, durations: { fast: 100, base: 180, slow: 300 }, easing: [0.2, 0, 0, 1],
     springs: { snappy: [0.2, 0], smooth: [0.35, 0.1], bouncy: [0.45, 0.3] },
     light: { background: "#FFFFFF", surface: "#F8F5F3", "surface-raised": "#FFFFFF", border: "#D2CDC9", "text-primary": "#16110F", "text-secondary": "#534B47", "action-primary": "#D83A1A", "action-secondary": "#16110F", success: "#1D7635", warning: "#A45D25", danger: "#9B2A4B", info: "#205F9F", focus: "#B13C11", brand: "#D83A1A", "brand-soft": "#FBE3DA", accent: "#FFBE8D", "accent-2": "#6CE1F9" },
@@ -86,6 +93,7 @@ export const PRESETS: PresetSpec[] = [
     motionNote: "crisp and snappy",
     fonts: { body: ["Geologica", "Changa", "system-ui", "sans-serif"], display: ["TASA Orbiter", "Changa", "Geologica", "system-ui", "sans-serif"] },
     sizes: { display: 40, title: 28, heading: 20, body: 15, label: 13, caption: 12 },
+    hero: { size: 60, weight: 800 },
     radius: { sm: 2, md: 4, lg: 8 }, shadow: 0.5, durations: { fast: 90, base: 160, slow: 260 }, easing: [0.2, 0, 0, 1],
     springs: { snappy: [0.2, 0], smooth: [0.3, 0.05], bouncy: [0.4, 0.2] },
     light: { background: "#F2F1EE", surface: "#FEFCFB", "surface-raised": "#FFFFFF", border: "#DBD7D2", "text-primary": "#1B1611", "text-secondary": "#5D5751", "action-primary": "#A45803", "action-secondary": "#E7E4E0", success: "#207963", warning: "#7F6A03", danger: "#B52332", info: "#136B94", focus: "#A45803", brand: "#1B1611", "brand-soft": "#F6E7D6", accent: "#E5CC80", "accent-2": "#A4D3FF" },
@@ -97,6 +105,7 @@ export const PRESETS: PresetSpec[] = [
     motionNote: "relaxed and soft",
     fonts: { body: ["Merriweather Sans", "El Messiri", "system-ui", "sans-serif"], display: ["Vollkorn", "El Messiri", "Georgia", "serif"] },
     sizes: { display: 42, title: 30, heading: 21, body: 16, label: 14, caption: 12 },
+    hero: { size: 60, weight: 700 },
     radius: { sm: 6, md: 10, lg: 16 }, shadow: 1, durations: { fast: 150, base: 250, slow: 380 }, easing: [0.25, 0.1, 0.25, 1],
     springs: { snappy: [0.3, 0], smooth: [0.45, 0.12], bouncy: [0.55, 0.3] },
     light: { background: "#F5F8F1", surface: "#FCFDFA", "surface-raised": "#FFFFFF", border: "#DBDCD1", "text-primary": "#252117", "text-secondary": "#625D51", "action-primary": "#596517", "action-secondary": "#F4E6D2", success: "#357855", warning: "#A45D25", danger: "#B63132", info: "#2B6991", focus: "#596517", brand: "#596517", "brand-soft": "#EEF0DC", accent: "#AFDCAC", "accent-2": "#D4C3FC" },
@@ -108,6 +117,7 @@ export const PRESETS: PresetSpec[] = [
     motionNote: "calm and predictable",
     fonts: { body: ["Public Sans", "Mada", "Segoe UI", "system-ui", "sans-serif"], display: ["Public Sans", "Mada", "Segoe UI", "system-ui", "sans-serif"] },
     sizes: { display: 38, title: 28, heading: 20, body: 16, label: 14, caption: 12 },
+    hero: { size: 56, weight: 700 },
     radius: { sm: 6, md: 8, lg: 12 }, shadow: 0.9, durations: { fast: 120, base: 200, slow: 300 }, easing: [0.2, 0, 0, 1],
     springs: { snappy: [0.25, 0], smooth: [0.4, 0.05], bouncy: [0.5, 0.2] },
     light: { background: "#F5F9FB", surface: "#FFFFFF", "surface-raised": "#FFFFFF", border: "#D6E0E4", "text-primary": "#10212F", "text-secondary": "#4C5D6A", "action-primary": "#006C97", "action-secondary": "#E2EDF3", success: "#1E7546", warning: "#A45D25", danger: "#B23641", info: "#147175", focus: "#006C97", brand: "#0B3550", "brand-soft": "#E2EDF3", accent: "#B8CDFF", "accent-2": "#F4C398" },

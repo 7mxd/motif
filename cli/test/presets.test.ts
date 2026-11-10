@@ -6,7 +6,11 @@ import { checkContrast } from "../src/contract/contrast";
 import { ACCENT_PAIRS, BRAND_PAIRS, STANDARD_PAIRS, pairsExtension } from "../src/contract/defaults";
 import { checkRoles } from "../src/contract/roles";
 import { validateTokens } from "../src/contract/tokens";
-import { buildTheme } from "../src/generate/theme";
+import { buildTheme, buildThemeSet } from "../src/generate/theme";
+import { generateCompose } from "../src/stacks/compose/generate";
+import { generateFlutter } from "../src/stacks/flutter/generate";
+import { generateReactNative } from "../src/stacks/react-native/generate";
+import { generateSwiftUI } from "../src/stacks/swiftui/generate";
 import { fontStylesheets } from "../src/generate/theme-fonts";
 import { presetAbout, presetSample, presetTokens } from "../src/presets/build";
 import { PRESETS } from "../src/presets/spec";
@@ -51,6 +55,41 @@ for (const spec of PRESETS) {
       expect(fontStylesheets(buildTheme(doc)).join(" ")).not.toMatch(/mono/i);
       const files = generateReactWeb(buildTheme(doc), { srcDir: "src", tailwind: "v4" });
       expect(files.map((f) => f.content).join("\n")).toContain("--font-mono: var(--motif-font-mono-family);");
+    });
+
+    test("has the hero role a step above display, at most 72, in the display family (first impressions)", () => {
+      const HERO: Record<string, [number, number]> = {
+        minimal: [56, 700], soft: [56, 700], playful: [68, 700], editorial: [64, 600], bold: [72, 900], "dark-tech": [60, 800], warm: [60, 700], trust: [56, 700],
+      };
+      const hero = (tokens as any).font.hero.$value;
+      expect([hero.fontSize.value, hero.fontWeight]).toEqual(HERO[spec.id]!);
+      expect(hero.fontSize.value).toBeGreaterThan(spec.sizes.display);
+      expect(hero.fontSize.value).toBeLessThanOrEqual(72);
+      expect(hero.fontFamily).toBe("{primitive.font.display}");
+      expect(hero.lineHeight).toBe(1.05);
+      expect(hero.letterSpacing.value).toBeLessThan(0);
+    });
+
+    test("the hero weight is one the bundled display font has (first impressions)", () => {
+      const css = read("preview-kit/fonts/fonts.css");
+      const block = css.split("@font-face").find((b) => b.includes(`font-family: "${spec.fonts.display[0]}";`))!;
+      const [lo, hi] = block.match(/font-weight: (\d+) (\d+);/)!.slice(1).map(Number);
+      expect(spec.hero.weight).toBeGreaterThanOrEqual(lo!);
+      expect(spec.hero.weight).toBeLessThanOrEqual(hi!);
+    });
+
+    test("every stack's generated theme exposes the hero role (first impressions)", () => {
+      const set = buildThemeSet(doc);
+      const all = (files: { content: string }[]) => files.map((f) => f.content).join("\n");
+      const out: Record<string, string> = {
+        "react-web": all(generateReactWeb(buildTheme(doc), { srcDir: "src", tailwind: "v4" })),
+        flutter: all(generateFlutter(set, { googleFonts: true })),
+        compose: all(generateCompose(set, { packageName: "com.example.ui.motif", rPackage: "com.example", googleFonts: true, resFonts: new Map() })),
+        swiftui: all(generateSwiftUI(set)),
+        "react-native": all(generateReactNative(set, { googlePackages: new Map(), projectFonts: [] })),
+      };
+      for (const [stack, text] of Object.entries(out)) expect([stack, /\bhero\b/.test(text)]).toEqual([stack, true]);
+      expect(out["react-web"]).toContain("--motif-font-hero-size");
     });
 
     test("React web output stays the same", () => {

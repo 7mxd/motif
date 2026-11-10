@@ -24,7 +24,7 @@ Copy `kit.css`, `kit.js`, `vendor/motion.js` and the `fonts` folder next to the 
 
 ## Layout and type
 
-`.mk-screen` (scrolling content area), `.mk-pad`, `.mk-stack`, `.mk-row-inline`, `.mk-grow` · `.mk-display`, `.mk-title`, `.mk-heading`, `.mk-body`, `.mk-label`, `.mk-caption`, `.mk-muted` · `code`, `kbd`, `samp` and `pre` are set in the theme's mono role, or the system's monospace fonts when it has none
+`.mk-screen` (scrolling content area), `.mk-pad`, `.mk-stack`, `.mk-row-inline`, `.mk-grow` · `.mk-hero` (the headline of a welcome, landing or sign-in screen, in the theme's optional hero role or display when it has none), `.mk-display`, `.mk-title`, `.mk-heading`, `.mk-body`, `.mk-label`, `.mk-caption`, `.mk-muted` · `code`, `kbd`, `samp` and `pre` are set in the theme's mono role, or the system's monospace fonts when it has none
 
 ## Components
 

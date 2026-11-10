@@ -122,6 +122,7 @@ body {
 .mk-grow { flex: 1; min-width: 0; }
 
 /* ---------- Type ---------- */
+.mk-hero { font: var(--motif-font-hero-weight, var(--motif-font-display-weight)) var(--motif-font-hero-size, var(--motif-font-display-size)) / var(--motif-font-hero-line-height, var(--motif-font-display-line-height)) var(--motif-font-hero-family, var(--motif-font-display-family)); letter-spacing: var(--motif-font-hero-letter-spacing, normal); font-variant-numeric: lining-nums; margin: 0; }
 .mk-display { font: var(--motif-font-display-weight) var(--motif-font-display-size) / var(--motif-font-display-line-height) var(--motif-font-display-family); font-variant-numeric: lining-nums; }
 .mk-title { font: var(--motif-font-title-weight) var(--motif-font-title-size) / var(--motif-font-title-line-height) var(--motif-font-title-family); font-variant-numeric: lining-nums; }
 .mk-heading { font: var(--motif-font-heading-weight) var(--motif-font-heading-size) / var(--motif-font-heading-line-height) var(--motif-font-heading-family); font-variant-numeric: lining-nums; }

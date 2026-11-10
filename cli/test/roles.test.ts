@@ -52,6 +52,12 @@ describe("checkRoles", () => {
     expect(g.map((x) => [x.code, x.path])).toContainEqual(["wrong-type", "color.accent-2"]);
   });
 
+  test("font.hero is optional: absent is fine, a non-typography value is wrong-type (first impressions)", () => {
+    expect(run((t) => delete t.font.hero)).toEqual([]);
+    const f = run((t) => (t.font.hero = { $type: "dimension", $value: { value: 64, unit: "px" } }));
+    expect(f.map((x) => [x.code, x.path])).toEqual([["wrong-type", "font.hero"]]);
+  });
+
   test("a project's own accent colour validates untouched (first impressions, review focus 5)", () => {
     const own = { $value: hexColor("#FF00AA"), $extensions: { "dev.motif": { modes: { dark: hexColor("#AA0066") } } } };
     let kept: unknown;

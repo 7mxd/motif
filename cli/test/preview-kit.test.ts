@@ -74,6 +74,15 @@ describe("preview kit", () => {
     expect(css).toContain("var(--motif-color-accent-2, var(--motif-color-brand-soft, var(--motif-color-action-secondary)))");
   });
 
+  test("the hero class falls back to the display role when a theme has none (first impressions, review focus 1)", () => {
+    const css = read("kit.css");
+    expect(css).toContain(".mk-hero ");
+    expect(read("README.md")).toContain("`.mk-hero`");
+    for (const part of ["weight", "size", "line-height", "family"])
+      expect(css).toContain(`var(--motif-font-hero-${part}, var(--motif-font-display-${part}))`);
+    expect(css.match(/var\(--motif-font-hero-[\w-]+(?!,)\)/g)).toBeNull();
+  });
+
   test("kit.js is valid JavaScript", () => {
     expect(() => new Bun.Transpiler({ loader: "js" }).transformSync(read("kit.js"))).not.toThrow();
   });

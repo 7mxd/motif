@@ -85,6 +85,7 @@ The accent colours give a first-impression screen its second and third colour. `
 | `color` | brand-soft — a quiet tint of the brand for icon tiles, highlighted rows and illustration backgrounds; `text-primary` reads on it. |
 | `color` | accent — a second colour near the brand's hue for illustration fills, tags, icon tiles, avatars, chart series and step badges; `text-primary` reads on it. Never buttons, links, focus or large backgrounds. |
 | `color` | accent-2 — a third colour across from the brand's hue, for the same uses as `accent`; `text-primary` reads on it. |
+| `font` | hero — the headline of a welcome, landing or sign-in screen only: the display family a clear step above `display` (56–72 px on the web, scaled down for phones), tight tracking (about −0.02em) and line height 1.05. In-app key figures stay `display`. Without it, those headlines use `display`. |
 | `font` | mono — code, keyboard keys and other fixed-width text; a typography value like the others. The presets start it from the system's own monospace fonts (`ui-monospace`, then Menlo, Consolas and so on), so nothing is downloaded. |
 
 Value shapes: sizes `{ "value": 16, "unit": "px" }`; durations `{ "value": 200, "unit": "ms" }`; easing `[0.2, 0, 0, 1]`; spring duration `{ "value": 0.4, "unit": "s" }` with bounce `0.1`.

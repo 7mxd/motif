@@ -28,6 +28,8 @@ export const FONT_ROLES: [string, number, number][] = [
 
 /** The optional type role for code (name, weight, line height), and the system's own monospace fonts it starts from. */
 export const MONO_ROLE: [string, number, number] = ["mono", 400, 1.5];
+/** The optional headline role for welcome, landing and sign-in screens (name, line height, tracking in em); its size and weight come per style. */
+export const HERO_ROLE: [string, number, number] = ["hero", 1.05, -0.02];
 export const MONO_STACK = ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", "monospace"];
 
 /**
