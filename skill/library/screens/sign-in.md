@@ -11,7 +11,7 @@ Every app with an account, on every stack. Three layouts:
 **Rich panel (desktop and tablet, side by side).** A `brand` panel on one side, about half the width and the window's full height, holding, in this order of preference:
 
 1. **A layered preview of the product:** two or three of its real cards (the app's own components with realistic data), slightly offset from each other, the front one raised with `shadow.lg`, the ones behind it smaller and on `shadow.sm`. It shows the work the app does at a glance.
-2. **Or the brief's drawing**, the activity itself (a runner mid-stride, a plant in a pot, a suitcase), never an abstract shape.
+2. **Or the brief's drawing**, the activity itself (a cyclist on a hill, a plant in a pot, a suitcase), never an abstract shape.
 3. **A quote** under or beside it, in `title` (or `hero` for an energetic brief) in `on-brand`, with the person's name and role in `label` under it.
 
 One [depth piece](../depth/tonal-gradient.md) may sit behind the panel's content: a tonal gradient, a [soft glow](../depth/soft-glow.md) behind the preview, or a [pattern](../depth/pattern.md) for a calm brief; never two. A business or money tool keeps the panel calm in colour: its preview shows the product's normal work (paid, sent, on track), never a list of red overdue items that pulls the eye from the form.
