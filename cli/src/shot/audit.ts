@@ -2,8 +2,8 @@ import type { Page } from "../browser/cdp";
 import { AXE_SOURCE } from "./axe";
 import type { Scheme } from "./capture";
 
-/** "name": a control or image with no name a screen reader can say. */
-export type IssueRule = "color-contrast" | "target-size" | "target-mobile" | "motion" | "name";
+/** "name": a control or image with no name a screen reader can say. "text-fit": text cut off, or a short label broken one word per line. */
+export type IssueRule = "color-contrast" | "target-size" | "target-mobile" | "motion" | "name" | "text-fit";
 
 /** One problem, as the page reports it. */
 export interface RawIssue {
@@ -24,6 +24,10 @@ export interface RawIssue {
   bg?: string;
   width?: number;
   height?: number;
+  /** text-fit: "cut", wider or taller than its box and cut with an ellipsis, a clip or a line clamp; "broken", a label of two or three words laid out one word per line. */
+  fit?: "cut" | "broken";
+  /** text-fit: a heading, button, tab, chip or card title, where cut or broken text is a major problem. */
+  prominent?: boolean;
   /** What to do about it in the app's own terms, when that isn't the web's (a Flutter app has no aria-label). */
   fix?: string;
 }
@@ -63,7 +67,7 @@ export interface Place {
 export interface ReviewFinding {
   id: string;
   severity: Severity;
-  category: "contrast" | "target-size" | "reduced-motion" | "accessibility";
+  category: "contrast" | "target-size" | "reduced-motion" | "accessibility" | "typography";
   source: "exact";
   location: Place;
   /** The other places the same problem was found, when there are any. */
@@ -91,6 +95,7 @@ interface AuditApi {
   /** React Native apps: labels leave out icon-font glyphs. */
   setReactNative(on: boolean): void;
   motion(sampleMs: number): Promise<RawIssue[]>;
+  textFit(): RawIssue[];
 }
 
 declare const axe: { run(context: unknown, options: unknown): Promise<{ violations: any[] }> };
@@ -245,7 +250,7 @@ function installAudit(): boolean {
     return { width: right - left, height: bottom - top };
   };
 
-  const api: AuditApi = {
+  const api: Omit<AuditApi, "textFit"> & { textFit?: AuditApi["textFit"] } = {
     async axe(rules, naming) {
       const result = await axe.run(document, { runOnly: { type: "rule", values: rules }, resultTypes: ["violations"] });
       const out: RawIssue[] = [];
@@ -385,7 +390,67 @@ function installAudit(): boolean {
         .map((e) => ({ rule: "motion" as const, ...describe(e) }));
     },
   };
-  (window as unknown as { __motifAudit: AuditApi }).__motifAudit = api;
+  api.textFit = () => {
+    const out: RawIssue[] = [];
+    const hidden = (el: Element, rect: DOMRect) => {
+      if (rect.width <= 1 || rect.height <= 1) return true;
+      for (let e: Element | null = el; e; e = e.parentElement) {
+        const s = getComputedStyle(e);
+        if (/rect\(\s*0(px)?[\s,]+0(px)?[\s,]+0(px)?[\s,]+0(px)?\s*\)/.test(s.clip) || /inset\(\s*50%/.test(s.clipPath)) return true;
+      }
+      return false;
+    };
+    const ownText = (el: Element) => [...el.childNodes].some((n) => n.nodeType === 3 && (n.textContent ?? "").trim());
+    const boxed = (e: Element) => {
+      const s = getComputedStyle(e);
+      return parseFloat(s.borderTopWidth) > 0 || s.boxShadow !== "none";
+    };
+    const headingLike = (e: Element) => /^H[1-6]$/.test(e.tagName) || e.getAttribute("role") === "heading" || Number(getComputedStyle(e).fontWeight) >= 600;
+    const prominent = (el: Element, rect: DOMRect) => {
+      if (/^H[1-6]$/.test(el.tagName) || el.closest("button, [role='button'], [role='tab']")) return true;
+      const s = getComputedStyle(el);
+      const filled = s.backgroundColor !== "rgba(0, 0, 0, 0)" || parseFloat(s.borderTopWidth) > 0;
+      if (el.closest("a") && filled) return true;
+      if (filled && parseFloat(s.borderTopLeftRadius) >= rect.height / 2 - 1) return true;
+      // A card title: the first heading-like text in the nearest box with a border or a shadow.
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        if (!boxed(p)) continue;
+        const first = [...p.querySelectorAll("*")].find((c) => ownText(c) && headingLike(c));
+        return first === el && headingLike(el);
+      }
+      return false;
+    };
+    for (const el of document.querySelectorAll("body *")) {
+      if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(el.tagName) || !ownText(el) || !shown(el)) continue;
+      const rect = el.getBoundingClientRect();
+      if (hidden(el, rect)) continue;
+      const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (!text) continue;
+      const s = getComputedStyle(el);
+      const wide = el.scrollWidth > el.clientWidth + 1;
+      const clipsX = ["hidden", "clip"].includes(s.overflowX);
+      const clamp = (s as unknown as { webkitLineClamp?: string }).webkitLineClamp;
+      let fit: "cut" | "broken" | undefined;
+      if ((wide && (s.textOverflow === "ellipsis" || (clipsX && s.whiteSpace === "nowrap"))) || (clamp && clamp !== "none" && el.scrollHeight > el.clientHeight + 1)) fit = "cut";
+      else {
+        const words = text.split(" ");
+        if (words.length >= 2 && words.length <= 3) {
+          // The lines the text itself takes, not the boxes of children beside it (a hidden input, a hit area).
+          const tops = new Set<number>();
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const range = document.createRange();
+            range.selectNodeContents(n);
+            for (const r of range.getClientRects()) if (r.width > 0) tops.add(Math.round(r.top));
+          }
+          if (tops.size === words.length) fit = "broken";
+        }
+      }
+      if (fit) out.push({ rule: "text-fit", ...describe(el), label: text, fit, prominent: prominent(el, rect) });
+    }
+    return out;
+  };
+  (window as unknown as { __motifAudit: AuditApi }).__motifAudit = api as AuditApi;
   return true;
 }
 
@@ -412,6 +477,8 @@ export async function auditPage(
     issues.push(...mine.filter((m) => !issues.some((i) => i.rule === "name" && i.selector === m.selector)));
   }
   if (light && ctx.viewport === "mobile") issues.push(...(await page.evaluate<RawIssue[]>(`__motifAudit.smallTargets(44${ctx.reactNative ? ", true" : ""})`)));
+  // Text that doesn't fit is the same in either scheme: looked for once, at each size.
+  if (light) issues.push(...(await page.evaluate<RawIssue[]>("__motifAudit.textFit()")));
   if (light && (ctx.motion ?? ctx.viewport === "desktop")) issues.push(...(await page.evaluate<RawIssue[]>(`__motifAudit.motion(${ctx.motionSampleMs ?? 300})`)));
   return issues;
 }
@@ -479,6 +546,14 @@ function judge(issue: AuditIssue): Pick<ReviewFinding, "severity" | "category" |
         category: "accessibility",
         summary: `The ${issue.kind} has no name a screen reader can say.`,
         fix: "Give it a visible label or an accessible name (aria-label, or alt for an image).",
+        withScheme: false,
+      };
+    case "text-fit":
+      return {
+        severity: issue.prominent ? "major" : "minor",
+        category: "typography",
+        summary: issue.fit === "broken" ? `"${issue.label}" breaks one word per line.` : `"${issue.label}" is cut off.`,
+        fix: "Shorten the copy, or let it wrap once and give the row room.",
         withScheme: false,
       };
   }
