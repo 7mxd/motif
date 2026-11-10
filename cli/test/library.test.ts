@@ -12,12 +12,25 @@ const read = (rel: string) => readFileSync(join(LIBRARY, rel), "utf8").replace(/
 const PIECES: Record<string, string[]> = {
   charts: ["trend-line.md", "progress-ring.md", "segmented-bar.md", "period-bars.md", "stat-change.md"],
   cards: ["key-figure-card.md", "stat-row.md", "todays-focus.md", "item-card.md"],
-  screens: ["landing-hero.md", "welcome.md", "empty-state.md", "success-moment.md"],
+  screens: ["landing-hero.md", "welcome.md", "sign-in.md", "empty-state.md", "success-moment.md"],
   motion: ["draw-in.md", "count-up.md", "stagger.md", "press.md", "success.md"],
+  depth: ["tonal-gradient.md", "soft-glow.md", "pattern.md"],
   accents: ["bold.md", "dark-tech.md", "editorial.md", "minimal.md", "playful.md", "soft.md", "trust.md", "warm.md"],
 };
 /** The groups written so far; each later task adds its own. */
-const READY = new Set(["charts", "cards", "screens", "motion", "accents"]);
+const READY = new Set(["charts", "cards", "screens", "motion", "accents", "depth"]);
+
+/**
+ * What the narrowed C look allows, piece by piece (docs/specs/2026-11-10-motif-2.0-first-impressions-design.md, change
+ * 6): the depth group's soft glow (the pieces link to each other), on first-impression screens. Everything else keeps the ban.
+ */
+const C_LOOK_ALLOWED: Record<string, string[]> = {
+  "depth/*": ["glow"],
+  // Signatures: a slight tilt on Playful's and Bold's badges; Dark tech's thin glow edge and its glass panel.
+  // The sign-in piece links the depth pieces, the soft glow among them.
+  "screens/sign-in.md": ["glow"],
+  "accents/playful.md": ["tilt"], "accents/bold.md": ["tilt"], "accents/dark-tech.md": ["glow", "glass"],
+};
 
 /** Each stack's reduced-motion switch, as its adapter's motion.md spells it. */
 const REDUCED: Record<string, string> = {
@@ -96,12 +109,35 @@ for (const [group, files] of Object.entries(PIECES)) {
       });
       test(`${rel} stays out of the C look and copies nothing it may not`, () => {
         const text = read(`${group}/${f}`);
-        expect(text.match(/glow|tilt|glass|perspective\(/i)).toBeNull();
+        const allowed = C_LOOK_ALLOWED[`${group}/${f}`] ?? C_LOOK_ALLOWED[`${group}/*`] ?? [];
+        const banned = ["glow", "tilt", "glass", "perspective\\("].filter((w) => !allowed.includes(w));
+        expect(text.match(new RegExp(banned.join("|"), "i"))).toBeNull();
         expect(text.match(/react bits|animate ui|aceternity/i)).toBeNull();
       });
       if (group === "charts") {
         test(`${rel} gives the chart a text alternative`, () => {
           expect(section(read(`${group}/${f}`), "Accessibility")).toContain("in words");
+        });
+      }
+      if (group === "accents") {
+        test(`${rel} has a Signature section after Purpose that says where it applies`, () => {
+          const text = read(`${group}/${f}`);
+          const sig = section(text, "Signature").toLowerCase();
+          expect(sig.length).toBeGreaterThan(40);
+          const at = (name: string) => text.indexOf(`\n## ${name}\n`);
+          expect(at("Signature")).toBeGreaterThan(at("Purpose"));
+          expect(at("Signature")).toBeLessThan(at("Fits"));
+          for (const where of ["buttons", "cards", "badges"]) expect([f, where, sig.includes(where)]).toEqual([f, where, true]);
+          const onByDefault = ["playful.md", "bold.md", "dark-tech.md"].includes(f);
+          expect([f, sig.includes(onByDefault ? "on by default" : "optional")]).toEqual([f, true]);
+        });
+      }
+      if (group === "depth") {
+        test(`${rel} is for first-impression screens only, one per screen, from theme roles, and still under reduced motion`, () => {
+          const text = read(`${group}/${f}`);
+          expect([text.includes("first-impression screens only"), text.includes("one per screen")]).toEqual([true, true]);
+          expect(text).not.toMatch(/#[0-9a-f]{3,8}/i);
+          for (const stack of LIBRARY_STACKS) expect([stack, stackSection(text, stack).includes(REDUCED[stack]!)]).toEqual([stack, true]);
         });
       }
       if (group === "motion") {
@@ -115,6 +151,16 @@ for (const [group, files] of Object.entries(PIECES)) {
     }
   });
 }
+
+describe("the sign-in piece (first impressions)", () => {
+  test("offers only the sign-in methods the app really has, and uses the hero headline", () => {
+    const text = read("screens/sign-in.md");
+    expect(text).toContain("only the sign-in methods the app really has");
+    expect(text).toContain("`hero`");
+    expect(text).toContain("leading icon");
+    expect(text).toContain("../depth/");
+  });
+});
 
 describe("the adapters point at the motion recipes", () => {
   for (const stack of LIBRARY_STACKS) {

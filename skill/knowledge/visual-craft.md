@@ -76,6 +76,8 @@ A starting rhythm on the 4 px scale:
 
 **Roughly 60/30/10 on working screens.** Background and surfaces cover most of the screen. Text and borders carry the structure. The accent stays rare, around a tenth, so that when it appears it means something. First impressions (a welcome or landing page, sign-in, empty states) are where the brand gets to be loud: see [character](character.md).
 
+**Accents stay small.** The optional `accent` and `accent-2` roles give a screen its second and third colour: illustration fills, kind tags and their dots, icon tiles, avatar fills, chart series after the first, numbered step badges, a marker behind one headline word. Text on them is `text-primary`. They are not buttons, links or focus (those stay `action-primary` and `focus`), and not large backgrounds. The area cap: on any screen the brand fill plus both accents cover at most about a third, and each accent alone about a tenth ([the contract](../contract/spec.md)).
+
 **`action-primary` means "you can act here".** Use it for the primary button, links and selected states. Never use it for decoration, illustration fills, section headings or large backgrounds: each of those teaches people to ignore the colour that is supposed to guide them. Bands, panels and illustrations in the brand's colour use the `brand` roles instead.
 
 **Status colours are for status only.** `success`, `warning`, `danger` and `info` mark outcomes and states. Always pair them with an icon or words, never colour alone: about one in twelve men can't tell red from green. Text on a status fill uses its `on-*` role (`on-danger` on `danger`).

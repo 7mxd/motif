@@ -10,19 +10,19 @@ Each pattern has three parts: what it **looks like**, **why it hurts**, and what
 
 - **Looks like:** purple-to-blue gradients on buttons, headings, backgrounds and borders, often all on one screen.
 - **Why it hurts:** gradients pull the eye wherever they are, so nothing stands out; they also date a product quickly and rarely survive dark mode.
-- **Instead:** flat role colours from the guide. Allow at most one subtle gradient, and only where the guide's Direction section calls for it (a hero background, say).
+- **Instead:** flat role colours from the guide. A first-impression screen may carry one subtle gradient: a [tonal gradient](../library/depth/tonal-gradient.md) of two shades of `brand` on its band or panel. Working screens stay flat.
 
 ### Glass and glow
 
-- **Looks like:** frosted translucent panels, neon outlines, soft blurred colour blobs behind content.
+- **Looks like:** frosted translucent panels, neon outlines, soft blurred colour blobs behind content, on every screen.
 - **Why it hurts:** blur and glow lower text contrast unpredictably, cost performance on phones, and replace hierarchy with atmosphere.
-- **Instead:** `surface`, `surface-raised` and `border` from the guide; depth from the elevation roles (`shadow.sm`, `shadow.md`, `shadow.lg`).
+- **Instead:** `surface`, `surface-raised` and `border` from the guide; depth from the elevation roles (`shadow.sm`, `shadow.md`, `shadow.lg`). The one exception is a first-impression screen's single depth piece: a [soft glow](../library/depth/soft-glow.md) behind its drawing or product preview, with no text on it. Dark tech's signature (a thin glow edge, a glass panel) is that style's own, and stays on its first-impression screens and focus card.
 
 ### The C look
 
-- **Looks like:** a deep gradient backdrop behind the whole screen, glowing area charts, tilted 3D or glass cards, rising gradient bars, colour on every surface.
+- **Looks like:** a deep gradient backdrop behind the whole screen, glowing area charts, tilted 3D or glass cards, rising gradient bars, colour on every surface, on working screens.
 - **Why it hurts:** it is the limit of "crafted": loud for its own sake, "greedy" with colour, and the data gets harder to read, not easier.
-- **Instead:** the calm-but-crafted floor in [character](character.md): one deep `brand` card, small purposeful charts, status colour only where action is needed. Louder briefs add illustration, bands and livelier motion, never this.
+- **Instead:** the calm-but-crafted floor in [character](character.md): one deep `brand` card, small purposeful charts, status colour only where action is needed. Louder briefs add illustration, bands, one depth piece per first-impression screen, the style's signature and livelier motion ([character](character.md#first-impression-recipes)); charts, lists and working cards stay flat.
 
 ### Decoration that carries no information
 

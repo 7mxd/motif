@@ -145,7 +145,11 @@ export function stoppedWhy(timedOutSeconds: number | null, tail: string, platfor
 
 export function auditChecks(v: Viewport, scheme: Scheme): AuditCheck[] {
   const light = scheme === "light";
-  return ["contrast", "names", ...(light && v.mobile ? (["targets"] as const) : []), ...(light && v.mobile && v.width === MOTION_WIDTH ? (["motion"] as const) : [])];
+  return [
+    "contrast", "names", ...(light && v.mobile ? (["targets"] as const) : []), ...(light && v.mobile && v.width === MOTION_WIDTH ? (["motion"] as const) : []),
+    // Text that doesn't fit is the same in either scheme: looked for once, in light, at every size.
+    ...(light ? (["text-fit"] as const) : []),
+  ];
 }
 
 /** Every screenshot of a run, in the web's order: per screen, size, scheme, then variant, direction and state. */

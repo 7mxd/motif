@@ -1,5 +1,5 @@
 import { wcagContrast } from "culori";
-import { BRAND_PAIRS, FONT_ROLES, MONO_ROLE, MONO_STACK, SPACE_SCALE, STANDARD_PAIRS, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
+import { ACCENT_PAIRS, BRAND_PAIRS, FONT_ROLES, HERO_ROLE, MONO_ROLE, MONO_STACK, SPACE_SCALE, STANDARD_PAIRS, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { PRESETS, type PaletteRole, type PresetSpec } from "./spec";
 
 const ON_BASES = ["action-primary", "action-secondary", "success", "warning", "danger", "info", "brand"] as const;
@@ -40,11 +40,19 @@ export function presetTokens(spec: PresetSpec): Record<string, unknown> {
   font[monoName] = {
     $value: { fontFamily: "{primitive.font.mono}", fontSize: px(spec.sizes.label), fontWeight: monoWeight, lineHeight: monoLineHeight },
   };
+  // The optional headline role for first-impression screens, in the display family, a step above display.
+  const [heroName, heroLineHeight, heroTracking] = HERO_ROLE;
+  font[heroName] = {
+    $value: {
+      fontFamily: "{primitive.font.display}", fontSize: px(spec.hero.size), fontWeight: spec.hero.weight, lineHeight: heroLineHeight,
+      letterSpacing: px(Math.round(spec.hero.size * heroTracking * 100) / 100),
+    },
+  };
   const space: Record<string, unknown> = { $type: "dimension" };
   for (const [key, value] of SPACE_SCALE) space[key] = { $value: px(value) };
 
   return {
-    $extensions: { "dev.motif": { motifContract: 1, preset: spec.id, pairs: pairsExtension([...STANDARD_PAIRS, ...BRAND_PAIRS]) } },
+    $extensions: { "dev.motif": { motifContract: 1, preset: spec.id, pairs: pairsExtension([...STANDARD_PAIRS, ...BRAND_PAIRS, ...ACCENT_PAIRS]) } },
     primitive: {
       color: primitives,
       font: {

@@ -11,6 +11,7 @@ import { CSS_HEADER, TS_HEADER } from "../src/generate/header";
 import { discoverVueRoutes } from "../src/stacks/vue/routes";
 import { heavyStackTests } from "./helpers";
 import { cleanupTempDirs, tempDir } from "./tmp";
+import { shownInShot, type ShotSign } from "./seeded-shot";
 
 // Removing an installed node_modules takes longer than a hook's default 5 s on Windows.
 afterAll(cleanupTempDirs, 120_000);
@@ -27,6 +28,8 @@ type Consequence = { category: string; screens: string[]; schemes: string[]; not
 type Issue = {
   id: string; kind: string; detectedBy: string; rule?: string; categories: string[]; severity: string;
   location: { file?: string; line?: number; screen?: string; app?: boolean; path?: string }; anchor?: string; summary: string; consequences?: Consequence[];
+  /** What the screenshot audit shows of a problem another detector owns (seeded-shot.ts). */
+  shot?: ShotSign[];
 };
 const issues: Issue[] = list.issues;
 const byDetector = (d: string) => issues.filter((i) => i.detectedBy === d);
@@ -360,8 +363,10 @@ describe("Bustan and its seeded copy, installed, type-checked and drawn through 
       // The sign-in link is in the top bar of every page; the others are on their own page.
       if (i.id !== "V-08") for (const f of seen) for (const p of [f.location, ...(f.locations ?? [])]) expect(sameScreen(i.location.screen!, p.screen)).toBe(true);
     }
+    // A problem another detector owns that the audit shows too is reported, the way its list says.
+    for (const i of issues.filter((x) => x.shot)) expect(findings.some((f) => shownInShot(i, f, sameScreen)) ? i.id : `${i.id} not shown`).toBe(i.id);
     for (const f of findings) {
-      const planted = byDetector("shot").some((i) => shows(f, i));
+      const planted = byDetector("shot").some((i) => shows(f, i)) || issues.some((i) => shownInShot(i, f, sameScreen));
       const knockOn = [f.location, ...(f.locations ?? [])].every((p) =>
         issues.some((i) => (i.consequences ?? []).some((c) => c.category === f.category && c.screens.some((s) => sameScreen(s, p.screen)) && (!p.scheme || c.schemes.includes(p.scheme)))),
       );

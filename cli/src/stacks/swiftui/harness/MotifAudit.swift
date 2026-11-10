@@ -38,6 +38,10 @@ struct MotifIssue: Encodable {
     /// Drawn by the system, not the app (MapKit's map, UIKit's split view), which the app can't change: Motif leaves it
     /// out of audit.json and says so once (decision 0010, §18).
     var systemPart: String?
+    /// text-fit: "cut" (truncated) or "broken" (a two- or three-word label laid out one word per line).
+    var fit: String?
+    /// text-fit: a button's label or headline-sized text (20 points or more), where it is a major problem.
+    var prominent: Bool?
 }
 
 /// What the audit found on one screenshot: its problems, the texts whose contrast it couldn't judge (no one colour
@@ -94,7 +98,7 @@ enum MotifAudit {
     static func run(_ checks: Set<String>, window: MotifWindow, png: Data, scale: Double, systemReduceMotion: Bool = true) -> MotifAuditOutcome {
         var out = MotifAuditOutcome()
         var elements: [MotifElement] = []
-        let tree = checks.contains("contrast") || checks.contains("names") || checks.contains("targets")
+        let tree = checks.contains("contrast") || checks.contains("names") || checks.contains("targets") || checks.contains("text-fit")
         if tree {
             if MotifAccessibility.enabled != true {
                 out.error = MotifAccessibility.auditProblem
@@ -112,7 +116,7 @@ enum MotifAudit {
                     }
                     return issue
                 }
-                let pixels = checks.contains("contrast") || checks.contains("targets") ? MotifPixels(png: png, scale: scale) : nil
+                let pixels = checks.contains("contrast") || checks.contains("targets") || checks.contains("text-fit") ? MotifPixels(png: png, scale: scale) : nil
                 if checks.contains("targets") && pixels == nil {
                     out.note = "Motif couldn't read some screenshots' pixels, so their tap targets weren't checked: it tells a button drawn on a shape of its own (bordered, glass) from a plain one by them."
                 }
@@ -153,6 +157,14 @@ enum MotifAudit {
                         issue.label = ""
                         out.issues.append(issue)
                     }
+                    if checks.contains("text-fit"), let pixels, let fit = textFit(e, pixels) {
+                        var issue = described(i)
+                        issue.rule = "text-fit"
+                        issue.label = plain(e.name ?? "")
+                        issue.fit = fit
+                        issue.prominent = (e.font?.size ?? 0) >= 20
+                        out.issues.append(issue)
+                    }
                     if checks.contains("targets"), smallTarget(e, pixels) {
                         var issue = described(i)
                         issue.rule = "target-mobile"
@@ -184,6 +196,30 @@ enum MotifAudit {
         if tallerThanItsText(e) { return false }
         guard let pixels else { return false }
         return !pixels.onShape(e.rect)
+    }
+
+    /// Text that doesn't fit, as on the web: "cut" when a one-line text box's text, set in the size it says, is wider than
+    /// the box (SwiftUI truncates it with "…"); "broken" when a label of two or three words is drawn one word per line.
+    /// Only plain text that says its font (SwiftUI's Text does), with lines read from the picture: a button's or a
+    /// combined element's name isn't always the text drawn in its frame. A custom font's width differs from the system
+    /// one's, so a tenth's leeway (and two points) is allowed. Nil when it fits, or when Motif can't tell: a missed
+    /// finding, never a false one.
+    static func textFit(_ e: MotifElement, _ pixels: MotifPixels) -> String? {
+        guard e.kind == .text, e.symbol == nil, let font = e.font else { return nil }
+        let text = plain(e.name ?? "")
+        guard !text.isEmpty, e.rect.width > 1, e.rect.height > 1 else { return nil }
+        guard let drawn = pixels.drawn(in: e.rect, hint: e.color) else { return nil }
+        let lines = max(1, pixels.lines(in: e.rect, drawn: drawn))
+        #if os(macOS)
+        let systemFont = NSFont.systemFont(ofSize: font.size, weight: font.bold ? .bold : .regular)
+        #else
+        let systemFont = UIFont.systemFont(ofSize: font.size, weight: font.bold ? .bold : .regular)
+        #endif
+        let natural = (text as NSString).size(withAttributes: [.font: systemFont]).width
+        if lines == 1, e.rect.height <= font.size * 1.6, natural > e.rect.width * 1.1 + 2 { return "cut" }
+        let words = text.split(separator: " ")
+        if (2...3).contains(words.count), lines == words.count { return "broken" }
+        return nil
     }
 
     /// True when a text button's frame is well taller than a line of its text: a system style's padding (a bordered

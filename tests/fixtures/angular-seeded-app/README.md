@@ -39,6 +39,8 @@ S-04 is a radius typed as a Tailwind class, which `motif check` reports as `tail
 
 S-06 is Angular's old way to animate: `trigger()`, `transition()` and `animate()` from the deprecated `@angular/animations`, which `motif check` reports at the typed timing as `raw-motion`. The fix is Ataa's own: `animate.enter="rise-in"` with a class timed by `var(--motif-duration-base)` and `var(--motif-easing-enter)`. The timing has no easing on purpose, so the line has one finding. Reduced motion isn't reported: My shifts' withdrawal still checks `matchMedia('(prefers-reduced-motion: reduce)')`, which `motif check` takes as the app respecting the setting.
 
+S-09 is a review's problem, but its cards' names cut to one line also show in the screenshot audit, whose text-fit rule reports a name that doesn't fit as cut off on `/` at desktop width. Its `shot` sign says so: a finding in `typography` on `/` whose summary is `"<name>" is cut off.`. The test requires it and accepts nothing broader.
+
 ## Changing it
 
 Change the overlay and the list together. `cli/test/fixtures-angular.test.ts` checks, on every change, that `motif check` reports exactly the six check problems at their lines and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node (in Angular 21's range) and npm are installed, it also checks that `ng build` passes on the copy with no warnings, and with a browser that `motif shot --sizes 390,1440 --audit --variant all --rtl` on `/`, `/my-shifts`, `/sign-in` and `/shifts/pack-sunday` reports S-07 and S-08 and nothing that isn't one of them or S-01's consequences.

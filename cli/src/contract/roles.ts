@@ -24,8 +24,8 @@ export const REQUIRED_ROLES: Record<string, { type: string; names: string[] }> =
 
 /** Roles a theme may leave out; one it has must be the right type. */
 export const OPTIONAL_ROLES: Record<string, { type: string; names: string[] }> = {
-  color: { type: "color", names: ["brand", "on-brand", "brand-soft"] },
-  font: { type: "typography", names: ["mono"] },
+  color: { type: "color", names: ["brand", "on-brand", "brand-soft", "accent", "accent-2"] },
+  font: { type: "typography", names: ["mono", "hero"] },
 };
 
 export const REQUIRED_SPRINGS = ["snappy", "smooth", "bouncy"];

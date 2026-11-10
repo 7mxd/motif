@@ -149,7 +149,7 @@ internal class MotifAudit(
      */
     fun run(checks: Set<String>, faults: Map<String, String> = emptyMap()): AuditOutcome {
         val outcome = AuditOutcome()
-        for ((check, body) in listOf<Pair<String, () -> List<JSONObject>>>("contrast" to ::contrast, "names" to ::names, "targets" to ::targets)) {
+        for ((check, body) in listOf<Pair<String, () -> List<JSONObject>>>("contrast" to ::contrast, "names" to ::names, "targets" to ::targets, "text-fit" to ::textFit)) {
             if (check !in checks) continue
             try {
                 plantFault(faults[check])
@@ -267,6 +267,45 @@ internal class MotifAudit(
             ids.add(node.id)
         }
         return ids.mapNotNull { id -> merged[id]?.let { describe(it).put("rule", "name") } }
+    }
+
+    /**
+     * Text that doesn't fit, as on the web: "cut", ellipsized, clipped or running past its box; "broken", a label of two
+     * or three words laid out one word per line. Prominent: a control's label, a heading, or text of 20 sp or more.
+     * Runs only when "text-fit" in checks.
+     */
+    private fun textFit(): List<JSONObject> {
+        val out = mutableListOf<JSONObject>()
+        for (node in unmerged.values) {
+            val c = node.config
+            if (SemanticsProperties.EditableText in c || SemanticsProperties.HideFromAccessibility in c) continue
+            val text = plain(c.getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }.orEmpty())
+            if (text.isEmpty() || node.size.width <= 1 || node.size.height <= 1) continue
+            val layouts = mutableListOf<TextLayoutResult>()
+            try {
+                c.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(layouts)
+            } catch (e: RuntimeException) {
+                continue
+            }
+            val layout = layouts.firstOrNull() ?: continue
+            val words = text.split(" ")
+            val fit = when {
+                // Not the layout's visual-overflow flag: its width half compares the text's size with the paragraph's layout width, the
+                // whole width it was offered, so every short text in a wide row would count.
+                layout.didOverflowHeight || (0 until layout.lineCount).any {
+                    layout.isLineEllipsized(it) || layout.getLineRight(it) - layout.getLineLeft(it) > layout.size.width + 1
+                } -> "cut"
+                words.size in 2..3 && layout.lineCount == words.size -> "broken"
+                else -> continue
+            }
+            val control = controlOf(node, text)
+            val size = layout.layoutInput.style.fontSize
+            val big = size.isSp && size.value * fontScale >= 20f
+            val heading = generateSequence(node) { it.parent }.any { SemanticsProperties.Heading in it.config }
+            val described = if (control != null) describe(control) else textElement(node, text)
+            out.add(described.put("rule", "text-fit").put("label", text).put("fit", fit).put("prominent", control != null || heading || big))
+        }
+        return out
     }
 
     /** Whether all of a node is inside the screen (half a pixel's leeway): its laid-out size, not the clipped bounds. */

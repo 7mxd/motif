@@ -24,13 +24,13 @@ Copy `kit.css`, `kit.js`, `vendor/motion.js` and the `fonts` folder next to the 
 
 ## Layout and type
 
-`.mk-screen` (scrolling content area), `.mk-pad`, `.mk-stack`, `.mk-row-inline`, `.mk-grow` · `.mk-display`, `.mk-title`, `.mk-heading`, `.mk-body`, `.mk-label`, `.mk-caption`, `.mk-muted` · `code`, `kbd`, `samp` and `pre` are set in the theme's mono role, or the system's monospace fonts when it has none
+`.mk-screen` (scrolling content area), `.mk-pad`, `.mk-stack`, `.mk-row-inline`, `.mk-grow` · `.mk-hero` (the headline of a welcome, landing or sign-in screen, in the theme's optional hero role or display when it has none), `.mk-display`, `.mk-title`, `.mk-heading`, `.mk-body`, `.mk-label`, `.mk-caption`, `.mk-muted` · `code`, `kbd`, `samp` and `pre` are set in the theme's mono role, or the system's monospace fonts when it has none
 
 ## Components
 
 `.mk-btn` (with `.mk-secondary`, `.mk-ghost`, `.mk-block`) · `.mk-field` with a `label` and `.mk-input`, `.mk-hint`, `.mk-error-text` · `.mk-card` · `.mk-list` of `.mk-row` · `.mk-avatar` · `.mk-badge` (with `.mk-success`, `.mk-warning`, `.mk-danger`, `.mk-info`) · `.mk-icon` · `.mk-divider` · `.mk-topbar` · `.mk-tabbar` of `.mk-tab` (`.mk-active`) · `.mk-sidebar` of `.mk-nav-item` (`.mk-active`) · `.mk-scrim`, `.mk-sheet`, `.mk-dialog`, `.mk-toast` · `.mk-skeleton` · `.mk-empty`
 
-Brand moments, in the theme's optional `brand`, `on-brand` and `brand-soft` roles (or the action colours when it has none): `.mk-brand`, a panel in the brand colour, or a band across the screen when it sits straight in a frame or an unpadded `.mk-screen`; a `.mk-btn` on it is drawn in on-brand, `.mk-secondary` is outlined and `.mk-muted` is softened · `.mk-tile`, a square tile in brand-soft holding an `.mk-icon` in the brand colour · `.mk-art`, a centred block holding an inline `<svg>` illustration whose `currentColor` is the brand colour · `.mk-stat`, a number over its label ("7 runs a week"). Never use them for buttons or links.
+Brand moments, in the theme's optional `brand`, `on-brand` and `brand-soft` roles (or the action colours when it has none): `.mk-brand`, a panel in the brand colour, or a band across the screen when it sits straight in a frame or an unpadded `.mk-screen`; a `.mk-btn` on it is drawn in on-brand, `.mk-secondary` is outlined and `.mk-muted` is softened · `.mk-tile`, a square tile in brand-soft holding an `.mk-icon` in the brand colour · `.mk-art`, a centred block holding an inline `<svg>` illustration whose `currentColor` is the brand colour · `.mk-stat`, a number over its label ("7 runs a week"). Never use them for buttons or links. Accent fills, in the theme's optional `accent` and `accent-2` roles (or `brand-soft` when it has none): `.mk-accent` and `.mk-accent-2` colour a tag, tile, avatar or step badge with `text-primary` on it; keep them small, never on buttons or links.
 
 ## Motion
 

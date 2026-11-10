@@ -59,7 +59,65 @@ List<Issue> auditScreen(
   if (checks.contains('names') || checks.contains('targets')) {
     issues.addAll(_tappables(view, names: checks.contains('names'), targets: checks.contains('targets')));
   }
+  if (checks.contains('text-fit')) issues.addAll(_textFit(view));
   return issues;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Text fit
+
+/// Text that doesn't fit, as on the web: "cut", cut by maxLines, an ellipsis or a clip (or running past its box with no
+/// wrapping); "broken", a label of two or three words laid out one word per line. Prominent: text in a button, chip or
+/// tab, or headline-sized text (20 or more), where it is a major problem.
+List<Issue> _textFit(RenderView view) {
+  final out = <Issue>[];
+  void visit(RenderObject o) {
+    if (o is RenderParagraph && o.hasSize) {
+      final plain = _plain(o.text.toPlainText());
+      final rect = _visibleRect(o);
+      if (plain.isNotEmpty && rect != null && rect.width > 1 && rect.height > 1) {
+        String? fit;
+        final unwrapped = o.getMaxIntrinsicWidth(double.infinity);
+        if (o.didExceedMaxLines || (!o.softWrap && unwrapped > o.size.width + 1)) {
+          fit = 'cut';
+        } else {
+          final words = plain.split(' ');
+          if (words.length >= 2 && words.length <= 3) {
+            // The lines the text takes: its boxes' distinct tops.
+            final boxes = o.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: o.text.toPlainText().length), boxHeightStyle: ui.BoxHeightStyle.max);
+            final lines = boxes.map((b) => b.top.round()).toSet().length;
+            if (lines == words.length) fit = 'broken';
+          }
+        }
+        if (fit != null) {
+          final element = _creator(o);
+          final subject = element == null ? null : _subject(element, rect);
+          final size = _mainStyle(o.text, o.textScaler)?.size ?? 14;
+          var inControl = false;
+          element?.visitAncestorElements((a) {
+            final type = a.widget.runtimeType.toString();
+            if (type.contains('Button') || type.contains('Chip') || type == 'Tab') {
+              inControl = true;
+              return false;
+            }
+            return true;
+          });
+          out.add({
+            'rule': 'text-fit',
+            'selector': subject == null ? '' : _selector(subject, plain),
+            'label': plain,
+            'kind': inControl ? 'button' : 'element',
+            'fit': fit,
+            'prominent': inControl || size >= 20,
+          });
+        }
+      }
+    }
+    o.visitChildren(visit);
+  }
+
+  visit(view);
+  return out;
 }
 
 /// What keeps moving on a screen that has settled, with reduce motion on: if the app still asks for frames after two

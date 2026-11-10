@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { checkContrast, readPairs } from "../src/contract/contrast";
-import { BRAND_PAIRS, STANDARD_PAIRS, pairsExtension } from "../src/contract/defaults";
+import { ACCENT_PAIRS, BRAND_PAIRS, STANDARD_PAIRS, pairsExtension } from "../src/contract/defaults";
+import { presetTokens } from "../src/presets/build";
+import { PRESETS } from "../src/presets/spec";
 import { checkRoles } from "../src/contract/roles";
 import { docFrom, hexColor, validTokens } from "./helpers";
 
@@ -108,4 +110,20 @@ describe("the optional brand colours' readability pairs", () => {
     const f = checkContrast(docFrom(withBrand("#1A4560"))).findings;
     expect(f.map((x) => [x.code, x.path])).toEqual([["low-contrast", "color.on-brand"]]);
   });
+});
+
+describe("the optional accent colours (first impressions)", () => {
+  test("are a list of their own: text-primary on accent and on accent-2, as text", () => {
+    expect(ACCENT_PAIRS).toEqual([["text-primary", "accent", "text"], ["text-primary", "accent-2", "text"]]);
+  });
+
+  for (const spec of PRESETS) {
+    test(`preset ${spec.id}: accent and accent-2 read under text-primary at 4.5:1 in light and dark`, () => {
+      const t = presetTokens(spec) as any;
+      expect(Object.keys(t.color)).toEqual(expect.arrayContaining(["accent", "accent-2"]));
+      const pairs = t.$extensions["dev.motif"].pairs.map((p: any) => `${p.fg} ${p.bg} ${p.kind}`.replaceAll("color.", ""));
+      expect(pairs).toEqual(expect.arrayContaining(["text-primary accent text", "text-primary accent-2 text"]));
+      expect(checkContrast(docFrom(t)).findings).toEqual([]);
+    });
+  }
 });

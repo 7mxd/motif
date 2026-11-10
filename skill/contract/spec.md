@@ -76,11 +76,16 @@ A theme may leave these out. One it has must be the type shown. With `font.mono`
 
 The brand colours give a screen its brand moments. `brand` is the brand's own colour for a hero or welcome band, a sign-in side panel, illustration fills or a highlighted stat; never for buttons or links, which stay `action-primary`. `on-brand` is text and icons on a `brand` fill. `brand-soft` is a quiet tint of the brand for icon tiles, highlighted rows and illustration backgrounds; `text-primary` reads on it. Like every colour role, each needs a dark value. A theme with them lists their pairs: `on-brand` on `brand` (text), `text-primary` on `brand-soft` (text) and `brand` on `brand-soft` (ui, an icon in a tile). The presets have all three.
 
+The accent colours give a first-impression screen its second and third colour. `accent` sits near the brand's hue and `accent-2` across from it; both are mid-light (deeper in dark mode) so `text-primary` reads on them. Use them for illustration fills, kind tags and their dots, icon tiles, avatar fills, chart series after the first and numbered step badges. Never for buttons, links or focus, which stay `action-primary` and `focus`, and never for large backgrounds. Keep the area small: on any screen the brand fill plus both accents cover at most about a third, and each accent alone about a tenth. A theme with them lists their pairs: `text-primary` on `accent` and `text-primary` on `accent-2` (text). The presets have both.
+
 | Group | Roles |
 |---|---|
 | `color` | brand — the brand's own colour for brand moments: a hero or welcome band, a sign-in side panel, illustration fills, a highlighted stat. Never for buttons or links; those stay `action-primary`. |
 | `color` | on-brand — text and icons on a `brand` fill. |
 | `color` | brand-soft — a quiet tint of the brand for icon tiles, highlighted rows and illustration backgrounds; `text-primary` reads on it. |
+| `color` | accent — a second colour near the brand's hue for illustration fills, tags, icon tiles, avatars, chart series and step badges; `text-primary` reads on it. Never buttons, links, focus or large backgrounds. |
+| `color` | accent-2 — a third colour across from the brand's hue, for the same uses as `accent`; `text-primary` reads on it. |
+| `font` | hero — the headline of a welcome, landing or sign-in screen only: the display family a clear step above `display` (56–72 px on the web, scaled down for phones), tight tracking (about −0.02em) and line height 1.05. In-app key figures stay `display`. Without it, those headlines use `display`. |
 | `font` | mono — code, keyboard keys and other fixed-width text; a typography value like the others. The presets start it from the system's own monospace fonts (`ui-monospace`, then Menlo, Consolas and so on), so nothing is downloaded. |
 
 Value shapes: sizes `{ "value": 16, "unit": "px" }`; durations `{ "value": 200, "unit": "ms" }`; easing `[0.2, 0, 0, 1]`; spring duration `{ "value": 0.4, "unit": "s" }` with bounce `0.1`.

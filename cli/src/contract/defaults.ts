@@ -12,6 +12,11 @@ export const BRAND_PAIRS: [string, string, "text" | "ui"][] = [
   ["on-brand", "brand", "text"], ["text-primary", "brand-soft", "text"], ["brand", "brand-soft", "ui"],
 ];
 
+/** Pairs for the optional accent colours: text sits on them in tags, tiles and step badges, so they read as text. */
+export const ACCENT_PAIRS: [string, string, "text" | "ui"][] = [
+  ["text-primary", "accent", "text"], ["text-primary", "accent-2", "text"],
+];
+
 export const SPACE_SCALE: [string, number][] = [
   ["0", 0], ["1", 4], ["2", 8], ["3", 12], ["4", 16], ["5", 20], ["6", 24], ["8", 32], ["10", 40], ["12", 48], ["16", 64],
 ];
@@ -23,6 +28,8 @@ export const FONT_ROLES: [string, number, number][] = [
 
 /** The optional type role for code (name, weight, line height), and the system's own monospace fonts it starts from. */
 export const MONO_ROLE: [string, number, number] = ["mono", 400, 1.5];
+/** The optional headline role for welcome, landing and sign-in screens (name, line height, tracking in em); its size and weight come per style. */
+export const HERO_ROLE: [string, number, number] = ["hero", 1.05, -0.02];
 export const MONO_STACK = ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", "monospace"];
 
 /**

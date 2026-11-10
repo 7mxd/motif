@@ -8,7 +8,17 @@ Three precise, drafted accents for the Dark tech style, taken from plotting pape
 - **Bracket corners:** four short square brackets in `brand` (or `on-brand` on the key-figure card) at the corners of the one figure that matters, like a viewfinder locked on it.
 - **The trace:** a thin stepped line (straight, a 45° step, straight) ending in a small square node in `brand`, joining the numbered steps of "How it works" (1 → 2 → 3) or leading from a section label to its content.
 
-**Stay out of the "C look".** Every stroke and fill is flat and solid: no blur, no halo, no light bloom around lines, no neon colours outside the theme's roles, no gradient backdrop, no fading mask on the grid. The page's `background` stays one flat colour; the brand appears in thin lines and one small node, never as a wash ([anti-patterns](../../knowledge/anti-patterns.md)).
+**Stay out of the "C look".** Every stroke and fill is flat and solid: no blur, no halo, no light halo around lines, no neon colours outside the theme's roles, no gradient backdrop, no fading mask on the grid. The page's `background` stays one flat colour; the brand appears in thin lines and one small node, never as a wash ([anti-patterns](../../knowledge/anti-patterns.md)).
+
+## Signature
+
+**A thin glow edge.** On by default. A 1 px edge in `focus` (or `accent`) at about 40% with a soft spread of a few points, used the same way across the app:
+
+- **Buttons:** the main button carries the edge; hover or press brightens it a step.
+- **Cards:** the key cards on first-impression screens carry the edge; on the sign-in panel one card may be glass (a translucent `surface-raised` over the panel with a background blur). Working-screen cards stay flat with a plain `border`.
+- **Badges:** status badges take the edge in their own status colour, never a glowing chart.
+
+Under reduced motion nothing pulses: the edge is still.
 
 ## Fits
 

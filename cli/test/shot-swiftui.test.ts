@@ -1588,23 +1588,23 @@ describe("--audit on a SwiftUI app (Task 10)", () => {
       const s = shots.find((x) => x.file === file)!;
       return [s.checks, s.reduceMotion ?? false, s.seen];
     };
-    expect(checks("index.mobile-360.png")).toEqual([["contrast", "names", "targets"], false, { size: "mobile-360" }]);
-    expect(checks("index.mobile.png")).toEqual([["contrast", "names", "targets", "motion"], true, { size: "mobile" }]);
-    expect(checks("index+partner.mobile.png")).toEqual([["contrast", "names", "targets", "motion"], true, { size: "mobile", variant: "partner" }]);
+    expect(checks("index.mobile-360.png")).toEqual([["contrast", "names", "targets", "text-fit"], false, { size: "mobile-360" }]);
+    expect(checks("index.mobile.png")).toEqual([["contrast", "names", "targets", "motion", "text-fit"], true, { size: "mobile" }]);
+    expect(checks("index+partner.mobile.png")).toEqual([["contrast", "names", "targets", "motion", "text-fit"], true, { size: "mobile", variant: "partner" }]);
     expect(checks("index.mobile.dark.png")).toEqual([["contrast", "names"], false, { size: "mobile" }]);
-    expect(checks("index.tablet.png")).toEqual([["contrast", "names", "targets"], false, { size: "tablet" }]);
+    expect(checks("index.tablet.png")).toEqual([["contrast", "names", "targets", "text-fit"], false, { size: "tablet" }]);
     // Without --audit, nothing changes.
     expect(planSwiftUIShots(phoneOpts(), swiftUITargets(phoneOpts(), previews), null, "").every((s) => !("checks" in s) && !("seen" in s) && !("reduceMotion" in s))).toBe(true);
 
     const mac = phoneOpts({ root: macProject(), viewports: MAC_WINDOWS, audit: true });
     const macShots = planSwiftUIShots(mac, swiftUITargets(mac, []), null, "", "macos");
     expect(macShots.map((s) => [s.file, s.checks, s.reduceMotion ?? false])).toEqual([
-      ["index.desktop.png", ["contrast", "names", "motion"], true],
+      ["index.desktop.png", ["contrast", "names", "motion", "text-fit"], true],
       ["index.desktop.dark.png", ["contrast", "names"], false],
-      ["index.desktop-900.png", ["contrast", "names"], false],
+      ["index.desktop-900.png", ["contrast", "names", "text-fit"], false],
       ["index.desktop-900.dark.png", ["contrast", "names"], false],
     ]);
-    expect(swiftUIAuditChecks(MAC_WINDOWS[0]!, "light", "macos")).toEqual(["contrast", "names", "motion"]);
+    expect(swiftUIAuditChecks(MAC_WINDOWS[0]!, "light", "macos")).toEqual(["contrast", "names", "motion", "text-fit"]);
     expect(SWIFTUI.motionSize).toEqual({ width: 390, text: "the 390 pt phone size" });
   });
 
@@ -1738,7 +1738,7 @@ describe("--audit on a SwiftUI app (Task 10)", () => {
     const { promise, fake } = await fakeShoot(root, { audit: true }, tempDir("motif-swiftui-home-"), finds);
     const r = await promise;
     expect(fake.options!.shots.map((s) => [s.file, s.checks, s.reduceMotion])).toEqual([
-      ["index.mobile.png", ["contrast", "names", "targets", "motion"], true],
+      ["index.mobile.png", ["contrast", "names", "targets", "motion", "text-fit"], true],
       ["index.mobile.dark.png", ["contrast", "names"], undefined],
     ]);
     expect(fake.options!.shots.some((s) => "seen" in s)).toBe(false);

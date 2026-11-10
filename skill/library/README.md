@@ -1,17 +1,17 @@
 # Library
 
-Motif's own pieces for app screens: charts, cards, screens, motion and accents, each written for all nine stacks. Nothing here needs a sign-up, a key or a download, and nothing is fetched. Every piece is a recipe: adapt it to the app, using only the design guide's roles (colours, spacing, corners, type, motion), then run `motif check`.
+Motif's own pieces for app screens: charts, cards, screens, motion, depth and accents, each written for all nine stacks. Nothing here needs a sign-up, a key or a download, and nothing is fetched. Every piece is a recipe: adapt it to the app, using only the design guide's roles (colours, spacing, corners, type, motion), then run `motif check`.
 
 ## How to pick
 
 1. **Loudness from the brief.** Read the personality words in `DESIGN.md` section 1 and the dial in [character](../knowledge/character.md). Calm, precise or business briefs take `calm` and `default` pieces; friendly or gentle ones `default`; playful, energetic or bold ones may take `loud`. Every brief gets at least one crafted piece on each first-impression screen (welcome, landing, sign-in, empty states) and on the home screen: the floor is a key-figure card with a trend line, a progress ring or segmented bar, and status colour on what needs action.
-2. **Group from the screen's job.** Read the screen's UX pattern guide in `knowledge/ux-patterns/` first (its "What strong apps show" note says what belongs there), then pick: numbers people track → charts; what to act on now → cards; first impressions and moments → screens; the brand's own touch → the accent for the guide's starting style.
+2. **Group from the screen's job.** Read the screen's UX pattern guide in `knowledge/ux-patterns/` first (its "What strong apps show" note says what belongs there), then pick: numbers people track → charts; what to act on now → cards; first impressions and moments → screens; a first-impression panel or hero band → depth (one per screen); the brand's own touch → the accent for the guide's starting style.
 3. **Motion from the level.** Every piece names the default motions it uses. Play them at the level set in [motion](../knowledge/motion.md#default-motion-and-level): `lively`, `default`, `calm` or `none`.
 4. **Only the app's own data.** A chart or card shows the person's real figures or a next action, never filler. An app without numbers fills with its own content: the next meetup, the upcoming trip, saved routes, people, counts and progress.
 5. **The developer can ask for a different piece.** Offer the alternative in plain words ("a progress ring instead of the bar?"), and keep the guide's roles either way.
 6. **Into what the app already has.** Build a piece as a variant of an existing component (an `EmptyState` with a drawing, a `Badge` for a count) or inside the screen's own folder. One that has to be a new shared component is proposed like any new component and recorded by its name in `DESIGN.md` section 5.
 
-Never go into the "C look": glowing charts, tilted cards, a gradient backdrop behind everything, colour on every surface ([anti-patterns](../knowledge/anti-patterns.md)).
+Never go into the "C look": glowing charts, tilted cards, a gradient backdrop behind everything, colour on every surface. One depth piece on a first-impression screen is not the C look ([anti-patterns](../knowledge/anti-patterns.md)).
 
 ## Pieces
 
@@ -28,6 +28,7 @@ Never go into the "C look": glowing charts, tilted cards, a gradient backdrop be
 | Item card | cards | default | items with a look of their own (places, plants, trips) | [item-card](cards/item-card.md) |
 | Landing hero | screens | default | a web landing page, by personality | [landing-hero](screens/landing-hero.md) |
 | Welcome | screens | default | a native welcome and onboarding | [welcome](screens/welcome.md) |
+| Sign-in | screens | default | a sign-in: rich panel, crafted form, phone layout | [sign-in](screens/sign-in.md) |
 | Empty state | screens | default | a list or screen with nothing yet | [empty-state](screens/empty-state.md) |
 | Success moment | screens | default | after a key action | [success-moment](screens/success-moment.md) |
 | Draw-in | motion | default | every chart, on first show | [draw-in](motion/draw-in.md) |
@@ -35,6 +36,9 @@ Never go into the "C look": glowing charts, tilted cards, a gradient backdrop be
 | Stagger | motion | default | a list or row of cards arriving | [stagger](motion/stagger.md) |
 | Press | motion | calm | primary and key actions | [press](motion/press.md) |
 | Success | motion | default | a key action confirming itself | [success](motion/success.md) |
+| Tonal gradient | depth | default | a sign-in brand panel or a hero band, first-impression screens only | [tonal-gradient](depth/tonal-gradient.md) |
+| Soft glow | depth | default | behind a first screen's drawing or product preview | [soft-glow](depth/soft-glow.md) |
+| Pattern | depth | calm | a faint repeat on a calm brand panel | [pattern](depth/pattern.md) |
 | Bold accent | accents | loud | the Bold style | [bold](accents/bold.md) |
 | Dark tech accent | accents | default | the Dark tech style | [dark-tech](accents/dark-tech.md) |
 | Editorial accent | accents | calm | the Editorial style | [editorial](accents/editorial.md) |

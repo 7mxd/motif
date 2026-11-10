@@ -19,19 +19,21 @@ App name feels calm, clear and trustworthy. Replace this paragraph with three to
 
 ## 2. Direction
 
-<!-- The chosen style and preset (if any), reference links (links only — never copy someone else's images), and the approved mockups in design/previews/. -->
+<!-- The chosen style and preset (if any), its signature detail, reference links (links only — never copy someone else's images), and the approved mockups in design/previews/. -->
 
 - **Style:**
 - **Starting preset:**
+- **Signature:** <!-- the one recurring detail from the style's accent file (library/accents/), on buttons, cards and badges, or "none" -->
 - **References:**
 - **Approved mockups:**
 
 ## 3. Foundations
 
-<!-- Intent, not values: the values live in design/tokens.json. One line per colour role saying what it is for, including where the brand roles (brand, on-brand, brand-soft) appear and how loud they get; the type scale and when each style is used; spacing rhythm; corner radius; elevation; icons and illustration. -->
+<!-- Intent, not values: the values live in design/tokens.json. One line per colour role saying what it is for, including where the brand roles (brand, on-brand, brand-soft) and the accents (accent, accent-2) appear and how loud they get; the type scale and when each style is used, including the hero headline on first-impression screens; spacing rhythm; corner radius; elevation; icons and illustration. -->
 
 - **Colour:**
 - **Type:**
+- **Hero headline:**
 - **Spacing:**
 - **Corners and elevation:**
 - **Icons:**
