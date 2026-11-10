@@ -54,6 +54,15 @@ describe.skipIf(!browser)("text-fit in the web audit (needs Chrome, Edge or Chro
     expect(await fitIssues(page)).toEqual([]);
   });
 
+  test("a big number and its small unit on one line are one line, not a broken label (final review)", async () => {
+    expect(await fitIssues('<p style="width:300px"><span style="font-size:40px">12</span> days</p>')).toEqual([]);
+  });
+
+  test("a button that cuts a label held in a child span is one cut, reported on the button once (final review)", async () => {
+    const found = await fitIssues('<button style="width:60px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span>Morning Session</span></button>');
+    expect(found.map((i) => [i.fit, i.kind, i.label, i.prominent])).toEqual([["cut", "button", "Morning Session", true]]);
+  });
+
   test("right to left, the cut button is found the same way", async () => {
     const found = await fitIssues(CUT, "rtl");
     expect(found.map((i) => [i.fit, i.kind])).toEqual([["cut", "button"]]);

@@ -420,33 +420,62 @@ function installAudit(): boolean {
       }
       return false;
     };
-    for (const el of document.querySelectorAll("body *")) {
-      if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(el.tagName) || !ownText(el) || !shown(el)) continue;
-      const rect = el.getBoundingClientRect();
-      if (hidden(el, rect)) continue;
-      const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-      if (!text) continue;
-      const s = getComputedStyle(el);
-      const wide = el.scrollWidth > el.clientWidth + 1;
+    const squash = (e: Element) => (e.textContent ?? "").replace(/\s+/g, " ").trim();
+    const cuts = (e: Element) => {
+      const s = getComputedStyle(e);
+      const wide = e.scrollWidth > e.clientWidth + 1;
       const clipsX = ["hidden", "clip"].includes(s.overflowX);
       const clamp = (s as unknown as { webkitLineClamp?: string }).webkitLineClamp;
+      return (wide && (s.textOverflow === "ellipsis" || (clipsX && s.whiteSpace === "nowrap"))) || (!!clamp && clamp !== "none" && e.scrollHeight > e.clientHeight + 1);
+    };
+    // A box that cuts a label held in a child (a button's ellipsis around its <span>): the nearest ancestor that holds only
+    // this text and truncates it with an ellipsis. Reported once, on that box.
+    const cutBy = (el: Element, text: string) => {
+      for (let p = el.parentElement; p && p !== document.body && squash(p) === text; p = p.parentElement) {
+        if (getComputedStyle(p).textOverflow === "ellipsis" && cuts(p)) return p;
+      }
+      return undefined;
+    };
+    const reported = new Set<Element>();
+    for (const found of document.querySelectorAll("body *")) {
+      if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(found.tagName) || !ownText(found) || !shown(found)) continue;
+      const text = squash(found);
+      if (!text) continue;
+      const box = cuts(found) ? found : cutBy(found, text);
+      const el = box ?? found;
+      if (reported.has(el)) continue;
+      const rect = el.getBoundingClientRect();
+      if (hidden(el, rect)) continue;
       let fit: "cut" | "broken" | undefined;
-      if ((wide && (s.textOverflow === "ellipsis" || (clipsX && s.whiteSpace === "nowrap"))) || (clamp && clamp !== "none" && el.scrollHeight > el.clientHeight + 1)) fit = "cut";
+      if (box) fit = "cut";
       else {
         const words = text.split(" ");
         if (words.length >= 2 && words.length <= 3) {
           // The lines the text itself takes, not the boxes of children beside it (a hidden input, a hit area).
-          const tops = new Set<number>();
+          // Boxes that overlap vertically share a line, so a big number and its small unit beside it are one line.
+          const boxes: DOMRect[] = [];
           const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
           for (let n = walker.nextNode(); n; n = walker.nextNode()) {
             const range = document.createRange();
             range.selectNodeContents(n);
-            for (const r of range.getClientRects()) if (r.width > 0) tops.add(Math.round(r.top));
+            for (const r of range.getClientRects()) if (r.width > 0) boxes.push(r);
           }
-          if (tops.size === words.length) fit = "broken";
+          boxes.sort((a, b) => a.top - b.top);
+          let lines = 0;
+          let bottom = -Infinity;
+          for (const r of boxes) {
+            if (r.top >= bottom - 1) {
+              lines++;
+              bottom = r.bottom;
+            } else bottom = Math.max(bottom, r.bottom);
+          }
+          if (lines === words.length) fit = "broken";
         }
       }
-      if (fit) out.push({ rule: "text-fit", ...describe(el), label: text, fit, prominent: prominent(el, rect) });
+      if (fit) {
+        reported.add(el);
+        out.push({ rule: "text-fit", ...describe(el), label: text, fit, prominent: prominent(el, rect) });
+      }
     }
     return out;
   };

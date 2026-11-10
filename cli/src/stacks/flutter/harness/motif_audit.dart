@@ -84,7 +84,7 @@ List<Issue> _textFit(RenderView view) {
           final words = plain.split(' ');
           if (words.length >= 2 && words.length <= 3) {
             // The lines the text takes: its boxes' distinct tops.
-            final boxes = o.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: o.text.toPlainText().length));
+            final boxes = o.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: o.text.toPlainText().length), boxHeightStyle: ui.BoxHeightStyle.max);
             final lines = boxes.map((b) => b.top.round()).toSet().length;
             if (lines == words.length) fit = 'broken';
           }

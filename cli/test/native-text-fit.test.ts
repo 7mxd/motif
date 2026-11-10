@@ -41,6 +41,10 @@ describe("text-fit in the native harnesses (first impressions)", () => {
     expect(src).toContain("getBoxesForSelection");
   });
 
+  test("flutter: runs of different sizes on one line share its top, so a big number and its unit are one line (final review)", () => {
+    expect(read("flutter/harness/motif_audit.dart")).toMatch(/getBoxesForSelection\([^;]*boxHeightStyle: ui\.BoxHeightStyle\.max/);
+  });
+
   test("swiftui: only plain text is judged, and cut only on a one-line text box (Mac check: buttons and a card's combined name were false findings)", () => {
     const src = read("swiftui/harness/MotifAudit.swift");
     const body = src.slice(src.indexOf("static func textFit"), src.indexOf("/// True when a text button's frame is well taller"));
