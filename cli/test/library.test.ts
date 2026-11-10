@@ -14,10 +14,17 @@ const PIECES: Record<string, string[]> = {
   cards: ["key-figure-card.md", "stat-row.md", "todays-focus.md", "item-card.md"],
   screens: ["landing-hero.md", "welcome.md", "empty-state.md", "success-moment.md"],
   motion: ["draw-in.md", "count-up.md", "stagger.md", "press.md", "success.md"],
+  depth: ["tonal-gradient.md", "soft-glow.md", "pattern.md"],
   accents: ["bold.md", "dark-tech.md", "editorial.md", "minimal.md", "playful.md", "soft.md", "trust.md", "warm.md"],
 };
 /** The groups written so far; each later task adds its own. */
-const READY = new Set(["charts", "cards", "screens", "motion", "accents"]);
+const READY = new Set(["charts", "cards", "screens", "motion", "accents", "depth"]);
+
+/**
+ * What the narrowed C look allows, piece by piece (docs/specs/2026-11-10-motif-2.0-first-impressions-design.md, change
+ * 6): the depth group's soft glow (the pieces link to each other), on first-impression screens. Everything else keeps the ban.
+ */
+const C_LOOK_ALLOWED: Record<string, string[]> = { "depth/*": ["glow"] };
 
 /** Each stack's reduced-motion switch, as its adapter's motion.md spells it. */
 const REDUCED: Record<string, string> = {
@@ -96,12 +103,22 @@ for (const [group, files] of Object.entries(PIECES)) {
       });
       test(`${rel} stays out of the C look and copies nothing it may not`, () => {
         const text = read(`${group}/${f}`);
-        expect(text.match(/glow|tilt|glass|perspective\(/i)).toBeNull();
+        const allowed = C_LOOK_ALLOWED[`${group}/${f}`] ?? C_LOOK_ALLOWED[`${group}/*`] ?? [];
+        const banned = ["glow", "tilt", "glass", "perspective\\("].filter((w) => !allowed.includes(w));
+        expect(text.match(new RegExp(banned.join("|"), "i"))).toBeNull();
         expect(text.match(/react bits|animate ui|aceternity/i)).toBeNull();
       });
       if (group === "charts") {
         test(`${rel} gives the chart a text alternative`, () => {
           expect(section(read(`${group}/${f}`), "Accessibility")).toContain("in words");
+        });
+      }
+      if (group === "depth") {
+        test(`${rel} is for first-impression screens only, one per screen, from theme roles, and still under reduced motion`, () => {
+          const text = read(`${group}/${f}`);
+          expect([text.includes("first-impression screens only"), text.includes("one per screen")]).toEqual([true, true]);
+          expect(text).not.toMatch(/#[0-9a-f]{3,8}/i);
+          for (const stack of LIBRARY_STACKS) expect([stack, stackSection(text, stack).includes(REDUCED[stack]!)]).toEqual([stack, true]);
         });
       }
       if (group === "motion") {
