@@ -502,7 +502,7 @@ describe("the audit and states on a Flutter app", () => {
     const r = await runShot(root, ctx({ routes: "/", sizes: "390", audit: true }), deps);
     expect(r.exitCode).toBe(1);
     expect(seen.run!.shots.map((s) => [s.file, s.size, s.checks])).toEqual([
-      ["index.mobile.png", "mobile", ["contrast", "names", "targets", "motion"]],
+      ["index.mobile.png", "mobile", ["contrast", "names", "targets", "motion", "text-fit"]],
       ["index.mobile.dark.png", "mobile", ["contrast", "names"]],
     ]);
     expect(r.text).toContain("✗ Audit: 1 critical, 2 major, 1 minor (details in design/shots/audit.json):");
@@ -614,8 +614,8 @@ describe("the audit and states on a Flutter app", () => {
       },
     );
     expect(seen.run!.shots.map((s) => [s.file, s.state ?? null, s.checks])).toEqual([
-      ["index.tablet.png", null, ["contrast", "names", "targets"]],
-      ["index@filled.tablet.png", "filled", ["contrast", "names", "targets"]],
+      ["index.tablet.png", null, ["contrast", "names", "targets", "text-fit"]],
+      ["index@filled.tablet.png", "filled", ["contrast", "names", "targets", "text-fit"]],
       ["index.tablet.dark.png", null, ["contrast", "names"]],
       ["index@filled.tablet.dark.png", "filled", ["contrast", "names"]],
     ]);

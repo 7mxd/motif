@@ -386,7 +386,7 @@ export function swiftUIFix(i: SwiftUIRawIssue, desktop: boolean): string | undef
  */
 export function swiftUIAuditChecks(v: Viewport, scheme: Scheme, platform: "ios" | "macos"): AuditCheck[] {
   if (platform === "ios") return auditChecks(v, scheme);
-  return ["contrast", "names", ...(scheme === "light" && v.width === MAC_MOTION_WIDTH ? (["motion"] as const) : [])];
+  return ["contrast", "names", ...(scheme === "light" && v.width === MAC_MOTION_WIDTH ? (["motion"] as const) : []), ...(scheme === "light" ? (["text-fit"] as const) : [])];
 }
 
 /** The phone size the reduced-motion check runs at in the simulator, for the note when --sizes leaves it out. */

@@ -73,7 +73,7 @@ export interface SwiftUIShot {
 }
 
 /** One of the audit's checks, as the harness names it. */
-export type AuditCheck = "contrast" | "names" | "targets" | "motion";
+export type AuditCheck = "contrast" | "names" | "targets" | "motion" | "text-fit";
 
 /** A problem the harness's audit found on a shot (audit.json's RawIssue), with which of its like it is. */
 export type SwiftUIRawIssue = RawIssue & {

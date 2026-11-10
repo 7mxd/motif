@@ -57,7 +57,7 @@ export interface FlutterShot {
   checks?: AuditCheck[];
 }
 
-export type AuditCheck = "contrast" | "names" | "targets" | "motion";
+export type AuditCheck = "contrast" | "names" | "targets" | "motion" | "text-fit";
 
 export interface FontEntry {
   family: string;

@@ -642,7 +642,7 @@ describe("the audit and states on a Compose app", () => {
     expect(r.exitCode).toBe(1);
     const config = runs[0]!.config;
     expect(config.shots.map((s) => [s.file, s.size, s.checks, s.reduceMotion ?? false])).toEqual([
-      ["index.mobile.png", "mobile", ["contrast", "names", "targets", "motion"], true],
+      ["index.mobile.png", "mobile", ["contrast", "names", "targets", "motion", "text-fit"], true],
       ["index.mobile.dark.png", "mobile", ["contrast", "names"], false],
     ]);
     // The motion check names the composable that moves after the app's own files.
