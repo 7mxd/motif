@@ -56,6 +56,10 @@ v1.1.0 changes the tool (extract, check, the screenshot audit, motion.js for Jav
 
 v1.2.0 changes the tool (the screenshot audit's grouping and hit areas, `--states-only`, the hash-router note, `audit.json` across runs) and the review mode's wording, not the design guidance, so Test A's v1.0.0 result carries over. Every B, C and D case passed on the candidate, commit 8243a31, each built by claude-opus-5-5: the 23 React web, plain web, Flutter, Compose and React Native cases on Windows in 20261101-163007, and the 16 Vue, Svelte, Angular and SwiftUI cases on the Mac in 20261101-043017. c-vue's first session there was void (it put the screenshot audit in the background and ended its turn to wait, which ends an unattended run); it passed in 20261101-094141 (exact 10 of 10, judgement 4 of 4, no false findings).
 
+## The 1.3.0 and 2.0.0 candidates
+
+Every B, C and D case passed on the 1.3.0 candidate, commit db27932, in 20261105-122429, each built by claude-opus-5-5; Test A failed on the owner's votes (35% Motif), so 1.3.0 was not released and its changes went into 2.0.0. The first 2.0.0 candidate, commit 69bc231, passed B (20 of 20), C (9 of 9) and D in 20261109-081330, each built by claude-opus-5-5; Test A failed again (owner 42% Motif). Both runs are in [test-a.md](test-a.md).
+
 ## Flutter: the tests that show it
 
 Flutter was built in [plan 2E](plans/2026-10-19-motif-2e-flutter.md). Every area is done. Its code is in the CLI, so `motif doctor` built from source already treats it as supported; the README and the release notes list it from v0.5.0, once its row is complete and these release gates are passed:

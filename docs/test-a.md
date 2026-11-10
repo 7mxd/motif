@@ -85,3 +85,29 @@ One row per brief of each run, with the run's id (its folder in `tests/evals/res
 | 20261030-202113 | b28387b | claude-opus-5-5 | Sanad | 6 | 5 / 1 / 0 | 5 / 1 | fail |
 | 20261030-092116 | b28387b | claude-opus-5-5 | Masar (on the Mac) | 3 | 3 / 0 / 0 | 1 / 2 | fail |
 | 20261031-070945 | aa5d7c6 | claude-opus-5-5 | Bloom (a check of the signed-out welcome fix: its sample plant now has no button, and watering is on the signed-in home only) | 6 | 4 / 2 / 0 | not judged | below the bar on its own |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Stride | 6 | 6 / 0 / 0 | 0 / 6 | fail |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Ledgerly | 6 | 5 / 1 / 0 | 2 / 4 | fail |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Bloom | 6 | 3 / 2 / 1 | 2 / 4 | fail |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Sahm | 3 | 0 / 3 / 0 | 0 / 3 | fail (Motif's screenshots drew text as boxes: a cleaned pub cache hid its Google fonts; the harness fix is in the pass rule above) |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Nabta | 3 | 3 / 0 / 0 | 2 / 1 | pass |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Rihla | 3 | 2 / 0 / 1 | 1 / 2 | fail |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Darb | 6 | 6 / 0 / 0 | 0 / 6 | fail |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Nuzha | 6 | 6 / 0 / 0 | 5 / 1 | pass |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Sanad | 6 | 4 / 0 / 2 | 4 / 2 | fail |
+| 20261105-122429 | db27932 | claude-opus-5-5 | Masar | 3 | 3 / 0 / 0 | 1 / 2 | fail |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Stride | 6 | 4 / 1 / 1 | 1 / 5 | fail |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Ledgerly | 6 | 4 / 0 / 2 | 2 / 4 | fail |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Bloom | 6 | 3 / 3 / 0 | 3 / 3 | fail |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Sahm | 3 | 3 / 0 / 0 | 2 / 1 | pass |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Nabta | 3 | 2 / 1 / 0 | 1 / 2 | fail |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Rihla | 3 | 2 / 0 / 1 | 2 / 1 | fail |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Darb | 6 | 6 / 0 / 0 | 0 / 6 | fail |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Nuzha | 6 | 5 / 1 / 0 | 4 / 2 | fail |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Sanad | 6 | 5 / 1 / 0 | 3 / 3 | fail |
+| 20261109-081330 | 69bc231 | claude-opus-5-5 | Masar | 3 | 2 / 1 / 0 | 1 / 2 | fail |
+
+### 1.3.0 and 2.0.0: Test A failed twice on the owner's votes
+
+- **20261105-122429** (the 1.3.0 candidate, db27932): AI judges 77% Motif / 15% baseline, owner 35% Motif. B, C and D passed. 1.3.0 was not released.
+- **20261109-081330** (the first 2.0.0 candidate, 69bc231): AI judges 75% Motif / 17% baseline, owner 42% Motif. B 20/20, C 9/9 and D passed. Only Sahm passed on its own.
+- Why the plain builds won, from a review of both runs' screens and the owner's comments: they had bolder first impressions (colour, depth, a big headline, a richer sign-in), and Motif's own guidance held its first screens back. The next candidate rewrites that guidance as recipes and adds the accent and hero roles, the depth pieces, the sign-in piece and a text-fit check ([the design](specs/2026-11-10-motif-2.0-first-impressions-design.md)).
