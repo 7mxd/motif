@@ -3,7 +3,7 @@ import { converter } from "culori";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkContrast } from "../src/contract/contrast";
-import { BRAND_PAIRS, STANDARD_PAIRS, pairsExtension } from "../src/contract/defaults";
+import { ACCENT_PAIRS, BRAND_PAIRS, STANDARD_PAIRS, pairsExtension } from "../src/contract/defaults";
 import { checkRoles } from "../src/contract/roles";
 import { validateTokens } from "../src/contract/tokens";
 import { buildTheme } from "../src/generate/theme";
@@ -87,9 +87,9 @@ describe("the starting styles have the optional brand colours (looks comparison)
     }
   });
 
-  test("each lists the standard pairs and the brand pairs", () => {
+  test("each lists the standard pairs, the brand pairs and the accent pairs", () => {
     for (const p of PRESETS) {
-      expect((presetTokens(p) as any).$extensions["dev.motif"].pairs).toEqual(pairsExtension([...STANDARD_PAIRS, ...BRAND_PAIRS]));
+      expect((presetTokens(p) as any).$extensions["dev.motif"].pairs).toEqual(pairsExtension([...STANDARD_PAIRS, ...BRAND_PAIRS, ...ACCENT_PAIRS]));
     }
   });
 

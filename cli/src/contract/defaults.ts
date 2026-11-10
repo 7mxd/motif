@@ -12,6 +12,11 @@ export const BRAND_PAIRS: [string, string, "text" | "ui"][] = [
   ["on-brand", "brand", "text"], ["text-primary", "brand-soft", "text"], ["brand", "brand-soft", "ui"],
 ];
 
+/** Pairs for the optional accent colours: text sits on them in tags, tiles and step badges, so they read as text. */
+export const ACCENT_PAIRS: [string, string, "text" | "ui"][] = [
+  ["text-primary", "accent", "text"], ["text-primary", "accent-2", "text"],
+];
+
 export const SPACE_SCALE: [string, number][] = [
   ["0", 0], ["1", 4], ["2", 8], ["3", 12], ["4", 16], ["5", 20], ["6", 24], ["8", 32], ["10", 40], ["12", 48], ["16", 64],
 ];

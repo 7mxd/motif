@@ -44,6 +44,21 @@ describe("checkRoles", () => {
     expect(g.map((x) => [x.code, x.path])).toEqual([["missing-dark", "color.brand-soft"]]);
   });
 
+  test("accent and accent-2 are optional colour roles: absent is fine, a non-colour value is wrong-type (first impressions)", () => {
+    expect(run((t) => { delete t.color.accent; delete t.color["accent-2"]; })).toEqual([]);
+    const f = run((t) => (t.color.accent = { $type: "dimension", $value: { value: 4, unit: "px" } }));
+    expect(f.map((x) => [x.code, x.path])).toContainEqual(["wrong-type", "color.accent"]);
+    const g = run((t) => (t.color["accent-2"] = { $type: "dimension", $value: { value: 4, unit: "px" } }));
+    expect(g.map((x) => [x.code, x.path])).toContainEqual(["wrong-type", "color.accent-2"]);
+  });
+
+  test("a project's own accent colour validates untouched (first impressions, review focus 5)", () => {
+    const own = { $value: hexColor("#FF00AA"), $extensions: { "dev.motif": { modes: { dark: hexColor("#AA0066") } } } };
+    let kept: unknown;
+    expect(run((t) => { t.color.accent = own; kept = t.color.accent; })).toEqual([]);
+    expect(kept).toEqual({ $value: hexColor("#FF00AA"), $extensions: { "dev.motif": { modes: { dark: hexColor("#AA0066") } } } });
+  });
+
   test("requires a dark value for every colour role", () => {
     const f = run((t) => delete t.color.border.$extensions);
     expect(f.map((x) => [x.code, x.path])).toEqual([["missing-dark", "color.border"]]);

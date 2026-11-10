@@ -62,6 +62,18 @@ describe("preview kit", () => {
     expect(css).toContain("var(--motif-color-brand-soft, var(--motif-color-action-secondary))");
   });
 
+  test("the accent classes fall back to brand-soft, then action-secondary (first impressions)", () => {
+    const css = read("kit.css");
+    const readme = read("README.md");
+    for (const cls of ["mk-accent", "mk-accent-2"]) {
+      expect(css).toContain(`.${cls} `);
+      expect(readme).toContain(`\`.${cls}\``);
+    }
+    expect(css.match(/var\(--motif-color-accent(?:-2)?(?![\w-])(?!,)/g)).toBeNull();
+    expect(css).toContain("var(--motif-color-accent, var(--motif-color-brand-soft, var(--motif-color-action-secondary)))");
+    expect(css).toContain("var(--motif-color-accent-2, var(--motif-color-brand-soft, var(--motif-color-action-secondary)))");
+  });
+
   test("kit.js is valid JavaScript", () => {
     expect(() => new Bun.Transpiler({ loader: "js" }).transformSync(read("kit.js"))).not.toThrow();
   });

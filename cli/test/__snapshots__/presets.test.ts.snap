@@ -22,6 +22,8 @@ exports[`preset minimal React web output stays the same 1`] = `
   --motif-color-focus: #28302C;
   --motif-color-brand: #181D1B;
   --motif-color-brand-soft: #EAEFED;
+  --motif-color-accent: #8DDFDD;
+  --motif-color-accent-2: #F7B9D6;
   --motif-color-text-inverse: #FFFFFF;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #181D1B;
@@ -104,6 +106,8 @@ exports[`preset minimal React web output stays the same 1`] = `
     --motif-color-focus: #DADFDD;
     --motif-color-brand: #65706B;
     --motif-color-brand-soft: #1F2422;
+    --motif-color-accent: #005959;
+    --motif-color-accent-2: #6D3A54;
     --motif-color-text-inverse: #101412;
     --motif-color-on-action-primary: #181D1B;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -132,6 +136,8 @@ exports[`preset minimal React web output stays the same 1`] = `
   --motif-color-focus: #DADFDD;
   --motif-color-brand: #65706B;
   --motif-color-brand-soft: #1F2422;
+  --motif-color-accent: #005959;
+  --motif-color-accent-2: #6D3A54;
   --motif-color-text-inverse: #101412;
   --motif-color-on-action-primary: #181D1B;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -181,6 +187,8 @@ exports[`preset minimal React web output stays the same 1`] = `
   --color-focus: var(--motif-color-focus);
   --color-brand: var(--motif-color-brand);
   --color-brand-soft: var(--motif-color-brand-soft);
+  --color-accent: var(--motif-color-accent);
+  --color-accent-2: var(--motif-color-accent-2);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -298,6 +306,8 @@ exports[`preset soft React web output stays the same 1`] = `
   --motif-color-focus: #2E7577;
   --motif-color-brand: #2E7577;
   --motif-color-brand-soft: #DDF0EE;
+  --motif-color-accent: #7FDDFD;
+  --motif-color-accent-2: #FFB9BA;
   --motif-color-text-inverse: #FFFFFF;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #1B292B;
@@ -380,6 +390,8 @@ exports[`preset soft React web output stays the same 1`] = `
     --motif-color-focus: #7FCFC4;
     --motif-color-brand: #4F7C7D;
     --motif-color-brand-soft: #122F31;
+    --motif-color-accent: #00566C;
+    --motif-color-accent-2: #7A3338;
     --motif-color-text-inverse: #0D1A1B;
     --motif-color-on-action-primary: #1B292B;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -408,6 +420,8 @@ exports[`preset soft React web output stays the same 1`] = `
   --motif-color-focus: #7FCFC4;
   --motif-color-brand: #4F7C7D;
   --motif-color-brand-soft: #122F31;
+  --motif-color-accent: #00566C;
+  --motif-color-accent-2: #7A3338;
   --motif-color-text-inverse: #0D1A1B;
   --motif-color-on-action-primary: #1B292B;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -457,6 +471,8 @@ exports[`preset soft React web output stays the same 1`] = `
   --color-focus: var(--motif-color-focus);
   --color-brand: var(--motif-color-brand);
   --color-brand-soft: var(--motif-color-brand-soft);
+  --color-accent: var(--motif-color-accent);
+  --color-accent-2: var(--motif-color-accent-2);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -574,6 +590,8 @@ exports[`preset playful React web output stays the same 1`] = `
   --motif-color-focus: #C2126D;
   --motif-color-brand: #C2126D;
   --motif-color-brand-soft: #FCE4EF;
+  --motif-color-accent: #FFB9B5;
+  --motif-color-accent-2: #74E5CD;
   --motif-color-text-inverse: #FFFFFF;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #291A24;
@@ -656,6 +674,8 @@ exports[`preset playful React web output stays the same 1`] = `
     --motif-color-focus: #FD87B2;
     --motif-color-brand: #BD4279;
     --motif-color-brand-soft: #3D1A2A;
+    --motif-color-accent: #7E2F30;
+    --motif-color-accent-2: #005B4D;
     --motif-color-text-inverse: #221118;
     --motif-color-on-action-primary: #291A24;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -684,6 +704,8 @@ exports[`preset playful React web output stays the same 1`] = `
   --motif-color-focus: #FD87B2;
   --motif-color-brand: #BD4279;
   --motif-color-brand-soft: #3D1A2A;
+  --motif-color-accent: #7E2F30;
+  --motif-color-accent-2: #005B4D;
   --motif-color-text-inverse: #221118;
   --motif-color-on-action-primary: #291A24;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -733,6 +755,8 @@ exports[`preset playful React web output stays the same 1`] = `
   --color-focus: var(--motif-color-focus);
   --color-brand: var(--motif-color-brand);
   --color-brand-soft: var(--motif-color-brand-soft);
+  --color-accent: var(--motif-color-accent);
+  --color-accent-2: var(--motif-color-accent-2);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -850,6 +874,8 @@ exports[`preset editorial React web output stays the same 1`] = `
   --motif-color-focus: #1F1716;
   --motif-color-brand: #852535;
   --motif-color-brand-soft: #F3E6E3;
+  --motif-color-accent: #FCBDA6;
+  --motif-color-accent-2: #8DDFDE;
   --motif-color-text-inverse: #FFFDFD;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #1F1716;
@@ -932,6 +958,8 @@ exports[`preset editorial React web output stays the same 1`] = `
     --motif-color-focus: #F1EEEA;
     --motif-color-brand: #A15B63;
     --motif-color-brand-soft: #2D2224;
+    --motif-color-accent: #713D2A;
+    --motif-color-accent-2: #005959;
     --motif-color-text-inverse: #161312;
     --motif-color-on-action-primary: #1F1716;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -960,6 +988,8 @@ exports[`preset editorial React web output stays the same 1`] = `
   --motif-color-focus: #F1EEEA;
   --motif-color-brand: #A15B63;
   --motif-color-brand-soft: #2D2224;
+  --motif-color-accent: #713D2A;
+  --motif-color-accent-2: #005959;
   --motif-color-text-inverse: #161312;
   --motif-color-on-action-primary: #1F1716;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -1009,6 +1039,8 @@ exports[`preset editorial React web output stays the same 1`] = `
   --color-focus: var(--motif-color-focus);
   --color-brand: var(--motif-color-brand);
   --color-brand-soft: var(--motif-color-brand-soft);
+  --color-accent: var(--motif-color-accent);
+  --color-accent-2: var(--motif-color-accent-2);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -1126,6 +1158,8 @@ exports[`preset bold React web output stays the same 1`] = `
   --motif-color-focus: #B13C11;
   --motif-color-brand: #D83A1A;
   --motif-color-brand-soft: #FBE3DA;
+  --motif-color-accent: #FFBE8D;
+  --motif-color-accent-2: #6CE1F9;
   --motif-color-text-inverse: #F8F5F3;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -1208,6 +1242,8 @@ exports[`preset bold React web output stays the same 1`] = `
     --motif-color-focus: #F8633F;
     --motif-color-brand: #CB4325;
     --motif-color-brand-soft: #3A221A;
+    --motif-color-accent: #743C00;
+    --motif-color-accent-2: #005765;
     --motif-color-text-inverse: #191513;
     --motif-color-on-action-primary: #16110F;
     --motif-color-on-action-secondary: #16110F;
@@ -1236,6 +1272,8 @@ exports[`preset bold React web output stays the same 1`] = `
   --motif-color-focus: #F8633F;
   --motif-color-brand: #CB4325;
   --motif-color-brand-soft: #3A221A;
+  --motif-color-accent: #743C00;
+  --motif-color-accent-2: #005765;
   --motif-color-text-inverse: #191513;
   --motif-color-on-action-primary: #16110F;
   --motif-color-on-action-secondary: #16110F;
@@ -1285,6 +1323,8 @@ exports[`preset bold React web output stays the same 1`] = `
   --color-focus: var(--motif-color-focus);
   --color-brand: var(--motif-color-brand);
   --color-brand-soft: var(--motif-color-brand-soft);
+  --color-accent: var(--motif-color-accent);
+  --color-accent-2: var(--motif-color-accent-2);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -1402,6 +1442,8 @@ exports[`preset dark-tech React web output stays the same 1`] = `
   --motif-color-focus: #A45803;
   --motif-color-brand: #1B1611;
   --motif-color-brand-soft: #F6E7D6;
+  --motif-color-accent: #E5CC80;
+  --motif-color-accent-2: #A4D3FF;
   --motif-color-text-inverse: #FEFCFB;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #1B1611;
@@ -1484,6 +1526,8 @@ exports[`preset dark-tech React web output stays the same 1`] = `
     --motif-color-focus: #FB9F44;
     --motif-color-brand: #7A6E62;
     --motif-color-brand-soft: #2E241A;
+    --motif-color-accent: #5E4B00;
+    --motif-color-accent-2: #125080;
     --motif-color-text-inverse: #15110D;
     --motif-color-on-action-primary: #1B1611;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -1512,6 +1556,8 @@ exports[`preset dark-tech React web output stays the same 1`] = `
   --motif-color-focus: #FB9F44;
   --motif-color-brand: #7A6E62;
   --motif-color-brand-soft: #2E241A;
+  --motif-color-accent: #5E4B00;
+  --motif-color-accent-2: #125080;
   --motif-color-text-inverse: #15110D;
   --motif-color-on-action-primary: #1B1611;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -1561,6 +1607,8 @@ exports[`preset dark-tech React web output stays the same 1`] = `
   --color-focus: var(--motif-color-focus);
   --color-brand: var(--motif-color-brand);
   --color-brand-soft: var(--motif-color-brand-soft);
+  --color-accent: var(--motif-color-accent);
+  --color-accent-2: var(--motif-color-accent-2);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -1678,6 +1726,8 @@ exports[`preset warm React web output stays the same 1`] = `
   --motif-color-focus: #596517;
   --motif-color-brand: #596517;
   --motif-color-brand-soft: #EEF0DC;
+  --motif-color-accent: #AFDCAC;
+  --motif-color-accent-2: #D4C3FC;
   --motif-color-text-inverse: #FCFDFA;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #252117;
@@ -1760,6 +1810,8 @@ exports[`preset warm React web output stays the same 1`] = `
     --motif-color-focus: #B1C16D;
     --motif-color-brand: #6F7A45;
     --motif-color-brand-soft: #2A2C1C;
+    --motif-color-accent: #31582F;
+    --motif-color-accent-2: #534373;
     --motif-color-text-inverse: #171610;
     --motif-color-on-action-primary: #252117;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -1788,6 +1840,8 @@ exports[`preset warm React web output stays the same 1`] = `
   --motif-color-focus: #B1C16D;
   --motif-color-brand: #6F7A45;
   --motif-color-brand-soft: #2A2C1C;
+  --motif-color-accent: #31582F;
+  --motif-color-accent-2: #534373;
   --motif-color-text-inverse: #171610;
   --motif-color-on-action-primary: #252117;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -1837,6 +1891,8 @@ exports[`preset warm React web output stays the same 1`] = `
   --color-focus: var(--motif-color-focus);
   --color-brand: var(--motif-color-brand);
   --color-brand-soft: var(--motif-color-brand-soft);
+  --color-accent: var(--motif-color-accent);
+  --color-accent-2: var(--motif-color-accent-2);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);
@@ -1954,6 +2010,8 @@ exports[`preset trust React web output stays the same 1`] = `
   --motif-color-focus: #006C97;
   --motif-color-brand: #0B3550;
   --motif-color-brand-soft: #E2EDF3;
+  --motif-color-accent: #B8CDFF;
+  --motif-color-accent-2: #F4C398;
   --motif-color-text-inverse: #FFFFFF;
   --motif-color-on-action-primary: #FFFFFF;
   --motif-color-on-action-secondary: #10212F;
@@ -2036,6 +2094,8 @@ exports[`preset trust React web output stays the same 1`] = `
     --motif-color-focus: #6ABCE6;
     --motif-color-brand: #4C7899;
     --motif-color-brand-soft: #1C2B37;
+    --motif-color-accent: #394B79;
+    --motif-color-accent-2: #6C4218;
     --motif-color-text-inverse: #0C1721;
     --motif-color-on-action-primary: #10212F;
     --motif-color-on-action-secondary: #FFFFFF;
@@ -2064,6 +2124,8 @@ exports[`preset trust React web output stays the same 1`] = `
   --motif-color-focus: #6ABCE6;
   --motif-color-brand: #4C7899;
   --motif-color-brand-soft: #1C2B37;
+  --motif-color-accent: #394B79;
+  --motif-color-accent-2: #6C4218;
   --motif-color-text-inverse: #0C1721;
   --motif-color-on-action-primary: #10212F;
   --motif-color-on-action-secondary: #FFFFFF;
@@ -2113,6 +2175,8 @@ exports[`preset trust React web output stays the same 1`] = `
   --color-focus: var(--motif-color-focus);
   --color-brand: var(--motif-color-brand);
   --color-brand-soft: var(--motif-color-brand-soft);
+  --color-accent: var(--motif-color-accent);
+  --color-accent-2: var(--motif-color-accent-2);
   --color-text-inverse: var(--motif-color-text-inverse);
   --color-on-action-primary: var(--motif-color-on-action-primary);
   --color-on-action-secondary: var(--motif-color-on-action-secondary);

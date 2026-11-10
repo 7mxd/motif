@@ -314,6 +314,15 @@ code, kbd, samp, pre { font-family: var(--motif-font-mono-family, ui-monospace, 
   color: var(--motif-color-brand, var(--motif-color-action-primary));
 }
 .mk-tile .mk-icon { opacity: 1; }
+/* Accent fills for tags, tiles, avatars and step badges; never buttons or links. Without the roles, the brand tint. */
+.mk-accent {
+  background: var(--motif-color-accent, var(--motif-color-brand-soft, var(--motif-color-action-secondary)));
+  color: var(--motif-color-text-primary);
+}
+.mk-accent-2 {
+  background: var(--motif-color-accent-2, var(--motif-color-brand-soft, var(--motif-color-action-secondary)));
+  color: var(--motif-color-text-primary);
+}
 .mk-art {
   display: flex;
   justify-content: center;

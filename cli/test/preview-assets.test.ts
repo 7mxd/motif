@@ -28,7 +28,7 @@ describe("embedded presets", () => {
     }
   });
   test("presetTheme builds a theme; unknown ids give null", () => {
-    expect(presetTheme("warm")!.colors.length).toBe(23); // the 20 required colour roles and the 3 optional brand ones
+    expect(presetTheme("warm")!.colors.length).toBe(25); // the 20 required colour roles, the 3 optional brand ones and the 2 accents
     expect(presetTheme("nope")).toBeNull();
   });
   test("presetTitle reads the heading", () => {

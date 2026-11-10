@@ -1,5 +1,5 @@
 import { wcagContrast } from "culori";
-import { BRAND_PAIRS, FONT_ROLES, MONO_ROLE, MONO_STACK, SPACE_SCALE, STANDARD_PAIRS, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
+import { ACCENT_PAIRS, BRAND_PAIRS, FONT_ROLES, MONO_ROLE, MONO_STACK, SPACE_SCALE, STANDARD_PAIRS, defaultShadows, ms, pairsExtension, px, springGroup, srgbColor } from "../contract/defaults";
 import { PRESETS, type PaletteRole, type PresetSpec } from "./spec";
 
 const ON_BASES = ["action-primary", "action-secondary", "success", "warning", "danger", "info", "brand"] as const;
@@ -44,7 +44,7 @@ export function presetTokens(spec: PresetSpec): Record<string, unknown> {
   for (const [key, value] of SPACE_SCALE) space[key] = { $value: px(value) };
 
   return {
-    $extensions: { "dev.motif": { motifContract: 1, preset: spec.id, pairs: pairsExtension([...STANDARD_PAIRS, ...BRAND_PAIRS]) } },
+    $extensions: { "dev.motif": { motifContract: 1, preset: spec.id, pairs: pairsExtension([...STANDARD_PAIRS, ...BRAND_PAIRS, ...ACCENT_PAIRS]) } },
     primitive: {
       color: primitives,
       font: {
