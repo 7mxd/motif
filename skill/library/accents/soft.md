@@ -9,6 +9,14 @@ Two gentle accents for the Soft style, for apps that should feel like a friend r
 
 One cloud scene per screen; the pebbles only on the one `brand` card.
 
+## Signature
+
+**A pill highlight.** Optional. A soft pill of `brand-soft` (or `accent`) behind one word or figure, used the same way across the app:
+
+- **Buttons:** fully rounded (`radius.full`), the main one filled.
+- **Cards:** the card's key figure or word sits on the pill; corners stay at `radius.lg`.
+- **Badges:** pills in `accent` or `accent-2` with `text-primary`.
+
 ## Fits
 
 The Soft starting style and briefs that say gentle, friendly, warm or approachable: wellness, journaling, community and lifestyle apps.

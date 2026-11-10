@@ -136,9 +136,11 @@ export function lintSkillMarkdown(file: string, raw: string, opts: { exists: (sk
   }
   if (/^library\/[^/]+\/[^/]+\.md$/.test(file)) {
     const sections = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]!.trim());
-    const want = sections[sections.length - 1] === "Licence" ? [...LIBRARY_SECTIONS, "Licence"] : LIBRARY_SECTIONS;
+    // A style's accent file has its Signature right after Purpose (first impressions, change 5).
+    const base = file.startsWith("library/accents/") ? ["Purpose", "Signature", ...LIBRARY_SECTIONS.slice(1)] : LIBRARY_SECTIONS;
+    const want = sections[sections.length - 1] === "Licence" ? [...base, "Licence"] : base;
     if (JSON.stringify(sections) !== JSON.stringify(want)) {
-      problems.push(`${file} needs exactly these sections, in order: ${LIBRARY_SECTIONS.join(", ")} (and Licence last, if any) (has: ${sections.join(", ") || "none"}).`);
+      problems.push(`${file} needs exactly these sections, in order: ${base.join(", ")} (and Licence last, if any) (has: ${sections.join(", ") || "none"}).`);
     } else {
       const start = text.indexOf("\n## Stacks\n");
       const end = text.indexOf("\n## ", start + 4);

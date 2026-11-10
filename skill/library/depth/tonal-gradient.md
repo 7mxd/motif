@@ -4,7 +4,7 @@
 
 Depth for a brand panel or a hero band: two neighbouring shades of `brand`, one the brand itself and one mixed a little toward `surface` (lighter) or `text-primary` (deeper), running corner to corner. It reads as one colour with light falling on it, never as two colours. Depth marks what matters most on the screen ([visual craft](../../knowledge/visual-craft.md)); here that is the panel or band people see first.
 
-Use it on first-impression screens only: a sign-in's brand panel, a landing hero's band, a welcome's top band. At most one depth piece on a screen, so one per screen: a tonal gradient, a [soft glow](soft-glow.md) or a [pattern](pattern.md), never two.
+Use it on first-impression screens only: a [sign-in](../screens/sign-in.md)'s brand panel, a landing hero's band, a welcome's top band. At most one depth piece on a screen, so one per screen: a tonal gradient, a [soft glow](soft-glow.md) or a [pattern](pattern.md), never two.
 
 ## Fits
 

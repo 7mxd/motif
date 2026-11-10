@@ -28,6 +28,7 @@ Never go into the "C look": glowing charts, tilted cards, a gradient backdrop be
 | Item card | cards | default | items with a look of their own (places, plants, trips) | [item-card](cards/item-card.md) |
 | Landing hero | screens | default | a web landing page, by personality | [landing-hero](screens/landing-hero.md) |
 | Welcome | screens | default | a native welcome and onboarding | [welcome](screens/welcome.md) |
+| Sign-in | screens | default | a sign-in: rich panel, crafted form, phone layout | [sign-in](screens/sign-in.md) |
 | Empty state | screens | default | a list or screen with nothing yet | [empty-state](screens/empty-state.md) |
 | Success moment | screens | default | after a key action | [success-moment](screens/success-moment.md) |
 | Draw-in | motion | default | every chart, on first show | [draw-in](motion/draw-in.md) |

@@ -9,6 +9,14 @@ Two quiet accents for the Minimal style, so a calm, precise app still has a craf
 
 One of the two per screen, never both.
 
+## Signature
+
+**A single hairline divider.** Optional. A 1 px `border` line used the same way across the app:
+
+- **Buttons:** none of their own; the main button stays filled and square-cornered to the theme's `radius.sm`.
+- **Cards:** no shadow; one hairline between a card's title and its body.
+- **Badges:** outlined with the same hairline, text in `text-secondary`.
+
 ## Fits
 
 The Minimal starting style ([character](../../knowledge/character.md), the "calm, precise, quiet, professional" row) and any brief whose words are calm, precise or focused: productivity tools, dashboards, developer products.

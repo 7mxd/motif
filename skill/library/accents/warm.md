@@ -9,6 +9,14 @@ Two crafted, earthy accents for the Warm style, for apps about food, places, hom
 
 One horizon per screen; the stitch can repeat between sections.
 
+## Signature
+
+**A hand-drawn underline.** Optional. A loose, slightly uneven stroke in `accent` under one word, used the same way across the app:
+
+- **Buttons:** none on buttons; they stay filled and warm-cornered.
+- **Cards:** under one word of a first-impression card's title, or the headline of the welcome or landing hero.
+- **Badges:** filled in `accent-2` with rounded corners, no underline.
+
 ## Fits
 
 The Warm starting style and briefs that say earthy, welcoming, crafted or natural: food, hospitality, travel, home and handmade goods.

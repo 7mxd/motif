@@ -9,6 +9,14 @@ Two printed-page accents for the Editorial style, taken from how books and magaz
 
 The headline's one accented word (italic, in `brand`) is the style's third accent and lives in the type, not here ([character](../../knowledge/character.md)).
 
+## Signature
+
+**A hairline rule and an italic accent word.** Optional. Used the same way across the app:
+
+- **Buttons:** a text button gets a hairline underline in `text-primary`; the main button stays plain and filled.
+- **Cards:** a hairline rule (1 px `border`) above a card's title instead of a box, and one italic word in the headline of a first-impression screen.
+- **Badges:** small caps in `label`, with a hairline under them, not a filled pill.
+
 ## Fits
 
 The Editorial starting style and briefs that say refined, literary, timeless or premium: publishing, portfolios, long reads, premium brands.

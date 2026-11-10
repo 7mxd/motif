@@ -10,6 +10,16 @@ Three precise, drafted accents for the Dark tech style, taken from plotting pape
 
 **Stay out of the "C look".** Every stroke and fill is flat and solid: no blur, no halo, no light bloom around lines, no neon colours outside the theme's roles, no gradient backdrop, no fading mask on the grid. The page's `background` stays one flat colour; the brand appears in thin lines and one small node, never as a wash ([anti-patterns](../../knowledge/anti-patterns.md)).
 
+## Signature
+
+**A thin glow edge.** On by default. A 1 px edge in `focus` (or `accent`) at about 40% with a soft spread of a few points, used the same way across the app:
+
+- **Buttons:** the main button carries the edge; hover or press brightens it a step.
+- **Cards:** the key cards on first-impression screens carry the edge; on the sign-in panel one card may be glass (a translucent `surface-raised` over the panel with a background blur). Working-screen cards stay flat with a plain `border`.
+- **Badges:** status badges take the edge in their own status colour, never a glowing chart.
+
+Under reduced motion nothing pulses: the edge is still.
+
 ## Fits
 
 The Dark tech starting style and briefs that say technical, sleek, focused or precise: developer tools, AI products, analytics, crypto.

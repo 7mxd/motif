@@ -9,6 +9,16 @@ Two loud, decisive accents for the Bold style, for launches, sports and media wh
 
 The slab once per screen, at the top; the chevron run once per screen.
 
+## Signature
+
+**A heavy outline.** On by default. A 2–3 px outline in `text-primary` around the things that matter, used the same way across the app:
+
+- **Buttons:** the main button keeps its fill and adds the outline; a secondary button is the outline alone.
+- **Cards:** first-impression cards and the home screen's key-figure card take the outline instead of a shadow; other cards stay as the theme draws them.
+- **Badges:** filled in `accent` with the same outline; on a first-impression screen one badge may tilt by 3 degrees, never more than one.
+
+The outline is drawn from `text-primary`, so it flips with dark mode.
+
 ## Fits
 
 The Bold starting style and briefs that say loud, decisive, high-contrast or energetic: marketing sites, launches, sports, media.

@@ -9,6 +9,16 @@ Two loud, friendly accents for the Playful style, for apps people open for fun:
 
 The band and the mascot can share the welcome screen (the mascot standing at the band's edge); elsewhere, one accent per screen.
 
+## Signature
+
+**A hard offset shadow, and a slight tilt on badges.** On by default. One small detail used the same way across the app so it feels like one product:
+
+- **Buttons:** the main button sits on a hard shadow offset 3–4 px down (a `color-mix()` of `action-primary` and `text-primary` on the web; the same mix from the theme natively), which flattens when pressed.
+- **Cards:** the first-impression screen's cards (a sign-in preview, a welcome's sample) get the same offset shadow in `border`'s colour, no blur; working-screen cards keep the theme's soft `shadow` roles.
+- **Badges:** a count or kind badge tilts by 3–4 degrees, filled in `accent` or `accent-2` with `text-primary`. Only badges tilt, never cards, buttons or text.
+
+Under reduced motion the press still flattens the shadow; nothing wobbles.
+
 ## Fits
 
 The Playful starting style and briefs that say bright, bouncy, energetic or fun: social apps, games, learning and kids' products. When the brief also says gentle, fresh or reassuring, the band turns `brand-soft` with `text-primary` on it: the colour moves into the mascot and the shapes, never a saturated block (the "playful and gentle together" row in [character](../../knowledge/character.md)).

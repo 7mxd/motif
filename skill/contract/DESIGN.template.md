@@ -19,10 +19,11 @@ App name feels calm, clear and trustworthy. Replace this paragraph with three to
 
 ## 2. Direction
 
-<!-- The chosen style and preset (if any), reference links (links only — never copy someone else's images), and the approved mockups in design/previews/. -->
+<!-- The chosen style and preset (if any), its signature detail, reference links (links only — never copy someone else's images), and the approved mockups in design/previews/. -->
 
 - **Style:**
 - **Starting preset:**
+- **Signature:** <!-- the one recurring detail from the style's accent file (library/accents/), on buttons, cards and badges, or "none" -->
 - **References:**
 - **Approved mockups:**
 

@@ -9,6 +9,14 @@ Two steady accents for the Trust style, for apps that hold people's money, healt
 
 Use the arc band once per screen at most; the seal can repeat along one proof row (three statements, three seals).
 
+## Signature
+
+**A check-mark seal.** Optional. A small round seal in `success` with a check, used the same way across the app:
+
+- **Buttons:** none on buttons; a confirm button may lead with the check icon.
+- **Cards:** the seal sits on cards that state something verified or done (paid, signed, approved), at the title's end.
+- **Badges:** status badges lead with the seal's check for "done" states only.
+
 ## Fits
 
 The Trust starting style and briefs that say reliable, clear, professional or reassuring: banking, insurance, healthcare, government services.
