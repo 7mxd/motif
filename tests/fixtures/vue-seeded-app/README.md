@@ -41,6 +41,8 @@ V-03 is a radius typed as a Tailwind class, which `motif check` reports as `tail
 
 V-13's Arial has Arabic letters on Windows, so in Arabic the heading turns from Tajawal to Arial's Arabic rather than to boxes; the audit doesn't report it.
 
+V-09 is a review's problem, but its plots' names cut to one line also show in the screenshot audit, whose text-fit rule reports a name that doesn't fit as cut off on `/` at desktop width. Its `shot` sign says so: a finding in `typography` on `/` whose summary is `"<name>" is cut off.`. The test requires it and accepts nothing broader.
+
 ## Changing it
 
 Change the overlay and the list together. `cli/test/fixtures-vue.test.ts` checks, on every change, that `motif check` reports exactly the seven check problems at their lines (V-14 as a warning on the generated file's first line) and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node and npm are installed, it also checks that `npx vue-tsc --noEmit` passes on the copy, and with a browser that `motif shot --sizes 390,1440 --audit --variant all --rtl` on `/`, `/harvest`, `/sign-in` and `/plots/by-the-gate` reports V-06, V-07 and V-08 and nothing that isn't one of them or V-01's consequences.
