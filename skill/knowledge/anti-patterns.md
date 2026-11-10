@@ -10,7 +10,7 @@ Each pattern has three parts: what it **looks like**, **why it hurts**, and what
 
 - **Looks like:** purple-to-blue gradients on buttons, headings, backgrounds and borders, often all on one screen.
 - **Why it hurts:** gradients pull the eye wherever they are, so nothing stands out; they also date a product quickly and rarely survive dark mode.
-- **Instead:** flat role colours from the guide. A first-impression screen may carry one subtle [tonal gradient](../library/depth/tonal-gradient.md): two shades of `brand` on its band or panel. Working screens stay flat.
+- **Instead:** flat role colours from the guide. A first-impression screen may carry one subtle gradient: a [tonal gradient](../library/depth/tonal-gradient.md) of two shades of `brand` on its band or panel. Working screens stay flat.
 
 ### Glass and glow
 
