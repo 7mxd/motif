@@ -58,7 +58,7 @@ v1.2.0 changes the tool (the screenshot audit's grouping and hit areas, `--state
 
 ## The 1.3.0 and 2.0.0 candidates
 
-Every B, C and D case passed on the 1.3.0 candidate, commit db27932, in 20261105-122429, each built by claude-opus-5-5; Test A failed on the owner's votes (35% Motif), so 1.3.0 was not released and its changes went into 2.0.0. The first 2.0.0 candidate, commit 69bc231, passed B (20 of 20), C (9 of 9) and D in 20261109-081330, each built by claude-opus-5-5; Test A failed again (owner 42% Motif). Both runs are in [test-a.md](test-a.md).
+Every B, C and D case passed on the 1.3.0 candidate, commit db27932, in 20261105-122429, each built by claude-opus-5-5; Test A failed on the owner's votes (35% Motif), so 1.3.0 was not released and its changes went into 2.0.0. The first 2.0.0 candidate, commit 69bc231, passed B (20 of 20), C (9 of 9) and D in 20261109-081330, each built by claude-opus-5-5; Test A failed again (owner 42% Motif). The second 2.0.0 candidate, commit 0da6f09, passed Test A (owner 62% Motif, AI judges 82% / 7%) and C (9 of 9) in 20261112-134851, but B failed two cases on unrecorded new component files, so D failed too; the guidance was fixed for the next candidate. All three runs are in [test-a.md](test-a.md).
 
 ## Flutter: the tests that show it
 
