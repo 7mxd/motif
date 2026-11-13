@@ -99,6 +99,8 @@ interface RawScreen {
   missingFallbacks?: string[];
   /** Text in a script that no family of its style (loaded, all of them) has letters for: boxes here. */
   noScriptFont?: { script: string; family: string }[];
+  /** Text whose style names no font family (and no loaded fallback): flutter test draws it as boxes. */
+  noFamily?: string[];
   texts?: string[];
   /** How many failing texts the contrast check left out: something is drawn over them, or they're over an image the screenshot doesn't show. */
   covered?: number;
@@ -244,6 +246,16 @@ export function screenNotes(screens: RawScreen[], httpFile = HTTP_FILE): string[
     const a = /^[AEIOU]/.test(name) ? "an" : "a";
     notes.push(
       `${andList(routes)}: ${name} text in ${family} has no ${name} font loaded, so it draws as boxes here (a phone would use a system font). Add ${a} ${name} companion to the type role (fontFamilyFallback).`,
+    );
+  }
+  // Text whose style names no family (a button's textStyle replaces the theme's, family and all): flutter test draws it
+  // in its own test font, as boxes. One note, naming the screens and a few of the texts.
+  const unnamed = screens.filter((s) => s.noFamily?.length);
+  if (unnamed.length > 0) {
+    const all = [...new Set(unnamed.flatMap((s) => s.noFamily!))].map((t) => `"${t.length > 30 ? `${t.slice(0, 29)}…` : t}"`);
+    const shown = all.length > 4 ? [...all.slice(0, 3), `${all.length - 3} more`] : all;
+    notes.push(
+      `Text with no fontFamily on ${andList(unnamed.map((s) => s.route))} is drawn as boxes (${andList(shown)}): flutter test has no system font to fall back to, where a phone would use one. Give its style a fontFamily; a button's textStyle (styleFrom, or a button theme) replaces the theme's text style, family and all.`,
     );
   }
   return notes;
