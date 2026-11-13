@@ -166,6 +166,8 @@ class _Screen {
   final Set<String> missingFallbacks = {};
   /// Text in a script no font of its style has (script and family, tab-separated): drawn as boxes here.
   final Set<String> noScriptFont = {};
+  /// Text whose style names no font family and no loaded fallback: flutter test draws it in its test font, as boxes.
+  final Set<String> noFamily = {};
   final Set<String> texts = {};
   final NotJudged notJudged = NotJudged();
   String? auditError;
@@ -185,6 +187,7 @@ class _Screen {
       'noScriptFont': [
         for (final s in noScriptFont) {'script': s.split('\t').first, 'family': s.split('\t').last},
       ],
+    if (noFamily.isNotEmpty) 'noFamily': noFamily.toList(),
     if (notJudged.covered.isNotEmpty) 'covered': notJudged.covered.length,
     if (notJudged.overImages.isNotEmpty) 'overImages': notJudged.overImages.length,
     if (auditError != null) 'auditError': auditError,
@@ -561,6 +564,12 @@ void _fallbacks(InlineSpan span, TextStyle? inherited, _Run run) {
   final style = inherited == null ? span.style : inherited.merge(span.style);
   if (span is! TextSpan) return;
   final text = span.text;
+  // No family at all (a button's textStyle replaces the theme's text style, family and all): a phone draws it in its
+  // system font; flutter test has none, and draws it in its test font, as boxes. Icons (the private use area) aside.
+  if (text != null && style?.fontFamily == null && !(style?.fontFamilyFallback ?? const <String>[]).any(run.loaded.contains)) {
+    final plain = text.replaceAll(RegExp('[-]'), '').trim();
+    if (plain.isNotEmpty) run.screen.noFamily.add(plain);
+  }
   if (text != null && _beyondLatin.hasMatch(text)) {
     for (final family in style?.fontFamilyFallback ?? const <String>[]) {
       if (!run.loaded.contains(family)) run.screen.missingFallbacks.add(family);

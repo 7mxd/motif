@@ -196,6 +196,21 @@ describe("motif shot on flutter-min, drawn by flutter test", () => {
     }
   }, 600_000);
 
+  test.skipIf(!flutter)("text whose style has no font family (a button's textStyle replaced the theme's) gets a note that it's drawn as boxes; text in the theme's font doesn't (eval 20261112 a-sahm; skipped without Flutter)", async () => {
+    writeFileSync(join(app, "lib", "no_family_screen.dart"), NO_FAMILY_SCREEN);
+    try {
+      const r = await shot({ screen: "NoFamilyScreen", sizes: "390", variant: "default" });
+      if (r.exitCode !== 0) console.log(r.text);
+      expect(r.exitCode).toBe(0);
+      const notes = (r.data.notes ?? []) as string[];
+      expect(notes.filter((n) => n.includes("no fontFamily"))).toEqual([
+        'Text with no fontFamily on NoFamilyScreen is drawn as boxes ("Send code" and "العربية"): flutter test has no system font to fall back to, where a phone would use one. Give its style a fontFamily; a button\'s textStyle (styleFrom, or a button theme) replaces the theme\'s text style, family and all.',
+      ]);
+    } finally {
+      rmSync(join(app, "lib", "no_family_screen.dart"), { force: true });
+    }
+  }, 600_000);
+
   test.skipIf(!flutter)("a state that types an address gives home@filled; a state that throws is reported, and the other screenshots are kept (skipped without Flutter)", async () => {
     mkdirSync(join(app, "design", "states"), { recursive: true });
     writeFileSync(join(app, "design", "states", "filled.dart"), FILLED);
@@ -510,6 +525,37 @@ class FallbackScreen extends StatelessWidget {
           // A Latin-only font with no Arabic fallback: a phone would use a system font, flutter test draws boxes.
           Text('العربية', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: [])),
           Text('Русский', style: TextStyle(fontFamily: 'Roboto', fontFamilyFallback: [])),
+        ],
+      ),
+    );
+  }
+}
+`;
+// Sahm's buttons (eval 20261112-134851): a ButtonStyle's textStyle with no fontFamily replaces the theme's text style.
+const NO_FAMILY_SCREEN = `import 'package:flutter/material.dart';
+
+class NoFamilyScreen extends StatelessWidget {
+  const NoFamilyScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          FilledButton(
+            onPressed: () {},
+            style: FilledButton.styleFrom(textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            child: const Text('Send code'),
+          ),
+          TextButton.icon(
+            onPressed: () {},
+            icon: const Icon(Icons.translate_rounded, size: 18),
+            label: const Text('العربية'),
+            style: TextButton.styleFrom(textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
+          // The theme's text style, and a button with the theme's own label style: both have a family.
+          const Text('Plain text'),
+          OutlinedButton(onPressed: () {}, child: const Text('Themed button')),
         ],
       ),
     );

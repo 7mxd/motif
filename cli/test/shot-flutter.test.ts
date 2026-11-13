@@ -906,6 +906,21 @@ describe("final review: text no loaded font has letters for (Important #3, hands
       "/settings: Hebrew text in Roboto has no Hebrew font loaded, so it draws as boxes here (a phone would use a system font). Add a Hebrew companion to the type role (fontFamilyFallback).",
     ]);
   });
+
+  // Eval 20261112-134851, a-sahm: a button theme's textStyle with no fontFamily replaced the theme's text style, so
+  // "Send code" and "العربية" were drawn as boxes, and the shot said nothing (Test A kept the pair).
+  test("text with no font family is drawn as boxes: one note naming its screens and a few of its texts", () => {
+    const notes = screenNotes([
+      { route: "/", noFamily: ["Get started", "العربية"] },
+      { route: "/sign-in", noFamily: ["Send code", "العربية", "Verify", "Resend"] },
+      { route: "/home", noFamily: [] },
+    ]);
+    expect(notes).toEqual([
+      'Text with no fontFamily on / and /sign-in is drawn as boxes ("Get started", "العربية", "Send code" and 2 more): flutter test has no system font to fall back to, where a phone would use one. Give its style a fontFamily; a button\'s textStyle (styleFrom, or a button theme) replaces the theme\'s text style, family and all.',
+    ]);
+    expect(notes[0]).toMatch(/\b(?:drawn|draws) as boxes\b/);
+    expect(screenNotes([{ route: "/", noFamily: [] }, { route: "/home" }])).toEqual([]);
+  });
 });
 
 describe("final review: several apps and no browser (Minor #8)", () => {
