@@ -126,6 +126,14 @@ export function useFadeIn() {
 
 An app that uses NativeWind (`nativewind` in `package.json`) is also checked for Tailwind classes, as a web app is: `tailwind-arbitrary` for an arbitrary value (`p-[13px]`, `bg-[#8a8a8a]`) and `tailwind-palette` for a palette colour (`bg-gray-500`) instead of a role. Fix them as [the React web guide](../react-web/checks.md#tailwind-arbitrary) does, with the classes the theme gives. Without NativeWind these rules don't apply.
 
+## `physical-direction`
+
+A fixed left or right in a style (`marginLeft`, `paddingRight`, `left`, `borderLeftWidth`, `borderTopLeftRadius`, `textAlign: 'left'`) doesn't follow the reading direction the way its start/end form does ([right to left](platform.md#right-to-left)).
+
+- Fix: `marginStart`, `paddingEnd`, `start`, `borderStartWidth`, `borderTopStartRadius`; leave `textAlign` out so text follows the reading direction.
+
+It counts as a problem when your design guide keeps its start/end line (section 7, there by default); without that line, `motif check` only prints one line of advice. A deliberate fixed side (a slider's track, a map control, a chart axis) takes a `motif-ok` comment with the reason.
+
 ## `generated-edited`
 
 `motif-theme.tsx` was edited by hand.

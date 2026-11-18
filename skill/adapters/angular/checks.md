@@ -232,6 +232,14 @@ export class Toast {
 }
 ```
 
+## `physical-direction`
+
+A fixed left or right in a component's styles, a template `style` or a Tailwind class (`margin-left`, `left:`, `text-align: left`, `ml-`, `text-left`) stays on the same side in Arabic and Hebrew.
+
+- Fix: `margin-inline-start`, `inset-inline-start`, `text-align: start`; Tailwind `ms-`, `start-`, `text-start`.
+
+It counts as a problem when your design guide keeps its start/end line (section 7, there by default); without that line, `motif check` only prints one line of advice. A deliberate fixed side (a slider's track, a map control, a chart axis) takes a `motif-ok` comment with the reason.
+
 ## `generated-edited`
 
 A generated theme file was edited by hand.

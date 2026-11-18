@@ -61,6 +61,14 @@ The app animates, but nothing honours reduced motion.
 
 - Fix: `<MotionConfig reducedMotion="user">` at the root, or a global `@media (prefers-reduced-motion: reduce)` rule for CSS animation ([motion](motion.md)).
 
+## `physical-direction`
+
+A fixed left or right (`margin-left`, `padding-right`, `left:`, `text-align: left`, `float`, `border-left`, Tailwind `ml-`/`pr-`/`left-`/`text-left`/`border-l`/`rounded-l`, or `marginLeft` in a `style={{…}}`) stays on the same side in Arabic and Hebrew.
+
+- Fix: the start/end form: `margin-inline-start`, `padding-inline-end`, `inset-inline-start`, `text-align: start`; Tailwind `ms-`/`pe-`/`start-`/`text-start`/`border-s`/`rounded-s`.
+
+It counts as a problem when your design guide keeps its start/end line (section 7, there by default); without that line, `motif check` only prints one line of advice. A deliberate fixed side (a slider's track, a map control, a chart axis) takes a `motif-ok` comment with the reason.
+
 ## `generated-edited`
 
 A generated theme file was edited by hand.
