@@ -67,7 +67,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
    - Mobile apps: onboarding, sign-in, home.
    - Plain web sites: the pages the brief names; a one-page tool is its page and each state behind a form or a click.
 
-   Follow each screen's UX pattern guide, including its loading, empty and error states, and build the library pieces you picked in step 3 from their stack sections, with the theme's roles.
+   Follow each screen's UX pattern guide, including its loading, empty and error states (and no access, when what the screen shows depends on who is signed in), and build the library pieces you picked in step 3 from their stack sections, with the theme's roles.
 
 ## 7. Verify
 

@@ -151,7 +151,7 @@ Run this before you show a screen to the developer:
 4. Every piece of text uses a type role, and reading text stays within 45–75 characters per line.
 5. No raw colours, sizes or timings anywhere (`motif check` finds them).
 6. Light and dark mode were both looked at, not just one.
-7. Every state is present: loading, empty, error, disabled and focus.
+7. Every state is present: loading, empty, error, no access (on screens that depend on who is signed in), disabled and focus.
 8. Tap targets are big enough (44×44 px on touch screens; see [accessibility](accessibility.md)).
 9. Long text was tried: a long name, a long title, a large number, a translated label.
 10. Nothing is centred that should be start-aligned.

@@ -120,9 +120,9 @@ Each pattern has three parts: what it **looks like**, **why it hurts**, and what
 
 ### Missing states
 
-- **Looks like:** screens built only for the happy path: no loading, empty, error, disabled or focus styles.
-- **Why it hurts:** real use hits these states first: a new account is empty, networks fail, keyboards need focus rings.
-- **Instead:** every component's required states from DESIGN.md section 5, and the empty, loading and error patterns from the UX pattern guides.
+- **Looks like:** screens built only for the happy path: no loading, empty, error, no access, disabled or focus styles.
+- **Why it hurts:** real use hits these states first: a new account is empty, networks fail, keyboards need focus rings, and someone without the right role lands on a screen meant for others.
+- **Instead:** every component's required states from DESIGN.md section 5, and the empty, loading, error and no access patterns from the UX pattern guides.
 
 ### Hover-only affordances
 
@@ -135,6 +135,12 @@ Each pattern has three parts: what it **looks like**, **why it hurts**, and what
 - **Looks like:** a full-screen spinner for every load; a modal for every choice, form and message.
 - **Why it hurts:** spinners hide the layout until everything is ready; modals interrupt and trap people for small decisions.
 - **Instead:** skeletons that keep the layout for content, a progress bar for long tasks, and inline expansion or a sheet before reaching for a modal.
+
+### Confirm dialogs where undo would work
+
+- **Looks like:** "Are you sure?" before archiving, deleting a draft or removing an item: a confirm dialog where undo would work.
+- **Why it hurts:** people learn to press Yes without reading, so the dialog slows every action and still doesn't stop the mistakes.
+- **Instead:** do it, then offer Undo for a few seconds. Keep a confirmation for what truly can't be undone, and have it name what, how many and who or when (see [forms](ux-patterns/forms.md)).
 
 ## Motion
 

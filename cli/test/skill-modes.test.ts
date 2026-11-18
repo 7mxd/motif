@@ -655,3 +655,20 @@ describe("the skill picks from the built-in library (2.0)", () => {
     }
   });
 });
+
+// 2.0 fair test, spec §5.3 and §5.5 (T1, T4, T13): states and messages.
+describe("states and messages: no access, undo before confirm, message weight, smart-filled forms (2.0)", () => {
+  test("feature and review list the no-access state", () => {
+    for (const file of ["modes/feature.md", "modes/review.md"]) expect(read(file)).toContain("no access");
+  });
+  test("anti-patterns names a confirm dialog where undo would work", () => {
+    expect(read("knowledge/anti-patterns.md")).toContain("where undo would work");
+  });
+  test("forms: a confirmation names its scope, and filled-in fields say where their values came from", () => {
+    const forms = read("knowledge/ux-patterns/forms.md");
+    for (const s of ["how many and who or when", "where their values came from"]) expect(forms).toContain(s);
+  });
+  test("notifications: a high-stakes message says what did and didn't happen", () => {
+    expect(read("knowledge/ux-patterns/notifications.md")).toContain("Nothing was charged");
+  });
+});

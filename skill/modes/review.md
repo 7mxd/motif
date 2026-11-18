@@ -23,6 +23,8 @@ Ask whether to review the whole app or named screens or features (default: the w
 
 **Judgement**, screen by screen and state by state, from the screenshots and the code: hierarchy, layout and spacing rhythm, the flow through each task, whether things people use together (a live preview and the controls that change it, a form and its result) fit on one screen, missing states, copy, motion quality, platform conventions and the tells of generated UI. Use [visual craft](../knowledge/visual-craft.md), [anti-patterns](../knowledge/anti-patterns.md), [motion](../knowledge/motion.md), [accessibility](../knowledge/accessibility.md), the UX pattern guide for each screen, and the stack guide's checks ([React web](../adapters/react-web/checks.md), [plain web](../adapters/plain-web/checks.md), [Flutter](../adapters/flutter/checks.md), [Jetpack Compose](../adapters/compose/checks.md), [SwiftUI](../adapters/swiftui/checks.md), [React Native](../adapters/react-native/checks.md), [Vue and Nuxt](../adapters/vue/checks.md), [Svelte and SvelteKit](../adapters/svelte/checks.md), [Angular](../adapters/angular/checks.md)).
 
+Messages and confirmations are part of that pass, read from the code. A confirm dialog where undo would work, and a high-stakes failure (money, data, access) shown as a toast that goes away, are `anti-pattern` findings; a confirmation that doesn't name what, how many and who or when ("Send?") is a `copy` finding.
+
 Make it a written pass, not a glance: open each screen's screenshots (light at a phone size, and the right-to-left one) and, before writing the report, note for each screen what you checked against the design guide's own rules, at least these four. The notes go into the Markdown report as its **What was checked** section:
 
 - **The one main action.** Which action is drawn loudest (filled, full width, in the action colour)? It should be the screen's main task, and there should be one. A rarely used or final action (sign out, delete, cancel) drawn as the loudest thing on its screen, or two actions drawn as main, is a `hierarchy` finding.
@@ -38,7 +40,7 @@ When the design guide has variants, look at every variant's screenshots: `motif 
 
 Two things screenshots hide, so check them in the code too:
 
-- For every screen that shows data (a list, a feed, search results, a dashboard), find its loading, empty and error states. A screen that renders its mock data straight away looks complete, since mock data always loads and is never empty; one with no branch for any of the three is a `missing-state` finding.
+- For every screen that shows data (a list, a feed, search results, a dashboard), find its loading, empty and error states. A screen that renders its mock data straight away looks complete, since mock data always loads and is never empty; one with no branch for any of the three is a `missing-state` finding. A screen behind a role (what it shows depends on who is signed in: a role, a team, a plan) also needs a no access state, with its own message and a way forward; a missing one is a `missing-state` finding there, and only there.
 - Emoji standing in for the app's icons or decoration (on buttons, banners, feature cards, empty states) are an `anti-pattern` finding: see [emoji as UI](../knowledge/anti-patterns.md#emoji-as-ui). Emoji in content people write themselves are fine.
 
 ## 4. Report ⏸

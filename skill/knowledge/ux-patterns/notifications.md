@@ -16,6 +16,7 @@ Telling people that something happened or needs them: in the app, on the icon, a
 - **Banners:** for conditions that persist (offline, trial ending, payment failed), at the top of the content until resolved or dismissed.
 - **Push notifications:** a primer screen before the system's permission prompt, explaining what they'll get.
 - **Preferences:** a link from the inbox to notification preferences, per type and per channel.
+- **Weight by stakes:** low stakes get a toast that goes away; medium stakes, a message inline where it happened; high stakes (money, data, access) get a message that stays, says what did and didn't happen ("Payment failed. Nothing was charged."), and offers the next step.
 
 ## Required states
 
@@ -29,7 +30,7 @@ Telling people that something happened or needs them: in the app, on the icon, a
 
 ## Common mistakes
 
-- Toasts for errors that need action → inline messages or a banner that stays.
+- Toasts for errors that need action, or a failed payment, save or permission change shown as a toast that goes away → inline messages or a banner that stays.
 - Badges that never clear → clear on view.
 - Asking for push permission on first launch → ask after people see what they'd get.
 - Notifying about everything → defaults that matter, and per-type choices.
