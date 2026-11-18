@@ -6,7 +6,7 @@ import { findBrowser } from "../src/detect/browser";
 import { CASES } from "../../tests/evals/cases";
 import type { Grade } from "../../tests/evals/grade";
 import { ownerOffContent, ownerPairs, ownerPicks, readVotes, serveOwner, sideOrder, writePage, type OwnerVote } from "../../tests/evals/page-a";
-import type { Pair } from "../../tests/evals/pairs";
+import { readPairs, type Pair } from "../../tests/evals/pairs";
 import { scoreRun } from "../../tests/evals/score-a";
 import { reportOnVote } from "../../tests/evals/judge-owner";
 import { writeReport } from "../../tests/evals/run";
@@ -342,8 +342,13 @@ describe("a side that didn't follow the content", () => {
   const post = (url: string, body: unknown) =>
     fetch(`${url}/vote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
+  /** The fixture's pairs as a run made now has them: each with the content it was shot with. */
+  const withContent = (f: ReturnType<typeof fixture>) =>
+    writeFileSync(join(f.run, "a", "pairs.json"), JSON.stringify(f.pairs.map((p) => ({ ...p, content: `- Content of ${p.screen}` }))));
+
   test("is saved with the vote: one side's mark picks the other, both marks pick about the same; anything else is refused", async () => {
     const f = fixture();
+    withContent(f);
     const s = await serveOwner(f.run);
     try {
       const html = await (await fetch(`${s.url}/`)).text();
@@ -366,6 +371,82 @@ describe("a side that didn't follow the content", () => {
     } finally {
       s.stop();
     }
+  });
+
+  test("taking the last mark back restores the pick made before the marks, or leaves no vote when the marks came first", async () => {
+    const f = fixture();
+    withContent(f);
+    const s = await serveOwner(f.run);
+    const unmark = (pairId: string) =>
+      fetch(`${s.url}/unmark`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId }) });
+    try {
+      const [a, b, c] = pageData(await (await fetch(`${s.url}/`)).text()).pairs;
+      // Picked left, then marked left (which picks right): taking the mark back brings left back.
+      await post(s.url, { pairId: a!.id, pick: "left" });
+      await post(s.url, { pairId: a!.id, pick: "right", offContent: "left" });
+      let r = await unmark(a!.id);
+      expect(r.status).toBe(200);
+      expect((await r.json()).pick).toBe("left");
+      // Both marked before any pick, then one taken back, then the other: no vote is left.
+      await post(s.url, { pairId: b!.id, pick: "same", offContent: "both" });
+      await post(s.url, { pairId: b!.id, pick: "left", offContent: "right" });
+      r = await unmark(b!.id);
+      expect(r.status).toBe(200);
+      expect((await r.json()).pick).toBeNull();
+      // A pick made after a mark (which drops it) is the one a later mark's removal brings back.
+      await post(s.url, { pairId: c!.id, pick: "left" });
+      await post(s.url, { pairId: c!.id, pick: "right", offContent: "left" });
+      await post(s.url, { pairId: c!.id, pick: "same" });
+      await post(s.url, { pairId: c!.id, pick: "right", offContent: "left" });
+      expect((await (await unmark(c!.id)).json()).pick).toBe("same");
+      expect(readVotes(f.run).map((v) => [v.pairId, v.pick, v.offContent])).toEqual([[a!.id, "left", undefined], [c!.id, "same", undefined]]);
+      // The page reads back only picks and marks.
+      expect(JSON.parse(await (await fetch(`${s.url}/votes`)).text()).votes).toEqual([{ pairId: a!.id, pick: "left" }, { pairId: c!.id, pick: "same" }]);
+      // A pair without a mark has none to take back.
+      for (const id of [a!.id, b!.id]) expect((await unmark(id)).status).toBe(400);
+    } finally {
+      s.stop();
+    }
+  });
+
+  test("once the answers are shown, a mark can't be taken back", async () => {
+    const f = fixture();
+    withContent(f);
+    const s = await serveOwner(f.run);
+    try {
+      const pairs = pageData(await (await fetch(`${s.url}/`)).text()).pairs;
+      await post(s.url, { pairId: pairs[0]!.id, pick: "right", offContent: "left" });
+      for (const x of pairs.slice(1)) await post(s.url, { pairId: x.id, pick: "left" });
+      expect((await fetch(`${s.url}/reveal`)).status).toBe(200);
+      const r = await fetch(`${s.url}/unmark`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId: pairs[0]!.id }) });
+      expect(r.status).toBe(409);
+      expect(readVotes(f.run)[0]).toMatchObject({ pick: "right", offContent: "left" });
+    } finally {
+      s.stop();
+    }
+  });
+
+  test("a pair shot before content existed has no content on the page, and a mark on it is refused", async () => {
+    const f = fixture();
+    const s = await serveOwner(f.run);
+    try {
+      const html = await (await fetch(`${s.url}/`)).text();
+      const pairs = pageData(html).pairs as unknown as { id: string; content: string | null }[];
+      expect(pairs.every((p) => p.content === null)).toBe(true);
+      const r = await post(s.url, { pairId: pairs[0]!.id, pick: "right", offContent: "left" });
+      expect(r.status).toBe(400);
+      expect(readVotes(f.run)).toEqual([]);
+    } finally {
+      s.stop();
+    }
+  });
+
+  test("the page reads the content saved with each pair, not the brief as it is now", () => {
+    const f = fixture();
+    withContent(f);
+    const html = readFileSync(writePage(f.run, readPairs(f.run).filter((p) => f.shown.some((s) => s.id === p.id))), "utf8");
+    const pairs = pageData(html).pairs as unknown as { id: string; content: string | null }[];
+    for (const p of pairs) expect(p.content).toBe(`- Content of ${f.shown.find((s) => s.id === p.id)!.screen}`);
   });
 
   test("an old votes file, without marks, still scores the same", () => {
@@ -548,6 +629,50 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
       await page.goto(`${s.url}/`);
       for (let i = 0; i < 400 && !(await ready()); i++) await Bun.sleep(50);
       expect(await page.evaluate<string>(`document.getElementById("count").textContent`)).toBe("4 of 5");
+      expect(page.takeErrors()).toEqual([]);
+    } finally {
+      await b.close();
+      s.stop();
+    }
+  }, 60_000);
+
+  test("taking a mark back on the page brings back the pick made before it, or none", async () => {
+    const f = fixture();
+    writeFileSync(join(f.run, "a", "pairs.json"), JSON.stringify(f.pairs.map((p) => ({ ...p, content: `- Content of ${p.screen}` }))));
+    const s = await serveOwner(f.run);
+    const b = await launchBrowser(browser!.path);
+    try {
+      const first = pageData(await (await fetch(`${s.url}/`)).text()).pairs[0]!.id;
+      await fetch(`${s.url}/vote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId: first, pick: "left" }) });
+      const page = await b.newPage({ isolated: true });
+      await page.setViewport(1280, 800);
+      await page.goto(`${s.url}/`);
+      for (let i = 0; i < 400 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+      const idle = async () => {
+        for (let i = 0; i < 400 && (await page.evaluate<boolean>(`[...document.querySelectorAll(".choice")].some((b) => b.disabled)`)); i++) await Bun.sleep(50);
+      };
+      const mark = async (side: string) => {
+        await idle();
+        await page.evaluate(`document.querySelector('.off-btn[data-off="${side}"]').click()`);
+        await Bun.sleep(100);
+        await idle();
+      };
+      const pressed = () => page.evaluate<string | null>(`document.querySelector(".choice[aria-pressed=true]")?.dataset.pick ?? null`);
+      // The second pair has no vote: marking it picks for it, and taking the mark back leaves it without one.
+      const second = pageData(await (await fetch(`${s.url}/`)).text()).pairs[1]!.id;
+      await mark("left");
+      expect(readVotes(f.run).find((v) => v.pairId === second)).toMatchObject({ pick: "right", offContent: "left" });
+      await mark("left");
+      expect(readVotes(f.run).find((v) => v.pairId === second)).toBeUndefined();
+      expect(await pressed()).toBeNull();
+      // Back on the first pair (voted left): a mark on left picks right; taking it back brings left back.
+      await page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }))`);
+      await mark("left");
+      expect(await pressed()).toBe("right");
+      await mark("left");
+      expect(await pressed()).toBe("left");
+      expect(readVotes(f.run).find((v) => v.pairId === first)).toMatchObject({ pick: "left" });
+      expect(readVotes(f.run).find((v) => v.pairId === first)!.offContent).toBeUndefined();
       expect(page.takeErrors()).toEqual([]);
     } finally {
       await b.close();

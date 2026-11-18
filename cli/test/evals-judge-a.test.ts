@@ -199,6 +199,14 @@ function harness(over: Partial<RunDeps> = {}, judgeAnswer: (n: number, seen: See
 }
 
 describe("judgePairs and the brief's content", () => {
+  test("by default each judge gets the content saved with its pair, and none for a pair shot before content existed", async () => {
+    const out = tempDir("evals-judge-a-content-");
+    const pairs = writePairs(out);
+    writeFileSync(join(out, pairsFile), JSON.stringify(pairs.map((p) => (p.id === "aaaaaaaaaaa1" ? { ...p, content: "- Saved with the pair" } : p))));
+    const given: (string | undefined)[] = [];
+    await judgePairs(out, async (_i, _b, _n, content) => (given.push(content), { pick: "left", why: "w", offContent: "none" }), { brief: () => ({ whatItIs: "w", whoItsFor: "o", feel: "f" }) });
+    expect(given).toEqual(["- Saved with the pair", "- Saved with the pair", undefined, undefined]);
+  });
   test("each judge is given the screen's content, and a judged pair keeps an off-content mark", async () => {
     const out = tempDir("evals-judge-a-content-");
     writePairs(out);

@@ -259,7 +259,11 @@
     const pick = votes.get(item.id);
     for (const b of document.querySelectorAll(".choice")) b.setAttribute("aria-pressed", String(b.dataset.pick === pick));
     const mark = marks.get(item.id);
-    for (const b of document.querySelectorAll(".off-btn")) b.setAttribute("aria-pressed", String(mark === "both" || mark === b.dataset.off));
+    for (const b of document.querySelectorAll(".off-btn")) {
+      b.setAttribute("aria-pressed", String(mark === "both" || mark === b.dataset.off));
+      // Only a pair with content to follow can be marked.
+      b.hidden = !item.content;
+    }
     $("content-fold").hidden = !item.content;
     $("content-text").textContent = item.content || "";
     lockChoices();
@@ -356,9 +360,13 @@
     if (set.has(side)) set.delete(side);
     else set.add(side);
     const mark = set.size === 2 ? "both" : [...set][0];
-    const pick = mark ? MARKED_PICK[mark] : votes.get(item.id);
-    if (!pick) return;
-    await save(item, pick, mark, false);
+    // The last mark taken back: the server brings back the pick made before the marks, or none.
+    if (!mark) return send("unmark", { pairId: item.id }, (j) => {
+      if (j.pick) votes.set(item.id, j.pick);
+      else votes.delete(item.id);
+      marks.delete(item.id);
+    });
+    await save(item, MARKED_PICK[mark], mark, false);
   }
 
   async function vote(pick) {
@@ -369,12 +377,22 @@
     await save(item, pick, mark && MARKED_PICK[mark] === pick ? mark : undefined, true);
   }
 
-  async function save(item, pick, mark, advance) {
+  function save(item, pick, mark, advance) {
+    const body = { pairId: item.id, pick, ...(mark ? { offContent: mark } : {}) };
+    return send("vote", body, () => {
+      votes.set(item.id, pick);
+      if (mark) marks.set(item.id, mark);
+      else marks.delete(item.id);
+      if (advance) at = firstOpen(at + 1);
+    });
+  }
+
+  /** Posts to the server, and once it's saved, lets `saved` update what the page knows from the answer. */
+  async function send(path, body, saved) {
     busy = true;
     lockChoices();
     try {
-      const body = { pairId: item.id, pick, ...(mark ? { offContent: mark } : {}) };
-      const r = await fetch("vote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({}));
       if (r.status === 409) {
         // The answers were shown since this page opened: the vote made before stands, and is shown as final.
@@ -385,10 +403,7 @@
       }
       if (!r.ok) throw new Error(j.error || `the server answered ${r.status}`);
       if ("waiting" in j) waiting = j.waiting;
-      votes.set(item.id, pick);
-      if (mark) marks.set(item.id, mark);
-      else marks.delete(item.id);
-      if (advance) at = firstOpen(at + 1);
+      saved(j);
       render();
     } catch (e) {
       $("note").textContent = `That vote wasn't saved: ${e.message} Try again.`;

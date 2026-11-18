@@ -7,6 +7,7 @@ import { routeSlug, shotName, type RouteResult } from "../src/shot/capture";
 import { devCommand } from "../src/shot/devserver";
 import { CASES, type EvalCase } from "../../tests/evals/cases";
 import { pairBrief, pairsFile, readPairs, shootPairs, shotSizes, stripPng, type Pair } from "../../tests/evals/pairs";
+import { screenContent } from "../../tests/evals/content";
 import type { Motif, MotifResult, Run } from "../../tests/evals/tools";
 import type { Workspace } from "../../tests/evals/workspace";
 import { decodePng, encodePng } from "./png-pixels";
@@ -195,6 +196,14 @@ describe("shootPairs", () => {
     // What each shot answered is kept with its own case, not under a/.
     expect(existsSync(join(s.out, "d-stride", "pair-shots.json"))).toBe(true);
     expect(existsSync(join(s.out, "a-stride", "pair-shots.json"))).toBe(true);
+  });
+
+  test("each pair keeps the brief's content for its screen as it was when shot, so later edits to the brief don't reach the run", async () => {
+    const s = sides();
+    const f = fakeShot();
+    const pairs = await shootPairs("stride", s.withMotif, s.without, byId("d-stride"), s.out, { run: noRun, motif: f.motif });
+    for (const p of pairs) expect(p.content).toBe(screenContent("stride", p.screen));
+    expect(pairs.every((p) => typeof p.content === "string" && p.content.length > 0)).toBe(true);
   });
 
   test("a native app's pairs are at a phone's width only", async () => {

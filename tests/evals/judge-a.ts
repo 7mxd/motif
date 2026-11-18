@@ -6,7 +6,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Paused } from "./judge";
-import { screenContent } from "./content";
 import { readPairs, type Pair } from "./pairs";
 
 export const RUBRIC_A = join(import.meta.dir, "rubric-a.md");
@@ -143,7 +142,8 @@ export async function judgePairs(
   opts: { brief?: (name: string) => BriefParts; content?: (brief: string, screen: string) => string | undefined; skip?: Set<string>; exclude?: ReadonlySet<string>; log?: (line: string) => void } = {},
 ): Promise<{ judged: number; failed: string[] }> {
   const brief = opts.brief ?? readBriefParts;
-  const contentOf = opts.content ?? ((b: string, screen: string) => screenContent(b, screen));
+  // The content saved with the pair when it was shot (none for older runs); a test may give its own.
+  const contentOf = (pair: Pair) => (opts.content ? opts.content(pair.brief, pair.screen) : pair.content);
   const skip = opts.skip ?? new Set<string>();
   let judged = 0;
   const failed: string[] = [];
@@ -151,7 +151,7 @@ export async function judgePairs(
     const key = `${pair.id} ${order}`;
     if (skip.has(key)) continue;
     const [m, b] = [join(out, pair.motif!), join(out, pair.baseline!)];
-    const r = await judge(order === "motif-left" ? { left: m, right: b } : { left: b, right: m }, brief(pair.brief), `${pair.id}.${order}`, contentOf(pair.brief, pair.screen));
+    const r = await judge(order === "motif-left" ? { left: m, right: b } : { left: b, right: m }, brief(pair.brief), `${pair.id}.${order}`, contentOf(pair));
     if ("paused" in r) throw new Paused(r.paused.resetsAt);
     if ("error" in r) {
       skip.add(key);
