@@ -8,7 +8,7 @@
 
 1. **Each brief fixes its content.** Every D and A brief ends with `## Content`: one sub-heading per screen, `### <Label> (<screen>)`, listing the items in order with their situations and actions, and every title, button, field and link label. Its first line says to show exactly that, no more and no less, and leaves the look and layout to the app. Both sides get the same brief, so both are asked for the same content.
 2. **The runner checks it.** A run whose chosen D or A brief lacks the section, its first line, or a screen's sub-heading stops before it starts, naming the brief and the screen.
-3. **A side that doesn't follow the content loses the pair.** The AI judges are given the screen's content and answer `offContent` (left, right, both or none); a marked side loses that judgement, and when both are marked the pick stands as judged. The owner's page has a "Didn't follow the content" button under each side: one mark saves a vote for the other side, both marks save "about the same".
+3. **A side that doesn't follow the content loses the pair.** The AI judges are given the screen's content and answer `offContent` (left, right, both or none); a marked side loses that judgement, and when both are marked the pick stands as judged. The owner's page has a "Didn't follow the content" button under each side: one mark saves a vote for the other side, both marks save "about the same", and taking the last mark back brings back the pick made before the marks (or no vote, when they came first). Each pair keeps the screen's content as the brief said it when the pair was shot, so the judges and the owner see what both apps were asked for even if the brief changes later; a pair shot before content existed has none, and can't be marked.
 4. **The bars don't change.** Test A still passes on the briefs' average as decision 0014 says. The report counts the marks against each app, from the judges and from the owner, so a side that wins by skipping content shows.
 
 ## Why
@@ -19,5 +19,5 @@
 
 ## Consequences
 
-- `tests/evals/content.ts` reads the section and `preflight` checks it; `judge-a.ts` and `rubric-a.md` give the judges the content; `page-a.ts` and its template add the marks; `score-a.ts` and `report.ts` count them. Tests: `cli/test/evals-content.test.ts`, `evals-judge-a.test.ts`, `evals-page-a.test.ts`, `evals-score-a.test.ts`.
+- `tests/evals/content.ts` reads the section and `preflight` checks it; `pairs.ts` saves each pair's content when it shoots it; `judge-a.ts` and `rubric-a.md` give the judges the content; `page-a.ts` and its template add the marks; `score-a.ts` and `report.ts` count them. Tests: `cli/test/evals-content.test.ts`, `evals-judge-a.test.ts`, `evals-page-a.test.ts`, `evals-score-a.test.ts`.
 - Runs before this decision had no content to follow; their judgements and votes read the same as before, with no marks.
