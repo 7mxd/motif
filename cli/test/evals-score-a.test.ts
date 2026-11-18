@@ -384,10 +384,48 @@ describe("a run's Test A", () => {
     const a = verdicts.find((v) => v.test === "A")!;
     expect(a.status).toBe("incomplete");
     expect(a.detail).toContain("Stride's two apps were built by different models: opus-x (with Motif) and sonnet-y (without)");
-    expect(renderReport(st, CASES, verdicts, s)).toContain("| stride | 2 | 2 / 0 / 0 | 2 / 0 | pending | Stride's two apps were built by different models");
+    expect(renderReport(st, CASES, verdicts, s)).toContain("| stride | 2 | 2 / 0 / 0 | 2 / 0 | — | pending | Stride's two apps were built by different models");
     // The same model on both sides passes.
     const same = state({ "d-stride": { ...graded(), session: session("opus-x") }, "a-stride": { ...graded(), session: session("opus-x") } });
     expect(scoreRun(same, out, owner)[0]!.pass).toBe(true);
+  });
+
+  test("counts off-content marks against each app, from the judges and the owner; picks and shares as before", () => {
+    const ps = [pair("p0", "both", "stride"), pair("p1", "both", "stride")];
+    const js: Judgement[] = [
+      // p0: Motif's side skipped the content both times, wherever it was.
+      { pairId: "p0", order: "motif-left", pick: "right", why: "", offContent: "left" },
+      { pairId: "p0", order: "motif-right", pick: "left", why: "", offContent: "right" },
+      // p1: both sides skipped it; the picks stand as judged.
+      { pairId: "p1", order: "motif-left", pick: "left", why: "", offContent: "both" },
+      { pairId: "p1", order: "motif-right", pick: "right", why: "", offContent: "both" },
+    ];
+    const st = state({ "d-stride": graded(), "a-stride": graded() });
+    const owner = new Map<string, OwnerPick>([["p0", "motif"], ["p1", "same"]]);
+    const ownerOff = new Map<string, ("motif" | "baseline")[]>([["p0", ["baseline"]], ["p1", ["motif", "baseline"]]]);
+    const out = folder(ps, js);
+    const s = scoreRun(st, out, owner, ownerOff);
+    expect(s[0]!.offContent).toEqual({ ai: { motif: 4, baseline: 2 }, owner: { motif: 1, baseline: 2 } });
+    const plain = scoreRun(st, out, owner);
+    expect({ ...s[0]!, offContent: undefined }).toEqual({ ...plain[0]!, offContent: undefined });
+    expect(s[0]!.ai).toEqual({ motif: 1, baseline: 1, tie: 0 });
+    const report = renderReport(st, CASES, testVerdicts(st, CASES, s), s);
+    expect(report).toContain("| Owner: Motif / other | Off content (AI · owner) | Verdict |");
+    expect(report).toContain("| baseline 2, Motif 4 · baseline 2, Motif 1 |");
+  });
+
+  test("a run without marks counts none, shows —, and scores exactly as before", () => {
+    const ps = [pair("p0", "both", "stride")];
+    const js: Judgement[] = [
+      { pairId: "p0", order: "motif-left", pick: "left", why: "" },
+      { pairId: "p0", order: "motif-right", pick: "right", why: "" },
+    ];
+    const st = state({ "d-stride": graded(), "a-stride": graded() });
+    const owner = new Map<string, OwnerPick>([["p0", "motif"]]);
+    const s = scoreRun(st, folder(ps, js), owner);
+    expect(s[0]).toMatchObject({ ai: { motif: 1, baseline: 0, tie: 0 }, owner: { motif: 1, other: 0 }, pass: true });
+    expect(s[0]!.offContent).toEqual({ ai: { motif: 0, baseline: 0 }, owner: { motif: 0, baseline: 0 } });
+    expect(renderReport(st, CASES, testVerdicts(st, CASES, s), s)).toContain("| stride | 1 | 1 / 0 / 0 | 1 / 0 | — | pass |");
   });
 
   test("pairs decided without a judge are listed and skipped by the judges and the owner", () => {
@@ -420,7 +458,7 @@ describe("a run's Test A", () => {
     const verdicts = testVerdicts(state(cases), CASES, scores);
     const md = renderReport(state(cases), CASES, verdicts, scores);
     expect(md).toContain("Test A — with and without Motif: INCOMPLETE");
-    expect(md).toContain("| pulse | 11 | 7 / 1 / 2 | waiting | pending | waiting for the owner's votes |");
+    expect(md).toContain("| pulse | 11 | 7 / 1 / 2 | waiting | — | pending | waiting for the owner's votes |");
     expect(md).toContain("| masar | 0 |");
     expect(md).toContain("Pairs left out because neither side could win them (neither app drew the screen, or one app didn't build and the other didn't draw it): pulse (gone).");
     expect(md).not.toContain("because neither app drew them");
@@ -431,6 +469,6 @@ describe("a run's Test A", () => {
     const cases: Record<string, CaseState> = { [`a-${aBriefs[0]}`]: graded() };
     const scores: BriefScore[] = [{ brief: aBriefs[0]!, pairs: 2, ai: { motif: 2, baseline: 0, tie: 0 }, left: [], forced: ["p0", "p1"], pass: true, why: "ok" }];
     const md = renderReport(state(cases), CASES, testVerdicts(state(cases), CASES, scores), scores);
-    expect(md).toContain(`| ${aBriefs[0]} | 2 | 2 / 0 / 0 | — | pass | ok |`);
+    expect(md).toContain(`| ${aBriefs[0]} | 2 | 2 / 0 / 0 | — | — | pass | ok |`);
   });
 });
