@@ -40,7 +40,7 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
 ### Sign in (Sign in)
 
 - Title: Sign in (تسجيل الدخول)
-- Helper line: Sign in with your email to see this week's runs. (سجّل الدخول ببريدك الإلكتروني لترى جريات هذا الأسبوع.)
+- Helper line: Sign in with your email to see your runs for the week. (سجّل الدخول ببريدك الإلكتروني لترى جريات هذا الأسبوع.)
 - Field: Email (البريد الإلكتروني), type: email
 - Field: Password (كلمة المرور), type: password
 - Button: Sign in (تسجيل الدخول)
@@ -55,7 +55,7 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
 - Next run (الجرية القادمة):
   - Thursday 19 November (الخميس 19 نوفمبر) · Easy run 4 km (جرية سهلة 4 كم) · target pace 7:00/km (السرعة المستهدفة 7:00 د/كم) · about 28 min (نحو 28 دقيقة)
   - Action: Start run (ابدأ الجرية)
-- This week's runs, in this order:
+- The week's plan, in this order:
   1. Monday 16 November (الإثنين 16 نوفمبر) · Easy run (جرية سهلة)
      - 3.5 km in 24:30 · pace 7:00/km (3.5 كم في 24:30 · السرعة 7:00 د/كم)
      - Situation: Done (تمت)

@@ -61,7 +61,7 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
   2. Noura Al Ali (نورة العلي)
      - Leaves Khalifa City (مدينة خليفة) at 7:40 am, arrives 8:05 am
      - Pick-up: Khalifa City Co-op, front car park (جمعية مدينة خليفة، الموقف الأمامي)
-     - Situation: You're booked (مقعدك محجوز)
+     - Situation: Seat reserved (مقعدك محجوز)
      - Action: Cancel my seat (ألغِ حجزي)
   3. Omar Haddad (عمر حداد)
      - Leaves Al Raha Beach (شاطئ الراحة) at 8:00 am, arrives 8:20 am

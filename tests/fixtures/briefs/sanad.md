@@ -31,10 +31,10 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
 - Main line: Spot it, report it, see it fixed. (لاحِظ، أبلِغ، وتابِع الإصلاح.)
 - Supporting line: Report something in the neighbourhood that needs fixing, and follow it until a neighbour volunteer fixes it. (أبلغ عن أي شيء في الحي يحتاج إلى إصلاح، وتابعه حتى يصلحه أحد الجيران المتطوعين.)
 - Three short points:
-  - Report a problem in under a minute (أبلغ عن مشكلة في أقل من دقيقة)
+  - Report an issue in under a minute (أبلغ عن مشكلة في أقل من دقيقة)
   - See what neighbours have already reported (اطّلع على ما أبلغ عنه جيرانك)
   - Know who's coming to fix it, and when (اعرف من سيأتي للإصلاح ومتى)
-- Button: Report a problem (أبلغ عن مشكلة)
+- Button: Report an issue (أبلغ عن مشكلة)
 - Line: Already have an account? (لديك حساب؟) with the link: Sign in (تسجيل الدخول)
 - Language link: العربية (on the Arabic page: English)
 
@@ -54,7 +54,7 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
 - Page title: Open requests (الطلبات المفتوحة)
 - Neighbourhood line: Al Khalidiya (الخالدية)
 - Summary line: 5 open requests (5 طلبات مفتوحة)
-- Screen action: Report a problem (أبلغ عن مشكلة)
+- Screen action: Report an issue (أبلغ عن مشكلة)
 - Language link: العربية (on the Arabic page: English)
 - The requests, newest first:
   1. Missing slat on a park bench, Khalidiya Park (لوح مفقود في مقعد بحديقة الخالدية)

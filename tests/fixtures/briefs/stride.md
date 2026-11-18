@@ -40,16 +40,16 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
 ### Sign in (/sign-in)
 
 - Title: Sign in
-- Helper line: Welcome back. Sign in to see this week's runs.
+- Helper line: Welcome back. Sign in to see the runs coming up.
 - Field: Email (type: email)
 - Field: Password (type: password)
 - Button: Sign in
 - Link: Forgot password?
 - Line: New here? with the link: Join the club
 
-### This week's runs (/home)
+### Upcoming runs (/home)
 
-- Page title: This week's runs
+- Page title: Upcoming runs
 - Date line: Mon 16 – Sun 22 November
 - Summary line: 5 runs this week · you're going to 1
 - The runs, in this order:

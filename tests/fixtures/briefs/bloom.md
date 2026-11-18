@@ -57,11 +57,11 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
   1. Fern (Boston fern) · bathroom
      - Task: Water
      - Situation: Overdue, was due yesterday
-     - Action: Mark as watered
+     - Action: Log watering
   2. Monty (Monstera) · living room
      - Task: Water, about 500 ml
      - Situation: Due today
-     - Action: Mark as watered
+     - Action: Log watering
   3. Penny (Pothos) · bedroom
      - Task: Feed with half-strength plant food
      - Situation: Due today

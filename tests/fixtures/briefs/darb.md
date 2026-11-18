@@ -61,7 +61,7 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
      - 5 km · easy pace, 7:00/km (5 كم · سرعة سهلة 7:00 د/كم)
      - Going: You, Reem, Faisal and 11 others, 14 in all (أنت وريم وفيصل و11 آخرون، 14 مشاركًا)
      - Situation: You're going (ستحضر)
-     - Action: Can't make it (لن أحضر)
+     - Action: Not coming (لن أحضر)
   2. Corniche 10K (جرية الكورنيش 10 كم)
      - Sat 21 Nov, 6:30 am (السبت 21 نوفمبر، 6:30 صباحًا)
      - Meet at: Corniche Beach, gate 3 (شاطئ الكورنيش، البوابة 3)

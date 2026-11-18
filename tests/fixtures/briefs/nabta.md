@@ -53,7 +53,7 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
 - Date line: Wednesday 18 November (الأربعاء 18 نوفمبر)
 - Summary line: 3 plants to water today, 1 done (3 نباتات للسقي اليوم، تم سقي واحدة)
 - Screen action: Add a plant (أضف نبتة)
-- Group: Water today (اسقِ اليوم), in this order:
+- Group: Needs water today (تحتاج إلى سقي اليوم), in this order:
   1. Sabr, snake plant (صبر، نبتة الثعبان) · bedroom (غرفة النوم)
      - Situation: Overdue by 2 days (متأخرة يومين)
      - Action: Watered (تم السقي)

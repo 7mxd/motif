@@ -57,10 +57,10 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
 - Invoices, in this order:
   1. INV-1042 · Northwind Studio · $2,400 · due 30 Oct 2026
      - Situation: Overdue by 19 days
-     - Action: Send reminder
+     - Action: Chase payment
   2. INV-1045 · Harbor & Pine · $800 · due 10 Nov 2026
      - Situation: Overdue by 8 days
-     - Action: Send reminder
+     - Action: Chase payment
   3. INV-1048 · Lumen Health · $3,000 · due 2 Dec 2026
      - Situation: Sent, due in 14 days
      - Action: View
