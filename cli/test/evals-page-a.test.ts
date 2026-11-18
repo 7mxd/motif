@@ -636,6 +636,39 @@ describe.skipIf(!browser)("the page in a browser (needs Chrome, Edge or Chromium
     }
   }, 60_000);
 
+  test("a pair without content shows no mark buttons; one with content shows both", async () => {
+    const f = fixture();
+    const s = await serveOwner(f.run);
+    const b = await launchBrowser(browser!.path);
+    try {
+      const page = await b.newPage({ isolated: true });
+      await page.setViewport(1280, 800);
+      const shown = async () => {
+        await page.goto(`${s.url}/`);
+        for (let i = 0; i < 400 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+        return page.evaluate<string[]>(`[...document.querySelectorAll(".off-btn")].map((b) => getComputedStyle(b).display)`);
+      };
+      const without = await shown();
+      expect(without).toHaveLength(2);
+      expect(without.every((d) => d === "none")).toBe(true);
+      s.stop();
+      writeFileSync(join(f.run, "a", "pairs.json"), JSON.stringify(f.pairs.map((p) => ({ ...p, content: `- Content of ${p.screen}` }))));
+      const s2 = await serveOwner(f.run);
+      try {
+        await page.goto(`${s2.url}/`);
+        for (let i = 0; i < 400 && !(await page.evaluate<boolean>(`document.body.dataset.ready === "1"`)); i++) await Bun.sleep(50);
+        const withContent = await page.evaluate<string[]>(`[...document.querySelectorAll(".off-btn")].map((b) => getComputedStyle(b).display)`);
+        expect(withContent.every((d) => d !== "none")).toBe(true);
+      } finally {
+        s2.stop();
+      }
+      expect(page.takeErrors()).toEqual([]);
+    } finally {
+      await b.close();
+      s.stop();
+    }
+  }, 60_000);
+
   test("taking a mark back on the page brings back the pick made before it, or none", async () => {
     const f = fixture();
     writeFileSync(join(f.run, "a", "pairs.json"), JSON.stringify(f.pairs.map((p) => ({ ...p, content: `- Content of ${p.screen}` }))));
