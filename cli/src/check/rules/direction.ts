@@ -212,8 +212,9 @@ function tailwindFound(masked: string): Found[] {
     const start = m.index! + m[0].indexOf(value);
     const tokens = [...value.matchAll(/\S+/g)].map((t) => ({ raw: t[0], index: start + t.index! }));
     const parsed = tokens.map((t) => {
-      const parts = /^((?:[\w-]+:)*)(!?)(-?)(.+)$/.exec(t.raw)!;
-      return { ...t, variants: parts[1]!, important: parts[2]!, neg: parts[3]!, base: parts[4]! };
+      // Tailwind 3 writes important first (!pl-4), Tailwind 4 last (pl-4!).
+      const parts = /^((?:[\w-]+:)*)(!?)(-?)(.+?)(!?)$/.exec(t.raw)!;
+      return { ...t, variants: parts[1]!, important: parts[2]!, neg: parts[3]!, base: parts[4]!, last: parts[5]! };
     });
     const has = (base: string) => parsed.some((p) => p.base === base);
     for (const p of parsed) {
@@ -231,7 +232,7 @@ function tailwindFound(masked: string): Found[] {
       for (const [re, to] of TW) {
         const mm = re.exec(p.base);
         if (mm) {
-          out.push({ index: p.index, text: p.raw, fix: `${p.variants}${p.important}${p.neg}${to(mm)}` });
+          out.push({ index: p.index, text: p.raw, fix: `${p.variants}${p.important}${p.neg}${to(mm)}${p.last}` });
           break;
         }
       }
@@ -319,7 +320,7 @@ function jsStyleFound(masked: string, web: boolean): Found[] {
         if (/inset|safe/i.test(p.value) && new RegExp(`\\.${sideOf(p.key)}\\b`).test(p.value)) continue;
         out.push({ index: p.index, text: p.key, fix: sides[p.key]! });
       } else if (p.key === "textAlign") {
-        const v = /^(['"])(left|right)\1$/.exec(p.value);
+        const v = /^(['"])(left|right)\1/.exec(p.value);
         if (v) {
           const fix = native ? "no textAlign (text follows the reading direction), or 'auto'" : `textAlign: '${v[2] === "left" ? "start" : "end"}'`;
           out.push({ index: p.index, text: `textAlign: '${v[2]}'`, fix });

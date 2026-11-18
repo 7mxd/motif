@@ -93,6 +93,7 @@ describe("tailwind", () => {
     expect(texts('<div class="left-[3px] -right-px pl-0.5 ml-(--gap) lg:!mr-auto left-1/2 right-full"></div>', "markup", ["tailwind"])).toEqual([
       "left-[3px]", "-right-px", "pl-0.5", "ml-(--gap)", "lg:!mr-auto", "left-1/2", "right-full",
     ]);
+    expect(fixes('<div class="md:pl-4!"></div>', "markup", ["tailwind"])[0]).toContain("md:ps-4!");
   });
   test("a safe-area inset of the same side isn't flagged", () => {
     expect(texts('<div class="pl-[env(safe-area-inset-left)]"></div>', "markup", ["tailwind"])).toEqual([]);
@@ -156,6 +157,7 @@ describe("js-style", () => {
     expect(rn[0]).toContain("marginStart");
     expect(rn[2]).toContain("start");
     expect(rn[4]).not.toContain("'start'");
+    expect(texts("<Text style={{ textAlign: 'left' as const }} />", "script", ["js-style"])).toEqual(["textAlign: 'left'"]);
   });
 });
 
