@@ -212,6 +212,6 @@ describe("physical-direction", () => {
   test("without that line it is one line of advice, not a problem", async () => {
     const r = await run({ ["src/app/app.html"]: SOURCE });
     expect(directional(r)).toEqual([]);
-    expect(r.data.advice).toEqual(["1 places use left/right where start/end exists; if this app may be used in a right-to-left language, use start/end."]);
+    expect(r.data.advice).toEqual(["1 place uses left/right where start/end exists; if this app may be used in a right-to-left language, use start/end."]);
   });
 });

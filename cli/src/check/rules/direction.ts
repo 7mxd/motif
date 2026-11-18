@@ -22,14 +22,18 @@ const hit = (file: SourceFile, at: (i: number) => { line: number; column: number
   violation: true,
 });
 
-/** Every physical-direction hit in a file, for the scanners that apply to it (see directionLangs). */
-export function directionHits(file: SourceFile, langs: DirectionLang[]): Hit[] {
+/**
+ * Every physical-direction hit in a file, for the scanners that apply to it (see directionLangs). The stack picks the
+ * start/end names a JS style object's fix uses: React Native's own (marginStart), or a web stack's CSS logical
+ * properties in camelCase (marginInlineStart); without one, React Native's.
+ */
+export function directionHits(file: SourceFile, langs: DirectionLang[], stack?: StackId | null): Hit[] {
   const masked = maskComments(file.text, file.lang);
   const found: Found[] = [];
   for (const lang of langs) {
     if (lang === "css") found.push(...cssFound(file, masked));
     if (lang === "tailwind" && (file.lang === "markup" || file.lang === "script")) found.push(...tailwindFound(masked));
-    if (lang === "js-style" && file.lang === "script") found.push(...jsStyleFound(file.text, masked));
+    if (lang === "js-style" && file.lang === "script") found.push(...jsStyleFound(masked, !!stack && stack !== "react-native"));
     if (lang === "dart" && file.lang === "dart") found.push(...dartFound(maskStrings(masked, "dart")));
     if (lang === "kotlin" && file.lang === "kotlin") found.push(...kotlinFound(maskStrings(masked, "kotlin")));
     if (lang === "swift" && file.lang === "swift") found.push(...swiftFound(masked));
@@ -104,6 +108,17 @@ const CSS_SIDES: Record<string, string> = {
 };
 const RTL_SELECTOR = /\[dir|:dir\(|\.rtl\b|:lang\(/i;
 
+/** The same property on the other side: margin-left ↔ margin-right, border-top-left-radius ↔ border-top-right-radius. */
+const mirrorSide = (prop: string) => prop.replace(/left|right|Left|Right/, (s) => ({ left: "right", right: "left", Left: "Right", Right: "Left" })[s]!);
+const sideOf = (prop: string) => (/left/i.test(prop) ? "left" : "right");
+
+/** The horizontal shift of a transform's translateX()/translate() or a translate property, as written ("-50%"). */
+function xShift(transform: string, translate: string): string | undefined {
+  const fn = /\btranslate(X)?\(\s*([^,)\s]+)/.exec(transform);
+  if (fn) return fn[2];
+  return translate.trim().split(/\s+/)[0] || undefined;
+}
+
 interface Decl { prop: string; value: string; index: number }
 
 /** Declarations grouped by block, each block with its selector chain (outer selectors first). */
@@ -148,12 +163,14 @@ function cssFound(file: SourceFile, masked: string): Found[] {
     for (const block of cssBlocks(text, offset)) {
       if (block.selectors.some((s) => RTL_SELECTOR.test(s))) continue;
       const get = (p: string) => block.decls.find((d) => d.prop === p)?.value;
-      const transform = get("transform") ?? "";
-      const symmetric = get("left") !== undefined && get("left") === get("right");
+      const shift = xShift(get("transform") ?? "", get("translate") ?? "");
       for (const d of block.decls) {
-        if ((d.prop === "left" || d.prop === "right") && symmetric) continue;
-        if (d.prop === "left" && d.value === "50%" && /translateX\(\s*-50%\s*\)/.test(transform)) continue;
-        if (d.prop === "right" && d.value === "50%" && /translateX\(\s*50%\s*\)/.test(transform)) continue;
+        // A left value equal to its right one mirrors to itself.
+        if (CSS_SIDES[d.prop] && get(mirrorSide(d.prop)) === d.value) continue;
+        // A safe-area inset of the same side is physical by nature: the notch doesn't move with the language.
+        if (CSS_SIDES[d.prop] && d.value.includes(`safe-area-inset-${sideOf(d.prop)}`)) continue;
+        if (d.prop === "left" && d.value === "50%" && shift === "-50%") continue;
+        if (d.prop === "right" && d.value === "50%" && shift === "50%") continue;
         if (CSS_SIDES[d.prop]) out.push({ index: d.index, text: d.prop, fix: CSS_SIDES[d.prop]! });
         else if ((d.prop === "text-align" || d.prop === "float") && /^(left|right)\b/i.test(d.value)) {
           const side = d.value.toLowerCase().startsWith("left") ? "start" : "end";
@@ -168,15 +185,25 @@ function cssFound(file: SourceFile, masked: string): Found[] {
 
 // ---------- Tailwind classes (class="", className="", className={`…`}) ----------
 
+// A spacing or inset value Tailwind knows: a number, px, auto, full, a fraction, an arbitrary [..] or a (--variable).
+// Anything else (left-rail, pl-section) is a plain class that happens to start like one.
+const TW_VALUE = String.raw`(\d+(?:\.\d+)?|\d+\/\d+|px|auto|full|\[[^\]]+\]|\([^)]+\))`;
 const TW: [RegExp, (m: RegExpExecArray) => string][] = [
-  [/^(m|p)(l|r)-(.+)$/, (m) => `${m[1]}${m[2] === "l" ? "s" : "e"}-${m[3]}`],
-  [/^(left|right)-(.+)$/, (m) => `${m[1] === "left" ? "start" : "end"}-${m[2]}`],
+  [new RegExp(`^(m|p)(l|r)-${TW_VALUE}$`), (m) => `${m[1]}${m[2] === "l" ? "s" : "e"}-${m[3]}`],
+  [new RegExp(`^(left|right)-${TW_VALUE}$`), (m) => `${m[1] === "left" ? "start" : "end"}-${m[2]}`],
   [/^text-(left|right)$/, (m) => `text-${m[1] === "left" ? "start" : "end"}`],
   [/^float-(left|right)$/, (m) => `float-${m[1] === "left" ? "start" : "end"}`],
   [/^border-(l|r)(-.+)?$/, (m) => `border-${m[1] === "l" ? "s" : "e"}${m[2] ?? ""}`],
   [/^rounded-(l|r)(-.+)?$/, (m) => `rounded-${m[1] === "l" ? "s" : "e"}${m[2] ?? ""}`],
   [/^rounded-(tl|tr|bl|br)(-.+)?$/, (m) => `rounded-${{ tl: "ss", tr: "se", bl: "es", br: "ee" }[m[1] as "tl"]}${m[2] ?? ""}`],
 ];
+
+/** The class on the other side (pl-4 → pr-4, rounded-tl-lg → rounded-tr-lg), or null for one with no mirror pair. */
+function twMirror(base: string): string | null {
+  const swap = (s: string) => ({ l: "r", r: "l", left: "right", right: "left" })[s as "l"];
+  const m = /^((?:m|p))(l|r)(-.+)$/.exec(base) ?? /^()(left|right)(-.+)$/.exec(base) ?? /^(border-|rounded-|rounded-[tb])(l|r)(-.+)?$/.exec(base);
+  return m ? `${m[1]}${swap(m[2]!)}${m[3] ?? ""}` : null;
+}
 
 function tailwindFound(masked: string): Found[] {
   const out: Found[] = [];
@@ -191,6 +218,10 @@ function tailwindFound(masked: string): Found[] {
     const has = (base: string) => parsed.some((p) => p.base === base);
     for (const p of parsed) {
       if (/(^|:)(rtl|ltr):/.test(p.variants)) continue;
+      // The same class on the other side, with the same variants, mirrors to itself (pl-4 pr-4, left-0 right-0).
+      const other = twMirror(p.base);
+      if (other && parsed.some((q) => q.base === other && q.variants === p.variants && q.neg === p.neg)) continue;
+      if (p.base.includes(`safe-area-inset-${/^(?:[mp]l|left|border-l|rounded-[tb]?l)\b/.test(p.base) ? "left" : "right"}`)) continue;
       const side = /^(left|right)-(.+)$/.exec(p.base);
       if (side) {
         const other = `${side[1] === "left" ? "right" : "left"}-${side[2]}`;
@@ -236,44 +267,99 @@ function blankJsStrings(text: string): string {
   return out.join("");
 }
 
-function jsStyleFound(original: string, masked: string): Found[] {
+// A web stack's style={{…}} takes CSS logical properties, in camelCase.
+const JS_WEB_SIDES: Record<string, string> = {
+  marginLeft: "marginInlineStart", marginRight: "marginInlineEnd", paddingLeft: "paddingInlineStart", paddingRight: "paddingInlineEnd",
+  borderLeftWidth: "borderInlineStartWidth", borderRightWidth: "borderInlineEndWidth",
+  borderLeftColor: "borderInlineStartColor", borderRightColor: "borderInlineEndColor",
+  borderTopLeftRadius: "borderStartStartRadius", borderTopRightRadius: "borderStartEndRadius",
+  borderBottomLeftRadius: "borderEndStartRadius", borderBottomRightRadius: "borderEndEndRadius",
+  left: "insetInlineStart", right: "insetInlineEnd",
+};
+
+/**
+ * Physical keys of the style objects in a script: StyleSheet.create({…}) (React Native's names) and style={{…}} (a
+ * web stack's logical properties when `web`). Only a key in a key position whose value isn't an object counts: in
+ * StyleSheet.create({ left: {…} }) "left" names a style, and in `rtl ? left : 0` it's a variable.
+ */
+function jsStyleFound(masked: string, web: boolean): Found[] {
   const blank = blankJsStrings(masked);
-  const regions: [number, number][] = [];
-  for (const m of blank.matchAll(/StyleSheet\.create\s*\(\s*\{|\bstyle\s*=\s*\{\s*\{/g)) {
-    const open = m.index! + m[0].length - 1;
-    const end = closing(blank, open);
-    if (end > 0) regions.push([open, end]);
-  }
   const out: Found[] = [];
-  for (const [a, b] of regions) {
-    const part = blank.slice(a, b);
-    for (const k of part.matchAll(/(?<![\w$.])([A-Za-z]+)\s*:/g)) {
-      const key = k[1]!;
-      const index = a + k.index!;
-      if (JS_SIDES[key]) out.push({ index, text: key, fix: JS_SIDES[key]! });
-      else if (key === "textAlign") {
-        const v = /^textAlign\s*:\s*(['"])(left|right)\1/.exec(original.slice(index));
-        if (v) out.push({ index, text: `textAlign: '${v[2]}'`, fix: "no textAlign (text follows the reading direction), or 'auto'" });
+  const scanObject = (open: number, native: boolean) => {
+    const props: { key: string; index: number; value: string }[] = [];
+    const nested = (from: number, to: number) => {
+      for (let i = from; i < to; i++) {
+        if (blank[i] !== "{") continue;
+        scanObject(i, native);
+        const end = closing(blank, i);
+        if (end < 0) return;
+        i = end;
+      }
+    };
+    for (const entry of args(blank, open)) {
+      const k = /^\s*([A-Za-z]+)\s*:(?!:)\s*/.exec(entry.text);
+      const end = entry.start + entry.text.length;
+      if (!k) {
+        nested(entry.start, end);
+        continue;
+      }
+      const valueAt = entry.start + k[0].length;
+      if (blank[valueAt] === "{") nested(valueAt, end); // a style's name, or an object-valued property
+      else {
+        props.push({ key: k[1]!, index: entry.start + k[0].indexOf(k[1]!), value: masked.slice(valueAt, end).trim() });
+        nested(valueAt, end);
       }
     }
+    const sides = native ? JS_SIDES : JS_WEB_SIDES;
+    for (const p of props) {
+      if (sides[p.key]) {
+        // An equal value on the other side mirrors to itself.
+        if (props.some((q) => q.key === mirrorSide(p.key) && q.value === p.value)) continue;
+        // The safe-area inset of the same side (insets.left) is physical by nature.
+        if (/inset|safe/i.test(p.value) && new RegExp(`\\.${sideOf(p.key)}\\b`).test(p.value)) continue;
+        out.push({ index: p.index, text: p.key, fix: sides[p.key]! });
+      } else if (p.key === "textAlign") {
+        const v = /^(['"])(left|right)\1$/.exec(p.value);
+        if (v) {
+          const fix = native ? "no textAlign (text follows the reading direction), or 'auto'" : `textAlign: '${v[2] === "left" ? "start" : "end"}'`;
+          out.push({ index: p.index, text: `textAlign: '${v[2]}'`, fix });
+        }
+      }
+    }
+  };
+  for (const m of blank.matchAll(/StyleSheet\.create\s*\(\s*\{|\bstyle\s*=\s*\{\s*\{/g)) {
+    const open = m.index! + m[0].length - 1;
+    if (closing(blank, open) > 0) scanObject(open, m[0].startsWith("StyleSheet") || !web);
   }
   return out;
 }
 
 // ---------- Flutter (Dart) ----------
 
+/** True when every left/right pair named in a call's arguments is given on both sides with the same value. */
+function mirrored(list: { text: string }[], pairs: [string, string][]): boolean {
+  return pairs.every(([l, r]) => valueOf(named(list, l)) === valueOf(named(list, r)));
+}
+
 function dartFound(text: string): Found[] {
   const out: Found[] = [];
   for (const m of text.matchAll(/\bEdgeInsets\.(only|fromLTRB)\s*\(/g)) {
     const list = args(text, m.index! + m[0].length - 1);
-    if (m[1] === "only" && (named(list, "left") || named(list, "right"))) {
+    if (m[1] === "only" && (named(list, "left") || named(list, "right")) && !mirrored(list, [["left", "right"]])) {
       out.push({ index: m.index!, text: "EdgeInsets.only", fix: "EdgeInsetsDirectional.only(start:, end:)" });
     }
     if (m[1] === "fromLTRB" && list.length === 4 && list[0]!.text.trim() !== list[2]!.text.trim()) {
       out.push({ index: m.index!, text: "EdgeInsets.fromLTRB", fix: "EdgeInsetsDirectional.fromSTEB" });
     }
   }
+  // A gradient's begin/end/center sets which way its colours run: decoration, not layout.
+  const gradients: [number, number][] = [];
+  for (const m of text.matchAll(/\b(?:Linear|Radial|Sweep)Gradient\s*\(/g)) {
+    const open = m.index! + m[0].length - 1;
+    gradients.push([open, closing(text, open)]);
+  }
   for (const m of text.matchAll(/\bAlignment\.(top|center|bottom)(Left|Right)\b/g)) {
+    if (gradients.some(([a, b]) => m.index! > a && m.index! < b)) continue;
     out.push({ index: m.index!, text: m[0], fix: `AlignmentDirectional.${m[1]}${m[2] === "Left" ? "Start" : "End"}` });
   }
   for (const m of text.matchAll(/\bPositioned\s*\(/g)) {
@@ -285,7 +371,8 @@ function dartFound(text: string): Found[] {
   for (const m of text.matchAll(/\bTextAlign\.(left|right)\b/g)) out.push({ index: m.index!, text: m[0], fix: `TextAlign.${m[1] === "left" ? "start" : "end"}` });
   for (const m of text.matchAll(/\bBorderRadius\.only\s*\(/g)) {
     const list = args(text, m.index! + m[0].length - 1);
-    if (["topLeft", "topRight", "bottomLeft", "bottomRight"].some((n) => named(list, n))) {
+    const corners: [string, string][] = [["topLeft", "topRight"], ["bottomLeft", "bottomRight"]];
+    if (["topLeft", "topRight", "bottomLeft", "bottomRight"].some((n) => named(list, n)) && !mirrored(list, corners)) {
       out.push({ index: m.index!, text: "BorderRadius.only", fix: "BorderRadiusDirectional.only(topStart:, topEnd:, …)" });
     }
   }
@@ -321,7 +408,9 @@ function swiftFound(masked: string): Found[] {
   for (const m of masked.matchAll(/\.environment\s*\(\s*\\\.layoutDirection\s*,\s*(\.leftToRight)\s*\)/g)) {
     out.push({ index: m.index! + m[0].lastIndexOf(m[1]!), text: m[1]!, fix: "the app's own direction: remove the forced .leftToRight" });
   }
-  for (const m of masked.matchAll(/\b(?:systemName|systemImage)\s*:\s*"((?:chevron|arrow)\.(?:left|right)(?:\.[a-z.]+)?)"/g)) {
+  // Only a single chevron or arrow (with its circle/square/fill styles) points one way; a compound symbol such as
+  // arrow.left.arrow.right already points both.
+  for (const m of masked.matchAll(/\b(?:systemName|systemImage)\s*:\s*"((chevron|arrow)\.(left|right)((?:\.circle|\.square)?(?:\.fill)?))"/g)) {
     const end = closing(masked, masked.lastIndexOf("(", m.index!));
     // The modifier chain: the rest of the line, then every following line that starts with ".".
     let to = end < 0 ? m.index! + m[0].length : end;
@@ -333,7 +422,7 @@ function swiftFound(masked: string): Found[] {
       to = nl + 1;
     }
     if (/\.flipsForRightToLeftLayoutDirection\s*\(\s*true\s*\)/.test(masked.slice(m.index!, to))) continue;
-    out.push({ index: m.index! + m[0].indexOf(m[1]!), text: m[1]!, fix: `"${m[1]!.replace("left", "backward").replace("right", "forward")}" or .flipsForRightToLeftLayoutDirection(true)` });
+    out.push({ index: m.index! + m[0].indexOf(m[1]!), text: m[1]!, fix: `"${m[2]}.${m[3] === "left" ? "backward" : "forward"}${m[4]}" or .flipsForRightToLeftLayoutDirection(true)` });
   }
   return out;
 }

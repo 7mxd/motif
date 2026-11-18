@@ -46,11 +46,11 @@ export interface AppCheck {
  * (its accessibility line), otherwise one line of advice with the count. A reasoned motif-ok allows a hit either way.
  */
 function directionPart(root: string, stack: AppInfo["stack"], views: SourceFile[], tailwind: boolean, lines: Map<string, string[]>): { violations: Hit[]; exceptions: ExceptionHit[]; advice: string[] } {
-  const found = once(views.flatMap((v) => (stack ? directionHits(v, directionLangs(stack, v.path, tailwind)) : [])));
+  const found = once(views.flatMap((v) => (stack ? directionHits(v, directionLangs(stack, v.path, tailwind), stack) : [])));
   const { violations, exceptions } = sortOut(found, lines, (h) => h);
   if (startEndRequired(readDesignMd(root))) return { violations, exceptions, advice: [] };
   const advice = violations.length
-    ? [`${violations.length} places use left/right where start/end exists; if this app may be used in a right-to-left language, use start/end.`]
+    ? [`${violations.length} ${violations.length === 1 ? "place uses" : "places use"} left/right where start/end exists; if this app may be used in a right-to-left language, use start/end.`]
     : [];
   return { violations: [], exceptions, advice };
 }
