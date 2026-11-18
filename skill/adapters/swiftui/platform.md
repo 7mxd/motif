@@ -95,6 +95,7 @@ struct TotalRow: View {
 
 - `.environment(\.layoutDirection, .rightToLeft)` with an Arabic `\.locale` is how a preview shows the screen right to left. Don't set them on the app: the system sets both from the language.
 - Numbers, phone numbers and Latin names inside Arabic text keep their own direction; the system handles it, so don't reverse strings by hand.
+- Numbers are formatted by locale with `.formatted()`: `n.formatted(.number.locale(locale))`, or `Text(n, format: .number)`, which follows the environment's locale. Pick the digits the design guide chose (section 7) with the locale's numbering keyword: `Locale(identifier: "ar@numbers=arab")` for Arabic-Indic, `"ar@numbers=latn"` for Western.
 - The Arabic font comes from the theme's fonts, chosen by language ([theme code](tokens.md#text-and-the-arabic-companion)).
 - Check it with `motif shot --rtl` ([checks](checks.md#right-to-left)).
 

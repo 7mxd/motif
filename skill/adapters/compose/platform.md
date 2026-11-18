@@ -80,6 +80,7 @@ fun TotalRow(amount: String) {
 - Icons that point a direction (back, next, a chevron) come from `Icons.AutoMirrored`, which flips them in right to left. Icons that don't point (search, a clock) stay. Your own vector: `autoMirror = true` on the `ImageVector`, or `android:autoMirrored="true"` in the drawable. From Material 3 1.4 the icons are no longer part of `material3`: when `Icons` isn't found, the app needs `androidx.compose.material:material-icons-core` (the Compose BOM sets its version). Don't edit the build files yourself: show the developer the exact lines (for `gradle/libs.versions.toml` and the module's `dependencies`) and wait for their go-ahead, or ask them to add them and sync in Android Studio.
 - What you draw yourself on a `Canvas` isn't mirrored: check `LocalLayoutDirection.current == LayoutDirection.Rtl` and draw it the other way.
 - Numbers, phone numbers and Latin names inside Arabic text keep their own direction; Android handles it, so don't reverse strings by hand.
+- Numbers are formatted by locale, never by joining strings: `android.icu.text.NumberFormat.getInstance(locale).format(n)`. Pick the digits the design guide chose (section 7) with the locale's numbering keyword: `Locale.forLanguageTag("ar-u-nu-arab")` for Arabic-Indic, `"ar-u-nu-latn"` for Western.
 - The Arabic font comes from the theme's fonts, chosen by locale ([theme code](tokens.md#text-and-the-arabic-companion)).
 - Check it with `motif shot --rtl` ([checks](checks.md#right-to-left)).
 

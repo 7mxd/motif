@@ -53,7 +53,7 @@ Write the mockups with [the preview kit](../preview-kit/README.md): screen conte
 ## 5. Design guide
 
 1. Copy the approved direction's `tokens.json` to `design/tokens.json`.
-2. Write `DESIGN.md` from [the template](../contract/DESIGN.template.md) (keep its `## Variants` section only if there are variants): the summary, the brief, the direction (the style, references as links, the approved mockups), and every other section filled from the decisions so far. [The format](../contract/spec.md) says what each section holds.
+2. Write `DESIGN.md` from [the template](../contract/DESIGN.template.md) (keep its `## Variants` section only if there are variants): the summary, the brief, the direction (the style, references as links, the approved mockups), and every other section filled from the decisions so far. In section 7, fill the digit choice: write Western or Arabic-Indic in place of `<Western | Arabic-Indic>` (ask the developer when the brief doesn't say). [The format](../contract/spec.md) says what each section holds.
 3. Move the approved mockups and their PNGs into `design/previews/`, then delete `design/directions/`.
 4. Run `motif validate` and fix every problem until it passes.
 5. Add the first change-log line, replacing the template's example line: `- <date> — Created the design guide — <name> chosen from <n> directions — approved by <developer>`.

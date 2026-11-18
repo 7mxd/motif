@@ -24,6 +24,8 @@ Use logical utilities and properties only, so right-to-left languages mirror for
 
 Set `dir="rtl"` on `<html>` for right-to-left languages, and mirror icons that point a direction (back, next) with `rtl:-scale-x-100`.
 
+**Numbers** are formatted by locale with `Intl.NumberFormat`, never by joining strings, so digits, separators and the minus sign follow the language. Pick the digits the design guide chose (section 7) with `numberingSystem`: `new Intl.NumberFormat(locale, { numberingSystem: "arab" }).format(n)` for Arabic-Indic, `"latn"` for Western.
+
 ## Pointers and touch
 
 - Hover effects are extras for devices that can hover; Tailwind v4's `hover:` applies only there. Never hide an action behind hover.

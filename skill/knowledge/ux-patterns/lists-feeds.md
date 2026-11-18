@@ -25,6 +25,7 @@ Many items of the same kind, for scanning, finding and acting on: messages, orde
 - Each row carries what people decide by, as labelled facts or small figures, not a dense line of text: amount and age for an invoice, time and seats for an event, length and difficulty for a trail.
 - A summary above the list ("12 open · 4 overdue") that doubles as a filter.
 - Things with a look of their own (places, plants, trips) get a small drawn thumbnail; status gets a coloured chip.
+- A list may not be the right shape: a few options compared side by side read better as a comparison table, and steps in order as a checklist ([choose by the data's shape](../../library/README.md#choose-by-the-datas-shape)).
 
 ## Required states
 

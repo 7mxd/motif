@@ -48,6 +48,7 @@ Padding(
 
 - Icons that point a direction (back, next) flip by themselves when their icon is marked to match the text direction (`Icons.arrow_back` and `Icons.arrow_forward` are); for your own image, set `matchTextDirection: true` on it. Icons that don't point (search, a clock) stay.
 - Numbers, phone numbers and Latin names inside Arabic text keep their own direction; Flutter handles it, so don't reverse strings by hand.
+- Numbers are formatted by locale with the `intl` package's `NumberFormat` (`NumberFormat.decimalPattern(locale).format(n)`), never by joining strings. Check the digits against the design guide's choice (section 7) on the `--rtl` screenshot; when the locale gives the other kind, format with an Arabic locale that writes the chosen digits (`ar_EG` writes Arabic-Indic).
 - The Arabic font comes from the theme's fonts ([theme code](tokens.md#fonts)); a screenshot with squares instead of letters means the family has no Arabic and no fallback.
 - Check it with `motif shot --rtl` ([checks](checks.md#right-to-left)).
 

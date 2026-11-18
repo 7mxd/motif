@@ -672,3 +672,31 @@ describe("states and messages: no access, undo before confirm, message weight, s
     expect(read("knowledge/ux-patterns/notifications.md")).toContain("Nothing was charged");
   });
 });
+
+// 2.0 fair test, spec §5.5 (T2, T3, T12): colour roles, numbers, data shapes.
+describe("one meaning per colour role, locale digits and mirrored arrows, components by data shape (2.0)", () => {
+  test("the template asks for the digit choice once, after the start/end line, and init fills it", () => {
+    const template = read("contract/DESIGN.template.md");
+    expect(outOfOrder(template, ["## 7. Accessibility", "- Layouts use start/end (not left/right), so right-to-left languages work.", "digits in right-to-left languages", "## 8. Platform notes"])).toBeNull();
+    expect(read("modes/init.md")).toContain("digit choice");
+  });
+  test("spec.md and the template's Foundations: a colour role keeps one meaning on every screen", () => {
+    expect(read("contract/spec.md")).toContain("keeps one meaning on every screen");
+    const template = read("contract/DESIGN.template.md");
+    expect(template.slice(template.indexOf("## 3. Foundations"), template.indexOf("\n## ", template.indexOf("## 3. Foundations") + 5))).toContain("keeps one meaning on every screen");
+  });
+  test("every stack guide formats numbers by locale", () => {
+    const stacks = readdirSync(join(SKILL, "adapters")).filter((d) => d !== "_template");
+    expect(stacks.filter((d) => !read(`adapters/${d}/platform.md`).includes("by locale"))).toEqual([]);
+  });
+  test("review checks arrows point the reading way, and flags a colour role used for another meaning", () => {
+    const review = read("modes/review.md");
+    for (const s of ["point the reading way", "digit choice", "unrelated meaning", "only by an arbitrary colour"]) expect(review).toContain(s);
+  });
+  test("the library says how to choose by the data's shape, and the home and list guides point to it", () => {
+    expect(read("library/README.md")).toContain("Choose by the data's shape");
+    for (const file of ["knowledge/ux-patterns/home-dashboard.md", "knowledge/ux-patterns/lists-feeds.md"]) {
+      expect(read(file)).toContain("library/README.md#choose-by-the-datas-shape");
+    }
+  });
+});

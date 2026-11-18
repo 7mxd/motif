@@ -13,6 +13,17 @@ Motif's own pieces for app screens: charts, cards, screens, motion, depth and ac
 
 Never go into the "C look": glowing charts, tilted cards, a gradient backdrop behind everything, colour on every surface. One depth piece on a first-impression screen is not the C look ([anti-patterns](../knowledge/anti-patterns.md)).
 
+## Choose by the data's shape
+
+On any screen that shows data, let the data's shape pick the piece:
+
+- **A few options compared side by side:** a comparison table, with the best one marked and only its action filled.
+- **Steps in order:** a checklist, with done steps ticked and the next one clear.
+- **One headline number with its change:** a key-figure card, or a stat with change.
+- **Values over time:** a trend line, or period bars for separate periods (days, weeks, months).
+
+A comparison table and a checklist are built from the app's own components; the other pieces are in the table below.
+
 ## Pieces
 
 | Piece | Group | Loudness | Fits | File |

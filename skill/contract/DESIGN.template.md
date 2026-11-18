@@ -37,6 +37,7 @@ App name feels calm, clear and trustworthy. Replace this paragraph with three to
 - **Spacing:**
 - **Corners and elevation:**
 - **Icons:**
+- A colour role keeps one meaning on every screen; variants change shape or emphasis, and colour only carries meaning.
 
 ## Variants
 
@@ -82,6 +83,7 @@ App name feels calm, clear and trustworthy. Replace this paragraph with three to
 - Text can be enlarged to 200% without losing content.
 - Every interactive element shows a visible focus ring.
 - Layouts use start/end (not left/right), so right-to-left languages work.
+- Numbers use <Western | Arabic-Indic> digits in right-to-left languages (chosen once).
 
 ## 8. Platform notes
 
