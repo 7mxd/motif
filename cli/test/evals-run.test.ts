@@ -114,6 +114,18 @@ describe("the eval runner", () => {
     await runEvals(["--cases", "c-swiftui,b-swiftui-orders"], h.deps, h.where);
   });
 
+  test("preflight is given the chosen cases, so it can check their briefs' Content", async () => {
+    let seen: string[] = [];
+    const h = harness({
+      preflight: async (_b, _c, _f, _a, _x, _n, _nn, cases) => {
+        seen = (cases ?? []).map((c) => c.id);
+        return { claude: "claude-exe", claudeVersion: "2.1.289 (Claude Code)", browser: true, purge: true };
+      },
+    });
+    await runEvals(["--cases", "d-nuzha,b-search"], h.deps, h.where);
+    expect(seen.sort()).toEqual(["b-search", "d-nuzha"]);
+  });
+
   test("preflight is told which Node.js floors the chosen cases need: Vite 8 (Vue, Svelte), SvelteKit 3 (d-nuzha), Angular 21 (Ataa) and Angular 22 (d-sanad)", async () => {
     const wanted: [string, { vite8: boolean; svelteKit3: boolean; angular21: boolean; angular22: boolean }][] = [
       ["b-vue-history", { vite8: true, svelteKit3: false, angular21: false, angular22: false }], ["b-search,c-vue", { vite8: true, svelteKit3: false, angular21: false, angular22: false }],

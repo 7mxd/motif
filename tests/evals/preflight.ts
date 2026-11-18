@@ -8,7 +8,8 @@ import { defaultDoctorDeps, type DoctorDeps } from "../../cli/src/commands/docto
 import { composeDoctor } from "../../cli/src/stacks/compose/doctor";
 import { FLUTTER_INSTALL, FLUTTER_MIN, olderThanFlutterMin } from "../../cli/src/stacks/flutter/doctor";
 import { swiftUIDoctor, XCODE_MIN } from "../../cli/src/stacks/swiftui/doctor";
-import { CASES, isCompose, isFlutter, isSwiftUI, needsAngular21, needsAngular22, needsBrowser as caseNeedsBrowser, needsSvelteKit3, needsVite8 } from "./cases";
+import { CASES, isCompose, isFlutter, isSwiftUI, needsAngular21, needsAngular22, needsBrowser as caseNeedsBrowser, needsSvelteKit3, needsVite8, type EvalCase } from "./cases";
+import { contentProblems } from "./content";
 import { supportsPurge } from "./purge";
 import { resolveClaude, sessionEnv } from "./claude";
 import { nodeFloor } from "../../cli/src/project/node-floor";
@@ -129,7 +130,12 @@ const ANGULAR_22_NODE = "^22.22.3 || ^24.15.0 || >=26.0.0";
 
 export async function preflight(
   p: Paths, needsBrowser: boolean, d: PreflightDeps, needsFlutter = false, needsAndroid = false, needsXcode = false, needsNode = true, nodeNeeds: NodeNeeds = {},
+  cases: EvalCase[] = [],
 ): Promise<Ready | { error: string }> {
+  // A D or A brief must say what each screen shows, so both sides of a pair draw the same content.
+  const content = contentProblems(cases, join(p.repo, "tests", "fixtures", "briefs"));
+  if (content.length) return { error: `These briefs don't say what each screen shows:\n${content.map((l) => `  ${l}`).join("\n")}` };
+
   const found = resolveClaude(d.claudeOverride ?? d.which("claude"));
   if ("error" in found) return found;
   const { env } = sessionEnv(d.env, p.motifBin);

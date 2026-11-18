@@ -41,7 +41,7 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
   --claude <path>        The Claude Code program to use`;
 
 export interface RunDeps {
-  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean, needsNode?: boolean, nodeNeeds?: NodeNeeds): Promise<Ready | { error: string }>;
+  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean, needsNode?: boolean, nodeNeeds?: NodeNeeds, cases?: EvalCase[]): Promise<Ready | { error: string }>;
   prepare(c: EvalCase, dir: string): Promise<Workspace>;
   session(spec: SessionSpec): Promise<SessionOutcome>;
   collect(c: EvalCase, ws: Workspace, out: string, judge: JudgeFn): Promise<Grade>;
@@ -246,7 +246,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
 
   // What the pair steps left to take need too: they draw both apps.
   const needs = [...todo, ...unpaired.flatMap((u) => [u.d, u.a])];
-  const ready = await deps.preflight(needs.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, needs.some(isFlutter), needs.some(isCompose), needs.some(isSwiftUI), needs.some(needsNode), { vite8: needs.some(needsVite8), svelteKit3: needs.some(needsSvelteKit3), angular21: needs.some(needsAngular21), angular22: needs.some(needsAngular22) });
+  const ready = await deps.preflight(needs.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, needs.some(isFlutter), needs.some(isCompose), needs.some(isSwiftUI), needs.some(needsNode), { vite8: needs.some(needsVite8), svelteKit3: needs.some(needsSvelteKit3), angular21: needs.some(needsAngular21), angular22: needs.some(needsAngular22) }, needs);
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;
@@ -636,10 +636,10 @@ if (import.meta.main) {
   const code = await runEvals(
     process.argv.slice(2),
     {
-      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds) =>
+      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds, cases) =>
         preflight(
           p, needsBrowser, { which: (cmd) => Bun.which(cmd), run: runCmd, env: process.env, bun: process.execPath, ...(claude ? { claudeOverride: resolve(claude) } : {}) },
-          needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds,
+          needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds, cases,
         ),
       prepare: (c, dir) => prepareWorkspace(c, dir, runCmd),
       session: runSession,

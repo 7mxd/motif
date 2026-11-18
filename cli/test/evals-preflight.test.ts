@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DoctorDeps } from "../../cli/src/commands/doctor";
+import type { EvalCase } from "../../tests/evals/cases";
 import { paths, preflight, type PreflightDeps } from "../../tests/evals/preflight";
 import type { RunResult } from "../../tests/evals/tools";
 import { cleanupTempDirs, tempDir } from "./tmp";
@@ -82,6 +83,16 @@ describe("before a run", () => {
   test("a Claude account's own token (claude setup-token) is your account too, on a machine you can't sign in on with a browser", async () => {
     const { p, deps } = setup({ auth: ok(JSON.stringify({ loggedIn: true, authMethod: "oauth_token" })) });
     expect(await preflight(p, false, deps)).not.toHaveProperty("error");
+  });
+
+  test("a D or A case whose brief lacks Content for one of its screens stops the run and names them", async () => {
+    const { p, deps } = setup();
+    const dir = join(p.repo, "tests", "fixtures", "briefs");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "darb.md"), "# Darb\n\n## Feel\n\nCalm.\n");
+    const kase = { id: "d-darb", test: "D", title: "Darb", brief: "darb", routes: ["/"], prompt: "", maxTurns: 1, maxBudgetUsd: 1, minutes: 1 } as EvalCase;
+    expect(await preflight(p, false, deps, false, false, false, true, {}, [kase])).toEqual({ error: expect.stringContaining("d-darb: brief darb has no ## Content section.") });
+    expect(await preflight(p, false, deps, false, false, false, true, {}, [])).not.toHaveProperty("error");
   });
 
   test("a failed build says which", async () => {
