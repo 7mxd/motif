@@ -1,6 +1,6 @@
 # Findings: Chandrajith KM's design-rules posts → Motif tasks
 
-Date: 2026-11-18. Status: findings for the owner to pick from. Nothing here is approved or built.
+Date: 2026-11-18. Status: owner picked T1–T4, T12, T13 for 2.0 (written into `2026-11-18-motif-2.0-fair-test-and-rtl-design.md` §5.5); T5–T11 are the 2.1 AI-features release. Nothing built yet.
 Source: 15 LinkedIn posts by Chandrajith KM (Lead Product Designer), read from the owner's local copy (not in this repo).
 All slides read; videos sampled one frame every 4 s (post 10: 16 frames, 11: 12, 13: 17, 14: 15, 15: 15) plus audio
 transcripts (10 and 11 have no speech). Quotes are short and only used as evidence.
