@@ -89,11 +89,14 @@ describe("tailwind", () => {
     expect(texts('<div class="md:pl-4 pr-4 rounded-tl-lg rounded-tr"></div>', "markup", ["tailwind"])).toEqual(["md:pl-4", "pr-4", "rounded-tl-lg", "rounded-tr"]);
   });
   test("plain classes named like a side aren't Tailwind", () => {
-    expect(texts('<aside class="left-rail right-panel pl-section mr-menu"></aside>', "markup", ["tailwind"])).toEqual([]);
+    expect(texts('<aside class="left-rail right-panel"></aside>', "markup", ["tailwind"])).toEqual([]);
     expect(texts('<div class="left-[3px] -right-px pl-0.5 ml-(--gap) lg:!mr-auto left-1/2 right-full"></div>', "markup", ["tailwind"])).toEqual([
       "left-[3px]", "-right-px", "pl-0.5", "ml-(--gap)", "lg:!mr-auto", "left-1/2", "right-full",
     ]);
     expect(fixes('<div class="md:pl-4!"></div>', "markup", ["tailwind"])[0]).toContain("md:ps-4!");
+  });
+  test("margin and padding with a theme's named spacing are still Tailwind", () => {
+    expect(texts('<div class="pl-section mr-menu ml-gutter"></div>', "markup", ["tailwind"])).toEqual(["pl-section", "mr-menu", "ml-gutter"]);
   });
   test("a safe-area inset of the same side isn't flagged", () => {
     expect(texts('<div class="pl-[env(safe-area-inset-left)]"></div>', "markup", ["tailwind"])).toEqual([]);
@@ -247,6 +250,14 @@ describe("swift", () => {
       'Label("Swap", systemImage: "arrow.right.arrow.left.circle")',
     ].join("\n");
     expect(texts(swift, "swift", ["swift"])).toEqual([]);
+  });
+  test("one-way symbols with more parts are still flagged, with their backward/forward name", () => {
+    const swift = ['Image(systemName: "arrow.left.to.line")', 'Image(systemName: "chevron.left.2")', 'Image(systemName: "arrow.right.to.line.compact")'].join("\n");
+    expect(texts(swift, "swift", ["swift"])).toEqual(["arrow.left.to.line", "chevron.left.2", "arrow.right.to.line.compact"]);
+    const f = fixes(swift, "swift", ["swift"]);
+    expect(f[0]).toContain('"arrow.backward.to.line"');
+    expect(f[1]).toContain('"chevron.backward.2"');
+    expect(f[2]).toContain('"arrow.forward.to.line.compact"');
   });
   test("the suggested symbol is a real backward/forward name", () => {
     const swift = ['Image(systemName: "chevron.left")', 'Image(systemName: "arrow.right.circle")', 'Image(systemName: "arrow.left.square.fill")', 'Image(systemName: "chevron.right.circle.fill")'].join("\n");

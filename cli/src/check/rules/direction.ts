@@ -185,11 +185,12 @@ function cssFound(file: SourceFile, masked: string): Found[] {
 
 // ---------- Tailwind classes (class="", className="", className={`…`}) ----------
 
-// A spacing or inset value Tailwind knows: a number, px, auto, full, a fraction, an arbitrary [..] or a (--variable).
-// Anything else (left-rail, pl-section) is a plain class that happens to start like one.
+// An inset value Tailwind knows: a number, px, auto, full, a fraction, an arbitrary [..] or a (--variable). Anything
+// else after left-/right- (left-rail, right-panel) is a plain class that happens to start like one. Margin and padding
+// take any value, since a theme's spacing may have names (pl-gutter).
 const TW_VALUE = String.raw`(\d+(?:\.\d+)?|\d+\/\d+|px|auto|full|\[[^\]]+\]|\([^)]+\))`;
 const TW: [RegExp, (m: RegExpExecArray) => string][] = [
-  [new RegExp(`^(m|p)(l|r)-${TW_VALUE}$`), (m) => `${m[1]}${m[2] === "l" ? "s" : "e"}-${m[3]}`],
+  [/^(m|p)(l|r)-(.+)$/, (m) => `${m[1]}${m[2] === "l" ? "s" : "e"}-${m[3]}`],
   [new RegExp(`^(left|right)-${TW_VALUE}$`), (m) => `${m[1] === "left" ? "start" : "end"}-${m[2]}`],
   [/^text-(left|right)$/, (m) => `text-${m[1] === "left" ? "start" : "end"}`],
   [/^float-(left|right)$/, (m) => `float-${m[1] === "left" ? "start" : "end"}`],
@@ -409,9 +410,10 @@ function swiftFound(masked: string): Found[] {
   for (const m of masked.matchAll(/\.environment\s*\(\s*\\\.layoutDirection\s*,\s*(\.leftToRight)\s*\)/g)) {
     out.push({ index: m.index! + m[0].lastIndexOf(m[1]!), text: m[1]!, fix: "the app's own direction: remove the forced .leftToRight" });
   }
-  // Only a single chevron or arrow (with its circle/square/fill styles) points one way; a compound symbol such as
-  // arrow.left.arrow.right already points both.
-  for (const m of masked.matchAll(/\b(?:systemName|systemImage)\s*:\s*"((chevron|arrow)\.(left|right)((?:\.circle|\.square)?(?:\.fill)?))"/g)) {
+  // A chevron or arrow that points one way, with any further parts (.circle.fill, .to.line, .2); a compound symbol
+  // that names the other side too (arrow.left.arrow.right, arrow.left.and.right) already points both.
+  for (const m of masked.matchAll(/\b(?:systemName|systemImage)\s*:\s*"((chevron|arrow)\.(left|right)((?:\.[a-z0-9]+)*))"/g)) {
+    if (/\.(?:left|right)\b/.test(m[4]!)) continue;
     const end = closing(masked, masked.lastIndexOf("(", m.index!));
     // The modifier chain: the rest of the line, then every following line that starts with ".".
     let to = end < 0 ? m.index! + m[0].length : end;
