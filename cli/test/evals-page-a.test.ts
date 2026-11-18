@@ -5,7 +5,7 @@ import { launchBrowser } from "../src/browser/cdp";
 import { findBrowser } from "../src/detect/browser";
 import { CASES } from "../../tests/evals/cases";
 import type { Grade } from "../../tests/evals/grade";
-import { ownerPairs, ownerPicks, readVotes, serveOwner, sideOrder, writePage, type OwnerVote } from "../../tests/evals/page-a";
+import { ownerOffContent, ownerPairs, ownerPicks, readVotes, serveOwner, sideOrder, writePage, type OwnerVote } from "../../tests/evals/page-a";
 import type { Pair } from "../../tests/evals/pairs";
 import { scoreRun } from "../../tests/evals/score-a";
 import { reportOnVote } from "../../tests/evals/judge-owner";
@@ -335,6 +335,71 @@ describe("serving the owner's page", () => {
     } finally {
       s.stop();
     }
+  });
+});
+
+describe("a side that didn't follow the content", () => {
+  const post = (url: string, body: unknown) =>
+    fetch(`${url}/vote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  test("is saved with the vote: one side's mark picks the other, both marks pick about the same; anything else is refused", async () => {
+    const f = fixture();
+    const s = await serveOwner(f.run);
+    try {
+      const html = await (await fetch(`${s.url}/`)).text();
+      const [a, b] = pageData(html).pairs;
+      expect((await post(s.url, { pairId: a!.id, pick: "right", offContent: "left" })).status).toBe(200);
+      expect((await post(s.url, { pairId: b!.id, pick: "same", offContent: "both" })).status).toBe(200);
+      const saved = readVotes(f.run);
+      expect(saved.map((v) => [v.pairId, v.pick, v.offContent])).toEqual([[a!.id, "right", "left"], [b!.id, "same", "both"]]);
+      // The page reads the marks back on a reload, never the order.
+      const votes = JSON.parse(await (await fetch(`${s.url}/votes`)).text());
+      expect(votes.votes).toEqual([{ pairId: a!.id, pick: "right", offContent: "left" }, { pairId: b!.id, pick: "same", offContent: "both" }]);
+      for (const bad of [
+        { pick: "left", offContent: "left" }, { pick: "same", offContent: "left" }, { pick: "left", offContent: "both" }, { pick: "right", offContent: "none" }, { pick: "right", offContent: "motif" },
+      ]) {
+        const r = await post(s.url, { pairId: a!.id, ...bad });
+        expect(r.status).toBe(400);
+        expect((await r.json()).error).toMatch(/didn't follow the content/);
+      }
+      expect(readVotes(f.run)).toEqual(saved);
+    } finally {
+      s.stop();
+    }
+  });
+
+  test("an old votes file, without marks, still scores the same", () => {
+    const run = tempDir("page-a-");
+    mkdirSync(join(run, "a"), { recursive: true });
+    const old = [{ pairId: "p1", pick: "left", order: "motif-left" }, { pairId: "p2", pick: "right", order: "motif-left" }, { pairId: "p3", pick: "same", order: "motif-right" }];
+    writeFileSync(join(run, "a", "owner-votes.json"), JSON.stringify(old));
+    expect(ownerPicks(run)).toEqual(new Map([["p1", "motif"], ["p2", "baseline"], ["p3", "same"]]));
+    expect(ownerOffContent(run)).toEqual(new Map());
+  });
+
+  test("ownerOffContent names the apps marked, through each pair's order", () => {
+    const run = tempDir("page-a-");
+    mkdirSync(join(run, "a"), { recursive: true });
+    const votes: OwnerVote[] = [
+      { pairId: "p1", pick: "right", order: "motif-left", offContent: "left" },
+      { pairId: "p2", pick: "right", order: "motif-right", offContent: "left" },
+      { pairId: "p3", pick: "same", order: "motif-left", offContent: "both" },
+      { pairId: "p4", pick: "left", order: "motif-left" },
+    ];
+    writeFileSync(join(run, "a", "owner-votes.json"), JSON.stringify(votes));
+    expect(ownerOffContent(run)).toEqual(new Map([["p1", ["motif"]], ["p2", ["baseline"]], ["p3", ["motif", "baseline"]]]));
+  });
+
+  test("the page has the button under each side, the content fold only for pairs with content, and the slow-start note", () => {
+    const f = fixture();
+    const html = readFileSync(writePage(f.run, f.shown, (_brief, screen) => (screen === "/" ? "- Trail: Wadi Shab, 4 km" : undefined)), "utf8");
+    expect(html.match(/Didn't follow the content/g)?.length).toBe(2);
+    expect(html).toContain("What both were asked to show");
+    expect(html).toContain("Still connecting… pull down to reload; your votes are saved.");
+    const pairs = pageData(html).pairs as unknown as { id: string; content: string | null }[];
+    const byScreen = (screen: string) => pairs.filter((p) => f.shown.find((s) => s.id === p.id)!.screen === screen).map((p) => p.content);
+    expect(byScreen("/")).toEqual(["- Trail: Wadi Shab, 4 km", "- Trail: Wadi Shab, 4 km"]);
+    expect(byScreen("/sign-in")).toEqual([null, null]);
   });
 });
 

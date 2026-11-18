@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import { motifCss } from "../../cli/src/generate/motif-css";
 import { presetTheme } from "../../cli/src/preview/presets";
 import { andList, plural } from "./cases";
+import { screenContent } from "./content";
 import type { Order } from "./judge-a";
 import { readPairs, type Pair } from "./pairs";
 import { builtFor, expectedBriefs, type OwnerPick } from "./score-a";
@@ -19,7 +20,14 @@ const REPO = resolve(import.meta.dir, "..", "..");
 const TEMPLATE = join(import.meta.dir, "page-a", "template.html");
 
 export type Side = "left" | "right";
-export interface OwnerVote { pairId: string; pick: Side | "same"; order: Order }
+/**
+ * A vote. `offContent` marks a side that didn't follow the brief's content for the screen, and that side loses: one side
+ * marked goes with a pick of the other, both with "same".
+ */
+export interface OwnerVote { pairId: string; pick: Side | "same"; order: Order; offContent?: Side | "both" }
+
+/** The pick an off-content mark goes with: the other side, or "same" when both are marked. */
+const MARKED_PICK: Record<Side | "both", Side | "same"> = { left: "right", right: "left", both: "same" };
 
 /** The owner's votes, relative to the run folder; one per pair, written as each is made. */
 export const votesFile = "a/owner-votes.json";
@@ -36,7 +44,8 @@ function writeJson(file: string, data: unknown): void {
 }
 
 const isVote = (v: any): v is OwnerVote =>
-  typeof v?.pairId === "string" && ["left", "right", "same"].includes(v.pick) && ["motif-left", "motif-right"].includes(v.order);
+  typeof v?.pairId === "string" && ["left", "right", "same"].includes(v.pick) && ["motif-left", "motif-right"].includes(v.order) &&
+  (v.offContent === undefined || MARKED_PICK[v.offContent as Side | "both"] === v.pick);
 
 /**
  * The owner's votes so far; none before the first. A file that can't be read as votes (cut short, emptied, edited by
@@ -64,6 +73,17 @@ export function ownerPicks(run: string): Map<string, OwnerPick> {
   for (const v of readVotes(run)) {
     if (v.pick === "same") m.set(v.pairId, "same");
     else m.set(v.pairId, (v.pick === "left") === (v.order === "motif-left") ? "motif" : "baseline");
+  }
+  return m;
+}
+
+/** For each pair the owner marked, the apps that didn't follow the content (read through the pair's order). */
+export function ownerOffContent(run: string): Map<string, ("motif" | "baseline")[]> {
+  const m = new Map<string, ("motif" | "baseline")[]>();
+  for (const v of readVotes(run)) {
+    if (!v.offContent) continue;
+    const app = (side: Side) => ((side === "left") === (v.order === "motif-left") ? "motif" : "baseline");
+    m.set(v.pairId, v.offContent === "both" ? ["motif", "baseline"] : [app(v.offContent)]);
   }
   return m;
 }
@@ -111,10 +131,14 @@ function screenTitle(screen: string): string {
 
 const sizeName = (size: number) => (size < 600 ? "Phone" : size < 1024 ? "Tablet" : "Desktop");
 
-interface Shown { pair: Pair; order: Order; left: string | null; right: string | null }
+/** A pair as shown: its sides, and what the brief says the screen shows (null when it says nothing). */
+interface Shown { pair: Pair; order: Order; left: string | null; right: string | null; content: string | null }
+
+type ContentOf = (brief: string, screen: string) => string | undefined;
+const briefContentOf: ContentOf = (brief, screen) => screenContent(brief, screen);
 
 /** The session's pairs in their order (from the seed, so a reload keeps it), each with its images on their sides. */
-function arrange(seed: string, pairs: Pair[]): Shown[] {
+function arrange(seed: string, pairs: Pair[], contentOf: ContentOf = briefContentOf): Shown[] {
   const img = (path?: string) => (path ? path.replace(/^a\//, "") : null);
   return [...pairs]
     .map((pair) => ({ pair, key: hash(`${seed}:place:${pair.id}`).toString("hex") }))
@@ -122,7 +146,7 @@ function arrange(seed: string, pairs: Pair[]): Shown[] {
     .map(({ pair }) => {
       const order = sideOrder(seed, pair.id);
       const [left, right] = order === "motif-left" ? [img(pair.motif), img(pair.baseline)] : [img(pair.baseline), img(pair.motif)];
-      return { pair, order, left, right };
+      return { pair, order, left, right, content: contentOf(pair.brief, pair.screen) ?? null };
     });
 }
 
@@ -145,11 +169,11 @@ const scriptJson = (data: unknown) => JSON.stringify(data).replace(/</g, "\\u003
  * Writes the owner's page for a run and returns its path: the pairs in the session's order with their sides, by their
  * images' random names (served from img/), and nothing else about them.
  */
-export function writePage(run: string, pairs: Pair[]): string {
-  const shown = arrange(session(run).seed, pairs);
+export function writePage(run: string, pairs: Pair[], contentOf: ContentOf = briefContentOf): string {
+  const shown = arrange(session(run).seed, pairs, contentOf);
   const data = {
     pairs: shown.map((s) => ({
-      id: s.pair.id, title: `${briefTitle(s.pair.brief)} — ${screenTitle(s.pair.screen)}`, size: s.pair.size, device: sizeName(s.pair.size), left: s.left, right: s.right,
+      id: s.pair.id, title: `${briefTitle(s.pair.brief)} — ${screenTitle(s.pair.screen)}`, size: s.pair.size, device: sizeName(s.pair.size), left: s.left, right: s.right, content: s.content,
     })),
   };
   const html = readFileSync(TEMPLATE, "utf8")
@@ -261,7 +285,7 @@ export async function serveOwner(
         // final: the answers have been shown, so the votes made stand (the page shows them as final).
         // waiting: why the answers can't be shown yet whatever the votes; null once nothing but votes stands in the way.
         return json({
-          votes: readVotes(run).filter((v) => byId.has(v.pairId)).map((v) => ({ pairId: v.pairId, pick: v.pick })), final: Boolean(session(run).revealed), waiting: waiting(),
+          votes: readVotes(run).filter((v) => byId.has(v.pairId)).map((v) => ({ pairId: v.pairId, pick: v.pick, ...(v.offContent ? { offContent: v.offContent } : {}) })), final: Boolean(session(run).revealed), waiting: waiting(),
         });
       }
       if (req.method === "POST" && path === "/vote") {
@@ -278,10 +302,14 @@ export async function serveOwner(
         const s = typeof body?.pairId === "string" ? byId.get(body.pairId) : undefined;
         if (!s) return json({ error: "There's no such pair here." }, 400);
         if (body.pick !== "left" && body.pick !== "right" && body.pick !== "same") return json({ error: 'A vote is "left", "right" or "same".' }, 400);
+        const off = body.offContent;
+        if (off !== undefined && !(["left", "right", "both"].includes(off) && MARKED_PICK[off as Side | "both"] === body.pick)) {
+          return json({ error: 'A side that didn\'t follow the content loses: "left" goes with a pick of "right", "right" with "left", and "both" with "same".' }, 400);
+        }
         const votes = readVotes(run);
         const at = votes.findIndex((v) => v.pairId === s.pair.id);
         if (at >= 0 && session(run).revealed) return json({ error: "The answers have been shown, so the votes made before stand." }, 409);
-        const vote: OwnerVote = { pairId: s.pair.id, pick: body.pick, order: s.order };
+        const vote: OwnerVote = { pairId: s.pair.id, pick: body.pick, order: s.order, ...(off !== undefined ? { offContent: off } : {}) };
         if (at >= 0) votes[at] = vote;
         else votes.push(vote);
         writeJson(join(run, votesFile), votes);

@@ -63,6 +63,18 @@
     font: var(--k-font-label-weight) var(--k-font-label-size) / 1.4 var(--k-font-label-family);
   }
   #note:empty { display: none; }
+  #connecting {
+    position: fixed; bottom: 96px; left: 50%; z-index: 5; max-width: min(560px, calc(100vw - 32px)); margin: 0; padding: var(--k-space-3) var(--k-space-4);
+    transform: translateX(-50%); border: 1px solid var(--k-color-border); border-radius: var(--k-radius-md); background: var(--k-color-surface); color: var(--k-color-text-secondary);
+    box-shadow: var(--k-shadow-lg); font: var(--k-font-label-weight) var(--k-font-label-size) / 1.4 var(--k-font-label-family);
+  }
+  #connecting[hidden] { display: none; }
+  .off-btn { flex: none; align-self: center; min-height: 44px; color: var(--k-color-text-secondary); font-size: var(--k-font-label-size); }
+  .off-btn[aria-pressed="true"] { color: var(--k-color-danger); text-decoration: underline; }
+  .off-btn:disabled { opacity: 0.6; }
+  .content-fold { flex: none; padding-top: var(--k-space-3); color: var(--k-color-text-secondary); font: var(--k-font-label-weight) var(--k-font-label-size) / 1.5 var(--k-font-label-family); }
+  .content-fold summary { padding: var(--k-space-3) 0; cursor: pointer; }
+  #content-text { max-height: 30vh; overflow: auto; white-space: pre-wrap; }
   #final { margin: 0; padding: 0 0 var(--k-space-3); color: var(--k-color-text-secondary); text-align: center; font: var(--k-font-label-weight) var(--k-font-label-size) / 1.4 var(--k-font-label-family); }
 
   .done { align-items: center; justify-content: center; gap: var(--k-space-4); padding: var(--k-space-12) 0; text-align: center; }
@@ -135,12 +147,18 @@
       <figure class="side" id="side-left">
         <figcaption class="side-name"><kbd>1</kbd> Left <button class="mk-btn mk-ghost zoom-btn" type="button" data-zoom="left">Zoom</button></figcaption>
         <div class="frame"><div class="scroller"></div></div>
+        <button class="mk-btn mk-ghost off-btn" type="button" data-off="left" aria-pressed="false">Didn't follow the content</button>
       </figure>
       <figure class="side" id="side-right">
         <figcaption class="side-name"><kbd>2</kbd> Right <button class="mk-btn mk-ghost zoom-btn" type="button" data-zoom="right">Zoom</button></figcaption>
         <div class="frame"><div class="scroller"></div></div>
+        <button class="mk-btn mk-ghost off-btn" type="button" data-off="right" aria-pressed="false">Didn't follow the content</button>
       </figure>
     </div>
+    <details class="content-fold" id="content-fold" hidden>
+      <summary>What both were asked to show</summary>
+      <div id="content-text"></div>
+    </details>
     <div class="choices">
       <button class="mk-btn mk-secondary choice" data-pick="left" aria-pressed="false"><kbd>1</kbd> Left</button>
       <button class="mk-btn mk-secondary choice" data-pick="same" aria-pressed="false"><kbd>3</kbd> About the same</button>
@@ -149,6 +167,7 @@
     <p id="final" role="status" hidden>This vote is final: the answers have been shown.</p>
     <p id="note" role="status"></p>
   </main>
+  <p id="connecting" role="status" hidden>Still connecting… pull down to reload; your votes are saved.</p>
 
   <section class="view done" id="done" hidden>
     <h2>That's every pair.</h2>
@@ -182,6 +201,9 @@
   const items = data.pairs;
   const $ = (id) => document.getElementById(id);
   const votes = new Map();
+  /** A side that didn't follow the content, per pair: "left", "right" or "both". The marked side loses. */
+  const marks = new Map();
+  const MARKED_PICK = { left: "right", right: "left", both: "same" };
   let at = 0;
   let busy = false;
   let answered = false;
@@ -236,6 +258,10 @@
     $("device").textContent = item.device;
     const pick = votes.get(item.id);
     for (const b of document.querySelectorAll(".choice")) b.setAttribute("aria-pressed", String(b.dataset.pick === pick));
+    const mark = marks.get(item.id);
+    for (const b of document.querySelectorAll(".off-btn")) b.setAttribute("aria-pressed", String(mark === "both" || mark === b.dataset.off));
+    $("content-fold").hidden = !item.content;
+    $("content-text").textContent = item.content || "";
     lockChoices();
     document.querySelector(".pair").classList.toggle("narrow", item.size < 600);
     for (const name of ["left", "right"]) {
@@ -314,17 +340,41 @@
   const locked = () => final && at < items.length && votes.has(items[at].id);
   function lockChoices() {
     const fixed = locked();
-    for (const b of document.querySelectorAll(".choice")) b.disabled = busy || fixed;
+    for (const b of document.querySelectorAll(".choice, .off-btn")) b.disabled = busy || fixed;
     $("final").hidden = !fixed;
+  }
+
+  /**
+   * Marks or unmarks a side that didn't follow the content, and saves it at once with the pick it goes with (the other
+   * side; "same" when both are marked). The pair stays on screen, so the other side can be marked too.
+   */
+  async function markOff(side) {
+    if (busy || answered || at >= items.length || locked()) return;
+    const item = items[at];
+    const cur = marks.get(item.id);
+    const set = new Set(cur === "both" ? ["left", "right"] : cur ? [cur] : []);
+    if (set.has(side)) set.delete(side);
+    else set.add(side);
+    const mark = set.size === 2 ? "both" : [...set][0];
+    const pick = mark ? MARKED_PICK[mark] : votes.get(item.id);
+    if (!pick) return;
+    await save(item, pick, mark, false);
   }
 
   async function vote(pick) {
     if (busy || answered || at >= items.length || locked()) return;
     const item = items[at];
+    // A mark stands while the pick still goes with it; picking otherwise takes it back.
+    const mark = marks.get(item.id);
+    await save(item, pick, mark && MARKED_PICK[mark] === pick ? mark : undefined, true);
+  }
+
+  async function save(item, pick, mark, advance) {
     busy = true;
     lockChoices();
     try {
-      const r = await fetch("vote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pairId: item.id, pick }) });
+      const body = { pairId: item.id, pick, ...(mark ? { offContent: mark } : {}) };
+      const r = await fetch("vote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({}));
       if (r.status === 409) {
         // The answers were shown since this page opened: the vote made before stands, and is shown as final.
@@ -336,7 +386,9 @@
       if (!r.ok) throw new Error(j.error || `the server answered ${r.status}`);
       if ("waiting" in j) waiting = j.waiting;
       votes.set(item.id, pick);
-      at = firstOpen(at + 1);
+      if (mark) marks.set(item.id, mark);
+      else marks.delete(item.id);
+      if (advance) at = firstOpen(at + 1);
       render();
     } catch (e) {
       $("note").textContent = `That vote wasn't saved: ${e.message} Try again.`;
@@ -463,6 +515,7 @@
   }
 
   for (const b of document.querySelectorAll(".choice")) b.addEventListener("click", () => vote(b.dataset.pick));
+  for (const b of document.querySelectorAll(".off-btn")) b.addEventListener("click", () => markOff(b.dataset.off));
   $("back").addEventListener("click", back);
   for (const b of document.querySelectorAll(".zoom-btn")) b.addEventListener("click", () => zoom(b.dataset.zoom));
   $("change").addEventListener("click", back);
@@ -485,15 +538,22 @@
   });
 
   (async () => {
+    // A slow link (a phone through a tunnel) can hold the first answer back; say so rather than show a blank page.
+    const slow = setTimeout(() => ($("connecting").hidden = false), 10_000);
     try {
       const r = await fetch("votes");
       const j = await r.json();
-      for (const v of j.votes) votes.set(v.pairId, v.pick);
+      for (const v of j.votes) {
+        votes.set(v.pairId, v.pick);
+        if (v.offContent) marks.set(v.pairId, v.offContent);
+      }
       final = j.final === true;
       waiting = typeof j.waiting === "string" ? j.waiting : null;
     } catch {
       $("note").textContent = "The server that saves the votes isn't answering; votes made now won't be kept.";
     }
+    clearTimeout(slow);
+    $("connecting").hidden = true;
     at = firstOpen(0);
     render();
     document.body.dataset.ready = "1";
