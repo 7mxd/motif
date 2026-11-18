@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import type { EvalCase } from "../../tests/evals/cases";
 import type { Grade } from "../../tests/evals/grade";
 import {
-  briefParts, judgeAPrompt, JUDGE_A_EXPECTED_TOOLS, JUDGE_A_SCHEMA, judgementsFile, pairResult, readBriefParts, readJudgements, RUBRIC_A, type JudgePick,
+  briefParts, judgeAPrompt, JUDGE_A_EXPECTED_TOOLS, JUDGE_A_SCHEMA, judgementsFile, judgePairs, pairResult, readBriefParts, readJudgements, readPick, RUBRIC_A, type JudgePick,
 } from "../../tests/evals/judge-a";
 import { pairsFile, type Pair } from "../../tests/evals/pairs";
 import { runEvals, type RunDeps } from "../../tests/evals/run";
@@ -35,11 +35,47 @@ describe("pairResult: a side wins only when both judgements pick it", () => {
 describe("the judge's question", () => {
   const bloom = readBriefParts("bloom");
 
-  test("answers left, right or tie, and one sentence why", () => {
+  test("answers left, right or tie, one sentence why, and which side didn't follow the content", () => {
     const schema = JSON.parse(JSON.stringify(JUDGE_A_SCHEMA));
-    expect(schema.required).toEqual(["pick", "why"]);
+    expect(schema.required).toEqual(["pick", "why", "offContent"]);
     expect(schema.properties.pick.enum).toEqual(["left", "right", "tie"]);
+    expect(schema.properties.offContent.enum).toEqual(["left", "right", "both", "none"]);
     expect(schema.additionalProperties).toBe(false);
+  });
+
+  test("a side marked off content loses: the pick goes to the other side", () => {
+    expect(readPick({ pick: "left", why: "x", offContent: "left" })).toEqual({ pick: "right", why: "x", offContent: "left" });
+    expect(readPick({ pick: "tie", why: "x", offContent: "right" })).toEqual({ pick: "left", why: "x", offContent: "right" });
+    expect(readPick({ pick: "left", why: "x", offContent: "both" })).toEqual({ pick: "left", why: "x", offContent: "both" });
+    expect(readPick({ pick: "right", why: "x", offContent: "none" })).toEqual({ pick: "right", why: "x", offContent: "none" });
+  });
+
+  test("an answer without offContent, or with another value, isn't one", () => {
+    expect(readPick({ pick: "left", why: "x" })).toBeNull();
+    expect(readPick({ pick: "left", why: "x", offContent: "maybe" })).toBeNull();
+  });
+
+  test("without content, a judge with no content to follow can't mark a side off it", () => {
+    expect(readPick({ pick: "left", why: "x" }, false)).toEqual({ pick: "left", why: "x", offContent: "none" });
+    expect(readPick({ pick: "left", why: "x", offContent: "left" }, false)).toEqual({ pick: "left", why: "x", offContent: "none" });
+  });
+
+  test("the prompt without content is the same as before content existed", () => {
+    expect(judgeAPrompt(bloom, "R")).toBe([
+      'You are comparing two designs of the same screen of an app. The two screenshots are in this folder: "Left" is left.png and "Right" is right.png. Read both images, follow the rubric below, and answer. Don\'t change anything.',
+      "## The app",
+      `### What it is\n${bloom.whatItIs}`,
+      `### Who it's for\n${bloom.whoItsFor}`,
+      `### Feel\n${bloom.feel}`,
+      "R",
+      'Answer in the schema: "pick" is "left", "right" or "tie", and "why" is one sentence.',
+    ].join("\n\n"));
+  });
+
+  test("with content, the prompt shows it after Feel and asks which side didn't follow it", () => {
+    const p = judgeAPrompt(bloom, "R", "- Plant: Monstera, water today");
+    expect(p).toContain(`### Feel\n${bloom.feel}\n\n### What both were asked to show\n- Plant: Monstera, water today\n\nR`);
+    expect(p).toContain('"offContent" is "left", "right", "both" or "none"');
   });
 
   test("every brief has the three sections the judge sees", () => {
@@ -91,6 +127,9 @@ describe("rubric-a.md", () => {
   test("a screen that fails to render or shows an error loses; a tie only when genuinely equal; placeholder data is ignored; one sentence why", () => {
     for (const s of ["loses", "genuinely", "placeholder", "one sentence"]) expect(r.toLowerCase()).toContain(s);
   });
+  test("with content given, a side that leaves out, adds or changes an item, its situation or action, or the key wording is off content", () => {
+    for (const s of ["What both were asked to show", "leaves out, adds or changes", "situation", "key wording", '"offContent"', '"both"', '"none"']) expect(r).toContain(s);
+  });
 });
 
 // The runner: each `both` pair judged twice, sides swapped, saved as it goes, resumable.
@@ -121,7 +160,7 @@ function writePairs(out: string): Pair[] {
 
 interface Seen { cwd: string; files: string[]; left: string; right: string; mcp: string; spec: SessionSpec }
 
-function harness(over: Partial<RunDeps> = {}, judgeAnswer: (n: number, seen: Seen) => SessionOutcome = (_n, s) => finished({ pick: s.left.includes("1111") || s.left.includes("3333") ? "left" : "right", why: "Clearer." })) {
+function harness(over: Partial<RunDeps> = {}, judgeAnswer: (n: number, seen: Seen) => SessionOutcome = (_n, s) => finished({ pick: s.left.includes("1111") || s.left.includes("3333") ? "left" : "right", why: "Clearer.", offContent: "none" })) {
   const root = tempDir("evals-judge-a-");
   const seen: Seen[] = [];
   const agents: SessionSpec[] = [];
@@ -158,6 +197,27 @@ function harness(over: Partial<RunDeps> = {}, judgeAnswer: (n: number, seen: See
   const where = { repo: join(root, "repo"), results: join(root, "results"), work: join(root, "work") };
   return { deps, seen, agents, lines, removed, purged, root, where, out: join(where.results, RUN) };
 }
+
+describe("judgePairs and the brief's content", () => {
+  test("each judge is given the screen's content, and a judged pair keeps an off-content mark", async () => {
+    const out = tempDir("evals-judge-a-content-");
+    writePairs(out);
+    const given: (string | undefined)[] = [];
+    const r = await judgePairs(out, async (_i, _b, _n, content) => (given.push(content), { pick: "right", why: "Left skipped a plant.", offContent: "left" }), {
+      brief: () => ({ whatItIs: "w", whoItsFor: "o", feel: "f" }),
+      content: (brief, screen) => `${brief} ${screen} content`,
+    });
+    expect(r.judged).toBe(4);
+    expect(given).toEqual(["stride / content", "stride / content", "stride / content", "stride / content"]);
+    expect(readJudgements(out)[0]).toEqual({ pairId: "aaaaaaaaaaa1", order: "motif-left", pick: "right", why: "Left skipped a plant.", offContent: "left" });
+  });
+  test("no mark is stored when neither side was off content", async () => {
+    const out = tempDir("evals-judge-a-content-");
+    writePairs(out);
+    await judgePairs(out, async () => ({ pick: "left", why: "Clearer.", offContent: "none" }), { brief: () => ({ whatItIs: "w", whoItsFor: "o", feel: "f" }), content: () => undefined });
+    expect(readJudgements(out).every((j) => !("offContent" in j))).toBe(true);
+  });
+});
 
 describe("the runner's AI judges (Test A, Part 4 §6)", () => {
   test("only the pairs with both apps' screens are judged, each twice: Motif's on the left, then on the right", async () => {

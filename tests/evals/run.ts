@@ -483,7 +483,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
    * two images as left.png and right.png: no name, path or file the judge can reach says which app either came from. Its
    * empty MCP list and its temp folder sit beside it, out of its reach; it goes once the judge is done.
    */
-  async function judgeA(images: { left: string; right: string }, brief: BriefParts, name: string): Promise<JudgeAOutcome> {
+  async function judgeA(images: { left: string; right: string }, brief: BriefParts, name: string, content?: string): Promise<JudgeAOutcome> {
     // Nothing in the folder's whole path may spell a side: not the temp folder it's in, which can't be helped here…
     const temp = deps.tempFolder?.() ?? tmpdir();
     if (SIDE_WORDS.test(temp)) {
@@ -510,7 +510,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       try {
         r = await deps.session({
           command: [claude], args: judgeArgs({ mcpConfigFile: mcp, schema: JUDGE_A_SCHEMA, maxTurns: 10, model: state.options.judgeModel, tools: JUDGE_A_TOOLS }),
-          cwd: own, env: withTempFolder(baselineEnv, join(root, "tmp")), prompt: judgeAPrompt(brief), transcript: join(dir, "a", "judges", `${name}.jsonl`),
+          cwd: own, env: withTempFolder(baselineEnv, join(root, "tmp")), prompt: judgeAPrompt(brief, undefined, content), transcript: join(dir, "a", "judges", `${name}.jsonl`),
           timeoutMs: 10 * 60_000, expect: { auto: false, tools: JUDGE_A_EXPECTED_TOOLS, personal },
         });
       } finally {
@@ -519,7 +519,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       }
       if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "A judge's session didn't start.");
       if (r.end === "usage-limit") return { paused: r.resetsAt ? { resetsAt: r.resetsAt } : {} };
-      const answer = r.end === "finished" ? readPick(r.result?.structured) : null;
+      const answer = r.end === "finished" ? readPick(r.result?.structured, content !== undefined) : null;
       if (answer) return answer;
       return { error: r.end === "finished" ? "it didn't answer left, right or tie." : `${r.problems.join(" ") || `its session ended with "${r.end}"`}.` };
     } finally {
