@@ -199,3 +199,19 @@ describe("motif check on an Angular app", () => {
     expect(r.text).toContain("(.ts, .html, .css, .scss, .tsx, .js, .jsx, …)");
   });
 });
+
+describe("physical-direction", () => {
+  const run = async (files: Record<string, string>) => (await check(await ngApp(files))) as any;
+  const SOURCE = "<p style=\"text-align: left\">Hi</p>\n";
+  const directional = (r: any) => (r.data.violations as { rule: string }[]).filter((h) => h.rule === "physical-direction");
+  test("a fixed side is a problem when the design guide asks for start/end", async () => {
+    const r = await run({ ["src/app/app.html"]: SOURCE, "DESIGN.md": "# Guide\n\n## 7. Accessibility\n\n- Layouts use start/end (not left/right), so right-to-left languages work.\n" });
+    expect(directional(r).length).toBe(1);
+    expect(r.data.advice).toEqual([]);
+  });
+  test("without that line it is one line of advice, not a problem", async () => {
+    const r = await run({ ["src/app/app.html"]: SOURCE });
+    expect(directional(r)).toEqual([]);
+    expect(r.data.advice).toEqual(["1 places use left/right where start/end exists; if this app may be used in a right-to-left language, use start/end."]);
+  });
+});

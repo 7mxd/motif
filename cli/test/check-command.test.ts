@@ -272,3 +272,19 @@ describe("wave B review fixes: the full corner's cut-off (review #5)", () => {
     expect(line("120px")).toContain("Closest: var(--motif-radius-lg) (16px).");
   });
 });
+
+describe("physical-direction", () => {
+  const run = async (files: Record<string, string>) => (await runCheck(project(files), ctx())) as any;
+  const SOURCE = "export const A = () => <p className=\"text-left text-body\">Hi</p>;\n";
+  const directional = (r: any) => (r.data.violations as { rule: string }[]).filter((h) => h.rule === "physical-direction");
+  test("a fixed side is a problem when the design guide asks for start/end", async () => {
+    const r = await run({ ["src/App.tsx"]: SOURCE, "DESIGN.md": "# Guide\n\n## 7. Accessibility\n\n- Layouts use start/end (not left/right), so right-to-left languages work.\n" });
+    expect(directional(r).length).toBe(1);
+    expect(r.data.advice).toEqual([]);
+  });
+  test("without that line it is one line of advice, not a problem", async () => {
+    const r = await run({ ["src/App.tsx"]: SOURCE });
+    expect(directional(r)).toEqual([]);
+    expect(r.data.advice).toEqual(["1 places use left/right where start/end exists; if this app may be used in a right-to-left language, use start/end."]);
+  });
+});

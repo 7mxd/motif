@@ -1,6 +1,6 @@
 # The Vue seeded app
 
-Bustan (the Vue contract app) with 14 planted problems, for test C on Vue: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
+Bustan (the Vue contract app) with 15 planted problems, for test C on Vue: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
 
 ## How it's built
 
@@ -27,9 +27,10 @@ Then run `npm ci` in the copy before `npx vue-tsc --noEmit`, `npm run dev` or `m
 | V-09 | judgement | Plot cards crammed: 4 px padding and gaps, the size and light gone | `/`, `src/components/PlotCard.vue` |
 | V-10 | judgement | Two primary buttons on a free plot's page | `/plots/[id]`, `src/views/PlotView.vue:67` |
 | V-11 | judgement | The harvest log has no empty state | `/harvest`, `src/views/HarvestView.vue` |
-| V-12 | judgement | `margin-left` between the top bar's leaf and the garden's name: wrong side in Arabic | every page, `src/components/TopBar.vue:46` |
+| V-12 | exact (check) | `margin-left` between the top bar's leaf and the garden's name: wrong side in Arabic | every page, `src/components/TopBar.vue:46` |
 | V-13 | exact (check) | Sign in's heading hard-codes `font-family: Arial` in a `style` attribute | `src/views/SignInView.vue:23` |
 | V-14 | exact (check) | The generated theme CSS edited by hand (`radius.md` 14px → 12px) | `src/styles/motif.css` |
+| V-15 | judgement | The router has no `scrollBehavior`, so a plot's page opens scrolled down where the list was | `/plots/[id]`, `src/router/index.ts` |
 
 ## How a grader reads the list
 
@@ -45,6 +46,6 @@ V-09 is a review's problem, but its plots' names cut to one line also show in th
 
 ## Changing it
 
-Change the overlay and the list together. `cli/test/fixtures-vue.test.ts` checks, on every change, that `motif check` reports exactly the seven check problems at their lines (V-14 as a warning on the generated file's first line) and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node and npm are installed, it also checks that `npx vue-tsc --noEmit` passes on the copy, and with a browser that `motif shot --sizes 390,1440 --audit --variant all --rtl` on `/`, `/harvest`, `/sign-in` and `/plots/by-the-gate` reports V-06, V-07 and V-08 and nothing that isn't one of them or V-01's consequences.
+Change the overlay and the list together. `cli/test/fixtures-vue.test.ts` checks, on every change, that `motif check` reports exactly the eight check problems at their lines (V-14 as a warning on the generated file's first line) and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node and npm are installed, it also checks that `npx vue-tsc --noEmit` passes on the copy, and with a browser that `motif shot --sizes 390,1440 --audit --variant all --rtl` on `/`, `/harvest`, `/sign-in` and `/plots/by-the-gate` reports V-06, V-07 and V-08 and nothing that isn't one of them or V-01's consequences.
 
 The audit was checked on 2026-10-23 with Vite 8 and Vue 3.5 in Chrome: V-06 is 2.26:1 in light mode and 2.97:1 in dark, in both variants (left to right: the Arabic caption isn't reported); V-07 once per direction, on a phone only; V-08 once, grouped across the four pages; V-01's consequence as one group of eight places (two pages, two variants, two directions). The judgement problems were looked at in the screenshots.

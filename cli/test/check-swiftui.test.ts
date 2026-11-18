@@ -184,3 +184,19 @@ extension Color {
     expect(r.text).toContain("motif check works on Flutter apps, Jetpack Compose apps, React Native (Expo) apps, SwiftUI apps, Vue / Nuxt apps, Svelte / SvelteKit apps, Angular apps, React web apps and plain web sites in this version.");
   });
 });
+
+describe("physical-direction", () => {
+  const run = async (files: Record<string, string>) => (await check(await swiftApp(files))) as any;
+  const SOURCE = "import SwiftUI\n\nstruct Back: View {\n    var body: some View { Image(systemName: \"chevron.left\") }\n}\n";
+  const directional = (r: any) => (r.data.violations as { rule: string }[]).filter((h) => h.rule === "physical-direction");
+  test("a fixed side is a problem when the design guide asks for start/end", async () => {
+    const r = await run({ ["SwiftUIMin/Back.swift"]: SOURCE, "DESIGN.md": "# Guide\n\n## 7. Accessibility\n\n- Layouts use start/end (not left/right), so right-to-left languages work.\n" });
+    expect(directional(r).length).toBe(1);
+    expect(r.data.advice).toEqual([]);
+  });
+  test("without that line it is one line of advice, not a problem", async () => {
+    const r = await run({ ["SwiftUIMin/Back.swift"]: SOURCE });
+    expect(directional(r)).toEqual([]);
+    expect(r.data.advice).toEqual(["1 places use left/right where start/end exists; if this app may be used in a right-to-left language, use start/end."]);
+  });
+});

@@ -29,7 +29,7 @@ The copy builds with its own Gradle wrapper (`./gradlew :app:compileDebugKotlin`
 | J-11 | judgement | Habit rows crammed: no padding above or below, names cut to one line | `/` and TodayPreview, `HabitRow.kt:63` (and `:68`) |
 | J-12 | judgement | Add a habit's main action is a stock `OutlinedButton`, unlike every other | `/add` and AddHabitPreview, `AddHabitScreen.kt:95` |
 | J-13 | judgement | Today has no empty state | `/` and TodayEmptyPreview, `TodayScreen.kt` |
-| J-14 | judgement | `Modifier.absolutePadding(left = …)` on a habit's streak: wrong side in Arabic | `/habit/:id` and HabitPreview, `HabitScreen.kt:74` |
+| J-14 | exact (check) | `Modifier.absolutePadding(left = …)` on a habit's streak: wrong side in Arabic | `/habit/:id` and HabitPreview, `HabitScreen.kt:74` |
 | J-15 | judgement | The back arrow is `Icons.Filled.ArrowBack`, which doesn't mirror in Arabic | `/habit/:id`, `/add`, HabitPreview and AddHabitPreview, `BackTopBar.kt:29` |
 
 Paths are under `app/src/main/java/dev/motif/rafiq/`.
@@ -44,6 +44,6 @@ J-01's typed brown passes in light mode (on the light sand) but is about 2:1 on 
 
 ## Changing it
 
-Change the overlay and the list together. `cli/test/fixtures-compose.test.ts` checks, on every change, that `motif check` reports exactly the seven check problems at their lines (J-07 as a warning on the generated file's first line) and nothing else, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where a JDK and the Android SDK are found, it also checks that `motif shot --sizes 390 --audit --variant all --rtl` (no `--routes`: the three routes and the five previews) reports J-08, J-09 and J-10 and nothing that isn't one of them or J-01's consequences, and that Rafiq itself has no findings on any of the eight screens.
+Change the overlay and the list together. `cli/test/fixtures-compose.test.ts` checks, on every change, that `motif check` reports exactly the eight check problems at their lines (J-07 as a warning on the generated file's first line) and nothing else, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where a JDK and the Android SDK are found, it also checks that `motif shot --sizes 390 --audit --variant all --rtl` (no `--routes`: the three routes and the five previews) reports J-08, J-09 and J-10 and nothing that isn't one of them or J-01's consequences, and that Rafiq itself has no findings on any of the eight screens.
 
 The audit was checked by hand on 2026-10-20 with Compose UI 1.9.0 and Robolectric: J-08 is 2.11:1 in light mode and 3.09:1 in dark (2.81:1 and 4.41:1 in the High contrast variant), in both directions, on `/sign-in` and SignInPreview; J-09 is reported once per direction ("Add a habit" and "أضف عادة", 40×48 dp where people can tap it) and J-10 once, each on `/`, TodayPreview and TodayEmptyPreview. The judgement problems were looked at in the screenshots: J-11's rows have their text against the row's edges, J-14's streak number touches its words right to left, and J-15's back arrow, right to left, points forward instead of back on `/add`, `/habit/walk`, HabitPreview and AddHabitPreview.

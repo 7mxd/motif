@@ -294,7 +294,9 @@ function dartFound(text: string): Found[] {
 
 // ---------- Compose (Kotlin) ----------
 
-function kotlinFound(text: string): Found[] {
+function kotlinFound(raw: string): Found[] {
+  // import and package lines name APIs, they don't lay anything out: blank them, keeping every offset.
+  const text = raw.replace(/^[ \t]*(?:import|package)\b[^\r\n]*/gm, (l) => " ".repeat(l.length));
   const out: Found[] = [];
   const rules: [RegExp, string | ((m: RegExpExecArray) => string)][] = [
     [/\babsolutePadding\b/g, "padding(start =, end =)"],

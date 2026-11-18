@@ -223,7 +223,7 @@ describe("the SwiftUI contract app (Qahwa)", () => {
 describe("the SwiftUI seeded app's list of planted problems", () => {
   test("has the brief's problems: at least 8 exact ones and 4 that need judgement", () => {
     expect(issues.filter((i) => i.kind === "exact").length).toBeGreaterThanOrEqual(8);
-    expect(new Set(byDetector("check").map((i) => i.rule))).toEqual(new Set(["raw-color", "off-scale", "raw-motion", "raw-font", "generated-edited"]));
+    expect(new Set(byDetector("check").map((i) => i.rule))).toEqual(new Set(["raw-color", "off-scale", "raw-motion", "physical-direction", "raw-font", "generated-edited"]));
     expect(issues.filter((i) => i.kind === "judgement").length).toBeGreaterThanOrEqual(4);
     const anchors = issues.map((i) => i.anchor ?? "");
     for (const a of ["Color(red:", ".padding(18)", "cornerRadius: 10", ".system(size: 15)", ".easeInOut(duration: 0.3)", '.custom("Georgia"', ".layoutDirection, .leftToRight"]) {

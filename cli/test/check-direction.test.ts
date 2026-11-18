@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { directionHits, directionLangs, type DirectionLang } from "../src/check/rules/direction";
 import type { Lang, SourceFile } from "../src/check/files";
 import { RULE_IDS } from "../src/check/types";
+import { startEndRequired } from "../src/check/guide";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const file = (text: string, lang: Lang, path = "src/a"): SourceFile => ({ path, abs: path, text, lang });
 const texts = (text: string, lang: Lang, langs: DirectionLang[]) => directionHits(file(text, lang), langs).map((h) => h.text);
@@ -102,6 +105,9 @@ describe("dart", () => {
   test("symmetric and directional forms aren't flagged", () => {
     expect(texts("EdgeInsets.fromLTRB(8, 4, 8, 4); EdgeInsets.symmetric(horizontal: 8); AlignmentDirectional.centerStart; EdgeInsets.only(top: 4);", "dart", ["dart"])).toEqual([]);
   });
+  test("import and export lines aren't layout", () => {
+    expect(texts("import 'package:a/b.dart' show Alignment;\nexport 'src/x.dart' hide TextAlign;\n", "dart", ["dart"])).toEqual([]);
+  });
 });
 
 describe("kotlin", () => {
@@ -120,6 +126,8 @@ describe("kotlin", () => {
   });
   test("start/end forms aren't flagged", () => {
     expect(texts("Modifier.padding(start = 8.dp); Text(\"a\", textAlign = TextAlign.Start)", "kotlin", ["kotlin"])).toEqual([]);
+  });  test("import lines aren't layout", () => {
+    expect(texts("package a.b\n\nimport androidx.compose.foundation.layout.absolutePadding\nimport androidx.compose.ui.text.style.TextAlign.Left\n", "kotlin", ["kotlin"])).toEqual([]);
   });
 });
 
@@ -172,5 +180,22 @@ describe("directionLangs", () => {
     expect(directionLangs("swiftui", "App/A.swift", false)).toEqual(["swift"]);
     expect(directionLangs("react-web", "src/a.css", false)).toEqual(["css"]);
     expect(directionLangs("plain-web", "index.html", false)).toEqual(["css"]);
+  });
+});
+
+describe("startEndRequired", () => {
+  const LINE = "- Layouts use start/end (not left/right), so right-to-left languages work.";
+  test("start/end line is found whatever the heading and line endings", () => {
+    expect(startEndRequired(`# G\n\n## 7. Accessibility\n\n${LINE}\n\n## 8. Platform notes\n`)).toBe(true);
+    expect(startEndRequired(`# G\r\n\r\n## Accessibility\r\n\r\n${LINE}\r\n`)).toBe(true);
+    expect(startEndRequired(readFileSync(join(import.meta.dir, "..", "..", "skill", "contract", "DESIGN.template.md"), "utf8"))).toBe(true);
+  });
+  test("SwiftUI's own words, leading and trailing, count as start/end", () => {
+    expect(startEndRequired("# G\n\n## 7. Accessibility\n\n- Layouts use leading and trailing (`.padding(.leading)`), never left and right, so Arabic mirrors correctly.\n")).toBe(true);
+  });
+  test("false without the line, outside the section, or without a guide", () => {
+    expect(startEndRequired("# G\n\n## 7. Accessibility\n\n- Text meets WCAG 2.2 AA.\n")).toBe(false);
+    expect(startEndRequired(`# G\n\n## 9. Do / Don't\n\n${LINE}\n`)).toBe(false);
+    expect(startEndRequired(null)).toBe(false);
   });
 });

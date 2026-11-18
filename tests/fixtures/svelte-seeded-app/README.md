@@ -1,6 +1,6 @@
 # The Svelte seeded app
 
-Adawat (the Svelte contract app) with 14 planted problems, for test C on Svelte: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
+Adawat (the Svelte contract app) with 15 planted problems, for test C on Svelte: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
 
 ## How it's built
 
@@ -27,9 +27,10 @@ Then run `npm ci` in the copy before `npm run check`, `npm run dev` or `motif sh
 | S-09 | judgement | Tool cards crammed: 4 px padding and gaps, the loan length and weight gone | `/`, `src/lib/components/ToolCard.svelte` |
 | S-10 | judgement | Two primary buttons on the page of a tool that's on the shelf | `/tools/[id]`, `src/routes/tools/[id]/+page.svelte:67` |
 | S-11 | judgement | My loans has no empty state | `/loans`, `src/routes/loans/+page.svelte` |
-| S-12 | judgement | `margin-left` between the top bar's wrench and the library's name: wrong side in Arabic | every page, `src/lib/components/TopBar.svelte:48` |
+| S-12 | exact (check) | `margin-left` between the top bar's wrench and the library's name: wrong side in Arabic | every page, `src/lib/components/TopBar.svelte:48` |
 | S-13 | exact (check) | Sign in's heading hard-codes `font-family: Arial` in a `style` attribute | `src/routes/sign-in/+page.svelte:26` |
 | S-14 | exact (check) | The generated theme CSS edited by hand (`radius.md` 8px → 10px) | `src/lib/styles/motif.css` |
+| S-15 | judgement | The viewport blocks pinch zoom, `maximum-scale=1, user-scalable=no` | every page, `src/app.html:5` |
 
 ## How a grader reads the list
 
@@ -45,6 +46,6 @@ S-13's Arial has Arabic letters on Windows, so in Arabic the heading turns from 
 
 ## Changing it
 
-Change the overlay and the list together. `cli/test/fixtures-svelte.test.ts` checks, on every change, that `motif check` reports exactly the seven check problems at their lines (S-14 as a warning on the generated file's first line) and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node and npm are installed, it also checks that `npm run check` (svelte-check) passes on the copy, and with a browser that `motif shot --sizes 390,1440 --audit --variant all --rtl` on `/`, `/loans`, `/sign-in` and `/tools/cordless-drill` reports S-06, S-07 and S-08 and nothing that isn't one of them or S-01's consequences.
+Change the overlay and the list together. `cli/test/fixtures-svelte.test.ts` checks, on every change, that `motif check` reports exactly the eight check problems at their lines (S-14 as a warning on the generated file's first line) and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node and npm are installed, it also checks that `npm run check` (svelte-check) passes on the copy, and with a browser that `motif shot --sizes 390,1440 --audit --variant all --rtl` on `/`, `/loans`, `/sign-in` and `/tools/cordless-drill` reports S-06, S-07 and S-08 and nothing that isn't one of them or S-01's consequences.
 
 The audit was checked on 2026-10-24 with SvelteKit 2.70, Svelte 5 and Vite 8 in Chrome: S-06 is 2.29:1 in light mode and 2.88:1 in dark, in both variants (left to right: the Arabic caption isn't reported); S-07 once per direction, on a phone only; S-08 once, grouped across the four pages; S-01's consequence as one group of eight places (the three badges on `/` and the one on the drill's page, in both variants; the right-to-left copies share their places). The judgement problems were looked at in the screenshots.

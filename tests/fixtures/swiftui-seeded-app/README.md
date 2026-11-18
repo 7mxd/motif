@@ -1,6 +1,6 @@
 # The SwiftUI seeded app
 
-Qahwa (the SwiftUI contract app) with 16 planted problems, for test C on SwiftUI: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
+Qahwa (the SwiftUI contract app) with 17 planted problems, for test C on SwiftUI: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
 
 ## How it's built
 
@@ -27,11 +27,12 @@ The copy builds on a Mac with Xcode 16 or newer (`xcodebuild -scheme Qahwa -dest
 | S-09 | exact (shot) | The loyalty card's Copy button is as small as its word | Loyalty card, `LoyaltyScreen.swift:49` |
 | S-10 | exact (shot) | A drink's heart button has no name | Drink, `DrinkScreen.swift:40` |
 | S-11 | exact (shot) | The cup beside "Your card" pulses forever, whatever Reduce Motion says | Loyalty card, `LoyaltyScreen.swift:31` |
-| S-12 | judgement | The drink cards force left to right, so they don't mirror in Arabic | `/` and Menu, `DrinkCard.swift:33` |
+| S-12 | exact (check) | The drink cards force left to right, so they don't mirror in Arabic | `/` and Menu, `DrinkCard.swift:33` |
 | S-13 | judgement | Sign out is the loyalty card's primary action | Loyalty card, `LoyaltyScreen.swift:62` |
 | S-14 | judgement | The menu's sections have no space between heading and cards | `/` and Menu, `MenuScreen.swift:37` |
 | S-15 | judgement | Add to order is a stock `.bordered` button, unlike every other main action | Drink, `DrinkScreen.swift:60` |
 | S-16 | judgement | Sign in's button says "Submit", with no Arabic | Sign in, `SignInScreen.swift:39` |
+| S-17 | judgement | Sign in's email field has the ordinary keyboard and capitalises the first letter | Sign in, `SignInScreen.swift:32` |
 
 Paths are under `Qahwa/`.
 
@@ -45,7 +46,7 @@ S-01's typed brown is in the loyalty card's stamps. The stamps are pictures, whi
 
 ## Changing it
 
-Change the overlay and the list together. `cli/test/fixtures-swiftui.test.ts` checks, on every change, that `motif check` reports exactly the seven check problems at their lines (S-07 as a warning on the generated file's first line) and nothing else, that `motif validate` finds nothing, and that every pinned line holds its anchor. On a Mac with Xcode, it also checks that Qahwa itself has no findings with `motif shot --sizes 390 --audit --variant all --rtl` (no `--screen`: the root and the four previews, 40 shots), and that the seeded copy, drawn where its audit problems are (`--screen Drink --screen "Loyalty card" --screen "Sign in"`, the default variant, light and dark, both directions: 12 shots), reports S-08, S-09, S-10 and S-11 and nothing else. The seeded copy is drawn in the folder Qahwa was drawn in, with the overlay written over it, so only the overlay's files are compiled again. Both keep CI's time down: drawing the seeded copy whole as well took 12 minutes there. The file runs in CI's `swiftui-fixtures` job, beside the `swiftui` job. S-01's consequences on `/` and Menu are on screens that run leaves out; they were seen in the full run below.
+Change the overlay and the list together. `cli/test/fixtures-swiftui.test.ts` checks, on every change, that `motif check` reports exactly the eight check problems at their lines (S-07 as a warning on the generated file's first line) and nothing else, that `motif validate` finds nothing, and that every pinned line holds its anchor. On a Mac with Xcode, it also checks that Qahwa itself has no findings with `motif shot --sizes 390 --audit --variant all --rtl` (no `--screen`: the root and the four previews, 40 shots), and that the seeded copy, drawn where its audit problems are (`--screen Drink --screen "Loyalty card" --screen "Sign in"`, the default variant, light and dark, both directions: 12 shots), reports S-08, S-09, S-10 and S-11 and nothing else. The seeded copy is drawn in the folder Qahwa was drawn in, with the overlay written over it, so only the overlay's files are compiled again. Both keep CI's time down: drawing the seeded copy whole as well took 12 minutes there. The file runs in CI's `swiftui-fixtures` job, beside the `swiftui` job. S-01's consequences on `/` and Menu are on screens that run leaves out; they were seen in the full run below.
 
 When the shot or audit code changes, draw the seeded copy whole by hand on a Mac, and check its findings against the list (S-01's consequences on `/` and Menu included):
 

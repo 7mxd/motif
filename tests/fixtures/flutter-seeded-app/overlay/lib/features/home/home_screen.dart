@@ -199,9 +199,9 @@ class _KidsCornerSwitch extends ConsumerWidget {
         side: BorderSide(color: colors.border),
       ),
       clipBehavior: Clip.antiAlias,
-      child: SwitchListTile.adaptive(
+      child: CheckboxListTile(
         value: ref.watch(kidsCornerProvider),
-        onChanged: (on) => ref.read(kidsCornerProvider.notifier).set(on),
+        onChanged: (on) => ref.read(kidsCornerProvider.notifier).set(on ?? false),
         secondary: Icon(Icons.palette_outlined, color: colors.textSecondary),
         title: Text(
           l10n.homeKidsCorner,
