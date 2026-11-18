@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { EvalCase } from "../../tests/evals/cases";
+import { CASES, type EvalCase } from "../../tests/evals/cases";
 import { CONTENT_INTRO, briefContent, contentProblems, screenContent } from "../../tests/evals/content";
 import { cleanupTempDirs, tempDir } from "./tmp";
 
@@ -78,6 +78,9 @@ describe("contentProblems", () => {
     expect(contentProblems([kase("a-darb", "A", "darb", ["/"])], none)).toEqual(["a-darb: brief darb has no ## Content section."]);
     const noIntro = setup(brief(CONTENT.replace(CONTENT_INTRO, "")));
     expect(contentProblems([kase("a-darb", "A", "darb", ["/"])], noIntro)).toEqual([`a-darb: brief darb's ## Content doesn't start with: ${CONTENT_INTRO}`]);
+  });
+  test("every brief has content for its screens", () => {
+    expect(contentProblems(CASES)).toEqual([]);
   });
   test("B and C cases, and a complete brief, have none", () => {
     const dir = setup(brief(CONTENT));

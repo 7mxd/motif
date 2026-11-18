@@ -280,7 +280,7 @@ describe("the runner's AI judges (Test A, Part 4 §6)", () => {
   });
 
   test("a usage limit after N judgements pauses the run; --resume judges only what's left, and the finished judgements stand", async () => {
-    const h = harness({}, (n, s) => (n === 3 ? { ...finished(), end: "usage-limit", resetsAt: 1792000800 } : finished({ pick: "tie", why: `call ${n} ${s.left}` })));
+    const h = harness({}, (n, s) => (n === 3 ? { ...finished(), end: "usage-limit", resetsAt: 1792000800 } : finished({ pick: "tie", why: `call ${n} ${s.left}`, offContent: "none" })));
     expect(await runEvals(["--cases", "d-stride,a-stride", "--work", join(h.root, "cases")], h.deps, h.where)).toBe(3);
     expect(h.lines.join("\n")).toContain(`Paused: your Claude plan's usage limit was reached`);
     const before = readJudgements(h.out);
@@ -302,7 +302,7 @@ describe("the runner's AI judges (Test A, Part 4 §6)", () => {
   });
 
   test("off a Mac, with Masar skipped, --resume still judges what's left before saying nothing is left to run", async () => {
-    const h = harness({ platform: "linux" }, (n) => (n === 2 ? { ...finished(), end: "usage-limit" } : finished({ pick: "left", why: "w" })));
+    const h = harness({ platform: "linux" }, (n) => (n === 2 ? { ...finished(), end: "usage-limit" } : finished({ pick: "left", why: "w", offContent: "none" })));
     expect(await runEvals(["--cases", "d-stride,a-stride,d-masar,a-masar", "--work", join(h.root, "cases")], h.deps, h.where)).toBe(3);
     expect(readJudgements(h.out)).toHaveLength(1);
     await runEvals(["--resume", RUN], h.deps, h.where);
@@ -311,7 +311,7 @@ describe("the runner's AI judges (Test A, Part 4 §6)", () => {
 
   test("a judge that gives no usable answer is said, the run goes on, and --resume asks again", async () => {
     let bad = true;
-    const h = harness({}, (n) => (bad && n === 1 ? finished({ pick: "both", why: "?" }) : finished({ pick: "left", why: "w" })));
+    const h = harness({}, (n) => (bad && n === 1 ? finished({ pick: "both", why: "?" }) : finished({ pick: "left", why: "w", offContent: "none" })));
     expect(await runEvals(["--cases", "d-stride,a-stride", "--work", join(h.root, "cases")], h.deps, h.where)).toBe(0);
     expect(h.seen).toHaveLength(4);
     expect(readJudgements(h.out)).toHaveLength(3);
