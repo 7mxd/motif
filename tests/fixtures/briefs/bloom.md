@@ -58,7 +58,7 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
      - Task: Water
      - Situation: Overdue, was due yesterday
      - Action: Log watering
-  2. Monty (Monstera) · living room
+  2. Monty (Monstera) · bedroom
      - Task: Water, about 500 ml
      - Situation: Due today
      - Action: Log watering

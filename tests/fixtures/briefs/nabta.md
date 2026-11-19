@@ -57,7 +57,7 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
   1. Sabr, snake plant (صبر، نبتة الثعبان) · bedroom (غرفة النوم)
      - Situation: Overdue by 2 days (متأخرة يومين)
      - Action: Watered (تم السقي)
-  2. Zahra, peace lily (زهرة، زنبق السلام) · living room (غرفة المعيشة)
+  2. Zahra, peace lily (زهرة، زنبق السلام) · bedroom (غرفة النوم)
      - Situation: Due today (موعدها اليوم)
      - Action: Watered (تم السقي)
   3. Rayhan, basil (ريحان) · kitchen (المطبخ)

@@ -73,5 +73,5 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
      - Action: Save (احفظ)
   5. Green Mubazzarah Cycle Path (مسار الدراجات في المبزّرة الخضراء)
      - Cycling (دراجات) · 7 km one way (7 كم باتجاه واحد) · Easy (سهل) · paved (مرصوف) · 19 km away (على بعد 19 كم)
-     - Situation: Partly closed, the east section is closed for resurfacing until Wednesday 25 November (مغلق جزئيًا، القسم الشرقي مغلق للصيانة حتى الأربعاء 25 نوفمبر)
+     - Situation: East section closed for resurfacing until Wednesday 25 November (القسم الشرقي مغلق للصيانة حتى الأربعاء 25 نوفمبر)
      - Action: Save (احفظ)

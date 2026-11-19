@@ -6,7 +6,7 @@ import { join, relative } from "node:path";
 // skill text for the test). docs/specs/2026-11-10-motif-2.0-first-impressions-design.md, change 7.
 const SKILL = join(import.meta.dir, "../../skill");
 const BRIEFS = ["stride", "ledgerly", "bloom", "sahm", "nabta", "rihla", "darb", "nuzha", "sanad", "masar"];
-const PHRASES = ["Thursday Tempo", "18 days late", "Log watering", "Not coming", "Chase payment", "Upcoming runs", "The week's plan", "Needs water today", "Seat reserved", "Report an issue"];
+const PHRASES = ["Thursday Tempo", "18 days late", "Log watering", "Not coming", "Chase payment", "Upcoming runs", "The week's plan", "Needs water today", "Seat reserved", "Report an issue", "Received in November", "East section closed"];
 
 function markdown(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

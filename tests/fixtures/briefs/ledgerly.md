@@ -53,7 +53,7 @@ Show exactly this content on these screens: no more items, no fewer, no other ac
 - Three figures:
   - Owed to you: $6,200 across 3 invoices
   - Overdue: $3,200 across 2 invoices
-  - Paid this month: $5,600
+  - Received in November: $5,600
 - Invoices, in this order:
   1. INV-1042 · Northwind Studio · $2,400 · due 30 Oct 2026
      - Situation: Overdue by 19 days
