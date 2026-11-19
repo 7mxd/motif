@@ -8,7 +8,7 @@
       <ul class="flex gap-6">
         @for (tab of tabs(); track tab.id) {
           <li>
-            <a [routerLink]="tab.path" class="tab" [class.tab-current]="current() === tab.id" [attr.aria-current]="current() === tab.id ? 'page' : null">
+            <a [routerLink]="tab.path" target="_blank" class="tab" [class.tab-current]="current() === tab.id" [attr.aria-current]="current() === tab.id ? 'page' : null">
               {{ tab.label }}
             </a>
           </li>

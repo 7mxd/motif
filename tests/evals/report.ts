@@ -53,21 +53,27 @@ const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 const commit = (c: string, dirty: boolean) => `${c.slice(0, 12)}${dirty ? " (with uncommitted changes)" : ""}`;
 
 const ownerCell = (s: BriefScore) => (s.pairs > 0 && s.forced.length + s.left.length === s.pairs ? "—" : s.owner ? `${s.owner.motif} / ${s.owner.other}` : "waiting");
+/** "—" without marks; else each app's marks from the AI judges, then from the owner. */
+const offCell = (s: BriefScore) => {
+  const o = s.offContent;
+  if (!o || o.ai.motif + o.ai.baseline + o.owner.motif + o.owner.baseline === 0) return "—";
+  return `baseline ${o.ai.baseline}, Motif ${o.ai.motif} · baseline ${o.owner.baseline}, Motif ${o.owner.motif}`;
+};
 const verdictCell = (s: BriefScore) => (s.pass === null ? "pending" : s.pass ? "pass" : "fail");
 
 /** Test A's section: one row per brief, the pairs left out, and the known biases. */
 function testASection(scores: BriefScore[], expected: string[]): string[] {
   const lines = [
     "## Test A: with and without Motif", "",
-    "| Brief | Pairs | AI: Motif / baseline / tie | Owner: Motif / other | Verdict | Why |", "|---|---|---|---|---|---|",
+    "| Brief | Pairs | AI: Motif / baseline / tie | Owner: Motif / other | Off content (AI · owner) | Verdict | Why |", "|---|---|---|---|---|---|---|",
   ];
   for (const b of expected) {
     const s = scores.find((x) => x.brief === b);
     if (!s) {
-      lines.push(`| ${cell(b)} | 0 | – | waiting | pending | no pairs yet |`);
+      lines.push(`| ${cell(b)} | 0 | – | waiting | — | pending | no pairs yet |`);
       continue;
     }
-    lines.push(`| ${cell(s.brief)} | ${s.pairs} | ${s.ai.motif} / ${s.ai.baseline} / ${s.ai.tie} | ${ownerCell(s)} | ${verdictCell(s)} | ${cell(s.why)} |`);
+    lines.push(`| ${cell(s.brief)} | ${s.pairs} | ${s.ai.motif} / ${s.ai.baseline} / ${s.ai.tie} | ${ownerCell(s)} | ${offCell(s)} | ${verdictCell(s)} | ${cell(s.why)} |`);
   }
   const left = scores.filter((s) => s.left.length > 0);
   lines.push("");

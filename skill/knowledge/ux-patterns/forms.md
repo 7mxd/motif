@@ -18,6 +18,8 @@ Collecting information from people: anything from a single field to a multi-step
 - **Inputs that match the data:** radio buttons for up to about seven options, a select or a searchable list beyond that, a real date picker for dates, a toggle for on/off settings that apply at once.
 - **Actions:** the primary submit at the end ("Save changes", "Create account"), with Cancel or Back as a secondary action.
 - **Multi-step forms:** a progress indicator ("Step 2 of 4"), Back on every step, and a review step before the final submit.
+- **Filled-in forms:** when fields arrive filled in (from a scan, a profile, an import), they say where their values came from in words ("From your profile"), a field the app isn't sure of is marked for the person to check, the whole form is confirmed with one action, and sensitive numbers stay masked.
+- **Confirmations:** only for what can't be undone; anything else is done at once, with Undo for a few seconds. A confirmation for something that can't be undone names what, how many and who or when ("Send to 6 clients, Thu 9am", not "Send?").
 
 ## Required states
 

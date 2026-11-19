@@ -18,15 +18,21 @@ export const JUDGE_A_EXPECTED_TOOLS = [...JUDGE_A_TOOLS, "StructuredOutput"];
 
 export const JUDGE_A_SCHEMA = {
   type: "object",
-  properties: { pick: { type: "string", enum: ["left", "right", "tie"] }, why: { type: "string" } },
-  required: ["pick", "why"],
+  properties: {
+    pick: { type: "string", enum: ["left", "right", "tie"] },
+    why: { type: "string" },
+    offContent: { type: "string", enum: ["left", "right", "both", "none"] },
+  },
+  required: ["pick", "why", "offContent"],
   additionalProperties: false,
 };
 
 /** A judge's pick (named so it doesn't shadow TypeScript's own Pick). */
 export type JudgePick = "left" | "right" | "tie";
 export type Order = "motif-left" | "motif-right";
-export interface Judgement { pairId: string; order: Order; pick: JudgePick; why: string }
+/** A side that left out, added or changed the brief's content for the screen; "none" isn't stored. */
+export type OffContent = "left" | "right" | "both";
+export interface Judgement { pairId: string; order: Order; pick: JudgePick; why: string; offContent?: OffContent }
 
 /** The parts of a brief the judge sees, the same for both sides. */
 export interface BriefParts { whatItIs: string; whoItsFor: string; feel: string }
@@ -48,23 +54,39 @@ export function briefParts(markdown: string): BriefParts {
 /** tests/fixtures/briefs/<brief>.md's three sections. */
 export const readBriefParts = (brief: string): BriefParts => briefParts(readFileSync(join(BRIEFS, `${brief}.md`), "utf8"));
 
-/** The judge's prompt: the brief's three sections, the rubric, and the two images, named only Left and Right. */
-export function judgeAPrompt(brief: BriefParts, rubric: string = readFileSync(RUBRIC_A, "utf8")): string {
+/**
+ * The judge's prompt: the brief's three sections, the screen's content when the brief gives it, the rubric, and the two
+ * images, named only Left and Right. Without content it is the prompt from before content existed.
+ */
+export function judgeAPrompt(brief: BriefParts, rubric: string = readFileSync(RUBRIC_A, "utf8"), content?: string): string {
   return [
     'You are comparing two designs of the same screen of an app. The two screenshots are in this folder: "Left" is left.png and "Right" is right.png. Read both images, follow the rubric below, and answer. Don\'t change anything.',
     "## The app",
     `### What it is\n${brief.whatItIs}`,
     `### Who it's for\n${brief.whoItsFor}`,
     `### Feel\n${brief.feel}`,
+    ...(content !== undefined ? [`### What both were asked to show\n${content}`] : []),
     rubric,
-    'Answer in the schema: "pick" is "left", "right" or "tie", and "why" is one sentence.',
+    content !== undefined
+      ? 'Answer in the schema: "pick" is "left", "right" or "tie", "why" is one sentence, and "offContent" is "left", "right", "both" or "none".'
+      : 'Answer in the schema: "pick" is "left", "right" or "tie", and "why" is one sentence.',
   ].join("\n\n");
 }
 
-/** The judge's answer, or null when it isn't one of the three picks. */
-export function readPick(structured: unknown): { pick: JudgePick; why: string } | null {
-  const s = (structured ?? {}) as { pick?: unknown; why?: unknown };
-  return s.pick === "left" || s.pick === "right" || s.pick === "tie" ? { pick: s.pick, why: String(s.why ?? "") } : null;
+/**
+ * The judge's answer, or null when it isn't one of the three picks with an off-content answer. A side marked off content
+ * loses the pair: the pick goes to the other side ("both" leaves the pick as judged). Without content (`content` false)
+ * there is nothing to follow, so the mark is ignored and may be missing.
+ */
+export function readPick(structured: unknown, content = true): { pick: JudgePick; why: string; offContent: OffContent | "none" } | null {
+  const s = (structured ?? {}) as { pick?: unknown; why?: unknown; offContent?: unknown };
+  if (s.pick !== "left" && s.pick !== "right" && s.pick !== "tie") return null;
+  const why = String(s.why ?? "");
+  if (!content) return { pick: s.pick, why, offContent: "none" };
+  const off = s.offContent;
+  if (off !== "left" && off !== "right" && off !== "both" && off !== "none") return null;
+  const pick: JudgePick = off === "left" ? "right" : off === "right" ? "left" : s.pick;
+  return { pick, why, offContent: off };
 }
 
 /**
@@ -77,12 +99,12 @@ export function pairResult(first: JudgePick, second: JudgePick): "motif" | "base
   return "tie";
 }
 
-export type JudgeAOutcome = { pick: JudgePick; why: string } | { paused: { resetsAt?: number } } | { error: string };
+export type JudgeAOutcome = { pick: JudgePick; why: string; offContent?: OffContent | "none" } | { paused: { resetsAt?: number } } | { error: string };
 /**
  * One judgement: the two images' paths (in the run's folder) as they are to be shown, and the brief's parts. `name` is
  * for the transcript's file name only; the judge never sees it.
  */
-export type JudgeAFn = (images: { left: string; right: string }, brief: BriefParts, name: string) => Promise<JudgeAOutcome>;
+export type JudgeAFn = (images: { left: string; right: string }, brief: BriefParts, name: string, content?: string) => Promise<JudgeAOutcome>;
 
 /** Every judgement so far, relative to the run folder. */
 export const judgementsFile = "a/judgements.json";
@@ -116,9 +138,12 @@ export function missingJudgements(out: string, exclude: ReadonlySet<string> = ne
  * skipped (and listed in `failed`) while `skip` holds it, so a run asks again only when resumed.
  */
 export async function judgePairs(
-  out: string, judge: JudgeAFn, opts: { brief?: (name: string) => BriefParts; skip?: Set<string>; exclude?: ReadonlySet<string>; log?: (line: string) => void } = {},
+  out: string, judge: JudgeAFn,
+  opts: { brief?: (name: string) => BriefParts; content?: (brief: string, screen: string) => string | undefined; skip?: Set<string>; exclude?: ReadonlySet<string>; log?: (line: string) => void } = {},
 ): Promise<{ judged: number; failed: string[] }> {
   const brief = opts.brief ?? readBriefParts;
+  // The content saved with the pair when it was shot (none for older runs); a test may give its own.
+  const contentOf = (pair: Pair) => (opts.content ? opts.content(pair.brief, pair.screen) : pair.content);
   const skip = opts.skip ?? new Set<string>();
   let judged = 0;
   const failed: string[] = [];
@@ -126,7 +151,7 @@ export async function judgePairs(
     const key = `${pair.id} ${order}`;
     if (skip.has(key)) continue;
     const [m, b] = [join(out, pair.motif!), join(out, pair.baseline!)];
-    const r = await judge(order === "motif-left" ? { left: m, right: b } : { left: b, right: m }, brief(pair.brief), `${pair.id}.${order}`);
+    const r = await judge(order === "motif-left" ? { left: m, right: b } : { left: b, right: m }, brief(pair.brief), `${pair.id}.${order}`, contentOf(pair));
     if ("paused" in r) throw new Paused(r.paused.resetsAt);
     if ("error" in r) {
       skip.add(key);
@@ -134,7 +159,8 @@ export async function judgePairs(
       opts.log?.(`${pair.brief}: Test A's pair ${pair.id} (${pair.screen}, ${pair.size} px) couldn't be judged: ${r.error} --resume asks again.`);
       continue;
     }
-    saveJudgements(out, [...readJudgements(out), { pairId: pair.id, order, pick: r.pick, why: r.why }]);
+    const off = r.offContent && r.offContent !== "none" ? { offContent: r.offContent } : {};
+    saveJudgements(out, [...readJudgements(out), { pairId: pair.id, order, pick: r.pick, why: r.why, ...off }]);
     judged++;
   }
   return { judged, failed };

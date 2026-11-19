@@ -237,3 +237,19 @@ describe("motif check on a Compose app", () => {
     expect(r.text).toContain("Closest: MotifSpace.s3 (12px).");
   });
 });
+
+describe("physical-direction", () => {
+  const run = async (files: Record<string, string>) => (await check(await composeApp(files))) as any;
+  const SOURCE = "package com.example.rafiq\n\nimport androidx.compose.ui.text.style.TextAlign\n\nval align = TextAlign.Left\n";
+  const directional = (r: any) => (r.data.violations as { rule: string }[]).filter((h) => h.rule === "physical-direction");
+  test("a fixed side is a problem when the design guide asks for start/end", async () => {
+    const r = await run({ [`${SRC}/Home.kt`]: SOURCE, "DESIGN.md": "# Guide\n\n## 7. Accessibility\n\n- Layouts use start/end (not left/right), so right-to-left languages work.\n" });
+    expect(directional(r).length).toBe(1);
+    expect(r.data.advice).toEqual([]);
+  });
+  test("without that line it is one line of advice, not a problem", async () => {
+    const r = await run({ [`${SRC}/Home.kt`]: SOURCE });
+    expect(directional(r)).toEqual([]);
+    expect(r.data.advice).toEqual(["1 place uses left/right where start/end exists; if this app may be used in a right-to-left language, use start/end."]);
+  });
+});

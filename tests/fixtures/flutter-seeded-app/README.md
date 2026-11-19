@@ -1,6 +1,6 @@
 # The Flutter seeded app
 
-Maktaba (the Flutter contract app) with 16 planted problems, for test C on Flutter: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
+Maktaba (the Flutter contract app) with 17 planted problems, for test C on Flutter: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
 
 ## How it's built
 
@@ -27,11 +27,12 @@ Then run `flutter pub get` in the copy (it also writes the translations) before 
 | F-09 | judgement | Loans crammed into one tight row each | `/loans` |
 | F-10 | judgement | Sign in's main action is a stock `ElevatedButton`, unlike every other (and near-black on near-black in dark mode) | `/sign-in`, `sign_in_screen.dart:100` |
 | F-11 | judgement | Loans has no empty state | `/loans` |
-| F-12 | judgement | `EdgeInsets.only(left:` in a book row: wrong side in Arabic | `/books`, `book_row.dart:56` |
+| F-12 | exact (check) | `EdgeInsets.only(left:` in a book row: wrong side in Arabic | `/books`, `book_row.dart:56` |
 | F-13 | judgement | A failed load shows the raw exception, with no Try again | `/loans`, `loans_screen.dart:47` |
 | F-14 | judgement | No back button on the book page; only the Books tab or the system back gesture lead back | `/books/:id`, `book_screen.dart:26` |
 | F-15 | exact (check) | Home's greeting hard-codes `GoogleFonts.lora`; in Arabic it has no Arabic font | `lib/features/home/home_screen.dart:29` |
 | F-16 | exact (check) | The generated theme edited by hand (`MotifRadius.md` 6 → 8) | `lib/design/motif_theme.dart` |
+| F-17 | judgement | Home's Kids' corner colours setting is a `CheckboxListTile`, not a switch, though it takes effect at once | `/`, `lib/features/home/home_screen.dart:202` |
 
 ## How a grader reads the list
 
@@ -43,6 +44,6 @@ F-01's typed green passes in light mode (5.1:1 on white) but is about 3.4:1 on t
 
 ## Changing it
 
-Change the overlay and the list together, then run `dart format` on the overlay so its lines match what a developer's editor would write. `cli/test/fixtures-flutter.test.ts` checks, on every change, that `motif check` reports exactly the seven check problems at their lines (F-16 as a warning on the generated file's first line) and nothing else, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Flutter is installed, it also checks that `flutter analyze` passes on the copy and that `motif shot --sizes 390 --audit --variant all --rtl` on `/`, `/sign-in`, `/loans`, `/books` and `/books/season-of-migration` reports F-06, F-07 and F-08 and nothing that isn't one of them or F-01's consequences.
+Change the overlay and the list together, then run `dart format` on the overlay so its lines match what a developer's editor would write. `cli/test/fixtures-flutter.test.ts` checks, on every change, that `motif check` reports exactly the eight check problems at their lines (F-16 as a warning on the generated file's first line) and nothing else, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Flutter is installed, it also checks that `flutter analyze` passes on the copy and that `motif shot --sizes 390 --audit --variant all --rtl` on `/`, `/sign-in`, `/loans`, `/books` and `/books/season-of-migration` reports F-06, F-07 and F-08 and nothing that isn't one of them or F-01's consequences.
 
 The audit was checked by hand on 2026-10-20 with Flutter 3.44.8: F-06 is 2.22:1 in light mode and 2.83:1 in dark (both variants, both directions); F-07 is reported once per direction ("See all books" and "كل الكتب"); F-08 once, on `/books`. The judgement problems were looked at in the screenshots: F-09's rows sit 8 px from the screen's edge with 4 px between lines, and in F-12's right-to-left rows the titles touch their covers.

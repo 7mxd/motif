@@ -203,6 +203,14 @@ struct PressScale: View {
 }
 ```
 
+## `physical-direction`
+
+A forced `.environment(\.layoutDirection, .leftToRight)`, or a `chevron.left`/`arrow.right` symbol without `.flipsForRightToLeftLayoutDirection(true)`, points the wrong way in Arabic and Hebrew.
+
+- Fix: remove the forced direction; use `chevron.backward`/`arrow.forward`, or add `.flipsForRightToLeftLayoutDirection(true)`.
+
+It counts as a problem when your design guide keeps its start/end line (section 7, there by default); without that line, `motif check` only prints one line of advice. A deliberate fixed side (a slider's track, a map control, a chart axis) takes a `motif-ok` comment with the reason.
+
 ## `generated-edited`
 
 `MotifTheme.swift` was edited by hand, or is out of date.

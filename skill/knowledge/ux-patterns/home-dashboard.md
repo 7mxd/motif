@@ -25,6 +25,8 @@ The screen people land on after signing in, which they see more often than any o
 - **Personal trackers:** today's focus (what's due, with its drawing), a streak or progress figure, and what comes next.
 - **Catalogues:** recently viewed or saved items as cards with their facts, and one way in to browse more.
 
+Pick each piece from the shape of its data (options compared, steps in order, one number, values over time): see [choose by the data's shape](../../library/README.md#choose-by-the-datas-shape).
+
 ## Required states
 
 - **First use:** the summary and activity are empty; instead of zeros, a welcome line and one action that creates the first item.

@@ -125,7 +125,7 @@ describe("the Flutter contract app (Maktaba)", () => {
 describe("the Flutter seeded app's list of planted problems", () => {
   test("has the brief's problems: at least 10 exact ones (so a review that finds 9 still makes 90%) and 4 that need judgement", () => {
     expect(issues.filter((i) => i.kind === "exact").length).toBeGreaterThanOrEqual(10);
-    expect(new Set(byDetector("check").map((i) => i.rule))).toEqual(new Set(["raw-color", "off-scale", "raw-motion", "raw-font", "generated-edited"]));
+    expect(new Set(byDetector("check").map((i) => i.rule))).toEqual(new Set(["raw-color", "off-scale", "raw-motion", "physical-direction", "raw-font", "generated-edited"]));
     expect(issues.filter((i) => i.kind === "judgement").length).toBeGreaterThanOrEqual(4);
     const anchors = issues.map((i) => i.anchor ?? "");
     for (const a of ["Color(0xFF", "EdgeInsets.all(18)", "BorderRadius.circular(12)", "fontSize: 15", "Curves.easeIn", "EdgeInsets.only(left:"]) {

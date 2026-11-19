@@ -11,7 +11,7 @@ import { collectAndGrade, componentFacts } from "./collect";
 import { componentsCriterion, type Grade } from "./grade";
 import { JUDGE_SCHEMA, judgePrompt, Paused, readVerdict, Stopped, type JudgeFn } from "./judge";
 import { JUDGE_A_EXPECTED_TOOLS, JUDGE_A_SCHEMA, JUDGE_A_TOOLS, judgeAPrompt, judgePairs, missingJudgements, readPick, type BriefParts, type JudgeAOutcome } from "./judge-a";
-import { ownerPicks } from "./page-a";
+import { ownerOffContent, ownerPicks } from "./page-a";
 import { pairBrief } from "./pairs";
 import { paths, preflight, type NodeNeeds, type Ready } from "./preflight";
 import { NO_PURGE_NOTE, removeProjectData } from "./purge";
@@ -41,7 +41,7 @@ Runs Motif's agent evals through your signed-in Claude Code (never an API key), 
   --claude <path>        The Claude Code program to use`;
 
 export interface RunDeps {
-  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean, needsNode?: boolean, nodeNeeds?: NodeNeeds): Promise<Ready | { error: string }>;
+  preflight(needsBrowser: boolean, claude?: string, needsFlutter?: boolean, needsAndroid?: boolean, needsXcode?: boolean, needsNode?: boolean, nodeNeeds?: NodeNeeds, cases?: EvalCase[]): Promise<Ready | { error: string }>;
   prepare(c: EvalCase, dir: string): Promise<Workspace>;
   session(spec: SessionSpec): Promise<SessionOutcome>;
   collect(c: EvalCase, ws: Workspace, out: string, judge: JudgeFn): Promise<Grade>;
@@ -246,7 +246,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
 
   // What the pair steps left to take need too: they draw both apps.
   const needs = [...todo, ...unpaired.flatMap((u) => [u.d, u.a])];
-  const ready = await deps.preflight(needs.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, needs.some(isFlutter), needs.some(isCompose), needs.some(isSwiftUI), needs.some(needsNode), { vite8: needs.some(needsVite8), svelteKit3: needs.some(needsSvelteKit3), angular21: needs.some(needsAngular21), angular22: needs.some(needsAngular22) });
+  const ready = await deps.preflight(needs.some(needsBrowser), typeof o.claude === "string" ? o.claude : undefined, needs.some(isFlutter), needs.some(isCompose), needs.some(isSwiftUI), needs.some(needsNode), { vite8: needs.some(needsVite8), svelteKit3: needs.some(needsSvelteKit3), angular21: needs.some(needsAngular21), angular22: needs.some(needsAngular22) }, needs);
   if ("error" in ready) {
     deps.log(ready.error);
     return 2;
@@ -483,7 +483,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
    * two images as left.png and right.png: no name, path or file the judge can reach says which app either came from. Its
    * empty MCP list and its temp folder sit beside it, out of its reach; it goes once the judge is done.
    */
-  async function judgeA(images: { left: string; right: string }, brief: BriefParts, name: string): Promise<JudgeAOutcome> {
+  async function judgeA(images: { left: string; right: string }, brief: BriefParts, name: string, content?: string): Promise<JudgeAOutcome> {
     // Nothing in the folder's whole path may spell a side: not the temp folder it's in, which can't be helped here…
     const temp = deps.tempFolder?.() ?? tmpdir();
     if (SIDE_WORDS.test(temp)) {
@@ -510,7 +510,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       try {
         r = await deps.session({
           command: [claude], args: judgeArgs({ mcpConfigFile: mcp, schema: JUDGE_A_SCHEMA, maxTurns: 10, model: state.options.judgeModel, tools: JUDGE_A_TOOLS }),
-          cwd: own, env: withTempFolder(baselineEnv, join(root, "tmp")), prompt: judgeAPrompt(brief), transcript: join(dir, "a", "judges", `${name}.jsonl`),
+          cwd: own, env: withTempFolder(baselineEnv, join(root, "tmp")), prompt: judgeAPrompt(brief, undefined, content), transcript: join(dir, "a", "judges", `${name}.jsonl`),
           timeoutMs: 10 * 60_000, expect: { auto: false, tools: JUDGE_A_EXPECTED_TOOLS, personal },
         });
       } finally {
@@ -519,7 +519,7 @@ export async function runEvals(argv: string[], deps: RunDeps, where: { repo: str
       }
       if (r.end === "not-isolated" || !r.init) throw new Stopped(r.problems.join(" ") || "A judge's session didn't start.");
       if (r.end === "usage-limit") return { paused: r.resetsAt ? { resetsAt: r.resetsAt } : {} };
-      const answer = r.end === "finished" ? readPick(r.result?.structured) : null;
+      const answer = r.end === "finished" ? readPick(r.result?.structured, content !== undefined) : null;
       if (answer) return answer;
       return { error: r.end === "finished" ? "it didn't answer left, right or tie." : `${r.problems.join(" ") || `its session ended with "${r.end}"`}.` };
     } finally {
@@ -587,12 +587,14 @@ export function writeReport(state: RunState, dir: string, deps: Pick<RunDeps, "l
   // The owner's votes, from the page judge-owner.ts serves, once there are any. A votes file that can't be read is said,
   // not taken as no votes; the report waits for them until it's mended.
   let owner: ReturnType<typeof ownerPicks> | undefined;
+  let ownerOff: ReturnType<typeof ownerOffContent> | undefined;
   try {
     owner = ownerPicks(dir);
+    ownerOff = ownerOffContent(dir);
   } catch (e) {
     deps.log((e as Error).message);
   }
-  const scores = scoreRun(state, dir, owner);
+  const scores = scoreRun(state, dir, owner, ownerOff);
   const verdicts = testVerdicts(state, CASES, scores);
   writeFileSync(join(dir, "report.md"), renderReport(state, CASES, verdicts, scores));
   writeFileSync(join(dir, "report.json"), JSON.stringify({ run: state, verdicts, ...(verdicts.some((v) => v.test === "A") ? { scoresA: scores } : {}) }, null, 2));
@@ -636,10 +638,10 @@ if (import.meta.main) {
   const code = await runEvals(
     process.argv.slice(2),
     {
-      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds) =>
+      preflight: (needsBrowser, claude, needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds, cases) =>
         preflight(
           p, needsBrowser, { which: (cmd) => Bun.which(cmd), run: runCmd, env: process.env, bun: process.execPath, ...(claude ? { claudeOverride: resolve(claude) } : {}) },
-          needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds,
+          needsFlutter, needsAndroid, needsXcode, needsNode, nodeNeeds, cases,
         ),
       prepare: (c, dir) => prepareWorkspace(c, dir, runCmd),
       session: runSession,

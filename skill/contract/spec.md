@@ -25,6 +25,8 @@ Start a new guide from [DESIGN.template.md](DESIGN.template.md) and [tokens.temp
 - Ten numbered sections, in this order: 1. Brief · 2. Direction · 3. Foundations · 4. Motion · 5. Components · 6. Patterns · 7. Accessibility · 8. Platform notes · 9. Do / Don't · 10. Change log.
 - A guide with variants also has an unnumbered `## Variants` section after Foundations (see [Variants](#variants)). `motif validate` reports it missing, and warns about any variant the section doesn't mention. A guide without variants has no such section.
 - It states intent and rules. Exact values live only in `tokens.json`: write "the primary action colour", not a hex code.
+- A colour role keeps one meaning on every screen (a warning colour means a warning everywhere); variants change shape or emphasis, and colour only carries meaning.
+- Section 7 says once which digits numbers use in right-to-left languages: Western (123) or Arabic-Indic (١٢٣).
 - Change log lines: `- YYYY-MM-DD — what changed — why — approved by <name>`.
 
 ## tokens.json

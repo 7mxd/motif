@@ -32,6 +32,8 @@ Use logical properties, so right-to-left languages mirror for free:
 
 Set `dir="rtl"` on `<html>` for right-to-left languages, and mirror icons that point a direction with `:dir(rtl) .icon-back { transform: scaleX(-1); }`.
 
+**Numbers** are formatted by locale with `Intl.NumberFormat`, never by joining strings, so digits, separators and the minus sign follow the language. Pick the digits the design guide chose (section 7) with `numberingSystem`: `new Intl.NumberFormat(locale, { numberingSystem: "arab" }).format(n)` for Arabic-Indic, `"latn"` for Western.
+
 ## Pointers and touch
 
 - Hover effects go inside `@media (hover: hover)` and are extras: never hide an action behind hover.

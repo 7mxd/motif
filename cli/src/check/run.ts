@@ -13,6 +13,8 @@ import { exceptionFor } from "./exceptions";
 import { listSourceFiles, matchesPaths, type SourceFile } from "./files";
 import { expandHtml } from "./html";
 import { generatedEditedHits, reducedMotionHits } from "./rules/app";
+import { directionHits, directionLangs } from "./rules/direction";
+import { readDesignMd, startEndRequired } from "./guide";
 import { scanColors } from "./rules/colors";
 import { scanTailwind, scanThemeClassesV3, type ThemeRoles } from "./rules/tailwind";
 import { scanTailwindScale } from "./rules/tailwind-scale";
@@ -35,6 +37,22 @@ export interface AppCheck {
   palettes?: string[];
   /** What the stack left out of the app's code (Compose's library modules). */
   notes?: string[];
+  /** Advice that isn't a problem: left/right layout when the design guide doesn't ask for start/end. */
+  advice: string[];
+}
+
+/**
+ * physical-direction over an app's in-scope files (or their views): problems when the design guide asks for start/end
+ * (its accessibility line), otherwise one line of advice with the count. A reasoned motif-ok allows a hit either way.
+ */
+function directionPart(root: string, stack: AppInfo["stack"], views: SourceFile[], tailwind: boolean, lines: Map<string, string[]>): { violations: Hit[]; exceptions: ExceptionHit[]; advice: string[] } {
+  const found = once(views.flatMap((v) => (stack ? directionHits(v, directionLangs(stack, v.path, tailwind), stack) : [])));
+  const { violations, exceptions } = sortOut(found, lines, (h) => h);
+  if (startEndRequired(readDesignMd(root))) return { violations, exceptions, advice: [] };
+  const advice = violations.length
+    ? [`${violations.length} ${violations.length === 1 ? "place uses" : "places use"} left/right where start/end exists; if this app may be used in a right-to-left language, use start/end.`]
+    : [];
+  return { violations: [], exceptions, advice };
 }
 
 export function scanFile(file: SourceFile, scale: Scale | null, opts: { tailwind?: boolean; v3Roles?: ThemeRoles } = {}): Hit[] {
@@ -164,12 +182,14 @@ export function checkApp(
     const variantHint = found.kind === "color" && found.variant ? suggestion : undefined;
     return { ...found, ...(plain ? { fix: plainFix(found) } : {}), ...(variantHint ? { fix: variantHint } : suggestion ? { suggestion } : {}) };
   });
+  const direction = directionPart(root, app.stack, expandHtml(files), tailwindVersion !== "none", lines);
   return {
     app: app.path,
     files: files.length,
-    violations: violations.sort(byPosition),
-    exceptions: exceptions.sort(byPosition),
+    violations: [...violations, ...direction.violations].sort(byPosition),
+    exceptions: [...exceptions, ...direction.exceptions].sort(byPosition),
     warnings: generatedEditedHits(root, expected),
+    advice: direction.advice,
   };
 }
 
@@ -231,12 +251,14 @@ function checkWebStackApp(root: string, app: AppInfo, web: WebStack, theme: Them
     const variantHint = found.kind === "color" && found.variant ? suggestion : undefined;
     return { ...found, ...(web.fix ? { fix: web.fix(found, fixContext) } : {}), ...(variantHint ? { fix: variantHint } : suggestion ? { suggestion } : {}) };
   });
+  const direction = directionPart(root, app.stack, files.flatMap(views), tailwindVersion !== "none", lines);
   return {
     app: app.path,
     files: files.length,
-    violations: violations.sort(byPosition),
-    exceptions: exceptions.sort(byPosition),
+    violations: [...violations, ...direction.violations].sort(byPosition),
+    exceptions: [...exceptions, ...direction.exceptions].sort(byPosition),
     warnings: generatedEditedHits(root, expected.map((f) => ({ path: f.path, content: f.content }))),
+    advice: direction.advice,
   };
 }
 
@@ -269,12 +291,14 @@ function checkNativeApp(root: string, app: AppInfo, native: NativeStack, scan: N
   });
   const palettes = native.paletteFile ? files.filter((f) => native.paletteFile!(f, violations)).map((f) => f.path).sort() : [];
   const notes = native.readNotes?.(root, app, "check") ?? [];
+  const direction = directionPart(root, app.stack, files, false, lines);
   return {
     app: app.path,
     files: files.length,
-    violations: violations.sort(byPosition),
-    exceptions: exceptions.sort(byPosition),
+    violations: [...violations, ...direction.violations].sort(byPosition),
+    exceptions: [...exceptions, ...direction.exceptions].sort(byPosition),
     warnings: generatedEditedHits(root, expected),
+    advice: direction.advice,
     ...(palettes.length > 0 ? { palettes } : {}),
     ...(notes.length > 0 ? { notes } : {}),
   };

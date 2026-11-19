@@ -47,6 +47,14 @@ The site animates, but nothing honours reduced motion. Linking `motif.css` fixes
 
 - Fix: link `motif.css` on every page ([theme code](tokens.md#linking-it-once-per-page)), or add a global `@media (prefers-reduced-motion: reduce)` rule for your own animations.
 
+## `physical-direction`
+
+A fixed left or right in your CSS or a `style=""` attribute (`margin-left`, `padding-right`, `left:`, `text-align: left`, `float: left`, `border-left`) stays on the same side in Arabic and Hebrew.
+
+- Fix: `margin-inline-start`, `padding-inline-end`, `inset-inline-start`, `text-align: start`, `float: inline-start`, `border-inline-start`.
+
+It counts as a problem when your design guide keeps its start/end line (section 7, there by default); without that line, `motif check` only prints one line of advice. A deliberate fixed side (a slider's track, a map control, a chart axis) takes a `motif-ok` comment with the reason.
+
 ## `generated-edited`
 
 `motif.css` was edited by hand.

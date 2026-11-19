@@ -16,7 +16,8 @@ Weigh these six things, roughly in this order of importance. A clear lead on the
 ## Rules
 
 - A screen that is blank, broken, only partly drawn, or shows an error message or a stack trace loses, however good the other parts look. If both are like that, it's a tie.
-- Ignore differences in content that are just placeholder data: different names, numbers, dates, sample items or wording that says the same thing. Judge how the screen is designed, not which made-up data it happens to show. Wording counts only when it makes the screen clearer or more confusing.
+- When the content is given above under "What both were asked to show", both designs were asked to show exactly that. A side that leaves out, adds or changes an item, an item's situation or its action, or the key wording (titles, button and link labels, field labels) loses the pair: answer "offContent" naming that side. If both sides do, answer "both" and judge the designs as usual. Otherwise answer "none". How the content is laid out and styled is design, not content: judge it as design.
+- When no content is given above, ignore differences in content that are just placeholder data: different names, numbers, dates, sample items or wording that says the same thing. Judge how the screen is designed, not which made-up data it happens to show. Wording counts only when it makes the screen clearer or more confusing.
 - Don't reward a screen for having more on it. More features, sections or decoration are better only when they make it a better design for these people.
 - Say "tie" only when the two are genuinely equal overall, or so close that you couldn't defend a pick. If one is better, pick it, even by a little.
 - The order the images are shown in means nothing. Don't favour the first or the second.
@@ -24,4 +25,4 @@ Weigh these six things, roughly in this order of importance. A clear lead on the
 
 ## Answer
 
-"pick": "left", "right" or "tie". "why": one sentence naming the main reason for your pick.
+"pick": "left", "right" or "tie". "why": one sentence naming the main reason for your pick. "offContent", when the content is given: "left", "right", "both" or "none", as the rules above say.

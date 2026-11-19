@@ -56,6 +56,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 With no server (a prerendered site, or a Vite app), set them from the browser when the locale changes: `document.documentElement.lang = locale` and `document.documentElement.dir = dir`, in an `$effect` at the root. Use a library for translations (Paraglide, `svelte-i18n`) for every string once the app has a second language; keep Arabic and English lengths in mind, since text grows by a third.
 
+**Numbers** are formatted by locale with `Intl.NumberFormat`, never by joining strings, so digits, separators and the minus sign follow the language. Pick the digits the design guide chose (section 7) with `numberingSystem`: `new Intl.NumberFormat(locale, { numberingSystem: "arab" }).format(n)` for Arabic-Indic, `"latn"` for Western.
+
 ## Server rendering
 
 With server rendering, a SvelteKit page is drawn on the server first, so code that reads the browser (`window`, `document`, `localStorage`, `matchMedia`) must wait: put it in `onMount` or in an `$effect`, neither of which runs on the server, or check `browser` from `$app/environment`. Anything the first paint depends on (the theme, the variant, the locale) should come from a cookie in `hooks.server.ts` or a `+layout.server.ts` load, so the server draws the right one. A mismatch between the server's and the browser's first render is a hydration warning in the console: fix those, they cost a visible flash. A `load` function that fetches data runs on the server and in the browser; give a failing request a state (`ErrorState`), not a blank page.

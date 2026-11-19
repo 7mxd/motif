@@ -149,7 +149,7 @@ describe("the Expo contract app (Dukkan)", () => {
 describe("the Expo seeded app's list of planted problems", () => {
   test("has the brief's problems: at least 8 exact ones and 4 that need judgement", () => {
     expect(issues.filter((i) => i.kind === "exact").length).toBeGreaterThanOrEqual(8);
-    expect(new Set(byDetector("check").map((i) => i.rule))).toEqual(new Set(["raw-color", "off-scale", "raw-motion", "raw-font", "generated-edited"]));
+    expect(new Set(byDetector("check").map((i) => i.rule))).toEqual(new Set(["raw-color", "off-scale", "raw-motion", "physical-direction", "raw-font", "generated-edited"]));
     expect(issues.filter((i) => i.kind === "judgement").length).toBeGreaterThanOrEqual(4);
     const anchors = issues.map((i) => i.anchor ?? "");
     for (const a of ['"#2E7D32"', "padding: 18", "borderRadius: 10", "fontSize: 15", "Easing.bezier(", "marginLeft:"]) {

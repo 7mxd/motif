@@ -216,7 +216,7 @@ describe("the Angular contract app (Ataa)", () => {
 describe("the Angular seeded app's list of planted problems", () => {
   test("has the brief's problems: at least 8 exact ones and 4 that need judgement", () => {
     expect(issues.filter((i) => i.kind === "exact").length).toBeGreaterThanOrEqual(8);
-    expect(new Set(byDetector("check").map((i) => i.rule))).toEqual(new Set(["raw-color", "off-scale", "tailwind-arbitrary", "raw-motion"]));
+    expect(new Set(byDetector("check").map((i) => i.rule))).toEqual(new Set(["raw-color", "off-scale", "tailwind-arbitrary", "raw-motion", "physical-direction"]));
     expect(issues.filter((i) => i.kind === "judgement").length).toBeGreaterThanOrEqual(4);
     const anchors = issues.map((i) => i.anchor ?? "");
     for (const a of ["[style.color]=\"'#625D51'\"", "padding: 18px", "gap: 6px", "rounded-[14px]", "font-size: 15px", "animate('250ms'", "opacity-50", "margin-left:"]) {

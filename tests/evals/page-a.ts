@@ -19,7 +19,21 @@ const REPO = resolve(import.meta.dir, "..", "..");
 const TEMPLATE = join(import.meta.dir, "page-a", "template.html");
 
 export type Side = "left" | "right";
-export interface OwnerVote { pairId: string; pick: Side | "same"; order: Order }
+/**
+ * A vote. `offContent` marks a side that didn't follow the brief's content for the screen, and that side loses: one side
+ * marked goes with a pick of the other, both with "same".
+ */
+export interface OwnerVote {
+  pairId: string;
+  pick: Side | "same";
+  order: Order;
+  offContent?: Side | "both";
+  /** With a mark: the pick that stood before the pair's marks (null when they came first), brought back when the last is taken back. */
+  pickBeforeMark?: Side | "same" | null;
+}
+
+/** The pick an off-content mark goes with: the other side, or "same" when both are marked. */
+const MARKED_PICK: Record<Side | "both", Side | "same"> = { left: "right", right: "left", both: "same" };
 
 /** The owner's votes, relative to the run folder; one per pair, written as each is made. */
 export const votesFile = "a/owner-votes.json";
@@ -36,7 +50,9 @@ function writeJson(file: string, data: unknown): void {
 }
 
 const isVote = (v: any): v is OwnerVote =>
-  typeof v?.pairId === "string" && ["left", "right", "same"].includes(v.pick) && ["motif-left", "motif-right"].includes(v.order);
+  typeof v?.pairId === "string" && ["left", "right", "same"].includes(v.pick) && ["motif-left", "motif-right"].includes(v.order) &&
+  (v.offContent === undefined || MARKED_PICK[v.offContent as Side | "both"] === v.pick) &&
+  (v.pickBeforeMark === undefined || v.pickBeforeMark === null || ["left", "right", "same"].includes(v.pickBeforeMark));
 
 /**
  * The owner's votes so far; none before the first. A file that can't be read as votes (cut short, emptied, edited by
@@ -64,6 +80,17 @@ export function ownerPicks(run: string): Map<string, OwnerPick> {
   for (const v of readVotes(run)) {
     if (v.pick === "same") m.set(v.pairId, "same");
     else m.set(v.pairId, (v.pick === "left") === (v.order === "motif-left") ? "motif" : "baseline");
+  }
+  return m;
+}
+
+/** For each pair the owner marked, the apps that didn't follow the content (read through the pair's order). */
+export function ownerOffContent(run: string): Map<string, ("motif" | "baseline")[]> {
+  const m = new Map<string, ("motif" | "baseline")[]>();
+  for (const v of readVotes(run)) {
+    if (!v.offContent) continue;
+    const app = (side: Side) => ((side === "left") === (v.order === "motif-left") ? "motif" : "baseline");
+    m.set(v.pairId, v.offContent === "both" ? ["motif", "baseline"] : [app(v.offContent)]);
   }
   return m;
 }
@@ -111,10 +138,14 @@ function screenTitle(screen: string): string {
 
 const sizeName = (size: number) => (size < 600 ? "Phone" : size < 1024 ? "Tablet" : "Desktop");
 
-interface Shown { pair: Pair; order: Order; left: string | null; right: string | null }
+/** A pair as shown: its sides, and what the brief says the screen shows (null when it says nothing). */
+interface Shown { pair: Pair; order: Order; left: string | null; right: string | null; content: string | null }
+
+/** A test's own content for a screen; without one, each pair's content is the one saved when it was shot. */
+type ContentOf = (brief: string, screen: string) => string | undefined;
 
 /** The session's pairs in their order (from the seed, so a reload keeps it), each with its images on their sides. */
-function arrange(seed: string, pairs: Pair[]): Shown[] {
+function arrange(seed: string, pairs: Pair[], contentOf?: ContentOf): Shown[] {
   const img = (path?: string) => (path ? path.replace(/^a\//, "") : null);
   return [...pairs]
     .map((pair) => ({ pair, key: hash(`${seed}:place:${pair.id}`).toString("hex") }))
@@ -122,7 +153,8 @@ function arrange(seed: string, pairs: Pair[]): Shown[] {
     .map(({ pair }) => {
       const order = sideOrder(seed, pair.id);
       const [left, right] = order === "motif-left" ? [img(pair.motif), img(pair.baseline)] : [img(pair.baseline), img(pair.motif)];
-      return { pair, order, left, right };
+      const content = (contentOf ? contentOf(pair.brief, pair.screen) : pair.content) ?? null;
+      return { pair, order, left, right, content };
     });
 }
 
@@ -145,11 +177,11 @@ const scriptJson = (data: unknown) => JSON.stringify(data).replace(/</g, "\\u003
  * Writes the owner's page for a run and returns its path: the pairs in the session's order with their sides, by their
  * images' random names (served from img/), and nothing else about them.
  */
-export function writePage(run: string, pairs: Pair[]): string {
-  const shown = arrange(session(run).seed, pairs);
+export function writePage(run: string, pairs: Pair[], contentOf: ContentOf | undefined = undefined): string {
+  const shown = arrange(session(run).seed, pairs, contentOf);
   const data = {
     pairs: shown.map((s) => ({
-      id: s.pair.id, title: `${briefTitle(s.pair.brief)} — ${screenTitle(s.pair.screen)}`, size: s.pair.size, device: sizeName(s.pair.size), left: s.left, right: s.right,
+      id: s.pair.id, title: `${briefTitle(s.pair.brief)} — ${screenTitle(s.pair.screen)}`, size: s.pair.size, device: sizeName(s.pair.size), left: s.left, right: s.right, content: s.content,
     })),
   };
   const html = readFileSync(TEMPLATE, "utf8")
@@ -211,7 +243,8 @@ const json = (data: unknown, status = 200) =>
  * Serves the owner's page from the run folder on 127.0.0.1: GET / (the page), GET /img/<name>.png (a shown pair's
  * image), GET /votes (the picks so far, without their order), POST /vote { pairId, pick } (saved at once into
  * a/owner-votes.json with the order the pair was shown in; a second vote on a pair replaces the first, until the answers
- * have been shown) and GET /reveal (only once every pair shown has a vote and answersWait, read at each request, finds
+ * have been shown), POST /unmark { pairId } (takes a pair's last off-content mark back, bringing back the pick made
+ * before its marks, or no vote when they came first) and GET /reveal (only once every pair shown has a vote and answersWait, read at each request, finds
  * nothing to wait for; /votes and /vote say what it found as `waiting`). `onVote` hears of each vote saved.
  */
 export async function serveOwner(
@@ -261,7 +294,7 @@ export async function serveOwner(
         // final: the answers have been shown, so the votes made stand (the page shows them as final).
         // waiting: why the answers can't be shown yet whatever the votes; null once nothing but votes stands in the way.
         return json({
-          votes: readVotes(run).filter((v) => byId.has(v.pairId)).map((v) => ({ pairId: v.pairId, pick: v.pick })), final: Boolean(session(run).revealed), waiting: waiting(),
+          votes: readVotes(run).filter((v) => byId.has(v.pairId)).map((v) => ({ pairId: v.pairId, pick: v.pick, ...(v.offContent ? { offContent: v.offContent } : {}) })), final: Boolean(session(run).revealed), waiting: waiting(),
         });
       }
       if (req.method === "POST" && path === "/vote") {
@@ -278,16 +311,49 @@ export async function serveOwner(
         const s = typeof body?.pairId === "string" ? byId.get(body.pairId) : undefined;
         if (!s) return json({ error: "There's no such pair here." }, 400);
         if (body.pick !== "left" && body.pick !== "right" && body.pick !== "same") return json({ error: 'A vote is "left", "right" or "same".' }, 400);
+        const off = body.offContent;
+        if (off !== undefined && s.content === null) return json({ error: "This pair has no content to follow, so no side can be marked as not following it." }, 400);
+        if (off !== undefined && !(["left", "right", "both"].includes(off) && MARKED_PICK[off as Side | "both"] === body.pick)) {
+          return json({ error: 'A side that didn\'t follow the content loses: "left" goes with a pick of "right", "right" with "left", and "both" with "same".' }, 400);
+        }
         const votes = readVotes(run);
         const at = votes.findIndex((v) => v.pairId === s.pair.id);
         if (at >= 0 && session(run).revealed) return json({ error: "The answers have been shown, so the votes made before stand." }, 409);
-        const vote: OwnerVote = { pairId: s.pair.id, pick: body.pick, order: s.order };
+        // A mark keeps the pick that stood before the pair's first mark, so taking the marks back brings it back.
+        const prev = at >= 0 ? votes[at]! : undefined;
+        const before = prev === undefined ? null : prev.offContent === undefined ? prev.pick : prev.pickBeforeMark ?? null;
+        const vote: OwnerVote = { pairId: s.pair.id, pick: body.pick, order: s.order, ...(off !== undefined ? { offContent: off, pickBeforeMark: before } : {}) };
         if (at >= 0) votes[at] = vote;
         else votes.push(vote);
         writeJson(join(run, votesFile), votes);
         const left = missing(votes);
         opts.onVote?.(shown.length - left, shown.length);
         return json({ saved: true, votes: shown.length - left, of: shown.length, waiting: waiting() });
+      }
+      if (req.method === "POST" && path === "/unmark") {
+        const origin = req.headers.get("origin");
+        if (origin !== null && origin !== `http://${host}`) return new Response("Forbidden", { status: 403 });
+        let body: any;
+        try {
+          const text = await req.text();
+          if (text.length > 4096) throw new Error("too long");
+          body = JSON.parse(text);
+        } catch {
+          return json({ error: "That isn't a pair to unmark." }, 400);
+        }
+        const s = typeof body?.pairId === "string" ? byId.get(body.pairId) : undefined;
+        if (!s) return json({ error: "There's no such pair here." }, 400);
+        const votes = readVotes(run);
+        const at = votes.findIndex((v) => v.pairId === s.pair.id);
+        if (at >= 0 && session(run).revealed) return json({ error: "The answers have been shown, so the votes made before stand." }, 409);
+        if (at < 0 || votes[at]!.offContent === undefined) return json({ error: "That pair has no mark to take back." }, 400);
+        const before = votes[at]!.pickBeforeMark ?? null;
+        if (before === null) votes.splice(at, 1);
+        else votes[at] = { pairId: s.pair.id, pick: before, order: s.order };
+        writeJson(join(run, votesFile), votes);
+        const left = missing(votes);
+        opts.onVote?.(shown.length - left, shown.length);
+        return json({ saved: true, pick: before, votes: shown.length - left, of: shown.length, waiting: waiting() });
       }
       if (req.method === "GET" && path === "/reveal") {
         const votes = readVotes(run);

@@ -262,3 +262,19 @@ class MyApp extends StatelessWidget {
     expect(line("120")).toContain("Closest: MotifRadius.lg (16px).");
   });
 });
+
+describe("physical-direction", () => {
+  const run = async (files: Record<string, string>) => (await check(await flutterApp(files))) as any;
+  const SOURCE = "import 'package:flutter/widgets.dart';\n\nWidget pad(Widget c) => Padding(padding: EdgeInsets.only(left: 8), child: c);\n";
+  const directional = (r: any) => (r.data.violations as { rule: string }[]).filter((h) => h.rule === "physical-direction");
+  test("a fixed side is a problem when the design guide asks for start/end", async () => {
+    const r = await run({ ["lib/home.dart"]: SOURCE, "DESIGN.md": "# Guide\n\n## 7. Accessibility\n\n- Layouts use start/end (not left/right), so right-to-left languages work.\n" });
+    expect(directional(r).length).toBe(1);
+    expect(r.data.advice).toEqual([]);
+  });
+  test("without that line it is one line of advice, not a problem", async () => {
+    const r = await run({ ["lib/home.dart"]: SOURCE });
+    expect(directional(r)).toEqual([]);
+    expect(r.data.advice).toEqual(["1 place uses left/right where start/end exists; if this app may be used in a right-to-left language, use start/end."]);
+  });
+});

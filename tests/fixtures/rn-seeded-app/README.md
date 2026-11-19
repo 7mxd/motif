@@ -1,6 +1,6 @@
 # The Expo seeded app
 
-Dukkan (the Expo contract app) with 14 planted problems, for test C on React Native: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
+Dukkan (the Expo contract app) with 15 planted problems, for test C on React Native: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
 
 ## How it's built
 
@@ -27,9 +27,10 @@ Then run `npm ci` in the copy before `npx tsc --noEmit`, `npx expo start --web` 
 | E-09 | judgement | Products crammed into tight rows, the pack size gone | `/`, `components/product-row.tsx` |
 | E-10 | judgement | The product page's main action is a hand-made secondary pill, unlike every other main action | `/products/[id]`, `app/products/[id].tsx:55` |
 | E-11 | judgement | The basket has no empty state | `/basket`, `app/basket.tsx` |
-| E-12 | judgement | `marginLeft` on the top bar's title: wrong side in Arabic | every screen, `components/screen-header.tsx:42` |
+| E-12 | exact (check) | `marginLeft` on the top bar's title: wrong side in Arabic | every screen, `components/screen-header.tsx:42` |
 | E-13 | exact (check) | The "On the shelves" heading hard-codes `fontFamily: "Georgia"` | `app/index.tsx:68` |
 | E-14 | exact (check) | The generated theme edited by hand (`radius.md` 8 → 6) | `design/motif-theme.tsx` |
+| E-15 | judgement | The status bar forced light, `<StatusBar style="light" />`: white on the pale background in light mode | every screen, `app/_layout.tsx:20` |
 
 ## How a grader reads the list
 
@@ -41,6 +42,6 @@ E-13's Georgia has no Arabic letters, so in Arabic the heading falls back to the
 
 ## Changing it
 
-Change the overlay and the list together. `cli/test/fixtures-rn.test.ts` checks, on every change, that `motif check` reports exactly the seven check problems at their lines (E-14 as a warning on the generated file's first line) and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node and npm are installed, it also checks that `npx tsc --noEmit` passes on the copy, and with a browser that `motif shot --sizes 390 --audit --variant all --rtl` on `/`, `/sign-in`, `/basket` and `/products/oat-milk` reports E-06, E-07 and E-08 and nothing that isn't one of them or E-01's consequences.
+Change the overlay and the list together. `cli/test/fixtures-rn.test.ts` checks, on every change, that `motif check` reports exactly the eight check problems at their lines (E-14 as a warning on the generated file's first line) and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node and npm are installed, it also checks that `npx tsc --noEmit` passes on the copy, and with a browser that `motif shot --sizes 390 --audit --variant all --rtl` on `/`, `/sign-in`, `/basket` and `/products/oat-milk` reports E-06, E-07 and E-08 and nothing that isn't one of them or E-01's consequences.
 
 The audit was checked on 2026-10-20 with Expo SDK 58 in Chrome: E-06 is 2.23:1 in light mode (2.21:1 in the night market) and 2.9:1 in dark; E-07 is reported for each of the four products in stock, once per direction (the sold-out eggs' button is disabled); E-08 once, on `/`. The judgement problems were looked at in the screenshots.

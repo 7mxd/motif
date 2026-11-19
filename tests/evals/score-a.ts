@@ -38,7 +38,14 @@ export interface BriefScore {
   why: string;
   /** Only when different models built the brief's two apps: each side's. */
   models?: { motif: string; baseline: string };
+  /**
+   * Marks against each app for not following the brief's content: one per AI judgement and one per owner vote that marked
+   * it ("both" marks each). The marked side already lost those picks; this only says how often. Absent in older reports.
+   */
+  offContent?: OffContentCounts;
 }
+
+export interface OffContentCounts { ai: { motif: number; baseline: number }; owner: { motif: number; baseline: number } }
 
 /** The model each side's session used, as the session's first event named it. */
 export interface Models { motif?: string; baseline?: string }
@@ -273,7 +280,9 @@ export function forcedPairs(state: RunState, out: string): Map<string, "motif" |
 export const expectedBriefs = (state: RunState): string[] => Object.keys(state.cases).filter((id) => id.startsWith("a-")).map((id) => id.slice(2));
 
 /** Every expected brief's score from the run folder's pairs and judgements (the AI result needs both swaps judged). */
-export function scoreRun(state: RunState, out: string, owner?: Map<string, OwnerPick>): BriefScore[] {
+export function scoreRun(
+  state: RunState, out: string, owner?: Map<string, OwnerPick>, ownerOff: Map<string, ("motif" | "baseline")[]> = new Map(),
+): BriefScore[] {
   const pairs = readPairs(out);
   const judgements = readJudgements(out);
   const results = new Map<string, AiResult>();
@@ -282,5 +291,16 @@ export function scoreRun(state: RunState, out: string, owner?: Map<string, Owner
     const second = judgements.find((j) => j.pairId === p.id && j.order === "motif-right");
     if (first && second) results.set(p.id, pairResult(first.pick, second.pick));
   }
-  return expectedBriefs(state).map((b) => scoreBrief(b, pairs, results, owner, builtFor(state, b), modelsFor(state, b)));
+  return expectedBriefs(state).map((b) => {
+    const ids = new Set(pairs.filter((p) => p.brief === b).map((p) => p.id));
+    const off: OffContentCounts = { ai: { motif: 0, baseline: 0 }, owner: { motif: 0, baseline: 0 } };
+    for (const j of judgements) {
+      if (!ids.has(j.pairId) || !j.offContent) continue;
+      const motifSide = j.order === "motif-left" ? "left" : "right";
+      if (j.offContent === "both" || j.offContent === motifSide) off.ai.motif++;
+      if (j.offContent === "both" || j.offContent !== motifSide) off.ai.baseline++;
+    }
+    for (const [id, apps] of ownerOff) if (ids.has(id)) for (const app of apps) off.owner[app]++;
+    return { ...scoreBrief(b, pairs, results, owner, builtFor(state, b), modelsFor(state, b)), offContent: off };
+  });
 }

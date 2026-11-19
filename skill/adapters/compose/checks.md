@@ -103,6 +103,14 @@ fun PressScale(pressed: Boolean, content: @Composable () -> Unit) {
 }
 ```
 
+## `physical-direction`
+
+An absolute left or right (`Modifier.absolutePadding`, `Modifier.absoluteOffset`, `Arrangement.Absolute.Left`, `AbsoluteAlignment`, `TextAlign.Left`) or a forced `LocalLayoutDirection provides LayoutDirection.Ltr` stays the same in Arabic and Hebrew.
+
+- Fix: `padding(start =, end =)`, `offset`, `Arrangement.Start`, `Alignment.Start`, `TextAlign.Start`; remove the forced direction.
+
+It counts as a problem when your design guide keeps its start/end line (section 7, there by default); without that line, `motif check` only prints one line of advice. A deliberate fixed side (a slider's track, a map control, a chart axis) takes a `motif-ok` comment with the reason.
+
 ## `generated-edited`
 
 `MotifTheme.kt` or `motif_font_certs.xml` was edited by hand, or is out of date.

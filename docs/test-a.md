@@ -115,6 +115,16 @@ One row per brief of each run, with the run's id (its folder in `tests/evals/res
 | 20261112-134851 | 0da6f09 | claude-opus-5-5 | Nuzha | 6 | 3 / 1 / 2 | 5 / 1 | fail |
 | 20261112-134851 | 0da6f09 | claude-opus-5-5 | Sanad | 6 | 4 / 1 / 1 | 5 / 1 | fail |
 | 20261112-134851 | 0da6f09 | claude-opus-5-5 | Masar | 3 | 3 / 0 / 0 | 1 / 2 | fail |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Stride | 6 | 5 / 0 / 1 | 4 / 2 | pass |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Ledgerly | 6 | 5 / 0 / 1 | 2 / 4 | fail |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Bloom | 6 | 4 / 2 / 0 | 3 / 3 | fail |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Sahm | 3 | 3 / 0 / 0 | 2 / 1 | pass |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Nabta | 3 | 3 / 0 / 0 | 2 / 1 | pass |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Rihla | 3 | 2 / 0 / 1 | 1 / 2 | fail |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Darb | 6 | 6 / 0 / 0 | 4 / 2 | pass |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Nuzha | 6 | 5 / 0 / 1 | 2 / 4 | fail |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Sanad | 6 | 5 / 0 / 1 | 2 / 4 | fail |
+| 20261113-052637 | 8dd1e1b | claude-opus-5-5 | Masar | 3 | 3 / 0 / 0 | 1 / 2 | fail |
 
 ### 1.3.0 and 2.0.0: Test A failed twice on the owner's votes, then passed
 
@@ -123,3 +133,4 @@ One row per brief of each run, with the run's id (its folder in `tests/evals/res
 - Why the plain builds won, from a review of both runs' screens and the owner's comments: they had bolder first impressions (colour, depth, a big headline, a richer sign-in), and Motif's own guidance held its first screens back. The next candidate rewrites that guidance as recipes and adds the accent and hero roles, the depth pieces, the sign-in piece and a text-fit check ([the design](specs/2026-11-10-motif-2.0-first-impressions-design.md)).
 - **20261111-025816** (a quick vote on 0da6f09: Stride, Ledgerly and Darb only): AI judges 83% Motif / 6% baseline, owner 61% Motif. Two outside voters, recorded apart from the owner's votes: 50% and 61% Motif.
 - **20261112-134851** (the second 2.0.0 candidate, 0da6f09): Test A **passed** on the briefs' average: AI judges 82% Motif / 7% baseline, owner 62% Motif, and no brief lost to both kinds of judge. C 9/9 passed; B failed two cases (a new component file beside a route, not recorded in `DESIGN.md`), so D failed with it. The fix is in the skill's guidance, and the next candidate runs again. Sahm's two pairs had the plain build's text drawn as boxes, which the boxes check missed; the owner voted them "about the same", counted against Motif.
+- **20261113-052637** (the third 2.0.0 candidate, 8dd1e1b): Test A **failed** on the owner's votes: AI judges 87% Motif / 3% baseline, owner 48% Motif. Below the bar on their own: Ledgerly, Bloom, Rihla, Nuzha, Sanad and Masar. B passed (20 of 20); C failed c-angular, so D failed with it. The owner found many pairs hard to judge because the two sides showed different content (different items, different buttons), so a pick was partly about the content. Each brief now gives the content every screen shows, and a side that doesn't follow it loses the pair ([decision 0016](decisions/0016-test-a-shared-content.md)).

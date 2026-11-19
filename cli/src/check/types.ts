@@ -2,7 +2,7 @@ import type { SourceFile } from "./files";
 
 export const RULE_IDS = [
   "raw-color", "tailwind-arbitrary", "tailwind-palette", "off-scale", "raw-font",
-  "raw-motion", "primitive-use", "reduced-motion", "generated-edited",
+  "raw-motion", "primitive-use", "reduced-motion", "generated-edited", "physical-direction",
 ] as const;
 export type RuleId = (typeof RULE_IDS)[number];
 

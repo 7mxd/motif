@@ -13,6 +13,7 @@ import { CASES, isReactNative, type EvalCase } from "./cases";
 import { shotTargets, shotTimeout, type Collectors } from "./collect";
 import { packageManager, tail } from "./tools";
 import { findApp, findBuiltApp, type Workspace } from "./workspace";
+import { screenContent } from "./content";
 
 export interface Pair {
   id: string;
@@ -34,6 +35,11 @@ export interface Pair {
    * had them all. Setup, not design: an app built without them would otherwise lose every pair to the harness.
    */
   webSetup?: { motif: string[]; baseline: string[] };
+  /**
+   * What the brief said this screen shows, saved when the pair was shot, so the judges and the owner see what both apps
+   * were asked for, whatever the brief says later. None for a pair shot before briefs had content.
+   */
+  content?: string;
 }
 
 /** Every brief's pairs, relative to the run folder. */
@@ -244,7 +250,10 @@ export async function shootPairs(brief: string, motifApp: string | null, baselin
         const why = "why" in m && "why" in b ? `With Motif: ${m.why} Without: ${b.why}` : "why" in m ? m.why : "why" in b ? b.why : undefined;
         const id = randomId(brief, (x) => ids.has(x));
         ids.add(id);
-        pairs.push({ id, brief, screen, size, ...(motif ? { motif } : {}), ...(baseline ? { baseline } : {}), outcome, ...(why ? { why } : {}), ...webSetup });
+        const content = screenContent(brief, screen);
+        pairs.push({
+          id, brief, screen, size, ...(motif ? { motif } : {}), ...(baseline ? { baseline } : {}), outcome, ...(why ? { why } : {}), ...webSetup, ...(content ? { content } : {}),
+        });
       }
     }
     // One time for every image, so the order they were written in doesn't show in their times either.

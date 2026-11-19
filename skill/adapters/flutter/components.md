@@ -283,7 +283,7 @@ For a new app, build these, each with the states above and the options its scree
 
 ## A screen's states
 
-A screen that shows data has a branch for loading, empty and error, besides the data itself. Mock data loads at once and is never empty, so write the branches anyway. Loading shows skeleton rows in the final layout (`Skeleton` is in [motion](motion.md#skeletons)), as [the empty, loading and error pattern](../../knowledge/ux-patterns/empty-loading-error.md) asks; a spinner is only for a small wait inside a control:
+A screen that shows data has a branch for loading, empty and error, besides the data itself. Mock data loads at once and is never empty, so write the branches anyway. A screen whose content depends on who is signed in (a role, a team, a plan) also has a branch for no access: its own message and a way forward (ask for access, switch account, go back), not the error branch. Loading shows skeleton rows in the final layout (`Skeleton` is in [motion](motion.md#skeletons)), as [the empty, loading and error pattern](../../knowledge/ux-patterns/empty-loading-error.md) asks; a spinner is only for a small wait inside a control:
 
 ```dart
 class OrdersBody extends StatelessWidget {

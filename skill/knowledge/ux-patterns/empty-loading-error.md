@@ -30,6 +30,7 @@ The states every screen has besides the happy path: nothing there yet, on its wa
 - **Unrecoverable error:** a way out (back, home) and how to contact support.
 - **Offline:** cached content where possible, the offline banner, and actions queued or clearly unavailable.
 - **Permission needed:** what the feature needs and why, with a button to grant it or open the system settings.
+- **No access:** when what the screen shows depends on who is signed in (a role, a team, a plan): its own message and a way forward (ask for access, switch account, go back), not an error. Screens open to everyone don't need it.
 
 ## Common mistakes
 

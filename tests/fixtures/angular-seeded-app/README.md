@@ -1,6 +1,6 @@
 # The Angular seeded app
 
-Ataa (the Angular contract app) with 12 planted problems, for test C on Angular: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
+Ataa (the Angular contract app) with 13 planted problems, for test C on Angular: Motif's `review` mode is run on a copy in report-only mode, and its report is graded against [seeded-issues.json](seeded-issues.json).
 
 ## How it's built
 
@@ -27,7 +27,8 @@ Then run `npm ci` in the copy before `npm run build`, `npm start` or `motif shot
 | S-09 | judgement | Shift cards crammed: 4 px padding and gaps, the hours and the place gone | `/`, `src/app/shift-card/shift-card.html` |
 | S-10 | judgement | Two primary buttons on the page of a shift with room | `/shifts/[id]`, `src/app/shift/shift.html:42` |
 | S-11 | judgement | My shifts has no empty state | `/my-shifts`, `src/app/my-shifts/my-shifts.html` |
-| S-12 | judgement | `margin-left` between the top bar's basket and the food bank's name: wrong side in Arabic | every page, `src/app/top-bar/top-bar.css:9` |
+| S-12 | exact (check) | `margin-left` between the top bar's basket and the food bank's name: wrong side in Arabic | every page, `src/app/top-bar/top-bar.css:9` |
+| S-13 | judgement | The top bar's tabs open in a new browser tab, `target="_blank"`, so Back can't return | every page, `src/app/top-bar/top-bar.html:11` |
 
 ## How a grader reads the list
 
@@ -43,6 +44,6 @@ S-09 is a review's problem, but its cards' names cut to one line also show in th
 
 ## Changing it
 
-Change the overlay and the list together. `cli/test/fixtures-angular.test.ts` checks, on every change, that `motif check` reports exactly the six check problems at their lines and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node (in Angular 21's range) and npm are installed, it also checks that `ng build` passes on the copy with no warnings, and with a browser that `motif shot --sizes 390,1440 --audit --variant all --rtl` on `/`, `/my-shifts`, `/sign-in` and `/shifts/pack-sunday` reports S-07 and S-08 and nothing that isn't one of them or S-01's consequences.
+Change the overlay and the list together. `cli/test/fixtures-angular.test.ts` checks, on every change, that `motif check` reports exactly the seven check problems at their lines and nothing else, before and after `npm ci`, that `motif validate` finds nothing, and that every pinned line holds its anchor. Where Node (in Angular 21's range) and npm are installed, it also checks that `ng build` passes on the copy with no warnings, and with a browser that `motif shot --sizes 390,1440 --audit --variant all --rtl` on `/`, `/my-shifts`, `/sign-in` and `/shifts/pack-sunday` reports S-07 and S-08 and nothing that isn't one of them or S-01's consequences.
 
 The audit was checked on 2026-10-25 with Angular 21.2 and Tailwind 4 in Chrome: S-07 is 2.19:1 in light mode and 3.04:1 in dark, in both variants (left to right: the Arabic caption isn't reported); S-08 once, grouped across the four pages; S-01's consequence as one group of twelve places (the six cards on `/`, in both variants). The judgement problems were looked at in the screenshots.

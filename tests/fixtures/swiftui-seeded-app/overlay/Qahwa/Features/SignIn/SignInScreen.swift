@@ -29,9 +29,9 @@ struct SignInScreen: View {
                 }
                 VStack(alignment: .leading, spacing: MotifSpace.s4) {
                     AppField(label: "Email", text: $email, prompt: "name@example.com", error: emailError)
-                        .keyboardType(.emailAddress)
+                        .keyboardType(.default)
                         .textContentType(.emailAddress)
-                        .textInputAutocapitalization(.never)
+                        .textInputAutocapitalization(.sentences)
                         .autocorrectionDisabled()
                     AppField(label: "Password", text: $password, secure: true)
                         .textContentType(.password)

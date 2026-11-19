@@ -31,6 +31,8 @@ useHead({ htmlAttrs: { lang: () => locale.value, dir: () => (locale.value === 'a
 
 Use `vue-i18n` (or `@nuxtjs/i18n`) for every string once the app has a second language; keep Arabic and English lengths in mind, since text grows by a third.
 
+**Numbers** are formatted by locale with `Intl.NumberFormat`, never by joining strings, so digits, separators and the minus sign follow the language. Pick the digits the design guide chose (section 7) with `numberingSystem`: `new Intl.NumberFormat(locale, { numberingSystem: "arab" }).format(n)` for Arabic-Indic, `"latn"` for Western.
+
 ## Server rendering
 
 With server rendering, a Nuxt page is drawn on the server first, so code that reads the browser (`window`, `document`, `localStorage`, `matchMedia`) must wait: put it in `onMounted`, or in a component wrapped in `<ClientOnly>`. Anything the first paint depends on (the theme, the variant, the locale) should come from a cookie (`useCookie`) or `useHead`, so the server draws the right one. A mismatch between the server's and the browser's first render is a hydration warning in the console: fix those, they cost a visible flash.

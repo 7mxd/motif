@@ -188,6 +188,8 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
   }
   const notes = [...new Set(results.flatMap((r) => r.notes ?? []))];
   if (notes.length) lines.push("", ...notes.map((n) => `• ${n}`));
+  const advice = [...new Set(results.flatMap((r) => r.advice))];
+  if (advice.length) lines.push("", ...advice.map((a) => `• ${a}`));
   const skipped = apps.filter((a) => !supported.includes(a)).map((a) => `${appLabel(a)}${a.stack ? ` (${STACK_LABELS[a.stack]})` : ""}`);
   if (skipped.length) lines.push("", `Skipped (not supported yet): ${skipped.join(", ")}.`);
   if (violations.length) lines.push("", 'Fix these, or ask your agent: "fix the motif check findings".');
@@ -206,6 +208,7 @@ export async function runCheck(cwd: string, ctx: RunContext): Promise<CommandRes
       warnings,
       ...(palettes.length ? { palettes } : {}),
       ...(notes.length ? { notes } : {}),
+      advice,
       summary: { files, violations: violations.length, exceptions: exceptions.length, warnings: warnings.length },
     },
   };
