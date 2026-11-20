@@ -79,6 +79,24 @@ const COMMANDS: Record<string, Runner> = {
   connect: runConnect,
 };
 
+/**
+ * The options each command reads, besides the shared --json, --cwd, --app and --help. Anything else is refused before
+ * the command runs: an option a command ignores would let it do its usual work (tokens rewrites the app's theme files)
+ * while the caller believes they changed it.
+ */
+const COMMAND_OPTIONS: Record<string, readonly string[]> = {
+  doctor: [],
+  validate: ["tokens"],
+  tokens: ["stack"],
+  check: [],
+  extract: [],
+  browser: [],
+  preview: ["compare", "gallery", "png-only", "no-open", "preset", "variant", "out"],
+  shot: ["url", "routes", "audit", "save", "against", "state", "states-only", "screen", "sizes", "rtl", "variant", "out"],
+  connect: ["agent"],
+};
+const SHARED_OPTIONS = new Set(["json", "cwd", "app", "help", "version"]);
+
 /** Every command the tool has (the skill's content test checks that the skill only mentions these). */
 export const COMMAND_NAMES = Object.keys(COMMANDS);
 
@@ -121,6 +139,7 @@ export async function main(argv: string[]): Promise<number> {
       args,
       allowPositionals: true,
       strict: true,
+      tokens: true,
       options: {
         json: { type: "boolean", default: false },
         cwd: { type: "string" },
@@ -172,6 +191,17 @@ export async function main(argv: string[]): Promise<number> {
   }
   const runner = COMMANDS[command]!;
   const json = values.json ?? false;
+  const own = COMMAND_OPTIONS[command] ?? [];
+  const given = (parsed.tokens ?? []).flatMap((t) => (t.kind === "option" ? [t.name] : []));
+  const unused = [...given, ...(rtl !== undefined ? ["rtl"] : [])]
+    .filter((name, i, all) => all.indexOf(name) === i && !SHARED_OPTIONS.has(name) && !own.includes(name))
+    .map((name) => `--${name}`);
+  if (unused.length > 0) {
+    const text = `motif ${command} doesn't use ${unused.join(", ")}, so nothing was done.${own.length ? ` Its options: ${own.map((o) => `--${o}`).join(", ")}.` : ""} See motif help.`;
+    if (json) emit({ command, exitCode: 2, text, data: { error: "unused-option", options: unused } }, true);
+    else process.stderr.write(`${text}\n`);
+    return 2;
+  }
   const cwd = resolve(values.cwd ?? process.cwd());
   if (!isFolder(cwd)) {
     emit({ command, exitCode: 2, text: `This folder doesn't exist: ${cwd}`, data: { error: "no-folder", folder: cwd } }, json);

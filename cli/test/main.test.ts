@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readRtlFlag } from "../src/main";
@@ -73,9 +73,10 @@ describe("main: --app", () => {
 describe("main: preview options", () => {
   test("are accepted by the parser", () => {
     const missing = join(tmpdir(), "motif-no-such-folder-" + Date.now());
-    const r = run("doctor", "--png-only", "--compare", "--gallery", "--no-open", "--preset", "minimal", "--out", "x", "--stack", "preview", "--cwd", missing);
+    const r = run("preview", "--png-only", "--compare", "--gallery", "--no-open", "--preset", "minimal", "--out", "x", "--cwd", missing);
     expect(r.stderr.toString()).not.toContain("Unknown option");
     expect(r.exitCode).toBe(2);
+    expect(r.stdout.toString()).toContain("This folder doesn't exist");
   });
 });
 
@@ -132,6 +133,56 @@ describe("main: shot", () => {
 describe("main: connect", () => {
   test("is listed in help", () => {
     expect(run("help").stdout.toString()).toContain("connect");
+  });
+});
+
+describe("main: an option the command doesn't use", () => {
+  // A review agent ran `motif tokens --out /tmp/x` to write theme files somewhere safe; tokens ignored --out and
+  // rewrote the app's own motif.css. An option a command doesn't read must stop it before it does anything.
+  const app = () => {
+    const dir = tempDir("motif-strict-");
+    const src = join(import.meta.dir, "../../tests/fixtures/react-contract-app");
+    for (const part of ["DESIGN.md", "design", "package.json", "src/styles"]) cpSync(join(src, part), join(dir, part), { recursive: true });
+    const css = join(dir, "src/styles/motif.css");
+    writeFileSync(css, readFileSync(css, "utf8") + "/* edited by hand */\n");
+    return { dir, css, before: readFileSync(css, "utf8") };
+  };
+  test("tokens --out is refused, names the option and the command, and writes nothing", () => {
+    const { dir, css, before } = app();
+    const r = run("tokens", "--out", join(dir, "elsewhere"), "--cwd", dir);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr.toString()).toContain("--out");
+    expect(r.stderr.toString()).toContain("motif tokens");
+    expect(readFileSync(css, "utf8")).toBe(before);
+    expect(existsSync(join(dir, "elsewhere"))).toBe(false);
+  });
+  test("under --json the refusal is JSON", () => {
+    const { dir, css, before } = app();
+    const r = run("tokens", "--routes", "/", "--json", "--cwd", dir);
+    expect(r.exitCode).toBe(2);
+    const out = JSON.parse(r.stdout.toString());
+    expect(out).toMatchObject({ command: "tokens", ok: false, error: "unused-option", options: ["--routes"] });
+    expect(readFileSync(css, "utf8")).toBe(before);
+  });
+  test("every command still takes its own options and the shared ones", () => {
+    const missing = join(tmpdir(), "motif-no-such-folder-" + Date.now());
+    const cases: string[][] = [
+      ["preview", "--png-only", "--compare", "--gallery", "--no-open", "--preset", "minimal", "--variant", "all", "--out", "x"],
+      ["shot", "--url", "u", "--routes", "/", "--audit", "--save", "s", "--against", "a", "--state", "s.js", "--states-only", "--screen", "W", "--sizes", "390", "--variant", "all", "--out", "x", "--rtl"],
+      ["tokens", "--stack", "preview"],
+      ["validate", "--tokens", "t.json"],
+      ["connect", "--agent", "codex"],
+      ["doctor"], ["check"], ["extract"], ["browser"],
+    ];
+    for (const args of cases) {
+      const r = run(...args, "--app", "web", "--json", "--cwd", missing);
+      expect(JSON.parse(r.stdout.toString())).toMatchObject({ command: args[0], error: "no-folder" });
+    }
+  });
+  test("shot --rtl is its own; other commands refuse it", () => {
+    const r = run("check", "--rtl", "--cwd", tempDir("motif-empty-"));
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr.toString()).toContain("--rtl");
   });
 });
 
