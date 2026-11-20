@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pngSize } from "../src/browser/png";
 import { findBrowser } from "../src/detect/browser";
-import { captureScreens, routeSlug, routeUrl, shotName, stateExpression, VIEWPORTS } from "../src/shot/capture";
+import { captureScreens, routeSlug, routeUrl, screenOf, shotName, stateExpression, VIEWPORTS } from "../src/shot/capture";
 import { generateFallback } from "../src/generate/fallback";
 import { motifCss } from "../src/generate/motif-css";
 import { buildThemeSet } from "../src/generate/theme";
@@ -74,6 +74,39 @@ const EXPO_PAGES: Record<string, string> = {
 const OVERLAY = '<div style="position:fixed;top:0;left:0;width:120px;height:120px;background:#ff0000"><button style="width:16px;height:16px"></button></div>';
 const DEVTOOLS_PAGE = `<h1 style="margin:40px 0 0">Home</h1><div id="nuxt-devtools-container">${OVERLAY}</div><div id="__vue-devtools-container__">${OVERLAY}</div><nextjs-portal>${OVERLAY}</nextjs-portal>`;
 
+// A React Native web screen (Expo's web target): the document is one screen tall and the screen scrolls inside a View,
+// as react-native-web draws a ScrollView. Expo's page keeps <html>, <body> and #root at 100% with the body's overflow
+// hidden; react-navigation's screen fills it (inset: 0) with a header above the scroller and the tab bar below it, in
+// the same column. The list ends in a blue row.
+const RN_SHELL = "<style>html, body { height: 100%; } body { overflow: hidden; } #root { display: flex; flex-direction: column; height: 100%; }</style>";
+const rnScreen = (list: string, tabBar: string) =>
+  `${RN_SHELL}<div id="root"><div style="position:absolute;inset:0;display:flex;flex-direction:column"><header style="height:50px;flex-shrink:0;background:#00ff00"></header><div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column"><div id="scroller" style="flex:1 1 0%;overflow-y:auto">${list}</div></div>${tabBar}</div></div>`;
+const INNER_PAGES: Record<string, string> = {
+  "/inner-scroll": rnScreen('<div style="height:1950px"></div><div style="height:50px;background:#0000ff"></div>', '<nav style="height:60px;flex-shrink:0;background:#ff0000"></nav>'),
+  // The tab bar fixed to the bottom of the screen instead, with room left for it under the list.
+  "/inner-scroll-fixed": rnScreen('<div style="height:1950px"></div><div style="height:50px;background:#0000ff"></div><div style="height:60px"></div>', '<nav style="position:fixed;bottom:0;left:0;right:0;height:60px;background:#ff0000"></nav>'),
+  // A list longer than a screenshot can be.
+  "/inner-scroll-huge": rnScreen('<div style="height:20000px"></div>', '<nav style="height:60px;flex-shrink:0;background:#ff0000"></nav>'),
+  // A web page that fits the screen, with a small box of its own that scrolls (a code sample): not the page's content.
+  "/inner-small": '<h1>Docs</h1><pre style="height:120px;width:200px;overflow-y:auto;margin:0"><div style="height:1000px"></div></pre>',
+};
+
+// Expo's web LogBox (@expo/log-box) shows console.error calls as a toast at the bottom of the screen, drawn in a shadow
+// root on a <div id="error-toast"> it appends to <body>, whose :host style is "all: initial; position: absolute". Here the
+// toast is a red bar over an Expo screen (#123456).
+const LOGBOX_TOAST = `<script>(() => {
+  const host = document.createElement("div");
+  host.id = "error-toast";
+  host.style.position = "absolute";
+  document.body.appendChild(host);
+  host.attachShadow({ mode: "open" }).innerHTML = '<style>:host { all: initial; direction: ltr; position: absolute; }</style><div style="position:fixed;bottom:6px;left:10px;right:10px;height:48px;background:#ff0000">2 React does not recognize the iconName prop</div>';
+  console.error("React does not recognize the \`iconName\` prop on a DOM element.");
+})();</script>`;
+const LOGBOX_PAGES: Record<string, string> = {
+  "/logbox-toast": `<div id="root">${EXPO_SCREEN}</div>${LOGBOX_TOAST}`,
+  "/logbox-crash": `<div id="root">${EXPO_SCREEN}</div>${LOGBOX_TOAST}<script>throw new Error("boom: native module")</script>`,
+};
+
 beforeAll(() => {
   server = Bun.serve({
     hostname: "127.0.0.1",
@@ -112,6 +145,8 @@ beforeAll(() => {
       if (path === "/fade-in") return html('<style>@keyframes in { from { opacity: 0 } to { opacity: 1 } } @keyframes spin { to { transform: rotate(1turn) } }</style><body style="margin:0"><div style="height:400px;background:#ff0000;animation:in 2s linear both"></div><div style="width:20px;height:20px;background:#000;animation:spin 1s linear infinite"></div></body>');
       // Sent to /ar by the browser's language, as an app with a language picker in its address may do.
       if (path === "/by-language") return html('<h1>Home</h1><script>if ([navigator.language, Intl.DateTimeFormat().resolvedOptions().locale].some((l) => l.startsWith("ar"))) history.replaceState(null, "", "/ar");</script>');
+      if (INNER_PAGES[path]) return html(INNER_PAGES[path]!);
+      if (LOGBOX_PAGES[path]) return html(LOGBOX_PAGES[path]!);
       return html("<h1>Not found</h1>", 404);
     },
   });
@@ -418,5 +453,93 @@ describe.skipIf(!browser)("an app's own fixed scheme (needs Chrome, Edge or Chro
     const free = tempDir("motif-shots-");
     await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/"], outDir: free, settleMs: 50, viewports: PHONE });
     expect(readFileSync(join(free, "index.mobile.png")).equals(readFileSync(join(free, "index.mobile.dark.png")))).toBe(false);
+  }, 120_000);
+});
+
+describe.skipIf(!browser)("a screen that scrolls inside the page, as React Native web draws one (needs Chrome, Edge or Chromium)", () => {
+  const PHONE = [{ name: "mobile" as const, width: 390, height: 844, scale: 1, mobile: true }];
+  const RED = [255, 0, 0, 255], BLUE = [0, 0, 255, 255], GREEN = [0, 255, 0, 255];
+
+  test("is captured to the end of its list, with the tab bar below it, not only the first screen (Test A: an Expo pair was exactly one screen tall)", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/inner-scroll", "/inner-scroll-fixed"], outDir: out, settleMs: 50, viewports: PHONE, appScheme: "light" });
+    expect(routes.map((r) => [r.route, r.error, r.cropped])).toEqual([["/inner-scroll", undefined, undefined], ["/inner-scroll-fixed", undefined, undefined]]);
+    for (const name of ["inner-scroll.mobile.png", "inner-scroll-fixed.mobile.png"]) {
+      const png = new Uint8Array(readFileSync(join(out, name)));
+      expect(pngSize(png)).toEqual({ width: 390, height: 2110 });
+      // The header stays at the top, the list's last row is drawn, and the tab bar is at the end, not across the middle.
+      expect(pixel(png, 195, 20)).toEqual(GREEN);
+      expect(pixel(png, 195, 2030)).toEqual(BLUE);
+      expect(pixel(png, 195, 2090)).toEqual(RED);
+      expect(pixel(png, 195, 820)).not.toEqual(RED);
+    }
+  }, 120_000);
+
+  test("a list longer than a screenshot can be is cropped, as a long page is", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/inner-scroll-huge"], outDir: out, settleMs: 50, viewports: PHONE, appScheme: "light" });
+    expect(routes[0]!.cropped).toBe(true);
+    expect(size(join(out, "inner-scroll-huge.mobile.png"))).toEqual({ width: 390, height: 8000 });
+  }, 120_000);
+
+  test("a page that fits the screen, with a small box of its own that scrolls, stays one screen tall", async () => {
+    const out = tempDir("motif-shots-");
+    await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/inner-small"], outDir: out, settleMs: 50, viewports: PHONE, appScheme: "light" });
+    expect(size(join(out, "inner-small.mobile.png"))).toEqual({ width: 390, height: 844 });
+  }, 120_000);
+
+  test("a state that scrolled the list is captured from the top, its screen recorded where the list was scrolled to", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes } = await captureScreens({
+      browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/inner-scroll"], outDir: out, settleMs: 50, viewports: PHONE, appScheme: "light", statesOnly: true,
+      states: [{ name: "down", script: 'document.getElementById("scroller").scrollTop = 600;' }],
+    });
+    const png = new Uint8Array(readFileSync(join(out, "inner-scroll@down.mobile.png")));
+    expect(pngSize(png)).toEqual({ width: 390, height: 2110 });
+    expect(pixel(png, 195, 20)).toEqual(GREEN);
+    expect(pixel(png, 195, 2030)).toEqual(BLUE);
+    expect(screenOf(png)).toEqual({ width: 390, top: 600, height: 844 });
+    expect(routes[0]!.error).toBeUndefined();
+  }, 120_000);
+
+  test("is put back before the audit: the audit sees the screen as it was, one screen tall and still scrolled where it was", async () => {
+    // The page watches its list: once it is one screen tall again and scrolled where the state left it, it adds a small
+    // button with no name, which the audit reports. An observer's callback runs as soon as the script that changed the
+    // list's style ends, so before the audit starts.
+    const watch = `const s = document.getElementById("scroller"); s.scrollTop = 600;
+      new MutationObserver(() => {
+        if (document.getElementById("restored") || document.documentElement.scrollHeight > innerHeight + 1 || s.scrollTop !== 600 || s.style.cssText !== "flex: 1 1 0%; overflow-y: auto;") return;
+        const b = document.createElement("button"); b.id = "restored"; b.style.cssText = "width:16px;height:16px"; document.querySelector("header").append(b);
+      }).observe(s, { attributes: true, attributeFilter: ["style"] });`;
+    const { routes, issues } = await captureScreens({
+      browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/inner-scroll"], outDir: tempDir("motif-shots-"), settleMs: 50, viewports: PHONE, appScheme: "light", statesOnly: true, audit: true,
+      states: [{ name: "watched", script: watch }],
+    });
+    expect(routes[0]!.auditError).toBeUndefined();
+    expect(issues.length).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describe.skipIf(!browser)("Expo's LogBox toast for a console error (needs Chrome, Edge or Chromium)", () => {
+  const PHONE = [{ name: "mobile" as const, width: 390, height: 844, scale: 2, mobile: true }];
+  // Where the toast is drawn: near the bottom of the screen, at twice the pixels.
+  const bottom = (file: string) => pixel(readFileSync(file), 390, 1620).slice(0, 3);
+
+  test("is hidden from an Expo screen's screenshots: it is Expo's dev notice, not the app (Test A)", async () => {
+    const out = tempDir("motif-shots-");
+    const { routes, issues } = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/logbox-toast"], outDir: out, settleMs: 50, viewports: PHONE, reactNative: true, audit: true });
+    expect(routes[0]!.error).toBeUndefined();
+    expect(routes[0]!.shots).toHaveLength(2);
+    for (const name of ["logbox-toast.mobile.png", "logbox-toast.mobile.dark.png"]) expect(bottom(join(out, name))).toEqual([0x12, 0x34, 0x56]);
+    expect(issues.filter((i) => /iconName|error-toast/.test(JSON.stringify(i)))).toEqual([]);
+  }, 120_000);
+
+  test("stays when the screen threw, as Next.js's error overlay does, and on a page that isn't an Expo app's", async () => {
+    const out = tempDir("motif-shots-");
+    const crash = await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/logbox-crash"], outDir: out, settleMs: 50, viewports: PHONE, reactNative: true });
+    expect(crash.routes[0]!.pageErrors).toEqual(["Error: boom: native module"]);
+    expect(bottom(join(out, "logbox-crash.mobile.png"))).toEqual([255, 0, 0]);
+    await captureScreens({ browserPath: browser!.path, baseUrl: `http://localhost:${server.port}`, routes: ["/logbox-toast"], outDir: out, settleMs: 50, viewports: PHONE });
+    expect(bottom(join(out, "logbox-toast.mobile.png"))).toEqual([255, 0, 0]);
   }, 120_000);
 });

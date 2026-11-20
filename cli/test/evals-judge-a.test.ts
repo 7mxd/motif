@@ -130,6 +130,13 @@ describe("rubric-a.md", () => {
   test("with content given, a side that leaves out, adds or changes an item, its situation or action, or the key wording is off content", () => {
     for (const s of ["What both were asked to show", "leaves out, adds or changes", "situation", "key wording", '"offContent"', '"both"', '"none"']) expect(r).toContain(s);
   });
+  // Run 20261119-025418: the AI judges marked a side off content for the app's name in a header, a language switch in
+  // an app the brief says is bilingual, a password field's show button and hint text in a field. Those make the app
+  // better for its people and aren't items of the screen's content, so they're judged as design; new data, cards,
+  // sections or actions still count as added content.
+  test("with content given, the app's own frame is design, not content; new data, sections or actions are content", () => {
+    for (const s of ["app's name or mark", "language switch", "show the password", "hint text", "new data", "is design, not content"]) expect(r).toContain(s);
+  });
 });
 
 // The runner: each `both` pair judged twice, sides swapped, saved as it goes, resumable.
