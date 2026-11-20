@@ -238,7 +238,65 @@ export function shotName(slug: string, viewport: string, scheme: Scheme, variant
  */
 const DEV_TOOLS = ["nextjs-portal", "#nuxt-devtools-container", "#__vue-devtools-container__"];
 const HIDE_DEV_BADGES = `(() => { const s = document.createElement("style"); s.textContent = ${JSON.stringify(`${DEV_TOOLS.join(", ")} { display: none !important; }`)}; document.head.append(s); return true; })()`;
+/**
+ * Expo's web LogBox shows each console.error as a toast at the bottom of the screen ("2  React does not recognize the
+ * `iconName` prop…", Test A), drawn in a shadow root on a <div id="error-toast"> it adds to <body> (@expo/log-box). It's
+ * the dev server's notice, not the app. Only that element is hidden: an app's own #error-toast has no shadow root there,
+ * and LogBox's full-screen #error-overlay, which a thrown error opens, stays, as Next.js's overlay does.
+ */
+const HIDE_EXPO_LOGBOX_TOAST = `(() => { const t = document.getElementById("error-toast"); if (t && t.shadowRoot && t.parentElement === document.body) t.style.setProperty("display", "none", "important"); return true; })()`;
 const PAGE_HEIGHT = "document.documentElement.scrollHeight";
+/**
+ * A React Native web screen scrolls inside a View, not the page: the document is exactly one screen tall, so a
+ * screenshot of it held only the first screen (Test A: both sides of an Expo pair were 390×844, a "Next few days" list
+ * below the fold never shown). When the page fits the screen but a box covering most of it scrolls (the largest one),
+ * that box and everything around it up to <html> are made taller by what it hides, so the page runs to the end of the
+ * list as someone scrolling it sees it; a tab bar below it in the same column ends up at the end. Returns how far the
+ * box was scrolled (the screen a comparison frames), or -1 when nothing was grown. INNER_BACK puts it all back before
+ * the audit.
+ */
+const INNER_TO_FULL = `(() => {
+  if (document.documentElement.scrollHeight > innerHeight + 1) return -1;
+  let box = null, most = 0;
+  for (const el of document.querySelectorAll("body *")) {
+    if (el.scrollHeight <= el.clientHeight + 1) continue;
+    const oy = getComputedStyle(el).overflowY;
+    if (oy !== "auto" && oy !== "scroll" && oy !== "overlay") continue;
+    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+    const r = el.getBoundingClientRect();
+    const w = Math.min(r.right, innerWidth) - Math.max(r.left, 0), h = Math.min(r.bottom, innerHeight) - Math.max(r.top, 0);
+    // A small box of its own (a code sample, a text field, a menu) isn't the screen's content.
+    // A list under a tall header can be a third of the screen.
+    if (w < innerWidth / 2 || h < innerHeight / 3 || w * h <= most) continue;
+    box = el;
+    most = w * h;
+  }
+  if (!box) return -1;
+  const scrolled = box.scrollTop;
+  const chain = [];
+  for (let el = box; el; el = el.parentElement) chain.push(el);
+  window.__motifInner = { box, scrolled, styles: chain.map((el) => [el, el.style.cssText]) };
+  // Heights are measured before any is set, then each grows by what the box hides; in px, as the screenshot can lay the
+  // page out again at its own size, where 100% and vh would change. min-height also keeps a flex item from shrinking.
+  // A bar that disappears with the scrolling can leave a little more: grown once more by what is left.
+  for (let round = 0; round < 2; round++) {
+    const extra = box.scrollHeight - box.clientHeight;
+    if (extra <= 1) break;
+    const heights = chain.map((el) => el.getBoundingClientRect().height);
+    chain.forEach((el, i) => {
+      const h = heights[i] + extra + "px";
+      el.style.setProperty("box-sizing", "border-box", "important");
+      el.style.setProperty("height", h, "important");
+      el.style.setProperty("min-height", h, "important");
+      el.style.setProperty("max-height", "none", "important");
+      // Something fixed doesn't make the page longer: it is placed where it is, on the page.
+      if (getComputedStyle(el).position === "fixed") el.style.setProperty("position", "absolute", "important");
+    });
+  }
+  box.scrollTop = 0;
+  return scrolled;
+})()`;
+const INNER_BACK = `(() => { const s = window.__motifInner; if (s) { for (const [el, css] of s.styles) el.style.cssText = css; s.box.scrollTop = s.scrolled; } delete window.__motifInner; return true; })()`;
 /**
  * Waits, at most three seconds, for the page's animations that end (a fade-in: Motion keeps opacity animations under
  * reduced motion) to finish, so a screenshot doesn't catch a screen partway in. Endless ones (a spinner) aren't waited for.
@@ -501,16 +559,22 @@ export async function captureScreens(opts: CaptureOptions): Promise<{ routes: Ro
                   } else {
                     // Hide the dev tools only when nothing went wrong: Next.js shows its error overlay in the same place.
                     await page.evaluate(HIDE_DEV_BADGES);
+                    if (opts.reactNative) await page.evaluate(HIDE_EXPO_LOGBOX_TOAST);
                   }
+                  // A screen that scrolls inside the page (React Native web) is grown to its full list first, so it is
+                  // measured, cropped and has its bars moved as a long page is.
+                  const inner = await page.evaluate<number>(INNER_TO_FULL);
                   const fullHeight = await page.evaluate<number>(PAGE_HEIGHT);
                   if (fullHeight > MAX_HEIGHT) result.cropped = true;
-                  // Where the page was scrolled to (a state can scroll something into view): comparisons frame that screen.
-                  const top = Math.round(await page.evaluate<number>("scrollY"));
+                  // Where the page (or the screen's own list) was scrolled to (a state can scroll something into view):
+                  // comparisons frame that screen.
+                  const top = Math.round(inner >= 0 ? inner : await page.evaluate<number>("scrollY"));
                   const file = join(opts.outDir, shotName(state ? `${slug}@${state.name}` : slug, viewport.file ?? viewport.name, scheme, variant, Boolean(lang)));
                   const long = fullHeight > viewport.height;
                   if (long) await page.evaluate(BARS_TO_END);
                   const png = await page.screenshot({ x: 0, y: 0, width: viewport.width, height: Math.min(await page.evaluate<number>(PAGE_HEIGHT), MAX_HEIGHT) });
                   if (long) await page.evaluate(BARS_BACK);
+                  if (inner >= 0) await page.evaluate(INNER_BACK);
                   const screen: Screen = { width: viewport.width, top, height: viewport.height };
                   writeFileSync(file, addPngText(png, SCREEN_KEY, JSON.stringify(screen)));
                   result.shots.push(file);

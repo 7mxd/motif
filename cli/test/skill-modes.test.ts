@@ -104,6 +104,19 @@ describe("modes/init.md", () => {
   });
 });
 
+describe("a screen's given content (2.0 evals)", () => {
+  // Run 20261119-025418: with the screen's content written out, new apps added a figure, a sample card and a summary
+  // bar nobody asked for. Content the developer gives is shown as given; the app's own frame still goes on each screen.
+  test("init and feature build exactly the content the developer gives, and keep the app's own frame", () => {
+    for (const f of ["modes/init.md", "modes/feature.md"]) {
+      const text = read(f);
+      for (const s of ["says what a screen shows", "show exactly that", "no data, figures, cards, sections, sample items or actions", "the app's own frame"]) {
+        expect(`${f}: ${text.includes(s)}`).toBe(`${f}: true`);
+      }
+    }
+  });
+});
+
 describe("modes/feature.md", () => {
   const feature = read("modes/feature.md");
 

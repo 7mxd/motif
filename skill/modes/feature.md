@@ -27,6 +27,7 @@ Run `motif preview design/previews/<feature>-<screen>.html --png-only` and show 
 ## 5. Build
 
 - Build the feature at the route the developer named. When it belongs to one item (one project's activity, one order's tracking), the item's own pages can sit under it (`/activity/<project>`), but the named route still opens a page of its own: every item's entries, or a choice of item that leads on. It is never empty, and you never redirect it away.
+- When the developer says what a screen shows (its items, each one's situation and action, and their wording), show exactly that, in their words: no data, figures, cards, sections, sample items or actions they didn't ask for. Keep the app's own frame as the rest of the app has it (its name or mark, its language switch, each control's own parts).
 - Reuse existing components first; extend one with a new variant before creating a new component. Every new component file, shared or beside a route, is named in `DESIGN.md` section 5.
 - Use theme values only ([the four rules](../contract/spec.md#the-four-rules)).
 - If the feature truly needs something the design guide doesn't have (a new component, a new value), stop and propose the change ⏸: what changes, from what to what, and why, in plain words. Once approved, update `design/tokens.json` and `DESIGN.md` (the component in section 5, a change-log line), run `motif validate` and `motif tokens`, and continue.
