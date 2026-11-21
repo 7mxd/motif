@@ -16,7 +16,7 @@ What sits on it:
 
 Lists and grids of items that are places or things with a look of their own, in any brief but a business tool's, calm ones included: a trail list without its route pictures reads as a plain text list. For playful, friendly or energetic briefs, every item in the app gets one, from the same drawing family as the welcome screen. Where the picture goes follows [character](../../knowledge/character.md#where-the-brand-is-loud):
 
-- **Phone list:** each card keeps its drawn banner across the top (about 16:7), the status badge on the banner's corner, then the name on one line, then the figures each led by a small icon. A detail that doesn't fit (a surface type) waits for the item's own page rather than being cut off with an ellipsis.
+- **Phone list:** each card keeps its drawn banner across the top, kept short (about 16:5, a quarter of the card at most), then the name on one line with the status badge at its end, in the same place on every card, then the figures each led by a small icon. A detail that doesn't fit (a surface type) waits for the item's own page rather than being cut off with an ellipsis.
 - **Compact row** (a dense list, a sidebar, the [today's focus](todays-focus.md) card): a square of about 64 px beside the title, the facts under the title.
 - **Desktop:** a grid of the same banner cards, three or four across in a real desktop layout ([visual craft](../../knowledge/visual-craft.md)), or rows with the 64 px square. It keeps the thumbnails and tags; it never turns into a plain table.
 - **Never** a large picture beside a narrow text column: titles break on lone words and chips spill onto extra lines.
@@ -42,7 +42,7 @@ The drawing uses only the theme's roles: ground in `brand-soft`, the main shapes
 - **Loading:** cards keep their size; the banner is a plain `surface` block and the name and facts are skeleton bars. Never a spinner per card.
 - **Empty:** the list shows the [empty state](../screens/empty-state.md) with its own drawing and first action ("Save your first trail"); a filter with no matches says so and offers to clear the filter.
 - **Error:** the list says what failed with "Try again", above any cards already loaded. A card whose scene data is missing still draws the scene for its kind, plainly, rather than a broken picture.
-- **Closed or full:** the card stays in the list with its badge in a saturated status colour (`danger` with `on-danger` for "Closed", `warning` with `on-warning` for "Partly closed") on the banner's corner; the rest of the card is unchanged, so people still see what it is.
+- **Closed or off:** the card stays in the list and steps back, as [character](../../knowledge/character.md#working-screens) says for an item that is off: a flat ground, its title struck through in `text-secondary`, its picture greyed, the reason in one short line on a pale `danger` tint, and no action. A partial closure keeps the card as it is and adds its notice on a pale `warning` tint. The person's own item (saved, booked) stands out the same way on every card: a `brand-soft` ground and a 2 px edge in `brand`.
 
 ## Motion
 
@@ -73,19 +73,22 @@ A `motion.a` card in a grid, the scene an inline SVG component chosen by kind an
 ```tsx
 function Ridge({ profile }: { profile: number[] }) {
   const top = Math.max(...profile);
-  const pts = profile.map((h, i) => `${(i / (profile.length - 1)) * 160},${70 - (h / top) * 40}`).join(" L");
+  const pts = profile.map((h, i) => `${(i / (profile.length - 1)) * 160},${50 - (h / top) * 30}`).join(" L");
   return (
-    <svg viewBox="0 0 160 70" aria-hidden className="block w-full">
-      <rect width="160" height="70" fill="var(--motif-color-brand-soft)" />
-      <path d={`M0,70 L${pts} L160,70 Z`} fill="var(--motif-color-brand)" />
+    <svg viewBox="0 0 160 50" aria-hidden className="block w-full">
+      <rect width="160" height="50" fill="var(--motif-color-brand-soft)" />
+      <path d={`M0,50 L${pts} L160,50 Z`} fill="var(--motif-color-brand)" />
     </svg>
   );
 }
 
 <motion.a href={`/trails/${t.id}`} variants={tile} whileTap={{ scale: 0.98 }} transition={spring.snappy}
   aria-label={t.spoken} className="block overflow-hidden rounded-lg border border-border bg-surface-raised">
-  <div className="relative"><Scene item={t} /><StatusBadge status={t.status} className="absolute end-2 top-2" /></div>
-  <div className="p-4"><h3 className="truncate font-heading text-heading">{t.name}</h3><Facts facts={t.facts} /></div>
+  <Scene item={t} />
+  <div className="p-4">
+    <div className="flex items-center justify-between gap-2"><h3 className="truncate font-heading text-heading">{t.name}</h3><StatusBadge status={t.status} /></div>
+    <Facts facts={t.facts} />
+  </div>
 </motion.a>
 ```
 
@@ -99,9 +102,10 @@ An `<a class="item">` per card with the scene as inline SVG written from the ite
 .items { display: grid; gap: var(--motif-space-4); grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
 .item { display: block; overflow: hidden; border-radius: var(--motif-radius-lg); color: var(--motif-color-text-primary);
   background: var(--motif-color-surface-raised); border: 1px solid var(--motif-color-border); }
-.item .banner { position: relative; aspect-ratio: 16 / 7; background: var(--motif-color-brand-soft); }
-.item .badge { position: absolute; inset-block-start: var(--motif-space-2); inset-inline-end: var(--motif-space-2);
-  background: var(--motif-color-danger); color: var(--motif-color-on-danger); border-radius: var(--motif-radius-full); }
+.item .banner { aspect-ratio: 16 / 5; background: var(--motif-color-brand-soft); }
+.item .head { display: flex; align-items: center; justify-content: space-between; gap: var(--motif-space-2); }
+.item .badge { flex: none; color: var(--motif-color-danger); border-radius: var(--motif-radius-full);
+  background: color-mix(in srgb, var(--motif-color-danger) 12%, var(--motif-color-surface)); }
 .item .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: no-preference) {
   .item { animation: tile-in var(--motif-duration-fast) var(--motif-easing-enter) both;
@@ -122,9 +126,11 @@ An `ItemCard` component with the scene as an SVG sub-component per kind, the lis
   <div class="banner">
     <component :is="scenes[item.kind]" :item="item" aria-hidden="true" />
     <RouteMap v-if="item.route" :points="item.route" class="map" aria-hidden="true" />
-    <StatusBadge v-if="item.status" :status="item.status" class="badge" />
   </div>
-  <div class="body"><h3 class="name">{{ item.name }}</h3><ItemFacts :facts="item.facts" /></div>
+  <div class="body">
+    <div class="head"><h3 class="name">{{ item.name }}</h3><StatusBadge v-if="item.status" :status="item.status" class="badge" /></div>
+    <ItemFacts :facts="item.facts" />
+  </div>
 </RouterLink>
 ```
 
@@ -145,11 +151,11 @@ An `ItemCard` component with the scene in SVG, `in:fly` with `delay: Math.min(i,
 
 <a class="item" href="/trails/{item.id}" aria-label={item.spoken}
   in:fly={{ y: 8, duration: still ? 0 : duration.fast, delay: still ? 0 : Math.min(i, 6) * duration.fast / 4 }}>
-  <div class="banner">
-    <Scene {item} />
-    {#if item.status}<span class="badge">{item.status.label}</span>{/if}
+  <div class="banner"><Scene {item} /></div>
+  <div class="body">
+    <div class="head"><h3 class="name">{item.name}</h3>{#if item.status}<span class="badge">{item.status.label}</span>{/if}</div>
+    <ItemFacts facts={item.facts} />
   </div>
-  <div class="body"><h3 class="name">{item.name}</h3><ItemFacts facts={item.facts} /></div>
 </a>
 ```
 
@@ -163,12 +169,14 @@ An `app-item-card` with the scene as an SVG template per kind (`@switch (item().
   template: `<a class="item" [routerLink]="['/trails', item().id]" [attr.aria-label]="item().spoken">
     <div class="banner">
       @switch (item().kind) {
-        @case ("ridge") { <svg viewBox="0 0 160 70" aria-hidden="true"><path [attr.d]="ridgePath()" fill="var(--motif-color-brand)" /></svg> }
+        @case ("ridge") { <svg viewBox="0 0 160 50" aria-hidden="true"><path [attr.d]="ridgePath()" fill="var(--motif-color-brand)" /></svg> }
         @case ("dunes") { <app-dunes [seed]="item().id" /> }
       }
-      @if (item().status; as s) { <span class="badge">{{ s.label }}</span> }
     </div>
-    <div class="body"><h3 class="name">{{ item().name }}</h3><app-item-facts [facts]="item().facts" /></div>
+    <div class="body">
+      <div class="head"><h3 class="name">{{ item().name }}</h3>@if (item().status; as s) { <span class="badge">{{ s.label }}</span> }</div>
+      <app-item-facts [facts]="item().facts" />
+    </div>
   </a>`,
 })
 export class ItemCard { item = input.required<Trail>(); ridgePath = computed(() => ridge(this.item().profile)); }
@@ -202,11 +210,11 @@ class RidgePainter extends CustomPainter {
 }
 ```
 
-The card is `Semantics(button: true, label: item.spoken, excludeSemantics: true)` around a `Column`: an `AspectRatio(aspectRatio: 16 / 7)` holding a `Stack` of the `CustomPaint` and the badge (`PositionedDirectional(top: MotifSpace.s2, end: MotifSpace.s2)`), then the name with `maxLines: 1` and the facts. Press is [press](../motion/press.md)'s `AnimatedScale`.
+The card is `Semantics(button: true, label: item.spoken, excludeSemantics: true)` around a `Column`: an `AspectRatio(aspectRatio: 16 / 5)` holding the `CustomPaint`, then a `Row` of the name (`Expanded`, `maxLines: 1`) and the badge, then the facts. Press is [press](../motion/press.md)'s `AnimatedScale`.
 
 ### compose
 
-A `Surface(onClick = …)` card whose banner is a `Canvas` drawing the item's scene, the badge aligned to the banner's top end, and the list's first items in `AnimatedVisibility` with stepped delays; `MotifMotion.reduced()` shows them at once.
+A `Surface(onClick = …)` card whose banner is a `Canvas` drawing the item's scene, the badge at the end of the name's row, and the list's first items in `AnimatedVisibility` with stepped delays; `MotifMotion.reduced()` shows them at once.
 
 ```kotlin
 val colors = MotifTheme.colors
@@ -214,7 +222,7 @@ Surface(onClick = { open(item) }, shape = RoundedCornerShape(MotifRadius.lg), co
     border = BorderStroke(1.dp, colors.border),
     modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = item.spoken }) {
     Column {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 7f)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 5f)) {
             Canvas(Modifier.matchParentSize().clearAndSetSemantics { }) {
                 drawRect(colors.brandSoft)
                 val top = item.profile.max()
@@ -225,10 +233,12 @@ Surface(onClick = { open(item) }, shape = RoundedCornerShape(MotifRadius.lg), co
                 }
                 drawPath(ridge, colors.brand)
             }
-            item.status?.let { StatusBadge(it, Modifier.align(Alignment.TopEnd).padding(MotifSpace.s2)) }
         }
         Column(Modifier.padding(MotifSpace.s4)) {
-            Text(item.name, style = MotifType.heading, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MotifSpace.s2)) {
+                Text(item.name, style = MotifType.heading, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                item.status?.let { StatusBadge(it) }
+            }
             ItemFacts(item.facts)
         }
     }
@@ -246,15 +256,17 @@ const reduced = useReducedMotion();
 <Animated.View entering={reduced || index > 5 ? undefined : FadeInDown.delay(index * duration.fast / 4)}>
   <PressScale onPress={() => open(item)} accessibilityRole="button" accessibilityLabel={item.spoken}
     style={{ borderRadius: radius.lg, overflow: "hidden", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceRaised }}>
-    <View style={{ aspectRatio: 16 / 7 }} importantForAccessibility="no-hide-descendants">
-      <Svg viewBox="0 0 160 70" width="100%" height="100%">
-        <Rect width={160} height={70} fill={colors.brandSoft} />
+    <View style={{ aspectRatio: 16 / 5 }} importantForAccessibility="no-hide-descendants">
+      <Svg viewBox="0 0 160 50" width="100%" height="100%">
+        <Rect width={160} height={50} fill={colors.brandSoft} />
         <Path d={ridgePath(item.profile)} fill={colors.brand} />
       </Svg>
-      {item.status && <StatusBadge status={item.status} style={{ position: "absolute", top: space.s2, end: space.s2 }} />}
     </View>
     <View style={{ padding: space.s4 }}>
-      <Text numberOfLines={1} style={[type.heading, { color: colors.textPrimary }]}>{item.name}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space.s2 }}>
+        <Text numberOfLines={1} style={[type.heading, { flex: 1, color: colors.textPrimary }]}>{item.name}</Text>
+        {item.status && <StatusBadge status={item.status} />}
+      </View>
       <ItemFacts facts={item.facts} />
     </View>
   </PressScale>
@@ -263,7 +275,7 @@ const reduced = useReducedMotion();
 
 ### swiftui
 
-A `NavigationLink` card whose banner is a `Shape` built from the item's values, the badge in an `.overlay(alignment: .topTrailing)`, the first rows with a delayed `.transition`; under `accessibilityReduceMotion` the delay and movement go.
+A `NavigationLink` card whose banner is a `Shape` built from the item's values, the badge at the end of the name's row, the first rows with a delayed `.transition`; under `accessibilityReduceMotion` the delay and movement go.
 
 ```swift
 struct RidgeShape: Shape {
@@ -283,9 +295,8 @@ struct RidgeShape: Shape {
 
 RidgeShape(profile: trail.profile).fill(colors.brand)
     .background(colors.brandSoft)
-    .aspectRatio(16 / 7, contentMode: .fit)
-    .overlay(alignment: .topTrailing) { StatusBadge(trail.status).padding(MotifSpace.s2) }
+    .aspectRatio(16 / 5, contentMode: .fit)
     .accessibilityHidden(true)
 ```
 
-Under it, the name with `.lineLimit(1)` and the facts; the whole card gets `.accessibilityElement(children: .ignore)` with `.accessibilityLabel(trail.spoken)` and [press](../motion/press.md)'s `ButtonStyle`.
+Under it, an `HStack` of the name with `.lineLimit(1)` and `StatusBadge(trail.status)`, then the facts; the whole card gets `.accessibilityElement(children: .ignore)` with `.accessibilityLabel(trail.spoken)` and [press](../motion/press.md)'s `ButtonStyle`.

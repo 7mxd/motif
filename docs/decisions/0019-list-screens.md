@@ -1,0 +1,32 @@
+# 0019 — List screens: item states, an action ladder, and given content first
+
+- Date: 2026-11-21
+- Status: Accepted. Amends decision 0018's first and fourth points; its other points and the bars of 0013 and 0014 stand. No test, fixture, rubric, grader or judge changed.
+- Context: targeted run 20261121-042738 (commit c6fa2e5, six briefs and the two review cases, the first pass after 0018). Both review cases passed. Test A did not improve: of the 30 pairs judged, Motif won 18 on both orders, the baseline 11, and one split. By kind of screen: welcome 7 to 3, sign-in 9 to 1, lists 2 to 7 with one split. The sessions had read 0018's rules and built them: one filled action on the row waiting on the person, the step back outlined, a state nobody can act on as a soft notice. The lists lost anyway, so 0018's first point was applied and was not enough. None of the sessions wrote the look-pass down where it can be read.
+
+## What lost, and why
+
+1. **Item states (named in 4 of the 7 list pairs lost): no rule.** The other side muted and struck through an item that was off, and gave the person's own item a tinted, edged card; Motif's cards differed by a badge, a hairline or a paler title. Three lines pushed the other way: a saturated fill for a cancelled item, "the rest of the card is unchanged" for a closed one, and identical cards in a schedule.
+2. **Different actions sharing one look (4 pairs): 0018's rule was too coarse, and an older ban made it worse.** Two weights put a main step and a fallback step in one filled button, and a claim and a plain look in one outline. A 2026-10-28 line banned the `action-secondary` fill on a row as "reads as disabled", so the stack guides' secondary button was never used. The other side's lists stepped by fill: filled, tonal, outlined. A per-row extra was drawn as a full filled button on every card, against a rule that already asked for an icon button.
+3. **Small or squeezed card text (3 pairs): the rule allowed it.** "A row's second line is `label` or `body`" let a card's facts be set at `label`, 14 px, and a calendar tile beside the text wrapped place names into a narrow column on a phone.
+4. **A side card or panel with empty room under it (2 pairs): 0018's own sentence.** "What sits beside the list is the list's own (its summary…)" was built as a side card holding the title, the count and the main action, with the rest of the column empty. The header rule for a desktop list already existed and was passed over.
+5. **A tall picture on every card, and a status that moved (1 pair lost, and the one that split): the recipe.** A 16:7 banner with the status badge on its corner made a phone list half again as long as the other side's, and put the status on the picture on some cards and in the body on others. The same list won with its drawings in the run before, so the drawing stays and shrinks.
+6. **Sample cards beside a sign-in form (1 pair, lost outright as added content): the recipe against decision 0017.** Three places ask for "a layered preview of the product's own cards" on a desktop sign-in; the session built it from the list's own card component.
+7. **Welcomes (3 pairs).** On a phone the points sat on the hero's own ground under the sign-in link and read as left over; on a desktop a small framed drawing left the window sparse beside the other side's full-height one, which an existing line already asks for. The third had small point text and a drawing clipped at its edge, which existing rules and 0018's look-pass cover.
+
+## Decisions
+
+1. **An item's state shows on its whole card.** The person's own item stands out (a `brand-soft` ground, a 2 px `brand` edge, a filled status pill); an item that is off steps back (flat ground, title struck through, picture greyed, no button). State changes a card's ground, edge and title, never its shape or where its status sits: the status keeps one place on every card, on the card's body.
+2. **Each kind of action has its own step on one ladder.** Filled for the step forward the list is for, tonal (`action-secondary`) for a lesser or fallback step, outlined for looking, opening and stepping back. When one row waits on the person its action alone is filled and the others step down one. The steps differ by fill, not by hue. A per-row extra stays an icon button. This replaces 0018's "two weights at most" and withdraws the ban on a secondary fill in a row; what stays of that ban is that a list's only action isn't the pale one.
+3. **A card's facts are `body`, at the card's full width.** `label` is for chips and a tile's small lines. On a phone a calendar tile shares its row with the title only.
+4. **A list's title, count and main action are its header.** A side column is for content as tall as the list. This replaces the "its summary" sentence of 0018's fourth point.
+5. **A card's picture is short (about 16:5, a quarter of the card at most), with no status on it.** The item card's code samples in all nine stacks say the same.
+6. **Given content comes before a recipe's additions.** When the developer said what a screen shows, a next-up card, a proof row, a preview or sample card, a floating card and a quote are left out, and the brand moment is the drawing, the band and the type. A desktop sign-in's panel then holds the drawing alone.
+7. **A short welcome's points get a ground of their own on a phone, and the desktop drawing is at least as tall as the text column.** The order (action, then points) stays.
+8. **Lists are built from these rules, and the look-pass reports.** `modes/init.md` and `modes/feature.md` name them in the build step, ask four more questions in the look-pass (item states, card text, beside the list, given content), and put the look-pass's line for each screen in the summary shown to the developer.
+
+## Consequences
+
+- `skill/knowledge/character.md`, `skill/knowledge/ux-patterns/lists-feeds.md`, `skill/knowledge/ux-patterns/sign-in.md`, `skill/library/cards/item-card.md`, `skill/library/screens/sign-in.md`, `skill/modes/init.md`, `skill/modes/feature.md`; their test is the last block of `cli/test/skill-modes.test.ts`. In 0018's block, the assertions on "two weights at most" are replaced by assertions on the ladder, each as specific as the one it replaces.
+- The tonal step is the stack guides' existing secondary button, so no component or role is new.
+- Not yet shown by a run. The second pass on c6fa2e5 (run 20261121-074326) was still running when this was written, and it tests 0018's rules, not these.

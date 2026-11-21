@@ -728,9 +728,14 @@ describe("action weight, the first screen, the look-pass and taste findings (2.0
   test("repeated row actions keep one place and shape, and their weight says what they do", () => {
     const rule = line(character, "**Repeated actions keep their place and shape; their weight says what they do.**");
     expect(missingFrom(rule, [
-      "at the same width", "two weights at most", "takes the person forward", "takes something back",
-      "waiting on the person", "the only filled one in the list", "not with a new colour",
+      "at the same width", "its own step on one ladder", "two different actions don't share a step",
+      "**Filled** in `action-primary`", "**Tonal**, `action-secondary` with `on-action-secondary`", "**Outlined**",
+      "waiting on the person", "its action alone is filled", "every other action steps down one", "not by a new hue",
+      "A per-row extra", "stays an icon button",
     ])).toEqual([]);
+    // Decision 0019 replaces 0018's "two weights at most": the lists that won gave each kind of action its own step.
+    expect(rule).not.toContain("two weights at most");
+    expect(rule).not.toContain("never a `brand-soft` or `action-secondary` fill");
     expect(character).not.toContain("the same filled pill on each card");
     const one = line(read("knowledge/visual-craft.md"), "**One primary action per view.**");
     expect(missingFrom(one, ["repeated down a list counts as one", "(character.md#slips-that-undo-it)"])).toEqual([]);
@@ -800,5 +805,91 @@ describe("action weight, the first screen, the look-pass and taste findings (2.0
     expect(outOfOrder(review, ["**Severity:**", "A finding from the judgement pass", "**Categories:**"])).toBeNull();
     const fullness = line(review, "**Character and fullness.**");
     expect(missingFrom(fullness, ["`anti-pattern` finding", "empty band", "plain", "`minor` unless the design guide asks for"])).toEqual([]);
+  });
+});
+
+// Targeted run 20261121-042738 (decision 0019), on the rules above: the welcome and sign-in screens won 16 of 20
+// pairs on both orders, and the list screens lost 7 of 10 with the weight rule applied as written. The other
+// side showed each item's state on its whole card, gave each kind of action its own look, set a card's facts at
+// reading size, and kept the title and main action in a header; Motif's lists had a side card with empty room under
+// it, a tall picture on every card and a status that moved between them. One sign-in lost outright for sample cards
+// its recipe asked for and the developer's content didn't.
+describe("list screens: item states, card text, the header and given content (2.0 evals, decision 0019)", () => {
+  const character = read("knowledge/character.md");
+  const line = (text: string, marker: string) => text.split("\n").find((l) => l.includes(marker)) ?? "";
+  const missingFrom = (text: string, parts: string[]) => parts.filter((s) => !text.includes(s));
+
+  test("an item's state shows on its whole card, and its status keeps one place", () => {
+    const rule = line(character, "**An item's state shows on its whole card.**");
+    expect(missingFrom(rule, [
+      "at a squint", "The person's own item", "a `brand-soft` ground", "a 2 px edge in `brand`",
+      "An item that is off", "struck through in `text-secondary`", "no button",
+      "is too little to see", "the same spot on every card", "not on its picture",
+    ])).toEqual([]);
+    const kinds = line(character, "**Kinds of content:**");
+    expect(kinds).not.toContain("(late, cancelled, full)");
+    expect(kinds).toContain("an item that is off is muted");
+    const card = read("library/cards/item-card.md");
+    expect(card).not.toContain("the rest of the card is unchanged");
+    expect(card).not.toContain("on the banner's corner");
+    expect(missingFrom(card, ["steps back", "in the same place on every card", "(../../knowledge/character.md#working-screens)"])).toEqual([]);
+    expect(line(read("knowledge/ux-patterns/lists-feeds.md"), "state shows on its whole card")).toContain("(../character.md#working-screens)");
+  });
+
+  test("a card's facts are body size at the card's full width, and its picture stays short", () => {
+    expect(missingFrom(line(character, "**Small grey text is rare.**"), ["the facts people decide by", "are `body`", "`label` is for chips"])).toEqual([]);
+    expect(missingFrom(line(character, "**A schedule reads by day and time.**"), ["On a phone the tile shares its row with the title only", "at the card's full width"])).toEqual([]);
+    const picture = line(character, "The picture never squeezes the text");
+    expect(missingFrom(picture, ["about 16:5", "a quarter of the card at most"])).toEqual([]);
+    expect(picture).not.toContain("on the banner's corner");
+    const card = read("library/cards/item-card.md");
+    expect(card).not.toContain("about 16:7");
+    // Its code samples say the same as its words: a 16:5 banner, and the badge on the name's row, not over the picture.
+    const old = ["16 / 7", "16f / 7f", "0 0 160 70", "absolute end-2 top-2", "Alignment.TopEnd", ".overlay(alignment: .topTrailing)", 'position: "absolute"', "position: absolute"];
+    expect(old.filter((s) => card.includes(s))).toEqual([]);
+    expect(missingFrom(card, ["aspect-ratio: 16 / 5", "16f / 5f", "aspectRatio: 16 / 5", "aspectRatio(16 / 5"])).toEqual([]);
+  });
+
+  test("a list's title, count and main action are its header, not a side card with empty room under it", () => {
+    const list = line(character, "**A working list on a desktop is a full screen.**");
+    expect(missingFrom(list, ["The list keeps the width", "are the header across the top", "A side column is for content as tall as the list", "takes room from the rows"])).toEqual([]);
+    expect(list).not.toContain("its summary, its filters");
+    expect(line(character, "**A desktop is not a stretched phone.**")).toContain("a side column as tall as the list");
+  });
+
+  test("given content comes before a recipe's own additions: no sample cards beside a sign-in form", () => {
+    const recipes = character.slice(character.indexOf("\n## First-impression recipes\n"), character.indexOf("\n## Illustration\n"));
+    expect(missingFrom(recipes, ["that content is the whole of it", "a next-up card, a proof row, a preview or sample card, a floating card, a quote", "with given content, the drawing alone"])).toEqual([]);
+    expect(read("library/screens/sign-in.md")).toContain("When the developer gave the sign-in screen's content, the panel holds the drawing");
+    expect(read("knowledge/ux-patterns/sign-in.md")).toContain("the drawing alone when the developer gave the screen's content");
+    for (const f of ["modes/init.md", "modes/feature.md"]) {
+      expect(`${f}: ${read(f).includes("A recipe or a library piece that would add sample content")}`).toBe(`${f}: true`);
+    }
+  });
+
+  test("a short welcome's points get a ground of their own on a phone, and the desktop drawing is as tall as the text", () => {
+    const pitch = line(character, "**The first screen is the whole pitch:**");
+    expect(missingFrom(pitch, ["on a ground of their own", "at least as tall as that column"])).toEqual([]);
+  });
+
+  test("init and feature build lists from those rules, ask about them in the look-pass, and put its answers in the summary", () => {
+    for (const f of ["modes/init.md", "modes/feature.md"]) {
+      const text = read(f);
+      const init = f.endsWith("init.md");
+      const build = text.slice(text.indexOf(init ? "\n## 6. Build" : "\n## 5. Build"), text.indexOf(init ? "\n## 7. Verify" : "\n## 6. Verify"));
+      const verify = text.slice(text.indexOf(init ? "\n## 7. Verify" : "\n## 6. Verify"));
+      const missing = [
+        ...missingFrom(build, ["A list screen is built from", "(../knowledge/character.md#working-screens)", "each item's state on its whole card", "its own step"]),
+        ...missingFrom(verify, [
+          "**Item states.**", "without reading a word", "in the same place on every card",
+          "do different actions look different", "an icon button",
+          "**Card text.**", "`body` size", "taller than a quarter of its card",
+          "**Beside the list.**", "empty room under", "belongs in the header",
+          "**Given content.**", "that the developer's content doesn't list",
+          "the look-pass's line for each screen",
+        ]),
+      ];
+      expect(`${f}: ${missing.join(" | ")}`).toBe(`${f}: `);
+    }
   });
 });
