@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The first screen of a web landing page, and the story under it. In one view, without scrolling, on a phone and a desktop: a `display` headline of two short lines, one line on what the app does for them, the main action with a quiet second one, and the brand moment as loud as the brief asks. Below it the page tells as much of the story as the product needs, then ends. It is where people decide in five seconds whether the app feels like what it is ([character](../../knowledge/character.md)).
+The first screen of a web landing page, and the story under it. In one view, without scrolling, on a phone and a desktop: a `display` headline of two short lines, one line on what the app does for them, the main action with a quiet second one, and the brand moment as loud as the brief asks. The brand moment never displaces the message or the main action: when room is short, the drawing shrinks or moves beside the headline. Below it the page tells as much of the story as the product needs, then ends. It is where people decide in five seconds whether the app feels like what it is ([character](../../knowledge/character.md)).
 
 ## Fits
 
@@ -17,9 +17,9 @@ Web landing and welcome pages on every stack that ships to the web, and the fron
 
 On a `brand` band the main button is `on-brand` with `brand` text (or `surface` with `text-primary`), so it stays the strongest thing on the band; the second action is an outline or a text link. A calm brief keeps its one deep `brand` area for the closing band, never a heavy block at the top.
 
-**Desktop: a real desktop layout.** Two columns in the same centred column as the header (one max width and side padding for both): the headline column takes about half the width, the drawing or preview sits beside it at the same height, both starting on one top line. The drawing is shown whole inside its shape, never cropped by the band or covered by a card; a next-up card sits beside the headline in place of the drawing or in its own column, never over it. The top bar holds the mark, two or three destinations, the language switch on bilingual apps and at most one action; "Sign in" appears once. See [visual craft](../../knowledge/visual-craft.md) for the columns.
+**Desktop: a real desktop layout.** Two columns in the same centred column as the header (one max width and side padding for both): the headline column takes about half the width, the drawing or preview sits beside it at the same height, both starting on one top line. The drawing is shown whole inside its shape, never cropped by the band or covered by a card; a next-up card sits beside the headline in place of the drawing or in its own column, never over it. When the page has only a headline, a line, a few points and the action, the points sit under the action in the headline column and the hero is as tall as its content: a strip of points alone under a tall, half-empty hero reads as two unfinished halves. The top bar holds the mark, two or three destinations, the language switch on bilingual apps and at most one action; "Sign in" appears once. See [visual craft](../../knowledge/visual-craft.md) for the columns.
 
-**Phone on the web:** a small drawing (no more than a quarter of the screen, or beside the headline), the headline, one line, then the main action straight under that line and the quiet one under it, then the next-up card, then three short rows of what it does.
+**Phone on the web:** a small drawing (no more than a quarter of the screen, or beside the headline), the headline, one line, then the main action straight under that line and the quiet one under it, then the next-up card, then three short rows of what it does. A page with only those rows to show is about one screen tall: the drawing shrinks first, and the rows are compact (an icon tile and a phrase each), straight after the actions.
 
 **The story under the hero** follows character.md's "How much follows depends on the product":
 

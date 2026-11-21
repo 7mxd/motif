@@ -18,7 +18,7 @@ The levers, from strongest to weakest:
 
 Use one or two levers per level, not all five. A heading that is bigger, bolder, coloured, boxed and spaced out is shouting; bigger and bolder is enough.
 
-**One primary action per view.** Only one button per view uses `action-primary`. Every other action uses `action-secondary` or a quiet text button. When two things both look primary, the person has to stop and compare them, which is the opposite of what a primary action is for.
+**One primary action per view.** Only one button per view uses `action-primary`. Every other action uses `action-secondary` or a quiet text button. When two things both look primary, the person has to stop and compare them, which is the opposite of what a primary action is for. A row's action repeated down a list counts as one: its rows share it, and which of them are filled follows [character](character.md#slips-that-undo-it)'s rule for repeated actions.
 
 **Type roles by job:**
 
@@ -145,7 +145,7 @@ Cards sitting on a surface often look better with a `border` and no shadow at al
 
 Run this before you show a screen to the developer:
 
-1. There is exactly one primary action, and it uses `action-primary`.
+1. There is exactly one primary action, and it uses `action-primary` (a row's action repeated down a list counts as one).
 2. The squint test passes: the primary thing stands out and the screen breaks into a few groups.
 3. Every gap is a `space.*` role; related things sit closer than unrelated things.
 4. Every piece of text uses a type role, and reading text stays within 45–75 characters per line.

@@ -713,3 +713,90 @@ describe("one meaning per colour role, locale digits and mirrored arrows, compon
     }
   });
 });
+
+// Run 20261120-053030 (decision 0018). The baseline won 12 of 48 pairs on both orders, and the reasons repeated: every
+// row's action drawn at one weight (the skill asked for "the same filled pill on each card"), a state nobody can act on
+// drawn as a solid bar the shape of a button, a welcome whose drawing or tall hero pushed the points into a strip of
+// their own, a floating button over a row's own button, and a light button on a pale tint of itself (the skill sent
+// it there). The sessions had opened their own screenshots; the look-pass didn't ask about any of these. In Test C the
+// review's taste calls (no crafted moment, an empty lower half) were rated major where the guide asked for none.
+describe("action weight, the first screen, the look-pass and taste findings (2.0 evals, decision 0018)", () => {
+  const character = read("knowledge/character.md");
+  const line = (text: string, marker: string) => text.split("\n").find((l) => l.includes(marker)) ?? "";
+  const missingFrom = (text: string, parts: string[]) => parts.filter((s) => !text.includes(s));
+
+  test("repeated row actions keep one place and shape, and their weight says what they do", () => {
+    const rule = line(character, "**Repeated actions keep their place and shape; their weight says what they do.**");
+    expect(missingFrom(rule, [
+      "at the same width", "two weights at most", "takes the person forward", "takes something back",
+      "waiting on the person", "the only filled one in the list", "not with a new colour",
+    ])).toEqual([]);
+    expect(character).not.toContain("the same filled pill on each card");
+    const one = line(read("knowledge/visual-craft.md"), "**One primary action per view.**");
+    expect(missingFrom(one, ["repeated down a list counts as one", "(character.md#slips-that-undo-it)"])).toEqual([]);
+  });
+
+  test("a state nobody can act on is a soft notice, never a bar the shape of the card's button", () => {
+    const facts = line(character, "**Facts people compare are figures.**");
+    expect(missingFrom(facts, ["A notice about one item", "on a pale tint of that colour", "reads as a button nobody can press"])).toEqual([]);
+  });
+
+  test("a light button doesn't sit on a pale tint of its own hue, and a yellow one gets a `surface` ground", () => {
+    const brand = line(character, "- `brand`: the brand's own colour");
+    expect(brand).not.toContain("turns `brand-soft` or `surface` so the yellow button stands out");
+    expect(missingFrom(brand, ["the ground right behind them is `surface`", "blends into its own hue"])).toEqual([]);
+    expect(missingFrom(line(character, "**A button stands clear of its ground.**"), ["nearly as light as", "of the same hue"])).toEqual([]);
+  });
+
+  test("the brand moment gives way to the message and the main action, and a short welcome stays one group", () => {
+    const recipes = character.slice(character.indexOf("\n## First-impression recipes\n"), character.indexOf("\n## Illustration\n"));
+    const pitch = line(recipes, "**The first screen is the whole pitch:**");
+    expect(missingFrom(pitch, [
+      "gives way to it", "before the message or the main action moves down", "A short welcome",
+      "in the headline's own column", "as tall as its content", "no separate strip of points", "about one screen tall",
+    ])).toEqual([]);
+    expect(missingFrom(line(recipes, "**Phone welcome on the web:**"), ["no more than a quarter of the screen", "about one screen", "the first thing to shrink"])).toEqual([]);
+    // One size for the drawing everywhere: the Illustration section said a third where the recipes said a quarter.
+    expect(character).not.toContain("about a third of a phone's welcome screen");
+    const hero = read("library/screens/landing-hero.md");
+    expect(missingFrom(hero, ["never displaces the message or the main action", "in the headline column", "as tall as its content", "about one screen tall"])).toEqual([]);
+  });
+
+  test("an empty band on a screen with short given content is closed up, not filled with decoration", () => {
+    expect(missingFrom(line(character, "**No empty areas.**"), ["empty band", "close the band up", "as tall as what it holds"])).toEqual([]);
+    expect(missingFrom(line(character, "**A working list on a desktop is a full screen.**"), ["The list keeps the width", "takes room from the rows"])).toEqual([]);
+  });
+
+  test("nothing hides under a floating button either, and it stays off rows that end in their own button", () => {
+    const bar = line(character, "**Nothing hides under a bar.**");
+    expect(missingFrom(bar, ["a floating add button", "each row ends in its own button", "in the header or under the list"])).toEqual([]);
+  });
+
+  test("init and feature look at each screenshot for what is covered or cut, action weight, a button on its ground and the first screen", () => {
+    for (const f of ["modes/init.md", "modes/feature.md"]) {
+      const text = read(f);
+      const verify = text.slice(text.indexOf(f.endsWith("init.md") ? "\n## 7. Verify" : "\n## 6. Verify"));
+      const missing = missingFrom(verify, [
+        "**Covered or cut.**", "a floating button over a row's text or its own button", "two words of a headline run together",
+        "**Action weight.**", "the row that needs the person", "(../knowledge/character.md#slips-that-undo-it)",
+        "**A button on its ground.**",
+        "**The first screen.**", "the whole main button", "without scrolling", "in a strip of their own",
+        "**Small labels.**", "the language switch",
+        "in writing",
+      ]);
+      expect(`${f}: ${missing.join(" | ")}`).toBe(`${f}: `);
+    }
+  });
+
+  test("review: a judgement finding that nothing backs is minor, and is still reported", () => {
+    const review = read("modes/review.md");
+    const backed = review.split("\n").find((l) => l.startsWith("A finding from the judgement pass")) ?? "";
+    expect(missingFrom(backed, [
+      "`major` only when something backs it", "a rule in the design guide", "an exact check", "a harm you can state in one sentence",
+      "report it, as `minor`",
+    ])).toEqual([]);
+    expect(outOfOrder(review, ["**Severity:**", "A finding from the judgement pass", "**Categories:**"])).toBeNull();
+    const fullness = line(review, "**Character and fullness.**");
+    expect(missingFrom(fullness, ["`anti-pattern` finding", "empty band", "plain", "`minor` unless the design guide asks for"])).toEqual([]);
+  });
+});
