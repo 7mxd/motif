@@ -753,23 +753,25 @@ describe("action weight, the first screen, the look-pass and taste findings (2.0
     const pitch = line(recipes, "**The first screen is the whole pitch:**");
     expect(missingFrom(pitch, [
       "gives way to it", "before the message or the main action moves down", "A short welcome",
-      "in the headline's own column", "as tall as its content", "no separate strip of points", "about one screen tall",
+      "in the headline's own column", "centred together in the first screen", "no separate strip of points", "about one screen tall",
     ])).toEqual([]);
     expect(missingFrom(line(recipes, "**Phone welcome on the web:**"), ["no more than a quarter of the screen", "about one screen", "the first thing to shrink"])).toEqual([]);
     // One size for the drawing everywhere: the Illustration section said a third where the recipes said a quarter.
     expect(character).not.toContain("about a third of a phone's welcome screen");
+    expect(read("library/accents/soft.md")).not.toContain("a quarter to a third of a phone's height");
     const hero = read("library/screens/landing-hero.md");
-    expect(missingFrom(hero, ["never displaces the message or the main action", "in the headline column", "as tall as its content", "about one screen tall"])).toEqual([]);
+    expect(missingFrom(hero, ["never displaces the message or the main action", "in the headline column", "centred together in the window", "about one screen tall"])).toEqual([]);
   });
 
-  test("an empty band on a screen with short given content is closed up, not filled with decoration", () => {
-    expect(missingFrom(line(character, "**No empty areas.**"), ["empty band", "close the band up", "as tall as what it holds"])).toEqual([]);
+  test("short given content is brought together, not padded with decoration", () => {
+    expect(missingFrom(line(character, "**No empty areas.**"), ["empty band", "bring it together instead", "one group centred in the screen", "the list across the width", "just to use up room"])).toEqual([]);
     expect(missingFrom(line(character, "**A working list on a desktop is a full screen.**"), ["The list keeps the width", "takes room from the rows"])).toEqual([]);
   });
 
   test("nothing hides under a floating button either, and it stays off rows that end in their own button", () => {
     const bar = line(character, "**Nothing hides under a bar.**");
     expect(missingFrom(bar, ["a floating add button", "each row ends in its own button", "in the header or under the list"])).toEqual([]);
+    expect(line(read("knowledge/ux-patterns/lists-feeds.md"), "- **Mobile:**")).toContain("its rows don't end in a button of their own");
   });
 
   test("init and feature look at each screenshot for what is covered or cut, action weight, a button on its ground and the first screen", () => {

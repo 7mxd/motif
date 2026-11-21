@@ -23,7 +23,7 @@ The Soft starting style and briefs that say gentle, friendly, warm or approachab
 
 | Where | Accent |
 |---|---|
-| [Welcome](../screens/welcome.md) | the cloud scene, about a quarter to a third of a phone's height, above the headline |
+| [Welcome](../screens/welcome.md) | the cloud scene, about a quarter of a phone's height, above the headline |
 | [Landing hero](../screens/landing-hero.md) | the cloud scene beside the headline on a desktop, at the same height; above it on a phone |
 | [Empty state](../screens/empty-state.md) | a smaller cloud scene (about a fifth of the screen) above the message |
 | [Key-figure card](../cards/key-figure-card.md)'s corner | pebbles in `on-brand` at 12–18% opacity |

@@ -52,6 +52,6 @@ Many items of the same kind, for scanning, finding and acting on: messages, orde
 
 ## Mobile and web
 
-- **Mobile:** full-width rows at least 44 px tall (usually 56–72 px with secondary text); swipe actions that are also reachable another way (long press or the detail screen); pull to refresh; a floating add button only if adding is the main job of the screen.
+- **Mobile:** full-width rows at least 44 px tall (usually 56–72 px with secondary text); swipe actions that are also reachable another way (long press or the detail screen); pull to refresh; a floating add button only if adding is the main job of the screen and its rows don't end in a button of their own, which it would sit on top of ([character](../character.md#working-screens)).
 - **Web:** tables for data people compare across columns, with sortable column headers and a sticky header row; secondary row actions visible on hover and on keyboard focus; arrow keys move between rows; pagination with a page size for large sets.
 - **Both:** the selected or opened item stays highlighted when people return to the list.
