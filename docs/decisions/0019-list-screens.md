@@ -1,7 +1,7 @@
 # 0019 — List screens: item states, an action ladder, and given content first
 
 - Date: 2026-11-21
-- Status: Accepted. Amends decision 0018's first and fourth points; its other points and the bars of 0013 and 0014 stand. No test, fixture, rubric, grader or judge changed.
+- Status: Accepted. Amends decision 0018's first and fourth points; its other points and the bars of 0013 and 0014 stand. No fixture, rubric, grader or judge changed; in the skill-text test, 0018's assertions on "two weights at most" were replaced with assertions on the ladder (see Consequences).
 - Context: targeted run 20261121-042738 (commit c6fa2e5, six briefs and the two review cases, the first pass after 0018). Both review cases passed. Test A did not improve: of the 30 pairs judged, Motif won 18 on both orders, the baseline 11, and one split. By kind of screen: welcome 7 to 3, sign-in 9 to 1, lists 2 to 7 with one split. The sessions had read 0018's rules and built them: one filled action on the row waiting on the person, the step back outlined, a state nobody can act on as a soft notice. The lists lost anyway, so 0018's first point was applied and was not enough. None of the sessions wrote the look-pass down where it can be read.
 
 ## What lost, and why
@@ -16,7 +16,7 @@
 
 ## Decisions
 
-1. **An item's state shows on its whole card.** The person's own item stands out (a `brand-soft` ground, a 2 px `brand` edge, a filled status pill); an item that is off steps back (flat ground, title struck through, picture greyed, no button). State changes a card's ground, edge and title, never its shape or where its status sits: the status keeps one place on every card, on the card's body.
+1. **An item's state shows on its whole card.** The person's own item stands out (a `brand-soft` ground and a 2 px `brand` edge, the action roles standing in where a theme has no brand roles, and a `surface` ground where the card's button would sit on a tint of itself); an item that is off steps back (flat ground, title struck through, picture greyed, no button). State changes a card's ground, edge and title, never its shape or where its status sits: the status keeps one place on every card, on the card's body.
 2. **Each kind of action has its own step on one ladder.** Filled for the step forward the list is for, tonal (`action-secondary`) for a lesser or fallback step, outlined for looking, opening and stepping back. When one row waits on the person its action alone is filled and the others step down one. The steps differ by fill, not by hue. A per-row extra stays an icon button. This replaces 0018's "two weights at most" and withdraws the ban on a secondary fill in a row; what stays of that ban is that a list's only action isn't the pale one.
 3. **A card's facts are `body`, at the card's full width.** `label` is for chips and a tile's small lines. On a phone a calendar tile shares its row with the title only.
 4. **A list's title, count and main action are its header.** A side column is for content as tall as the list. This replaces the "its summary" sentence of 0018's fourth point.
@@ -28,5 +28,5 @@
 ## Consequences
 
 - `skill/knowledge/character.md`, `skill/knowledge/ux-patterns/lists-feeds.md`, `skill/knowledge/ux-patterns/sign-in.md`, `skill/library/cards/item-card.md`, `skill/library/screens/sign-in.md`, `skill/modes/init.md`, `skill/modes/feature.md`; their test is the last block of `cli/test/skill-modes.test.ts`. In 0018's block, the assertions on "two weights at most" are replaced by assertions on the ladder, each as specific as the one it replaces.
-- The tonal step is the stack guides' existing secondary button, so no component or role is new.
+- The tonal step is the stack guides' existing secondary button, so no component or role is new. In the eight starting styles `action-secondary` is a pale tint or a neutral with dark text (near-black in Bold), so it reads as a button beside a filled one; alone it can read as disabled, which is the part of the old ban that stays.
 - Not yet shown by a run. The second pass on c6fa2e5 (run 20261121-074326) was still running when this was written, and it tests 0018's rules, not these.

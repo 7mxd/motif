@@ -42,7 +42,7 @@ The drawing uses only the theme's roles: ground in `brand-soft`, the main shapes
 - **Loading:** cards keep their size; the banner is a plain `surface` block and the name and facts are skeleton bars. Never a spinner per card.
 - **Empty:** the list shows the [empty state](../screens/empty-state.md) with its own drawing and first action ("Save your first trail"); a filter with no matches says so and offers to clear the filter.
 - **Error:** the list says what failed with "Try again", above any cards already loaded. A card whose scene data is missing still draws the scene for its kind, plainly, rather than a broken picture.
-- **Closed or off:** the card stays in the list and steps back, as [character](../../knowledge/character.md#working-screens) says for an item that is off: a flat ground, its title struck through in `text-secondary`, its picture greyed, the reason in one short line on a pale `danger` tint, and no action. A partial closure keeps the card as it is and adds its notice on a pale `warning` tint. The person's own item (saved, booked) stands out the same way on every card: a `brand-soft` ground and a 2 px edge in `brand`.
+- **Closed or off:** the card stays in the list and steps back, as [character](../../knowledge/character.md#working-screens) says for an item that is off: a flat ground, its title struck through in `text-secondary`, its picture greyed, the reason in one short line on a pale `danger` tint, and no action. A partial closure keeps the card as it is and adds its notice on a pale `warning` tint. The person's own item (one they marked, one they are in) stands out the same way on every card: a `brand-soft` ground and a 2 px edge in `brand`.
 
 ## Motion
 

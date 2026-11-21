@@ -736,6 +736,7 @@ describe("action weight, the first screen, the look-pass and taste findings (2.0
     // Decision 0019 replaces 0018's "two weights at most": the lists that won gave each kind of action its own step.
     expect(rule).not.toContain("two weights at most");
     expect(rule).not.toContain("never a `brand-soft` or `action-secondary` fill");
+    expect(missingFrom(rule, ["its label as heavy as the filled one's", "a list whose only action is pale reads as disabled"])).toEqual([]);
     expect(character).not.toContain("the same filled pill on each card");
     const one = line(read("knowledge/visual-craft.md"), "**One primary action per view.**");
     expect(missingFrom(one, ["repeated down a list counts as one", "(character.md#slips-that-undo-it)"])).toEqual([]);
@@ -823,6 +824,7 @@ describe("list screens: item states, card text, the header and given content (2.
     const rule = line(character, "**An item's state shows on its whole card.**");
     expect(missingFrom(rule, [
       "at a squint", "The person's own item", "a `brand-soft` ground", "a 2 px edge in `brand`",
+      "in a theme without the brand roles", "a tint of its own hue", "the ground stays `surface`",
       "An item that is off", "struck through in `text-secondary`", "no button",
       "is too little to see", "the same spot on every card", "not on its picture",
     ])).toEqual([]);
@@ -880,6 +882,7 @@ describe("list screens: item states, card text, the header and given content (2.
       const verify = text.slice(text.indexOf(init ? "\n## 7. Verify" : "\n## 6. Verify"));
       const missing = [
         ...missingFrom(build, ["A list screen is built from", "(../knowledge/character.md#working-screens)", "each item's state on its whole card", "its own step"]),
+        ...(init ? [] : missingFrom(build, ["its design guide and its components come first"])),
         ...missingFrom(verify, [
           "**Item states.**", "without reading a word", "in the same place on every card",
           "do different actions look different", "an icon button",
