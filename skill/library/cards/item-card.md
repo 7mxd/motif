@@ -18,7 +18,7 @@ Lists and grids of items that are places or things with a look of their own, in 
 
 - **Phone list:** each card keeps its drawn banner across the top, kept short (about 16:5, a quarter of the card at most), then the name on one line with the status badge at its end, in the same place on every card, then the figures each led by a small icon. A detail that doesn't fit (a surface type) waits for the item's own page rather than being cut off with an ellipsis.
 - **Compact row** (a dense list, a sidebar, the [today's focus](todays-focus.md) card): a square of about 64 px beside the title, the facts under the title.
-- **Desktop:** a grid of the same banner cards, three or four across in a real desktop layout ([visual craft](../../knowledge/visual-craft.md)), or rows with the 64 px square. It keeps the thumbnails and tags; it never turns into a plain table.
+- **Desktop:** a grid of the same banner cards, three or four across in a real desktop layout ([visual craft](../../knowledge/visual-craft.md)), or rows with the 64 px square. It keeps the thumbnails and tags; it never turns into a plain table. A list read in order (a schedule, a queue) stays one column of these cards ([character](../../knowledge/character.md#working-screens)).
 - **Never** a large picture beside a narrow text column: titles break on lone words and chips spill onto extra lines.
 - The card is `surface-raised` with a `border` line (or `shadow.sm`, not both), `radius.lg`, the banner clipped to the card's top corners, `space.4` inside under the banner.
 

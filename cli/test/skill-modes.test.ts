@@ -900,7 +900,7 @@ describe("list screens: item states, card text, the header and given content (2.
 // ran as a band to the screen's edges or as loose rows under the sign-in link and won as one card under the actions,
 // a status told in a sentence was set as plain text beside a small mark, a list in date order was split into a grid or
 // into three-column rows, cards were stretched around a blank gap, lists were plainer than their welcome, and buttons
-// carried `label`-size text because the type table gave buttons that role.
+// that fill a card's width carried `label`-size text because only a "large" button was asked for more.
 describe("ordered lists, statuses in colour, welcome points as one block and mood on lists (2.0 evals, decision 0020)", () => {
   const character = read("knowledge/character.md");
   const craft = read("knowledge/visual-craft.md");
@@ -939,28 +939,33 @@ describe("ordered lists, statuses in colour, welcome points as one block and moo
     expect(missingFrom(fills, ["a list read in order is one centred column"])).toEqual([]);
     expect(fills).not.toContain("each request a full-width row");
     expect(missingFrom(line(craft, "never a centred phone column"), ["A list read in order is the exception"])).toEqual([]);
+    expect(missingFrom(line(character, "**No empty areas.**"), ["one centred column when it is read in order"])).toEqual([]);
+    expect(missingFrom(line(character, "**A schedule reads by day and time.**"), ["one narrow column at one side of a large empty area"])).toEqual([]);
+    expect(missingFrom(line(read("library/cards/item-card.md"), "- **Desktop:**"), ["A list read in order", "stays one column"])).toEqual([]);
   });
 
   test("no card is stretched around a blank gap: an off card is as tall as its content", () => {
     expect(missingFrom(line(character, "**An item's state shows on its whole card.**"), ["as tall as its content", "a blank gap where the button was"])).toEqual([]);
-    expect(missingFrom(line(character, "**A schedule reads by day and time.**"), ["is simply shorter", "not a row of labelled figures"])).toEqual([]);
+    expect(missingFrom(line(character, "**A schedule reads by day and time.**"), ["is simply shorter", "not a row of labelled figures", "with a level beside them as its colour-coded chip"])).toEqual([]);
     expect(missingFrom(line(character, "**Facts people compare are figures.**"), ["a blank gap in its middle"])).toEqual([]);
   });
 
   test("a playful or energetic brief reaches a list's header and its level chips", () => {
     const dial = line(character, "For playful, friendly or energetic briefs the dial reaches these screens too");
-    expect(missingFrom(dial, ["the screen's title", "`display` face", "kept short on a phone", "a fifth of the screen"])).toEqual([]);
+    expect(missingFrom(dial, ["the screen's title", "in the `title` role", "the `display` role's family", "kept short on a phone", "a fifth of the screen"])).toEqual([]);
+    expect(dial).not.toContain("`display` face");
     expect(missingFrom(line(character, "**Facts people compare are figures.**"), ["is still a kind", "lifted out of the line"])).toEqual([]);
   });
 
-  test("a button's label is body size: the type table, the slip and the look-pass agree", () => {
-    expect(missingFrom(line(craft, "- `label`:"), ["44 px or taller", "`body` size"])).toEqual([]);
-    expect(line(craft, "- `label`:")).not.toContain("controls, buttons, tabs");
-    expect(missingFrom(line(character, "**A button's label is never small.**"), ["a row's button", "as wide as its longest label needs"])).toEqual([]);
+  test("a large button's label is body size in the slip, the build step and the look-pass; an existing app's Button stands", () => {
+    expect(missingFrom(line(character, "**A button's label is never small.**"), ["A large button's label is `body` size", "a row's button", "counts as large", "as wide as its longest label needs"])).toEqual([]);
+    expect(line(craft, "- `label`:")).toContain("controls, buttons, tabs");
+    expect(read("modes/init.md")).toContain("a large button's label at `body` size");
+    expect(missingFrom(line(read("modes/feature.md"), "**Small labels.**"), ["an existing app's own Button keeps its size"])).toEqual([]);
+    expect(line(read("modes/init.md"), "**Small labels.**")).not.toContain("an existing app's own Button");
     for (const f of ["modes/init.md", "modes/feature.md"]) {
       const small = line(read(f), "**Small labels.**");
-      expect(`${f}: ${missingFrom(small, ["every button's label `body` size"]).join(" | ")}`).toBe(`${f}: `);
-      expect(small).not.toContain("every button's, at least `label` size");
+      expect(`${f}: ${missingFrom(small, ["a large or full-width button's label `body` size"]).join(" | ")}`).toBe(`${f}: `);
     }
   });
 

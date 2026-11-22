@@ -26,7 +26,7 @@ Use one or two levers per level, not all five. A heading that is bigger, bolder,
 - `title`: the screen's title, once per screen.
 - `heading`: section headings inside the screen.
 - `body`: content people read.
-- `label`: controls, tabs, form labels and compact buttons. A button 44 px or taller sets its label at `body` size in a heavier weight ([character](character.md#slips-that-undo-it)).
+- `label`: controls, buttons, tabs, form labels.
 - `caption`: metadata such as timestamps, counts and helper text.
 - `mono`: code, keyboard keys and values people copy exactly (an API key, an order number), if the theme has this optional role. Never for headings or prose.
 
