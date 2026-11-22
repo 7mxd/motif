@@ -1,0 +1,35 @@
+# 0020 — Ordered lists in one column, statuses in colour, and a welcome's points as one block
+
+- Date: 2026-11-22
+- Status: Accepted. Amends decision 0019's seventh point (the ground under a short welcome's points) and three older lines it left standing; the rest of 0018 and 0019 and the bars of 0013 and 0014 stand. No fixture, rubric, grader or judge changed, and no earlier assertion in the skill-text test was removed or loosened.
+- Context: runs 20261121-080705 and 20261121-104510 (commit 4091014, four briefs and five review and feature cases, two passes after 0019). Every review and feature case passed. Test A improved: of 48 pairs, Motif won 29 on both orders, the baseline 13, and 6 split (the pass before 0019 was 18, 11 and 1 of 30). By kind of screen: sign-in 16 of 16; welcome 6 won, 5 lost, 5 split; lists 7 won, 8 lost, 1 split. All eight sessions loaded 0019's rules and built them (item states, the action ladder and the header are in the screens), so what lost is what those rules left open or what older lines still asked for. Only one of the eight summaries carried the look-pass's line for each screen, so this round's fixes went into the rule lines and the build step first, and into the look-pass second.
+
+## What lost, and why
+
+1. **A welcome's points as a strip (4 of the 5 welcome pairs lost): 0019's own wording.** 0019 gave the points "a `surface` band to the screen's edges or one `surface` card". The band was built twice and lost twice, with rules across it and space under it; on a desktop, loose rows under the sign-in link lost two of three. Points held in a card of their own or under a hairline, close under the actions, won five pairs and split two, with none lost. The order was not what separated them: all six welcome pairs Motif won have the same order (action, then points), and in three pairs a judge preferred Motif for its button sitting high or faulted the other side for a button pushed down. So the order stays and the grouping changes.
+2. **A status in plain text (2 pairs): no rule for a status that is a sentence.** The rules asked for a tinted pill for a status word and a tinted line for a notice. When each item's status was a sentence, one session set it as plain text beside a small coloured mark and lost both sizes; the other pass set the same sentences in tinted boxes with icons and won both. 0018's "text on a pale tint" did not cause this: the winning build is that rule.
+3. **A list in date order built as a grid or as three-column rows (5 of 5 lost on a desktop): three older lines asked for it.** "A wider list becomes a grid of cards", "each request a full-width row" and "every card is the same height" sent a schedule into two or three columns, where the order zigzags, the last card leaves an empty slot, and cards are stretched around a blank gap (named in 3 pairs). The one ordered list built as a single centred column won. A grid is not at fault for things picked in any order: that list won both passes as a grid.
+4. **Lists plainer than their welcome (named in 3 pairs).** For a lively brief the other side's list had its title in the display face on a coloured header and lifted each item's level out of its line of facts into a colour-coded chip. The rule for kinds existed, but the level sat inside a fact and stayed there.
+5. **Small labels in large buttons (2 pairs): the type table said so.** The type roles gave buttons `label`, 14 px, and the look-pass accepted "at least `label` size", against the slip that asks for `body` in a large button.
+6. **Small slips (one pair each):** the app's name said twice (in the bar and again over the headline), a seam where a rounded panel met the screen's edge, and a wash that stopped in a line beside a button. A sign-in line centred under a left-aligned column was also named once, but a welcome with the same centred line won both orders, so no rule was written for it.
+
+## Decisions
+
+1. **A short welcome's points are one block.** They follow the actions in one `surface` card (on a desktop, that card or a hairline over them), one section's gap below; the band to the screen's edges is withdrawn, and loose rows under the sign-in link are named as the failure.
+2. **A status told in a sentence is colour-coded like a status word:** a pale tint of its status's colour with that status's icon, in the same box on every card, smaller than the title.
+3. **A list read in order (by date, by time, as a queue) is one centred column at every width,** each card stacked with its status and action on one line at its foot. A grid or a side column is for things picked in any order. "A desktop section fills its width" and the craft rule on centred columns now name this exception.
+4. **No card is stretched around a blank gap.** In one column a card is as tall as its content, so an item that is off is shorter; in a grid, a line only some cards have takes the slot of one the others have. A schedule's cards have one layout, not one height, and keep their numbers on the facts line.
+5. **A lively brief reaches the list's header and its level chips** on the web: the title in the display face on a short band, and a level named inside a fact lifted out as its chip.
+6. **A button 44 px or taller has a `body`-size label,** in the type table, the slip and the look-pass alike; on a desktop a row's button is as wide as its longest label needs.
+7. **The name is said once, and a band ends cleanly** (to the edges with square corners, or inside the page with a margin all round).
+8. **The build step and the look-pass ask for these** in the lines they already had: each status in its colour, an ordered list in one column, the points as one block.
+
+## Consequences
+
+- Left for the owner, not changed here:
+  - **The welcome's order.** Judges named the other order (points, then the action) in the four pairs lost, but the evidence above does not show that the order decides a pair. If the next run still loses on it, the order is the next thing to try.
+  - **A yellow brand's buttons.** The 2026-10-28 rule keeps them yellow, on a `surface` ground. In these two passes that ground, built as a white card holding the button and the points on a yellow panel, lost one pair and split one, and judges preferred the other side's orange buttons in three pairs. This goes against what that rule was written on, so it needs its own look.
+  - **The stack guides' Button samples** in four web guides still set the label at `label` size, and test fixtures mirror them. The rule now says `body`; the samples and fixtures were not touched.
+  - **The header band on a list** rests on split evidence: praised on the other side in three pairs, and Motif's own tall band was called heavy once on a phone. It is limited to lively briefs on the web and kept short on a phone.
+- The skill-text test gains eight tests under this decision's name. Each was run and seen to fail before the skill changed.
+- To check: rebuild the release copy and rerun the same four briefs twice, plus the review and feature cases as a guard.

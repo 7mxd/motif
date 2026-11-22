@@ -896,3 +896,93 @@ describe("list screens: item states, card text, the header and given content (2.
     }
   });
 });
+// Third round (decision 0020). Two more passes over the same four briefs: the points of a short welcome lost when they
+// ran as a band to the screen's edges or as loose rows under the sign-in link and won as one card under the actions,
+// a status told in a sentence was set as plain text beside a small mark, a list in date order was split into a grid or
+// into three-column rows, cards were stretched around a blank gap, lists were plainer than their welcome, and buttons
+// carried `label`-size text because the type table gave buttons that role.
+describe("ordered lists, statuses in colour, welcome points as one block and mood on lists (2.0 evals, decision 0020)", () => {
+  const character = read("knowledge/character.md");
+  const craft = read("knowledge/visual-craft.md");
+  const line = (text: string, marker: string) => text.split("\n").find((l) => l.includes(marker)) ?? "";
+  const missingFrom = (text: string, parts: string[]) => parts.filter((s) => !text.includes(s));
+
+  test("a short welcome's points are one block tied to the actions: one card, not a band to the edges or loose rows", () => {
+    const pitch = line(character, "**The first screen is the whole pitch:**");
+    expect(missingFrom(pitch, [
+      "one `surface` card", "held together as one block", "a hairline over them",
+      "loose rows left under the sign-in link", "a band to the screen's edges", "read as a strip added afterwards",
+    ])).toEqual([]);
+    expect(pitch).not.toContain("a `surface` band to the screen's edges or one `surface` card");
+    const hero = read("library/screens/landing-hero.md");
+    expect(missingFrom(line(hero, "**Desktop: a real desktop layout.**"), ["held together as one block"])).toEqual([]);
+    expect(missingFrom(line(hero, "**Phone on the web:**"), ["in one `surface` card", "not a band to the screen's edges"])).toEqual([]);
+  });
+
+  test("a status told in a sentence is colour-coded too: a tinted box with its icon, not plain text beside a mark", () => {
+    const list = line(character, "**A working list on a desktop is a full screen.**");
+    expect(missingFrom(list, [
+      "A status told in a sentence", "in a pale tint of its status's colour", "that status's icon",
+      "a small coloured mark beside plain text is too little", "smaller than the title",
+    ])).toEqual([]);
+  });
+
+  test("a list read in order is one centred column on a desktop: not a grid and not a three-column row", () => {
+    const desktop = line(character, "**A desktop is not a stretched phone.**");
+    expect(missingFrom(desktop, ["a list people read in order", "stays one centred column", "picked in any order"])).toEqual([]);
+    const list = line(character, "**A working list on a desktop is a full screen.**");
+    expect(missingFrom(list, [
+      "A list in date, time or queue order is one column", "the order zigzags", "an empty slot",
+      "three columns", "its status and its action on one line",
+    ])).toEqual([]);
+    const fills = line(character, "**A desktop section fills its width.**");
+    expect(missingFrom(fills, ["a list read in order is one centred column"])).toEqual([]);
+    expect(fills).not.toContain("each request a full-width row");
+    expect(missingFrom(line(craft, "never a centred phone column"), ["A list read in order is the exception"])).toEqual([]);
+  });
+
+  test("no card is stretched around a blank gap: an off card is as tall as its content", () => {
+    expect(missingFrom(line(character, "**An item's state shows on its whole card.**"), ["as tall as its content", "a blank gap where the button was"])).toEqual([]);
+    expect(missingFrom(line(character, "**A schedule reads by day and time.**"), ["is simply shorter", "not a row of labelled figures"])).toEqual([]);
+    expect(missingFrom(line(character, "**Facts people compare are figures.**"), ["a blank gap in its middle"])).toEqual([]);
+  });
+
+  test("a playful or energetic brief reaches a list's header and its level chips", () => {
+    const dial = line(character, "For playful, friendly or energetic briefs the dial reaches these screens too");
+    expect(missingFrom(dial, ["the screen's title", "`display` face", "kept short on a phone", "a fifth of the screen"])).toEqual([]);
+    expect(missingFrom(line(character, "**Facts people compare are figures.**"), ["is still a kind", "lifted out of the line"])).toEqual([]);
+  });
+
+  test("a button's label is body size: the type table, the slip and the look-pass agree", () => {
+    expect(missingFrom(line(craft, "- `label`:"), ["44 px or taller", "`body` size"])).toEqual([]);
+    expect(line(craft, "- `label`:")).not.toContain("controls, buttons, tabs");
+    expect(missingFrom(line(character, "**A button's label is never small.**"), ["a row's button", "as wide as its longest label needs"])).toEqual([]);
+    for (const f of ["modes/init.md", "modes/feature.md"]) {
+      const small = line(read(f), "**Small labels.**");
+      expect(`${f}: ${missingFrom(small, ["every button's label `body` size"]).join(" | ")}`).toBe(`${f}: `);
+      expect(small).not.toContain("every button's, at least `label` size");
+    }
+  });
+
+  test("the name is said once and a band ends cleanly", () => {
+    expect(missingFrom(line(character, "**The mark appears once per screen.**"), ["isn't repeated", "over the headline"])).toEqual([]);
+    expect(missingFrom(line(character, "**A band ends cleanly.**"), ["square corners", "a margin all round", "show as a seam"])).toEqual([]);
+  });
+
+  test("init and feature build and check lists by these rules", () => {
+    for (const f of ["modes/init.md", "modes/feature.md"]) {
+      const text = read(f);
+      const init = f.endsWith("init.md");
+      const build = text.slice(text.indexOf(init ? "\n## 6. Build" : "\n## 5. Build"), text.indexOf(init ? "\n## 7. Verify" : "\n## 6. Verify"));
+      const verify = text.slice(text.indexOf(init ? "\n## 7. Verify" : "\n## 6. Verify"));
+      const missing = [
+        ...missingFrom(build, ["each status in its colour", "a list read in order in one column"]),
+        ...missingFrom(read("knowledge/ux-patterns/lists-feeds.md"), ["each status is in its colour", "is one column at every width"]),
+        ...missingFrom(line(verify, "**Item states.**"), ["or is it plain text", "a blank gap"]),
+        ...missingFrom(line(verify, "**Beside the list.**"), ["read straight down one column", "zigzag across a grid"]),
+        ...missingFrom(line(verify, "**The first screen.**"), ["one card or block right under the actions", "loose rows"]),
+      ];
+      expect(`${f}: ${missing.join(" | ")}`).toBe(`${f}: `);
+    }
+  });
+});

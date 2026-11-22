@@ -26,7 +26,7 @@ Use one or two levers per level, not all five. A heading that is bigger, bolder,
 - `title`: the screen's title, once per screen.
 - `heading`: section headings inside the screen.
 - `body`: content people read.
-- `label`: controls, buttons, tabs, form labels.
+- `label`: controls, tabs, form labels and compact buttons. A button 44 px or taller sets its label at `body` size in a heavier weight ([character](character.md#slips-that-undo-it)).
 - `caption`: metadata such as timestamps, counts and helper text.
 - `mono`: code, keyboard keys and values people copy exactly (an API key, an order number), if the theme has this optional role. Never for headings or prose.
 
@@ -123,7 +123,7 @@ Cards sitting on a surface often look better with a `border` and no shadow at al
 **Phone and desktop are different layouts, not one layout resized.**
 
 - Phone: one column, stacked; the primary action within thumb reach (bottom of the screen or end of the content); navigation in a tab bar or a back button.
-- Desktop: navigation beside the content; forms keep their readable width; secondary panels can sit beside the main one instead of below it. Home and landing screens get a real desktop layout (columns, cards side by side), never a centred phone column with empty space on both sides.
+- Desktop: navigation beside the content; forms keep their readable width; secondary panels can sit beside the main one instead of below it. Home and landing screens get a real desktop layout (columns, cards side by side), never a centred phone column with empty space on both sides. A list read in order is the exception: one centred column of wide cards under a header across the content width ([character](character.md#working-screens)).
 
 **Top navigation keeps to the few destinations people use most** (three to five); the rest goes in a menu or under the profile. A top bar full of options reads as clutter, not as a full app.
 
